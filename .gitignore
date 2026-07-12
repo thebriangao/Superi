@@ -1,0 +1,14 @@
+# Rust build output
+/open/target/
+**/target/
+
+# macOS
+.DS_Store
+
+# Editor
+*.swp
+.idea/
+.vscode/
+
+# Local agent instructions
+AGENTS.md

@@ -1,0 +1,30 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/galileo-editor/galileo"
+rust-version = "1.80"
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+
+# Canonical pinned versions for shared external crates. Declared centrally so a
+# crate opts in with `dep = { workspace = true }`. NONE are referenced in the
+# skeleton, so cargo does not fetch them. Versions are starting points: adjust
+# when a crate first actually uses one.
+[workspace.dependencies]
+thiserror = "2"
+tracing = "0.1"
+bytemuck = "1"
+half = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+pollster = "0.4"
+wgpu = "23"

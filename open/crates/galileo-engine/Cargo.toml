@@ -1,0 +1,31 @@
+[package]
+name = "galileo-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+os-codecs = ["dep:galileo-codecs-platform"]
+
+[dependencies]
+galileo-core = { path = "../galileo-core" }
+galileo-image = { path = "../galileo-image" }
+galileo-gpu = { path = "../galileo-gpu" }
+galileo-concurrency = { path = "../galileo-concurrency" }
+galileo-media-io = { path = "../galileo-media-io" }
+galileo-codecs-rs = { path = "../galileo-codecs-rs" }
+galileo-graph = { path = "../galileo-graph" }
+galileo-cache = { path = "../galileo-cache" }
+galileo-color = { path = "../galileo-color" }
+galileo-effects = { path = "../galileo-effects" }
+galileo-timeline = { path = "../galileo-timeline" }
+galileo-audio = { path = "../galileo-audio" }
+galileo-ai = { path = "../galileo-ai" }
+galileo-project = { path = "../galileo-project" }
+galileo-codecs-platform = { path = "../galileo-codecs-platform", optional = true }
