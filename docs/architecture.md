@@ -1,7 +1,7 @@
 # Superi: Engineering & Architecture Document
 
 **Status:** Foundational. Living document, versioned and dated, expected to evolve as the vertical slice is built and the founding engineers pressure-test its assumptions.
-**Version:** 0.1 (pre-build foundation)
+**Version:** 0.2 (Phase 0 contracts ratified)
 **Audience:** Founding engineers, candidate engineers, technical leadership. This document captures *decisions with their rationale and rejected alternatives*, at the level of how subsystems are structured and how they connect, not implementation prescription, which is the specialists' to determine.
 
 ---
@@ -9,6 +9,10 @@
 ## 0. How to read this document
 
 This is the consolidation of Superi's foundational thinking. It defines the destination (the North Star), the hard product/licensing boundaries that shape the architecture, the locked technology stack and the reasoning behind each choice, the subsystem inventory (the "bones"), the orchestration that binds them, the build phasing, and the brand direction. It also honestly marks what is **locked** versus what remains a **founding-team decision**.
+
+The detailed, ratified implementation contracts for the desktop boundary, public API transport,
+native viewport, OTIO interchange, project format, color model, threading, plugins, licensing, and
+measurable completion targets live in [`phase-0-build-contracts.md`](phase-0-build-contracts.md).
 
 The test every downstream decision must pass: *does this serve the North Star, nothing more, nothing less?*
 
@@ -52,7 +56,8 @@ This single line governs what goes where. It is drawn **on principle, not on wha
 
 ## 3. Locked technology stack & the reasoning
 
-Each choice below is **locked as a directional decision**, with those marked *(founding-engineer ratification)* being calls the first principal engineer formally co-owns.
+Each choice below is **locked as a directional decision**. Detailed Phase 0 contracts and their
+change-control requirements live in [`phase-0-build-contracts.md`](phase-0-build-contracts.md).
 
 ### 3.1 Engine language: Rust *(locked)*
 **Decision:** The engine is written in Rust.
@@ -65,18 +70,21 @@ Each choice below is **locked as a directional decision**, with those marked *(f
 **Rationale:** wgpu is the Rust-native GPU abstraction, targeting Vulkan, Metal, and D3D12 underneath, so Superi writes its GPU-heavy core **once** and runs natively across Mac, Windows, and Linux. This solves cross-platform reach *and* native-Metal performance (critical, since much professional editing is on macOS) in a single decision, instead of hand-rolling an abstraction over raw Vulkan. It also fits the Rust engine cleanly rather than bolting a foreign graphics system onto a Rust codebase.
 **Accepted cost:** wgpu is younger than raw Vulkan tooling; budget for occasional rough edges at the GPU boundary (which is `unsafe` FFI territory regardless).
 
-### 3.3 Timeline data model: Rust-native, OTIO-compatible *(locked; OTIO-compat to be faithfully recreated)*
+### 3.3 Timeline data model: Rust-native, OTIO-compatible *(locked)*
 **Decision:** A Rust-native timeline/editorial data model that is **OpenTimelineIO-compatible**, serializable to and from the OTIO schema even though the in-memory representation is our own.
 **Rationale:** A Rust-native model keeps the engine coherent and avoids permanently maintaining bindings to C++ OTIO. But OTIO's real value was never its code, it was **industry interchange** (round-tripping edits with the rest of the professional toolchain). Stranding Superi on a proprietary format would directly undercut "professionals can actually adopt this." So we faithfully recreate OTIO-schema compatibility at the import/export boundary.
-**Open item:** the exact mechanism (thin binding at the boundary vs. native model that serializes to/from the OTIO schema) is a **founding-engineer decision** to pressure-test for interchange fidelity. *Carried as an explicitly open item.*
+**Ratified mechanism:** Superi implements a native Rust OTIO JSON reader and writer, preserves unknown
+schemas and fields as opaque versioned data, and validates compatibility against the official OTIO
+reference implementation. The full contract lives in
+[`phase-0-build-contracts.md`](phase-0-build-contracts.md#6-opentimelineio-interchange).
 
-### 3.4 Application/UI layer: Web technology *(recommended primary direction; founding-engineer ratification)*
-**Decision (recommended):** The application/UI layer is built in **web technology** (the mature React/TypeScript-class ecosystem) in a native shell, with the Rust/wgpu engine underneath, communicating across the **open automation API** (§3.5).
+### 3.4 Application/UI layer: Tauri 2, React, and TypeScript *(locked)*
+**Decision:** The application/UI layer uses React and TypeScript in a Tauri 2 native host, with the Rust/wgpu engine underneath, communicating across the **open automation API** (§3.5).
 **Rationale:** A flagship editor's UI is a large, complex application *fused with* real-time GPU-rendered media, but the heavy lifting (real-time video rendering) is the **engine's** job on the GPU, not the UI's. The web layer renders the *interface around* the video (timeline, panels, controls, inspectors) with the engine's output composited into the viewport. This means the web stack does what it is genuinely excellent at (beautiful, modern, sophisticated application UI, deepest component/design ecosystem, by far the deepest talent pool, fast to polish) while the engine does what web tech is bad at (pushing heavy media pixels in real time). The one real concern, the UI↔engine boundary, is **precisely the seam we already chose to build well** as the open automation API, so it is a first-class part of the architecture rather than an awkward retrofit.
 **Rejected/deferred alternatives:**
 - **Native Rust UI**, architecturally purest (one language, no boundary, shares wgpu directly), but the Rust UI ecosystem is currently **too immature** for a UI that must be beautiful and polished from early on. *Worth revisiting as the ecosystem matures.*
 - **Custom GPU-rendered UI (on wgpu)**, the no-compromise-performance option and how a few of the most polished creative tools are built, but it means **building a UI framework** (text input, accessibility, layout, i18n) from scratch, a multi-year, resource-heavy commitment that would compete against shipping. **Consciously deferred to a post-ship / second-funding-round future.** The Rust/wgpu engine keeps this door open for later without lock-in.
-**Accepted costs:** a maintained **language/process boundary** between web UI and Rust engine (mitigated by the disciplined API seam); and the risk that web-shell UIs can feel marginally less native-crisp (mitigated by engineering care, keeping the timeline and viewport tight). *Marked for founding-engineer ratification, as the best answer depends partly on UI hires' strengths.*
+**Accepted costs:** a maintained **language/process boundary** between web UI and Rust engine (mitigated by the disciplined API seam); and the risk that web-shell UIs can feel marginally less native-crisp (mitigated by engineering care, keeping the timeline and viewport tight). The detailed boundary and native-viewport contract live in [`phase-0-build-contracts.md`](phase-0-build-contracts.md).
 
 ### 3.5 The open automation API: the load-bearing seam *(locked: lives in the open core)*
 **Decision:** The editor exposes a **public automation/control API that lives in the open MIT core**. It is the single surface through which the UI, user scripting, open third-party extensions, **and the proprietary agent** all drive the editor.
@@ -231,10 +239,8 @@ surround luminance aids accurate color and exposure judgment. Other theme defaul
 These are **deliberately open**, and the document is stronger for marking them so rather than papering over them. None blocks starting; each must be closed before the work it gates.
 
 1. **Codec-boundary legal review** *(blocks the decode layer).* Confirm with an IP lawyer that the media-I/O boundary holds, that the MIT core never links GPL/patent-encumbered code, and map the patent landscape (H.264/H.265/ProRes/AAC) so it's clear what lives inside vs. outside the tree. The full-MIT promise depends on this.
-2. **OTIO-compatibility mechanism** *(founding-engineer).* Decide and pressure-test how the Rust-native timeline model achieves faithful OTIO-schema interchange (thin boundary binding vs. native serialize-to/from-schema). Interchange fidelity is the goal.
-3. **UI technology ratification** *(founding-engineer).* Web-tech UI is the recommended primary direction (§3.4); finalize with the first principal/UI engineers, as the best answer depends partly on UI hires' strengths.
-4. **Agent metering model** *(proprietary tier, later).* How variable-cost agentic work (multi-step reasoning that can itself trigger generations) is metered comprehensibly and predictably for users.
-5. **Permission model for the agent's outward reach** *(proprietary tier, later).* Granular (per-folder/source/action) consent, plus deliberate handling of the rights/licensing of internet-sourced material pulled into commercial projects.
+2. **Agent metering model** *(proprietary tier, later).* How variable-cost agentic work (multi-step reasoning that can itself trigger generations) is metered comprehensibly and predictably for users.
+3. **Permission model for the agent's outward reach** *(proprietary tier, later).* Granular (per-folder/source/action) consent, plus deliberate handling of the rights/licensing of internet-sourced material pulled into commercial projects.
 
 ---
 
@@ -244,8 +250,8 @@ These are **deliberately open**, and the document is stronger for marking them s
 |---|---|---|
 | Engine language | Rust | Locked |
 | Graphics | wgpu (Vulkan/Metal/D3D12) | Locked |
-| Timeline model | Rust-native, OTIO-compatible | Locked (mechanism open) |
-| UI / application | Web technology on native shell | Recommended; founding-engineer ratification |
+| Timeline model | Rust-native, OTIO-compatible | Locked; native Rust OTIO JSON interchange |
+| UI / application | Tauri 2 with React and TypeScript | Locked |
 | UI↔engine seam | Open automation API in the MIT core | Locked |
 | Licensing (core) | Full MIT; encumbered codecs isolated behind media-I/O boundary | Locked (legal review pending) |
 | Core render primitive | Node graph; timeline compiles to it | Locked |
@@ -258,4 +264,4 @@ These are **deliberately open**, and the document is stronger for marking them s
 
 ---
 
-*End of v0.1. This document consolidates the foundational decisions and is expected to evolve as the vertical slice is built and the founding engineers pressure-test its assumptions. The governing test remains: does this serve the North Star, nothing more, nothing less?*
+*End of v0.2. This document consolidates the foundational decisions and is expected to evolve as the vertical slice is built and the founding engineers pressure-test its assumptions. The governing test remains: does this serve the North Star, nothing more, nothing less?*
