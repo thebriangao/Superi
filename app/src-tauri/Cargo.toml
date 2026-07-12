@@ -1,12 +1,12 @@
 [package]
-name = "galileo-desktop"
+name = "monet-studios-desktop"
 version = "0.0.0"
-description = "Galileo desktop shell"
+description = "Monet Studios desktop shell"
 edition = "2021"
 license = "MIT"
 
 [lib]
-name = "galileo_desktop_lib"
+name = "monet_studios_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

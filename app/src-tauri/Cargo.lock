@@ -879,14 +879,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "galileo-desktop"
-version = "0.0.0"
-dependencies = [
- "tauri",
- "tauri-build",
-]
-
-[[package]]
 name = "gdk"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1727,6 +1719,14 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "monet-studios-desktop"
+version = "0.0.0"
+dependencies = [
+ "tauri",
+ "tauri-build",
 ]
 
 [[package]]

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Galileo",
+  "productName": "Monet Studios",
   "version": "0.0.0",
-  "identifier": "com.galileo.editor",
+  "identifier": "com.monetstudios.editor",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Galileo",
+        "title": "Monet Studios",
         "width": 960,
         "height": 600,
         "minWidth": 640,

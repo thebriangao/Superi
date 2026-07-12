@@ -37,7 +37,7 @@ body {
 
 .brand-lockup {
   display: grid;
-  width: min(240px, calc(100vw - 64px));
+  width: min(360px, calc(100vw - 64px));
   gap: 28px;
   justify-items: center;
 }
@@ -49,6 +49,7 @@ h1 {
   font-weight: 520;
   letter-spacing: 0;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .progress {

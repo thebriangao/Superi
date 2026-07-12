@@ -1,3 +1,3 @@
 fn main() {
-    galileo_desktop_lib::run();
+    monet_studios_desktop_lib::run();
 }
