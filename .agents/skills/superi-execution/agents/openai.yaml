@@ -1,0 +1,4 @@
+interface:
+  display_name: "Superi Execution"
+  short_description: "Build and deliver one Superi checkpoint"
+  default_prompt: "Use $superi-execution to implement and deliver the planned Superi checkpoint."

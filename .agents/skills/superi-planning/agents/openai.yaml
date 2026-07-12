@@ -1,0 +1,4 @@
+interface:
+  display_name: "Superi Planning"
+  short_description: "Research and plan one Superi checkpoint"
+  default_prompt: "Use $superi-planning to research and plan the assigned Superi checkpoint."
