@@ -1,4 +1,4 @@
-# Galileo: Codec Support Policy & Matrix
+# Superi: Codec Support Policy & Matrix
 
 **Status:** Foundational policy. Living document, versioned and dated.
 **Version:** 0.1
@@ -67,7 +67,7 @@ This opens essentially everything a working editor sees day-to-day.
 
 ### Image / VFX sequences
 
-All royalty-free, all in-tree, all platforms, handled in `galileo-image::io`, **not** the codec crates.
+All royalty-free, all in-tree, all platforms, handled in `superi-image::io`, **not** the codec crates.
 This is the entire VFX/color mezzanine, with no caveats:
 
 `OpenEXR` (`exr`, BSD-3) · `DPX` (open spec) · `PNG` (`png`, MIT/Apache) · `JPEG` baseline (expired,
@@ -84,12 +84,12 @@ effort, not a legal one).
 
 | crate | responsibility |
 |---|---|
-| `galileo-media-io` | the decode/encode **interface** + pure-Rust container demux + image-sequence/PCM IO |
-| `galileo-codecs-rs` | **default backend**, in-tree royalty-free video/audio decoders (AV1, VP9, Opus, Vorbis, FLAC, MP3) |
-| `galileo-codecs-platform` | **opt-in backend** (`os-codecs` feature), OS decode for H.264/H.265/H.266/ProRes/AAC (MIT binding code; `unsafe` FFI boundary) |
-| `galileo-image::io` | still/sequence image formats (EXR, DPX, PNG, JPEG, TIFF, WebP, …) |
+| `superi-media-io` | the decode/encode **interface** + pure-Rust container demux + image-sequence/PCM IO |
+| `superi-codecs-rs` | **default backend**, in-tree royalty-free video/audio decoders (AV1, VP9, Opus, Vorbis, FLAC, MP3) |
+| `superi-codecs-platform` | **opt-in backend** (`os-codecs` feature), OS decode for H.264/H.265/H.266/ProRes/AAC (MIT binding code; `unsafe` FFI boundary) |
+| `superi-image::io` | still/sequence image formats (EXR, DPX, PNG, JPEG, TIFF, WebP, …) |
 
-Backends register behind the `galileo-media-io` interface; the engine core only ever knows the
+Backends register behind the `superi-media-io` interface; the engine core only ever knows the
 interface, never a concrete codec.
 
 ## 4. License policy

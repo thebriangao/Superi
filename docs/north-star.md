@@ -1,19 +1,19 @@
-# Galileo: North Star (The Final Build)
+# Superi: North Star (The Final Build)
 
-The destination Galileo is built toward. Every downstream decision, architecture, dependencies, phases, code, must serve what is defined here, and the test it imposes on everything built afterward is: *does this serve the north star, nothing more, nothing less?*
+The destination Superi is built toward. Every downstream decision, architecture, dependencies, phases, code, must serve what is defined here, and the test it imposes on everything built afterward is: *does this serve the north star, nothing more, nothing less?*
 
 ---
 
-## What Galileo is
+## What Superi is
 
-Galileo is a professional post-production environment delivered in **two tiers** divided by one hard, physical boundary:
+Superi is a professional post-production environment delivered in **two tiers** divided by one hard, physical boundary:
 
-- **Galileo (open, MIT)**, a complete, professional editor that runs entirely on the user's own machine, plus a set of local AI conveniences. Free, open-source, forkable, and **fully functional with the network physically unplugged**, no account, no servers, no credits, no degradation.
-- **Galileo Pro (closed, proprietary)**, a server-backed, account-gated, credit-metered layer that attaches to the open editor: manual media generation and an orchestrating agent. This is the commercial product and the business.
+- **Superi (open, MIT)**, a complete, professional editor that runs entirely on the user's own machine, plus a set of local AI conveniences. Free, open-source, forkable, and **fully functional with the network physically unplugged**, no account, no servers, no credits, no degradation.
+- **Superi Max (closed, proprietary)**, a server-backed, account-gated, credit-metered layer that attaches to the open editor: manual media generation and an orchestrating agent. This is the commercial product and the business.
 
-The relationship is VSCode-to-Cursor: the open editor is genuinely complete and powerful on its own; the proprietary layer adds server-dependent intelligence on top. The open tier drives adoption and community; the closed tier drives revenue. **Most people will be glad to use Galileo open; those who want Galileo Pro will be delighted too.**
+The relationship is VSCode-to-Cursor: the open editor is genuinely complete and powerful on its own; the proprietary layer adds server-dependent intelligence on top. The open tier drives adoption and community; the closed tier drives revenue. **Most people will be glad to use Superi open; those who want Superi Max will be delighted too.**
 
-> **Naming discipline (positioning, not just labels):** the open product is proudly **Galileo**, never "Galileo Free," "Galileo Community," or any qualifier that implies it is the lesser/incomplete version. The paid layer is **Galileo Pro**. All messaging frames Galileo as a *complete* professional editor and Galileo Pro as an *additive* layer ("Galileo is a full editor; Galileo Pro adds generation and the agent"), never as a tier ladder where the free version is the crippled starter. The entire open-source strategy depends on Galileo-unqualified being perceived as genuinely complete; the "Pro" suffix must read as *companion*, not as *the real one*.
+> **Naming discipline (positioning, not just labels):** the open product is proudly **Superi**, never "Superi Free," "Superi Community," or any qualifier that implies it is the lesser/incomplete version. The paid layer is **Superi Max**. All messaging frames Superi as a *complete* professional editor and Superi Max as an *additive* layer ("Superi is a full editor; Superi Max adds generation and the agent"), never as a tier ladder where the free version is the crippled starter. The entire open-source strategy depends on Superi-unqualified being perceived as genuinely complete; the "Max" suffix must read as *companion*, not as *the real one*.
 
 ## The hard boundary (non-negotiable)
 
@@ -23,7 +23,7 @@ The conceptual line that governs what goes where, and the core value insight of 
 
 ---
 
-## GALILEO (open, MIT): the editor that makes it Galileo
+## SUPERI (open, MIT): the editor that makes it Superi
 
 A post-production environment that, on editing capability alone (AI aside), matches DaVinci Resolve, Premiere Pro, and After Effects, four disciplines on one shared node-graph engine:
 
@@ -55,13 +55,13 @@ Local, permissively-licensed, bundled models doing single bounded tasks, conveni
 
 ---
 
-## GALILEO PRO (closed, proprietary): what makes it Galileo Pro
+## SUPERI MAX (closed, proprietary): what makes it Superi Max
 
 The server-backed, credit-metered layer. Two distinct products sharing one credit pool and one account system. Everything it produces lands in the open editor as **ordinary, editable state**, a normal clip, a normal edit, a normal node, so what it leaves behind survives the unplugged cable like any other editor content; only the *act* of generating or reasoning needs the network.
 
 ### 1. Media generation (manual): the headline; creates what never existed
 
-The deepest source of novel value in Galileo: content that has no manual alternative at any amount of time. Invoked directly in the editor by the user, powered by third-party models, credit-metered, in four categories:
+The deepest source of novel value in Superi: content that has no manual alternative at any amount of time. Invoked directly in the editor by the user, powered by third-party models, credit-metered, in four categories:
 
 - **Audio generation**, music, sound, audio effects
 - **Image generation**
@@ -86,8 +86,8 @@ Media generation is the more **transformative** value (it makes the impossible p
 
 ## The honest framing of "done"
 
-Matching three flagship tools that each carry decades of development is **asymptotic**, Galileo approaches the bar continuously rather than ticking it off. So the north star is defined not as feature-for-feature parity with any one of them, but as **the threshold at which a working professional can genuinely live in Galileo for the majority of real projects** and choose it on its merits, with its openness, and the create-the-nonexistent power of Galileo Pro, as decisive advantages.
+Matching three flagship tools that each carry decades of development is **asymptotic**, Superi approaches the bar continuously rather than ticking it off. So the north star is defined not as feature-for-feature parity with any one of them, but as **the threshold at which a working professional can genuinely live in Superi for the majority of real projects** and choose it on its merits, with its openness, and the create-the-nonexistent power of Superi Max, as decisive advantages.
 
-**Non-goals** (as defining as the goals): not chasing every niche format, broadcast/finishing workflow, or esoteric plugin on day one; not a thin wrapper over another engine (the engine is genuinely Galileo's own); and never sacrificing the MIT-clean offline-complete core, the transform-vs-generate boundary, or the editable-artifact principle for any feature, however attractive.
+**Non-goals** (as defining as the goals): not chasing every niche format, broadcast/finishing workflow, or esoteric plugin on day one; not a thin wrapper over another engine (the engine is genuinely Superi's own); and never sacrificing the MIT-clean offline-complete core, the transform-vs-generate boundary, or the editable-artifact principle for any feature, however attractive.
 
 **The thing that has never existed:** a flagship-quality post-production environment that is genuinely free and open and works entirely offline, with a proprietary generation-and-agent layer on top for those who want it. That is the destination, and the reason it is worth the funding and the years.

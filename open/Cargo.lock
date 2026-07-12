@@ -3,165 +3,165 @@
 version = 3
 
 [[package]]
-name = "galileo-ai"
+name = "superi-ai"
 version = "0.0.0"
 dependencies = [
- "galileo-core",
- "galileo-graph",
- "galileo-image",
+ "superi-core",
+ "superi-graph",
+ "superi-image",
 ]
 
 [[package]]
-name = "galileo-api"
+name = "superi-api"
 version = "0.0.0"
 dependencies = [
- "galileo-core",
- "galileo-engine",
+ "superi-core",
+ "superi-engine",
 ]
 
 [[package]]
-name = "galileo-audio"
+name = "superi-audio"
 version = "0.0.0"
 dependencies = [
- "galileo-concurrency",
- "galileo-core",
+ "superi-concurrency",
+ "superi-core",
 ]
 
 [[package]]
-name = "galileo-cache"
+name = "superi-cache"
 version = "0.0.0"
 dependencies = [
- "galileo-core",
- "galileo-gpu",
- "galileo-graph",
- "galileo-image",
+ "superi-core",
+ "superi-gpu",
+ "superi-graph",
+ "superi-image",
 ]
 
 [[package]]
-name = "galileo-cli"
+name = "superi-cli"
 version = "0.0.0"
 dependencies = [
- "galileo-api",
- "galileo-core",
+ "superi-api",
+ "superi-core",
 ]
 
 [[package]]
-name = "galileo-codecs-platform"
+name = "superi-codecs-platform"
 version = "0.0.0"
 dependencies = [
- "galileo-core",
- "galileo-image",
- "galileo-media-io",
+ "superi-core",
+ "superi-image",
+ "superi-media-io",
 ]
 
 [[package]]
-name = "galileo-codecs-rs"
+name = "superi-codecs-rs"
 version = "0.0.0"
 dependencies = [
- "galileo-core",
- "galileo-image",
- "galileo-media-io",
+ "superi-core",
+ "superi-image",
+ "superi-media-io",
 ]
 
 [[package]]
-name = "galileo-color"
+name = "superi-color"
 version = "0.0.0"
 dependencies = [
- "galileo-core",
- "galileo-gpu",
- "galileo-graph",
- "galileo-image",
+ "superi-core",
+ "superi-gpu",
+ "superi-graph",
+ "superi-image",
 ]
 
 [[package]]
-name = "galileo-concurrency"
+name = "superi-concurrency"
 version = "0.0.0"
 dependencies = [
- "galileo-core",
- "galileo-gpu",
+ "superi-core",
+ "superi-gpu",
 ]
 
 [[package]]
-name = "galileo-core"
+name = "superi-core"
 version = "0.0.0"
 
 [[package]]
-name = "galileo-effects"
+name = "superi-effects"
 version = "0.0.0"
 dependencies = [
- "galileo-core",
- "galileo-gpu",
- "galileo-graph",
- "galileo-image",
+ "superi-core",
+ "superi-gpu",
+ "superi-graph",
+ "superi-image",
 ]
 
 [[package]]
-name = "galileo-engine"
+name = "superi-engine"
 version = "0.0.0"
 dependencies = [
- "galileo-ai",
- "galileo-audio",
- "galileo-cache",
- "galileo-codecs-platform",
- "galileo-codecs-rs",
- "galileo-color",
- "galileo-concurrency",
- "galileo-core",
- "galileo-effects",
- "galileo-gpu",
- "galileo-graph",
- "galileo-image",
- "galileo-media-io",
- "galileo-project",
- "galileo-timeline",
+ "superi-ai",
+ "superi-audio",
+ "superi-cache",
+ "superi-codecs-platform",
+ "superi-codecs-rs",
+ "superi-color",
+ "superi-concurrency",
+ "superi-core",
+ "superi-effects",
+ "superi-gpu",
+ "superi-graph",
+ "superi-image",
+ "superi-media-io",
+ "superi-project",
+ "superi-timeline",
 ]
 
 [[package]]
-name = "galileo-gpu"
+name = "superi-gpu"
 version = "0.0.0"
 dependencies = [
- "galileo-core",
- "galileo-image",
+ "superi-core",
+ "superi-image",
 ]
 
 [[package]]
-name = "galileo-graph"
+name = "superi-graph"
 version = "0.0.0"
 dependencies = [
- "galileo-concurrency",
- "galileo-core",
- "galileo-gpu",
- "galileo-image",
+ "superi-concurrency",
+ "superi-core",
+ "superi-gpu",
+ "superi-image",
 ]
 
 [[package]]
-name = "galileo-image"
+name = "superi-image"
 version = "0.0.0"
 dependencies = [
- "galileo-core",
+ "superi-core",
 ]
 
 [[package]]
-name = "galileo-media-io"
+name = "superi-media-io"
 version = "0.0.0"
 dependencies = [
- "galileo-core",
- "galileo-image",
+ "superi-core",
+ "superi-image",
 ]
 
 [[package]]
-name = "galileo-project"
+name = "superi-project"
 version = "0.0.0"
 dependencies = [
- "galileo-core",
- "galileo-graph",
- "galileo-timeline",
+ "superi-core",
+ "superi-graph",
+ "superi-timeline",
 ]
 
 [[package]]
-name = "galileo-timeline"
+name = "superi-timeline"
 version = "0.0.0"
 dependencies = [
- "galileo-core",
- "galileo-graph",
+ "superi-core",
+ "superi-graph",
 ]

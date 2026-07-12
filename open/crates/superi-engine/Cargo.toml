@@ -1,0 +1,31 @@
+[package]
+name = "superi-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+os-codecs = ["dep:superi-codecs-platform"]
+
+[dependencies]
+superi-core = { path = "../superi-core" }
+superi-image = { path = "../superi-image" }
+superi-gpu = { path = "../superi-gpu" }
+superi-concurrency = { path = "../superi-concurrency" }
+superi-media-io = { path = "../superi-media-io" }
+superi-codecs-rs = { path = "../superi-codecs-rs" }
+superi-graph = { path = "../superi-graph" }
+superi-cache = { path = "../superi-cache" }
+superi-color = { path = "../superi-color" }
+superi-effects = { path = "../superi-effects" }
+superi-timeline = { path = "../superi-timeline" }
+superi-audio = { path = "../superi-audio" }
+superi-ai = { path = "../superi-ai" }
+superi-project = { path = "../superi-project" }
+superi-codecs-platform = { path = "../superi-codecs-platform", optional = true }

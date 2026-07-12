@@ -1,0 +1,18 @@
+[package]
+name = "superi-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+os-codecs = ["superi-engine/os-codecs"]
+
+[dependencies]
+superi-core = { path = "../superi-core" }
+superi-engine = { path = "../superi-engine" }

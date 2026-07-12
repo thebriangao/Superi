@@ -1,4 +1,4 @@
-# Galileo: Open Tree (MIT)
+# Superi: Open Tree (MIT)
 
 The free, forkable, offline-complete professional editor. This cargo workspace is the **engine**:
 headless, scriptable, and fully functional with the network
@@ -12,14 +12,14 @@ unplugged.
 ```bash
 cd open
 cargo build
-cargo run -p galileo-cli      # prints the scaffold version line
+cargo run -p superi-cli      # prints the scaffold version line
 ```
 
 Enable the opt-in OS codec backend (H.264/H.265/ProRes/AAC via the user's OS, see
 `../docs/codecs.md`):
 
 ```bash
-cargo build -p galileo-cli --features os-codecs
+cargo build -p superi-cli --features os-codecs
 ```
 
 ## Layout

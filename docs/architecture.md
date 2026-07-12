@@ -1,4 +1,4 @@
-# Galileo: Engineering & Architecture Document
+# Superi: Engineering & Architecture Document
 
 **Status:** Foundational. Living document, versioned and dated, expected to evolve as the vertical slice is built and the founding engineers pressure-test its assumptions.
 **Version:** 0.1 (pre-build foundation)
@@ -8,7 +8,7 @@
 
 ## 0. How to read this document
 
-This is the consolidation of Galileo's foundational thinking. It defines the destination (the North Star), the hard product/licensing boundaries that shape the architecture, the locked technology stack and the reasoning behind each choice, the subsystem inventory (the "bones"), the orchestration that binds them, the build phasing, and the brand direction. It also honestly marks what is **locked** versus what remains a **founding-team decision**.
+This is the consolidation of Superi's foundational thinking. It defines the destination (the North Star), the hard product/licensing boundaries that shape the architecture, the locked technology stack and the reasoning behind each choice, the subsystem inventory (the "bones"), the orchestration that binds them, the build phasing, and the brand direction. It also honestly marks what is **locked** versus what remains a **founding-team decision**.
 
 The test every downstream decision must pass: *does this serve the North Star, nothing more, nothing less?*
 
@@ -16,14 +16,14 @@ The test every downstream decision must pass: *does this serve the North Star, n
 
 ## 1. North Star: the destination
 
-Galileo is a professional post-production environment delivered in **two tiers** divided by one hard, physical boundary:
+Superi is a professional post-production environment delivered in **two tiers** divided by one hard, physical boundary:
 
-- **Galileo (open, MIT)**, a complete, professional editor that runs entirely on the user's own machine, plus a set of local AI conveniences. Free, open-source, forkable, and **fully functional with the network physically unplugged**, no account, no servers, no credits, no degradation.
-- **Galileo Pro (closed, proprietary)**, a server-backed, account-gated, credit-metered layer that attaches to the open editor: manual media generation and an orchestrating agent. This is the commercial product and the business.
+- **Superi (open, MIT)**, a complete, professional editor that runs entirely on the user's own machine, plus a set of local AI conveniences. Free, open-source, forkable, and **fully functional with the network physically unplugged**, no account, no servers, no credits, no degradation.
+- **Superi Max (closed, proprietary)**, a server-backed, account-gated, credit-metered layer that attaches to the open editor: manual media generation and an orchestrating agent. This is the commercial product and the business.
 
 The relationship is **VSCode-to-Cursor**: the open editor is genuinely complete and powerful on its own; the proprietary layer adds server-dependent intelligence on top. The open tier drives adoption and community; the closed tier drives revenue.
 
-**The honest framing of "done":** matching three flagship tools (Resolve, Premiere, After Effects) that each carry decades of development is **asymptotic**, Galileo approaches the bar continuously rather than ticking it off. The North Star is defined not as feature-for-feature parity, but as **the threshold at which a working professional can genuinely live in Galileo for the majority of real projects** and choose it on its merits, with its openness and the create-the-nonexistent power of Galileo Pro as decisive advantages.
+**The honest framing of "done":** matching three flagship tools (Resolve, Premiere, After Effects) that each carry decades of development is **asymptotic**, Superi approaches the bar continuously rather than ticking it off. The North Star is defined not as feature-for-feature parity, but as **the threshold at which a working professional can genuinely live in Superi for the majority of real projects** and choose it on its merits, with its openness and the create-the-nonexistent power of Superi Max as decisive advantages.
 
 **The thing that has never existed:** a flagship-quality post-production environment that is genuinely free and open and works entirely offline, with a proprietary generation-and-agent layer on top for those who want it.
 
@@ -43,7 +43,7 @@ This is the most important rule in the system. It is a **licensing** boundary, a
 ### The cardinal rule
 **The open tree never imports, links, or depends on the closed tree, and must build and run completely without it.** Direction of dependence is one-way: the closed tier depends on the open editor's public API; never the reverse.
 
-### The governing principle (also Galileo's core value insight)
+### The governing principle (also Superi's core value insight)
 **Transform what already exists → open and local. Generate what never existed → closed and server-backed.**
 
 This single line governs what goes where. It is drawn **on principle, not on what is momentarily possible locally**, so it stays legible even as local models improve. (If we let the line drift every time local models get better, the boundary becomes incoherent and users can't predict what's free. Anchoring it to the durable conceptual distinction keeps it a principled commitment to our open community.)
@@ -56,18 +56,18 @@ Each choice below is **locked as a directional decision**, with those marked *(f
 
 ### 3.1 Engine language: Rust *(locked)*
 **Decision:** The engine is written in Rust.
-**Rationale:** Galileo is a long-running, buffer-heavy (gigabytes of frame data held for hours), heavily-threaded, crash-intolerant systems application. Rust's compile-time **memory safety** eliminates the dominant catastrophic-bug classes (use-after-free, dangling pointers, buffer overruns) before they reach a user, and its **fearless concurrency** makes data races a compile error, both mapping almost perfectly onto Galileo's specific risk profile.
-**Rejected alternative, C++:** Genuinely competitive, and rejected only after real consideration. C++'s decisive advantage was the **ASWF film-tooling ecosystem** (OpenColorIO, OpenImageIO, OpenEXR, OpenFX, OpenTimelineIO), decades of battle-tested, C++-native libraries Galileo could have linked directly. Choosing Rust means that substrate must be **rewritten/re-bound in Rust**, which is a real, accepted cost (see the Inventory, much of the color/image/effects substrate is exactly this rebuild). The bet: long-term robustness of a memory-safe, modern-tooled foundation outweighs the upfront cost of rebuilding the film libraries.
+**Rationale:** Superi is a long-running, buffer-heavy (gigabytes of frame data held for hours), heavily-threaded, crash-intolerant systems application. Rust's compile-time **memory safety** eliminates the dominant catastrophic-bug classes (use-after-free, dangling pointers, buffer overruns) before they reach a user, and its **fearless concurrency** makes data races a compile error, both mapping almost perfectly onto Superi's specific risk profile.
+**Rejected alternative, C++:** Genuinely competitive, and rejected only after real consideration. C++'s decisive advantage was the **ASWF film-tooling ecosystem** (OpenColorIO, OpenImageIO, OpenEXR, OpenFX, OpenTimelineIO), decades of battle-tested, C++-native libraries Superi could have linked directly. Choosing Rust means that substrate must be **rewritten/re-bound in Rust**, which is a real, accepted cost (see the Inventory, much of the color/image/effects substrate is exactly this rebuild). The bet: long-term robustness of a memory-safe, modern-tooled foundation outweighs the upfront cost of rebuilding the film libraries.
 **Accepted costs:** slower early velocity (the borrow checker that prevents bugs also slows engineers until fluent); a narrower talent pool of deep-Rust-plus-graphics engineers (weight founding hires accordingly); and the reality that GPU and codec boundaries are `unsafe` FFI territory where the guarantees thin out, but those boundaries are contained behind clean interfaces.
 
 ### 3.2 Graphics: wgpu *(locked)*
 **Decision:** GPU work goes through wgpu.
-**Rationale:** wgpu is the Rust-native GPU abstraction, targeting Vulkan, Metal, and D3D12 underneath, so Galileo writes its GPU-heavy core **once** and runs natively across Mac, Windows, and Linux. This solves cross-platform reach *and* native-Metal performance (critical, since much professional editing is on macOS) in a single decision, instead of hand-rolling an abstraction over raw Vulkan. It also fits the Rust engine cleanly rather than bolting a foreign graphics system onto a Rust codebase.
+**Rationale:** wgpu is the Rust-native GPU abstraction, targeting Vulkan, Metal, and D3D12 underneath, so Superi writes its GPU-heavy core **once** and runs natively across Mac, Windows, and Linux. This solves cross-platform reach *and* native-Metal performance (critical, since much professional editing is on macOS) in a single decision, instead of hand-rolling an abstraction over raw Vulkan. It also fits the Rust engine cleanly rather than bolting a foreign graphics system onto a Rust codebase.
 **Accepted cost:** wgpu is younger than raw Vulkan tooling; budget for occasional rough edges at the GPU boundary (which is `unsafe` FFI territory regardless).
 
 ### 3.3 Timeline data model: Rust-native, OTIO-compatible *(locked; OTIO-compat to be faithfully recreated)*
 **Decision:** A Rust-native timeline/editorial data model that is **OpenTimelineIO-compatible**, serializable to and from the OTIO schema even though the in-memory representation is our own.
-**Rationale:** A Rust-native model keeps the engine coherent and avoids permanently maintaining bindings to C++ OTIO. But OTIO's real value was never its code, it was **industry interchange** (round-tripping edits with the rest of the professional toolchain). Stranding Galileo on a proprietary format would directly undercut "professionals can actually adopt this." So we faithfully recreate OTIO-schema compatibility at the import/export boundary.
+**Rationale:** A Rust-native model keeps the engine coherent and avoids permanently maintaining bindings to C++ OTIO. But OTIO's real value was never its code, it was **industry interchange** (round-tripping edits with the rest of the professional toolchain). Stranding Superi on a proprietary format would directly undercut "professionals can actually adopt this." So we faithfully recreate OTIO-schema compatibility at the import/export boundary.
 **Open item:** the exact mechanism (thin binding at the boundary vs. native model that serializes to/from the OTIO schema) is a **founding-engineer decision** to pressure-test for interchange fidelity. *Carried as an explicitly open item.*
 
 ### 3.4 Application/UI layer: Web technology *(recommended primary direction; founding-engineer ratification)*
@@ -92,7 +92,7 @@ These are the structural patterns every subsystem inherits.
 A hard separation between a **headless, scriptable, testable engine** (decode, render, composite, color, audio, export) and the **application layer** (UI, project management, editing-operation logic, AI orchestration). The engine must be runnable without a GUI, renderable from a CLI in CI, frame-for-frame identical to the UI. This is what makes the engine testable, deterministic, and reusable, which is non-negotiable for a color-critical tool.
 
 ### 4.2 The node graph as the fundamental primitive
-**Everything renders through a directed acyclic graph of nodes**, each node a GPU operation (decode, transform, color op, blend, effect, output). The **timeline is a high-level editing view that compiles down to graph operations**, a clip with effects is a subgraph; a color grade is a node; compositing is a node graph. This single decision is the architectural leverage that lets Galileo be editor *and* compositor *and* color tool on **one engine** rather than three: later disciplines become *new node types on an engine that already evaluates them*, not new subsystems. Evaluation is **lazy, per-frame, per-region**.
+**Everything renders through a directed acyclic graph of nodes**, each node a GPU operation (decode, transform, color op, blend, effect, output). The **timeline is a high-level editing view that compiles down to graph operations**, a clip with effects is a subgraph; a color grade is a node; compositing is a node graph. This single decision is the architectural leverage that lets Superi be editor *and* compositor *and* color tool on **one engine** rather than three: later disciplines become *new node types on an engine that already evaluates them*, not new subsystems. Evaluation is **lazy, per-frame, per-region**.
 
 ### 4.3 GPU-resident, linear, high-bit-depth pipeline
 Decoded frames go to GPU memory and **stay there** through the graph; readback to CPU only for export/thumbnails. Internally everything works in **linear, 16-bit-float color**, managed by the color substrate, with transforms in (footage-native → linear working) and out (working → display/delivery). Neither GPU-residency nor correct linear color can be retrofitted, they are foundational substrate.
@@ -143,7 +143,7 @@ Complete map of the underlying technology the open editor must contain. **[FND]*
 [FND] internal effect/node authoring conventions; [FND] keyframing & animation system; masking/roto data model & rendering; transitions framework; [ADD] OFX-compatible plugin interface (inherit existing effects ecosystem); [ADD] text & motion-design primitives; [ADD] tracking/motion-tracking data + solver.
 
 ### 5.11 Scattered AI (open tier: local, offline, bundled, MIT)
-> Open-tier AI only. Every item runs on a bundled, permissively-licensed model **entirely offline** (must survive the unplugged-cable test) and **transforms content the user already has, never generates new content**. The proprietary Galileo Pro tier is **not** here: its generation models are third-party services that exist out in the world (not bones we build), and its own buildable bones live in the **separate proprietary codebase across the boundary** (§8).
+> Open-tier AI only. Every item runs on a bundled, permissively-licensed model **entirely offline** (must survive the unplugged-cable test) and **transforms content the user already has, never generates new content**. The proprietary Superi Max tier is **not** here: its generation models are third-party services that exist out in the world (not bones we build), and its own buildable bones live in the **separate proprietary codebase across the boundary** (§8).
 
 [FND] local inference runtime (bundled permissive models, on-device, **offline only**, no remote path); [FND] AI outputs as standard editable graph artifacts (mask nodes, color ops, edit decisions), never a black-box bypass of the graph; [FND] bundled-model licensing audit hook.
 
@@ -179,7 +179,7 @@ Project/document model & persistence; undo/redo model (engine-level command hist
 - **Phase 1, Build the Engine Parts (heavy engine code, WITH continuous integration):** build the §5 substrate (Rust-native, replacing the lost C++/ASWF ecosystem) in dependency order, pulled by the slice. *Exit: every required subsystem exists and the slice runs end-to-end, real-time GPU playback of 4K through the actual graph engine.*
 - **Phase 2, Orchestration & Integration (engine code, the culmination of integration):** harden the continuous integration into a coherent, performant engine (§5.13). *Exit: a running, integrated, headless engine driven entirely through its public API, proven by the slice/CLI exercising that API throughout.*
 - **Phase 3, The UI / The Actual Editor:** build the web-tech editor on the running engine, against the public API (never writing the underlying edit logic). The **capability progression** plays out here, each discipline additive because the node graph was built first:
-  - *3a, v1, the Professional Timeline Editor* (first public-quality milestone): full editing ops, proxy workflow, foundational color (primary + scopes), real multi-track audio, reliable export, the scattered-AI set. *Bar: a working editor would choose Galileo for a real cut and find it solid.*
+  - *3a, v1, the Professional Timeline Editor* (first public-quality milestone): full editing ops, proxy workflow, foundational color (primary + scopes), real multi-track audio, reliable export, the scattered-AI set. *Bar: a working editor would choose Superi for a real cut and find it solid.*
   - *3b, Compositing & Motion* (After Effects axis): graph compositing, keyframed effects, masking/roto, text & motion design, OFX interface.
   - *3c, Advanced Color* (Resolve axis): node-based secondary grading, full color page, HDR, advanced scopes.
   - *3d, Pro Audio Maturity & Deeper AI*: VST/AU hosting & real mixing; expanded AI.
@@ -187,7 +187,7 @@ Project/document model & persistence; undo/redo model (engine-level command hist
 - **Phase 4, Private/Beta Testing, Optimization & Finalization:** harden against real users, footage, edge cases; squeeze performance. (Integration testing is *not* first here, it's been continuous since Phase 1. Foundational performance, stutter-free playback, GPU-residency, was architected in from the start.) *Exit: stable, performant, ready for public use.*
 - **Phase 5, Public Open-Source Launch:** the MIT, offline-complete public release; start of the asymptotic, never-"finished" life of the project.
 
-**Two lenses:** the numbered phases above are the canonical *build-sequence* (how work/teams are sequenced, the shared vocabulary); the *capability progression* (engine → v1 → compositing → color → audio/AI → unification) is nested in Phase 3 (what Galileo can do over time). "Phase 2" always means orchestration.
+**Two lenses:** the numbered phases above are the canonical *build-sequence* (how work/teams are sequenced, the shared vocabulary); the *capability progression* (engine → v1 → compositing → color → audio/AI → unification) is nested in Phase 3 (what Superi can do over time). "Phase 2" always means orchestration.
 
 ---
 
@@ -199,7 +199,7 @@ The clean split is real and achievable: the engine team builds all §5 substance
 
 ---
 
-## 8. The proprietary tier (Galileo Pro): separate codebase across the boundary
+## 8. The proprietary tier (Superi Max): separate codebase across the boundary
 
 > Defined here for completeness. Its **generation models are third-party services** (not bones we build, so not in §5). Its own **buildable bones** live in a separate proprietary codebase that attaches across the open API seam and **never lives in the open tree**. Everything it produces lands in the open editor as **ordinary, editable state** (a normal clip, edit, or node), so results survive the unplugged cable; only the *act* of generating/reasoning needs the network.
 
@@ -217,7 +217,7 @@ The clean split is real and achievable: the engine team builds all §5 substance
 
 ## 9. Brand & visual direction
 
-Galileo's visual identity is not yet defined. Its logo, palette, typography, themes, and broader brand
+Superi's visual identity is not yet defined. Its logo, palette, typography, themes, and broader brand
 system require a separate design process; this engineering document does not prescribe an astronomy
 motif or any other visual direction.
 

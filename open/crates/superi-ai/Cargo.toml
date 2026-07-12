@@ -1,0 +1,15 @@
+[package]
+name = "superi-ai"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+superi-core = { path = "../superi-core" }
+superi-image = { path = "../superi-image" }
+superi-graph = { path = "../superi-graph" }

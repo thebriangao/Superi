@@ -1,6 +1,6 @@
-# Galileo: Project Plan & Phase Structure
+# Superi: Project Plan & Phase Structure
 
-The canonical phase structure for Galileo, organized by **build sequence** (how the work and teams are sequenced), with the **capability progression** (what Galileo can do over time) preserved inside it. This is both a working-memory reference and a founder-orientation map.
+The canonical phase structure for Superi, organized by **build sequence** (how the work and teams are sequenced), with the **capability progression** (what Superi can do over time) preserved inside it. This is both a working-memory reference and a founder-orientation map.
 
 **Locked foundational stack:** Rust engine · wgpu graphics · Rust-native (OTIO-compatible) timeline model · full MIT.
 
@@ -84,9 +84,9 @@ This principle recurs at every level: the substrate is built pulled by the slice
 
 **Carry-forward caution:** The API the UI builds against should already have been exercised by the slice/CLI throughout Phases 1-2, so it's a proven shape rather than an untested guess. (Same continuous-integration principle, one more time.)
 
-**This phase is where the CAPABILITY PROGRESSION plays out**, Galileo grows from a cutting tool into the full vision, one discipline at a time, each additive because the node graph was built first:
+**This phase is where the CAPABILITY PROGRESSION plays out**, Superi grows from a cutting tool into the full vision, one discipline at a time, each additive because the node graph was built first:
 
-- **3a, v1, the Professional Timeline Editor** *(first public-quality milestone)*: usable timeline NLE, proper editing ops (ripple/roll/slip/slide/razor/3-4-point/snapping/markers), proxy workflow, foundational color (primary + scopes), real multi-track audio, reliable export, focused AI set (transcription/captions, silence detection, scene detection, denoise). *Bar: a working editor would choose Galileo for a real cut and find it solid.*
+- **3a, v1, the Professional Timeline Editor** *(first public-quality milestone)*: usable timeline NLE, proper editing ops (ripple/roll/slip/slide/razor/3-4-point/snapping/markers), proxy workflow, foundational color (primary + scopes), real multi-track audio, reliable export, focused AI set (transcription/captions, silence detection, scene detection, denoise). *Bar: a working editor would choose Superi for a real cut and find it solid.*
 - **3b, Compositing & Motion (After Effects axis)**: layered/graph compositing, keyframed effects, masking/rotoscoping, text & motion design, OFX plugin interface.
 - **3c, Advanced Color (Resolve axis)**: node-based secondary grading, full color page, HDR, advanced scopes.
 - **3d, Pro Audio Maturity & Deeper AI**: VST/AU hosting & real mixing; AI expansion (roto assist, shot matching, generative), all still producing editable graph artifacts.
@@ -125,7 +125,7 @@ This principle recurs at every level: the substrate is built pulled by the slice
 This plan deliberately carries two views of the same project:
 
 1. **Build-sequence (canonical, the numbered phases above):** plan → build parts → orchestrate → UI → test → launch. This is how the *work and teams* are sequenced, and the language you'll use with engineers.
-2. **Capability progression (nested inside Phase 3):** engine core → v1 editor → compositing → color → audio/AI → unification. This is *what Galileo can do* over time, the roadmap toward the end goal.
+2. **Capability progression (nested inside Phase 3):** engine core → v1 editor → compositing → color → audio/AI → unification. This is *what Superi can do* over time, the roadmap toward the end goal.
 
 When someone says "Phase 2," it means **orchestration** in the canonical scheme. Use the numbered phases as the shared vocabulary.
 
@@ -140,9 +140,9 @@ A **unified, fully open-source (MIT) post-production environment** where editing
 ---
 ---
 
-# Galileo: Skeletal Dependency & Subsystem Inventory
+# Superi: Skeletal Dependency & Subsystem Inventory
 
-> **Purpose of this section:** A complete map of the *underlying technology* (the bones, zero UI) that the eventual Galileo must contain. This is a scope-creep guard and founder orientation tool, **not** a build order, sequencing lives in the phases above. Most items below are Rust-native rewrites/ports of capabilities the lost C++/ASWF ecosystem (OCIO, OIIO, OpenEXR, OFX, OTIO) would have provided. An item appearing here does **not** mean "build now"; it means "must not be forgotten when building the UI on top."
+> **Purpose of this section:** A complete map of the *underlying technology* (the bones, zero UI) that the eventual Superi must contain. This is a scope-creep guard and founder orientation tool, **not** a build order, sequencing lives in the phases above. Most items below are Rust-native rewrites/ports of capabilities the lost C++/ASWF ecosystem (OCIO, OIIO, OpenEXR, OFX, OTIO) would have provided. An item appearing here does **not** mean "build now"; it means "must not be forgotten when building the UI on top."
 >
 > Items marked **[FND]** are foundation-critical (cannot be retrofitted; shape everything above). Items marked **[ADD]** are additive subsystems layered onto the proven core.
 
@@ -237,7 +237,7 @@ A **unified, fully open-source (MIT) post-production environment** where editing
 - **[ADD]** Tracking / motion-tracking data + solver.
 
 ## 11. Scattered AI (open tier: local, offline, bundled, MIT)
-> **Open-tier AI only.** Every item runs on a bundled, permissively-licensed model entirely offline (must survive the unplugged-cable test) and transforms content the user *already has*, never generates new content. The proprietary Galileo Pro tier (media generation + agent) is **not** listed here: its generation models are third-party services that exist out in the world (not bones we build), and its own buildable bones, agent orchestration, account/credit infrastructure, permission model, editor-control integration, belong to the **separate proprietary codebase across the boundary**, not to this open-tier inventory.
+> **Open-tier AI only.** Every item runs on a bundled, permissively-licensed model entirely offline (must survive the unplugged-cable test) and transforms content the user *already has*, never generates new content. The proprietary Superi Max tier (media generation + agent) is **not** listed here: its generation models are third-party services that exist out in the world (not bones we build), and its own buildable bones, agent orchestration, account/credit infrastructure, permission model, editor-control integration, belong to the **separate proprietary codebase across the boundary**, not to this open-tier inventory.
 - **[FND]** Local inference runtime, runs bundled, permissively-licensed models on-device, **offline only** (no remote path; a remote path would breach the offline boundary).
 - **[FND]** AI outputs as standard editable graph artifacts (mask nodes, color ops, edit decisions), never black-box bypass of the graph.
 - **[FND]** Bundled-model licensing audit hook, every shipped model verified permissive/redistributable.

@@ -1,4 +1,4 @@
-# Galileo Open Tree: Structure
+# Superi Open Tree: Structure
 
 How the workspace is organized, why, and how to work in it.
 
@@ -12,26 +12,26 @@ rule, and the codec boundary are enforced by the Rust compiler, not by conventio
 
 | tier | crates | depends on |
 |---|---|---|
-| T0 | `galileo-core` | none |
-| T1 | `galileo-image` | core |
-| T1 | `galileo-gpu` | core, image |
-| T1 | `galileo-concurrency` | core, gpu |
-| T1 | `galileo-media-io` | core, image |
-| T1b | `galileo-codecs-rs` (default backend) | core, image, media-io |
-| T1b | `galileo-codecs-platform` (opt-in, `os-codecs`) | core, image, media-io |
-| T2 | `galileo-graph` (node-agnostic) | core, gpu, image, concurrency |
-| T2 | `galileo-cache` | core, gpu, image, graph |
-| T3 | `galileo-color` | core, gpu, image, graph |
-| T3 | `galileo-effects` | core, gpu, image, graph |
-| T3 | `galileo-timeline` | core, graph |
-| T3 | `galileo-audio` | core, concurrency |
-| T3 | `galileo-ai` | core, image, graph |
-| T4 | `galileo-project` | core, graph, timeline |
-| T4 | `galileo-engine` (orchestration) | all T0-T4 (+ codecs-platform via `os-codecs`) |
-| T5 | `galileo-api` (the public seam) | core, engine |
-| T6 | `galileo-cli` (first consumer) | core, api |
+| T0 | `superi-core` | none |
+| T1 | `superi-image` | core |
+| T1 | `superi-gpu` | core, image |
+| T1 | `superi-concurrency` | core, gpu |
+| T1 | `superi-media-io` | core, image |
+| T1b | `superi-codecs-rs` (default backend) | core, image, media-io |
+| T1b | `superi-codecs-platform` (opt-in, `os-codecs`) | core, image, media-io |
+| T2 | `superi-graph` (node-agnostic) | core, gpu, image, concurrency |
+| T2 | `superi-cache` | core, gpu, image, graph |
+| T3 | `superi-color` | core, gpu, image, graph |
+| T3 | `superi-effects` | core, gpu, image, graph |
+| T3 | `superi-timeline` | core, graph |
+| T3 | `superi-audio` | core, concurrency |
+| T3 | `superi-ai` | core, image, graph |
+| T4 | `superi-project` | core, graph, timeline |
+| T4 | `superi-engine` (orchestration) | all T0-T4 (+ codecs-platform via `os-codecs`) |
+| T5 | `superi-api` (the public seam) | core, engine |
+| T6 | `superi-cli` (first consumer) | core, api |
 
-**Invariant:** `galileo-graph` never depends on `galileo-color`/`galileo-effects`, node catalogs depend on
+**Invariant:** `superi-graph` never depends on `superi-color`/`superi-effects`, node catalogs depend on
 the graph, never the reverse. New capability = new node type, not a new dependency on the engine core.
 
 ## Codecs
@@ -44,20 +44,20 @@ the MIT core.
 
 | dev | crates | theme |
 |---|---|---|
-| 1 | `galileo-gpu`, `galileo-concurrency` | graphics / systems |
-| 2 | `galileo-graph`, `galileo-cache` | core engine |
-| 3 | `galileo-media-io`, `galileo-codecs-rs`, `galileo-codecs-platform`, `galileo-image` | media / IO / codecs |
-| 4 | `galileo-color`, `galileo-effects` | color / comp |
-| 5 | `galileo-timeline`, `galileo-project`, `galileo-api` | editorial + public surface |
-| 6 | `galileo-audio`, `galileo-ai` | audio + AI |
-| none | `galileo-core`, `galileo-engine`, `galileo-cli` | shared / lead-stewarded |
+| 1 | `superi-gpu`, `superi-concurrency` | graphics / systems |
+| 2 | `superi-graph`, `superi-cache` | core engine |
+| 3 | `superi-media-io`, `superi-codecs-rs`, `superi-codecs-platform`, `superi-image` | media / IO / codecs |
+| 4 | `superi-color`, `superi-effects` | color / comp |
+| 5 | `superi-timeline`, `superi-project`, `superi-api` | editorial + public surface |
+| 6 | `superi-audio`, `superi-ai` | audio + AI |
+| none | `superi-core`, `superi-engine`, `superi-cli` | shared / lead-stewarded |
 
 ## Working in this workspace
 
 - A **crate is the natural unit of ownership**, with a focused responsibility and an explicit
   dependency contract.
-- Compiler-enforced boundaries support parallel development: work in `galileo-color` cannot
-  accidentally reach into `galileo-gpu` internals or create a cycle.
+- Compiler-enforced boundaries support parallel development: work in `superi-color` cannot
+  accidentally reach into `superi-gpu` internals or create a cycle.
 - Respect the DAG. If a task seems to need an upward dependency, the design is wrong, stop and flag.
 - The **offline law** and the **codec/license boundary** are sacred (`../../docs/architecture.md`,
   `../../docs/codecs.md`).
