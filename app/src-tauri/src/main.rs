@@ -1,3 +1,3 @@
 fn main() {
-    monet_studios_desktop_lib::run();
+    superi_desktop_lib::run();
 }

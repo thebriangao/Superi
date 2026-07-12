@@ -1,12 +1,12 @@
 [package]
-name = "monet-studios-desktop"
+name = "superi-desktop"
 version = "0.0.0"
-description = "Monet Studios desktop shell"
+description = "Superi desktop shell"
 edition = "2021"
 license = "MIT"
 
 [lib]
-name = "monet_studios_desktop_lib"
+name = "superi_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
