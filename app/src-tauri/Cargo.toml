@@ -1,0 +1,16 @@
+[package]
+name = "galileo-desktop"
+version = "0.0.0"
+description = "Galileo desktop shell"
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "galileo_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }

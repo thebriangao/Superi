@@ -2,6 +2,11 @@
 /open/target/
 **/target/
 
+# JavaScript build output
+**/node_modules/
+/app/dist/
+/app/src-tauri/gen/
+
 # macOS
 .DS_Store
 
