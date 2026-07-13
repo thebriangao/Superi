@@ -993,7 +993,28 @@ fn black_access(source: &ImageAccess) -> Result<ImageAccess> {
             )?,
         ),
         ImageOrganization::Tiled => {
+            let tile_count = source.levels().try_fold(0_usize, |count, level| {
+                count
+                    .checked_add(source.tiles(level)?.len())
+                    .ok_or_else(|| {
+                        exhausted(
+                            "build_black_sequence_image",
+                            "black image tile count exceeds platform capacity",
+                        )
+                    })
+            })?;
             let mut output_tiles = Vec::new();
+            output_tiles
+                .try_reserve_exact(tile_count)
+                .map_err(|error| {
+                    Error::with_source(
+                        ErrorCategory::ResourceExhausted,
+                        Recoverability::UserCorrectable,
+                        "black image tile allocation failed",
+                        error,
+                    )
+                    .with_context(ErrorContext::new(COMPONENT, "build_black_sequence_image"))
+                })?;
             for level in source.levels() {
                 for tile in source.tiles(level)? {
                     output_tiles.push(ImageTile::new(

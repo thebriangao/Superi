@@ -8,8 +8,8 @@ use superi_core::error::{ErrorCategory, Recoverability};
 use superi_core::geometry::PixelBounds;
 use superi_core::ids::MediaId;
 use superi_core::pixel::AlphaMode;
-use superi_image::channels::ChannelList;
-use superi_image::io::{ReadOptions, StillImage, WriteOptions};
+use superi_image::channels::{ChannelIndex, ChannelList};
+use superi_image::io::{ReadOptions, StillImage, StillImageLayer, WriteOptions};
 use superi_image::model::{
     ByteAlignment, ChannelSlice, ChannelStorageLayout, ImageStorage, StoragePlane,
 };
@@ -17,7 +17,10 @@ use superi_image::sequence::{
     ImageSequenceManifest, ImageSequencePattern, ImageSequenceReader, ImageSequenceWriter,
     MissingFramePolicy, SequenceSubstitution,
 };
-use superi_image::tiling::{ImageAccess, ImageAccessDescriptor, ImageSequencePosition};
+use superi_image::tiling::{
+    ImageAccess, ImageAccessDescriptor, ImageOrganization, ImageSequencePosition, ImageTile,
+    LevelRoundingMode, MipLevel, MipMode, TileDescription, TileIndex,
+};
 use superi_image::value::ImageSampleType;
 
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
@@ -82,6 +85,125 @@ fn rgba16_image_with_bounds(bounds: PixelBounds, samples: [u16; 8]) -> StillImag
     )
     .unwrap();
     StillImage::from_access(ImageAccess::from_scanline(descriptor, storage).unwrap())
+}
+
+fn f16_alpha_red_tile(bounds: PixelBounds, alpha: u16, red: u16) -> ImageStorage {
+    let sample_count = bounds.width() as usize * bounds.height() as usize;
+    let plane = |value: u16| {
+        (0..sample_count)
+            .flat_map(|_| value.to_ne_bytes())
+            .collect::<Vec<_>>()
+    };
+    ImageStorage::new(
+        bounds,
+        ChannelStorageLayout::Planar,
+        vec![
+            StoragePlane::new(
+                Arc::from(plane(alpha)),
+                0,
+                bounds.width() as usize * 2,
+                ByteAlignment::new(2).unwrap(),
+            )
+            .unwrap(),
+            StoragePlane::new(
+                Arc::from(plane(red)),
+                0,
+                bounds.width() as usize * 2,
+                ByteAlignment::new(2).unwrap(),
+            )
+            .unwrap(),
+        ],
+        vec![
+            ChannelSlice::new(0, 0, 2, 2).unwrap(),
+            ChannelSlice::new(1, 0, 2, 2).unwrap(),
+        ],
+    )
+    .unwrap()
+}
+
+fn multipart_tiled_mip_exr_image() -> StillImage {
+    let display = PixelBounds::new(-8, -4, 8, 12).unwrap();
+    let beauty_bounds = PixelBounds::from_origin_size(-2, 3, 3, 3).unwrap();
+    let beauty_descriptor = ImageAccessDescriptor::new(
+        beauty_bounds,
+        display,
+        ChannelList::from_full_names(["A", "R"]).unwrap(),
+        vec![ImageSampleType::F16; 2],
+        ColorSpace::UNSPECIFIED,
+        AlphaMode::Premultiplied,
+    )
+    .unwrap();
+    let beauty_tiles = vec![
+        ImageTile::new(
+            MipLevel::BASE,
+            TileIndex::new(0, 0),
+            f16_alpha_red_tile(PixelBounds::new(-2, 3, 0, 5).unwrap(), 0x3800, 0x3c00),
+        ),
+        ImageTile::new(
+            MipLevel::BASE,
+            TileIndex::new(1, 0),
+            f16_alpha_red_tile(PixelBounds::new(0, 3, 1, 5).unwrap(), 0x3800, 0x3c00),
+        ),
+        ImageTile::new(
+            MipLevel::BASE,
+            TileIndex::new(0, 1),
+            f16_alpha_red_tile(PixelBounds::new(-2, 5, 0, 6).unwrap(), 0x3800, 0x3c00),
+        ),
+        ImageTile::new(
+            MipLevel::BASE,
+            TileIndex::new(1, 1),
+            f16_alpha_red_tile(PixelBounds::new(0, 5, 1, 6).unwrap(), 0x3800, 0x3c00),
+        ),
+        ImageTile::new(
+            MipLevel::new(1),
+            TileIndex::new(0, 0),
+            f16_alpha_red_tile(PixelBounds::new(-2, 3, -1, 4).unwrap(), 0x3800, 0x3c00),
+        ),
+    ];
+    let beauty = ImageAccess::tiled(
+        beauty_descriptor,
+        TileDescription::new(2, 2, MipMode::Mipmap, LevelRoundingMode::Down).unwrap(),
+        beauty_tiles,
+    )
+    .unwrap();
+
+    let depth_bounds = PixelBounds::from_origin_size(4, -1, 1, 2).unwrap();
+    let depth_descriptor = ImageAccessDescriptor::new(
+        depth_bounds,
+        display,
+        ChannelList::from_full_names(["Z"]).unwrap(),
+        vec![ImageSampleType::F32],
+        ColorSpace::UNSPECIFIED,
+        AlphaMode::Opaque,
+    )
+    .unwrap();
+    let depth = ImageAccess::from_scanline(
+        depth_descriptor,
+        ImageStorage::new(
+            depth_bounds,
+            ChannelStorageLayout::Planar,
+            vec![StoragePlane::new(
+                Arc::from(
+                    [5.0_f32, 9.0]
+                        .into_iter()
+                        .flat_map(|value| value.to_ne_bytes())
+                        .collect::<Vec<_>>(),
+                ),
+                0,
+                4,
+                ByteAlignment::new(4).unwrap(),
+            )
+            .unwrap()],
+            vec![ChannelSlice::new(0, 0, 4, 4).unwrap()],
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    StillImage::new(vec![
+        StillImageLayer::new(Some("beauty".to_owned()), beauty).unwrap(),
+        StillImageLayer::new(Some("depth".to_owned()), depth).unwrap(),
+    ])
+    .unwrap()
 }
 
 #[test]
@@ -458,6 +580,119 @@ fn black_policy_generates_opaque_black_without_changing_image_representation() {
             assert_eq!(
                 storage.sample_bytes(3, x, y),
                 Some(&u16::MAX.to_ne_bytes()[..])
+            );
+        }
+    }
+}
+
+#[test]
+fn black_policy_preserves_multipart_tiled_mip_and_region_contracts() {
+    let directory = TemporaryDirectory::new("black-exr");
+    let pattern =
+        ImageSequencePattern::new(directory.path().to_path_buf(), "comp.", ".exr", 4).unwrap();
+    let image = multipart_tiled_mip_exr_image();
+    let mut writer =
+        ImageSequenceWriter::new(pattern.clone(), 1, 1, WriteOptions::default()).unwrap();
+    writer.write_image(&image).unwrap();
+    writer.write_image(&image).unwrap();
+    writer.write_image(&image).unwrap();
+    fs::remove_file(pattern.path_for_frame(2).unwrap()).unwrap();
+
+    let manifest = ImageSequenceManifest::discover(pattern.path_for_frame(1).unwrap(), 1).unwrap();
+    let media_id = MediaId::from_raw(606);
+    let reader = ImageSequenceReader::new(
+        manifest,
+        media_id,
+        MissingFramePolicy::Black,
+        ReadOptions::default(),
+    );
+    let reference = reader.read_image(0).unwrap();
+    let black = reader.read_image(1).unwrap();
+    assert_eq!(black.substitution(), SequenceSubstitution::Black);
+    assert_eq!(black.source_frame_number(), None);
+    assert_eq!(black.image().layers().len(), 2);
+
+    for (actual, expected) in black
+        .image()
+        .layers()
+        .iter()
+        .zip(reference.image().layers())
+    {
+        assert_eq!(actual.name(), expected.name());
+        assert_eq!(
+            actual.access().descriptor().channels(),
+            expected.access().descriptor().channels()
+        );
+        assert_eq!(
+            actual.access().descriptor().sample_types(),
+            expected.access().descriptor().sample_types()
+        );
+        assert_eq!(
+            actual.access().descriptor().data_window(),
+            expected.access().descriptor().data_window()
+        );
+        assert_eq!(
+            actual.access().descriptor().display_window(),
+            expected.access().descriptor().display_window()
+        );
+        assert_eq!(
+            actual.access().descriptor().alpha_mode(),
+            expected.access().descriptor().alpha_mode()
+        );
+        assert_eq!(
+            actual.access().descriptor().color_tags(),
+            expected.access().descriptor().color_tags()
+        );
+        assert_eq!(
+            actual.access().descriptor().metadata(),
+            expected.access().descriptor().metadata()
+        );
+        assert_eq!(
+            actual.access().organization(),
+            expected.access().organization()
+        );
+        assert_eq!(
+            actual.access().tile_description(),
+            expected.access().tile_description()
+        );
+        assert_eq!(
+            actual.access().level_count(),
+            expected.access().level_count()
+        );
+        assert_eq!(
+            actual.access().descriptor().sequence_position(),
+            Some(ImageSequencePosition::new(media_id, 1))
+        );
+    }
+
+    let beauty = black.image().layers()[0].access();
+    assert_eq!(beauty.organization(), ImageOrganization::Tiled);
+    for level in beauty.levels() {
+        let bounds = beauty.level_bounds(level).unwrap();
+        let region = beauty.region_all(level, bounds).unwrap();
+        for y in bounds.min_y()..bounds.max_y() {
+            for x in bounds.min_x()..bounds.max_x() {
+                assert_eq!(
+                    region.sample_bytes(ChannelIndex::new(0), x, y),
+                    Some(&0x3c00_u16.to_ne_bytes()[..])
+                );
+                assert_eq!(
+                    region.sample_bytes(ChannelIndex::new(1), x, y),
+                    Some(&[0, 0][..])
+                );
+            }
+        }
+    }
+
+    let depth = black.image().layers()[1].access();
+    assert_eq!(depth.organization(), ImageOrganization::Scanline);
+    let bounds = depth.descriptor().data_window();
+    let region = depth.region_all(MipLevel::BASE, bounds).unwrap();
+    for y in bounds.min_y()..bounds.max_y() {
+        for x in bounds.min_x()..bounds.max_x() {
+            assert_eq!(
+                region.sample_bytes(ChannelIndex::new(0), x, y),
+                Some(&0.0_f32.to_ne_bytes()[..])
             );
         }
     }
