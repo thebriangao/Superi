@@ -6,6 +6,7 @@ pub mod av1;
 pub mod flac;
 pub mod mp3;
 pub mod opus;
+pub mod pcm;
 pub mod register;
 pub mod vorbis;
 pub mod vp9;

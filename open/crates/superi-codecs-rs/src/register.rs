@@ -1,3 +1,11 @@
-//! Register these as the default `superi-media-io` backend.
-//!
-//! TODO(§5.1): build this out. Skeleton only.
+//! Register permissive codecs as default `superi-media-io` backends.
+
+use superi_core::error::Result;
+use superi_media_io::backend::BackendRegistry;
+
+use crate::pcm::PcmBackend;
+
+/// Registers every implemented in-tree codec backend.
+pub fn register_default_backends(registry: &mut BackendRegistry) -> Result<()> {
+    registry.register(PcmBackend::registration()?)
+}

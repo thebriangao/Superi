@@ -9,8 +9,8 @@ use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Res
 use superi_core::pixel::{AlphaMode, ChromaSubsampling, PixelFormat, PixelModel, PixelPacking};
 use superi_core::time::{Duration, RationalTime};
 
-use crate::audio_io::AudioBlock;
-use crate::demux::{MediaMetadata, MetadataValue, Packet, StreamInfo};
+use crate::audio_io::{AudioBlock, AudioFormat};
+use crate::demux::{MediaMetadata, MetadataValue, Packet, StreamInfo, StreamKind};
 
 /// Complete decoded video representation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -334,19 +334,41 @@ impl VideoFrame {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DecoderConfig {
     stream: StreamInfo,
+    audio_format: Option<AudioFormat>,
 }
 
 impl DecoderConfig {
     /// Creates a decoder configuration.
     #[must_use]
     pub const fn new(stream: StreamInfo) -> Self {
-        Self { stream }
+        Self {
+            stream,
+            audio_format: None,
+        }
+    }
+
+    /// Adds the explicit decoded audio representation required by headerless codecs.
+    pub fn with_audio_format(mut self, audio_format: AudioFormat) -> Result<Self> {
+        if self.stream.kind() != StreamKind::Audio {
+            return Err(invalid(
+                "configure_audio_decoder",
+                "an explicit audio format requires an audio stream",
+            ));
+        }
+        self.audio_format = Some(audio_format);
+        Ok(self)
     }
 
     /// Returns the selected source stream.
     #[must_use]
     pub const fn stream(&self) -> &StreamInfo {
         &self.stream
+    }
+
+    /// Returns the externally described audio representation when required by the codec.
+    #[must_use]
+    pub const fn audio_format(&self) -> Option<&AudioFormat> {
+        self.audio_format.as_ref()
     }
 }
 
