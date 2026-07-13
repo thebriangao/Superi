@@ -1,4 +1,7 @@
-//! AAC AudioConverter sessions.
+//! Private AudioToolbox FFI boundary for AAC AudioConverter sessions.
+//!
+//! Safe audio blocks and packets own every buffer passed in or copied out. This module uniquely
+//! owns converter handles and keeps callback context storage live for each synchronous fill call.
 #![allow(unsafe_code)]
 
 use std::collections::VecDeque;
@@ -99,6 +102,8 @@ pub(super) fn create_encoder(
 
 struct AudioConverter(AudioConverterRef);
 
+// SAFETY: The handle has one owner, all calls require &mut access through decoder or encoder state,
+// and the converter is disposed by that owner after all synchronous callbacks return.
 unsafe impl Send for AudioConverter {}
 
 impl AudioConverter {
@@ -108,6 +113,8 @@ impl AudioConverter {
         cookie: Option<(&[u8], u32)>,
     ) -> Result<Self> {
         let mut converter = ptr::null_mut();
+        // SAFETY: input and output are live initialized descriptions, and converter is writable
+        // output storage for one owned AudioConverterRef.
         let status = unsafe {
             AudioConverterNew(
                 NonNull::from(&mut input),
@@ -135,6 +142,8 @@ impl AudioConverter {
             })?;
             let pointer = NonNull::new(cookie.as_ptr().cast_mut().cast::<c_void>())
                 .expect("nonempty cookie has a nonnull pointer");
+            // SAFETY: value owns a live converter and pointer covers exactly size immutable cookie
+            // bytes for this synchronous property copy.
             let status = unsafe { AudioConverterSetProperty(value.0, property, size, pointer) };
             check_status(status, "configure_audio_converter_cookie")?;
         }
@@ -142,6 +151,7 @@ impl AudioConverter {
     }
 
     fn reset(&mut self) -> Result<()> {
+        // SAFETY: self uniquely owns a live converter with no active fill callback.
         check_status(
             unsafe { AudioConverterReset(self.0) },
             "reset_audio_converter",
@@ -150,6 +160,8 @@ impl AudioConverter {
 
     fn compression_cookie(&self) -> Option<Vec<u8>> {
         let mut size = 0_u32;
+        // SAFETY: self owns a live converter and size is writable output storage. The final null
+        // pointer means no writability query is requested.
         if unsafe {
             AudioConverterGetPropertyInfo(
                 self.0,
@@ -164,6 +176,8 @@ impl AudioConverter {
         }
         let mut bytes = vec![0_u8; usize::try_from(size).ok()?];
         let pointer = NonNull::new(bytes.as_mut_ptr().cast::<c_void>())?;
+        // SAFETY: pointer covers the size returned by the property-info call, and size remains
+        // writable so AudioToolbox can report the exact copied length.
         if unsafe {
             AudioConverterGetProperty(
                 self.0,
@@ -182,6 +196,7 @@ impl AudioConverter {
 
 impl Drop for AudioConverter {
     fn drop(&mut self) {
+        // SAFETY: This owner disposes its live converter exactly once after fill calls complete.
         let _ = unsafe { AudioConverterDispose(self.0) };
     }
 }
@@ -229,6 +244,8 @@ impl Decoder for AacDecoder {
                 "AAC output capacity exceeds macOS limits",
             )
         })?;
+        // SAFETY: converter is live, context and output_list remain pinned local storage for the
+        // synchronous call, and output_packets is writable capacity and result storage.
         let status = unsafe {
             AudioConverterFillComplexBuffer(
                 self.converter.0,
@@ -330,6 +347,8 @@ impl AacEncoder {
             ];
             let mut output_packets =
                 u32::try_from(MAX_OUTPUT_PACKETS).expect("packet bound fits u32");
+            // SAFETY: converter is live, every input and output context remains valid for the
+            // synchronous callback sequence, and descriptions has MAX_OUTPUT_PACKETS entries.
             let status = unsafe {
                 AudioConverterFillComplexBuffer(
                     self.converter.0,
@@ -518,6 +537,8 @@ impl<'a> InputContext<'a> {
     }
 }
 
+// SAFETY: AudioToolbox calls this synchronously with the InputContext pointer and output pointers
+// supplied to AudioConverterFillComplexBuffer. All referenced storage outlives the fill call.
 unsafe extern "C-unwind" fn input_callback(
     _converter: AudioConverterRef,
     mut requested_packets: NonNull<u32>,
@@ -525,10 +546,14 @@ unsafe extern "C-unwind" fn input_callback(
     packet_description: *mut *mut AudioStreamPacketDescription,
     context: *mut c_void,
 ) -> i32 {
+    // SAFETY: context is the live InputContext pointer supplied for this synchronous fill call.
     let context = unsafe { &mut *context.cast::<InputContext<'_>>() };
+    // SAFETY: AudioToolbox supplies one live writable packet-count value.
     let requested = unsafe { *requested_packets.as_ref() };
     let supplied = requested.min(context.remaining_packets);
+    // SAFETY: requested_packets is the live writable value described above.
     unsafe { *requested_packets.as_mut() = supplied };
+    // SAFETY: AudioToolbox supplies a live writable AudioBufferList for this callback.
     let list = unsafe { data.as_mut() };
     list.mNumberBuffers = 1;
     if supplied == 0 {
@@ -544,6 +569,8 @@ unsafe extern "C-unwind" fn input_callback(
         .and_then(|packets| packets.checked_mul(context.bytes_per_packet))
         .unwrap_or(0)
         .min(context.bytes.len().saturating_sub(context.byte_offset));
+    // SAFETY: byte_offset never exceeds bytes.len(), and byte_count is bounded by the remaining
+    // slice, so this pointer stays within the live input allocation.
     let pointer = unsafe { context.bytes.as_ptr().add(context.byte_offset) }
         .cast_mut()
         .cast();
@@ -553,6 +580,8 @@ unsafe extern "C-unwind" fn input_callback(
         mData: pointer,
     };
     if context.compressed && !packet_description.is_null() {
+        // SAFETY: The caller supplied writable pointer storage, and the pointed description lives
+        // in InputContext for the complete synchronous fill call.
         unsafe { *packet_description = ptr::from_mut(&mut context.packet_description) };
     }
     context.byte_offset += byte_count;

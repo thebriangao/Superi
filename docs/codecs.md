@@ -94,6 +94,10 @@ index, edit-rate, and generic-container essence relationships without claiming c
 Backends register behind the `superi-media-io` interface; the engine core only ever knows the
 interface, never a concrete codec.
 
+Every Superi-owned native codec call is isolated behind that safe interface. The complete unsafe
+operation, ownership, callback, buffer, threading, failure, and target inventory is maintained in
+[`unsafe-ffi.md`](unsafe-ffi.md), together with the compiler and target-specific audit commands.
+
 ### macOS VideoToolbox implementation contract
 
 The opt-in macOS backend uses the generated `objc2` 0.3.2 bindings for Core Foundation, Core

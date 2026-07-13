@@ -4,9 +4,6 @@
 //! pre-skip, input-rate metadata, and output gain. Decoded and encoded audio uses exact sample
 //! timing, while the backend compensates libopus lookahead and preserves container metadata.
 
-// This module is the audited native boundary for the statically bundled permissive libopus build.
-#![allow(unsafe_code)]
-
 use std::collections::VecDeque;
 use std::fmt;
 use std::ptr::NonNull;
@@ -428,6 +425,7 @@ fn opus_i32(value: usize) -> std::result::Result<i32, LibOpusError> {
     i32::try_from(value).map_err(|_| LibOpusError(ffi::OPUS_BAD_ARG))
 }
 
+#[allow(unsafe_code)]
 fn opus_packet_samples(
     packet: &[u8],
     sample_rate: u32,
@@ -444,8 +442,10 @@ struct NativeDecoder {
 }
 
 // SAFETY: libopus decoder state has unique ownership here and is never accessed concurrently.
+#[allow(unsafe_code)]
 unsafe impl Send for NativeDecoder {}
 
+#[allow(unsafe_code)]
 impl NativeDecoder {
     fn new(sample_rate: u32, channels: usize) -> std::result::Result<Self, LibOpusError> {
         let sample_rate =
@@ -532,6 +532,7 @@ impl NativeDecoder {
     }
 }
 
+#[allow(unsafe_code)]
 impl Drop for NativeDecoder {
     fn drop(&mut self) {
         // SAFETY: this owner destroys its live state exactly once.
@@ -545,8 +546,10 @@ struct NativeMsDecoder {
 }
 
 // SAFETY: libopus multistream decoder state has unique ownership and no concurrent access.
+#[allow(unsafe_code)]
 unsafe impl Send for NativeMsDecoder {}
 
+#[allow(unsafe_code)]
 impl NativeMsDecoder {
     fn new(
         sample_rate: u32,
@@ -653,6 +656,7 @@ impl NativeMsDecoder {
     }
 }
 
+#[allow(unsafe_code)]
 impl Drop for NativeMsDecoder {
     fn drop(&mut self) {
         // SAFETY: this owner destroys its live state exactly once.
@@ -1007,8 +1011,10 @@ struct NativeEncoder {
 }
 
 // SAFETY: libopus encoder state has unique ownership here and is never accessed concurrently.
+#[allow(unsafe_code)]
 unsafe impl Send for NativeEncoder {}
 
+#[allow(unsafe_code)]
 impl NativeEncoder {
     fn new(sample_rate: u32, channels: usize) -> std::result::Result<Self, LibOpusError> {
         let sample_rate =
@@ -1075,6 +1081,7 @@ impl NativeEncoder {
     }
 }
 
+#[allow(unsafe_code)]
 impl Drop for NativeEncoder {
     fn drop(&mut self) {
         // SAFETY: this owner destroys its live state exactly once.
@@ -1088,8 +1095,10 @@ struct NativeMsEncoder {
 }
 
 // SAFETY: libopus multistream encoder state has unique ownership and no concurrent access.
+#[allow(unsafe_code)]
 unsafe impl Send for NativeMsEncoder {}
 
+#[allow(unsafe_code)]
 impl NativeMsEncoder {
     fn new(
         sample_rate: u32,
@@ -1168,6 +1177,7 @@ impl NativeMsEncoder {
     }
 }
 
+#[allow(unsafe_code)]
 impl Drop for NativeMsEncoder {
     fn drop(&mut self) {
         // SAFETY: this owner destroys its live state exactly once.

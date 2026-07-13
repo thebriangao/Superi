@@ -1,4 +1,8 @@
-//! Native Windows Media Foundation transform discovery and execution.
+//! Private Windows COM and Media Foundation FFI boundary.
+//!
+//! Public codec-neutral contracts communicate with dedicated worker threads. This module keeps
+//! each COM apartment, transform, sample, activation allocation, and locked buffer on its owning
+//! thread, then copies validated output into safe Superi media values.
 #![allow(unsafe_code)]
 
 use std::collections::{BTreeSet, VecDeque};
@@ -213,6 +217,8 @@ fn enumerate_activations(
         | MFT_ENUM_FLAG_LOCALMFT
         | MFT_ENUM_FLAG_TRANSCODE_ONLY
         | MFT_ENUM_FLAG_SORTANDFILTER;
+    // SAFETY: This function runs inside an initialized COM and Media Foundation worker. raw and
+    // count are writable output storage, and the input and output signatures are live values.
     unsafe {
         MFTEnumEx(
             category,
@@ -226,6 +232,8 @@ fn enumerate_activations(
     .map_err(|error| windows_error("enumerate_transforms", error))?;
     let mut activations = Vec::with_capacity(count as usize);
     if !raw.is_null() {
+        // SAFETY: MFTEnumEx returned count contiguous Option<IMFActivate> entries allocated with
+        // CoTaskMemAlloc. Each entry is taken once before the original allocation is freed once.
         unsafe {
             let entries = std::slice::from_raw_parts_mut(raw, count as usize);
             for entry in entries {
@@ -252,6 +260,8 @@ fn activate_transform(
                 "the selected Media Foundation transform is no longer installed",
             )
         })?;
+    // SAFETY: activation is a live COM activation object on its owning initialized worker thread,
+    // and the requested interface identifier is IMFTransform.
     unsafe { activation.ActivateObject::<IMFTransform>() }
         .map_err(|error| windows_error("activate_transform", error))
 }
@@ -326,10 +336,14 @@ struct ComMfRuntime;
 
 impl ComMfRuntime {
     fn enter(operation: &'static str) -> Result<Self> {
+        // SAFETY: The worker calls this once before any COM object access and keeps the guard on
+        // the same thread until all dependent objects have been dropped.
         unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }
             .ok()
             .map_err(|error| windows_error(operation, error))?;
+        // SAFETY: COM is initialized on this thread and the matching guard calls MFShutdown.
         if let Err(error) = unsafe { MFStartup(MF_VERSION, MFSTARTUP_FULL) } {
+            // SAFETY: This balances the successful CoInitializeEx above after startup failure.
             unsafe { CoUninitialize() };
             return Err(windows_error(operation, error));
         }
@@ -339,7 +353,9 @@ impl ComMfRuntime {
 
 impl Drop for ComMfRuntime {
     fn drop(&mut self) {
+        // SAFETY: This guard owns one successful MFStartup on the current worker thread.
         let _ = unsafe { MFShutdown() };
+        // SAFETY: This balances the successful CoInitializeEx on the same worker thread.
         unsafe { CoUninitialize() };
     }
 }
@@ -635,6 +651,8 @@ impl DecoderState {
         let transform = activate_transform(codec, MediaFoundationOperation::Decode)?;
         let annex_b = decoder_annex_configuration(&config, codec)?;
         let decoded_format = configure_decoder(&transform, &config, codec)?;
+        // SAFETY: transform is live on its owning initialized worker and stream zero was
+        // configured before querying its output allocation contract.
         let output_info = unsafe { transform.GetOutputStreamInfo(OUTPUT_STREAM_ID) }
             .map_err(|error| windows_error("get_decoder_output_stream_info", error))?;
         start_transform(&transform)?;
@@ -705,6 +723,8 @@ impl DecoderState {
         };
         loop {
             operation.check("media_foundation_process_decoder_input")?;
+            // SAFETY: transform and sample are live on the owning worker, and the configured
+            // synchronous transform consumes stream zero without retaining this Rust borrow.
             match unsafe { self.transform.ProcessInput(INPUT_STREAM_ID, &sample, 0) } {
                 Ok(()) => {
                     self.next_hns = hns.saturating_add(duration_hns.max(1));
@@ -745,6 +765,8 @@ impl DecoderState {
     fn flush(&mut self, operation: &OperationContext) -> Result<()> {
         operation.check("media_foundation_flush_decoder")?;
         if !self.flushing {
+            // SAFETY: The live synchronous transform is called on its owning worker in the
+            // required end-of-stream then drain order.
             unsafe {
                 self.transform
                     .ProcessMessage(MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0)
@@ -761,6 +783,8 @@ impl DecoderState {
 
     fn reset(&mut self, operation: &OperationContext) -> Result<()> {
         operation.check("media_foundation_reset_decoder")?;
+        // SAFETY: The live transform is exclusively owned by this worker and receives the
+        // documented flush then start-of-stream lifecycle sequence.
         unsafe {
             self.transform
                 .ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0)
@@ -789,6 +813,8 @@ impl DecoderState {
                 Err(ProcessOutputError::StreamChange) => {
                     self.decoded_format =
                         renegotiate_decoder_output(&self.transform, &self.config, self.codec)?;
+                    // SAFETY: Renegotiation configured stream zero on this live worker-owned
+                    // transform before its allocation contract is refreshed.
                     self.output_info =
                         unsafe { self.transform.GetOutputStreamInfo(OUTPUT_STREAM_ID) }
                             .map_err(|error| windows_error("refresh_decoder_output_info", error))?;
@@ -799,7 +825,9 @@ impl DecoderState {
     }
 
     fn decode_sample(&mut self, sample: IMFSample) -> Result<DecodeOutput> {
+        // SAFETY: sample is a live COM object on the owning worker and this reads one scalar field.
         let hns = unsafe { sample.GetSampleTime() }.unwrap_or(self.next_hns);
+        // SAFETY: sample remains live and this reads its optional scalar duration field.
         let sample_duration = unsafe { sample.GetSampleDuration() }.ok();
         let provenance = take_provenance(&mut self.provenance, hns);
         let metadata = provenance
@@ -878,6 +906,8 @@ impl DecoderState {
 
 impl Drop for DecoderState {
     fn drop(&mut self) {
+        // SAFETY: The live transform is still on its owning worker and receives its final lifecycle
+        // notification before COM and Media Foundation shutdown.
         let _ = unsafe {
             self.transform
                 .ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0)
@@ -910,6 +940,8 @@ impl EncoderState {
         let runtime = ComMfRuntime::enter("initialize_encoder_runtime")?;
         let transform = activate_transform(codec, MediaFoundationOperation::Encode)?;
         let sequence_header = configure_encoder(&transform, &config, codec)?;
+        // SAFETY: transform is live on its owning initialized worker and stream zero was
+        // configured before querying its output allocation contract.
         let output_info = unsafe { transform.GetOutputStreamInfo(OUTPUT_STREAM_ID) }
             .map_err(|error| windows_error("get_encoder_output_stream_info", error))?;
         start_transform(&transform)?;
@@ -948,6 +980,8 @@ impl EncoderState {
         };
         loop {
             operation.check("media_foundation_process_encoder_input")?;
+            // SAFETY: transform and sample are live on the owning worker, and the configured
+            // synchronous transform consumes stream zero without retaining this Rust borrow.
             match unsafe { self.transform.ProcessInput(INPUT_STREAM_ID, &sample, 0) } {
                 Ok(()) => {
                     self.provenance.push_back(provenance);
@@ -987,6 +1021,8 @@ impl EncoderState {
     fn flush(&mut self, operation: &OperationContext) -> Result<()> {
         operation.check("media_foundation_flush_encoder")?;
         if !self.flushing {
+            // SAFETY: The live synchronous transform is called on its owning worker in the
+            // required end-of-stream then drain order.
             unsafe {
                 self.transform
                     .ProcessMessage(MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0)
@@ -1003,6 +1039,8 @@ impl EncoderState {
 
     fn reset(&mut self, operation: &OperationContext) -> Result<()> {
         operation.check("media_foundation_reset_encoder")?;
+        // SAFETY: The live transform is exclusively owned by this worker and receives the
+        // documented flush then start-of-stream lifecycle sequence.
         unsafe {
             self.transform
                 .ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0)
@@ -1028,6 +1066,8 @@ impl EncoderState {
                 Err(ProcessOutputError::StreamChange) => {
                     self.sequence_header =
                         renegotiate_encoder_output(&self.transform, &self.config, self.codec)?;
+                    // SAFETY: Renegotiation configured stream zero on this live worker-owned
+                    // transform before its allocation contract is refreshed.
                     self.output_info =
                         unsafe { self.transform.GetOutputStreamInfo(OUTPUT_STREAM_ID) }
                             .map_err(|error| windows_error("refresh_encoder_output_info", error))?;
@@ -1039,6 +1079,7 @@ impl EncoderState {
 
     fn encode_sample(&mut self, sample: IMFSample) -> Result<EncodeOutput> {
         let bytes = sample_bytes(&sample)?;
+        // SAFETY: sample is a live COM object on the owning worker and this reads one scalar field.
         let hns = unsafe { sample.GetSampleTime() }
             .unwrap_or_else(|_| self.provenance.front().map_or(0, |value| value.hns));
         let provenance = take_provenance(&mut self.provenance, hns);
@@ -1055,6 +1096,7 @@ impl EncoderState {
             .as_ref()
             .map(|value| value.duration)
             .or_else(|| {
+                // SAFETY: sample remains live and this reads its optional scalar duration field.
                 unsafe { sample.GetSampleDuration() }
                     .ok()
                     .map(|value| hns_to_duration(value, self.config.timebase()))
@@ -1072,6 +1114,7 @@ impl EncoderState {
                 Some(duration.value()),
             )?,
         );
+        // SAFETY: sample is live and this reads the optional clean-point scalar attribute.
         let keyframe = unsafe { sample.GetUINT32(&MFSampleExtension_CleanPoint) }.unwrap_or(0) != 0;
         packet = packet.with_keyframe(keyframe);
         if let Some(provenance) = provenance {
@@ -1090,6 +1133,8 @@ impl EncoderState {
 
 impl Drop for EncoderState {
     fn drop(&mut self) {
+        // SAFETY: The live transform is still on its owning worker and receives its final lifecycle
+        // notification before COM and Media Foundation shutdown.
         let _ = unsafe {
             self.transform
                 .ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0)
@@ -1173,6 +1218,7 @@ fn configure_video_decoder(
     codec: MediaFoundationCodec,
 ) -> Result<DecodedFormat> {
     let (width, height) = video_dimensions(config.stream().metadata())?;
+    // SAFETY: Media Foundation is initialized on this worker and returns one owned media type.
     let input = unsafe { MFCreateMediaType() }
         .map_err(|error| windows_error("create_video_decoder_input_type", error))?;
     set_guid(
@@ -1194,6 +1240,7 @@ fn configure_video_decoder(
         height,
         "set_video_input_size",
     )?;
+    // SAFETY: transform and the fully initialized input type are live on the owning worker.
     unsafe { transform.SetInputType(INPUT_STREAM_ID, &input, 0) }
         .map_err(|error| transform_error("set_video_decoder_input_type", error, true))?;
     renegotiate_video_decoder_output(transform, config, codec, width, height)
@@ -1210,15 +1257,19 @@ fn renegotiate_video_decoder_output(
     for (subtype, pixel_format) in preferences {
         let mut index = 0_u32;
         loop {
+            // SAFETY: transform is live on its owning worker and index is the documented
+            // enumeration cursor for output stream zero.
             let media_type =
                 match unsafe { transform.GetOutputAvailableType(OUTPUT_STREAM_ID, index) } {
                     Ok(media_type) => media_type,
                     Err(_) => break,
                 };
             index = index.saturating_add(1);
+            // SAFETY: media_type is a live COM object and this reads one GUID attribute.
             if unsafe { media_type.GetGUID(&MF_MT_SUBTYPE) }.ok() != Some(subtype) {
                 continue;
             }
+            // SAFETY: transform and media_type are live on the same owning worker.
             if unsafe { transform.SetOutputType(OUTPUT_STREAM_ID, &media_type, 0) }.is_err() {
                 continue;
             }
@@ -1336,6 +1387,8 @@ fn configure_aac_decoder(
         u32::from(configuration.channel_count()),
         0,
     )?;
+    // SAFETY: input and transform are live on the owning worker. All AAC attributes come from the
+    // validated configuration, and SetBlob copies the temporary user-data bytes synchronously.
     unsafe {
         input
             .SetUINT32(&MF_MT_AAC_PAYLOAD_TYPE, 0)
@@ -1360,6 +1413,7 @@ fn configure_aac_decoder(
             .map_err(|_| invalid("create_aac_decoder", "channel count overflowed"))?,
         16,
     )?;
+    // SAFETY: transform and the fully initialized output type are live on the owning worker.
     unsafe { transform.SetOutputType(OUTPUT_STREAM_ID, &output, 0) }
         .map_err(|error| transform_error("set_aac_decoder_output_type", error, true))?;
     Ok(DecodedFormat::Audio(requested))
@@ -1403,6 +1457,7 @@ fn configure_video_encoder(
     format: VideoFormat,
 ) -> Result<Option<Arc<[u8]>>> {
     let input_subtype = video_input_subtype(format.pixel_format())?;
+    // SAFETY: Media Foundation is initialized on this worker and returns one owned media type.
     let output = unsafe { MFCreateMediaType() }
         .map_err(|error| windows_error("create_video_encoder_output_type", error))?;
     set_guid(
@@ -1433,6 +1488,8 @@ fn configure_video_encoder(
     )?;
     set_video_color(&output, format.color_space())?;
     let bitrate = default_video_bitrate(format, config.timebase());
+    // SAFETY: output and transform are live on the owning worker, and every scalar attribute was
+    // validated or derived from the safe video format before setting output stream zero.
     unsafe {
         output
             .SetUINT32(&MF_MT_AVG_BITRATE, bitrate)
@@ -1444,6 +1501,7 @@ fn configure_video_encoder(
             .SetOutputType(OUTPUT_STREAM_ID, &output, 0)
             .map_err(|error| transform_error("set_video_encoder_output_type", error, false))?;
     }
+    // SAFETY: Media Foundation is initialized on this worker and returns one owned media type.
     let input = unsafe { MFCreateMediaType() }
         .map_err(|error| windows_error("create_video_encoder_input_type", error))?;
     set_guid(
@@ -1473,6 +1531,8 @@ fn configure_video_encoder(
         "set_video_input_rate",
     )?;
     set_video_color(&input, format.color_space())?;
+    // SAFETY: input and transform are live on the owning worker. The optional v210 stride and all
+    // other attributes were checked against the safe video format before stream configuration.
     unsafe {
         if format.pixel_format() == PixelFormat::Yuv422p10 {
             input
@@ -1506,6 +1566,8 @@ fn configure_aac_encoder(
         .map_err(|_| invalid("create_aac_encoder", "channel count overflowed"))?;
     let output = audio_media_type(MFAudioFormat_AAC, format.sample_rate(), channels, 0)?;
     let average_bytes = if channels == 6 { 72_000 } else { 20_000 };
+    // SAFETY: output and transform are live on the owning worker, and every value comes from the
+    // validated AAC format before configuring output stream zero.
     unsafe {
         output
             .SetUINT32(&MF_MT_AUDIO_AVG_BYTES_PER_SECOND, average_bytes)
@@ -1518,6 +1580,7 @@ fn configure_aac_encoder(
             .map_err(|error| transform_error("set_aac_encoder_output_type", error, false))?;
     }
     let input = audio_media_type(MFAudioFormat_PCM, format.sample_rate(), channels, 16)?;
+    // SAFETY: transform and the fully initialized PCM input type are live on the owning worker.
     unsafe { transform.SetInputType(INPUT_STREAM_ID, &input, 0) }
         .map_err(|error| transform_error("set_aac_encoder_input_type", error, false))?;
     let frequency_index = match format.sample_rate() {
@@ -1535,12 +1598,16 @@ fn renegotiate_encoder_output(
     codec: MediaFoundationCodec,
 ) -> Result<Option<Arc<[u8]>>> {
     let mut index = 0_u32;
+    // SAFETY: transform is live on its owning worker and index is the documented enumeration
+    // cursor for output stream zero.
     while let Ok(media_type) = unsafe { transform.GetOutputAvailableType(OUTPUT_STREAM_ID, index) }
     {
         index = index.saturating_add(1);
+        // SAFETY: media_type is a live COM object and this reads one GUID attribute.
         if unsafe { media_type.GetGUID(&MF_MT_SUBTYPE) }.ok() != Some(compressed_subtype(codec)) {
             continue;
         }
+        // SAFETY: transform and media_type are live on the same owning worker.
         if unsafe { transform.SetOutputType(OUTPUT_STREAM_ID, &media_type, 0) }.is_ok() {
             return output_sequence_header(&media_type);
         }
@@ -1549,6 +1616,8 @@ fn renegotiate_encoder_output(
 }
 
 fn start_transform(transform: &IMFTransform) -> Result<()> {
+    // SAFETY: The configured transform is live on its owning worker and receives the required
+    // begin-streaming then start-of-stream lifecycle sequence.
     unsafe {
         transform
             .ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0)
@@ -1566,6 +1635,7 @@ fn audio_media_type(
     channels: u32,
     bits_per_sample: u32,
 ) -> Result<IMFMediaType> {
+    // SAFETY: Media Foundation is initialized on this worker and returns one owned media type.
     let media_type = unsafe { MFCreateMediaType() }
         .map_err(|error| windows_error("create_audio_media_type", error))?;
     set_guid(
@@ -1575,6 +1645,8 @@ fn audio_media_type(
         "set_audio_major",
     )?;
     set_guid(&media_type, &MF_MT_SUBTYPE, &subtype, "set_audio_subtype")?;
+    // SAFETY: media_type is live on the owning worker, and all scalar values are validated by the
+    // safe audio format before this helper is called.
     unsafe {
         media_type
             .SetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND, sample_rate)
@@ -1687,18 +1759,23 @@ fn process_output_sample(
     let sample = if provides_samples {
         None
     } else {
+        // SAFETY: Media Foundation is initialized on this worker and returns one owned sample.
         let sample = unsafe { MFCreateSample() }.map_err(|error| {
             ProcessOutputError::Failure(windows_error("create_output_sample", error))
         })?;
         let size = info.cbSize.max(1);
         let buffer = if info.cbAlignment == 0 {
+            // SAFETY: size is nonzero and Media Foundation returns one owned buffer.
             unsafe { MFCreateMemoryBuffer(size) }
         } else {
+            // SAFETY: size is nonzero, alignment came from the transform stream-info contract,
+            // and Media Foundation returns one owned aligned buffer.
             unsafe { MFCreateAlignedMemoryBuffer(size, info.cbAlignment) }
         }
         .map_err(|error| {
             ProcessOutputError::Failure(windows_error("create_output_buffer", error))
         })?;
+        // SAFETY: sample and buffer are live COM objects on the owning worker.
         unsafe { sample.AddBuffer(&buffer) }.map_err(|error| {
             ProcessOutputError::Failure(windows_error("attach_output_buffer", error))
         })?;
@@ -1711,9 +1788,13 @@ fn process_output_sample(
         pEvents: ManuallyDrop::new(None),
     };
     let mut status = 0_u32;
+    // SAFETY: transform is live on the owning worker, output is one writable descriptor matching
+    // MFT_OUTPUT_DATA_BUFFER, and status is writable scalar result storage.
     let result =
         unsafe { transform.ProcessOutput(0, std::slice::from_mut(&mut output), &mut status) };
+    // SAFETY: pSample is initialized and extracted exactly once after ProcessOutput returns.
     let sample = unsafe { ManuallyDrop::take(&mut output.pSample) };
+    // SAFETY: pEvents is initialized and extracted exactly once after ProcessOutput returns.
     let events = unsafe { ManuallyDrop::take(&mut output.pEvents) };
     drop(events);
     match result {
@@ -1737,18 +1818,26 @@ fn sample_from_bytes(bytes: &[u8], hns: i64, duration_hns: i64) -> Result<IMFSam
             "sample byte length exceeds Media Foundation",
         )
     })?;
+    // SAFETY: Media Foundation is initialized on this worker and returns one owned sample.
     let sample =
         unsafe { MFCreateSample() }.map_err(|error| windows_error("create_input_sample", error))?;
+    // SAFETY: length.max(1) is nonzero and Media Foundation returns one owned writable buffer.
     let buffer = unsafe { MFCreateMemoryBuffer(length.max(1)) }
         .map_err(|error| windows_error("create_input_buffer", error))?;
     if !bytes.is_empty() {
         let mut pointer = std::ptr::null_mut();
+        // SAFETY: buffer is live and pointer is writable output storage for its locked base address.
         unsafe { buffer.Lock(&mut pointer, None, None) }
             .map_err(|error| windows_error("lock_input_buffer", error))?;
+        // SAFETY: A successful lock returns at least the requested allocation length. bytes.len()
+        // equals length and the source and Media Foundation allocation do not overlap.
         unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), pointer, bytes.len()) };
+        // SAFETY: This balances the successful lock above on the same live buffer.
         let unlock = unsafe { buffer.Unlock() };
         unlock.map_err(|error| windows_error("unlock_input_buffer", error))?;
     }
+    // SAFETY: sample and buffer are live on the owning worker. length does not exceed the buffer
+    // allocation, and the timing scalars were validated by safe conversion helpers.
     unsafe {
         buffer
             .SetCurrentLength(length)
@@ -1767,13 +1856,19 @@ fn sample_from_bytes(bytes: &[u8], hns: i64, duration_hns: i64) -> Result<IMFSam
 }
 
 fn sample_bytes(sample: &IMFSample) -> Result<Vec<u8>> {
+    // SAFETY: sample is live on its owning worker and returns one owned contiguous buffer.
     let buffer = unsafe { sample.ConvertToContiguousBuffer() }
         .map_err(|error| windows_error("make_output_contiguous", error))?;
     let mut pointer = std::ptr::null_mut();
     let mut current = 0_u32;
+    // SAFETY: buffer is live, pointer and current are writable output storage, and a successful
+    // lock keeps the reported byte range valid until the matching unlock.
     unsafe { buffer.Lock(&mut pointer, None, Some(&mut current)) }
         .map_err(|error| windows_error("lock_output_buffer", error))?;
+    // SAFETY: The successful lock returned a readable range of current bytes. It is copied before
+    // unlock and current is bounded by the Media Foundation buffer allocation.
     let bytes = unsafe { std::slice::from_raw_parts(pointer, current as usize) }.to_vec();
+    // SAFETY: This balances the successful lock above on the same live buffer.
     unsafe { buffer.Unlock() }.map_err(|error| windows_error("unlock_output_buffer", error))?;
     Ok(bytes)
 }
@@ -2207,7 +2302,10 @@ fn add_packet_metadata(mut packet: Packet, metadata: &MediaMetadata) -> Result<P
 }
 
 fn color_space_from_media_type(media_type: &IMFMediaType) -> ColorSpace {
-    let value = |key: &GUID| unsafe { media_type.GetUINT32(key) }.ok();
+    let value = |key: &GUID| {
+        // SAFETY: media_type is live on its owning worker and key identifies a scalar attribute.
+        unsafe { media_type.GetUINT32(key) }.ok()
+    };
     let primaries = match value(&MF_MT_VIDEO_PRIMARIES) {
         Some(value) if value == MFVideoPrimaries_BT709.0 as u32 => ColorPrimaries::Bt709,
         Some(value) if value == MFVideoPrimaries_BT2020.0 as u32 => ColorPrimaries::Bt2020,
@@ -2284,6 +2382,8 @@ fn set_video_color(media_type: &IMFMediaType, color: ColorSpace) -> Result<()> {
         (&MF_MT_VIDEO_NOMINAL_RANGE, range, "set_video_range"),
     ] {
         if let Some(value) = value {
+            // SAFETY: media_type is live on its owning worker and key identifies a scalar
+            // attribute whose value was mapped from the safe ColorSpace contract.
             unsafe { media_type.SetUINT32(key, value) }
                 .map_err(|error| windows_error(operation, error))?;
         }
@@ -2292,11 +2392,13 @@ fn set_video_color(media_type: &IMFMediaType, color: ColorSpace) -> Result<()> {
 }
 
 fn output_sequence_header(media_type: &IMFMediaType) -> Result<Option<Arc<[u8]>>> {
+    // SAFETY: media_type is live and this reads the size of one optional blob attribute.
     let size = match unsafe { media_type.GetBlobSize(&MF_MT_MPEG_SEQUENCE_HEADER) } {
         Ok(size) if size != 0 => size,
         _ => return Ok(None),
     };
     let mut bytes = vec![0_u8; size as usize];
+    // SAFETY: bytes owns exactly the size reported for this blob immediately above.
     unsafe { media_type.GetBlob(&MF_MT_MPEG_SEQUENCE_HEADER, &mut bytes, None) }
         .map_err(|error| windows_error("get_encoder_sequence_header", error))?;
     Ok(Some(Arc::from(bytes)))
@@ -2308,6 +2410,7 @@ fn set_guid(
     value: &GUID,
     operation: &'static str,
 ) -> Result<()> {
+    // SAFETY: media_type is live on its owning worker, and key and value are live GUID references.
     unsafe { media_type.SetGUID(key, value) }.map_err(|error| windows_error(operation, error))
 }
 
@@ -2318,6 +2421,8 @@ fn set_size(
     height: u32,
     operation: &'static str,
 ) -> Result<()> {
+    // SAFETY: media_type is live and the packed value follows the documented high and low u32
+    // attribute representation.
     unsafe { media_type.SetUINT64(key, (u64::from(width) << 32) | u64::from(height)) }
         .map_err(|error| windows_error(operation, error))
 }
@@ -2329,11 +2434,14 @@ fn set_ratio(
     denominator: u32,
     operation: &'static str,
 ) -> Result<()> {
+    // SAFETY: media_type is live and the packed value follows the documented numerator and
+    // denominator u32 attribute representation.
     unsafe { media_type.SetUINT64(key, (u64::from(numerator) << 32) | u64::from(denominator)) }
         .map_err(|error| windows_error(operation, error))
 }
 
 fn get_size(media_type: &IMFMediaType, key: &GUID) -> Option<(u32, u32)> {
+    // SAFETY: media_type is live and key identifies one packed u64 size attribute.
     let value = unsafe { media_type.GetUINT64(key) }.ok()?;
     Some(((value >> 32) as u32, value as u32))
 }

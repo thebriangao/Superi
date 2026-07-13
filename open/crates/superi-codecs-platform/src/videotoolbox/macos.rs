@@ -1,4 +1,7 @@
-//! Native macOS codec sessions.
+//! Private native macOS VideoToolbox and CoreMedia FFI boundary.
+//!
+//! Safe media contracts own all inputs and outputs. This module owns retained native sessions,
+//! callback contexts, CoreVideo buffers, and every pointer conversion required by those sessions.
 #![allow(unsafe_code)]
 
 use std::collections::VecDeque;
@@ -167,9 +170,11 @@ impl fmt::Debug for VideoToolboxFrameBuffer {
     }
 }
 
-// CoreVideo documents retained pixel buffers as shareable immutable references. Superi never
-// exposes mutable base-address access through this wrapper.
+// SAFETY: CoreVideo pixel buffers are retained shareable references. Superi exposes only immutable
+// metadata and never exposes mutable base-address access through this wrapper.
 unsafe impl Send for VideoToolboxFrameBuffer {}
+// SAFETY: Shared access cannot mutate the pixel buffer through the safe wrapper, and CoreVideo owns
+// the internal synchronization and retained storage lifetime.
 unsafe impl Sync for VideoToolboxFrameBuffer {}
 
 impl VideoFrameBuffer for VideoToolboxFrameBuffer {
@@ -252,8 +257,8 @@ struct VideoDecoder {
     flushed: bool,
 }
 
-// Session access is serialized by &mut self. VideoToolbox may invoke the synchronized state from
-// internal threads, and drop invalidates the session before releasing that state.
+// SAFETY: Session access is serialized by &mut self. VideoToolbox may invoke the synchronized state
+// from internal threads, and drop invalidates the session before releasing that state.
 unsafe impl Send for VideoDecoder {}
 
 impl VideoDecoder {
@@ -261,10 +266,13 @@ impl VideoDecoder {
         let format_description = decoder_format_description(&config)?;
         let pixel_type = CFNumber::new_i32(kCVPixelFormatType_64RGBAHalf as i32);
         let pixel_type_value: &CFType = pixel_type.as_ref();
+        // SAFETY: This immutable CoreVideo key is process-lifetime static data.
         let typed_attributes = CFDictionary::<CFString, CFType>::from_slices(
             &[unsafe { kCVPixelBufferPixelFormatTypeKey }],
             &[pixel_type_value],
         );
+        // SAFETY: Erasing the typed dictionary preserves the same retained CFDictionary object;
+        // VideoToolbox reads its key and CFType value without changing their concrete layout.
         let destination_attributes = unsafe { CFRetained::cast_unchecked(typed_attributes) };
         let state = Box::new(DecodeState {
             codec: config.stream().codec().clone(),
@@ -287,6 +295,7 @@ impl VideoDecoder {
     }
 
     fn recreate_session(&mut self) -> Result<()> {
+        // SAFETY: self owns this live retained session and invalidates it before replacement.
         unsafe { self.session.invalidate() };
         self.session = create_decompression_session(
             &self.format_description,
@@ -299,6 +308,7 @@ impl VideoDecoder {
 
 impl Drop for VideoDecoder {
     fn drop(&mut self) {
+        // SAFETY: self owns the session and invalidation prevents callbacks after state teardown.
         unsafe { self.session.invalidate() };
     }
 }
@@ -329,6 +339,8 @@ impl Decoder for VideoDecoder {
             ));
         }
         let sample = make_sample_buffer(packet.data(), packet.timing(), &self.format_description)?;
+        // SAFETY: The retained session and sample are live for the call. Null frame-refcon and
+        // info outputs are explicitly permitted, while callback state is owned by self.
         let status = unsafe {
             self.session.decode_frame(
                 &sample,
@@ -361,6 +373,7 @@ impl Decoder for VideoDecoder {
     fn flush(&mut self, operation: &OperationContext) -> Result<()> {
         operation.check("flush_videotoolbox_decoder")?;
         if !self.flushed {
+            // SAFETY: The retained session is live and exclusively accessed through &mut self.
             let status = unsafe { self.session.wait_for_asynchronous_frames() };
             check_status(status, "flush_videotoolbox_decoder")?;
             self.flushed = true;
@@ -381,6 +394,8 @@ impl Decoder for VideoDecoder {
     }
 }
 
+// SAFETY: VideoToolbox calls this only with the DecodeState pointer registered during session
+// creation. The owning decoder invalidates and drains the session before dropping that state.
 unsafe extern "C-unwind" fn decompression_callback(
     refcon: *mut c_void,
     _source_frame_refcon: *mut c_void,
@@ -390,6 +405,7 @@ unsafe extern "C-unwind" fn decompression_callback(
     presentation_time: CMTime,
     presentation_duration: CMTime,
 ) {
+    // SAFETY: refcon is the live DecodeState pointer registered with this callback.
     let state = unsafe { &*(refcon.cast::<DecodeState>()) };
     let mut output = state.output.lock().expect("decode output mutex poisoned");
     if status != 0 {
@@ -400,6 +416,8 @@ unsafe extern "C-unwind" fn decompression_callback(
         output.push_back(DecodeCallbackOutput::Status(-12909));
         return;
     };
+    // SAFETY: A successful callback supplies a live CoreVideo object. Retaining it extends the
+    // image lifetime beyond this callback until the safe VideoFrame releases it.
     let image = unsafe { CFRetained::retain(image_pointer) };
     match decoded_frame(state, image, presentation_time, presentation_duration) {
         Ok(frame) => output.push_back(DecodeCallbackOutput::Frame(frame)),
@@ -466,6 +484,8 @@ struct VideoEncoder {
     flushed: bool,
 }
 
+// SAFETY: Session access is serialized by &mut self, callback output uses a Mutex and AtomicBool,
+// and drop invalidates the retained session before releasing its boxed callback state.
 unsafe impl Send for VideoEncoder {}
 
 impl VideoEncoder {
@@ -485,6 +505,7 @@ impl VideoEncoder {
     }
 
     fn recreate_session(&mut self) -> Result<()> {
+        // SAFETY: self owns this live retained session and invalidates it before replacement.
         unsafe { self.session.invalidate() };
         self.session = create_compression_session(&self.config, self.state.as_ref())?;
         Ok(())
@@ -493,6 +514,7 @@ impl VideoEncoder {
 
 impl Drop for VideoEncoder {
     fn drop(&mut self) {
+        // SAFETY: self owns the session and invalidation prevents callbacks after state teardown.
         unsafe { self.session.invalidate() };
     }
 }
@@ -525,6 +547,8 @@ impl Encoder for VideoEncoder {
         let image = image_for_frame(&frame)?;
         let presentation = to_cm_time(frame.timestamp(), "encode_frame_timestamp")?;
         let duration = to_cm_duration(frame.duration(), "encode_frame_duration")?;
+        // SAFETY: The retained session and image are live for the call. Null frame-refcon and
+        // info outputs are permitted, and the registered callback state remains owned by self.
         let status = unsafe {
             self.session.encode_frame(
                 &image,
@@ -559,6 +583,7 @@ impl Encoder for VideoEncoder {
     fn flush(&mut self, operation: &OperationContext) -> Result<()> {
         operation.check("flush_videotoolbox_encoder")?;
         if !self.flushed {
+            // SAFETY: The retained session is live and kCMTimeInvalid requests all pending frames.
             let status = unsafe { self.session.complete_frames(kCMTimeInvalid) };
             check_status(status, "flush_videotoolbox_encoder")?;
             self.flushed = true;
@@ -580,6 +605,8 @@ impl Encoder for VideoEncoder {
     }
 }
 
+// SAFETY: VideoToolbox calls this only with the EncodeState pointer registered during session
+// creation. The owning encoder invalidates and drains the session before dropping that state.
 unsafe extern "C-unwind" fn compression_callback(
     refcon: *mut c_void,
     _source_frame_refcon: *mut c_void,
@@ -587,6 +614,7 @@ unsafe extern "C-unwind" fn compression_callback(
     _info_flags: VTEncodeInfoFlags,
     sample_buffer: *mut CMSampleBuffer,
 ) {
+    // SAFETY: refcon is the live EncodeState pointer registered with this callback.
     let state = unsafe { &*(refcon.cast::<EncodeState>()) };
     let mut output = state.output.lock().expect("encode output mutex poisoned");
     if status != 0 {
@@ -597,6 +625,7 @@ unsafe extern "C-unwind" fn compression_callback(
         output.push_back(EncodeCallbackOutput::Status(-12909));
         return;
     };
+    // SAFETY: The successful callback supplies a live sample for the callback duration.
     let sample = unsafe { sample_pointer.as_ref() };
     match packet_from_sample(state, sample) {
         Ok(packet) => output.push_back(EncodeCallbackOutput::Packet(packet)),
@@ -605,18 +634,25 @@ unsafe extern "C-unwind" fn compression_callback(
 }
 
 fn packet_from_sample(state: &EncodeState, sample: &CMSampleBuffer) -> Result<Packet> {
+    // SAFETY: sample is a live callback object and CoreMedia owns its referenced data buffer.
     let data_buffer = unsafe { sample.data_buffer() }
         .ok_or_else(|| status_error(-12909, "read_videotoolbox_encoded_sample"))?;
+    // SAFETY: data_buffer is live and immutable while sample remains borrowed.
     let length = unsafe { data_buffer.data_length() };
     let mut bytes = vec![0_u8; length];
     if length != 0 {
         let destination = NonNull::new(bytes.as_mut_ptr().cast::<c_void>())
             .expect("nonempty vector has a nonnull pointer");
+        // SAFETY: bytes owns exactly length writable bytes, and the live data buffer reports that
+        // same length as its complete readable range.
         let status = unsafe { data_buffer.copy_data_bytes(0, length, destination) };
         check_status(status, "copy_videotoolbox_encoded_sample")?;
     }
+    // SAFETY: These accessors read scalar timing fields from the live sample.
     let presentation = unsafe { sample.presentation_time_stamp() };
+    // SAFETY: The live sample owns this scalar timing field.
     let decode = unsafe { sample.decode_time_stamp() };
+    // SAFETY: The live sample owns this scalar timing field.
     let duration = unsafe { sample.duration() };
     let timebase = state.config.timebase();
     let timing = PacketTiming::new(
@@ -644,11 +680,15 @@ fn encoded_codec_configuration(sample: &CMSampleBuffer, codec: &CodecId) -> Opti
         HEVC_CODEC_ID => "hvcC",
         _ => return None,
     };
+    // SAFETY: sample is live, and the returned description is borrowed from that sample.
     let description = unsafe { sample.format_description() }?;
+    // SAFETY: The immutable extension key and live format description are valid for this lookup.
     let property_list = unsafe {
         description.extension(kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms)
     }?;
     let atoms = property_list.downcast::<CFDictionary>().ok()?;
+    // SAFETY: The checked downcast established a dictionary object. The extension contract uses
+    // CFString keys and CFType values, so restoring those generic types preserves the layout.
     let atoms = unsafe { CFRetained::cast_unchecked::<CFDictionary<CFString, CFType>>(atoms) };
     let key = CFString::from_str(atom_name);
     atoms
@@ -668,6 +708,8 @@ fn create_decompression_session(
         decompressionOutputRefCon: ptr::from_ref(state).cast_mut().cast(),
     };
     let mut session = ptr::null_mut();
+    // SAFETY: All referenced objects and the boxed state outlive the retained session. session is
+    // writable output storage, and the callback record uses the matching function signature.
     let status = unsafe {
         VTDecompressionSession::create(
             None,
@@ -681,6 +723,7 @@ fn create_decompression_session(
     check_status(status, "create_videotoolbox_decompression_session")?;
     let pointer = NonNull::new(session)
         .ok_or_else(|| status_error(-12909, "create_videotoolbox_decompression_session"))?;
+    // SAFETY: A successful create returns one owned retained reference through session.
     Ok(unsafe { CFRetained::from_raw(pointer) })
 }
 
@@ -713,6 +756,8 @@ fn create_compression_session(
         )
     })?;
     let mut session = ptr::null_mut();
+    // SAFETY: The validated dimensions and codec are passed with a boxed state that outlives the
+    // retained session. session is writable output storage for one owned reference.
     let status = unsafe {
         VTCompressionSession::create(
             None,
@@ -730,7 +775,9 @@ fn create_compression_session(
     check_status(status, "create_videotoolbox_compression_session")?;
     let pointer = NonNull::new(session)
         .ok_or_else(|| status_error(-12909, "create_videotoolbox_compression_session"))?;
+    // SAFETY: A successful create returns one owned retained reference through session.
     let retained = unsafe { CFRetained::from_raw(pointer) };
+    // SAFETY: retained is a live compression session and is not accessed concurrently here.
     let status = unsafe { retained.prepare_to_encode_frames() };
     check_status(status, "prepare_videotoolbox_compression_session")?;
     Ok(retained)
@@ -768,6 +815,8 @@ fn decoder_format_description(
     let width = metadata_dimension(config, "video.width")?;
     let height = metadata_dimension(config, "video.height")?;
     let mut output: *const CMVideoFormatDescription = ptr::null();
+    // SAFETY: The codec and positive dimensions were validated, and output is writable storage
+    // for one owned CoreMedia format-description reference.
     let status = unsafe {
         CMVideoFormatDescriptionCreate(
             None,
@@ -781,6 +830,7 @@ fn decoder_format_description(
     check_status(status, "create_video_format_description")?;
     let pointer = NonNull::new(output.cast_mut())
         .ok_or_else(|| status_error(-12909, "create_video_format_description"))?;
+    // SAFETY: A successful create returned one owned retained reference through output.
     Ok(unsafe { CFRetained::from_raw(pointer) })
 }
 
@@ -803,6 +853,8 @@ fn parameter_set_format_description(
     let size_array = NonNull::new(sizes.as_mut_ptr()).expect("parameter sets are nonempty");
     let header_length =
         i32::try_from(configuration.nal_length_size).expect("NAL length is at most 4");
+    // SAFETY: Every parameter-set pointer and size names a live validated nonempty vector for the
+    // call, both arrays have pointers.len() entries, and output is writable result storage.
     let status = unsafe {
         if codec.as_str() == H264_CODEC_ID {
             CMVideoFormatDescriptionCreateFromH264ParameterSets(
@@ -828,7 +880,10 @@ fn parameter_set_format_description(
     check_status(status, "create_parameter_set_format_description")?;
     let pointer = NonNull::new(output.cast_mut())
         .ok_or_else(|| status_error(-12909, "create_parameter_set_format_description"))?;
+    // SAFETY: A successful create returned one owned CMFormatDescription reference.
     let generic = unsafe { CFRetained::from_raw(pointer) };
+    // SAFETY: The constructor used above creates a video format description, which is the concrete
+    // CoreMedia subtype restored by this cast.
     Ok(unsafe { CFRetained::cast_unchecked(generic) })
 }
 
@@ -838,6 +893,8 @@ fn make_sample_buffer(
     description: &CMVideoFormatDescription,
 ) -> Result<CFRetained<CMSampleBuffer>> {
     let mut block_pointer = ptr::null_mut();
+    // SAFETY: CoreMedia allocates bytes.len() owned bytes and writes one retained reference into
+    // block_pointer. The null memory pointer selects CoreMedia-managed storage.
     let status = unsafe {
         CMBlockBuffer::create_with_memory_block(
             None,
@@ -854,31 +911,31 @@ fn make_sample_buffer(
     check_status(status, "create_compressed_block_buffer")?;
     let block_pointer = NonNull::new(block_pointer)
         .ok_or_else(|| status_error(-12909, "create_compressed_block_buffer"))?;
+    // SAFETY: A successful create returned one owned retained block-buffer reference.
     let block = unsafe { CFRetained::from_raw(block_pointer) };
     let source = NonNull::new(bytes.as_ptr().cast_mut().cast::<c_void>())
         .expect("compressed packet is nonempty");
+    // SAFETY: source covers bytes.len() readable bytes, and block owns a writable range of the
+    // same length beginning at offset zero.
     let status = unsafe { CMBlockBuffer::replace_data_bytes(source, &block, 0, bytes.len()) };
     check_status(status, "copy_compressed_packet")?;
+    // SAFETY: kCMTimeInvalid is immutable process-lifetime CoreMedia constant data.
+    let invalid_time = unsafe { kCMTimeInvalid };
     let sample_timing = CMSampleTimingInfo {
-        duration: timing
-            .duration()
-            .map_or(unsafe { kCMTimeInvalid }, |value| {
-                to_cm_duration(value, "packet_duration").expect("validated packet timebase")
-            }),
-        presentationTimeStamp: timing.presentation_time().map_or(
-            unsafe { kCMTimeInvalid },
-            |value| {
-                to_cm_time(value, "packet_presentation_time").expect("validated packet timebase")
-            },
-        ),
-        decodeTimeStamp: timing
-            .decode_time()
-            .map_or(unsafe { kCMTimeInvalid }, |value| {
-                to_cm_time(value, "packet_decode_time").expect("validated packet timebase")
-            }),
+        duration: timing.duration().map_or(invalid_time, |value| {
+            to_cm_duration(value, "packet_duration").expect("validated packet timebase")
+        }),
+        presentationTimeStamp: timing.presentation_time().map_or(invalid_time, |value| {
+            to_cm_time(value, "packet_presentation_time").expect("validated packet timebase")
+        }),
+        decodeTimeStamp: timing.decode_time().map_or(invalid_time, |value| {
+            to_cm_time(value, "packet_decode_time").expect("validated packet timebase")
+        }),
     };
     let sample_size = bytes.len();
     let mut sample_pointer = ptr::null_mut();
+    // SAFETY: block, description, timing and sample-size storage remain live for this call, and
+    // sample_pointer is writable output storage for one retained sample.
     let status = unsafe {
         CMSampleBuffer::create_ready(
             None,
@@ -895,6 +952,7 @@ fn make_sample_buffer(
     check_status(status, "create_compressed_sample_buffer")?;
     let sample_pointer = NonNull::new(sample_pointer)
         .ok_or_else(|| status_error(-12909, "create_compressed_sample_buffer"))?;
+    // SAFETY: A successful create returned one owned retained sample reference.
     Ok(unsafe { CFRetained::from_raw(sample_pointer) })
 }
 
@@ -923,6 +981,8 @@ fn image_for_frame(frame: &VideoFrame) -> Result<CFRetained<CVImageBuffer>> {
         }
     };
     let mut output = ptr::null_mut();
+    // SAFETY: Validated dimensions and pixel type are passed with writable output storage. A null
+    // attributes dictionary requests CoreVideo-managed allocation.
     let status = unsafe {
         CVPixelBufferCreate(
             None,
@@ -936,12 +996,15 @@ fn image_for_frame(frame: &VideoFrame) -> Result<CFRetained<CVImageBuffer>> {
     check_status(status, "create_videotoolbox_source_pixel_buffer")?;
     let output = NonNull::new(output)
         .ok_or_else(|| status_error(-12909, "create_videotoolbox_source_pixel_buffer"))?;
+    // SAFETY: A successful create returned one owned retained pixel-buffer reference.
     let image = unsafe { CFRetained::from_raw(output) };
     check_status(
+        // SAFETY: image is live and exclusively used for this CPU write until the matching unlock.
         unsafe { CVPixelBufferLockBaseAddress(&image, CVPixelBufferLockFlags(0)) },
         "lock_videotoolbox_source_pixel_buffer",
     )?;
     let copy_result = copy_cpu_pixels(cpu, &image);
+    // SAFETY: This balances the successful lock above on the same live image.
     let unlock_status =
         unsafe { CVPixelBufferUnlockBaseAddress(&image, CVPixelBufferLockFlags(0)) };
     copy_result?;
@@ -956,6 +1019,9 @@ fn copy_cpu_pixels(cpu: &CpuVideoBuffer, image: &CVPixelBuffer) -> Result<()> {
     let destination_stride = CVPixelBufferGetBytesPerRow(image);
     let copy_length = source.stride().min(destination_stride);
     for row in 0..usize::try_from(source.row_count()).expect("u32 fits usize") {
+        // SAFETY: The source plane contract covers source.stride() bytes for every row. The locked
+        // CoreVideo base address covers destination_stride bytes for every image row, and the
+        // nonoverlapping buffers are copied for only their checked minimum row length.
         unsafe {
             ptr::copy_nonoverlapping(
                 source.bytes().as_ptr().add(row * source.stride()),
@@ -1027,6 +1093,7 @@ fn to_cm_time(value: RationalTime, operation: &'static str) -> Result<CMTime> {
         .value()
         .checked_mul(i64::from(timebase.denominator()))
         .ok_or_else(|| invalid(operation, "time coordinate exceeds CoreMedia limits"))?;
+    // SAFETY: timescale is the validated positive timebase numerator and coordinate fits i64.
     Ok(unsafe { CMTime::new(coordinate, timescale) })
 }
 
@@ -1038,6 +1105,7 @@ fn to_cm_duration(value: Duration, operation: &'static str) -> Result<CMTime> {
         .ok_or_else(|| invalid(operation, "duration exceeds CoreMedia limits"))?;
     let timescale = i32::try_from(timebase.numerator())
         .map_err(|_| invalid(operation, "timebase numerator exceeds CoreMedia limits"))?;
+    // SAFETY: timescale is the validated positive timebase numerator and coordinate fits i64.
     Ok(unsafe { CMTime::new(coordinate, timescale) })
 }
 

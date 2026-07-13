@@ -10,10 +10,12 @@ repository = "https://github.com/thebriangao/Superi"
 rust-version = "1.80"
 
 [workspace.lints.rust]
-unsafe_code = "warn"
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
 
 [workspace.lints.clippy]
-all = "warn"
+all = { level = "warn", priority = -1 }
+undocumented_unsafe_blocks = "deny"
 
 # Canonical pinned versions for shared external crates. Declared centrally so a
 # crate opts in with `dep = { workspace = true }`. NONE are referenced in the

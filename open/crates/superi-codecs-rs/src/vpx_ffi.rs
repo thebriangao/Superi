@@ -1,4 +1,8 @@
-//! Narrow runtime boundary for the official libvpx 1.16 C ABI.
+//! Narrow private runtime boundary for the official libvpx 1.16 C ABI.
+//!
+//! Safe codec code enters through `Runtime`, `DecoderHandle`, and `EncoderHandle`. This module
+//! owns the loaded library, opaque contexts, checked C shim, and every conversion from native
+//! pointers into Rust values.
 
 #![allow(unsafe_code)]
 
@@ -180,9 +184,9 @@ struct VpxApi {
     img_free: *mut c_void,
 }
 
-// The table contains immutable function addresses owned by the retained Library.
+// SAFETY: The table contains immutable function addresses owned by the retained Library.
 unsafe impl Send for VpxApi {}
-// Every libvpx context is separately owned, and the immutable addresses are safe to share.
+// SAFETY: Every libvpx context is separately owned, and the immutable addresses are safe to share.
 unsafe impl Sync for VpxApi {}
 
 pub(crate) struct Runtime {
@@ -195,11 +199,13 @@ impl Runtime {
     pub(crate) fn load() -> Result<Arc<Self>, FfiError> {
         let mut incompatible = Vec::new();
         for candidate in library_candidates() {
+            // SAFETY: The loaded library remains owned by Runtime for at least as long as every
+            // copied symbol address, and `from_library` rejects an incompatible libvpx ABI.
             let loaded = unsafe { Library::new(&candidate) };
             let Ok(library) = loaded else {
                 continue;
             };
-            match unsafe { Self::from_library(library) } {
+            match Self::from_library(library) {
                 Ok(runtime) => return Ok(Arc::new(runtime)),
                 Err(error) => {
                     incompatible.push(format!("{}: {error}", candidate.to_string_lossy()))
@@ -217,16 +223,19 @@ impl Runtime {
         Err(FfiError::new(detail))
     }
 
-    unsafe fn from_library(library: Library) -> Result<Self, FfiError> {
+    fn from_library(library: Library) -> Result<Self, FfiError> {
         type VersionFn = unsafe extern "C" fn() -> *const c_char;
-        let version_fn = *library
-            .get::<VersionFn>(b"vpx_codec_version_str\0")
+        // SAFETY: Official libvpx exports this exact no-argument C signature. The library remains
+        // live in this function and is retained in Runtime after validation.
+        let version_fn = unsafe { library.get::<VersionFn>(b"vpx_codec_version_str\0") }
             .map_err(|error| FfiError::new(format!("missing version symbol: {error}")))?;
-        let version_pointer = version_fn();
+        // SAFETY: The symbol type above matches the libvpx public ABI and the library is live.
+        let version_pointer = unsafe { version_fn() };
         if version_pointer.is_null() {
             return Err(FfiError::new("libvpx returned no version string"));
         }
-        let version = CStr::from_ptr(version_pointer)
+        // SAFETY: libvpx returned a nonnull pointer to its static NUL-terminated version string.
+        let version = unsafe { CStr::from_ptr(version_pointer) }
             .to_str()
             .map_err(|_| FfiError::new("libvpx returned a non-UTF-8 version string"))?
             .to_owned();
@@ -270,6 +279,8 @@ impl Runtime {
 
     pub(crate) fn decoder(self: &Arc<Self>, codec: Codec) -> Result<DecoderHandle, FfiError> {
         let mut native = ptr::null_mut();
+        // SAFETY: The retained API table is ABI-validated, `native` is writable output storage,
+        // and the shim owns all concrete libvpx state created by this call.
         let status =
             unsafe { superi_vpx_decoder_create(&self.api, codec as c_int, 1, &mut native) };
         if status != 0 {
@@ -295,6 +306,8 @@ impl Runtime {
         bitrate_kbps: u32,
     ) -> Result<EncoderHandle, FfiError> {
         let mut native = ptr::null_mut();
+        // SAFETY: All dimensions and timebase values use the shim's exact integer ABI, the API
+        // table is retained, and `native` is writable output storage for one owned context.
         let status = unsafe {
             superi_vpx_encoder_create(
                 &self.api,
@@ -321,6 +334,8 @@ impl Runtime {
     }
 
     fn status_error(&self, status: c_int, detail: Option<&CStr>) -> FfiError {
+        // SAFETY: The API table belongs to the retained runtime and the shim returns either a
+        // static message or a libvpx string whose library remains loaded.
         let summary = unsafe { superi_vpx_status_string(&self.api, status) };
         let summary = c_string(summary).unwrap_or_else(|| "unknown libvpx error".to_owned());
         match detail.and_then(|value| value.to_str().ok()) {
@@ -330,12 +345,11 @@ impl Runtime {
     }
 }
 
-unsafe fn function_pointer(
-    library: &Library,
-    name: &'static [u8],
-) -> Result<*mut c_void, FfiError> {
+fn function_pointer(library: &Library, name: &'static [u8]) -> Result<*mut c_void, FfiError> {
     type UntypedFn = unsafe extern "C" fn();
-    let function = *library.get::<UntypedFn>(name).map_err(|error| {
+    // SAFETY: Every requested name is an official libvpx 1.16 function symbol. Rust never calls
+    // this erased signature; the address is passed to the C shim, which restores the exact type.
+    let function = *unsafe { library.get::<UntypedFn>(name) }.map_err(|error| {
         FfiError::new(format!(
             "missing {}: {error}",
             String::from_utf8_lossy(&name[..name.len().saturating_sub(1)])
@@ -348,6 +362,8 @@ fn c_string(value: *const c_char) -> Option<String> {
     if value.is_null() {
         None
     } else {
+        // SAFETY: Callers pass only libvpx or shim error strings, which remain NUL-terminated and
+        // valid while the retained runtime and native context are live.
         unsafe { CStr::from_ptr(value) }
             .to_str()
             .ok()
@@ -400,7 +416,7 @@ pub(crate) struct DecoderHandle {
     runtime: Arc<Runtime>,
 }
 
-// The context has one owner and is never used concurrently.
+// SAFETY: The context has one owner and is never used concurrently.
 unsafe impl Send for DecoderHandle {}
 
 impl DecoderHandle {
@@ -410,6 +426,8 @@ impl DecoderHandle {
         } else {
             data.as_ptr()
         };
+        // SAFETY: The handle uniquely owns a live shim decoder, and data_pointer is null only for
+        // an empty slice or otherwise covers exactly data.len() readable bytes.
         let status =
             unsafe { superi_vpx_decoder_decode(self.native.as_ptr(), data_pointer, data.len()) };
         if status != 0 {
@@ -422,6 +440,8 @@ impl DecoderHandle {
         let mut frames = Vec::new();
         loop {
             let mut info = NativeFrameInfo::default();
+            // SAFETY: The decoder is live and uniquely borrowed, and info is writable output
+            // storage with the layout declared in vpx_shim.h.
             let status = unsafe { superi_vpx_decoder_next(self.native.as_ptr(), &mut info) };
             if status == 0 {
                 return Ok(frames);
@@ -445,6 +465,8 @@ impl DecoderHandle {
                     )
                     .ok_or_else(|| FfiError::internal("frame plane size overflow"))?;
                 let mut bytes = vec![0_u8; size];
+                // SAFETY: bytes owns layout.row_bytes times layout.rows writable bytes, and the
+                // checked shim copies only the requested visible plane into that exact geometry.
                 let status = unsafe {
                     superi_vpx_decoder_copy_plane(
                         self.native.as_ptr(),
@@ -474,10 +496,13 @@ impl DecoderHandle {
     }
 
     fn error_detail(&self) -> Option<&CStr> {
+        // SAFETY: The handle owns a live decoder and the returned message is borrowed only while
+        // that context and its retained runtime remain live.
         let value = unsafe { superi_vpx_decoder_error(self.native.as_ptr()) };
         if value.is_null() {
             None
         } else {
+            // SAFETY: The checked shim returns a NUL-terminated libvpx or static error string.
             Some(unsafe { CStr::from_ptr(value) })
         }
     }
@@ -485,6 +510,7 @@ impl DecoderHandle {
 
 impl Drop for DecoderHandle {
     fn drop(&mut self) {
+        // SAFETY: This handle uniquely owns the live decoder and destroys it exactly once.
         unsafe { superi_vpx_decoder_destroy(self.native.as_ptr()) };
     }
 }
@@ -494,7 +520,7 @@ pub(crate) struct EncoderHandle {
     runtime: Arc<Runtime>,
 }
 
-// The context has one owner and is never used concurrently.
+// SAFETY: The context has one owner and is never used concurrently.
 unsafe impl Send for EncoderHandle {}
 
 impl EncoderHandle {
@@ -511,6 +537,8 @@ impl EncoderHandle {
         color_space: i32,
         color_range: i32,
     ) -> Result<Vec<RawPacket>, FfiError> {
+        // SAFETY: The encoder is live and uniquely borrowed. The slice covers data.len() bytes,
+        // and all scalar values use the exact checked shim ABI.
         let status = unsafe {
             superi_vpx_encoder_encode(
                 self.native.as_ptr(),
@@ -533,6 +561,7 @@ impl EncoderHandle {
     }
 
     pub(crate) fn flush(&mut self) -> Result<Vec<RawPacket>, FfiError> {
+        // SAFETY: The handle uniquely owns a live encoder accepted by the checked shim.
         let status = unsafe { superi_vpx_encoder_flush(self.native.as_ptr()) };
         if status != 0 {
             return Err(self.runtime.status_error(status, self.error_detail()));
@@ -544,6 +573,8 @@ impl EncoderHandle {
         let mut packets = Vec::new();
         loop {
             let mut info = NativePacketInfo::default();
+            // SAFETY: The encoder is live and info is writable output storage matching the C
+            // declaration. Packet bytes remain owned by libvpx until the next shim call.
             let status = unsafe { superi_vpx_encoder_next(self.native.as_ptr(), &mut info) };
             if status == 0 {
                 return Ok(packets);
@@ -557,6 +588,8 @@ impl EncoderHandle {
             if info.size > isize::MAX as usize {
                 return Err(FfiError::internal("libvpx returned an oversized packet"));
             }
+            // SAFETY: The shim guarantees a nonnull pointer to info.size readable bytes for the
+            // current packet, and the bytes are copied before any subsequent shim call.
             let data = unsafe { std::slice::from_raw_parts(info.data, info.size) }.to_vec();
             packets.push(RawPacket {
                 data,
@@ -569,10 +602,13 @@ impl EncoderHandle {
     }
 
     fn error_detail(&self) -> Option<&CStr> {
+        // SAFETY: The handle owns a live encoder and the returned message is borrowed only while
+        // that context and its retained runtime remain live.
         let value = unsafe { superi_vpx_encoder_error(self.native.as_ptr()) };
         if value.is_null() {
             None
         } else {
+            // SAFETY: The checked shim returns a NUL-terminated libvpx or static error string.
             Some(unsafe { CStr::from_ptr(value) })
         }
     }
@@ -580,6 +616,7 @@ impl EncoderHandle {
 
 impl Drop for EncoderHandle {
     fn drop(&mut self) {
+        // SAFETY: This handle uniquely owns the live encoder and destroys it exactly once.
         unsafe { superi_vpx_encoder_destroy(self.native.as_ptr()) };
     }
 }
