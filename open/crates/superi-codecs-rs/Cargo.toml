@@ -10,6 +10,8 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+oxideav-core = { workspace = true }
+oxideav-mp3 = { workspace = true }
 superi-core = { path = "../superi-core" }
 superi-image = { path = "../superi-image" }
 superi-media-io = { path = "../superi-media-io" }

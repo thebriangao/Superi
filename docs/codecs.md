@@ -61,7 +61,7 @@ This opens essentially everything a working editor sees day-to-day.
 | **FLAC** | free | in-tree `claxon` (Apache-2.0, pure Rust) | clean |
 | **Vorbis** | free | in-tree `lewton` (MIT/ISC, pure Rust) | clean |
 | **Opus** | free | `libopus` (BSD-3) via FFI; pure-Rust decode thin | license-clean |
-| **MP3** | **expired (2017)** | in-tree, pure Rust | fully free now |
+| **MP3** | **expired (2017)** | `oxideav-mp3` at immutable revision `f37901b5d9c691b113e96a3bb95645c67af1a046` (MIT, pure Rust, Rust 1.80) | decode and CBR encode through the default backend |
 | **AAC** | AAC-LC core largely expired ~2017; HE-AAC murkier | route via **OS** (rides in the same MP4s as H.264) | `[VERIFY]` before claiming "free" |
 | **AC-3 / Dolby** | proprietary | OS only | low priority |
 
@@ -92,6 +92,19 @@ index, edit-rate, and generic-container essence relationships without claiming c
 
 Backends register behind the `superi-media-io` interface; the engine core only ever knows the
 interface, never a concrete codec.
+
+### MP3 implementation contract
+
+`superi-codecs-rs` adapts the MIT `oxideav-mp3` implementation at the exact Git revision above,
+with `oxideav-core` pinned to 0.1.29. The published `oxideav-mp3` 0.1.3 package does not yet expose
+the completed decoder and audio encoder, so the immutable upstream commit is required until a
+complete permissive release is published.
+
+The default backend accepts canonical mono or left-right stereo at 8, 11.025, 12, 16, 22.05, 24,
+32, 44.1, or 48 kHz. Decoded and encoded audio uses signed 16-bit packed or planar storage. It
+preserves exact sample timestamps and packet metadata, rejects fractional-sample timing and
+unsupported layouts, resets state for seeking, and emits encoded packets after flush because the
+implementation schedules its bit reservoir across the complete input stream.
 
 ## 4. License policy
 
