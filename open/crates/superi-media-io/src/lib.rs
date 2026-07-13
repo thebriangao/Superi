@@ -12,6 +12,8 @@ pub mod decode;
 pub mod demux;
 pub mod encode;
 pub mod image_seq;
+mod matroska_parser;
+pub mod mkv_webm;
 pub mod mp4_mov;
 mod mp4_parser;
 pub mod mxf;
