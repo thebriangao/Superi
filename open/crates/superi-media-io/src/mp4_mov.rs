@@ -24,6 +24,7 @@ use crate::encode::{Encoder, EncoderConfig};
 use crate::mp4_parser::{self, ParsedMetadata, ParsedMovie, ParsedSample, ParsedTrack};
 use crate::operation::OperationContext;
 use crate::read::ReadOutcome;
+use crate::timecode::{EditTimeline, TimestampNormalizer};
 
 const COMPONENT: &str = "superi-media-io.mp4-mov";
 
@@ -411,7 +412,15 @@ struct TrackState {
     kind: StreamKind,
     timebase: Timebase,
     samples: Vec<ParsedSample>,
+    presented_samples: Vec<PresentedSample>,
+    normalizer: TimestampNormalizer,
     cursor: usize,
+}
+
+#[derive(Clone, Copy)]
+struct PresentedSample {
+    sample_index: usize,
+    presentation_time: RationalTime,
 }
 
 impl Mp4MovSource {
@@ -433,12 +442,32 @@ impl Mp4MovSource {
         for track in &parsed.tracks {
             operation.check("build_mp4_mov_source")?;
             validate_samples(track, &data)?;
-            let stream_info = build_stream_info(track, movie_timescale)?;
+            let stream_timebase = timebase(track.timescale, "stream_timescale")?;
+            let normalizer = TimestampNormalizer::from_presentation_timestamps(
+                stream_timebase,
+                track
+                    .samples
+                    .iter()
+                    .map(|sample| sample.composition_timestamp),
+            );
+            let samples = normalize_samples(&track.samples, normalizer)?;
+            let stream_info = build_stream_info(track, movie_timescale, normalizer)?;
+            let edit_timeline = EditTimeline::new(
+                movie_timescale,
+                stream_timebase,
+                stream_info.edits().to_vec(),
+            )
+            .map_err(|error| {
+                error.with_context(ErrorContext::new(COMPONENT, "build_edit_timeline"))
+            })?;
+            let presented_samples = build_presented_samples(&samples, &edit_timeline)?;
             tracks.push(TrackState {
                 id: stream_info.id(),
                 kind: stream_info.kind(),
                 timebase: stream_info.timebase(),
-                samples: track.samples.clone(),
+                samples,
+                presented_samples,
+                normalizer,
                 cursor: 0,
             });
             stream_infos.push(stream_info);
@@ -546,6 +575,13 @@ impl MediaSource for Mp4MovSource {
                     "sample composition offset exceeds the timestamp domain",
                 )
             })?;
+        let source_presentation = track.normalizer.restore(RationalTime::new(
+            sample.composition_timestamp,
+            track.timebase,
+        ))?;
+        let source_decode = track
+            .normalizer
+            .restore(RationalTime::new(sample.decode_timestamp, track.timebase))?;
         let packet = Packet::new(track.id, Arc::from(bytes), timing)
             .with_keyframe(sample.is_sync)
             .with_metadata("container.offset", MetadataValue::Unsigned(sample.offset))?
@@ -557,6 +593,14 @@ impl MediaSource for Mp4MovSource {
             .with_metadata(
                 "container.composition-offset",
                 MetadataValue::Signed(composition_offset),
+            )?
+            .with_metadata(
+                "container.presentation-timestamp",
+                MetadataValue::Signed(source_presentation.value()),
+            )?
+            .with_metadata(
+                "container.decode-timestamp",
+                MetadataValue::Signed(source_decode.value()),
             )?;
         operation.check("read_mp4_mov_packet")?;
         track.cursor += 1;
@@ -568,43 +612,33 @@ impl MediaSource for Mp4MovSource {
         let anchor_index = self
             .tracks
             .iter()
-            .position(|track| track.kind == StreamKind::Video && !track.samples.is_empty())
+            .position(|track| {
+                track.kind == StreamKind::Video && !track.presented_samples.is_empty()
+            })
             .or_else(|| {
-                self.tracks
-                    .iter()
-                    .position(|track| track.kind == StreamKind::Audio && !track.samples.is_empty())
+                self.tracks.iter().position(|track| {
+                    track.kind == StreamKind::Audio && !track.presented_samples.is_empty()
+                })
             })
             .or_else(|| {
                 self.tracks
                     .iter()
-                    .position(|track| !track.samples.is_empty())
+                    .position(|track| !track.presented_samples.is_empty())
             })
             .ok_or_else(|| {
                 unsupported_container("seek", "media source contains no seekable packets")
             })?;
         let anchor = &self.tracks[anchor_index];
         let selected = select_seek_sample(anchor, request)?;
-        let actual = RationalTime::new(
-            anchor.samples[selected].composition_timestamp,
-            anchor.timebase,
-        );
+        let actual = selected.presentation_time;
 
         let mut cursors = Vec::with_capacity(self.tracks.len());
         for (index, track) in self.tracks.iter().enumerate() {
             operation.check("seek_mp4_mov_source")?;
             let cursor = if index == anchor_index {
-                selected
+                selected.decode_start
             } else {
-                track
-                    .samples
-                    .iter()
-                    .position(|sample| {
-                        time_cmp(
-                            RationalTime::new(sample.composition_timestamp, track.timebase),
-                            actual,
-                        ) != Ordering::Less
-                    })
-                    .unwrap_or(track.samples.len())
+                cursor_for_presentation(track, actual)?
             };
             cursors.push(cursor);
         }
@@ -635,58 +669,163 @@ impl Mp4MovSource {
     }
 }
 
-fn select_seek_sample(track: &TrackState, request: SeekRequest) -> Result<usize> {
+struct SeekSelection {
+    presentation_time: RationalTime,
+    decode_start: usize,
+}
+
+fn select_seek_sample(track: &TrackState, request: SeekRequest) -> Result<SeekSelection> {
     match request.mode() {
-        SeekMode::Exact => track
-            .samples
-            .iter()
-            .position(|sample| {
-                RationalTime::new(sample.composition_timestamp, track.timebase) == request.target()
+        SeekMode::Exact => {
+            let selected = track
+                .presented_samples
+                .iter()
+                .find(|sample| sample.presentation_time == request.target())
+                .ok_or_else(|| {
+                    invalid_seek("exact seek target is not a presented frame boundary")
+                })?;
+            Ok(SeekSelection {
+                presentation_time: selected.presentation_time,
+                decode_start: preceding_sync_sample(track, selected.sample_index)?,
             })
-            .ok_or_else(|| invalid_seek("exact seek target is not a packet boundary")),
-        SeekMode::PreviousKeyframe => track
-            .samples
-            .iter()
-            .enumerate()
-            .filter(|(_, sample)| {
-                sample.is_sync
-                    && time_cmp(
-                        RationalTime::new(sample.composition_timestamp, track.timebase),
-                        request.target(),
-                    ) != Ordering::Greater
+        }
+        SeekMode::PreviousKeyframe => {
+            let selected = track
+                .presented_samples
+                .iter()
+                .filter(|sample| {
+                    track.samples[sample.sample_index].is_sync
+                        && time_cmp(sample.presentation_time, request.target()) != Ordering::Greater
+                })
+                .max_by(|left, right| {
+                    time_cmp(left.presentation_time, right.presentation_time)
+                        .then_with(|| left.sample_index.cmp(&right.sample_index))
+                })
+                .ok_or_else(|| invalid_seek("no keyframe exists at or before the seek target"))?;
+            Ok(SeekSelection {
+                presentation_time: selected.presentation_time,
+                decode_start: selected.sample_index,
             })
-            .map(|(index, _)| index)
-            .next_back()
-            .ok_or_else(|| invalid_seek("no keyframe exists at or before the seek target")),
+        }
         SeekMode::NearestKeyframe => {
             let target = request
                 .target()
-                .checked_rescale(track.timebase, TimeRounding::NearestTiesEven)?
+                .checked_rescale(
+                    track
+                        .presented_samples
+                        .first()
+                        .ok_or_else(|| invalid_seek("media source contains no presented frames"))?
+                        .presentation_time
+                        .timebase(),
+                    TimeRounding::NearestTiesEven,
+                )?
                 .value();
-            track
-                .samples
+            let selected = track
+                .presented_samples
                 .iter()
-                .enumerate()
-                .filter(|(_, sample)| sample.is_sync)
-                .min_by_key(|(_, sample)| {
+                .filter(|sample| track.samples[sample.sample_index].is_sync)
+                .min_by_key(|sample| {
                     (
-                        sample.composition_timestamp.abs_diff(target),
-                        sample.composition_timestamp,
+                        sample.presentation_time.value().abs_diff(target),
+                        sample.presentation_time.value(),
+                        sample.sample_index,
                     )
                 })
-                .map(|(index, _)| index)
-                .ok_or_else(|| invalid_seek("media source contains no keyframes"))
+                .ok_or_else(|| invalid_seek("media source contains no keyframes"))?;
+            Ok(SeekSelection {
+                presentation_time: selected.presentation_time,
+                decode_start: selected.sample_index,
+            })
         }
     }
 }
 
-fn build_stream_info(track: &ParsedTrack, movie_timebase: Timebase) -> Result<StreamInfo> {
+fn preceding_sync_sample(track: &TrackState, sample_index: usize) -> Result<usize> {
+    track.samples[..=sample_index]
+        .iter()
+        .rposition(|sample| sample.is_sync)
+        .ok_or_else(|| invalid_seek("exact frame has no preceding random-access packet"))
+}
+
+fn cursor_for_presentation(track: &TrackState, target: RationalTime) -> Result<usize> {
+    let selected = track
+        .presented_samples
+        .iter()
+        .filter(|sample| time_cmp(sample.presentation_time, target) != Ordering::Greater)
+        .max_by(|left, right| {
+            time_cmp(left.presentation_time, right.presentation_time)
+                .then_with(|| left.sample_index.cmp(&right.sample_index))
+        })
+        .or_else(|| track.presented_samples.first());
+    let Some(selected) = selected else {
+        return Ok(track.samples.len());
+    };
+    if track.kind == StreamKind::Video {
+        preceding_sync_sample(track, selected.sample_index)
+    } else {
+        Ok(selected.sample_index)
+    }
+}
+
+fn normalize_samples(
+    samples: &[ParsedSample],
+    normalizer: TimestampNormalizer,
+) -> Result<Vec<ParsedSample>> {
+    samples
+        .iter()
+        .copied()
+        .map(|mut sample| {
+            sample.composition_timestamp = normalizer
+                .normalize(RationalTime::new(
+                    sample.composition_timestamp,
+                    normalizer.origin().timebase(),
+                ))?
+                .value();
+            sample.decode_timestamp = normalizer
+                .normalize(RationalTime::new(
+                    sample.decode_timestamp,
+                    normalizer.origin().timebase(),
+                ))?
+                .value();
+            Ok(sample)
+        })
+        .collect()
+}
+
+fn build_presented_samples(
+    samples: &[ParsedSample],
+    timeline: &EditTimeline,
+) -> Result<Vec<PresentedSample>> {
+    let mut presented = Vec::new();
+    for (sample_index, sample) in samples.iter().enumerate() {
+        for presentation_time in timeline.media_to_presentations(
+            RationalTime::new(sample.composition_timestamp, timeline.media_timebase()),
+            TimeRounding::Floor,
+        )? {
+            presented.push(PresentedSample {
+                sample_index,
+                presentation_time,
+            });
+        }
+    }
+    presented.sort_by(|left, right| {
+        time_cmp(left.presentation_time, right.presentation_time)
+            .then_with(|| left.sample_index.cmp(&right.sample_index))
+    });
+    Ok(presented)
+}
+
+fn build_stream_info(
+    track: &ParsedTrack,
+    movie_timebase: Timebase,
+    normalizer: TimestampNormalizer,
+) -> Result<StreamInfo> {
     let stream_timebase = timebase(track.timescale, "stream_timescale")?;
     let kind = stream_kind(track.handler_type);
     let codec = CodecId::new(codec_id(track.codec))?;
     let duration = Duration::new(track.duration, stream_timebase)
         .with_error_context(ErrorContext::new(COMPONENT, "read_stream_duration"))?;
-    let edits = build_edits(track, movie_timebase, stream_timebase)?;
+    let edits = build_edits(track, movie_timebase, stream_timebase, normalizer)?;
     let mut info = StreamInfo::new(StreamId::new(track.id), kind, codec, stream_timebase)
         .with_duration(duration)?
         .with_edits(edits)?;
@@ -758,6 +897,10 @@ fn build_stream_info(track: &ParsedTrack, movie_timebase: Timebase) -> Result<St
         "track.sample-count",
         MetadataValue::Unsigned(track.samples.len() as u64),
     )?;
+    info = info.with_metadata(
+        "timeline.timestamp-origin",
+        MetadataValue::Signed(normalizer.origin().value()),
+    )?;
     if track.width != 0 {
         info = info.with_metadata(
             "video.width",
@@ -787,6 +930,7 @@ fn build_edits(
     track: &ParsedTrack,
     movie_timebase: Timebase,
     stream_timebase: Timebase,
+    normalizer: TimestampNormalizer,
 ) -> Result<Vec<StreamEdit>> {
     track
         .edits
@@ -796,8 +940,14 @@ fn build_edits(
                 .with_error_context(ErrorContext::new(COMPONENT, "read_stream_edit"))?;
             Ok(StreamEdit::new(
                 segment_duration,
-                (entry.media_time != -1)
-                    .then_some(RationalTime::new(entry.media_time, stream_timebase)),
+                if entry.media_time == -1 {
+                    None
+                } else {
+                    Some(
+                        normalizer
+                            .normalize(RationalTime::new(entry.media_time, stream_timebase))?,
+                    )
+                },
                 entry.rate_integer,
                 entry.rate_fraction,
             ))

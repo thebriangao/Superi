@@ -190,9 +190,8 @@ fn sample_table(
     });
 
     let mut stss_payload = Vec::new();
-    push_u32(&mut stss_payload, 2);
     push_u32(&mut stss_payload, 1);
-    push_u32(&mut stss_payload, 2);
+    push_u32(&mut stss_payload, 1);
 
     let mut stsc_payload = Vec::new();
     push_u32(&mut stsc_payload, 1);
@@ -492,7 +491,11 @@ fn mp4_demux_preserves_tracks_edits_timestamps_offsets_and_metadata() {
     assert_eq!(video.edits()[0].rate_integer(), 1);
     assert_eq!(video.edits()[0].rate_fraction(), 0);
     assert_eq!(video.edits()[1].segment_duration().value(), 1_500);
-    assert_eq!(video.edits()[1].media_time().unwrap().value(), 100);
+    assert_eq!(video.edits()[1].media_time().unwrap().value(), 0);
+    assert_eq!(
+        video.metadata().get("timeline.timestamp-origin"),
+        Some(&MetadataValue::Signed(100))
+    );
     assert_eq!(
         video.metadata().get("container.handler-name"),
         Some(&MetadataValue::Text("Picture Handler".into()))
@@ -538,6 +541,16 @@ fn mp4_demux_preserves_tracks_edits_timestamps_offsets_and_metadata() {
     assert_eq!(
         packets[0].metadata().get("container.composition-offset"),
         Some(&MetadataValue::Signed(100))
+    );
+    assert_eq!(
+        packets[0]
+            .metadata()
+            .get("container.presentation-timestamp"),
+        Some(&MetadataValue::Signed(100))
+    );
+    assert_eq!(
+        packets[0].metadata().get("container.decode-timestamp"),
+        Some(&MetadataValue::Signed(0))
     );
     assert_eq!(packets[1].data(), b"A0");
     assert_eq!(
@@ -652,10 +665,10 @@ fn mov_path_ingest_seek_and_relink_are_predictable() {
             &operation(),
         )
         .unwrap();
-    assert_eq!(actual.value(), 900);
+    assert_eq!(actual.value(), 500);
     let packet = next_packet(source.as_mut()).unwrap();
     assert_eq!(packet.stream_id().value(), 1);
-    assert_eq!(packet.data(), b"V1");
+    assert_eq!(packet.data(), b"V0");
 
     let fingerprint = source.info().identity().fingerprint().to_owned();
     let matching = SourceRequest::new(
@@ -682,6 +695,53 @@ fn mov_path_ingest_seek_and_relink_are_predictable() {
         Some("00000000000000000000000000000055")
     );
     std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn exact_seek_uses_edited_frame_time_and_returns_decoder_preroll() {
+    let fixture = fixture(FixtureBrand::Mp4);
+    let request = memory_request(0xaa, "edited.mp4", &fixture.bytes);
+    let mut source = open_through_registry(&request, "mp4");
+
+    let actual = source
+        .seek(
+            SeekRequest::new(
+                RationalTime::new(1_400, Timebase::integer(1_000).unwrap()),
+                SeekMode::Exact,
+            ),
+            &operation(),
+        )
+        .unwrap();
+    assert_eq!(actual, RationalTime::new(1_400, Timebase::MILLISECONDS));
+
+    let preroll = next_packet(source.as_mut()).unwrap();
+    assert_eq!(preroll.stream_id().value(), 1);
+    assert_eq!(preroll.data(), b"V0");
+    let target = next_packet(source.as_mut()).unwrap();
+    assert_eq!(target.stream_id().value(), 1);
+    assert_eq!(target.data(), b"V1");
+}
+
+#[test]
+fn seeks_report_empty_edits_and_choose_a_predictable_nearest_frame() {
+    let fixture = fixture(FixtureBrand::Mp4);
+    let request = memory_request(0xbb, "empty-edit.mp4", &fixture.bytes);
+    let mut source = open_through_registry(&request, "mp4");
+    let target = RationalTime::new(250, Timebase::integer(1_000).unwrap());
+
+    let error = source
+        .seek(SeekRequest::new(target, SeekMode::Exact), &operation())
+        .unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::InvalidInput);
+
+    let actual = source
+        .seek(
+            SeekRequest::new(target, SeekMode::NearestKeyframe),
+            &operation(),
+        )
+        .unwrap();
+    assert_eq!(actual, RationalTime::new(500, Timebase::MILLISECONDS));
+    assert_eq!(next_packet(source.as_mut()).unwrap().data(), b"V0");
 }
 
 #[test]

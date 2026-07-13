@@ -190,7 +190,10 @@ impl StreamEdit {
         self.rate_integer
     }
 
-    /// Returns the signed fraction portion of the fixed-point playback rate.
+    /// Returns the raw low 16 bits of the signed 16.16 playback rate.
+    ///
+    /// Interpret the returned `i16` as a `u16` bit pattern when reconstructing the positive
+    /// fractional portion. The integer half carries the sign of the complete fixed-point value.
     #[must_use]
     pub const fn rate_fraction(self) -> i16 {
         self.rate_fraction
@@ -802,7 +805,10 @@ impl SourceRequest {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum SeekMode {
-    /// Require the exact requested presentation coordinate.
+    /// Require an exact presented frame boundary.
+    ///
+    /// Inter-frame media may begin packet reads at the preceding random-access packet so a decoder
+    /// can preroll to the returned target without sacrificing frame accuracy.
     Exact,
     /// Seek to the closest independently decodable packet at or before the target.
     PreviousKeyframe,
@@ -848,7 +854,11 @@ pub trait MediaSource: Send {
     /// packet must carry a corruption report and must never be returned as complete data.
     fn read_packet(&mut self, operation: &OperationContext) -> Result<ReadOutcome<Packet>>;
 
-    /// Seeks and returns the actual presentation coordinate selected by the source.
+    /// Seeks on the edited presentation timeline and returns the exact coordinate selected.
+    ///
+    /// After an exact inter-frame seek, packet reads may begin before the returned coordinate at
+    /// the preceding random-access packet. Consumers decode that bounded preroll and discard output
+    /// preceding the returned target.
     fn seek(&mut self, request: SeekRequest, operation: &OperationContext) -> Result<RationalTime>;
 }
 

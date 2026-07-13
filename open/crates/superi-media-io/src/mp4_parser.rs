@@ -892,23 +892,6 @@ fn build_samples(table: &SampleTable) -> Result<Vec<ParsedSample>> {
             .checked_add(i64::from(durations[index]))
             .ok_or_else(|| ParseError::new("decode timestamp overflows"))?;
     }
-    let minimum_composition = samples
-        .iter()
-        .map(|sample| sample.composition_timestamp)
-        .min()
-        .unwrap_or(0);
-    if minimum_composition != 0 {
-        for sample in &mut samples {
-            sample.decode_timestamp = sample
-                .decode_timestamp
-                .checked_sub(minimum_composition)
-                .ok_or_else(|| ParseError::new("normalized decode timestamp overflows"))?;
-            sample.composition_timestamp = sample
-                .composition_timestamp
-                .checked_sub(minimum_composition)
-                .ok_or_else(|| ParseError::new("normalized composition timestamp overflows"))?;
-        }
-    }
     Ok(samples)
 }
 
