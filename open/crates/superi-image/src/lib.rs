@@ -4,8 +4,8 @@
 //! ordered channel and nested-layer identity, typed metadata, alpha and color
 //! interpretation, and separate signed data and display windows. Storage
 //! layouts, semantic image values, and metadata remain separate composable
-//! contracts; explicit alpha association builds on those contracts. General CPU
-//! operations, tiled access, and still-image I/O build on this foundation.
+//! contracts; explicit alpha association and dense CPU operations build on
+//! those contracts. Tiled access and still-image I/O build on this foundation.
 
 pub mod alpha;
 pub mod channels;
