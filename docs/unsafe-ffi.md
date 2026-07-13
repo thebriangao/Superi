@@ -160,13 +160,38 @@ buffer ownership differ from the VideoToolbox video sessions.
 The `windows` module is private and compiled only on Windows. `media_foundation.rs` retains the safe
 configuration parsers and cross-platform identifiers outside the allowance.
 
+### Linux VVC through VA-API 1.22
+
+- Source: `open/crates/superi-codecs-platform/src/vvc_vaapi_linux.rs`
+- Dependency and target: generated bindings for system `libva` 2.22 or newer on Linux only
+- Safe entry: `VaapiBackend` through the safe platform registry, `Decoder`, and frame interfaces
+- Unsafe surface: DRM display creation, VA initialization, configuration, contexts, P010 surfaces,
+  picture, slice, ALF, and LMCS buffers, submission, synchronization, DMA-BUF export, and matching
+  destruction
+- Ownership: `VvcVaapiDecoder` keeps the render-node file alive for the display lifetime and drops
+  context, configuration, and display in dependency order. Parameter buffers are destroyed after
+  submission. Every exported file descriptor becomes exactly one `File` owner or is closed on a
+  rejected descriptor.
+- Buffer rules: all syntax reaches FFI through fixed-layout generated structs or immutable slice
+  bytes whose exact length is supplied. Exported object, layer, plane, object-index, format, pitch,
+  offset, and modifier values are bounded before safe frame construction.
+- Threading: the display and every dependent VA object remain on one decoder worker thread. Only
+  owned DMA-BUF files plus plain layout values cross into the safe immutable frame wrapper.
+- Capability and fallback: VVC is advertised only after a Main 10 VLD configuration with P010
+  render format can be created. Unsupported syntax is rejected before submission, and every native
+  status becomes an explicit failure without changing backend identity or falling back silently.
+
+The raw generated bindings remain private to this Linux-only module. No raw display, context,
+surface, buffer identifier, pointer, or exported descriptor crosses the safe module boundary.
+
 ## Native dependencies without Superi unsafe blocks
 
 Vorbis uses safe `vorbis_rs` ownership on a dedicated worker. Its sys crates are linked but Superi
-does not call their raw functions. Linux VA-API uses safe `cros-codecs` and `libva` ownership in
-Superi source. wgpu and the current image, container, color, and audio paths use safe Rust APIs.
-Third-party crate internals and vendored libvpx headers are governed by dependency pinning,
-licensing, and upstream review, but they are not Superi-owned Rust unsafe boundaries.
+does not call their raw functions. Linux H.264, HEVC, and H.264 encode use safe `cros-codecs` and
+`libva` ownership in Superi source; Linux VVC is inventoried separately above. wgpu and the current
+image, container, color, and audio paths use safe Rust APIs. Third-party crate internals and
+vendored libvpx headers are governed by dependency pinning, licensing, and upstream review, but
+they are not Superi-owned Rust unsafe boundaries.
 
 ## Required audit
 

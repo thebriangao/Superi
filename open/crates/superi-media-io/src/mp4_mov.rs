@@ -1226,6 +1226,7 @@ fn codec_id(fourcc: [u8; 4]) -> String {
         b"av01" => "av1".to_owned(),
         b"avc1" | b"avc2" | b"avc3" | b"avc4" => "h264".to_owned(),
         b"hvc1" | b"hev1" => "hevc".to_owned(),
+        b"vvc1" | b"vvi1" => "vvc".to_owned(),
         b"vp08" => "vp8".to_owned(),
         b"vp09" => "vp9".to_owned(),
         b"apco" => "prores-422-proxy".to_owned(),
@@ -1371,9 +1372,10 @@ fn unsupported_operation(operation: &'static str, capability: &'static str) -> E
 #[cfg(test)]
 mod tests {
     use super::{
-        build_track_presentation, select_seek_sample, sha256_fingerprint, validate_edit_expansion,
-        EditTimeline, ParsedSample, RationalTime, SeekMode, SeekRequest, StreamEdit, StreamId,
-        StreamKind, Timebase, TimestampNormalizer, TrackState, MAX_PRESENTATIONS_PER_SAMPLE,
+        build_track_presentation, codec_id, select_seek_sample, sha256_fingerprint,
+        validate_edit_expansion, EditTimeline, ParsedSample, RationalTime, SeekMode, SeekRequest,
+        StreamEdit, StreamId, StreamKind, Timebase, TimestampNormalizer, TrackState,
+        MAX_PRESENTATIONS_PER_SAMPLE,
     };
     use crate::operation::{MediaPriority, OperationContext};
     use superi_core::error::ErrorCategory;
@@ -1385,6 +1387,12 @@ mod tests {
             sha256_fingerprint(b"abc"),
             "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    #[test]
+    fn vvc_sample_entries_select_the_vvc_decoder() {
+        assert_eq!(codec_id(*b"vvc1"), "vvc");
+        assert_eq!(codec_id(*b"vvi1"), "vvc");
     }
 
     #[test]

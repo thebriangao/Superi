@@ -16,6 +16,14 @@ use superi_media_io::demux::{CodecId, MediaMetadata, MetadataValue, PacketTiming
 mod linux;
 
 #[cfg(target_os = "linux")]
+#[path = "vvc.rs"]
+mod vvc;
+
+#[cfg(target_os = "linux")]
+#[path = "vvc_vaapi_linux.rs"]
+mod vvc_vaapi_linux;
+
+#[cfg(target_os = "linux")]
 pub use linux::{registration, VaapiBackend, VaapiFrameBuffer};
 
 #[cfg(not(target_os = "linux"))]
@@ -25,6 +33,8 @@ use superi_media_io::backend::BackendRegistration;
 pub const H264_CODEC_ID: &str = "h264";
 /// Stable codec identifier for HEVC media.
 pub const HEVC_CODEC_ID: &str = "hevc";
+/// Stable codec identifier for H.266/VVC media.
+pub const VVC_CODEC_ID: &str = "vvc";
 
 const COMPONENT: &str = "superi-codecs-platform.vaapi";
 const ANNEX_B_START_CODE: [u8; 4] = [0, 0, 0, 1];
@@ -56,12 +66,14 @@ impl H264Profile {
 struct DriverCapabilities {
     h264_decode: BTreeSet<H264Profile>,
     hevc_decode: bool,
+    vvc_decode: bool,
     h264_encode: BTreeSet<H264Profile>,
 }
 
 fn capability_set(snapshot: DriverCapabilities) -> Result<BackendCapabilities> {
     let h264 = CodecId::new(H264_CODEC_ID)?;
     let hevc = CodecId::new(HEVC_CODEC_ID)?;
+    let vvc = CodecId::new(VVC_CODEC_ID)?;
     let mut values = Vec::new();
     let mut details = Vec::new();
     if !snapshot.h264_decode.is_empty() {
@@ -83,6 +95,16 @@ fn capability_set(snapshot: DriverCapabilities) -> Result<BackendCapabilities> {
                 .with_profiles(["main"])?
                 .with_levels_runtime()
                 .with_bit_depths([8])?
+                .with_chroma_sampling([ChromaSampling::Cs420])?,
+        );
+    }
+    if snapshot.vvc_decode {
+        values.push(BackendCapability::Decode(vvc.clone()));
+        details.push(
+            CodecCapability::new(CodecOperation::Decode, vvc)
+                .with_profiles(["main_10"])?
+                .with_levels_runtime()
+                .with_bit_depths([10])?
                 .with_chroma_sampling([ChromaSampling::Cs420])?,
         );
     }
@@ -269,6 +291,32 @@ fn normalize_hevc_access_unit(
     Ok(normalized)
 }
 
+fn normalize_vvc_access_unit(
+    configuration: &[u8],
+    packet: &[u8],
+    include_parameter_sets: bool,
+) -> Result<Vec<u8>> {
+    if configuration.is_empty() {
+        return require_annex_b(packet, "normalize_vvc_access_unit");
+    }
+    let (length_size, parameter_sets) = parse_vvc_configuration(configuration)?;
+    let mut normalized = Vec::new();
+    if include_parameter_sets {
+        append_parameter_sets(&mut normalized, &parameter_sets)?;
+    }
+    if is_annex_b(packet) {
+        normalized.extend_from_slice(packet);
+    } else {
+        append_length_prefixed_units(
+            &mut normalized,
+            packet,
+            length_size,
+            "normalize_vvc_access_unit",
+        )?;
+    }
+    Ok(normalized)
+}
+
 fn parse_avc_configuration(configuration: &[u8]) -> Result<(usize, Vec<&[u8]>)> {
     if configuration.len() < 7 {
         return Err(corrupt(
@@ -332,6 +380,159 @@ fn parse_hevc_configuration(configuration: &[u8]) -> Result<(usize, Vec<&[u8]>)>
         ));
     }
     Ok((length_size, units))
+}
+
+fn parse_vvc_configuration(configuration: &[u8]) -> Result<(usize, Vec<&[u8]>)> {
+    let first = *configuration.first().ok_or_else(|| {
+        corrupt(
+            "parse_vvc_configuration",
+            "VVC decoder configuration record is empty",
+        )
+    })?;
+    if first & 0xf8 != 0xf8 {
+        return Err(corrupt(
+            "parse_vvc_configuration",
+            "codec.configuration is not a VVC decoder configuration record",
+        ));
+    }
+    let length_size = usize::from(((first >> 1) & 0x03) + 1);
+    let ptl_present = first & 1 != 0;
+    let mut offset = 1_usize;
+    if ptl_present {
+        let packed = usize::from(read_be_u16(
+            configuration,
+            &mut offset,
+            "VVC output-layer and sublayer fields",
+        )?);
+        let num_sublayers = (packed >> 4) & 0x07;
+        take_bytes(configuration, &mut offset, 1, "VVC bit-depth fields")?;
+        let constraint_bytes = usize::from(
+            *take_bytes(configuration, &mut offset, 1, "VVC constraint length")?
+                .first()
+                .expect("one-byte checked slice")
+                & 0x3f,
+        );
+        if constraint_bytes == 0 {
+            return Err(corrupt(
+                "parse_vvc_configuration",
+                "VVC profile-tier-level constraint length must be nonzero",
+            ));
+        }
+        take_bytes(configuration, &mut offset, 2, "VVC profile and level")?;
+        take_bytes(
+            configuration,
+            &mut offset,
+            constraint_bytes,
+            "VVC general constraint info",
+        )?;
+        let sublayer_flags = if num_sublayers > 1 {
+            *take_bytes(configuration, &mut offset, 1, "VVC sublayer level flags")?
+                .first()
+                .expect("one-byte checked slice")
+        } else {
+            0
+        };
+        let sublayer_levels = (0..num_sublayers.saturating_sub(1))
+            .filter(|index| sublayer_flags & (1 << (7 - index)) != 0)
+            .count();
+        take_bytes(
+            configuration,
+            &mut offset,
+            sublayer_levels,
+            "VVC sublayer levels",
+        )?;
+        let subprofiles = usize::from(
+            *take_bytes(configuration, &mut offset, 1, "VVC subprofile count")?
+                .first()
+                .expect("one-byte checked slice"),
+        );
+        take_bytes(
+            configuration,
+            &mut offset,
+            subprofiles.checked_mul(4).ok_or_else(|| {
+                corrupt(
+                    "parse_vvc_configuration",
+                    "VVC subprofile table size overflowed",
+                )
+            })?,
+            "VVC subprofiles",
+        )?;
+        take_bytes(
+            configuration,
+            &mut offset,
+            6,
+            "VVC maximum dimensions and frame rate",
+        )?;
+    }
+    let array_count = usize::from(
+        *take_bytes(configuration, &mut offset, 1, "VVC array count")?
+            .first()
+            .expect("one-byte checked slice"),
+    );
+    let mut units = Vec::new();
+    for _ in 0..array_count {
+        let nal_type = *take_bytes(configuration, &mut offset, 1, "VVC array header")?
+            .first()
+            .expect("one-byte checked slice")
+            & 0x1f;
+        if !matches!(nal_type, 12..=16 | 23 | 24) {
+            return Err(corrupt(
+                "parse_vvc_configuration",
+                "VVC decoder configuration contains an invalid NAL array type",
+            ));
+        }
+        let count = if matches!(nal_type, 12 | 13) {
+            1
+        } else {
+            usize::from(read_be_u16(
+                configuration,
+                &mut offset,
+                "VVC NAL unit count",
+            )?)
+        };
+        parse_u16_units(
+            configuration,
+            &mut offset,
+            count,
+            &mut units,
+            "VVC parameter set",
+        )?;
+    }
+    if units.is_empty() {
+        return Err(corrupt(
+            "parse_vvc_configuration",
+            "VVC decoder configuration record contains no parameter sets",
+        ));
+    }
+    if offset != configuration.len() {
+        return Err(corrupt(
+            "parse_vvc_configuration",
+            "VVC decoder configuration record has trailing bytes",
+        ));
+    }
+    Ok((length_size, units))
+}
+
+fn take_bytes<'a>(
+    bytes: &'a [u8],
+    offset: &mut usize,
+    length: usize,
+    label: &'static str,
+) -> Result<&'a [u8]> {
+    let end = offset.checked_add(length).ok_or_else(|| {
+        corrupt(
+            "parse_vvc_configuration",
+            "VVC configuration offset overflowed",
+        )
+    })?;
+    let value = bytes.get(*offset..end).ok_or_else(|| {
+        corrupt(
+            "parse_vvc_configuration",
+            format!("VVC decoder configuration record is missing {label}"),
+        )
+    })?;
+    *offset = end;
+    Ok(value)
 }
 
 fn parse_u16_units<'a>(
@@ -565,6 +766,51 @@ mod tests {
             normalize_hevc_access_unit(&[], &packet, true).unwrap(),
             packet
         );
+        assert_eq!(
+            normalize_vvc_access_unit(&[], &packet, true).unwrap(),
+            packet
+        );
+    }
+
+    #[test]
+    fn vvcc_access_units_become_annex_b_with_parameter_sets() {
+        let configuration = [
+            0xfe, 3, 0x8e, 0, 1, 0, 3, 0, 0x71, 0x01, 0x8f, 0, 1, 0, 3, 0, 0x79, 0x01, 0x90, 0, 1,
+            0, 3, 0, 0x81, 0x01,
+        ];
+        let packet = [0, 0, 0, 3, 0, 0x39, 0x80];
+
+        let normalized = normalize_vvc_access_unit(&configuration, &packet, true).unwrap();
+
+        assert_eq!(
+            normalized,
+            [
+                0, 0, 0, 1, 0, 0x71, 0x01, 0, 0, 0, 1, 0, 0x79, 0x01, 0, 0, 0, 1, 0, 0x81, 0x01, 0,
+                0, 0, 1, 0, 0x39, 0x80,
+            ]
+        );
+    }
+
+    #[test]
+    fn malformed_vvcc_array_is_rejected() {
+        let configuration = [0xfe, 1, 0x8f, 0, 1, 0, 4, 0, 0x79];
+        let error = normalize_vvc_access_unit(&configuration, &[0, 0, 0, 3, 0, 0x39, 0x80], true)
+            .unwrap_err();
+
+        assert_eq!(error.category(), ErrorCategory::CorruptData);
+    }
+
+    #[test]
+    fn vvcc_profile_tier_level_uses_high_order_sublayer_flags() {
+        let configuration = [
+            0xff, 0, 0x30, 0, 1, 0, 0, 0, 0x80, 42, 0, 0, 0, 0, 0, 0, 0, 1, 0x8f, 0, 1, 0, 3, 0,
+            0x79, 0x01,
+        ];
+
+        let (length_size, units) = parse_vvc_configuration(&configuration).unwrap();
+
+        assert_eq!(length_size, 4);
+        assert_eq!(units, [&[0, 0x79, 0x01][..]]);
     }
 
     #[test]
@@ -662,6 +908,7 @@ mod tests {
         let capabilities = capability_set(DriverCapabilities {
             h264_decode: [H264Profile::Main, H264Profile::High].into_iter().collect(),
             hevc_decode: true,
+            vvc_decode: true,
             h264_encode: [H264Profile::Main].into_iter().collect(),
         })
         .unwrap();
@@ -671,6 +918,7 @@ mod tests {
             vec![
                 BackendCapability::Decode(CodecId::new(H264_CODEC_ID).unwrap()),
                 BackendCapability::Decode(CodecId::new(HEVC_CODEC_ID).unwrap()),
+                BackendCapability::Decode(CodecId::new(VVC_CODEC_ID).unwrap()),
                 BackendCapability::Encode(CodecId::new(H264_CODEC_ID).unwrap()),
             ]
         );
@@ -678,7 +926,24 @@ mod tests {
             capabilities.hardware_acceleration(),
             HardwareAcceleration::Hardware
         );
-        assert_eq!(capabilities.codec_capabilities().count(), 4);
+        assert_eq!(capabilities.codec_capabilities().count(), 5);
+        let vvc = capabilities
+            .codec_capabilities()
+            .find(|detail| detail.codec().as_str() == VVC_CODEC_ID)
+            .unwrap();
+        assert_eq!(
+            vvc.profiles().values().unwrap().iter().collect::<Vec<_>>(),
+            ["main_10"]
+        );
+        assert_eq!(
+            vvc.bit_depths()
+                .values()
+                .unwrap()
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+            [10]
+        );
         assert!(capability_set(DriverCapabilities::default())
             .unwrap()
             .is_empty());

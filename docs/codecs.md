@@ -34,9 +34,10 @@ A genuinely usable professional editor, every row legal, MIT tree provably clean
   AV1, VP9, VP8 · MP3, FLAC, Vorbis, Opus, PCM · EXR, DPX, PNG, JPEG, TIFF · MP4/MOV/MKV/MXF demux.
 - **OS opt-in (`os-codecs`), Mac + Windows + supported Linux VA drivers:**
   H.264, H.265, ProRes, AAC. Linux currently covers H.264 and HEVC Main 8-bit decode plus H.264
-  opaque NV12 export when the installed VA driver exposes those operations.
+  opaque NV12 export. Linux also covers the bounded VVC Main 10 ingest surface described below
+  when the installed VA driver exposes VA-API 1.22 VVC decode.
 - **Later (post-launch):**
-  H.266 (VVC), DNxHR, camera RAW (ARRIRAW / R3D / BRAW via vendor plugins).
+  broader VVC syntax coverage, DNxHR, camera RAW (ARRIRAW / R3D / BRAW via vendor plugins).
 
 This opens essentially everything a working editor sees day-to-day.
 
@@ -288,35 +289,47 @@ and relink replay, while flush drains the stream to a deterministic end-of-strea
 ### Linux VA-API implementation contract
 
 The opt-in `linux-vaapi` backend uses `cros-codecs` 0.0.6 and `cros-libva` 0.0.12, both
-BSD-3-Clause, to parse compressed syntax and submit VA parameter buffers. The pixel decode and
-encode transform remains inside the user's installed VA driver. Superi does not ship a VA driver,
-software H.264 or HEVC transform, FFmpeg, GStreamer, or a native codec object through this path.
-The dependencies are Linux-targeted and enter the build only through the platform codec crate.
+BSD-3-Clause, for H.264 and HEVC. VVC uses the MIT `oxideav-h266` 0.0.8 syntax parser plus a
+private raw binding generated from the installed VA-API 1.22 headers. The pixel decode and encode
+transform remains inside the user's installed VA driver. Superi does not ship a VA driver,
+software H.264, HEVC, or VVC transform, FFmpeg, GStreamer, or a native codec object through this
+path. The dependencies are Linux-targeted and enter the build only through the platform codec
+crate.
 
-Building the opt-in path requires the system development files for `libva`, `libva-drm`, DRM, GBM,
-Clang, and `pkg-config`. A Debian-family development environment can provide them with `libva-dev`,
-`libdrm-dev`, `libgbm-dev`, `clang`, and `pkg-config`. Runtime operation requires a readable and
-writable DRM render node plus a VA driver that exposes the requested profile and entrypoint.
+Building the opt-in path requires the system development files for `libva` 2.22 or newer,
+`libva-drm`, DRM, GBM, Clang, and `pkg-config`. A Debian-family development environment can provide
+them with `libva-dev`, `libdrm-dev`, `libgbm-dev`, `clang`, and `pkg-config`. Runtime operation
+requires a readable and writable DRM render node plus a VA driver that exposes the requested
+profile and entrypoint.
 `SUPERI_VAAPI_RENDER_NODE` can select one absolute render-node path; otherwise nodes under
 `/dev/dri` are considered in stable lexical order.
 
-Registration is capability-based. A machine with no usable render node, GBM device, or supported
-profile registers no Linux platform backend, leaving normal registry selection and fallback intact.
-The current truthful surface is H.264 Baseline, Main, or High 8-bit decode, HEVC Main 8-bit decode,
-and H.264 opaque NV12 encode. HEVC Main10 is not advertised because the current public frame path
+Registration is capability-based. A machine with no usable render node or supported profile
+registers no Linux platform backend, leaving normal registry selection and fallback intact. H.264,
+HEVC, and H.264 encode also require GBM. The current truthful surface is H.264 Baseline, Main, or
+High 8-bit decode, HEVC Main 8-bit decode, H.264 opaque NV12 encode, and a bounded single-layer VVC
+Main 10 decode path. VVC registers only after the driver accepts a real Main 10 VLD configuration
+with P010 output. The current VVC mapper accepts one intra slice in one untiled picture and rejects
+inter pictures, subpictures, entry points, partition overrides, and explicit scaling-list use before
+driver submission. ALF and LMCS adaptation sets are parsed, checked, and submitted through their
+dedicated VA buffers. HEVC Main10 is not advertised because its current public frame path
 does not describe the native high-bit-depth layout exactly. H.264 and HEVC alpha payloads are not
 supported and are rejected instead of discarded. H.264 export accepts CPU NV12 and frames returned
 by this VA backend. Declared color signaling on export is rejected until the native encoder can
 write the exact requested VUI fields.
 
 Native display, decoder, and encoder objects stay on dedicated worker threads. Decoded DMA-BUF
-owners cross the public media boundary without CPU readback. MP4 and Matroska AVC or HEVC decoder
-configuration records are converted to checked Annex B access units, while existing Annex B input
-passes through. Opaque tokens restore signed presentation timestamps, decode timestamps, exact
-durations, timebases, keyframe state, and metadata after native reordering. Flush drains delayed
-output, and reset clears timing, configuration, references, and queued output for predictable seek
-and relink replay. Native dependency panics are contained at the worker boundary and reported as
-typed unavailable errors instead of unwinding through editor code.
+owners cross the public media boundary without CPU readback. VVC output is retained as two-plane
+P010 storage with checked object indexes, offsets, pitches, and a common DRM modifier. MP4 and
+Matroska AVC, HEVC, or VVC decoder configuration records are converted to checked Annex B access
+units, while existing Annex B input passes through. The VVC parser retains bounded VPS, SPS, PPS,
+and APS state, resolves embedded or standalone picture headers, derives POC, corrects H.266
+inference when picture partitioning is absent, and rejects multilayer or non-Main-10 input. Opaque tokens
+restore signed presentation timestamps, decode timestamps,
+exact durations, timebases, keyframe state, and metadata after native reordering. Flush drains
+delayed output, and reset clears timing, configuration, references, and queued output for
+predictable seek and relink replay. Native dependency panics are contained at the worker boundary
+and reported as typed unavailable errors instead of unwinding through editor code.
 
 ## 4. License policy
 

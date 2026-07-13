@@ -704,7 +704,7 @@ fn parse_stsd(data: &[u8], table: &mut SampleTable) -> Result<()> {
     table.codec = entry.kind;
     table.codec_string = Some(String::from_utf8_lossy(&entry.kind).into_owned());
     let child_offset = match &entry.kind {
-        b"av01" | b"avc1" | b"hvc1" | b"hev1" | b"vp08" | b"vp09" => 78,
+        b"av01" | b"avc1" | b"hvc1" | b"hev1" | b"vvc1" | b"vvi1" | b"vp08" | b"vp09" => 78,
         b"mp4a" => 28,
         _ => entry.data.len(),
     };
@@ -714,7 +714,10 @@ fn parse_stsd(data: &[u8], table: &mut SampleTable) -> Result<()> {
         .and_then(|data| atoms(data).ok())
     {
         for child in children {
-            if matches!(&child.kind, b"av1C" | b"avcC" | b"hvcC" | b"vpcC" | b"esds") {
+            if matches!(
+                &child.kind,
+                b"av1C" | b"avcC" | b"hvcC" | b"vvcC" | b"vpcC" | b"esds"
+            ) {
                 table.codec_configuration = Some(child.data.to_vec());
                 break;
             }
@@ -1158,7 +1161,15 @@ fn parse_ilst(data: &[u8]) -> Result<ParsedMetadata> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_stsz, parse_stts, parse_trun, MAX_TABLE_ENTRIES};
+    use super::{parse_stsd, parse_stsz, parse_stts, parse_trun, SampleTable, MAX_TABLE_ENTRIES};
+
+    fn atom(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+        let mut atom = Vec::with_capacity(data.len() + 8);
+        atom.extend_from_slice(&u32::try_from(data.len() + 8).unwrap().to_be_bytes());
+        atom.extend_from_slice(kind);
+        atom.extend_from_slice(data);
+        atom
+    }
 
     #[test]
     fn hostile_table_counts_are_rejected_before_allocation() {
@@ -1176,5 +1187,26 @@ mod tests {
         let mut trun = vec![0_u8; 4];
         trun.extend_from_slice(&oversized.to_be_bytes());
         assert!(parse_trun(&trun).is_err());
+    }
+
+    #[test]
+    fn vvc_sample_entries_expose_decoder_configuration() {
+        for sample_entry in [b"vvc1", b"vvi1"] {
+            let configuration = [1_u8, 2, 3, 4];
+            let mut entry = vec![0_u8; 78];
+            entry.extend_from_slice(&atom(b"vvcC", &configuration));
+            let mut stsd = vec![0_u8; 4];
+            stsd.extend_from_slice(&1_u32.to_be_bytes());
+            stsd.extend_from_slice(&atom(sample_entry, &entry));
+            let mut table = SampleTable::default();
+
+            parse_stsd(&stsd, &mut table).unwrap();
+
+            assert_eq!(table.codec, *sample_entry);
+            assert_eq!(
+                table.codec_configuration.as_deref(),
+                Some(&configuration[..])
+            );
+        }
     }
 }

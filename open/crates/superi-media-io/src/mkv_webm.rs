@@ -652,6 +652,7 @@ fn codec_id(matroska_id: &str) -> String {
         "V_AV1" => "av1".to_owned(),
         "V_MPEG4/ISO/AVC" => "h264".to_owned(),
         "V_MPEGH/ISO/HEVC" => "hevc".to_owned(),
+        "V_MPEGI/ISO/VVC" => "vvc".to_owned(),
         "V_VP8" => "vp8".to_owned(),
         "V_VP9" => "vp9".to_owned(),
         "A_AAC" => "aac".to_owned(),
@@ -876,5 +877,10 @@ mod tests {
         assert!(check_source_length(MAX_SOURCE_BYTES).is_ok());
         let error = check_source_length(MAX_SOURCE_BYTES + 1).unwrap_err();
         assert_eq!(error.category(), ErrorCategory::ResourceExhausted);
+    }
+
+    #[test]
+    fn vvc_track_selects_the_vvc_decoder() {
+        assert_eq!(codec_id("V_MPEGI/ISO/VVC"), "vvc");
     }
 }

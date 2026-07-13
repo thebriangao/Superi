@@ -1737,9 +1737,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxideav-h266"
+version = "0.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9591ca7cfe5515de6304b498ef348749b827d014f10f56cf654c525971ceae1b"
+dependencies = [
+ "oxideav-core",
+ "oxideav-pixfmt",
+]
+
+[[package]]
 name = "oxideav-mp3"
 version = "0.1.3"
 source = "git+https://github.com/OxideAV/oxideav-mp3.git?rev=f37901b5d9c691b113e96a3bb95645c67af1a046#f37901b5d9c691b113e96a3bb95645c67af1a046"
+dependencies = [
+ "oxideav-core",
+]
+
+[[package]]
+name = "oxideav-pixfmt"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "797f2f859a85f77f77ad082582a59024a8df9337678ffcbcdcb87f1aaab5a274"
 dependencies = [
  "oxideav-core",
 ]
@@ -2379,6 +2398,7 @@ dependencies = [
 name = "superi-codecs-platform"
 version = "0.0.0"
 dependencies = [
+ "bindgen",
  "cros-codecs",
  "objc2-audio-toolbox",
  "objc2-core-audio-types",
@@ -2386,6 +2406,7 @@ dependencies = [
  "objc2-core-media",
  "objc2-core-video",
  "objc2-video-toolbox",
+ "oxideav-h266",
  "superi-core",
  "superi-image",
  "superi-media-io",

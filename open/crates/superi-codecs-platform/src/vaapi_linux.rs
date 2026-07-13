@@ -45,8 +45,10 @@ use superi_media_io::operation::OperationContext;
 
 use super::{
     capability_set, categorized, conflict, corrupt, normalize_avc_access_unit,
-    normalize_hevc_access_unit, unsupported, validate_opaque_alpha, CodecLifecycle,
-    DriverCapabilities, H264Profile, TimingLedger, H264_CODEC_ID, HEVC_CODEC_ID,
+    normalize_hevc_access_unit, normalize_vvc_access_unit, unsupported, validate_opaque_alpha,
+    vvc_vaapi_linux::{VvcDecodedFrame, VvcVaapiDecoder, VvcVaapiFrame},
+    CodecLifecycle, DriverCapabilities, H264Profile, TimingLedger, H264_CODEC_ID, HEVC_CODEC_ID,
+    VVC_CODEC_ID,
 };
 
 const BACKEND_ID: &str = "linux-vaapi";
@@ -61,6 +63,7 @@ type DmaFrame = PooledVideoFrame<GenericDmaVideoFrame>;
 enum VideoCodec {
     H264,
     Hevc,
+    Vvc,
 }
 
 impl VideoCodec {
@@ -68,6 +71,7 @@ impl VideoCodec {
         match id {
             H264_CODEC_ID => Some(Self::H264),
             HEVC_CODEC_ID => Some(Self::Hevc),
+            VVC_CODEC_ID => Some(Self::Vvc),
             _ => None,
         }
     }
@@ -76,6 +80,7 @@ impl VideoCodec {
         match self {
             Self::H264 => H264_CODEC_ID,
             Self::Hevc => HEVC_CODEC_ID,
+            Self::Vvc => VVC_CODEC_ID,
         }
     }
 }
@@ -154,7 +159,7 @@ impl MediaBackend for VaapiBackend {
         let codec = VideoCodec::from_id(config.stream().codec().as_str()).ok_or_else(|| {
             unsupported(
                 "create_vaapi_decoder",
-                "Linux VA-API supports H.264 and HEVC Main 8-bit decoding only",
+                "Linux VA-API supports H.264, HEVC Main 8-bit, and VVC Main 10 decoding",
             )
         })?;
         if config.stream().kind() != StreamKind::Video {
@@ -166,6 +171,7 @@ impl MediaBackend for VaapiBackend {
         let supported = match codec {
             VideoCodec::H264 => !self.probe.capabilities.h264_decode.is_empty(),
             VideoCodec::Hevc => self.probe.capabilities.hevc_decode,
+            VideoCodec::Vvc => self.probe.capabilities.vvc_decode,
         };
         if !supported {
             return Err(unsupported(
@@ -195,19 +201,25 @@ impl MediaBackend for VaapiBackend {
 /// Send and Sync owner for one decoded VA DMA-BUF frame.
 #[derive(Clone)]
 pub struct VaapiFrameBuffer {
-    frame: Arc<DmaFrame>,
+    frame: NativeFrame,
     width: u32,
     height: u32,
 }
 
 impl fmt::Debug for VaapiFrameBuffer {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("VaapiFrameBuffer")
+        let mut output = formatter.debug_struct("VaapiFrameBuffer");
+        output
             .field("width", &self.width)
             .field("height", &self.height)
-            .field("pixel_format", &PixelFormat::Nv12)
-            .finish_non_exhaustive()
+            .field("pixel_format", &self.frame.pixel_format());
+        if let NativeFrame::P010(frame) = &self.frame {
+            output
+                .field("dma_objects", &frame.object_count())
+                .field("planes", &frame.plane_count())
+                .field("modifier", &frame.modifier());
+        }
+        output.finish_non_exhaustive()
     }
 }
 
@@ -225,7 +237,7 @@ impl VideoFrameBuffer for VaapiFrameBuffer {
     }
 
     fn pixel_format(&self) -> PixelFormat {
-        PixelFormat::Nv12
+        self.frame.pixel_format()
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -235,9 +247,24 @@ impl VideoFrameBuffer for VaapiFrameBuffer {
 
 struct NativeDecodedFrame {
     token: u64,
-    frame: Arc<DmaFrame>,
+    frame: NativeFrame,
     width: u32,
     height: u32,
+}
+
+#[derive(Clone)]
+enum NativeFrame {
+    Nv12(Arc<DmaFrame>),
+    P010(Arc<VvcVaapiFrame>),
+}
+
+impl NativeFrame {
+    const fn pixel_format(&self) -> PixelFormat {
+        match self {
+            Self::Nv12(_) => PixelFormat::Nv12,
+            Self::P010(_) => PixelFormat::P010,
+        }
+    }
 }
 
 enum DecoderCommand {
@@ -391,6 +418,7 @@ impl VaapiDecoder {
         let color = declared_color(&context.metadata)?
             .or(self.stream_color)
             .unwrap_or(ColorSpace::UNSPECIFIED);
+        let pixel_format = native.frame.pixel_format();
         let buffer: Arc<dyn VideoFrameBuffer> = Arc::new(VaapiFrameBuffer {
             frame: native.frame,
             width: native.width,
@@ -400,7 +428,7 @@ impl VaapiDecoder {
             VideoFormat::new(
                 native.width,
                 native.height,
-                PixelFormat::Nv12,
+                pixel_format,
                 color,
                 AlphaMode::Opaque,
             )?,
@@ -479,6 +507,11 @@ impl Decoder for VaapiDecoder {
                 packet.data(),
                 include_parameter_sets,
             )?,
+            VideoCodec::Vvc => normalize_vvc_access_unit(
+                &self.configuration,
+                packet.data(),
+                include_parameter_sets,
+            )?,
         };
         let token = self.timing.insert(
             packet.timing(),
@@ -486,7 +519,13 @@ impl Decoder for VaapiDecoder {
             packet.metadata().clone(),
         )?;
         match self.worker.decode(token, normalized) {
-            Ok(frames) => self.output.extend(frames),
+            Ok(frames) => {
+                if self.codec == VideoCodec::Vvc && frames.is_empty() {
+                    let _ = self.timing.remove(token);
+                } else {
+                    self.output.extend(frames);
+                }
+            }
             Err(error) => {
                 let _ = self.timing.remove(token);
                 return Err(error);
@@ -543,10 +582,10 @@ fn decoder_worker(
     }))
     .map_err(panic_message)
     .and_then(|result| result);
-    let (mut decoder, mut pool) = match result {
-        Ok(value) => {
+    let mut decoder = match result {
+        Ok(decoder) => {
             let _ = ready.send(Ok(()));
-            value
+            decoder
         }
         Err(error) => {
             let _ = ready.send(Err(error));
@@ -557,22 +596,15 @@ fn decoder_worker(
     while let Ok(command) = commands.recv() {
         match command {
             DecoderCommand::Decode { token, data, reply } => {
-                let result = catch_unwind(AssertUnwindSafe(|| {
-                    drive_decode(&mut decoder, &mut pool, token, &data)
-                }))
-                .map_err(panic_message)
-                .and_then(|result| result);
+                let result = catch_unwind(AssertUnwindSafe(|| decoder.decode(token, &data)))
+                    .map_err(panic_message)
+                    .and_then(|result| result);
                 let _ = reply.send(result);
             }
             DecoderCommand::Flush { reply } => {
-                let result = catch_unwind(AssertUnwindSafe(|| {
-                    decoder
-                        .flush()
-                        .map_err(|error| error.to_string())
-                        .and_then(|()| drain_decoder_events(&mut decoder, &mut pool))
-                }))
-                .map_err(panic_message)
-                .and_then(|result| result);
+                let result = catch_unwind(AssertUnwindSafe(|| decoder.flush()))
+                    .map_err(panic_message)
+                    .and_then(|result| result);
                 let _ = reply.send(result);
             }
             DecoderCommand::Reset { reply } => {
@@ -581,9 +613,8 @@ fn decoder_worker(
                 }))
                 .map_err(panic_message)
                 .and_then(|result| result)
-                .map(|(replacement_decoder, replacement_pool)| {
+                .map(|replacement_decoder| {
                     decoder = replacement_decoder;
-                    pool = replacement_pool;
                 });
                 let _ = reply.send(result);
             }
@@ -595,13 +626,10 @@ fn decoder_worker(
 fn create_native_decoder(
     render_node: &Path,
     codec: VideoCodec,
-) -> std::result::Result<
-    (
-        DynStatelessVideoDecoder<DmaFrame>,
-        FramePool<GenericDmaVideoFrame>,
-    ),
-    String,
-> {
+) -> std::result::Result<NativeDecoder, String> {
+    if codec == VideoCodec::Vvc {
+        return VvcVaapiDecoder::new(render_node).map(NativeDecoder::Vvc);
+    }
     let display = Display::open_drm_display(render_node).map_err(|error| error.to_string())?;
     let gbm = GbmDevice::open(render_node)?;
     let pool = FramePool::new(move |info| {
@@ -634,8 +662,55 @@ fn create_native_decoder(
                 .map_err(|error| error.to_string())?;
             decoder.into_trait_object()
         }
+        VideoCodec::Vvc => unreachable!("VVC decoder is created before cros-codecs setup"),
     };
-    Ok((decoder, pool))
+    Ok(NativeDecoder::Cros { decoder, pool })
+}
+
+enum NativeDecoder {
+    Cros {
+        decoder: DynStatelessVideoDecoder<DmaFrame>,
+        pool: FramePool<GenericDmaVideoFrame>,
+    },
+    Vvc(VvcVaapiDecoder),
+}
+
+impl NativeDecoder {
+    fn decode(
+        &mut self,
+        token: u64,
+        data: &[u8],
+    ) -> std::result::Result<Vec<NativeDecodedFrame>, String> {
+        match self {
+            Self::Cros { decoder, pool } => drive_decode(decoder, pool, token, data),
+            Self::Vvc(decoder) => decoder
+                .decode(token, data)
+                .map(|frames| frames.into_iter().map(NativeDecodedFrame::from).collect()),
+        }
+    }
+
+    fn flush(&mut self) -> std::result::Result<Vec<NativeDecodedFrame>, String> {
+        match self {
+            Self::Cros { decoder, pool } => decoder
+                .flush()
+                .map_err(|error| error.to_string())
+                .and_then(|()| drain_decoder_events(decoder, pool)),
+            Self::Vvc(decoder) => decoder
+                .flush()
+                .map(|frames| frames.into_iter().map(NativeDecodedFrame::from).collect()),
+        }
+    }
+}
+
+impl From<VvcDecodedFrame> for NativeDecodedFrame {
+    fn from(frame: VvcDecodedFrame) -> Self {
+        Self {
+            token: frame.token,
+            frame: NativeFrame::P010(frame.frame),
+            width: frame.width,
+            height: frame.height,
+        }
+    }
 }
 
 fn drive_decode(
@@ -698,7 +773,7 @@ fn drain_decoder_events(
                 let resolution = handle.display_resolution();
                 frames.push(NativeDecodedFrame {
                     token: handle.timestamp(),
-                    frame: handle.video_frame(),
+                    frame: NativeFrame::Nv12(handle.video_frame()),
                     width: resolution.width,
                     height: resolution.height,
                 });
@@ -715,9 +790,7 @@ fn probe_driver() -> Result<Option<DriverProbe>> {
             Ok(display) => display,
             Err(_) => continue,
         };
-        if GbmDevice::open(&render_node).is_err() {
-            continue;
-        }
+        let gbm_available = GbmDevice::open(&render_node).is_ok();
         let mut capabilities = match query_capabilities(&display) {
             Ok(capabilities) => capabilities,
             Err(error) if override_selected => {
@@ -729,10 +802,15 @@ fn probe_driver() -> Result<Option<DriverProbe>> {
             }
             Err(_) => continue,
         };
-        if !decoder_is_constructible(&render_node, VideoCodec::H264) {
+        if !gbm_available || !decoder_is_constructible(&render_node, VideoCodec::H264) {
             capabilities.h264_decode.clear();
         }
-        capabilities.hevc_decode &= decoder_is_constructible(&render_node, VideoCodec::Hevc);
+        capabilities.hevc_decode &=
+            gbm_available && decoder_is_constructible(&render_node, VideoCodec::Hevc);
+        if !gbm_available {
+            capabilities.h264_encode.clear();
+        }
+        capabilities.vvc_decode = decoder_is_constructible(&render_node, VideoCodec::Vvc);
         if capabilities == DriverCapabilities::default() {
             continue;
         }
@@ -836,6 +914,7 @@ fn query_capabilities(display: &Display) -> std::result::Result<DriverCapabiliti
     Ok(DriverCapabilities {
         h264_decode,
         hevc_decode,
+        vvc_decode: false,
         h264_encode,
     })
 }
@@ -1585,11 +1664,13 @@ mod encoder {
 
     fn encoder_input(frame: &VideoFrame) -> Result<EncoderInputData> {
         if let Some(vaapi) = frame.buffer().as_any().downcast_ref::<VaapiFrameBuffer>() {
-            return Ok(EncoderInputData::Shared {
-                frame: Arc::clone(&vaapi.frame),
-                width: frame.format().width(),
-                height: frame.format().height(),
-            });
+            if let NativeFrame::Nv12(native) = &vaapi.frame {
+                return Ok(EncoderInputData::Shared {
+                    frame: Arc::clone(native),
+                    width: frame.format().width(),
+                    height: frame.format().height(),
+                });
+            }
         }
         let width = usize::try_from(frame.format().width()).map_err(|_| {
             corrupt(
