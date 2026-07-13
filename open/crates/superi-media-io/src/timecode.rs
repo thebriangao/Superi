@@ -1,15 +1,21 @@
-//! Exact timestamp normalization and container edit-list mapping.
+//! Exact timestamp, edit-list, and source timecode metadata contracts.
 //!
 //! Compressed packet timestamps stay in their media timebase. [`TimestampNormalizer`] moves the
 //! first presentation timestamp to zero without changing relative presentation/decode offsets,
 //! while [`EditTimeline`] maps those normalized media coordinates to and from the edited movie
 //! presentation timeline. All conversion uses integer rational arithmetic and an explicit rounding
-//! policy; no floating-point clock conversion is involved.
+//! policy; no floating-point clock conversion is involved. Source timecode descriptions preserve
+//! their original frame timing, flags, sample width, source reference, and content associations,
+//! while exposing canonical drop-frame labels through [`superi_core::timecode::Timecode`].
+
+use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
-use superi_core::time::{RationalTime, TimeRounding, Timebase};
+use superi_core::time::{FrameRate, RationalTime, TimeRange, TimeRounding, Timebase};
+use superi_core::timecode::{Timecode, TimecodeFormat};
 
-use crate::demux::StreamEdit;
+use crate::demux::{StreamEdit, StreamId};
 
 const COMPONENT: &str = "superi-media-io.timecode";
 const FIXED_RATE_ONE: u64 = 1 << 16;
@@ -484,4 +490,593 @@ fn overflow(operation: &'static str) -> Error {
         operation,
         "timestamp exceeds the supported coordinate range",
     )
+}
+
+/// The integer representation used by one source timecode sample.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+pub enum TimecodeSampleEncoding {
+    /// Big-endian signed 32-bit frame numbers, or unsigned counters.
+    Timecode32,
+    /// Big-endian signed 64-bit frame numbers, or unsigned counters.
+    Timecode64,
+}
+
+impl TimecodeSampleEncoding {
+    /// Returns the stable machine code for this representation.
+    #[must_use]
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Timecode32 => "timecode32",
+            Self::Timecode64 => "timecode64",
+        }
+    }
+
+    /// Returns the exact encoded sample width.
+    #[must_use]
+    pub const fn byte_width(self) -> usize {
+        match self {
+            Self::Timecode32 => 4,
+            Self::Timecode64 => 8,
+        }
+    }
+}
+
+/// Losslessly preserved source timecode control flags.
+///
+/// The four known bits follow the QuickTime timecode definition. Unknown bits
+/// remain available through [`Self::bits`] so a future exporter can reproduce
+/// metadata it does not yet interpret.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct TimecodeFlags(u32);
+
+impl TimecodeFlags {
+    /// The label sequence uses drop-frame counting.
+    pub const DROP_FRAME: u32 = 0x0001;
+    /// Display values wrap after 24 hours.
+    pub const WRAPS_AT_24_HOURS: u32 = 0x0002;
+    /// Negative sample frame numbers are permitted.
+    pub const NEGATIVE_TIMES_ALLOWED: u32 = 0x0004;
+    /// Sample integers represent counters rather than timecode frame numbers.
+    pub const COUNTER: u32 = 0x0008;
+
+    const KNOWN: u32 =
+        Self::DROP_FRAME | Self::WRAPS_AT_24_HOURS | Self::NEGATIVE_TIMES_ALLOWED | Self::COUNTER;
+
+    /// Preserves a raw container flag word.
+    #[must_use]
+    pub const fn new(bits: u32) -> Self {
+        Self(bits)
+    }
+
+    /// Returns every original flag bit, including unknown bits.
+    #[must_use]
+    pub const fn bits(self) -> u32 {
+        self.0
+    }
+
+    /// Returns flag bits that this version does not interpret.
+    #[must_use]
+    pub const fn unknown_bits(self) -> u32 {
+        self.0 & !Self::KNOWN
+    }
+
+    /// Returns whether labels use drop-frame counting.
+    #[must_use]
+    pub const fn is_drop_frame(self) -> bool {
+        self.contains(Self::DROP_FRAME)
+    }
+
+    /// Returns whether display values wrap after 24 hours.
+    #[must_use]
+    pub const fn wraps_at_24_hours(self) -> bool {
+        self.contains(Self::WRAPS_AT_24_HOURS)
+    }
+
+    /// Returns whether negative frame numbers are valid.
+    #[must_use]
+    pub const fn negative_times_allowed(self) -> bool {
+        self.contains(Self::NEGATIVE_TIMES_ALLOWED)
+    }
+
+    /// Returns whether samples contain counter values instead of timecode.
+    #[must_use]
+    pub const fn is_counter(self) -> bool {
+        self.contains(Self::COUNTER)
+    }
+
+    const fn contains(self, bit: u32) -> bool {
+        self.0 & bit != 0
+    }
+}
+
+/// Complete format metadata required to interpret and reproduce source samples.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TimecodeDescription {
+    encoding: TimecodeSampleEncoding,
+    flags: TimecodeFlags,
+    time_scale: u32,
+    frame_duration: u32,
+    frame_quanta: u32,
+    media_frame_rate: FrameRate,
+    timecode_format: TimecodeFormat,
+    source_reference: Arc<[u8]>,
+}
+
+impl TimecodeDescription {
+    /// Validates one container timecode definition without discarding raw fields.
+    ///
+    /// `time_scale / frame_duration` is the physical media frame rate, while
+    /// `frame_quanta` is the nominal label count. QuickTime's documented
+    /// `2997 / 100` and `5994 / 100` drop-frame forms are mapped to canonical
+    /// `30000 / 1001` and `60000 / 1001` label formats, but their original
+    /// fields remain unchanged for export.
+    pub fn new(
+        encoding: TimecodeSampleEncoding,
+        flags: TimecodeFlags,
+        time_scale: u32,
+        frame_duration: u32,
+        frame_quanta: u32,
+        source_reference: Arc<[u8]>,
+    ) -> Result<Self> {
+        if frame_quanta == 0 {
+            return Err(invalid_description(
+                "timecode frame quanta must be greater than zero",
+            ));
+        }
+        if flags.is_drop_frame() && flags.is_counter() {
+            return Err(invalid_description(
+                "drop-frame and counter flags cannot describe the same sample values",
+            ));
+        }
+
+        let media_frame_rate = FrameRate::new(time_scale, frame_duration).map_err(|error| {
+            error.with_context(ErrorContext::new(COMPONENT, "create_timecode_description"))
+        })?;
+        if !flags.is_counter() && media_frame_rate.nominal_fps() != frame_quanta {
+            return Err(invalid_description(
+                "timecode frame quanta must match the nominal media frame rate",
+            ));
+        }
+
+        let timecode_format = if flags.is_drop_frame() {
+            drop_frame_format(media_frame_rate, frame_quanta)?
+        } else {
+            TimecodeFormat::non_drop(media_frame_rate)
+        };
+
+        Ok(Self {
+            encoding,
+            flags,
+            time_scale,
+            frame_duration,
+            frame_quanta,
+            media_frame_rate,
+            timecode_format,
+            source_reference,
+        })
+    }
+
+    /// Returns the integer sample representation.
+    #[must_use]
+    pub const fn encoding(&self) -> TimecodeSampleEncoding {
+        self.encoding
+    }
+
+    /// Returns all preserved source flags.
+    #[must_use]
+    pub const fn flags(&self) -> TimecodeFlags {
+        self.flags
+    }
+
+    /// Returns the original number of time units per second.
+    #[must_use]
+    pub const fn time_scale(&self) -> u32 {
+        self.time_scale
+    }
+
+    /// Returns the original time units occupied by one media frame.
+    #[must_use]
+    pub const fn frame_duration(&self) -> u32 {
+        self.frame_duration
+    }
+
+    /// Returns the nominal number of labels per second, or frames per counter tick.
+    #[must_use]
+    pub const fn frame_quanta(&self) -> u32 {
+        self.frame_quanta
+    }
+
+    /// Returns the exact physical rate recorded by the container.
+    #[must_use]
+    pub const fn media_frame_rate(&self) -> FrameRate {
+        self.media_frame_rate
+    }
+
+    /// Returns the canonical format used for editorial label arithmetic.
+    #[must_use]
+    pub const fn timecode_format(&self) -> TimecodeFormat {
+        self.timecode_format
+    }
+
+    /// Returns the opaque source-tape or source-device reference.
+    #[must_use]
+    pub fn source_reference(&self) -> &[u8] {
+        &self.source_reference
+    }
+
+    /// Decodes one complete big-endian source sample.
+    pub fn decode_sample(&self, bytes: &[u8]) -> Result<TimecodeValue> {
+        if bytes.len() != self.encoding.byte_width() {
+            return Err(corrupt_sample(
+                "timecode sample width does not match its format description",
+            ));
+        }
+
+        if self.flags.is_counter() {
+            let counter = match self.encoding {
+                TimecodeSampleEncoding::Timecode32 => u64::from(u32::from_be_bytes(
+                    bytes
+                        .try_into()
+                        .expect("sample width was checked for timecode32"),
+                )),
+                TimecodeSampleEncoding::Timecode64 => u64::from_be_bytes(
+                    bytes
+                        .try_into()
+                        .expect("sample width was checked for timecode64"),
+                ),
+            };
+            return Ok(TimecodeValue::Counter(counter));
+        }
+
+        let frames = match self.encoding {
+            TimecodeSampleEncoding::Timecode32 => i64::from(i32::from_be_bytes(
+                bytes
+                    .try_into()
+                    .expect("sample width was checked for timecode32"),
+            )),
+            TimecodeSampleEncoding::Timecode64 => i64::from_be_bytes(
+                bytes
+                    .try_into()
+                    .expect("sample width was checked for timecode64"),
+            ),
+        };
+        if frames < 0 && !self.flags.negative_times_allowed() {
+            return Err(corrupt_sample(
+                "negative timecode sample is forbidden by its format description",
+            ));
+        }
+        Ok(TimecodeValue::Timecode(Timecode::from_frames(
+            frames,
+            self.timecode_format,
+        )))
+    }
+
+    /// Encodes one value for a container exporter without changing its meaning.
+    pub fn encode_sample(&self, value: TimecodeValue) -> Result<Vec<u8>> {
+        match (self.flags.is_counter(), value) {
+            (true, TimecodeValue::Counter(counter)) => match self.encoding {
+                TimecodeSampleEncoding::Timecode32 => {
+                    let counter = u32::try_from(counter).map_err(|_| {
+                        invalid_sample("counter does not fit the timecode32 sample width")
+                    })?;
+                    Ok(counter.to_be_bytes().to_vec())
+                }
+                TimecodeSampleEncoding::Timecode64 => Ok(counter.to_be_bytes().to_vec()),
+            },
+            (false, TimecodeValue::Timecode(timecode)) => {
+                if timecode.format() != self.timecode_format {
+                    return Err(invalid_sample(
+                        "timecode value format does not match its source description",
+                    ));
+                }
+                if timecode.frames() < 0 && !self.flags.negative_times_allowed() {
+                    return Err(invalid_sample(
+                        "negative timecode value is forbidden by its format description",
+                    ));
+                }
+                match self.encoding {
+                    TimecodeSampleEncoding::Timecode32 => {
+                        let frames = i32::try_from(timecode.frames()).map_err(|_| {
+                            invalid_sample("frame number does not fit the timecode32 sample width")
+                        })?;
+                        Ok(frames.to_be_bytes().to_vec())
+                    }
+                    TimecodeSampleEncoding::Timecode64 => {
+                        Ok(timecode.frames().to_be_bytes().to_vec())
+                    }
+                }
+            }
+            (true, TimecodeValue::Timecode(_)) => Err(invalid_sample(
+                "counter description cannot encode a timecode frame number",
+            )),
+            (false, TimecodeValue::Counter(_)) => Err(invalid_sample(
+                "timecode description cannot encode a counter value",
+            )),
+        }
+    }
+}
+
+/// The interpreted value stored in one source sample.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum TimecodeValue {
+    /// A continuous frame number with an explicit label format.
+    Timecode(Timecode),
+    /// An uninterpreted counter value from a counter-mode description.
+    Counter(u64),
+}
+
+/// One contiguous mapping from media time to a starting source value.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TimecodeSegment {
+    media_range: TimeRange,
+    start_value: TimecodeValue,
+}
+
+impl TimecodeSegment {
+    /// Creates one source segment. Track construction validates ordering and format.
+    #[must_use]
+    pub const fn new(media_range: TimeRange, start_value: TimecodeValue) -> Self {
+        Self {
+            media_range,
+            start_value,
+        }
+    }
+
+    /// Returns the half-open media interval covered by this source value.
+    #[must_use]
+    pub const fn media_range(self) -> TimeRange {
+        self.media_range
+    }
+
+    /// Returns the value at the segment's inclusive start.
+    #[must_use]
+    pub const fn start_value(self) -> TimecodeValue {
+        self.start_value
+    }
+}
+
+/// Validated timecode metadata and mappings for one source track.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourceTimecodeTrack {
+    stream_id: StreamId,
+    description: TimecodeDescription,
+    associated_stream_ids: Vec<StreamId>,
+    segments: Vec<TimecodeSegment>,
+}
+
+impl SourceTimecodeTrack {
+    /// Creates a source timecode track with deterministic content associations.
+    pub fn new(
+        stream_id: StreamId,
+        description: TimecodeDescription,
+        associated_stream_ids: Vec<StreamId>,
+        segments: Vec<TimecodeSegment>,
+    ) -> Result<Self> {
+        let mut associations = BTreeSet::new();
+        if associated_stream_ids
+            .iter()
+            .any(|id| *id == stream_id || !associations.insert(*id))
+        {
+            return Err(invalid_track(
+                "timecode content associations must be unique and cannot reference the timecode track itself",
+            ));
+        }
+        if segments.is_empty() {
+            return Err(invalid_track(
+                "timecode track must contain at least one mapped segment",
+            ));
+        }
+
+        let timebase = segments[0].media_range.timebase();
+        let mut previous_end = None;
+        for segment in &segments {
+            if segment.media_range.is_empty() {
+                return Err(invalid_track(
+                    "timecode segments must cover a nonempty media interval",
+                ));
+            }
+            if segment.media_range.timebase() != timebase {
+                return Err(invalid_track(
+                    "timecode segments must use one source-track timebase",
+                ));
+            }
+            if previous_end.is_some_and(|end| segment.media_range.start() < end) {
+                return Err(invalid_track(
+                    "timecode segments must be ordered and must not overlap",
+                ));
+            }
+            previous_end = Some(segment.media_range.end_exclusive().map_err(|error| {
+                error.with_context(ErrorContext::new(COMPONENT, "create_timecode_track"))
+            })?);
+            validate_segment_value(&description, segment.start_value)?;
+        }
+
+        Ok(Self {
+            stream_id,
+            description,
+            associated_stream_ids,
+            segments,
+        })
+    }
+
+    /// Returns the source-local timecode stream identifier.
+    #[must_use]
+    pub const fn stream_id(&self) -> StreamId {
+        self.stream_id
+    }
+
+    /// Returns the exact source format description.
+    #[must_use]
+    pub const fn description(&self) -> &TimecodeDescription {
+        &self.description
+    }
+
+    /// Returns content streams that explicitly reference this timecode track.
+    #[must_use]
+    pub fn associated_stream_ids(&self) -> &[StreamId] {
+        &self.associated_stream_ids
+    }
+
+    /// Returns mappings in ascending media-time order.
+    #[must_use]
+    pub fn segments(&self) -> &[TimecodeSegment] {
+        &self.segments
+    }
+
+    /// Resolves source timecode at a media position, rounding within a frame down.
+    ///
+    /// A position outside every segment returns `None`. Counter-mode tracks do
+    /// not have editorial labels and return an explicit unsupported error.
+    pub fn timecode_at(&self, media_time: RationalTime) -> Result<Option<Timecode>> {
+        if self.description.flags.is_counter() {
+            return Err(Error::new(
+                ErrorCategory::Unsupported,
+                Recoverability::Degraded,
+                "counter-mode source metadata does not define editorial timecode labels",
+            )
+            .with_context(ErrorContext::new(COMPONENT, "resolve_timecode")));
+        }
+
+        let mut selected = None;
+        for segment in &self.segments {
+            let contains = segment.media_range.contains(media_time).map_err(|error| {
+                error.with_context(ErrorContext::new(COMPONENT, "resolve_timecode"))
+            })?;
+            if contains {
+                selected = Some(segment);
+                break;
+            }
+        }
+        let Some(segment) = selected else {
+            return Ok(None);
+        };
+        let TimecodeValue::Timecode(start) = segment.start_value else {
+            return Err(internal_track(
+                "validated timecode track contains a counter segment",
+            ));
+        };
+        let elapsed_frames = media_time
+            .checked_sub_at(
+                segment.media_range.start(),
+                self.description.media_frame_rate.timebase(),
+                TimeRounding::Floor,
+            )
+            .map_err(|error| error.with_context(ErrorContext::new(COMPONENT, "resolve_timecode")))?
+            .value();
+        start
+            .checked_add_frames(elapsed_frames)
+            .map(Some)
+            .map_err(|source| {
+                Error::with_source(
+                    ErrorCategory::ResourceExhausted,
+                    Recoverability::UserCorrectable,
+                    "source timecode calculation exceeded its frame range",
+                    source,
+                )
+                .with_context(ErrorContext::new(COMPONENT, "resolve_timecode"))
+            })
+    }
+}
+
+fn drop_frame_format(media_rate: FrameRate, frame_quanta: u32) -> Result<TimecodeFormat> {
+    if frame_quanta % 30 != 0 {
+        return Err(invalid_description(
+            "drop-frame labels require a nominal rate that is a multiple of 30",
+        ));
+    }
+    let canonical_numerator = frame_quanta
+        .checked_mul(1_000)
+        .ok_or_else(|| invalid_description("drop-frame nominal rate is too large"))?;
+    let decimal_numerator = frame_quanta
+        .checked_mul(999)
+        .ok_or_else(|| invalid_description("drop-frame nominal rate is too large"))?;
+    let raw_numerator = u128::from(media_rate.numerator());
+    let raw_denominator = u128::from(media_rate.denominator());
+    let canonical_matches =
+        raw_numerator * 1_001 == u128::from(canonical_numerator) * raw_denominator;
+    let decimal_matches = raw_numerator * 1_000 == u128::from(decimal_numerator) * raw_denominator;
+    if !canonical_matches && !decimal_matches {
+        return Err(invalid_description(
+            "drop-frame media rate is not an NTSC-related rate",
+        ));
+    }
+
+    let canonical_rate = FrameRate::new(canonical_numerator, 1_001).map_err(|error| {
+        error.with_context(ErrorContext::new(COMPONENT, "create_timecode_description"))
+    })?;
+    TimecodeFormat::drop_frame(canonical_rate).map_err(|source| {
+        Error::with_source(
+            ErrorCategory::InvalidInput,
+            Recoverability::UserCorrectable,
+            "drop-frame timecode format is unsupported",
+            source,
+        )
+        .with_context(ErrorContext::new(COMPONENT, "create_timecode_description"))
+    })
+}
+
+fn validate_segment_value(description: &TimecodeDescription, value: TimecodeValue) -> Result<()> {
+    match (description.flags.is_counter(), value) {
+        (true, TimecodeValue::Counter(_)) => Ok(()),
+        (false, TimecodeValue::Timecode(timecode))
+            if timecode.format() == description.timecode_format =>
+        {
+            if timecode.frames() < 0 && !description.flags.negative_times_allowed() {
+                Err(invalid_track(
+                    "negative timecode segment is forbidden by its format description",
+                ))
+            } else {
+                Ok(())
+            }
+        }
+        (false, TimecodeValue::Timecode(_)) => Err(invalid_track(
+            "timecode segment format does not match its source description",
+        )),
+        (true, TimecodeValue::Timecode(_)) | (false, TimecodeValue::Counter(_)) => Err(
+            invalid_track("timecode segment value kind does not match its source description"),
+        ),
+    }
+}
+
+fn invalid_description(message: &'static str) -> Error {
+    Error::new(
+        ErrorCategory::InvalidInput,
+        Recoverability::UserCorrectable,
+        message,
+    )
+    .with_context(ErrorContext::new(COMPONENT, "create_timecode_description"))
+}
+
+fn corrupt_sample(message: &'static str) -> Error {
+    Error::new(
+        ErrorCategory::CorruptData,
+        Recoverability::UserCorrectable,
+        message,
+    )
+    .with_context(ErrorContext::new(COMPONENT, "decode_timecode_sample"))
+}
+
+fn invalid_sample(message: &'static str) -> Error {
+    Error::new(
+        ErrorCategory::InvalidInput,
+        Recoverability::UserCorrectable,
+        message,
+    )
+    .with_context(ErrorContext::new(COMPONENT, "encode_timecode_sample"))
+}
+
+fn invalid_track(message: &'static str) -> Error {
+    Error::new(
+        ErrorCategory::InvalidInput,
+        Recoverability::UserCorrectable,
+        message,
+    )
+    .with_context(ErrorContext::new(COMPONENT, "create_timecode_track"))
+}
+
+fn internal_track(message: &'static str) -> Error {
+    Error::new(ErrorCategory::Internal, Recoverability::Terminal, message)
+        .with_context(ErrorContext::new(COMPONENT, "resolve_timecode"))
 }
