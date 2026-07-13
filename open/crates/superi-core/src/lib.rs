@@ -11,3 +11,4 @@ pub mod pixel;
 pub mod prelude;
 pub mod settings;
 pub mod time;
+pub mod timecode;
