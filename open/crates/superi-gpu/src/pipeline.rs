@@ -154,6 +154,34 @@ pub struct GpuRenderPipelineDescriptor<'a> {
     pub cache: Option<&'a wgpu::PipelineCache>,
 }
 
+/// An owned validation snapshot for one render-pipeline vertex-buffer slot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GpuVertexBufferInfo {
+    array_stride: wgpu::BufferAddress,
+    step_mode: wgpu::VertexStepMode,
+    last_stride: wgpu::BufferAddress,
+}
+
+impl GpuVertexBufferInfo {
+    /// Returns the byte stride between consecutive vertex or instance records.
+    #[must_use]
+    pub const fn array_stride(&self) -> wgpu::BufferAddress {
+        self.array_stride
+    }
+
+    /// Returns whether records advance per vertex or per instance.
+    #[must_use]
+    pub const fn step_mode(&self) -> wgpu::VertexStepMode {
+        self.step_mode
+    }
+
+    /// Returns the minimum bytes needed for the final record in this slot.
+    #[must_use]
+    pub const fn last_stride(&self) -> wgpu::BufferAddress {
+        self.last_stride
+    }
+}
+
 /// Common managed pipeline metadata.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GpuPipelineInfo {
@@ -225,6 +253,10 @@ impl GpuComputePipeline {
     pub fn raw(&self) -> &wgpu::ComputePipeline {
         &self.0.raw
     }
+
+    pub(crate) fn lease(&self) -> &ResourceLease {
+        &self.0.lease
+    }
 }
 
 #[derive(Debug)]
@@ -237,6 +269,15 @@ struct GpuRenderPipelineInner {
     fragment_module: Option<GpuShaderModule>,
     fragment_entry_point: Option<String>,
     info: GpuPipelineInfo,
+    color_target_formats: Vec<Option<wgpu::TextureFormat>>,
+    depth_stencil_format: Option<wgpu::TextureFormat>,
+    sample_count: u32,
+    multiview: Option<std::num::NonZeroU32>,
+    vertex_buffers: Vec<GpuVertexBufferInfo>,
+    strip_index_format: Option<wgpu::IndexFormat>,
+    requires_blend_constant: bool,
+    writes_depth: bool,
+    writes_stencil: bool,
 }
 
 /// A cloneable managed render pipeline.
@@ -290,6 +331,70 @@ impl GpuRenderPipeline {
     #[must_use]
     pub fn raw(&self) -> &wgpu::RenderPipeline {
         &self.0.raw
+    }
+
+    /// Returns fragment output formats in color-attachment slot order.
+    #[must_use]
+    pub fn color_target_formats(&self) -> &[Option<wgpu::TextureFormat>] {
+        &self.0.color_target_formats
+    }
+
+    /// Returns the depth and stencil attachment format required by this pipeline.
+    #[must_use]
+    pub fn depth_stencil_format(&self) -> Option<wgpu::TextureFormat> {
+        self.0.depth_stencil_format
+    }
+
+    /// Returns the render pipeline multisample count.
+    #[must_use]
+    pub fn sample_count(&self) -> u32 {
+        self.0.sample_count
+    }
+
+    /// Returns the required multiview layer count, when enabled.
+    #[must_use]
+    pub fn multiview(&self) -> Option<std::num::NonZeroU32> {
+        self.0.multiview
+    }
+
+    /// Returns validation metadata for each declared vertex-buffer slot.
+    #[must_use]
+    pub fn vertex_buffers(&self) -> &[GpuVertexBufferInfo] {
+        &self.0.vertex_buffers
+    }
+
+    /// Returns the number of declared vertex-buffer slots.
+    #[must_use]
+    pub fn vertex_buffer_count(&self) -> u32 {
+        u32::try_from(self.0.vertex_buffers.len()).unwrap_or(u32::MAX)
+    }
+
+    /// Returns the index format required by triangle or line strips.
+    #[must_use]
+    pub fn strip_index_format(&self) -> Option<wgpu::IndexFormat> {
+        self.0.strip_index_format
+    }
+
+    /// Returns whether a draw requires a previously selected blend constant.
+    #[must_use]
+    pub fn requires_blend_constant(&self) -> bool {
+        self.0.requires_blend_constant
+    }
+
+    /// Returns whether this pipeline can write the depth aspect.
+    #[must_use]
+    pub fn writes_depth(&self) -> bool {
+        self.0.writes_depth
+    }
+
+    /// Returns whether this pipeline can write the stencil aspect.
+    #[must_use]
+    pub fn writes_stencil(&self) -> bool {
+        self.0.writes_stencil
+    }
+
+    pub(crate) fn lease(&self) -> &ResourceLease {
+        &self.0.lease
     }
 }
 
@@ -387,6 +492,51 @@ impl GpuResources<'_> {
         if let Some(layout) = descriptor.layout {
             self.ensure_owner(layout.lease(), "create_render_pipeline")?;
         }
+        let color_target_formats = descriptor
+            .fragment
+            .as_ref()
+            .map_or_else(Vec::new, |fragment| {
+                fragment
+                    .targets
+                    .iter()
+                    .map(|target| target.as_ref().map(|target| target.format))
+                    .collect()
+            });
+        let depth_stencil_format = descriptor.depth_stencil.as_ref().map(|state| state.format);
+        let sample_count = descriptor.multisample.count;
+        let multiview = descriptor.multiview;
+        let vertex_buffers = descriptor
+            .vertex
+            .buffers
+            .iter()
+            .map(|buffer| GpuVertexBufferInfo {
+                array_stride: buffer.array_stride,
+                step_mode: buffer.step_mode,
+                last_stride: buffer
+                    .attributes
+                    .iter()
+                    .map(|attribute| attribute.offset + attribute.format.size())
+                    .max()
+                    .unwrap_or(0),
+            })
+            .collect();
+        let strip_index_format = descriptor.primitive.strip_index_format;
+        let requires_blend_constant = descriptor.fragment.as_ref().is_some_and(|fragment| {
+            fragment.targets.iter().flatten().any(|target| {
+                target
+                    .blend
+                    .as_ref()
+                    .is_some_and(|blend| blend.color.uses_constant() || blend.alpha.uses_constant())
+            })
+        });
+        let writes_depth = descriptor
+            .depth_stencil
+            .as_ref()
+            .is_some_and(|state| !state.is_depth_read_only());
+        let writes_stencil = descriptor
+            .depth_stencil
+            .as_ref()
+            .is_some_and(|state| !state.is_stencil_read_only(descriptor.primitive.cull_mode));
         self.ensure_owner(descriptor.vertex.module.lease(), "create_render_pipeline")?;
         ensure_stage(
             descriptor.vertex.module,
@@ -460,6 +610,15 @@ impl GpuResources<'_> {
                 label: descriptor.label.map(str::to_owned),
                 explicit_layout: descriptor.layout.map(GpuPipelineLayout::id),
             },
+            color_target_formats,
+            depth_stencil_format,
+            sample_count,
+            multiview,
+            vertex_buffers,
+            strip_index_format,
+            requires_blend_constant,
+            writes_depth,
+            writes_stencil,
         })))
     }
 }

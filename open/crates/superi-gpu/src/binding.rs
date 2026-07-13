@@ -373,6 +373,10 @@ impl GpuBindGroup {
     pub fn raw(&self) -> &wgpu::BindGroup {
         &self.0.raw
     }
+
+    pub(crate) fn lease(&self) -> &ResourceLease {
+        &self.0.lease
+    }
 }
 
 impl GpuResources<'_> {

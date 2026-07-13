@@ -199,6 +199,18 @@ impl<'device> GpuResources<'device> {
         self.device
     }
 
+    pub(crate) const fn enabled_features(&self) -> wgpu::Features {
+        self.device.enabled_features()
+    }
+
+    pub(crate) const fn enabled_limits(&self) -> &wgpu::Limits {
+        self.device.enabled_limits()
+    }
+
+    pub(crate) const fn device_identity(&self) -> &Arc<()> {
+        self.device.identity()
+    }
+
     pub(crate) fn texture_format_features(
         &self,
         format: wgpu::TextureFormat,
