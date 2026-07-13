@@ -444,6 +444,12 @@ pub struct AspectRatio {
 }
 
 impl AspectRatio {
+    /// A square-pixel or otherwise one-to-one aspect ratio.
+    pub const SQUARE: Self = Self {
+        numerator: 1,
+        denominator: 1,
+    };
+
     /// Creates and reduces a positive ratio.
     pub fn new(numerator: u32, denominator: u32) -> Result<Self> {
         if numerator == 0 || denominator == 0 {
