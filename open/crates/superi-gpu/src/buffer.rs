@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use superi_core::error::Result;
 
+use crate::pool::MemoryReservation;
 use crate::resource::{invalid, GpuResourceId, GpuResourceKind, GpuResources, ResourceLease};
 
 /// An owned snapshot of the descriptor used to create a managed buffer.
@@ -46,6 +47,7 @@ struct GpuBufferInner {
     lease: ResourceLease,
     raw: wgpu::Buffer,
     info: GpuBufferInfo,
+    memory: Option<MemoryReservation>,
 }
 
 /// A cloneable, device-scoped owner for one wgpu buffer.
@@ -77,6 +79,12 @@ impl GpuBuffer {
         &self.0.raw
     }
 
+    /// Returns managed payload bytes attached to this allocation, when budgeted.
+    #[must_use]
+    pub fn accounted_bytes(&self) -> Option<u64> {
+        self.0.memory.as_ref().map(MemoryReservation::bytes)
+    }
+
     pub(crate) fn lease(&self) -> &ResourceLease {
         &self.0.lease
     }
@@ -85,6 +93,22 @@ impl GpuBuffer {
 impl GpuResources<'_> {
     /// Creates and tracks a buffer in this manager's device lifetime.
     pub fn create_buffer(&self, descriptor: &wgpu::BufferDescriptor<'_>) -> Result<GpuBuffer> {
+        self.create_buffer_inner(descriptor, None)
+    }
+
+    pub(crate) fn create_buffer_with_reservation(
+        &self,
+        descriptor: &wgpu::BufferDescriptor<'_>,
+        memory: MemoryReservation,
+    ) -> Result<GpuBuffer> {
+        self.create_buffer_inner(descriptor, Some(memory))
+    }
+
+    fn create_buffer_inner(
+        &self,
+        descriptor: &wgpu::BufferDescriptor<'_>,
+        memory: Option<MemoryReservation>,
+    ) -> Result<GpuBuffer> {
         if descriptor.usage.is_empty() {
             return Err(invalid(
                 "create_buffer",
@@ -106,6 +130,11 @@ impl GpuResources<'_> {
         };
         let raw = self.wgpu_device().create_buffer(descriptor);
         let lease = self.lease(GpuResourceKind::Buffer, descriptor.label)?;
-        Ok(GpuBuffer(Arc::new(GpuBufferInner { lease, raw, info })))
+        Ok(GpuBuffer(Arc::new(GpuBufferInner {
+            lease,
+            raw,
+            info,
+            memory,
+        })))
     }
 }
