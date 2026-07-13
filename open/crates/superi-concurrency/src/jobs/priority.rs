@@ -1,9 +1,9 @@
 //! Deterministic priority policy for scheduled media work.
 //!
 //! The scheduler owns ordering, not execution. It keeps one FIFO queue per user-visible priority
-//! and dispatches from a fixed weighted service cycle. Later worker-pool and lifecycle layers can
-//! consume [`ScheduledJob`] values without hiding priority, source identity, or derived-media
-//! fallback decisions inside a thread runtime.
+//! and dispatches from a fixed weighted service cycle. The bounded worker pool consumes
+//! [`ScheduledJob`] values and applies the same service cycle across local queues without hiding
+//! priority, source identity, or derived-media fallback decisions inside the thread runtime.
 
 use std::collections::{BTreeSet, VecDeque};
 
@@ -597,7 +597,7 @@ impl<T> ScheduledJob<T> {
     }
 }
 
-const SERVICE_PATTERN: [JobPriority; 15] = [
+pub(super) const SERVICE_PATTERN: [JobPriority; 15] = [
     JobPriority::Interactive,
     JobPriority::Playback,
     JobPriority::Interactive,
@@ -685,6 +685,21 @@ impl<T> PriorityScheduler<T> {
             "a nonempty scheduler must have a queued priority class"
         );
         None
+    }
+
+    /// Dispatches the oldest job from one exact priority class.
+    ///
+    /// The worker pool owns the global weighted cursor when several local schedulers participate
+    /// in one pool. Keeping this operation crate-private prevents public callers from bypassing the
+    /// scheduler's starvation bounds.
+    pub(super) fn next_job_for(&mut self, priority: JobPriority) -> Option<ScheduledJob<T>> {
+        let job = self.queues[usize::from(priority.rank())].pop_front()?;
+        let removed = self.queued_ids.remove(&job.id);
+        debug_assert!(
+            removed,
+            "queued job identity index must match FIFO contents"
+        );
+        Some(job)
     }
 
     /// Returns the total number of queued jobs.
