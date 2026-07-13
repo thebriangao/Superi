@@ -11,6 +11,7 @@ use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Res
 use superi_core::pixel::AlphaMode;
 
 use crate::channels::{ChannelIndex, ChannelList, ChannelName, StandardChannel};
+use crate::limits::{contextualize_limit_error, try_clone_slice, ImageLimits};
 use crate::value::{Image, ImageDescriptor, ImageSamples};
 
 const COMPONENT: &str = "superi-image.alpha";
@@ -291,29 +292,90 @@ impl AlphaTransform {
     /// unchanged. Only color samples and the explicit alpha interpretation of
     /// the returned image change.
     pub fn transform_image(&self, image: &Image) -> Result<Image> {
+        self.transform_image_with_limits(image, &ImageLimits::default())
+    }
+
+    /// Converts a dense image with an explicit finite output allocation policy.
+    pub fn transform_image_with_limits(
+        &self,
+        image: &Image,
+        limits: &ImageLimits,
+    ) -> Result<Image> {
         self.validate_image(image)?;
+        let bounds = image.descriptor().data_window();
+        limits
+            .check_dimensions(bounds.width(), bounds.height(), "transform_alpha_image")
+            .map_err(|error| {
+                contextualize_limit_error(error, COMPONENT, "transform_alpha_image")
+            })?;
+        let display = image.descriptor().display_window();
+        limits
+            .check_dimensions(display.width(), display.height(), "transform_alpha_image")
+            .map_err(|error| {
+                contextualize_limit_error(error, COMPONENT, "transform_alpha_image")
+            })?;
+        limits
+            .check_channels(image.descriptor().channels().len(), "transform_alpha_image")
+            .map_err(|error| {
+                contextualize_limit_error(error, COMPONENT, "transform_alpha_image")
+            })?;
+        match image.samples() {
+            ImageSamples::U8(values) => {
+                limits
+                    .check_allocation::<u8>(values.len(), "transform_alpha_image")
+                    .map_err(|error| {
+                        contextualize_limit_error(error, COMPONENT, "transform_alpha_image")
+                    })?;
+            }
+            ImageSamples::U16(values) | ImageSamples::F16(values) => {
+                limits
+                    .check_allocation::<u16>(values.len(), "transform_alpha_image")
+                    .map_err(|error| {
+                        contextualize_limit_error(error, COMPONENT, "transform_alpha_image")
+                    })?;
+            }
+            ImageSamples::F32(values) => {
+                limits
+                    .check_allocation::<u32>(values.len(), "transform_alpha_image")
+                    .map_err(|error| {
+                        contextualize_limit_error(error, COMPONENT, "transform_alpha_image")
+                    })?;
+            }
+        }
         if self.source_mode == self.destination_mode {
             return Ok(image.clone());
         }
 
         let samples = match image.samples() {
             ImageSamples::U8(values) => {
-                let mut values = values.to_vec();
+                let mut values = try_clone_slice(values, *limits, "transform_alpha_image")
+                    .map_err(|error| {
+                        contextualize_limit_error(error, COMPONENT, "transform_alpha_image")
+                    })?;
                 self.transform_u8_pixels(&mut values)?;
                 ImageSamples::from_u8(values)
             }
             ImageSamples::U16(values) => {
-                let mut values = values.to_vec();
+                let mut values = try_clone_slice(values, *limits, "transform_alpha_image")
+                    .map_err(|error| {
+                        contextualize_limit_error(error, COMPONENT, "transform_alpha_image")
+                    })?;
                 self.transform_u16_pixels(&mut values)?;
                 ImageSamples::from_u16(values)
             }
             ImageSamples::F16(bits) => {
-                let mut bits = bits.to_vec();
+                let mut bits =
+                    try_clone_slice(bits, *limits, "transform_alpha_image").map_err(|error| {
+                        contextualize_limit_error(error, COMPONENT, "transform_alpha_image")
+                    })?;
                 self.transform_f16_bits(&mut bits)?;
                 ImageSamples::from_f16_bits(bits)
             }
             ImageSamples::F32(bits) => {
-                let mut bits = bits.to_vec();
+                let mut bits =
+                    try_clone_slice(bits, *limits, "transform_alpha_image").map_err(|error| {
+                        contextualize_limit_error(error, COMPONENT, "transform_alpha_image")
+                    })?;
                 self.transform_f32_bits(&mut bits)?;
                 ImageSamples::from_f32_bits(bits)
             }

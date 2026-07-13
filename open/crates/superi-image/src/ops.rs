@@ -13,6 +13,7 @@ use superi_core::pixel::{AlphaMode, PixelFormat};
 
 use crate::alpha::AlphaLayout;
 use crate::channels::{ChannelIndex, ChannelList};
+use crate::limits::{contextualize_limit_error, ImageLimits};
 use crate::value::{Image, ImageDescriptor, ImageSampleType, ImageSamples};
 
 const COMPONENT: &str = "superi-image.ops";
@@ -68,8 +69,24 @@ pub enum ChannelSource {
 /// The display window and all non-spatial identity are retained. Requested
 /// pixels outside the source data window use the documented outside fill.
 pub fn crop(source: &Image, data_window: PixelBounds) -> Result<Image> {
+    crop_with_limits(source, data_window, &ImageLimits::default())
+}
+
+/// Crops with an explicit finite output allocation policy.
+pub fn crop_with_limits(
+    source: &Image,
+    data_window: PixelBounds,
+    limits: &ImageLimits,
+) -> Result<Image> {
     require_nonempty(data_window, "crop_image")?;
-    let samples = resample_exact(source, data_window, |x, y| {
+    check_dense_result(
+        source.descriptor(),
+        data_window,
+        source.descriptor().display_window(),
+        *limits,
+        "crop_image",
+    )?;
+    let samples = resample_exact(source, data_window, *limits, |x, y| {
         Point2::new(f64::from(x) + 0.5, f64::from(y) + 0.5)
             .map_err(|error| with_ops_context(error, "crop_image"))
     })?;
@@ -87,6 +104,16 @@ pub fn crop(source: &Image, data_window: PixelBounds) -> Result<Image> {
 /// forward mapping is applied to the display window, rounded outward to retain
 /// its full spatial coverage.
 pub fn resize(source: &Image, data_window: PixelBounds, filter: ResampleFilter) -> Result<Image> {
+    resize_with_limits(source, data_window, filter, &ImageLimits::default())
+}
+
+/// Resizes with an explicit finite output allocation policy.
+pub fn resize_with_limits(
+    source: &Image,
+    data_window: PixelBounds,
+    filter: ResampleFilter,
+    limits: &ImageLimits,
+) -> Result<Image> {
     require_nonempty(data_window, "resize_image")?;
     let source_window = source.descriptor().data_window();
     let scale_x = f64::from(data_window.width()) / f64::from(source_window.width());
@@ -99,7 +126,7 @@ pub fn resize(source: &Image, data_window: PixelBounds, filter: ResampleFilter) 
         [0.0, 0.0, 1.0],
     ])
     .map_err(|error| with_ops_context(error, "resize_image"))?;
-    transform(source, forward, data_window, filter)
+    transform_with_limits(source, forward, data_window, filter, limits)
 }
 
 /// Applies a forward source-to-destination transform into an explicit window.
@@ -113,29 +140,60 @@ pub fn transform(
     data_window: PixelBounds,
     filter: ResampleFilter,
 ) -> Result<Image> {
+    transform_with_limits(
+        source,
+        source_to_destination,
+        data_window,
+        filter,
+        &ImageLimits::default(),
+    )
+}
+
+/// Transforms with an explicit finite output allocation policy.
+pub fn transform_with_limits(
+    source: &Image,
+    source_to_destination: Matrix3,
+    data_window: PixelBounds,
+    filter: ResampleFilter,
+    limits: &ImageLimits,
+) -> Result<Image> {
     require_nonempty(data_window, "transform_image")?;
-    let destination_to_source = source_to_destination
-        .checked_inverse()
-        .map_err(|error| with_ops_context(error, "transform_image"))?;
     let display_window = transform_bounds_outward(
         source.descriptor().display_window(),
         source_to_destination,
         "transform_image",
     )?;
+    check_dense_result(
+        source.descriptor(),
+        data_window,
+        display_window,
+        *limits,
+        "transform_image",
+    )?;
+    let destination_to_source = source_to_destination
+        .checked_inverse()
+        .map_err(|error| with_ops_context(error, "transform_image"))?;
 
     let samples = match filter {
-        ResampleFilter::Nearest => resample_exact(source, data_window, |x, y| {
+        ResampleFilter::Nearest => resample_exact(source, data_window, *limits, |x, y| {
             destination_to_source
                 .checked_transform_point(pixel_center(x, y)?)
                 .map_err(|error| with_ops_context(error, "transform_image"))
         })?,
-        ResampleFilter::Bilinear => resample_bilinear(source, data_window, destination_to_source)?,
+        ResampleFilter::Bilinear => {
+            resample_bilinear(source, data_window, destination_to_source, *limits)?
+        }
     };
     rebuild_image(source, data_window, display_window, samples)
 }
 
 /// Mirrors an image exactly within its display window.
 pub fn flip(source: &Image, axis: FlipAxis) -> Result<Image> {
+    flip_with_limits(source, axis, &ImageLimits::default())
+}
+
+/// Mirrors with an explicit finite output allocation policy.
+pub fn flip_with_limits(source: &Image, axis: FlipAxis, limits: &ImageLimits) -> Result<Image> {
     let display = source.descriptor().display_window();
     let forward = match axis {
         FlipAxis::Horizontal => Matrix3::from_rows([
@@ -160,13 +218,28 @@ pub fn flip(source: &Image, axis: FlipAxis) -> Result<Image> {
     .map_err(|error| with_ops_context(error, "flip_image"))?;
     let data_window =
         transform_bounds_outward(source.descriptor().data_window(), forward, "flip_image")?;
-    transform(source, forward, data_window, ResampleFilter::Nearest)
+    transform_with_limits(
+        source,
+        forward,
+        data_window,
+        ResampleFilter::Nearest,
+        limits,
+    )
 }
 
 /// Rotates an image exactly in 90 degree increments around its display window.
 ///
 /// Quarter turns keep the display origin and exchange its width and height.
 pub fn rotate(source: &Image, turn: QuarterTurn) -> Result<Image> {
+    rotate_with_limits(source, turn, &ImageLimits::default())
+}
+
+/// Rotates with an explicit finite output allocation policy.
+pub fn rotate_with_limits(
+    source: &Image,
+    turn: QuarterTurn,
+    limits: &ImageLimits,
+) -> Result<Image> {
     let display = source.descriptor().display_window();
     let min_x = f64::from(display.min_x());
     let min_y = f64::from(display.min_y());
@@ -200,7 +273,13 @@ pub fn rotate(source: &Image, turn: QuarterTurn) -> Result<Image> {
     .map_err(|error| with_ops_context(error, "rotate_image"))?;
     let data_window =
         transform_bounds_outward(source.descriptor().data_window(), forward, "rotate_image")?;
-    transform(source, forward, data_window, ResampleFilter::Nearest)
+    transform_with_limits(
+        source,
+        forward,
+        data_window,
+        ResampleFilter::Nearest,
+        limits,
+    )
 }
 
 /// Interpolates two images with a finite inclusive amount from 0 to 1.
@@ -209,6 +288,16 @@ pub fn rotate(source: &Image, turn: QuarterTurn) -> Result<Image> {
 /// before interpolation and restored afterward, preventing hidden transparent
 /// color from creating fringes. The first image owns result metadata.
 pub fn blend(first: &Image, second: &Image, amount: f32) -> Result<Image> {
+    blend_with_limits(first, second, amount, &ImageLimits::default())
+}
+
+/// Blends with an explicit finite output allocation policy.
+pub fn blend_with_limits(
+    first: &Image,
+    second: &Image,
+    amount: f32,
+    limits: &ImageLimits,
+) -> Result<Image> {
     if !amount.is_finite() || !(0.0..=1.0).contains(&amount) {
         return Err(invalid(
             "blend_images",
@@ -221,6 +310,13 @@ pub fn blend(first: &Image, second: &Image, amount: f32) -> Result<Image> {
             "blended images must have identical descriptors",
         ));
     }
+    check_dense_result(
+        first.descriptor(),
+        first.descriptor().data_window(),
+        first.descriptor().display_window(),
+        *limits,
+        "blend_images",
+    )?;
     if amount == 0.0 {
         return Ok(first.clone());
     }
@@ -240,7 +336,7 @@ pub fn blend(first: &Image, second: &Image, amount: f32) -> Result<Image> {
     let mut second_pixel = vec![0.0; descriptor.channels().len()];
     let inverse = 1.0 - f64::from(amount);
     let amount = f64::from(amount);
-    let samples = generate_samples(descriptor, bounds, |x, y, output| {
+    let samples = generate_samples(descriptor, bounds, *limits, |x, y, output| {
         read_stored_pixel(first, i64::from(x), i64::from(y), &layout, &mut first_pixel)?;
         read_stored_pixel(
             second,
@@ -268,20 +364,36 @@ pub fn blend(first: &Image, second: &Image, amount: f32) -> Result<Image> {
 /// multilayer and component-alpha bindings explicit. The foreground owns result
 /// metadata.
 pub fn composite_over(foreground: &Image, background: &Image) -> Result<Image> {
+    composite_over_with_limits(foreground, background, &ImageLimits::default())
+}
+
+/// Composites with an explicit finite output allocation policy.
+pub fn composite_over_with_limits(
+    foreground: &Image,
+    background: &Image,
+    limits: &ImageLimits,
+) -> Result<Image> {
     require_binary_semantics(foreground, background, "composite_images")?;
     let descriptor = foreground.descriptor();
-    let layout = AlphaLayout::from_channels(descriptor.channels());
-    validate_composite_layout(descriptor.alpha_mode(), &layout)?;
     let data_window = descriptor
         .data_window()
         .union(background.descriptor().data_window());
     let display_window = descriptor
         .display_window()
         .union(background.descriptor().display_window());
+    check_dense_result(
+        descriptor,
+        data_window,
+        display_window,
+        *limits,
+        "composite_images",
+    )?;
+    let layout = AlphaLayout::from_channels(descriptor.channels());
+    validate_composite_layout(descriptor.alpha_mode(), &layout)?;
     let mut foreground_pixel = vec![0.0; descriptor.channels().len()];
     let mut background_pixel = vec![0.0; descriptor.channels().len()];
 
-    let samples = generate_samples(descriptor, data_window, |x, y, output| {
+    let samples = generate_samples(descriptor, data_window, *limits, |x, y, output| {
         let foreground_covered = read_composite_pixel(
             foreground,
             i64::from(x),
@@ -347,6 +459,25 @@ pub fn remap_channels(
     destination_channels: ChannelList,
     mapping: &[ChannelSource],
 ) -> Result<Image> {
+    remap_channels_with_limits(
+        source,
+        destination_format,
+        destination_alpha_mode,
+        destination_channels,
+        mapping,
+        &ImageLimits::default(),
+    )
+}
+
+/// Remaps channels with an explicit finite output allocation policy.
+pub fn remap_channels_with_limits(
+    source: &Image,
+    destination_format: PixelFormat,
+    destination_alpha_mode: AlphaMode,
+    destination_channels: ChannelList,
+    mapping: &[ChannelSource],
+    limits: &ImageLimits,
+) -> Result<Image> {
     if mapping.len() != destination_channels.len() {
         return Err(invalid(
             "remap_image_channels",
@@ -396,8 +527,15 @@ pub fn remap_channels(
             "channel remapping cannot change the scalar sample representation",
         ));
     }
+    check_dense_result(
+        &descriptor,
+        descriptor.data_window(),
+        descriptor.display_window(),
+        *limits,
+        "remap_image_channels",
+    )?;
 
-    let samples = remap_sample_payloads(source, &descriptor, mapping)?;
+    let samples = remap_sample_payloads(source, &descriptor, mapping, *limits)?;
     Image::new_with_metadata(descriptor, samples, source.metadata().clone())
         .map_err(|error| with_ops_context(error, "remap_image_channels"))
 }
@@ -425,7 +563,12 @@ pub fn rename_channels(source: &Image, channels: ChannelList) -> Result<Image> {
     .map_err(|error| with_ops_context(error, "rename_image_channels"))
 }
 
-fn resample_exact<F>(source: &Image, bounds: PixelBounds, mut mapping: F) -> Result<ImageSamples>
+fn resample_exact<F>(
+    source: &Image,
+    bounds: PixelBounds,
+    limits: ImageLimits,
+    mut mapping: F,
+) -> Result<ImageSamples>
 where
     F: FnMut(i32, i32) -> Result<Point2>,
 {
@@ -437,7 +580,7 @@ where
     macro_rules! exact_values {
         ($values:expr, $zero:expr, $one:expr, $constructor:expr) => {{
             let mut output = Vec::new();
-            try_reserve(&mut output, sample_count, "resample_image")?;
+            try_reserve(&mut output, sample_count, limits, "resample_image")?;
             for y in bounds.min_y()..bounds.max_y() {
                 for x in bounds.min_x()..bounds.max_x() {
                     let point = mapping(x, y)?;
@@ -485,11 +628,12 @@ fn resample_bilinear(
     source: &Image,
     bounds: PixelBounds,
     destination_to_source: Matrix3,
+    limits: ImageLimits,
 ) -> Result<ImageSamples> {
     let descriptor = source.descriptor();
     let layout = AlphaLayout::from_channels(descriptor.channels());
     let mut neighbor = vec![0.0; descriptor.channels().len()];
-    generate_samples(descriptor, bounds, |x, y, output| {
+    generate_samples(descriptor, bounds, limits, |x, y, output| {
         let source_point = destination_to_source
             .checked_transform_point(pixel_center(x, y)?)
             .map_err(|error| with_ops_context(error, "transform_image"))?;
@@ -530,6 +674,7 @@ fn resample_bilinear(
 fn generate_samples<F>(
     descriptor: &ImageDescriptor,
     bounds: PixelBounds,
+    limits: ImageLimits,
     mut generate: F,
 ) -> Result<ImageSamples>
 where
@@ -542,7 +687,7 @@ where
     macro_rules! generate_values {
         ($type:ty, $convert:expr, $constructor:expr) => {{
             let mut output: Vec<$type> = Vec::new();
-            try_reserve(&mut output, sample_count, "generate_image_samples")?;
+            try_reserve(&mut output, sample_count, limits, "generate_image_samples")?;
             for y in bounds.min_y()..bounds.max_y() {
                 for x in bounds.min_x()..bounds.max_x() {
                     pixel.fill(0.0);
@@ -706,6 +851,7 @@ fn remap_sample_payloads(
     source: &Image,
     destination: &ImageDescriptor,
     mapping: &[ChannelSource],
+    limits: ImageLimits,
 ) -> Result<ImageSamples> {
     let pixel_count =
         checked_sample_count(source.descriptor().data_window(), 1, "remap_image_channels")?;
@@ -715,7 +861,12 @@ fn remap_sample_payloads(
     macro_rules! remap_values {
         ($values:expr, $constant:expr, $constructor:expr, $type:ty) => {{
             let mut output: Vec<$type> = Vec::new();
-            try_reserve(&mut output, destination_count, "remap_image_channels")?;
+            try_reserve(
+                &mut output,
+                destination_count,
+                limits,
+                "remap_image_channels",
+            )?;
             for pixel in 0..pixel_count {
                 let base = pixel
                     .checked_mul(source_channels)
@@ -932,13 +1083,45 @@ fn checked_sample_count(
         .ok_or_else(|| exhausted(operation, "image sample count overflowed"))
 }
 
-fn try_reserve<T>(values: &mut Vec<T>, count: usize, operation: &'static str) -> Result<()> {
-    values.try_reserve_exact(count).map_err(|_| {
-        exhausted(
-            operation,
-            "image result allocation exceeds available memory",
-        )
-    })
+fn try_reserve<T>(
+    values: &mut Vec<T>,
+    count: usize,
+    limits: ImageLimits,
+    operation: &'static str,
+) -> Result<()> {
+    limits
+        .try_reserve_exact(values, count, operation)
+        .map_err(|error| contextualize_limit_error(error, COMPONENT, operation))
+}
+
+fn check_dense_result(
+    descriptor: &ImageDescriptor,
+    data_window: PixelBounds,
+    display_window: PixelBounds,
+    limits: ImageLimits,
+    operation: &'static str,
+) -> Result<()> {
+    limits
+        .check_dimensions(data_window.width(), data_window.height(), operation)
+        .map_err(|error| contextualize_limit_error(error, COMPONENT, operation))?;
+    limits
+        .check_dimensions(display_window.width(), display_window.height(), operation)
+        .map_err(|error| contextualize_limit_error(error, COMPONENT, operation))?;
+    limits
+        .check_channels(descriptor.channels().len(), operation)
+        .map_err(|error| contextualize_limit_error(error, COMPONENT, operation))?;
+    let sample_count = checked_sample_count(data_window, descriptor.channels().len(), operation)?;
+    match descriptor.sample_type() {
+        ImageSampleType::U8 => limits.check_allocation::<u8>(sample_count, operation),
+        ImageSampleType::U16 | ImageSampleType::F16 => {
+            limits.check_allocation::<u16>(sample_count, operation)
+        }
+        ImageSampleType::U32 | ImageSampleType::F32 => {
+            limits.check_allocation::<u32>(sample_count, operation)
+        }
+    }
+    .map(|_| ())
+    .map_err(|error| contextualize_limit_error(error, COMPONENT, operation))
 }
 
 fn alpha_flags(channel_count: usize, layout: &AlphaLayout) -> Vec<bool> {

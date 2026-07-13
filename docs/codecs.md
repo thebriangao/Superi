@@ -96,6 +96,24 @@ unmodeled chunks. Re-encoding rejects signed windows, tiled or mip storage, unsu
 mixed channel types, nonstandard channels, premultiplied alpha, or metadata the target cannot
 carry. Every reader applies explicit dimension and decoded-byte limits before exposing storage.
 
+`superi_image::limits::ImageLimits` is the shared finite policy for still-image reads and
+image-producing CPU work. It caps width, height, result or retained allocation bytes, logical
+channels, still-image layers, metadata bytes, and independently described tiles. Existing crop,
+resize, affine transform, flip, rotate, blend, composite, channel-remap, alpha-transform,
+thumbnail, and waveform entry points use a finite default. Their `*_with_limits` forms let a
+constrained caller lower the same ceilings without changing accepted image semantics.
+
+Raster decoders receive the upstream `image` limits and are checked again by Superi because
+`image` 0.25.6 documents allocation enforcement as decoder-dependent. OpenEXR input is parsed in
+pedantic, non-parallel mode behind a bounded metadata reader, then checked for dimensions,
+display extent, layers, channels, decoded sample bytes, and tile count before full decode. DPX
+headers, data ranges, row sizes, decoded planes, and retained source bytes use checked arithmetic
+and fallible reservation. Limit violations are resource-exhausted failures, malformed or truncated
+representations are corrupt-data failures, and accepted output retains its existing channel,
+metadata, precision, alpha, and spatial contracts. Allocations performed internally by third-party
+decoders remain subject to those libraries, so Superi preflights every structure it can observe and
+uses fallible reservation for source-sized vectors it owns.
+
 `superi-image::sequence` discovers filesystem sequences from the rightmost signed decimal frame
 number while preserving the selected directory, filename prefix and suffix, and minimum digit
 width. Callers provide the positive frame step explicitly; discovery sorts matching files by their

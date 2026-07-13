@@ -7,7 +7,7 @@
 //! silently converting them.
 
 use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -24,6 +24,7 @@ use superi_core::geometry::PixelBounds;
 use superi_core::pixel::AlphaMode;
 
 use crate::channels::{ChannelIndex, ChannelList};
+use crate::limits::{contextualize_limit_error, try_clone_slice, try_zeroed_bytes, ImageLimits};
 use crate::metadata::{ImageColorTags, ImageMetadata, ImageMetadataValue, ImageOrientation};
 use crate::model::{ByteAlignment, ChannelSlice, ChannelStorageLayout, ImageStorage, StoragePlane};
 use crate::tiling::{
@@ -120,29 +121,34 @@ impl StillImageFormat {
 }
 
 /// Limits and external identity applied while decoding one still image.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ReadOptions {
-    max_width: u32,
-    max_height: u32,
-    max_decoded_bytes: u64,
+    limits: ImageLimits,
     sequence_position: Option<ImageSequencePosition>,
 }
 
 impl ReadOptions {
     /// Creates decode options with explicit resource limits.
     pub fn new(max_width: u32, max_height: u32, max_decoded_bytes: u64) -> Result<Self> {
-        if max_width == 0 || max_height == 0 || max_decoded_bytes == 0 {
-            return Err(invalid(
-                "create_read_options",
-                "still-image decode limits must be greater than zero",
-            ));
-        }
         Ok(Self {
-            max_width,
-            max_height,
-            max_decoded_bytes,
+            limits: ImageLimits::new(max_width, max_height, max_decoded_bytes)?,
             sequence_position: None,
         })
+    }
+
+    /// Creates decode options from one shared image resource policy.
+    #[must_use]
+    pub const fn from_limits(limits: ImageLimits) -> Self {
+        Self {
+            limits,
+            sequence_position: None,
+        }
+    }
+
+    /// Returns the complete image resource policy.
+    #[must_use]
+    pub const fn limits(self) -> ImageLimits {
+        self.limits
     }
 
     /// Attaches caller-owned media sequence identity to the decoded image.
@@ -155,36 +161,25 @@ impl ReadOptions {
     /// Returns the maximum accepted image width.
     #[must_use]
     pub const fn max_width(self) -> u32 {
-        self.max_width
+        self.limits.max_width()
     }
 
     /// Returns the maximum accepted image height.
     #[must_use]
     pub const fn max_height(self) -> u32 {
-        self.max_height
+        self.limits.max_height()
     }
 
     /// Returns the maximum decoded byte allocation.
     #[must_use]
     pub const fn max_decoded_bytes(self) -> u64 {
-        self.max_decoded_bytes
+        self.limits.max_memory_bytes()
     }
 
     /// Returns the external sequence identity applied to each decoded layer.
     #[must_use]
     pub const fn sequence_position(self) -> Option<ImageSequencePosition> {
         self.sequence_position
-    }
-}
-
-impl Default for ReadOptions {
-    fn default() -> Self {
-        Self {
-            max_width: 65_536,
-            max_height: 65_536,
-            max_decoded_bytes: 4 * 1024 * 1024 * 1024,
-            sequence_position: None,
-        }
     }
 }
 
@@ -375,11 +370,22 @@ pub fn read<R: BufRead + Seek>(
     format: StillImageFormat,
     options: &ReadOptions,
 ) -> Result<StillImage> {
-    match format {
+    let result = match format {
         StillImageFormat::Exr => read_exr(reader, options),
         StillImageFormat::Dpx => read_dpx(reader, options),
         _ => read_raster(reader, format, options),
-    }
+    };
+    result.map_err(|error| {
+        if error
+            .contexts()
+            .first()
+            .is_some_and(|context| context.component() == "superi-image.limits")
+        {
+            contextualize_limit_error(error, COMPONENT, "decode_image")
+        } else {
+            error
+        }
+    })
 }
 
 /// Encodes one still image to a seekable stream.
@@ -433,8 +439,6 @@ fn read_raster<R: BufRead + Seek>(
     format: StillImageFormat,
     options: &ReadOptions,
 ) -> Result<StillImage> {
-    const MAX_HEADER_OVERHEAD: u64 = 16 * 1024 * 1024;
-
     let start = reader
         .stream_position()
         .map_err(|source| file_error("inspect_raster", source))?;
@@ -445,9 +449,9 @@ fn read_raster<R: BufRead + Seek>(
         .into_decoder()
         .map_err(|source| image_read_error(format, source))?;
     let mut limits = image::Limits::default();
-    limits.max_image_width = Some(options.max_width);
-    limits.max_image_height = Some(options.max_height);
-    limits.max_alloc = Some(options.max_decoded_bytes);
+    limits.max_image_width = Some(options.limits.max_width());
+    limits.max_image_height = Some(options.limits.max_height());
+    limits.max_alloc = Some(options.limits.max_memory_bytes());
     decoder
         .set_limits(limits)
         .map_err(|source| image_read_error(format, source))?;
@@ -455,8 +459,11 @@ fn read_raster<R: BufRead + Seek>(
     let (width, height) = decoder.dimensions();
     let color_type = decoder.color_type();
     let original_color_type = decoder.original_color_type();
+    options
+        .limits
+        .check_dimensions(width, height, "decode_raster")?;
     let total_bytes = decoder.total_bytes();
-    if total_bytes > options.max_decoded_bytes {
+    if total_bytes > options.limits.max_memory_bytes() {
         return Err(exhausted(
             "decode_raster",
             "decoded image exceeds the configured byte limit",
@@ -474,15 +481,26 @@ fn read_raster<R: BufRead + Seek>(
     let exif = decoder
         .exif_metadata()
         .map_err(|source| image_read_error(format, source))?;
+    let metadata_bytes = icc
+        .as_ref()
+        .map_or(0_u64, |bytes| bytes.len() as u64)
+        .checked_add(exif.as_ref().map_or(0_u64, |bytes| bytes.len() as u64))
+        .ok_or_else(|| exhausted("decode_raster", "raster metadata size overflows"))?;
+    options
+        .limits
+        .check_metadata_bytes(metadata_bytes, "decode_raster")?;
     let orientation = decoder
         .orientation()
         .map_err(|source| image_read_error(format, source))?;
-    let mut bytes = vec![0_u8; total_bytes];
+    let mut bytes = try_zeroed_bytes(total_bytes, options.limits, "decode_raster")?;
     decoder
         .read_image(&mut bytes)
         .map_err(|source| image_read_error(format, source))?;
 
     let raster = RasterDescription::from_color_type(color_type)?;
+    options
+        .limits
+        .check_channels(raster.channels.len(), "decode_raster")?;
     let bounds = PixelBounds::from_origin_size(0, 0, width, height)?;
     let row_stride = checked_product(
         &[width as u64, u64::from(color_type.bytes_per_pixel())],
@@ -547,21 +565,12 @@ fn read_raster<R: BufRead + Seek>(
     reader
         .seek(SeekFrom::Start(start))
         .map_err(|source| file_error("rewind_raster", source))?;
-    let max_file_bytes = options
-        .max_decoded_bytes
-        .checked_add(MAX_HEADER_OVERHEAD)
-        .ok_or_else(|| exhausted("decode_raster", "raster file limit overflows"))?;
-    let mut source_bytes = Vec::new();
-    (&mut *reader)
-        .take(max_file_bytes + 1)
-        .read_to_end(&mut source_bytes)
-        .map_err(|source| file_error("retain_raster", source))?;
-    if source_bytes.len() as u64 > max_file_bytes {
-        return Err(exhausted(
-            "decode_raster",
-            "raster file exceeds the configured file limit",
-        ));
-    }
+    let source_bytes = read_bounded(
+        reader,
+        options.limits.max_memory_bytes(),
+        options.limits,
+        "retain_raster",
+    )?;
     Ok(StillImage {
         layers: vec![StillImageLayer { name: None, access }],
         original: Some(OriginalRepresentation::Raster {
@@ -906,10 +915,14 @@ fn read_exr<R: Read + Seek>(reader: &mut R, options: &ReadOptions) -> Result<Sti
         .all_channels()
         .all_layers()
         .all_attributes()
+        .pedantic()
         .non_parallel()
         .from_buffered(reader)
         .map_err(exr_read_error)?;
-    let mut layers = Vec::with_capacity(original.layer_data.len());
+    let mut layers = Vec::new();
+    options
+        .limits
+        .try_reserve_exact(&mut layers, original.layer_data.len(), "decode_exr")?;
     for layer in &original.layer_data {
         layers.push(exr_layer_to_access(&original.attributes, layer, options)?);
     }
@@ -943,13 +956,22 @@ fn preflight_exr<R: Read + Seek>(reader: &mut R, options: &ReadOptions) -> Resul
     let start = reader
         .stream_position()
         .map_err(|source| file_error("inspect_exr", source))?;
-    let metadata =
-        exr::meta::MetaData::read_from_buffered(&mut *reader, true).map_err(exr_read_error)?;
+    let metadata = {
+        let mut bounded = MetadataBudgetReader::new(reader, options.limits.max_metadata_bytes());
+        exr::meta::MetaData::read_from_buffered(&mut bounded, true).map_err(exr_read_error)?
+    };
     reader
         .seek(SeekFrom::Start(start))
         .map_err(|source| file_error("rewind_exr", source))?;
+    options
+        .limits
+        .check_layers(metadata.headers.len(), "decode_exr")?;
     let mut total_bytes = 0_u64;
+    let mut total_tiles = 0_usize;
     for header in &metadata.headers {
+        options
+            .limits
+            .check_channels(header.channels.list.len(), "decode_exr")?;
         if header.deep {
             return Err(unsupported(
                 "decode_exr",
@@ -960,12 +982,26 @@ fn preflight_exr<R: Read + Seek>(reader: &mut R, options: &ReadOptions) -> Resul
             .map_err(|_| exhausted("decode_exr", "OpenEXR width exceeds the supported range"))?;
         let height = u32::try_from(header.layer_size.height())
             .map_err(|_| exhausted("decode_exr", "OpenEXR height exceeds the supported range"))?;
-        if width > options.max_width || height > options.max_height {
-            return Err(exhausted(
+        options
+            .limits
+            .check_dimensions(width, height, "decode_exr")?;
+        let display_width = u32::try_from(header.shared_attributes.display_window.size.width())
+            .map_err(|_| {
+                exhausted(
+                    "decode_exr",
+                    "OpenEXR display width exceeds the supported range",
+                )
+            })?;
+        let display_height = u32::try_from(header.shared_attributes.display_window.size.height())
+            .map_err(|_| {
+            exhausted(
                 "decode_exr",
-                "OpenEXR dimensions exceed the configured limits",
-            ));
-        }
+                "OpenEXR display height exceeds the supported range",
+            )
+        })?;
+        options
+            .limits
+            .check_dimensions(display_width, display_height, "decode_exr")?;
         if header
             .channels
             .list
@@ -977,23 +1013,28 @@ fn preflight_exr<R: Read + Seek>(reader: &mut R, options: &ReadOptions) -> Resul
                 "subsampled OpenEXR channels do not fit ImageAccess channel geometry",
             ));
         }
-        let level_sizes = match header.blocks {
-            BlockDescription::ScanLines => vec![header.layer_size],
-            BlockDescription::Tiles(description) => match description.level_mode {
-                LevelMode::Singular => vec![header.layer_size],
-                LevelMode::MipMap => {
-                    exr::meta::mip_map_levels(description.rounding_mode, header.layer_size)
-                        .map(|(_, size)| size)
-                        .collect()
+        let level_sizes =
+            match header.blocks {
+                BlockDescription::ScanLines => vec![header.layer_size],
+                BlockDescription::Tiles(description) => {
+                    total_tiles = total_tiles
+                        .checked_add(header.chunk_count)
+                        .ok_or_else(|| exhausted("decode_exr", "OpenEXR tile count overflows"))?;
+                    options.limits.check_tiles(total_tiles, "decode_exr")?;
+                    match description.level_mode {
+                        LevelMode::Singular => vec![header.layer_size],
+                        LevelMode::MipMap => {
+                            exr::meta::mip_map_levels(description.rounding_mode, header.layer_size)
+                                .map(|(_, size)| size)
+                                .collect()
+                        }
+                        LevelMode::RipMap => return Err(unsupported(
+                            "decode_exr",
+                            "OpenEXR rip maps do not fit the single-axis ImageAccess mip contract",
+                        )),
+                    }
                 }
-                LevelMode::RipMap => {
-                    return Err(unsupported(
-                        "decode_exr",
-                        "OpenEXR rip maps do not fit the single-axis ImageAccess mip contract",
-                    ))
-                }
-            },
-        };
+            };
         for size in level_sizes {
             for channel in &header.channels.list {
                 let level_bytes = u64::try_from(size.area())
@@ -1005,7 +1046,7 @@ fn preflight_exr<R: Read + Seek>(reader: &mut R, options: &ReadOptions) -> Resul
                 total_bytes = total_bytes
                     .checked_add(level_bytes)
                     .ok_or_else(|| exhausted("decode_exr", "OpenEXR decoded size overflows"))?;
-                if total_bytes > options.max_decoded_bytes {
+                if total_bytes > options.limits.max_memory_bytes() {
                     return Err(exhausted(
                         "decode_exr",
                         "OpenEXR decoded data exceeds the configured byte limit",
@@ -1026,18 +1067,35 @@ fn exr_layer_to_access(
 
     let data_window = exr_bounds(layer.absolute_bounds())?;
     let display_window = exr_bounds(image_attributes.display_window)?;
-    let names = layer
-        .channel_data
-        .list
-        .iter()
-        .map(|channel| channel.name.to_string())
-        .collect::<Vec<_>>();
-    let sample_types = layer
-        .channel_data
-        .list
-        .iter()
-        .map(|channel| exr_sample_type(&channel.sample_data))
-        .collect::<Result<Vec<_>>>()?;
+    options
+        .limits
+        .check_dimensions(data_window.width(), data_window.height(), "decode_exr")?;
+    options.limits.check_dimensions(
+        display_window.width(),
+        display_window.height(),
+        "decode_exr",
+    )?;
+    options
+        .limits
+        .check_channels(layer.channel_data.list.len(), "decode_exr")?;
+    let mut names = Vec::new();
+    let mut sample_types = Vec::new();
+    options
+        .limits
+        .try_reserve_exact(&mut names, layer.channel_data.list.len(), "decode_exr")?;
+    options.limits.try_reserve_exact(
+        &mut sample_types,
+        layer.channel_data.list.len(),
+        "decode_exr",
+    )?;
+    for channel in &layer.channel_data.list {
+        names.push(exr_text_string(
+            &channel.name,
+            options.limits,
+            "decode_exr",
+        )?);
+        sample_types.push(exr_sample_type(&channel.sample_data)?);
+    }
     let alpha_mode = if names.iter().any(|name| {
         name.rsplit('.')
             .next()
@@ -1054,8 +1112,18 @@ fn exr_layer_to_access(
             ImageMetadataValue::Unsigned(u64::from(image_attributes.pixel_aspect.to_bits())),
         )?;
     }
-    project_exr_attributes(&image_attributes.other, "exr.shared.", &mut metadata)?;
-    project_exr_attributes(&layer.attributes.other, "exr.layer.", &mut metadata)?;
+    project_exr_attributes(
+        &image_attributes.other,
+        "exr.shared.",
+        &mut metadata,
+        options.limits,
+    )?;
+    project_exr_attributes(
+        &layer.attributes.other,
+        "exr.layer.",
+        &mut metadata,
+        options.limits,
+    )?;
     let mut descriptor = ImageAccessDescriptor::new(
         data_window,
         display_window,
@@ -1082,16 +1150,22 @@ fn exr_layer_to_access(
                     "scanline OpenEXR parts cannot contain resolution levels",
                 ));
             }
-            let samples = layer
-                .channel_data
-                .list
-                .iter()
-                .map(|channel| match &channel.sample_data {
-                    Levels::Singular(samples) => Ok(samples),
+            let mut samples = Vec::new();
+            options.limits.try_reserve_exact(
+                &mut samples,
+                layer.channel_data.list.len(),
+                "decode_exr",
+            )?;
+            for channel in &layer.channel_data.list {
+                samples.push(match &channel.sample_data {
+                    Levels::Singular(samples) => samples,
                     _ => unreachable!("validated singular scanline samples"),
-                })
-                .collect::<Result<Vec<_>>>()?;
-            ImageAccess::from_scanline(descriptor, exr_planar_storage(data_window, &samples)?)?
+                });
+            }
+            ImageAccess::from_scanline(
+                descriptor,
+                exr_planar_storage(data_window, &samples, options.limits)?,
+            )?
         }
         Blocks::Tiles(tile_size) => {
             let (mip_mode, rounding_mode, level_count) = exr_level_contract(layer)?;
@@ -1109,10 +1183,38 @@ fn exr_layer_to_access(
             })?;
             let description =
                 TileDescription::new(tile_width, tile_height, mip_mode, rounding_mode)?;
+            let mut tile_count = 0_usize;
+            for level_number in 0..level_count {
+                let level_bounds = exr_level_bounds(data_window, layer, level_number)?;
+                let count = usize::try_from(level_bounds.width().div_ceil(tile_width))
+                    .ok()
+                    .and_then(|columns| {
+                        usize::try_from(level_bounds.height().div_ceil(tile_height))
+                            .ok()
+                            .and_then(|rows| columns.checked_mul(rows))
+                    })
+                    .ok_or_else(|| exhausted("decode_exr", "OpenEXR tile count overflows"))?;
+                tile_count = tile_count
+                    .checked_add(count)
+                    .ok_or_else(|| exhausted("decode_exr", "OpenEXR tile count overflows"))?;
+            }
+            options.limits.check_tiles(tile_count, "decode_exr")?;
             let mut tiles = Vec::new();
+            options
+                .limits
+                .try_reserve_exact(&mut tiles, tile_count, "decode_exr")?;
             for level_number in 0..level_count {
                 let level = MipLevel::new(level_number as u32);
                 let level_bounds = exr_level_bounds(data_window, layer, level_number)?;
+                let mut level_samples = Vec::new();
+                options.limits.try_reserve_exact(
+                    &mut level_samples,
+                    layer.channel_data.list.len(),
+                    "decode_exr",
+                )?;
+                for channel in &layer.channel_data.list {
+                    level_samples.push(exr_level_samples(&channel.sample_data, level_number)?);
+                }
                 let columns = level_bounds.width().div_ceil(tile_width);
                 let rows = level_bounds.height().div_ceil(tile_height);
                 for tile_y in 0..rows {
@@ -1131,16 +1233,15 @@ fn exr_layer_to_access(
                                     .expect("tile y fits i32"))
                             .min(level_bounds.max_y()),
                         )?;
-                        let level_samples = layer
-                            .channel_data
-                            .list
-                            .iter()
-                            .map(|channel| exr_level_samples(&channel.sample_data, level_number))
-                            .collect::<Result<Vec<_>>>()?;
                         tiles.push(ImageTile::new(
                             level,
                             TileIndex::new(tile_x, tile_y),
-                            exr_tile_storage(level_bounds, tile_bounds, &level_samples)?,
+                            exr_tile_storage(
+                                level_bounds,
+                                tile_bounds,
+                                &level_samples,
+                                options.limits,
+                            )?,
                         ));
                     }
                 }
@@ -1153,7 +1254,8 @@ fn exr_layer_to_access(
             .attributes
             .layer_name
             .as_ref()
-            .map(ToString::to_string),
+            .map(|name| exr_text_string(name, options.limits, "decode_exr"))
+            .transpose()?,
         access,
     )
 }
@@ -1255,12 +1357,15 @@ fn exr_level_samples(
 fn exr_planar_storage(
     bounds: PixelBounds,
     samples: &[&exr::image::FlatSamples],
+    limits: ImageLimits,
 ) -> Result<ImageStorage> {
-    let mut planes = Vec::with_capacity(samples.len());
-    let mut slices = Vec::with_capacity(samples.len());
+    let mut planes = Vec::new();
+    let mut slices = Vec::new();
+    limits.try_reserve_exact(&mut planes, samples.len(), "decode_exr")?;
+    limits.try_reserve_exact(&mut slices, samples.len(), "decode_exr")?;
     for (index, samples) in samples.iter().enumerate() {
         let sample_bytes = exr_flat_sample_bytes(samples);
-        let bytes = exr_flat_bytes(samples);
+        let bytes = exr_flat_bytes(samples, limits)?;
         let expected = checked_product(
             &[
                 u64::from(bounds.width()),
@@ -1290,10 +1395,13 @@ fn exr_tile_storage(
     level_bounds: PixelBounds,
     tile_bounds: PixelBounds,
     samples: &[&exr::image::FlatSamples],
+    limits: ImageLimits,
 ) -> Result<ImageStorage> {
     let level_width = usize::try_from(level_bounds.width()).expect("u32 width fits usize");
-    let mut planes = Vec::with_capacity(samples.len());
-    let mut slices = Vec::with_capacity(samples.len());
+    let mut planes = Vec::new();
+    let mut slices = Vec::new();
+    limits.try_reserve_exact(&mut planes, samples.len(), "decode_exr")?;
+    limits.try_reserve_exact(&mut slices, samples.len(), "decode_exr")?;
     for (channel_index, samples) in samples.iter().enumerate() {
         let sample_bytes = exr_flat_sample_bytes(samples);
         let capacity = checked_product(
@@ -1304,23 +1412,17 @@ fn exr_tile_storage(
             ],
             "decode_exr",
         )?;
-        let all_bytes = exr_flat_bytes(samples);
-        let mut tile_bytes = Vec::with_capacity(capacity);
+        let mut tile_bytes = Vec::new();
+        limits.try_reserve_exact(&mut tile_bytes, capacity, "decode_exr")?;
         for y in tile_bounds.min_y()..tile_bounds.max_y() {
             for x in tile_bounds.min_x()..tile_bounds.max_x() {
                 let local_x = usize::try_from(x - level_bounds.min_x()).expect("local x fits");
                 let local_y = usize::try_from(y - level_bounds.min_y()).expect("local y fits");
-                let index = local_y
+                let sample_index = local_y
                     .checked_mul(level_width)
                     .and_then(|row| row.checked_add(local_x))
-                    .and_then(|sample| sample.checked_mul(sample_bytes))
                     .ok_or_else(|| exhausted("decode_exr", "OpenEXR tile offset overflows"))?;
-                let end = index.checked_add(sample_bytes).ok_or_else(|| {
-                    exhausted("decode_exr", "OpenEXR tile sample range overflows")
-                })?;
-                tile_bytes.extend_from_slice(all_bytes.get(index..end).ok_or_else(|| {
-                    invalid("decode_exr", "OpenEXR mip channel has too few samples")
-                })?);
+                append_exr_flat_sample(samples, sample_index, &mut tile_bytes)?;
             }
         }
         planes.push(StoragePlane::new(
@@ -1356,21 +1458,65 @@ fn exr_flat_sample_bytes(samples: &exr::image::FlatSamples) -> usize {
     }
 }
 
-fn exr_flat_bytes(samples: &exr::image::FlatSamples) -> Vec<u8> {
+fn append_exr_flat_sample(
+    samples: &exr::image::FlatSamples,
+    index: usize,
+    output: &mut Vec<u8>,
+) -> Result<()> {
     match samples {
-        exr::image::FlatSamples::F16(values) => values
-            .iter()
-            .flat_map(|value| value.to_bits().to_ne_bytes())
-            .collect(),
-        exr::image::FlatSamples::F32(values) => values
-            .iter()
-            .flat_map(|value| value.to_bits().to_ne_bytes())
-            .collect(),
-        exr::image::FlatSamples::U32(values) => values
-            .iter()
-            .flat_map(|value| value.to_ne_bytes())
-            .collect(),
+        exr::image::FlatSamples::F16(values) => output.extend_from_slice(
+            &values
+                .get(index)
+                .ok_or_else(|| corrupt("decode_exr", "OpenEXR tile sample lies outside its level"))?
+                .to_bits()
+                .to_ne_bytes(),
+        ),
+        exr::image::FlatSamples::F32(values) => output.extend_from_slice(
+            &values
+                .get(index)
+                .ok_or_else(|| corrupt("decode_exr", "OpenEXR tile sample lies outside its level"))?
+                .to_bits()
+                .to_ne_bytes(),
+        ),
+        exr::image::FlatSamples::U32(values) => output.extend_from_slice(
+            &values
+                .get(index)
+                .ok_or_else(|| corrupt("decode_exr", "OpenEXR tile sample lies outside its level"))?
+                .to_ne_bytes(),
+        ),
     }
+    Ok(())
+}
+
+fn exr_flat_bytes(samples: &exr::image::FlatSamples, limits: ImageLimits) -> Result<Vec<u8>> {
+    let sample_count = match samples {
+        exr::image::FlatSamples::F16(values) => values.len(),
+        exr::image::FlatSamples::F32(values) => values.len(),
+        exr::image::FlatSamples::U32(values) => values.len(),
+    };
+    let byte_count = sample_count
+        .checked_mul(exr_flat_sample_bytes(samples))
+        .ok_or_else(|| exhausted("decode_exr", "OpenEXR sample byte count overflows"))?;
+    let mut bytes = Vec::new();
+    limits.try_reserve_exact(&mut bytes, byte_count, "decode_exr")?;
+    match samples {
+        exr::image::FlatSamples::F16(values) => {
+            for value in values {
+                bytes.extend_from_slice(&value.to_bits().to_ne_bytes());
+            }
+        }
+        exr::image::FlatSamples::F32(values) => {
+            for value in values {
+                bytes.extend_from_slice(&value.to_bits().to_ne_bytes());
+            }
+        }
+        exr::image::FlatSamples::U32(values) => {
+            for value in values {
+                bytes.extend_from_slice(&value.to_ne_bytes());
+            }
+        }
+    }
+    Ok(bytes)
 }
 
 fn exr_bounds(bounds: exr::meta::attribute::IntegerBounds) -> Result<PixelBounds> {
@@ -1381,6 +1527,24 @@ fn exr_bounds(bounds: exr::meta::attribute::IntegerBounds) -> Result<PixelBounds
     PixelBounds::from_origin_size(bounds.position.x(), bounds.position.y(), width, height)
 }
 
+fn exr_text_string(
+    value: &exr::meta::attribute::Text,
+    limits: ImageLimits,
+    operation: &'static str,
+) -> Result<String> {
+    let capacity = value
+        .as_slice()
+        .len()
+        .checked_mul(2)
+        .ok_or_else(|| exhausted(operation, "OpenEXR text size overflows"))?;
+    let mut output = String::new();
+    limits.try_reserve_string(&mut output, capacity, operation)?;
+    for byte in value.as_slice() {
+        output.push(char::from(*byte));
+    }
+    Ok(output)
+}
+
 fn project_exr_attributes(
     attributes: &std::collections::HashMap<
         exr::meta::attribute::Text,
@@ -1388,10 +1552,13 @@ fn project_exr_attributes(
     >,
     prefix: &str,
     metadata: &mut ImageMetadata,
+    limits: ImageLimits,
 ) -> Result<()> {
     use exr::meta::attribute::AttributeValue;
 
-    let mut entries = attributes.iter().collect::<Vec<_>>();
+    let mut entries = Vec::new();
+    limits.try_reserve_exact(&mut entries, attributes.len(), "decode_exr")?;
+    entries.extend(attributes.iter());
     entries.sort_by_key(|(name, _)| name.as_slice());
     for (name, value) in entries {
         if prefix == "exr.layer." && name == "superiOrientation" {
@@ -1406,34 +1573,51 @@ fn project_exr_attributes(
                 continue;
             }
         }
-        let name = name.to_string();
+        let name = exr_text_string(name, limits, "decode_exr")?;
         let key = if let Some(encoded) = name.strip_prefix("superiMeta_") {
-            decode_hex_key(encoded)?
+            decode_hex_key(encoded, limits)?
         } else {
-            format!("{prefix}{name}")
+            let mut key = String::new();
+            let key_bytes = prefix
+                .len()
+                .checked_add(name.len())
+                .ok_or_else(|| exhausted("decode_exr", "OpenEXR metadata key overflows"))?;
+            limits.try_reserve_string(&mut key, key_bytes, "decode_exr")?;
+            key.push_str(prefix);
+            key.push_str(&name);
+            key
         };
         let value = match value {
-            AttributeValue::Text(value) => ImageMetadataValue::Text(value.to_string()),
+            AttributeValue::Text(value) => {
+                ImageMetadataValue::Text(exr_text_string(value, limits, "decode_exr")?)
+            }
             AttributeValue::F64(value) => {
                 ImageMetadataValue::Float(crate::metadata::ImageMetadataFloat::new(*value))
             }
             AttributeValue::F32(value) => ImageMetadataValue::Unsigned(u64::from(value.to_bits())),
             AttributeValue::I32(value) => ImageMetadataValue::Signed(i64::from(*value)),
-            AttributeValue::Custom { kind, bytes } => match kind.to_string().as_str() {
-                "superi_bool" if bytes.len() == 1 => ImageMetadataValue::Boolean(bytes[0] != 0),
-                "superi_i64" if bytes.len() == 8 => ImageMetadataValue::Signed(i64::from_le_bytes(
+            AttributeValue::Custom { kind, bytes } if kind == "superi_bool" && bytes.len() == 1 => {
+                ImageMetadataValue::Boolean(bytes[0] != 0)
+            }
+            AttributeValue::Custom { kind, bytes } if kind == "superi_i64" && bytes.len() == 8 => {
+                ImageMetadataValue::Signed(i64::from_le_bytes(
                     bytes.as_slice().try_into().expect("length checked"),
-                )),
-                "superi_u64" if bytes.len() == 8 => ImageMetadataValue::Unsigned(
-                    u64::from_le_bytes(bytes.as_slice().try_into().expect("length checked")),
-                ),
-                "superi_utf8" => {
-                    ImageMetadataValue::Text(String::from_utf8(bytes.clone()).map_err(|_| {
-                        corrupt("decode_exr", "OpenEXR Superi UTF-8 metadata is invalid")
-                    })?)
-                }
-                _ => ImageMetadataValue::Bytes(Arc::from(bytes.clone())),
-            },
+                ))
+            }
+            AttributeValue::Custom { kind, bytes } if kind == "superi_u64" && bytes.len() == 8 => {
+                ImageMetadataValue::Unsigned(u64::from_le_bytes(
+                    bytes.as_slice().try_into().expect("length checked"),
+                ))
+            }
+            AttributeValue::Custom { kind, bytes } if kind == "superi_utf8" => {
+                let bytes = try_clone_slice(bytes, limits, "decode_exr")?;
+                ImageMetadataValue::Text(String::from_utf8(bytes).map_err(|_| {
+                    corrupt("decode_exr", "OpenEXR Superi UTF-8 metadata is invalid")
+                })?)
+            }
+            AttributeValue::Custom { bytes, .. } => {
+                ImageMetadataValue::Bytes(Arc::from(try_clone_slice(bytes, limits, "decode_exr")?))
+            }
             _ => continue,
         };
         metadata.insert(key, value)?;
@@ -1666,14 +1850,15 @@ fn encode_hex_key(value: &str) -> String {
     encoded
 }
 
-fn decode_hex_key(value: &str) -> Result<String> {
+fn decode_hex_key(value: &str, limits: ImageLimits) -> Result<String> {
     if value.len() % 2 != 0 {
         return Err(corrupt(
             "decode_exr",
             "OpenEXR Superi metadata key has invalid hex length",
         ));
     }
-    let mut bytes = Vec::with_capacity(value.len() / 2);
+    let mut bytes = Vec::new();
+    limits.try_reserve_exact(&mut bytes, value.len() / 2, "decode_exr")?;
     for pair in value.as_bytes().chunks_exact(2) {
         let high = hex_value(pair[0])
             .ok_or_else(|| corrupt("decode_exr", "OpenEXR Superi metadata key is not hex"))?;
@@ -1818,8 +2003,14 @@ fn exr_pixel_aspect(metadata: &ImageMetadata) -> Result<f32> {
 }
 
 fn exr_read_error(source: exr::error::Error) -> Error {
-    let category = match source {
+    let category = match &source {
         exr::error::Error::NotSupported(_) => ErrorCategory::Unsupported,
+        exr::error::Error::Io(source) if source.kind() == io::ErrorKind::OutOfMemory => {
+            ErrorCategory::ResourceExhausted
+        }
+        exr::error::Error::Io(source) if source.kind() == io::ErrorKind::UnexpectedEof => {
+            ErrorCategory::CorruptData
+        }
         exr::error::Error::Io(_) => ErrorCategory::Unavailable,
         exr::error::Error::Aborted => ErrorCategory::Cancelled,
         exr::error::Error::Invalid(_) => ErrorCategory::CorruptData,
@@ -1831,6 +2022,37 @@ fn exr_read_error(source: exr::error::Error) -> Error {
         source,
     )
     .with_context(format_context("decode_exr", StillImageFormat::Exr))
+}
+
+struct MetadataBudgetReader<'a, R> {
+    inner: &'a mut R,
+    remaining: u64,
+}
+
+impl<'a, R> MetadataBudgetReader<'a, R> {
+    fn new(inner: &'a mut R, remaining: u64) -> Self {
+        Self { inner, remaining }
+    }
+}
+
+impl<R: Read> Read for MetadataBudgetReader<'_, R> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        if buffer.is_empty() {
+            return Ok(0);
+        }
+        if self.remaining == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::OutOfMemory,
+                "OpenEXR metadata exceeds the configured byte limit",
+            ));
+        }
+        let allowed = usize::try_from(self.remaining)
+            .unwrap_or(usize::MAX)
+            .min(buffer.len());
+        let read = self.inner.read(&mut buffer[..allowed])?;
+        self.remaining = self.remaining.saturating_sub(read as u64);
+        Ok(read)
+    }
 }
 
 fn exr_write_error(source: exr::error::Error) -> Error {
@@ -1850,8 +2072,6 @@ fn exr_write_error(source: exr::error::Error) -> Error {
 }
 
 fn read_dpx<R: Read + Seek>(reader: &mut R, options: &ReadOptions) -> Result<StillImage> {
-    const MAX_HEADER_OVERHEAD: u64 = 16 * 1024 * 1024;
-
     let start = reader
         .stream_position()
         .map_err(|source| file_error("inspect_dpx", source))?;
@@ -1874,12 +2094,9 @@ fn read_dpx<R: Read + Seek>(reader: &mut R, options: &ReadOptions) -> Result<Sti
             "DPX image dimensions must be declared and nonzero",
         ));
     }
-    if width > options.max_width || height > options.max_height {
-        return Err(exhausted(
-            "decode_dpx",
-            "DPX dimensions exceed the configured limits",
-        ));
-    }
+    options
+        .limits
+        .check_dimensions(width, height, "decode_dpx")?;
     let orientation = read_u16(768)?;
     if orientation > 3 {
         return Err(unsupported(
@@ -1887,6 +2104,31 @@ fn read_dpx<R: Read + Seek>(reader: &mut R, options: &ReadOptions) -> Result<Sti
             "axis-swapped DPX orientation does not fit the current storage contract",
         ));
     }
+    let source_x = read_u32(1408)?;
+    let source_y = read_u32(1412)?;
+    let min_x = if source_x == u32::MAX { 0 } else { source_x };
+    let min_y = if source_y == u32::MAX { 0 } else { source_y };
+    let min_x = i32::try_from(min_x)
+        .map_err(|_| unsupported("decode_dpx", "DPX source x offset exceeds i32"))?;
+    let min_y = i32::try_from(min_y)
+        .map_err(|_| unsupported("decode_dpx", "DPX source y offset exceeds i32"))?;
+    let data_window = PixelBounds::from_origin_size(min_x, min_y, width, height)?;
+    let original_width = read_u32(1424)?;
+    let original_height = read_u32(1428)?;
+    let display_window = if original_width == 0
+        || original_height == 0
+        || original_width == u32::MAX
+        || original_height == u32::MAX
+    {
+        data_window
+    } else {
+        PixelBounds::from_origin_size(0, 0, original_width, original_height)?
+    };
+    options.limits.check_dimensions(
+        display_window.width(),
+        display_window.height(),
+        "decode_dpx",
+    )?;
     let element_count = read_u16(770)?;
     if element_count != 1 {
         return Err(unsupported(
@@ -1954,6 +2196,9 @@ fn read_dpx<R: Read + Seek>(reader: &mut R, options: &ReadOptions) -> Result<Sti
     let samples_per_row = u64::from(width)
         .checked_mul(file_channels.len() as u64)
         .ok_or_else(|| exhausted("decode_dpx", "DPX row sample count overflows"))?;
+    options
+        .limits
+        .check_channels(logical_channels.len(), "decode_dpx")?;
     let row_bytes = dpx_row_bytes(samples_per_row, bit_depth)?;
     let image_bytes = (row_bytes + u64::from(eol_padding))
         .checked_mul(u64::from(height))
@@ -1964,7 +2209,7 @@ fn read_dpx<R: Read + Seek>(reader: &mut R, options: &ReadOptions) -> Result<Sti
         .and_then(|pixels| pixels.checked_mul(logical_channels.len() as u64))
         .and_then(|samples| samples.checked_mul(if bit_depth == 8 { 1 } else { 2 }))
         .ok_or_else(|| exhausted("decode_dpx", "DPX decoded byte count overflows"))?;
-    if decoded_bytes > options.max_decoded_bytes {
+    if decoded_bytes > options.limits.max_memory_bytes() {
         return Err(exhausted(
             "decode_dpx",
             "DPX decoded data exceeds the configured byte limit",
@@ -1973,10 +2218,7 @@ fn read_dpx<R: Read + Seek>(reader: &mut R, options: &ReadOptions) -> Result<Sti
     let required_end = u64::from(data_offset)
         .checked_add(image_bytes)
         .ok_or_else(|| exhausted("decode_dpx", "DPX data range overflows"))?;
-    let max_file_bytes = options
-        .max_decoded_bytes
-        .checked_add(MAX_HEADER_OVERHEAD)
-        .ok_or_else(|| exhausted("decode_dpx", "DPX file limit overflows"))?;
+    let max_file_bytes = options.limits.max_memory_bytes();
     if required_end > max_file_bytes {
         return Err(exhausted(
             "decode_dpx",
@@ -1986,17 +2228,7 @@ fn read_dpx<R: Read + Seek>(reader: &mut R, options: &ReadOptions) -> Result<Sti
     reader
         .seek(SeekFrom::Start(start))
         .map_err(|source| file_error("rewind_dpx", source))?;
-    let mut bytes = Vec::new();
-    reader
-        .take(max_file_bytes + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|source| dpx_io_error("read_dpx", source))?;
-    if bytes.len() as u64 > max_file_bytes {
-        return Err(exhausted(
-            "decode_dpx",
-            "DPX file exceeds the configured file limit",
-        ));
-    }
+    let bytes = read_bounded(reader, max_file_bytes, options.limits, "read_dpx")?;
     if (bytes.len() as u64) < required_end {
         return Err(corrupt(
             "decode_dpx",
@@ -2009,9 +2241,17 @@ fn read_dpx<R: Read + Seek>(reader: &mut R, options: &ReadOptions) -> Result<Sti
         &[u64::from(width), u64::from(height), sample_bytes as u64],
         "decode_dpx",
     )?;
-    let mut planes = (0..logical_channels.len())
-        .map(|_| Vec::with_capacity(plane_capacity))
-        .collect::<Vec<_>>();
+    let mut planes = Vec::new();
+    options
+        .limits
+        .try_reserve_exact(&mut planes, logical_channels.len(), "decode_dpx")?;
+    for _ in 0..logical_channels.len() {
+        let mut plane = Vec::new();
+        options
+            .limits
+            .try_reserve_exact(&mut plane, plane_capacity, "decode_dpx")?;
+        planes.push(plane);
+    }
     let mut row_start = data_offset as usize;
     for _ in 0..height {
         let row_end = row_start
@@ -2029,6 +2269,7 @@ fn read_dpx<R: Read + Seek>(reader: &mut R, options: &ReadOptions) -> Result<Sti
             bit_depth,
             packing,
             endianness,
+            options.limits,
         )?;
         for pixel in samples.chunks_exact(file_channels.len()) {
             for (logical, file_index) in channel_map.iter().copied().enumerate() {
@@ -2044,26 +2285,6 @@ fn read_dpx<R: Read + Seek>(reader: &mut R, options: &ReadOptions) -> Result<Sti
             .ok_or_else(|| exhausted("decode_dpx", "DPX row padding overflows"))?;
     }
 
-    let source_x = read_u32(1408)?;
-    let source_y = read_u32(1412)?;
-    let min_x = if source_x == u32::MAX { 0 } else { source_x };
-    let min_y = if source_y == u32::MAX { 0 } else { source_y };
-    let min_x = i32::try_from(min_x)
-        .map_err(|_| unsupported("decode_dpx", "DPX source x offset exceeds i32"))?;
-    let min_y = i32::try_from(min_y)
-        .map_err(|_| unsupported("decode_dpx", "DPX source y offset exceeds i32"))?;
-    let data_window = PixelBounds::from_origin_size(min_x, min_y, width, height)?;
-    let original_width = read_u32(1424)?;
-    let original_height = read_u32(1428)?;
-    let display_window = if original_width == 0
-        || original_height == 0
-        || original_width == u32::MAX
-        || original_height == u32::MAX
-    {
-        data_window
-    } else {
-        PixelBounds::from_origin_size(0, 0, original_width, original_height)?
-    };
     let mut metadata = ImageMetadata::new().with_orientation(match orientation {
         0 => ImageOrientation::TopLeft,
         1 => ImageOrientation::TopRight,
@@ -2118,8 +2339,14 @@ fn read_dpx<R: Read + Seek>(reader: &mut R, options: &ReadOptions) -> Result<Sti
     } else {
         ImageSampleType::U16
     };
-    let mut storage_planes = Vec::with_capacity(planes.len());
-    let mut slices = Vec::with_capacity(planes.len());
+    let mut storage_planes = Vec::new();
+    let mut slices = Vec::new();
+    options
+        .limits
+        .try_reserve_exact(&mut storage_planes, planes.len(), "decode_dpx")?;
+    options
+        .limits
+        .try_reserve_exact(&mut slices, planes.len(), "decode_dpx")?;
     for (index, plane) in planes.into_iter().enumerate() {
         storage_planes.push(StoragePlane::new(
             Arc::from(plane),
@@ -2436,8 +2663,10 @@ fn decode_dpx_row(
     bit_depth: u8,
     packing: DpxPacking,
     endianness: DpxEndianness,
+    limits: ImageLimits,
 ) -> Result<Vec<u16>> {
-    let mut samples = Vec::with_capacity(sample_count);
+    let mut samples = Vec::new();
+    limits.try_reserve_exact(&mut samples, sample_count, "decode_dpx")?;
     match bit_depth {
         8 => samples.extend(
             bytes
@@ -2664,6 +2893,36 @@ fn dpx_io_error(operation: &'static str, source: std::io::Error) -> Error {
         source,
     )
     .with_context(ErrorContext::new(COMPONENT, operation))
+}
+
+fn read_bounded<R: Read>(
+    reader: &mut R,
+    max_bytes: u64,
+    limits: ImageLimits,
+    operation: &'static str,
+) -> Result<Vec<u8>> {
+    let maximum = usize::try_from(max_bytes).unwrap_or(usize::MAX);
+    let mut output = Vec::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let remaining = maximum.saturating_sub(output.len());
+        let requested = remaining.saturating_add(1).min(buffer.len());
+        let read = reader
+            .read(&mut buffer[..requested])
+            .map_err(|source| file_error(operation, source))?;
+        if read == 0 {
+            break;
+        }
+        if read > remaining {
+            return Err(exhausted(
+                operation,
+                "image source exceeds the configured byte limit",
+            ));
+        }
+        limits.try_reserve_exact(&mut output, read, operation)?;
+        output.extend_from_slice(&buffer[..read]);
+    }
+    Ok(output)
 }
 
 fn checked_product(values: &[u64], operation: &'static str) -> Result<usize> {

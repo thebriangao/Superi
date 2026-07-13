@@ -21,6 +21,7 @@ use crate::io::{
     read_path, write as write_still_image, ReadOptions, StillImage, StillImageFormat,
     StillImageLayer, WriteOptions,
 };
+use crate::limits::{contextualize_limit_error, ImageLimits};
 use crate::model::{ImageStorage, StoragePlane};
 use crate::tiling::{ImageAccess, ImageOrganization, ImageSequencePosition, ImageTile};
 use crate::value::ImageSampleType;
@@ -763,7 +764,7 @@ impl ImageSequenceReader {
             ))
         })?;
         if resolved.substitution == SequenceSubstitution::Black {
-            image = black_still_image(&image).map_err(|error| {
+            image = black_still_image(&image, options.limits()).map_err(|error| {
                 error.with_context(sequence_frame_context(
                     "build_black_sequence_image",
                     resolved.requested(),
@@ -958,30 +959,50 @@ impl ImageSequenceWriter {
     }
 }
 
-fn black_still_image(source: &StillImage) -> Result<StillImage> {
-    let mut layers = Vec::new();
-    layers
-        .try_reserve_exact(source.layers().len())
+fn black_still_image(source: &StillImage, limits: ImageLimits) -> Result<StillImage> {
+    limits
+        .check_layers(source.layers().len(), "build_black_sequence_image")
         .map_err(|error| {
-            Error::with_source(
-                ErrorCategory::ResourceExhausted,
-                Recoverability::UserCorrectable,
-                "black image layer allocation failed",
-                error,
-            )
-            .with_context(ErrorContext::new(COMPONENT, "build_black_sequence_image"))
+            contextualize_limit_error(error, COMPONENT, "build_black_sequence_image")
         })?;
+    let mut layers = Vec::new();
+    try_reserve_black(
+        &mut layers,
+        source.layers().len(),
+        limits,
+        "build_black_sequence_image",
+        "black image layer allocation failed",
+    )?;
     for layer in source.layers() {
         layers.push(StillImageLayer::new(
             layer.name().map(str::to_owned),
-            black_access(layer.access())?,
+            black_access(layer.access(), limits)?,
         )?);
     }
     StillImage::new(layers)
 }
 
-fn black_access(source: &ImageAccess) -> Result<ImageAccess> {
+fn black_access(source: &ImageAccess, limits: ImageLimits) -> Result<ImageAccess> {
     let descriptor = source.descriptor().clone();
+    limits
+        .check_dimensions(
+            descriptor.data_window().width(),
+            descriptor.data_window().height(),
+            "build_black_sequence_image",
+        )
+        .and_then(|()| {
+            limits.check_dimensions(
+                descriptor.display_window().width(),
+                descriptor.display_window().height(),
+                "build_black_sequence_image",
+            )
+        })
+        .and_then(|()| {
+            limits.check_channels(descriptor.channels().len(), "build_black_sequence_image")
+        })
+        .map_err(|error| {
+            contextualize_limit_error(error, COMPONENT, "build_black_sequence_image")
+        })?;
     match source.organization() {
         ImageOrganization::Scanline => ImageAccess::from_scanline(
             descriptor,
@@ -990,6 +1011,7 @@ fn black_access(source: &ImageAccess) -> Result<ImageAccess> {
                     .scanline_storage()
                     .expect("scanline image has scanline storage"),
                 source,
+                limits,
             )?,
         ),
         ImageOrganization::Tiled => {
@@ -1003,24 +1025,25 @@ fn black_access(source: &ImageAccess) -> Result<ImageAccess> {
                         )
                     })
             })?;
-            let mut output_tiles = Vec::new();
-            output_tiles
-                .try_reserve_exact(tile_count)
+            limits
+                .check_tiles(tile_count, "build_black_sequence_image")
                 .map_err(|error| {
-                    Error::with_source(
-                        ErrorCategory::ResourceExhausted,
-                        Recoverability::UserCorrectable,
-                        "black image tile allocation failed",
-                        error,
-                    )
-                    .with_context(ErrorContext::new(COMPONENT, "build_black_sequence_image"))
+                    contextualize_limit_error(error, COMPONENT, "build_black_sequence_image")
                 })?;
+            let mut output_tiles = Vec::new();
+            try_reserve_black(
+                &mut output_tiles,
+                tile_count,
+                limits,
+                "build_black_sequence_image",
+                "black image tile allocation failed",
+            )?;
             for level in source.levels() {
                 for tile in source.tiles(level)? {
                     output_tiles.push(ImageTile::new(
                         tile.level(),
                         tile.index(),
-                        black_storage(tile.storage(), source)?,
+                        black_storage(tile.storage(), source, limits)?,
                     ));
                 }
             }
@@ -1035,32 +1058,28 @@ fn black_access(source: &ImageAccess) -> Result<ImageAccess> {
     }
 }
 
-fn black_storage(storage: &ImageStorage, access: &ImageAccess) -> Result<ImageStorage> {
+fn black_storage(
+    storage: &ImageStorage,
+    access: &ImageAccess,
+    limits: ImageLimits,
+) -> Result<ImageStorage> {
     let mut bytes = Vec::new();
-    bytes
-        .try_reserve_exact(storage.planes().len())
-        .map_err(|error| {
-            Error::with_source(
-                ErrorCategory::ResourceExhausted,
-                Recoverability::UserCorrectable,
-                "black image plane allocation failed",
-                error,
-            )
-            .with_context(ErrorContext::new(COMPONENT, "build_black_storage"))
-        })?;
+    try_reserve_black(
+        &mut bytes,
+        storage.planes().len(),
+        limits,
+        "build_black_storage",
+        "black image plane allocation failed",
+    )?;
     for plane in storage.planes() {
         let mut plane_bytes = Vec::new();
-        plane_bytes
-            .try_reserve_exact(plane.bytes().len())
-            .map_err(|error| {
-                Error::with_source(
-                    ErrorCategory::ResourceExhausted,
-                    Recoverability::UserCorrectable,
-                    "black image byte allocation failed",
-                    error,
-                )
-                .with_context(ErrorContext::new(COMPONENT, "build_black_storage"))
-            })?;
+        try_reserve_black(
+            &mut plane_bytes,
+            plane.bytes().len(),
+            limits,
+            "build_black_storage",
+            "black image byte allocation failed",
+        )?;
         plane_bytes.resize(plane.bytes().len(), 0);
         bytes.push(plane_bytes);
     }
@@ -1142,25 +1161,57 @@ fn black_storage(storage: &ImageStorage, access: &ImageAccess) -> Result<ImageSt
             }
         }
     }
-    let planes = storage
-        .planes()
-        .iter()
-        .zip(bytes)
-        .map(|(source, bytes)| {
-            StoragePlane::new(
-                Arc::from(bytes),
-                source.origin(),
-                source.row_stride(),
-                source.row_alignment(),
-            )
-        })
-        .collect::<Result<Vec<_>>>()?;
-    ImageStorage::new(
-        storage.bounds(),
-        storage.layout(),
-        planes,
-        storage.channels().to_vec(),
-    )
+    let mut planes = Vec::new();
+    try_reserve_black(
+        &mut planes,
+        storage.planes().len(),
+        limits,
+        "build_black_storage",
+        "black image storage plane allocation failed",
+    )?;
+    for (source, bytes) in storage.planes().iter().zip(bytes) {
+        planes.push(StoragePlane::new(
+            Arc::from(bytes),
+            source.origin(),
+            source.row_stride(),
+            source.row_alignment(),
+        )?);
+    }
+    let mut channels = Vec::new();
+    try_reserve_black(
+        &mut channels,
+        storage.channels().len(),
+        limits,
+        "build_black_storage",
+        "black image channel allocation failed",
+    )?;
+    channels.extend_from_slice(storage.channels());
+    ImageStorage::new(storage.bounds(), storage.layout(), planes, channels)
+}
+
+fn try_reserve_black<T>(
+    values: &mut Vec<T>,
+    additional: usize,
+    limits: ImageLimits,
+    operation: &'static str,
+    message: &'static str,
+) -> Result<()> {
+    let total = values
+        .len()
+        .checked_add(additional)
+        .ok_or_else(|| exhausted(operation, "black image allocation size overflowed"))?;
+    limits
+        .check_allocation::<T>(total, operation)
+        .map_err(|error| contextualize_limit_error(error, COMPONENT, operation))?;
+    values.try_reserve_exact(additional).map_err(|error| {
+        Error::with_source(
+            ErrorCategory::ResourceExhausted,
+            Recoverability::UserCorrectable,
+            message,
+            error,
+        )
+        .with_context(ErrorContext::new(COMPONENT, operation))
+    })
 }
 
 fn opaque_sample_bytes(sample_type: ImageSampleType) -> Vec<u8> {

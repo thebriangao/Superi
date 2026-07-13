@@ -16,8 +16,9 @@ use superi_core::geometry::{Matrix3, PixelBounds};
 use superi_core::pixel::{AlphaMode, ChannelLayout, PixelFormat};
 use superi_core::time::SampleTime;
 
+use crate::limits::{contextualize_limit_error, ImageLimits};
 use crate::metadata::{ImageMetadata, ImageMetadataValue};
-use crate::ops::{transform, ResampleFilter};
+use crate::ops::{transform_with_limits, ResampleFilter};
 use crate::value::{Image, ImageDescriptor, ImageSamples};
 
 const COMPONENT: &str = "superi-image.preview";
@@ -64,6 +65,15 @@ impl ThumbnailRequest {
 /// bilinear reconstruction, while a translation-only request keeps exact
 /// sample payloads through nearest reconstruction.
 pub fn generate_thumbnail(source: &Image, request: ThumbnailRequest) -> Result<Image> {
+    generate_thumbnail_with_limits(source, request, &ImageLimits::default())
+}
+
+/// Generates a thumbnail with an explicit finite output allocation policy.
+pub fn generate_thumbnail_with_limits(
+    source: &Image,
+    request: ThumbnailRequest,
+    limits: &ImageLimits,
+) -> Result<Image> {
     let display = source.descriptor().display_window();
     let fit_scale = (f64::from(request.max_width) / f64::from(display.width()))
         .min(f64::from(request.max_height) / f64::from(display.height()))
@@ -88,7 +98,7 @@ pub fn generate_thumbnail(source: &Image, request: ThumbnailRequest) -> Result<I
     } else {
         ResampleFilter::Bilinear
     };
-    transform(source, source_to_thumbnail, data_window, filter)
+    transform_with_limits(source, source_to_thumbnail, data_window, filter, limits)
         .map_err(|error| with_context(error, "generate_thumbnail"))
 }
 
@@ -366,6 +376,15 @@ pub fn render_waveform_image(
     envelope: WaveformEnvelope,
     style: WaveformRasterStyle,
 ) -> Result<WaveformImage> {
+    render_waveform_image_with_limits(envelope, style, &ImageLimits::default())
+}
+
+/// Renders validated peaks with an explicit finite output allocation policy.
+pub fn render_waveform_image_with_limits(
+    envelope: WaveformEnvelope,
+    style: WaveformRasterStyle,
+    limits: &ImageLimits,
+) -> Result<WaveformImage> {
     let width = u32::try_from(envelope.column_count()).map_err(|_| {
         exhausted(
             "render_waveform_image",
@@ -390,6 +409,12 @@ pub fn render_waveform_image(
         })?;
     let bounds = PixelBounds::from_origin_size(0, 0, width, height)
         .map_err(|error| with_context(error, "render_waveform_image"))?;
+    limits
+        .check_dimensions(width, height, "render_waveform_image")
+        .map_err(|error| contextualize_limit_error(error, COMPONENT, "render_waveform_image"))?;
+    limits
+        .check_channels(envelope.channel_layout().len(), "render_waveform_image")
+        .map_err(|error| contextualize_limit_error(error, COMPONENT, "render_waveform_image"))?;
     let pixel_count = usize::try_from(width)
         .ok()
         .and_then(|width| {
@@ -410,12 +435,9 @@ pub fn render_waveform_image(
         )
     })?;
     let mut samples = Vec::new();
-    samples.try_reserve_exact(sample_count).map_err(|_| {
-        exhausted(
-            "render_waveform_image",
-            "waveform image allocation exceeds available memory",
-        )
-    })?;
+    limits
+        .try_reserve_exact(&mut samples, sample_count, "render_waveform_image")
+        .map_err(|error| contextualize_limit_error(error, COMPONENT, "render_waveform_image"))?;
     for _ in 0..pixel_count {
         samples.extend_from_slice(&style.background);
     }
