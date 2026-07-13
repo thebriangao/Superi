@@ -75,7 +75,7 @@ fn timecode_track_maps_media_time_across_a_drop_frame_minute_boundary() {
             Duration::new(2_997, track_timebase).unwrap(),
         )
         .unwrap(),
-        TimecodeValue::Timecode(Timecode::from_frames(1_799, description.timecode_format())),
+        TimecodeValue::Timecode(description.timecode_from_frames(1_799).unwrap()),
     );
     let track = SourceTimecodeTrack::new(
         StreamId::new(3),
@@ -127,10 +127,24 @@ fn counter_metadata_remains_distinct_from_editorial_timecode() {
         Arc::from(&b"deck-counter"[..]),
     )
     .unwrap();
-    let encoded = u32::MAX.to_be_bytes();
+    let encoded = 4_200_u32.to_be_bytes();
     let value = description.decode_sample(&encoded).unwrap();
-    assert_eq!(value, TimecodeValue::Counter(u64::from(u32::MAX)));
+    assert_eq!(value, TimecodeValue::Counter(42));
     assert_eq!(description.encode_sample(value).unwrap(), encoded);
+    assert_eq!(
+        description
+            .decode_sample(&4_201_u32.to_be_bytes())
+            .unwrap_err()
+            .category(),
+        ErrorCategory::CorruptData
+    );
+    assert_eq!(
+        description
+            .encode_sample(TimecodeValue::Counter(u64::from(u32::MAX) / 100 + 1))
+            .unwrap_err()
+            .category(),
+        ErrorCategory::InvalidInput
+    );
 
     let timebase = Timebase::integer(1_000).unwrap();
     let track = SourceTimecodeTrack::new(
@@ -149,6 +163,107 @@ fn counter_metadata_remains_distinct_from_editorial_timecode() {
     .unwrap();
     let error = track.timecode_at(RationalTime::zero(timebase)).unwrap_err();
     assert_eq!(error.category(), ErrorCategory::Unsupported);
+}
+
+#[test]
+fn source_projection_wraps_at_24_hours_without_changing_core_arithmetic() {
+    let description = drop_frame_description(TimecodeSampleEncoding::Timecode32);
+    let core = Timecode::parse("23:59:59;29", description.timecode_format()).unwrap();
+    assert_eq!(
+        core.checked_add_frames(1).unwrap().to_string(),
+        "24:00:00;00"
+    );
+    let start = description.timecode_from_label("23:59:59;29").unwrap();
+
+    let track_timebase = Timebase::integer(2_997).unwrap();
+    let track = SourceTimecodeTrack::new(
+        StreamId::new(3),
+        description,
+        vec![StreamId::new(1)],
+        vec![TimecodeSegment::new(
+            TimeRange::new(
+                RationalTime::zero(track_timebase),
+                Duration::new(200, track_timebase).unwrap(),
+            )
+            .unwrap(),
+            TimecodeValue::Timecode(start),
+        )],
+    )
+    .unwrap();
+
+    assert_eq!(
+        track
+            .timecode_at(RationalTime::new(100, track_timebase))
+            .unwrap()
+            .unwrap()
+            .to_string(),
+        "00:00:00;00"
+    );
+}
+
+#[test]
+fn source_timecode_keeps_physical_time_distinct_from_label_counting() {
+    let description = drop_frame_description(TimecodeSampleEncoding::Timecode32);
+    let source = description.timecode_from_frames(10_000_000).unwrap();
+    let physical = RationalTime::from_frames(10_000_000, description.media_frame_rate());
+    let counting = RationalTime::from_frames(10_000_000, description.timecode_format().rate());
+
+    assert_eq!(source.physical_frame_rate(), description.media_frame_rate());
+    assert_eq!(source.to_rational_time(), physical);
+    assert_ne!(source.to_rational_time(), counting);
+}
+
+#[test]
+fn validated_tracks_require_every_segment_to_round_trip_through_its_sample_width() {
+    let description32 = TimecodeDescription::new(
+        TimecodeSampleEncoding::Timecode32,
+        TimecodeFlags::new(0),
+        30,
+        1,
+        30,
+        Arc::from(&b""[..]),
+    )
+    .unwrap();
+    let timebase = Timebase::integer(30).unwrap();
+    let range = TimeRange::new(
+        RationalTime::zero(timebase),
+        Duration::new(1, timebase).unwrap(),
+    )
+    .unwrap();
+    let too_wide = TimecodeValue::Timecode(
+        description32
+            .timecode_from_frames(i64::from(i32::MAX) + 1)
+            .unwrap(),
+    );
+    let error = SourceTimecodeTrack::new(
+        StreamId::new(3),
+        description32,
+        vec![StreamId::new(1)],
+        vec![TimecodeSegment::new(range, too_wide)],
+    )
+    .unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::InvalidInput);
+
+    let counter64 = TimecodeDescription::new(
+        TimecodeSampleEncoding::Timecode64,
+        TimecodeFlags::new(TimecodeFlags::COUNTER),
+        1_000,
+        1,
+        100,
+        Arc::from(&b""[..]),
+    )
+    .unwrap();
+    let error = SourceTimecodeTrack::new(
+        StreamId::new(4),
+        counter64,
+        Vec::new(),
+        vec![TimecodeSegment::new(
+            range,
+            TimecodeValue::Counter(u64::MAX),
+        )],
+    )
+    .unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::InvalidInput);
 }
 
 #[test]
@@ -200,14 +315,13 @@ fn malformed_or_inconsistent_timecode_metadata_fails_explicitly() {
     );
 
     let timebase = Timebase::integer(30).unwrap();
-    let format = no_negative.timecode_format();
     let first = TimecodeSegment::new(
         TimeRange::new(
             RationalTime::zero(timebase),
             Duration::new(30, timebase).unwrap(),
         )
         .unwrap(),
-        TimecodeValue::Timecode(Timecode::from_frames(0, format)),
+        TimecodeValue::Timecode(no_negative.timecode_from_frames(0).unwrap()),
     );
     let overlapping = TimecodeSegment::new(
         TimeRange::new(
@@ -215,7 +329,7 @@ fn malformed_or_inconsistent_timecode_metadata_fails_explicitly() {
             Duration::new(30, timebase).unwrap(),
         )
         .unwrap(),
-        TimecodeValue::Timecode(Timecode::from_frames(29, format)),
+        TimecodeValue::Timecode(no_negative.timecode_from_frames(29).unwrap()),
     );
     let error = SourceTimecodeTrack::new(
         StreamId::new(3),

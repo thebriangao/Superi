@@ -5,10 +5,12 @@
 //! while [`EditTimeline`] maps those normalized media coordinates to and from the edited movie
 //! presentation timeline. All conversion uses integer rational arithmetic and an explicit rounding
 //! policy; no floating-point clock conversion is involved. Source timecode descriptions preserve
-//! their original frame timing, flags, sample width, source reference, and content associations,
-//! while exposing canonical drop-frame labels through [`superi_core::timecode::Timecode`].
+//! their original frame timing, flags, sample width, source reference, and content associations.
+//! [`SourceTimecode`] keeps that physical frame rate authoritative while using a separate canonical
+//! counting format only to project source labels.
 
 use std::collections::BTreeSet;
+use std::fmt;
 use std::sync::Arc;
 
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
@@ -693,10 +695,51 @@ impl TimecodeDescription {
         self.media_frame_rate
     }
 
-    /// Returns the canonical format used for editorial label arithmetic.
+    /// Returns the canonical format used only for editorial label counting.
+    ///
+    /// Use [`SourceTimecode::to_rational_time`] for physical time conversion; this counting format
+    /// may intentionally differ from the exact source rate.
     #[must_use]
     pub const fn timecode_format(&self) -> TimecodeFormat {
         self.timecode_format
+    }
+
+    /// Creates a source timecode value without conflating physical time with label counting.
+    ///
+    /// Encoding-width validation is deferred until the value is encoded or attached to a
+    /// [`SourceTimecodeTrack`], allowing callers to receive an actionable width error at that
+    /// boundary.
+    pub fn timecode_from_frames(&self, frames: i64) -> Result<SourceTimecode> {
+        if self.flags.is_counter() {
+            return Err(invalid_sample(
+                "counter description cannot create an editorial timecode value",
+            ));
+        }
+        if frames < 0 && !self.flags.negative_times_allowed() {
+            return Err(invalid_sample(
+                "negative timecode value is forbidden by its format description",
+            ));
+        }
+        Ok(self.source_timecode(frames))
+    }
+
+    /// Parses a source label using this description's counting convention and physical clock.
+    pub fn timecode_from_label(&self, label: &str) -> Result<SourceTimecode> {
+        if self.flags.is_counter() {
+            return Err(invalid_sample(
+                "counter description cannot parse an editorial timecode label",
+            ));
+        }
+        let timecode = Timecode::parse(label, self.timecode_format).map_err(|source| {
+            Error::with_source(
+                ErrorCategory::InvalidInput,
+                Recoverability::UserCorrectable,
+                "source timecode label is invalid for its format description",
+                source,
+            )
+            .with_context(ErrorContext::new(COMPONENT, "parse_source_timecode"))
+        })?;
+        self.timecode_from_frames(timecode.frames())
     }
 
     /// Returns the opaque source-tape or source-device reference.
@@ -714,7 +757,7 @@ impl TimecodeDescription {
         }
 
         if self.flags.is_counter() {
-            let counter = match self.encoding {
+            let raw_counter = match self.encoding {
                 TimecodeSampleEncoding::Timecode32 => u64::from(u32::from_be_bytes(
                     bytes
                         .try_into()
@@ -726,7 +769,13 @@ impl TimecodeDescription {
                         .expect("sample width was checked for timecode64"),
                 ),
             };
-            return Ok(TimecodeValue::Counter(counter));
+            let quanta = u64::from(self.frame_quanta);
+            if raw_counter % quanta != 0 {
+                return Err(corrupt_sample(
+                    "timecode counter sample is not divisible by its frame quanta",
+                ));
+            }
+            return Ok(TimecodeValue::Counter(raw_counter / quanta));
         }
 
         let frames = match self.encoding {
@@ -746,28 +795,36 @@ impl TimecodeDescription {
                 "negative timecode sample is forbidden by its format description",
             ));
         }
-        Ok(TimecodeValue::Timecode(Timecode::from_frames(
-            frames,
-            self.timecode_format,
-        )))
+        Ok(TimecodeValue::Timecode(self.source_timecode(frames)))
     }
 
     /// Encodes one value for a container exporter without changing its meaning.
     pub fn encode_sample(&self, value: TimecodeValue) -> Result<Vec<u8>> {
         match (self.flags.is_counter(), value) {
-            (true, TimecodeValue::Counter(counter)) => match self.encoding {
-                TimecodeSampleEncoding::Timecode32 => {
-                    let counter = u32::try_from(counter).map_err(|_| {
-                        invalid_sample("counter does not fit the timecode32 sample width")
+            (true, TimecodeValue::Counter(counter)) => {
+                let raw_counter = counter
+                    .checked_mul(u64::from(self.frame_quanta))
+                    .ok_or_else(|| {
+                        invalid_sample(
+                            "counter multiplied by frame quanta exceeds its sample width",
+                        )
                     })?;
-                    Ok(counter.to_be_bytes().to_vec())
+                match self.encoding {
+                    TimecodeSampleEncoding::Timecode32 => {
+                        let counter = u32::try_from(raw_counter).map_err(|_| {
+                            invalid_sample("counter does not fit the timecode32 sample width")
+                        })?;
+                        Ok(counter.to_be_bytes().to_vec())
+                    }
+                    TimecodeSampleEncoding::Timecode64 => Ok(raw_counter.to_be_bytes().to_vec()),
                 }
-                TimecodeSampleEncoding::Timecode64 => Ok(counter.to_be_bytes().to_vec()),
-            },
+            }
             (false, TimecodeValue::Timecode(timecode)) => {
-                if timecode.format() != self.timecode_format {
+                if timecode.counting_format() != self.timecode_format
+                    || timecode.physical_frame_rate() != self.media_frame_rate
+                {
                     return Err(invalid_sample(
-                        "timecode value format does not match its source description",
+                        "timecode value clocks do not match its source description",
                     ));
                 }
                 if timecode.frames() < 0 && !self.flags.negative_times_allowed() {
@@ -795,15 +852,91 @@ impl TimecodeDescription {
             )),
         }
     }
+
+    fn source_timecode(&self, frames: i64) -> SourceTimecode {
+        SourceTimecode {
+            frames,
+            physical_frame_rate: self.media_frame_rate,
+            counting_format: self.timecode_format,
+        }
+    }
+
+    fn project_timecode(&self, timecode: SourceTimecode) -> Result<SourceTimecode> {
+        if !self.flags.wraps_at_24_hours() {
+            return Ok(timecode);
+        }
+        let frames_per_day = frames_per_24_hours(self)?;
+        Ok(SourceTimecode {
+            frames: timecode.frames.rem_euclid(frames_per_day),
+            ..timecode
+        })
+    }
+}
+
+/// One source frame position with separate physical-time and label-counting clocks.
+///
+/// The physical rate is authoritative for time conversion. The counting format exists only to
+/// parse and display SMPTE-style labels, preventing decimal QuickTime rates such as `2997/100`
+/// from being silently converted using the canonical `30000/1001` drop-frame counting rate.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SourceTimecode {
+    frames: i64,
+    physical_frame_rate: FrameRate,
+    counting_format: TimecodeFormat,
+}
+
+impl SourceTimecode {
+    /// Returns the authoritative continuous source frame index.
+    #[must_use]
+    pub const fn frames(self) -> i64 {
+        self.frames
+    }
+
+    /// Returns the exact physical rate recorded by the source description.
+    #[must_use]
+    pub const fn physical_frame_rate(self) -> FrameRate {
+        self.physical_frame_rate
+    }
+
+    /// Returns the convention used only to parse and display source labels.
+    #[must_use]
+    pub const fn counting_format(self) -> TimecodeFormat {
+        self.counting_format
+    }
+
+    /// Projects the source frame index into time using the authoritative physical rate.
+    #[must_use]
+    pub fn to_rational_time(self) -> RationalTime {
+        RationalTime::from_frames(self.frames, self.physical_frame_rate)
+    }
+
+    /// Adds physical source frames without applying container display wrapping.
+    pub fn checked_add_frames(self, delta: i64) -> Result<Self> {
+        let frames = self.frames.checked_add(delta).ok_or_else(|| {
+            Error::new(
+                ErrorCategory::ResourceExhausted,
+                Recoverability::UserCorrectable,
+                "source timecode frame calculation exceeded its range",
+            )
+            .with_context(ErrorContext::new(COMPONENT, "add_source_timecode_frames"))
+        })?;
+        Ok(Self { frames, ..self })
+    }
+}
+
+impl fmt::Display for SourceTimecode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Timecode::from_frames(self.frames, self.counting_format).fmt(formatter)
+    }
 }
 
 /// The interpreted value stored in one source sample.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum TimecodeValue {
-    /// A continuous frame number with an explicit label format.
-    Timecode(Timecode),
-    /// An uninterpreted counter value from a counter-mode description.
+    /// A continuous source frame number with explicit physical and label clocks.
+    Timecode(SourceTimecode),
+    /// A logical counter value after applying the description's frame quanta.
     Counter(u64),
 }
 
@@ -929,7 +1062,7 @@ impl SourceTimecodeTrack {
     ///
     /// A position outside every segment returns `None`. Counter-mode tracks do
     /// not have editorial labels and return an explicit unsupported error.
-    pub fn timecode_at(&self, media_time: RationalTime) -> Result<Option<Timecode>> {
+    pub fn timecode_at(&self, media_time: RationalTime) -> Result<Option<SourceTimecode>> {
         if self.description.flags.is_counter() {
             return Err(Error::new(
                 ErrorCategory::Unsupported,
@@ -965,19 +1098,27 @@ impl SourceTimecodeTrack {
             )
             .map_err(|error| error.with_context(ErrorContext::new(COMPONENT, "resolve_timecode")))?
             .value();
-        start
-            .checked_add_frames(elapsed_frames)
-            .map(Some)
-            .map_err(|source| {
-                Error::with_source(
-                    ErrorCategory::ResourceExhausted,
-                    Recoverability::UserCorrectable,
-                    "source timecode calculation exceeded its frame range",
-                    source,
-                )
-                .with_context(ErrorContext::new(COMPONENT, "resolve_timecode"))
-            })
+        let timecode = start.checked_add_frames(elapsed_frames)?;
+        self.description.project_timecode(timecode).map(Some)
     }
+}
+
+fn frames_per_24_hours(description: &TimecodeDescription) -> Result<i64> {
+    const MINUTES_PER_DAY: u64 = 24 * 60;
+    const TENTH_MINUTES_PER_DAY: u64 = 24 * 6;
+    const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
+
+    let nominal = u64::from(description.frame_quanta)
+        .checked_mul(SECONDS_PER_DAY)
+        .ok_or_else(|| invalid_description("24-hour timecode frame count overflows"))?;
+    let dropped = u64::from(description.timecode_format.drop_frames_per_minute())
+        .checked_mul(MINUTES_PER_DAY - TENTH_MINUTES_PER_DAY)
+        .ok_or_else(|| invalid_description("24-hour drop-frame count overflows"))?;
+    let frames = nominal
+        .checked_sub(dropped)
+        .ok_or_else(|| invalid_description("24-hour timecode frame count is invalid"))?;
+    i64::try_from(frames)
+        .map_err(|_| invalid_description("24-hour timecode frame count exceeds i64"))
 }
 
 fn drop_frame_format(media_rate: FrameRate, frame_quanta: u32) -> Result<TimecodeFormat> {
@@ -1021,7 +1162,8 @@ fn validate_segment_value(description: &TimecodeDescription, value: TimecodeValu
     match (description.flags.is_counter(), value) {
         (true, TimecodeValue::Counter(_)) => Ok(()),
         (false, TimecodeValue::Timecode(timecode))
-            if timecode.format() == description.timecode_format =>
+            if timecode.counting_format() == description.timecode_format
+                && timecode.physical_frame_rate() == description.media_frame_rate =>
         {
             if timecode.frames() < 0 && !description.flags.negative_times_allowed() {
                 Err(invalid_track(
@@ -1037,7 +1179,19 @@ fn validate_segment_value(description: &TimecodeDescription, value: TimecodeValu
         (true, TimecodeValue::Timecode(_)) | (false, TimecodeValue::Counter(_)) => Err(
             invalid_track("timecode segment value kind does not match its source description"),
         ),
-    }
+    }?;
+    description
+        .encode_sample(value)
+        .map(|_| ())
+        .map_err(|source| {
+            Error::with_source(
+                ErrorCategory::InvalidInput,
+                Recoverability::UserCorrectable,
+                "timecode segment value cannot round-trip through its declared sample encoding",
+                source,
+            )
+            .with_context(ErrorContext::new(COMPONENT, "create_timecode_track"))
+        })
 }
 
 fn invalid_description(message: &'static str) -> Error {
