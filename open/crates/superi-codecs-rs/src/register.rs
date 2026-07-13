@@ -5,6 +5,7 @@ use std::collections::BTreeSet;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_media_io::backend::{BackendRegistration, BackendRegistry};
 
+use crate::av1::Av1Backend;
 use crate::flac::FlacBackend;
 use crate::mp3::Mp3Backend;
 use crate::opus::OpusBackend;
@@ -35,6 +36,7 @@ pub fn default_backend_registry() -> Result<BackendRegistry> {
 pub fn register_default_backends(registry: &mut BackendRegistry) -> Result<()> {
     let registrations = vec![
         PcmBackend::registration()?,
+        Av1Backend::registration()?,
         Mp3Backend::registration()?,
         FlacBackend::registration()?,
         VorbisBackend::registration()?,

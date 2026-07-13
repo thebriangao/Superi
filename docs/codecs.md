@@ -45,7 +45,7 @@ This opens essentially everything a working editor sees day-to-day.
 
 | codec | role | patent | acquisition path | user coverage |
 |---|---|---|---|---|
-| **AV1** | delivery, modern web | royalty-free | in-tree: `rav1d` decode + `rav1e` encode (BSD-2, ~pure Rust) | all platforms |
+| **AV1** | delivery, modern web | royalty-free | in-tree: `rav1d` 1.0.0 decode + `rav1e` 0.7.1 encode (BSD-2-Clause, pure Rust) | all platforms |
 | **VP9 / VP8** | web / legacy | royalty-free | in-tree backend over official `libvpx` 1.16.0 (BSD-3-Clause) through a checked local FFI shim | all platforms when the pinned runtime is bundled |
 | **H.264 / H.265** | acquisition + delivery (bulk of footage) | encumbered | **OS**: VideoToolbox / Media Foundation | Mac + Windows ✓ · Linux gap |
 | **H.266 (VVC)** | emerging | encumbered | OS where present (installed-base support thin in 2026) | limited today |
@@ -145,10 +145,28 @@ packet or block metadata crosses the codec boundary. Reset clears buffered codec
 and stream replay, while unsupported rates, layouts, malformed headers, corrupt packets, timeline
 gaps, and cancelled operations fail through typed media errors.
 
+### AV1 implementation contract
+
+The default `rust-av1` backend decodes raw AV1 temporal units through `rav1d` 1.0.0 and encodes
+them through `rav1e` 0.7.1. Both dependencies are pinned to BSD-2-Clause releases compatible with
+the workspace Rust 1.80 floor. Optional assembly, command-line binaries, signal handling, and
+global threading features are disabled. The private rav1d ownership wrapper contains its unsafe
+dav1d-compatible API boundary, and decoded pictures are copied into validated Superi storage.
+`av1-grain` 0.2.4 and `jobserver` 0.1.34 are pinned because their next patch releases raise the
+minimum compiler beyond Rust 1.80.
+
+Decode and encode preserve exact frame timestamps, durations, packet metadata, and semantic color
+signaling. Raw H.273 color identifiers are also retained in namespaced frame metadata. The encoder
+accepts CPU-addressable opaque monochrome and planar or semiplanar YUV at 8 or 10 bits, including
+NV12 and P010 conversion. Unsupported precision, GPU-only storage, and non-opaque alpha fail
+explicitly instead of changing media silently. Reset reconstructs codec state for predictable seek
+and relink replay, while flush drains the stream to a deterministic end-of-stream result.
+
 ## 4. License policy
 
-Permissive-class allowlist, **zero copyleft**: MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, ISC,
-Zlib, Unicode. Copyleft is denied, GPL/LGPL/AGPL **and MPL** (weak copyleft still counts).
+Permissive-class allowlist, **zero copyleft**: MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0,
+Apache-2.0 with LLVM exception, ISC, NCSA, CC0-1.0, Zlib, Unicode. Copyleft is denied,
+GPL/LGPL/AGPL **and MPL** (weak copyleft still counts).
 
 - **Consequence:** `Symphonia` (the popular all-in-one pure-Rust media crate) is **MPL-2.0 → excluded**.
   Compressed audio is assembled from **per-codec permissive crates**
@@ -163,9 +181,9 @@ Zlib, Unicode. Copyleft is denied, GPL/LGPL/AGPL **and MPL** (weak copyleft stil
    so H.264/H.265 there leans on *system-installed* libraries the user supplies, still their machine,
    not our tree, but not automatic. "All users" is true for royalty-free; "most users" is the honest
    word for encumbered.
-2. **C-via-FFI creeps back** for the Vorbis encoder, `libvpx` / `libopus` / possibly `dav1d`. These are license-clean
+2. **C-via-FFI creeps back** for the Vorbis encoder, `libvpx`, and `libopus`. These are license-clean
    (BSD) and patent-clean (royalty-free), so they pass the rule, but they are C at an `unsafe`
-   boundary, against the Rust-native *spirit*. Choose per codec: pure-Rust when mature (AV1 has
+   boundary, against the Rust-native *spirit*. Choose per codec: pure-Rust when mature (AV1 uses
    `rav1d`/`rav1e`), BSD-C binding when not. Vorbis keeps the non-`Send` bundled encoder state on a
    dedicated worker thread behind the safe `vorbis_rs` API. VP8 and VP9 keep every concrete libvpx
    struct inside a checked local C shim and copy decoded planes into Superi-owned immutable storage.
@@ -179,6 +197,10 @@ Zlib, Unicode. Copyleft is denied, GPL/LGPL/AGPL **and MPL** (weak copyleft stil
    built statically from the dependency's bundled source, and no system library is loaded at
    runtime. Native state has unique Rust ownership and is exposed only through the codec-neutral
    backend.
+7. **AV1 inherits the completed `paste` 1.0.15 macro.** Both pinned AV1 implementations use this
+   compile-time proc macro. It has no known vulnerability, but its archived status produces the
+   informational `RUSTSEC-2024-0436` unmaintained advisory. The advisory remains visible and is not
+   ignored. Replace it through future codec releases when that is compatible with the Rust floor.
 
 ## 6. Open items to verify (before these harden)
 
@@ -187,9 +209,6 @@ The specific facts to nail down:
 
 - `[VERIFY]` **AAC-LC patent status**, confirm whether AAC-LC can be treated as patent-free, or must
   stay strictly on the OS path.
-- `[VERIFY]` **`rav1d` license + maturity**, confirm its permissive license and production-readiness
-  for decode. The FLAC and Vorbis dependency licenses and Rust floor are pinned and enforced by the
-  workspace gates.
 - `[VERIFY]` **DNxHR / VC-3 patent status**, determines whether it can be an in-tree codec.
 - `[VERIFY]` **ProRes-on-Windows** decode path (Media Foundation coverage vs. none).
 

@@ -41,6 +41,7 @@ fn assembled_default_registry_exposes_every_implemented_backend_deterministicall
         backend_ids(&registry),
         [
             "rust-pcm",
+            "rust-av1",
             "rust-mp3",
             "rust-flac",
             "rust-vorbis",
