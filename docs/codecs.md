@@ -1,8 +1,8 @@
 # Superi: Codec Support Policy & Matrix
 
 **Status:** Foundational policy. Living document, versioned and dated.
-**Version:** 0.1
-**Date:** 2026-06-22
+**Version:** 0.2
+**Date:** 2026-07-12
 **Audience:** Engineers, contributors. Operationalizes the codec/licensing boundary from
 `architecture.md §2`, `§4.6`, and open item #1 into a concrete, per-format support plan.
 
@@ -57,7 +57,7 @@ This opens essentially everything a working editor sees day-to-day.
 
 | codec | patent | acquisition path | note |
 |---|---|---|---|
-| **PCM / WAV / AIFF** | free | in-tree `hound` (Apache-2.0) | trivial |
+| **PCM** | free | in-tree `superi-codecs-rs` backend (MIT, no external dependency) | codec complete; WAV and AIFF containers tracked separately |
 | **FLAC** | free | in-tree `claxon` (Apache-2.0, pure Rust) | clean |
 | **Vorbis** | free | in-tree `lewton` (MIT/ISC, pure Rust) | clean |
 | **Opus** | free | `libopus` (BSD-3) via FFI; pure-Rust decode thin | license-clean |
@@ -84,8 +84,8 @@ audited permissive Rust parser. `MXF` comes later as an engineering task, not a 
 
 | crate | responsibility |
 |---|---|
-| `superi-media-io` | the decode/encode **interface** + pure-Rust container demux + image-sequence/PCM IO |
-| `superi-codecs-rs` | **default backend**, in-tree royalty-free video/audio decoders (AV1, VP9, Opus, Vorbis, FLAC, MP3) |
+| `superi-media-io` | the decode/encode **interface** + pure-Rust container demux + image-sequence IO |
+| `superi-codecs-rs` | **default backend**, in-tree royalty-free video/audio codecs (PCM, AV1, VP9, Opus, Vorbis, FLAC, MP3) |
 | `superi-codecs-platform` | **opt-in backend** (`os-codecs` feature), OS decode for H.264/H.265/H.266/ProRes/AAC (MIT binding code; `unsafe` FFI boundary) |
 | `superi-image::io` | still/sequence image formats (EXR, DPX, PNG, JPEG, TIFF, WebP, …) |
 
@@ -98,8 +98,9 @@ Permissive-class allowlist, **zero copyleft**: MIT, BSD-2-Clause, BSD-3-Clause, 
 Zlib, Unicode. Copyleft is denied, GPL/LGPL/AGPL **and MPL** (weak copyleft still counts).
 
 - **Consequence:** `Symphonia` (the popular all-in-one pure-Rust media crate) is **MPL-2.0 → excluded**.
-  Audio is assembled from **per-codec permissive crates** (`claxon`/`lewton`/`hound`/`libopus`)
-  instead. This is an accepted, recurring cost of the zero-exception rule.
+  Compressed audio is assembled from **per-codec permissive crates**
+  (`claxon`/`lewton`/`libopus`) instead, while PCM is implemented in-tree without an external
+  dependency. This is an accepted, recurring cost of the zero-exception rule.
 - Enforced by `cargo-deny` (`open/deny.toml`); wired into CI in a later pass.
 
 ## 5. Caveats & accepted tradeoffs
