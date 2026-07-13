@@ -1,6 +1,9 @@
-//! `superi-media-io`, decode/encode interface + container demux + image-sequence IO.
+//! Codec-neutral media input, decode, encode, and container contracts.
 //!
-//! § 5.1 in `docs/architecture.md`. Depends on: superi-core, superi-image. Status: skeleton.
+//! Sources keep project identity separate from replaceable local locations, packets retain exact
+//! presentation and decode timing, and decoded video or audio retains its complete representation.
+//! Decoder and encoder traits use explicit input, drain, and end-of-stream states so concrete
+//! software and platform backends can share one predictable editor-facing lifecycle.
 
 pub mod audio_io;
 pub mod backend;
