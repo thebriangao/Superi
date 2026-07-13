@@ -370,67 +370,45 @@ impl AdapterCatalog {
     /// selection filters capabilities first, then applies the requested power
     /// preference with the adapter identity as a deterministic tie breaker.
     pub fn select(mut self, selection: &AdapterSelection) -> Result<SelectedAdapter> {
-        if self.adapters.is_empty() {
-            return Err(Error::new(
-                ErrorCategory::Unavailable,
-                Recoverability::UserCorrectable,
-                "no native GPU adapter is available",
-            )
-            .with_context(selection_context(selection)));
-        }
-
-        let index = if let Some(preferred) = selection.preferred_adapter {
-            let index = self
-                .adapters
-                .iter()
-                .position(|candidate| candidate.snapshot.id == preferred)
-                .ok_or_else(|| {
-                    Error::new(
-                        ErrorCategory::NotFound,
-                        Recoverability::UserCorrectable,
-                        "the requested GPU adapter is not present in this catalog",
-                    )
-                    .with_context(
-                        selection_context(selection)
-                            .with_field("preferred_adapter", preferred.to_string()),
-                    )
-                })?;
-            let problems = selection_problems(&self.adapters[index].snapshot, selection);
-            if !problems.is_empty() {
-                return Err(incompatible_adapter_error(
-                    "the requested GPU adapter does not satisfy selection requirements",
-                    &self.adapters[index].snapshot,
-                    "select_adapter",
-                    problems,
-                ));
-            }
-            index
-        } else {
-            self.adapters
-                .iter()
-                .enumerate()
-                .filter(|(_, candidate)| {
-                    selection_problems(&candidate.snapshot, selection).is_empty()
-                })
-                .min_by_key(|(_, candidate)| {
-                    automatic_rank(&candidate.snapshot, selection.power_preference)
-                })
-                .map(|(index, _)| index)
-                .ok_or_else(|| {
-                    Error::new(
-                        ErrorCategory::Unsupported,
-                        Recoverability::UserCorrectable,
-                        "no GPU adapter satisfies the selection requirements",
-                    )
-                    .with_context(selection_context(selection))
-                })?
-        };
-
+        let index = select_adapter_index(&self.adapters, selection)?;
         let selected = self.adapters.remove(index);
         Ok(SelectedAdapter {
             adapter: selected.adapter,
             snapshot: selected.snapshot,
         })
+    }
+
+    /// Selects a primary adapter and distinct ordered additional adapters.
+    ///
+    /// Required slots fail when no remaining adapter satisfies their policy.
+    /// Optional slots are omitted instead, which lets the same configuration
+    /// degrade to one GPU on systems without additional compatible adapters.
+    /// Every successful slot consumes one adapter record, so a device set never
+    /// aliases one adapter handle or silently substitutes an exact preference.
+    pub fn select_many(mut self, selection: &MultiAdapterSelection) -> Result<SelectedAdapters> {
+        let mut selected = Vec::with_capacity(selection.slots.len().min(self.adapters.len()));
+        for (slot_index, slot) in selection.slots.iter().enumerate() {
+            let index = match select_adapter_index(&self.adapters, &slot.selection) {
+                Ok(index) => index,
+                Err(_) if !slot.required => continue,
+                Err(error) => {
+                    return Err(error.with_context(
+                        ErrorContext::new(COMPONENT, "select_adapter_set")
+                            .with_field("slot_index", slot_index.to_string())
+                            .with_field("required_slots", selection.required_len().to_string())
+                            .with_field("selected_adapters", selected.len().to_string()),
+                    ));
+                }
+            };
+            let candidate = self.adapters.remove(index);
+            selected.push(SelectedAdapter {
+                adapter: candidate.adapter,
+                snapshot: candidate.snapshot,
+            });
+        }
+
+        debug_assert!(!selected.is_empty(), "the primary adapter slot is required");
+        Ok(SelectedAdapters { adapters: selected })
     }
 }
 
@@ -538,6 +516,81 @@ impl Default for AdapterSelection {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct AdapterSlotSelection {
+    selection: AdapterSelection,
+    required: bool,
+}
+
+/// Ordered policies for selecting one primary adapter and additional GPUs.
+///
+/// The primary slot is always required. Additional slots can be required for
+/// workflows that need a specific device count or optional for portable
+/// acceleration that degrades cleanly to the adapters the host exposes.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MultiAdapterSelection {
+    slots: Vec<AdapterSlotSelection>,
+}
+
+impl MultiAdapterSelection {
+    /// Creates a selection with one required primary adapter policy.
+    #[must_use]
+    pub fn new(primary: AdapterSelection) -> Self {
+        Self {
+            slots: vec![AdapterSlotSelection {
+                selection: primary,
+                required: true,
+            }],
+        }
+    }
+
+    /// Adds one required distinct adapter slot.
+    #[must_use]
+    pub fn with_required_adapter(mut self, selection: AdapterSelection) -> Self {
+        self.slots.push(AdapterSlotSelection {
+            selection,
+            required: true,
+        });
+        self
+    }
+
+    /// Adds one optional distinct adapter slot.
+    #[must_use]
+    pub fn with_optional_adapter(mut self, selection: AdapterSelection) -> Self {
+        self.slots.push(AdapterSlotSelection {
+            selection,
+            required: false,
+        });
+        self
+    }
+
+    /// Returns the total configured primary and additional slots.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.slots.len()
+    }
+
+    /// Returns whether the selection has no slots.
+    ///
+    /// This is always false because construction requires a primary policy.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.slots.is_empty()
+    }
+
+    /// Returns the number of slots that must be satisfied.
+    #[must_use]
+    pub fn required_len(&self) -> usize {
+        self.slots.iter().filter(|slot| slot.required).count()
+    }
+
+    /// Returns the primary adapter policy.
+    #[must_use]
+    pub fn primary(&self) -> &AdapterSelection {
+        &self.slots[0].selection
+    }
+}
+
 /// One selected physical adapter that may be consumed to create a device.
 pub struct SelectedAdapter {
     adapter: wgpu::Adapter,
@@ -610,6 +663,80 @@ impl SelectedAdapter {
             error_scope_gate: ErrorScopeGate::default(),
             submission_owner: AtomicBool::new(false),
         })
+    }
+}
+
+/// Selected native adapters in primary-first device assignment order.
+///
+/// Each entry owns a distinct wgpu adapter handle. Creating devices preserves
+/// this order and never introduces implicit resource transfer between GPUs.
+pub struct SelectedAdapters {
+    adapters: Vec<SelectedAdapter>,
+}
+
+impl fmt::Debug for SelectedAdapters {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SelectedAdapters")
+            .field("snapshots", &self.snapshots().collect::<Vec<_>>())
+            .finish()
+    }
+}
+
+impl SelectedAdapters {
+    /// Returns the number of selected adapters.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.adapters.len()
+    }
+
+    /// Returns whether no adapter is selected.
+    ///
+    /// This is always false because the primary slot is required.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.adapters.is_empty()
+    }
+
+    /// Returns the primary adapter snapshot.
+    #[must_use]
+    pub fn primary_snapshot(&self) -> &AdapterSnapshot {
+        &self.adapters[0].snapshot
+    }
+
+    /// Iterates immutable snapshots in device assignment order.
+    pub fn snapshots(&self) -> impl ExactSizeIterator<Item = &AdapterSnapshot> {
+        self.adapters.iter().map(|selected| &selected.snapshot)
+    }
+
+    /// Finds one selected adapter snapshot by its process-local identity.
+    #[must_use]
+    pub fn adapter(&self, id: AdapterId) -> Option<&AdapterSnapshot> {
+        self.adapters
+            .iter()
+            .find(|selected| selected.snapshot.id == id)
+            .map(|selected| &selected.snapshot)
+    }
+
+    /// Creates one independent logical device and queue per selected adapter.
+    ///
+    /// The set is returned only after every selected adapter succeeds. If one
+    /// device request fails, already-created devices are dropped and the error
+    /// identifies the failed primary-first slot.
+    pub async fn create_devices(self, request: &DeviceRequest) -> Result<GpuDeviceSet> {
+        let mut devices = Vec::with_capacity(self.adapters.len());
+        for (index, selected) in self.adapters.into_iter().enumerate() {
+            let adapter = selected.snapshot.id;
+            let device = selected.create_device(request).await.map_err(|error| {
+                error.with_context(
+                    ErrorContext::new(COMPONENT, "create_device_set")
+                        .with_field("adapter_index", index.to_string())
+                        .with_field("adapter", adapter.to_string()),
+                )
+            })?;
+            devices.push(device);
+        }
+        Ok(GpuDeviceSet { devices })
     }
 }
 
@@ -821,6 +948,78 @@ impl GpuDevice {
     }
 }
 
+/// Independently owned logical GPU devices in primary-first assignment order.
+///
+/// Every entry retains its own adapter, device, private queue, identity, error
+/// scopes, and submission ownership. Managed resources remain valid only on
+/// their owning entry. Cross-adapter transfers require a future explicit
+/// boundary and are never performed by this set.
+pub struct GpuDeviceSet {
+    devices: Vec<GpuDevice>,
+}
+
+impl fmt::Debug for GpuDeviceSet {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("GpuDeviceSet")
+            .field(
+                "adapters",
+                &self
+                    .devices
+                    .iter()
+                    .map(GpuDevice::adapter)
+                    .collect::<Vec<_>>(),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
+impl GpuDeviceSet {
+    /// Returns the number of logical devices.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.devices.len()
+    }
+
+    /// Returns whether no logical device exists.
+    ///
+    /// This is always false because the primary adapter is required.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.devices.is_empty()
+    }
+
+    /// Returns the primary device used for default processing and presentation.
+    #[must_use]
+    pub fn primary(&self) -> &GpuDevice {
+        &self.devices[0]
+    }
+
+    /// Iterates additional devices in configured assignment order.
+    pub fn additional(&self) -> impl ExactSizeIterator<Item = &GpuDevice> {
+        self.devices[1..].iter()
+    }
+
+    /// Iterates every device in primary-first assignment order.
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &GpuDevice> {
+        self.devices.iter()
+    }
+
+    /// Finds one device by its selected adapter identity.
+    #[must_use]
+    pub fn device(&self, adapter: AdapterId) -> Option<&GpuDevice> {
+        self.devices
+            .iter()
+            .find(|device| device.adapter.id == adapter)
+    }
+
+    /// Consumes the owner and returns devices in primary-first order.
+    #[must_use]
+    pub fn into_devices(self) -> Vec<GpuDevice> {
+        self.devices
+    }
+}
+
 #[derive(Debug, Default)]
 struct ErrorScopeGate {
     state: Mutex<ErrorScopeGateState>,
@@ -954,6 +1153,64 @@ fn selection_problems(snapshot: &AdapterSnapshot, selection: &AdapterSelection) 
         problems.push("adapter is not fully WebGPU compliant".to_owned());
     }
     problems
+}
+
+fn select_adapter_index(
+    adapters: &[AdapterCandidate],
+    selection: &AdapterSelection,
+) -> Result<usize> {
+    if let Some(preferred) = selection.preferred_adapter {
+        let index = adapters
+            .iter()
+            .position(|candidate| candidate.snapshot.id == preferred)
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorCategory::NotFound,
+                    Recoverability::UserCorrectable,
+                    "the requested GPU adapter is not present in this catalog",
+                )
+                .with_context(
+                    selection_context(selection)
+                        .with_field("preferred_adapter", preferred.to_string()),
+                )
+            })?;
+        let problems = selection_problems(&adapters[index].snapshot, selection);
+        if !problems.is_empty() {
+            return Err(incompatible_adapter_error(
+                "the requested GPU adapter does not satisfy selection requirements",
+                &adapters[index].snapshot,
+                "select_adapter",
+                problems,
+            ));
+        }
+        return Ok(index);
+    }
+
+    if adapters.is_empty() {
+        return Err(Error::new(
+            ErrorCategory::Unavailable,
+            Recoverability::UserCorrectable,
+            "no native GPU adapter is available",
+        )
+        .with_context(selection_context(selection)));
+    }
+
+    adapters
+        .iter()
+        .enumerate()
+        .filter(|(_, candidate)| selection_problems(&candidate.snapshot, selection).is_empty())
+        .min_by_key(|(_, candidate)| {
+            automatic_rank(&candidate.snapshot, selection.power_preference)
+        })
+        .map(|(index, _)| index)
+        .ok_or_else(|| {
+            Error::new(
+                ErrorCategory::Unsupported,
+                Recoverability::UserCorrectable,
+                "no GPU adapter satisfies the selection requirements",
+            )
+            .with_context(selection_context(selection))
+        })
 }
 
 fn device_request_problems(snapshot: &AdapterSnapshot, request: &DeviceRequest) -> Vec<String> {

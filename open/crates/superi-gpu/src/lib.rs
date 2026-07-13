@@ -5,10 +5,13 @@
 //! validation and reflection, bounded shader caching, aligned texture reuse,
 //! portable memory budgeting and pressure cooperation, decoded-frame upload,
 //! exact pixel conversion, ordered compute and render passes, explicit
-//! submission, and export or thumbnail readback share one wgpu path. Managed
+//! submission, export or thumbnail readback, and ordered multi-adapter
+//! selection share one wgpu path. Multi-adapter selection can create one
+//! independent logical device and queue per available GPU, with one primary
+//! presentation device and optional additional processing devices. Managed
 //! handles retain dependency ownership, in-flight submissions retain reusable
-//! allocations through fence completion, and obsolete device lifetimes are
-//! rejected after recovery.
+//! allocations through fence completion, cross-device transfer is never
+//! implicit, and obsolete device lifetimes are rejected after recovery.
 
 pub mod binding;
 pub mod buffer;

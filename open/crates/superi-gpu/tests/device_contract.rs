@@ -1,7 +1,9 @@
+use std::collections::HashSet;
 use superi_core::error::ErrorCategory;
+
 use superi_gpu::device::{
-    AdapterCatalog, AdapterSelection, Backends, DeviceRequest, Features, GpuDevice, GpuInstance,
-    InstanceOptions, Limits, SelectedAdapter,
+    AdapterCatalog, AdapterSelection, Backends, DeviceRequest, Features, GpuDevice, GpuDeviceSet,
+    GpuInstance, InstanceOptions, Limits, MultiAdapterSelection, SelectedAdapter, SelectedAdapters,
 };
 
 fn permissive_selection() -> AdapterSelection {
@@ -113,4 +115,87 @@ fn selected_native_adapter_creates_an_owned_device_and_queue() {
         device.adapter().info().name,
         device.adapter().info().backend
     );
+}
+
+#[test]
+fn multi_adapter_selection_keeps_exact_slots_distinct_and_optional() {
+    assert_send_sync::<MultiAdapterSelection>();
+    assert_send_sync::<SelectedAdapters>();
+    assert_send_sync::<GpuDeviceSet>();
+
+    let instance = GpuInstance::new(InstanceOptions::default()).unwrap();
+    let catalog = instance.enumerate_adapters();
+    let Some(first) = catalog.snapshots().next().cloned() else {
+        return;
+    };
+
+    let optional_duplicate =
+        MultiAdapterSelection::new(permissive_selection().with_preferred_adapter(first.id()))
+            .with_optional_adapter(permissive_selection().with_preferred_adapter(first.id()));
+    let selected = catalog.select_many(&optional_duplicate).unwrap();
+
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected.primary_snapshot().id(), first.id());
+    assert_eq!(selected.snapshots().count(), 1);
+    assert_eq!(selected.adapter(first.id()), Some(&first));
+
+    let required_duplicate =
+        MultiAdapterSelection::new(permissive_selection().with_preferred_adapter(first.id()))
+            .with_required_adapter(permissive_selection().with_preferred_adapter(first.id()));
+    let error = instance
+        .enumerate_adapters()
+        .select_many(&required_duplicate)
+        .unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::NotFound);
+    assert_eq!(
+        error.contexts().last().unwrap().operation(),
+        "select_adapter_set"
+    );
+}
+
+#[test]
+fn every_available_adapter_can_create_one_device_in_primary_first_order() {
+    let instance = GpuInstance::new(InstanceOptions::default()).unwrap();
+    let catalog = instance.enumerate_adapters();
+    let adapter_count = catalog.len();
+    let Some(first) = catalog.snapshots().next().cloned() else {
+        return;
+    };
+
+    let mut selection =
+        MultiAdapterSelection::new(permissive_selection().with_preferred_adapter(first.id()));
+    for _ in 0..adapter_count {
+        selection = selection.with_optional_adapter(permissive_selection());
+    }
+
+    let selected = catalog.select_many(&selection).unwrap();
+    assert_eq!(selected.len(), adapter_count);
+    assert_eq!(selected.primary_snapshot().id(), first.id());
+    let selected_ids = selected
+        .snapshots()
+        .map(|snapshot| snapshot.id())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        selected_ids.iter().copied().collect::<HashSet<_>>().len(),
+        adapter_count
+    );
+
+    let request = DeviceRequest::default()
+        .with_label("superi multi-adapter contract")
+        .with_required_limits(Limits::downlevel_webgl2_defaults());
+    let devices = pollster::block_on(selected.create_devices(&request)).unwrap();
+
+    assert_eq!(devices.len(), adapter_count);
+    assert_eq!(devices.primary().adapter().id(), first.id());
+    assert_eq!(devices.additional().count(), adapter_count - 1);
+    for (device, expected_id) in devices.iter().zip(selected_ids) {
+        assert_eq!(device.adapter().id(), expected_id);
+        assert!(devices
+            .device(expected_id)
+            .is_some_and(|found| std::ptr::eq(found, device)));
+        assert_eq!(
+            device.wgpu_device().limits(),
+            Limits::downlevel_webgl2_defaults()
+        );
+    }
 }
