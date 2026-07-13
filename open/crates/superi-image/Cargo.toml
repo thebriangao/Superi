@@ -10,5 +10,8 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+exr = { workspace = true }
 half = { workspace = true }
+image = { workspace = true }
+image-webp = { workspace = true }
 superi-core = { path = "../superi-core" }

@@ -26,6 +26,10 @@ thiserror = "2"
 tracing = "0.1"
 bytemuck = "1"
 half = { version = "=2.4.1", default-features = false }
+exr = { version = "=1.73.0", default-features = false }
+image = { version = "=0.25.6", default-features = false, features = ["bmp", "jpeg", "png", "tga", "tiff", "webp"] }
+# Constrain image's WebP backend to the last 0.2 release compatible with Rust 1.80.0.
+image-webp = "=0.2.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 pollster = "0.4"

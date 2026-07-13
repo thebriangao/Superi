@@ -557,6 +557,12 @@ where
     Ok(match descriptor.sample_type() {
         ImageSampleType::U8 => generate_values!(u8, normalized_u8, ImageSamples::from_u8),
         ImageSampleType::U16 => generate_values!(u16, normalized_u16, ImageSamples::from_u16),
+        ImageSampleType::U32 => {
+            return Err(unsupported(
+                "generate_image_samples",
+                "dense image generation does not support unsigned 32-bit samples",
+            ))
+        }
         ImageSampleType::F16 => generate_values!(
             u16,
             |value: f64| f16::from_f32(value as f32).to_bits(),

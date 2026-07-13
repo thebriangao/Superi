@@ -23,6 +23,12 @@ pub enum ImageSampleType {
     U8,
     /// Unsigned 16-bit integer samples.
     U16,
+    /// Unsigned 32-bit integer samples.
+    ///
+    /// OpenEXR defines UINT as one of its three native channel representations.
+    /// Dense pixel formats do not currently construct this variant, but native
+    /// file access must retain it without conversion to floating point.
+    U32,
     /// IEEE binary16 floating-point samples.
     F16,
     /// IEEE binary32 floating-point samples.
@@ -31,7 +37,7 @@ pub enum ImageSampleType {
 
 impl ImageSampleType {
     /// Every sample representation defined by this version.
-    pub const ALL: &'static [Self] = &[Self::U8, Self::U16, Self::F16, Self::F32];
+    pub const ALL: &'static [Self] = &[Self::U8, Self::U16, Self::U32, Self::F16, Self::F32];
 
     /// Returns the stable representation code.
     #[must_use]
@@ -39,6 +45,7 @@ impl ImageSampleType {
         match self {
             Self::U8 => "u8",
             Self::U16 => "u16",
+            Self::U32 => "u32",
             Self::F16 => "f16",
             Self::F32 => "f32",
         }
@@ -50,7 +57,7 @@ impl ImageSampleType {
         match self {
             Self::U8 => 8,
             Self::U16 | Self::F16 => 16,
-            Self::F32 => 32,
+            Self::U32 | Self::F32 => 32,
         }
     }
 

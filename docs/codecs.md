@@ -70,10 +70,31 @@ This opens essentially everything a working editor sees day-to-day.
 ### Image / VFX sequences
 
 All royalty-free, all in-tree, all platforms, handled in `superi-image::io`, **not** the codec crates.
-This is the entire VFX/color mezzanine, with no caveats:
+The implementation uses `exr` 1.73.0 (BSD-3-Clause) for OpenEXR and `image` 0.25.6
+(MIT OR Apache-2.0) for PNG, JPEG, TIFF, WebP, TGA, and BMP. The pure-Rust WebP backend is pinned
+to `image-webp` 0.2.0 because later 0.2 releases require Rust 1.80.1. DPX is a checked in-tree
+implementation of SMPTE ST 268-1 and ST 268-2, with no native dependency.
 
-`OpenEXR` (`exr`, BSD-3) · `DPX` (open spec) · `PNG` (`png`, MIT/Apache) · `JPEG` baseline (expired,
-MIT/Apache) · `TIFF` · `WebP` (royalty-free) · `TGA` / `BMP`.
+OpenEXR supports multipart flat images, arbitrary named F16, F32, and UINT channels, signed data
+and display windows, scanline blocks, tiles, mip levels, exact sample payloads, alpha convention,
+pixel aspect, and typed or arbitrary metadata. Deep samples, rip maps, and subsampled channels are
+rejected because the current `ImageAccess` contract cannot represent them without loss.
+
+DPX supports one uncompressed combined luma, RGB, RGBA, or ABGR image element. Decode covers 8,
+10, 12, and 16-bit integer samples, both byte orders, filled packing methods A and B, source and
+original windows, the non-transposed orientation modes, pixel aspect, frame position, sequence
+length, transfer and colorimetric codes, and raw timecode bits. Encode writes luma, RGB, or RGBA
+with the same precision and layout choices. RLE, packed bitstreams, chroma-subsampled elements,
+multiple independent elements, and transposed orientations fail explicitly.
+
+The six common raster formats decode into their native interleaved U8, U16, or F32 representation
+with exact channel meaning, straight alpha, ICC data, Exif bytes, orientation, extent, and an
+optional caller-owned sequence position. Lossless writes cover PNG U8/U16, TIFF U8/U16/F32, and
+U8 WebP, TGA, and BMP within each encoder's channel model. JPEG accepts L8 or RGB8 with explicit
+quality. A decoded source can be written unchanged to the same representation without discarding
+unmodeled chunks. Re-encoding rejects signed windows, tiled or mip storage, unsupported precision,
+mixed channel types, nonstandard channels, premultiplied alpha, or metadata the target cannot
+carry. Every reader applies explicit dimension and decoded-byte limits before exposing storage.
 
 ### Containers (demux)
 
