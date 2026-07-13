@@ -18,5 +18,6 @@ pub mod model;
 pub mod ops;
 pub mod preview;
 pub mod reference;
+pub mod sequence;
 pub mod tiling;
 pub mod value;
