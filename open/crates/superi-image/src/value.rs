@@ -13,7 +13,7 @@ use superi_core::geometry::PixelBounds;
 use superi_core::pixel::{AlphaMode, PixelFormat, PixelModel, PixelPacking};
 
 use crate::channels::ChannelList;
-use crate::metadata::{ImageMetadata, ImageMetadataValue};
+use crate::metadata::{ImageColorTags, ImageMetadata, ImageMetadataValue};
 
 /// The exact scalar representation of dense image samples.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -221,7 +221,7 @@ pub struct ImageDescriptor {
     data_window: PixelBounds,
     display_window: PixelBounds,
     pixel_format: PixelFormat,
-    color_space: ColorSpace,
+    color_tags: ImageColorTags,
     alpha_mode: AlphaMode,
     channels: ChannelList,
     sample_type: ImageSampleType,
@@ -237,6 +237,27 @@ impl ImageDescriptor {
         display_window: PixelBounds,
         pixel_format: PixelFormat,
         color_space: ColorSpace,
+        alpha_mode: AlphaMode,
+    ) -> Result<Self> {
+        Self::new_with_color_tags(
+            data_window,
+            display_window,
+            pixel_format,
+            ImageColorTags::new(color_space),
+            alpha_mode,
+        )
+    }
+
+    /// Creates an image descriptor with complete authoritative and source color tags.
+    ///
+    /// The canonical interpretation drives processing. Optional named-space and
+    /// ICC payloads remain attached for interchange without silently changing
+    /// that interpretation.
+    pub fn new_with_color_tags(
+        data_window: PixelBounds,
+        display_window: PixelBounds,
+        pixel_format: PixelFormat,
+        color_tags: ImageColorTags,
         alpha_mode: AlphaMode,
     ) -> Result<Self> {
         if data_window.is_empty() || display_window.is_empty() {
@@ -274,7 +295,7 @@ impl ImageDescriptor {
             data_window,
             display_window,
             pixel_format,
-            color_space,
+            color_tags,
             alpha_mode,
             channels,
             sample_type,
@@ -302,6 +323,13 @@ impl ImageDescriptor {
         Ok(self)
     }
 
+    /// Replaces color interpretation and retained source color payloads.
+    #[must_use]
+    pub fn with_color_tags(mut self, color_tags: ImageColorTags) -> Self {
+        self.color_tags = color_tags;
+        self
+    }
+
     /// Returns the signed extent containing stored samples.
     #[must_use]
     pub const fn data_window(&self) -> PixelBounds {
@@ -323,7 +351,13 @@ impl ImageDescriptor {
     /// Returns the unchanged color interpretation.
     #[must_use]
     pub const fn color_space(&self) -> ColorSpace {
-        self.color_space
+        self.color_tags.interpretation()
+    }
+
+    /// Returns authoritative color interpretation and preserved source payloads.
+    #[must_use]
+    pub const fn color_tags(&self) -> &ImageColorTags {
+        &self.color_tags
     }
 
     /// Returns the unchanged alpha interpretation.
@@ -381,12 +415,28 @@ pub struct Image {
 impl Image {
     /// Creates an image and validates representation and exact sample count.
     pub fn new(descriptor: ImageDescriptor, samples: ImageSamples) -> Result<Self> {
+        Self::new_with_metadata(descriptor, samples, ImageMetadata::new())
+    }
+
+    /// Creates an image with complete typed and source-specific metadata.
+    pub fn new_with_metadata(
+        descriptor: ImageDescriptor,
+        samples: ImageSamples,
+        metadata: ImageMetadata,
+    ) -> Result<Self> {
         validate_samples(&descriptor, &samples, "create_image")?;
         Ok(Self {
             descriptor,
             samples,
-            metadata: ImageMetadata::new(),
+            metadata,
         })
+    }
+
+    /// Replaces the complete metadata collection without changing pixels or interpretation.
+    #[must_use]
+    pub fn with_image_metadata(mut self, metadata: ImageMetadata) -> Self {
+        self.metadata = metadata;
+        self
     }
 
     /// Adds or replaces one preserved metadata attribute.

@@ -4,12 +4,14 @@ use superi_core::color_space::{
     ColorPrimaries, ColorRange, ColorSpace, MatrixCoefficients, TransferFunction,
 };
 use superi_core::error::ErrorCategory;
-use superi_core::geometry::AspectRatio;
+use superi_core::geometry::{AspectRatio, PixelBounds};
+use superi_core::pixel::{AlphaMode, PixelFormat};
 use superi_core::time::FrameRate;
 use superi_core::timecode::{Timecode, TimecodeFormat};
 use superi_image::metadata::{
     ImageColorTags, ImageMetadata, ImageMetadataFloat, ImageMetadataValue, ImageOrientation,
 };
+use superi_image::value::{Image, ImageDescriptor, ImageSamples};
 
 #[test]
 fn orientation_uses_exact_tiff_exif_values_and_explicit_display_semantics() {
@@ -142,6 +144,51 @@ fn color_tags_keep_authoritative_axes_and_source_payloads_separate() {
     assert!(ImageColorTags::new(ColorSpace::UNSPECIFIED)
         .with_icc_profile(Arc::from([]))
         .is_err());
+}
+
+#[test]
+fn image_artifacts_consume_and_preserve_typed_metadata_and_color_tags() {
+    let profile: Arc<[u8]> = Arc::from([1_u8, 2, 3, 4]);
+    let color_tags = ImageColorTags::new(ColorSpace::ACESCG)
+        .with_named_space("ACEScg")
+        .unwrap()
+        .with_icc_profile(profile.clone())
+        .unwrap();
+    let bounds = PixelBounds::from_origin_size(-1, 2, 1, 1).unwrap();
+    let descriptor = ImageDescriptor::new_with_color_tags(
+        bounds,
+        bounds,
+        PixelFormat::Rgba16Float,
+        color_tags.clone(),
+        AlphaMode::Straight,
+    )
+    .unwrap();
+    let format = TimecodeFormat::non_drop(FrameRate::FPS_24);
+    let metadata = ImageMetadata::new()
+        .with_orientation(ImageOrientation::LeftBottom)
+        .with_pixel_aspect_ratio(AspectRatio::new(4, 3).unwrap())
+        .with_timecode(Timecode::parse("10:11:12:13", format).unwrap());
+    let image = Image::new_with_metadata(
+        descriptor,
+        ImageSamples::from_f16_bits([0, 0, 0, 0x3c00]),
+        metadata.clone(),
+    )
+    .unwrap();
+
+    assert_eq!(image.descriptor().color_tags(), &color_tags);
+    assert_eq!(image.descriptor().color_space(), ColorSpace::ACESCG);
+    assert_eq!(image.metadata(), &metadata);
+    let edited = image
+        .clone()
+        .replace_samples(ImageSamples::from_f16_bits([
+            0x3c00, 0x3c00, 0x3c00, 0x3c00,
+        ]))
+        .unwrap();
+    assert_eq!(
+        edited.descriptor().color_tags(),
+        image.descriptor().color_tags()
+    );
+    assert_eq!(edited.metadata(), image.metadata());
 }
 
 #[test]
