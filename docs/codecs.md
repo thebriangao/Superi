@@ -1,8 +1,8 @@
 # Superi: Codec Support Policy & Matrix
 
 **Status:** Foundational policy. Living document, versioned and dated.
-**Version:** 0.3
-**Date:** 2026-07-12
+**Version:** 0.4
+**Date:** 2026-07-13
 **Audience:** Engineers, contributors. Operationalizes the codec/licensing boundary from
 `architecture.md §2`, `§4.6`, and open item #1 into a concrete, per-format support plan.
 
@@ -31,7 +31,7 @@ license CI runs the default configuration, so the clean guarantee is machine-pro
 A genuinely usable professional editor, every row legal, MIT tree provably clean:
 
 - **In-tree, all users (permissive, using pure Rust where mature):**
-  AV1, VP9 · MP3, FLAC, Vorbis, Opus, PCM · EXR, DPX, PNG, JPEG, TIFF · MP4/MOV/MKV/MXF demux.
+  AV1, VP9, VP8 · MP3, FLAC, Vorbis, Opus, PCM · EXR, DPX, PNG, JPEG, TIFF · MP4/MOV/MKV/MXF demux.
 - **OS opt-in (`os-codecs`), Mac + Windows:**
   H.264, H.265, ProRes, AAC.
 - **Later (post-launch):**
@@ -46,7 +46,7 @@ This opens essentially everything a working editor sees day-to-day.
 | codec | role | patent | acquisition path | user coverage |
 |---|---|---|---|---|
 | **AV1** | delivery, modern web | royalty-free | in-tree: `rav1d` decode + `rav1e` encode (BSD-2, ~pure Rust) | all platforms |
-| **VP9 / VP8** | web / legacy | royalty-free | in-tree; pure-Rust decode thin → likely `libvpx` (BSD-3) via FFI | all platforms |
+| **VP9 / VP8** | web / legacy | royalty-free | in-tree backend over official `libvpx` 1.16.0 (BSD-3-Clause) through a checked local FFI shim | all platforms when the pinned runtime is bundled |
 | **H.264 / H.265** | acquisition + delivery (bulk of footage) | encumbered | **OS**: VideoToolbox / Media Foundation | Mac + Windows ✓ · Linux gap |
 | **H.266 (VVC)** | emerging | encumbered | OS where present (installed-base support thin in 2026) | limited today |
 | **ProRes** | pro mezzanine / acquisition | Apple proprietary | **OS**: VideoToolbox decode **and** encode (Mac) | Mac ✓ · Win decode limited · Linux gap |
@@ -106,6 +106,28 @@ preserves exact sample timestamps and packet metadata, rejects fractional-sample
 unsupported layouts, resets state for seeking, and emits encoded packets after flush because the
 implementation schedules its bit reservoir across the complete input stream.
 
+### VP8 and VP9 implementation contract
+
+`superi-codecs-rs` compiles its own narrow C shim against the official libvpx 1.16.0 public
+headers at commit `1024874c5919305883187e2953de8fcb4c3d7fa6`. The headers, library license, and
+patent grant are retained under `vendor/libvpx`; no MPL Rust binding crate is used. The shim owns
+the concrete C structs and accepts only function pointers loaded by the Rust backend, so a normal
+Superi build does not link a host development library.
+
+At runtime the backend requires the ABI-matched libvpx 1.16 shared library. Release packaging must
+place it beside the executable, while `SUPERI_LIBVPX_PATH` provides an explicit development and
+deployment override. The backend also searches the platform library names and standard Homebrew
+locations on macOS. A missing or incompatible runtime is an unavailable backend error, which keeps
+fallback explicit.
+
+VP8 accepts opaque 8-bit planar YUV 4:2:0. VP9 accepts opaque planar YUV 4:2:0, 4:2:2, and 4:4:4
+at 8 or 10 bits. Frames and packets retain exact timestamps, duration, keyframe state, color tags,
+and namespaced metadata. The codec copies all planes through libvpx-owned images, including odd
+subsampled dimensions, and carries Superi's complete primaries, transfer, matrix, and range tags in
+packet metadata when the VPx bitstream cannot express every axis. WebM alpha uses a distinct
+payload path that the current Matroska reader does not expose, so the primary color decoder rejects
+a declared alpha stream instead of silently discarding it.
+
 ### Opus implementation contract
 
 The default Opus backend statically builds the permissive `libopus` source bundled by
@@ -145,7 +167,8 @@ Zlib, Unicode. Copyleft is denied, GPL/LGPL/AGPL **and MPL** (weak copyleft stil
    (BSD) and patent-clean (royalty-free), so they pass the rule, but they are C at an `unsafe`
    boundary, against the Rust-native *spirit*. Choose per codec: pure-Rust when mature (AV1 has
    `rav1d`/`rav1e`), BSD-C binding when not. Vorbis keeps the non-`Send` bundled encoder state on a
-   dedicated worker thread behind the safe `vorbis_rs` API.
+   dedicated worker thread behind the safe `vorbis_rs` API. VP8 and VP9 keep every concrete libvpx
+   struct inside a checked local C shim and copy decoded planes into Superi-owned immutable storage.
 3. **ProRes is Mac-centric.** Decode + encode via VideoToolbox on Mac; Windows OS decode is limited;
    Linux unsupported without user-supplied libs.
 4. **H.266/VVC OS support is thin** in 2026; treat as forward-looking, not a launch guarantee.
