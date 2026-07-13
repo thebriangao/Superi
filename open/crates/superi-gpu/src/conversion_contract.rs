@@ -4,7 +4,11 @@ use superi_core::color_space::{
     ColorPrimaries, ColorRange, ColorSpace, MatrixCoefficients, TransferFunction,
 };
 use superi_core::error::{ErrorCategory, Recoverability};
+use superi_core::geometry::PixelBounds;
 use superi_core::pixel::{AlphaMode, ChromaSubsampling, PixelFormat, PixelModel};
+use superi_image::alpha::PremultiplicationRule;
+use superi_image::reference::{compare_images, ReferenceTolerance, UnaryReferenceOperation};
+use superi_image::value::{Image, ImageDescriptor, ImageSamples};
 
 use crate::buffer::GpuBuffer;
 use crate::convert::{
@@ -32,10 +36,10 @@ fn test_device() -> Option<GpuDevice> {
     .ok()
 }
 
-fn pixel_converter<'device>(
-    resources: GpuResources<'device>,
+fn pixel_converter(
+    resources: GpuResources<'_>,
     plan: GpuConversionPlan,
-) -> superi_core::error::Result<GpuPixelConverter<'device>> {
+) -> superi_core::error::Result<GpuPixelConverter<'_>> {
     pollster::block_on(GpuPixelConverter::new(resources, plan))
 }
 
@@ -1435,7 +1439,7 @@ fn limited_rgba16_uses_sixteen_bit_legal_code_points() {
 }
 
 #[test]
-fn rgba32_float_hdr_values_survive_half_float_conversion_and_alpha_association() {
+fn cpu_reference_validates_managed_gpu_alpha_conversion() {
     let Some(device) = test_device() else {
         eprintln!("no wgpu adapter is available, skipping float conversion execution");
         return;
@@ -1497,6 +1501,42 @@ fn rgba32_float_hdr_values_survive_half_float_conversion_and_alpha_association()
     assert_near(value[1], 1.0, 0.001);
     assert_near(value[2], 0.25, 0.001);
     assert_near(value[3], 0.5, 0.001);
+
+    let image_bounds = PixelBounds::from_origin_size(0, 0, 1, 1).unwrap();
+    let cpu_source = Image::new(
+        ImageDescriptor::new(
+            image_bounds,
+            image_bounds,
+            PixelFormat::Rgba16Float,
+            ColorSpace::ACESCG,
+            AlphaMode::Straight,
+        )
+        .unwrap(),
+        ImageSamples::f16_from_f32([-0.25, 2.0, 0.5, 0.5]),
+    )
+    .unwrap();
+    let cpu_reference = UnaryReferenceOperation::Alpha {
+        destination_mode: AlphaMode::Premultiplied,
+        rule: PremultiplicationRule::OneTime,
+    }
+    .execute(&cpu_source)
+    .unwrap();
+    let gpu_samples = bytes
+        .chunks_exact(2)
+        .map(|sample| u16::from_le_bytes([sample[0], sample[1]]));
+    let gpu_candidate = Image::new(
+        cpu_reference.descriptor().clone(),
+        ImageSamples::from_f16_bits(gpu_samples),
+    )
+    .unwrap();
+    let comparison = compare_images(
+        &cpu_reference,
+        &gpu_candidate,
+        ReferenceTolerance::general_normalized(),
+    )
+    .unwrap();
+    assert_eq!(comparison.compared_samples(), 4);
+    comparison.require_match().unwrap();
     drop((lease, uploads));
 }
 

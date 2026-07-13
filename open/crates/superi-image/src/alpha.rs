@@ -320,19 +320,15 @@ impl AlphaTransform {
         };
 
         let source = image.descriptor();
-        let descriptor = ImageDescriptor::new(
+        let descriptor = ImageDescriptor::new_with_color_tags(
             source.data_window(),
             source.display_window(),
             source.pixel_format(),
-            source.color_space(),
+            source.color_tags().clone(),
             self.destination_mode,
         )?
         .with_channels(self.channels.clone())?;
-        let mut result = Image::new(descriptor, samples)?;
-        for (key, value) in image.metadata().iter() {
-            result = result.with_metadata(key, value.clone())?;
-        }
-        Ok(result)
+        Image::new_with_metadata(descriptor, samples, image.metadata().clone())
     }
 
     /// Transforms zero or more complete interleaved logical pixels in place.
