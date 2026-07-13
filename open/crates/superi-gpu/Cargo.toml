@@ -12,3 +12,7 @@ workspace = true
 [dependencies]
 superi-core = { path = "../superi-core" }
 superi-image = { path = "../superi-image" }
+wgpu = { workspace = true }
+
+[dev-dependencies]
+pollster = { workspace = true }

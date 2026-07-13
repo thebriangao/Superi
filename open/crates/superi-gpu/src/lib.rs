@@ -1,6 +1,8 @@
-//! `superi-gpu`, wgpu pipeline, GPU-resident frames.
+//! `superi-gpu`, wgpu pipeline and GPU-resident frames.
 //!
-//! § 5.2 in `docs/architecture.md`. Depends on: superi-core, superi-image. Status: skeleton.
+//! Adapter discovery, capability selection, and logical-device ownership are
+//! implemented. Resource, pass, conversion, pooling, and readback modules are
+//! still staged behind their focused checkpoints.
 
 pub mod buffer;
 pub mod convert;
