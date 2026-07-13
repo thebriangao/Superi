@@ -3,6 +3,16 @@
 version = 3
 
 [[package]]
+name = "aotuv_lancer_vorbis_sys"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "495ea2c3cc8dc08e9fb6ff470c9c90e44d4fbc648882a0bfaba13216daea4c3c"
+dependencies = [
+ "cc",
+ "ogg_next_sys",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -34,6 +44,16 @@ name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
+
+[[package]]
+name = "cc"
+version = "1.2.67"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e17dd265a7d0f31ef544e1b20e03add05d3b45b491b633b10d67145d2acc1a38"
+dependencies = [
+ "find-msvc-tools",
+ "shlex",
+]
 
 [[package]]
 name = "cfg-if"
@@ -92,6 +112,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "errno"
+version = "0.3.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
+dependencies = [
+ "libc",
+ "windows-sys",
+]
+
+[[package]]
+name = "find-msvc-tools"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
+
+[[package]]
 name = "flacenc"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -142,6 +178,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
+name = "lewton"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "777b48df9aaab155475a83a7df3070395ea1ac6902f5cd062b8f2b028075c030"
+dependencies = [
+ "byteorder",
+ "tinyvec",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.186"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -173,6 +219,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "ogg"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6951b4e8bf21c8193da321bcce9c9dd2e13c858fe078bf9054a288b419ae5d6e"
+dependencies = [
+ "byteorder",
+]
+
+[[package]]
+name = "ogg_next_sys"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac4af25868786f6ab24956a8496a1eca4b010f860b449596f523d19ee9f956ae"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "oxideav-core"
 version = "0.1.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -180,7 +244,7 @@ checksum = "90f122ec5ab9940f06ac87f34ffd165412aaf42017bcaf8e61f592d9cca838ce"
 dependencies = [
  "bytemuck",
  "serde_json",
- "thiserror",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -276,6 +340,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "shlex"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -340,14 +410,19 @@ dependencies = [
 name = "superi-codecs-rs"
 version = "0.0.0"
 dependencies = [
+ "aotuv_lancer_vorbis_sys",
  "built",
  "claxon",
  "flacenc",
+ "lewton",
+ "ogg",
+ "ogg_next_sys",
  "oxideav-core",
  "oxideav-mp3",
  "superi-core",
  "superi-image",
  "superi-media-io",
+ "vorbis_rs",
 ]
 
 [[package]]
@@ -471,11 +546,31 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
+version = "1.0.69"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52"
+dependencies = [
+ "thiserror-impl 1.0.69",
+]
+
+[[package]]
+name = "thiserror"
 version = "2.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4288b5bcbc7920c07a1149a35cf9590a2aa808e0bc1eafaade0b80947865fbc4"
 dependencies = [
- "thiserror-impl",
+ "thiserror-impl 2.0.18",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "1.0.69"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -488,6 +583,21 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "tinyvec"
+version = "1.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb4ebadaa0af04fab11ae01eb5f9fdb5f9c5b875506e210e71c07873528baa7f"
+dependencies = [
+ "tinyvec_macros",
+]
+
+[[package]]
+name = "tinyvec_macros"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "typenum"
@@ -506,6 +616,34 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "vorbis_rs"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "513beb7a94438399e404b297592dad39e99dd5e39515ab66dfe9caa6fd18897a"
+dependencies = [
+ "aotuv_lancer_vorbis_sys",
+ "errno",
+ "ogg_next_sys",
+ "thiserror 1.0.69",
+ "tinyvec",
+]
+
+[[package]]
+name = "windows-link"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
+
+[[package]]
+name = "windows-sys"
+version = "0.61.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc"
+dependencies = [
+ "windows-link",
+]
 
 [[package]]
 name = "zmij"

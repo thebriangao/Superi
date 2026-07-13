@@ -34,3 +34,8 @@ oxideav-mp3 = { git = "https://github.com/OxideAV/oxideav-mp3.git", rev = "f3790
 claxon = "=0.4.3"
 flacenc = { version = "=0.4.0", default-features = false }
 built = "=0.7.1"
+lewton = { version = "=0.10.2", default-features = false }
+ogg = "=0.8.0"
+ogg_next_sys = "=0.1.3"
+vorbis_rs = { version = "=0.5.4", default-features = false }
+aotuv_lancer_vorbis_sys = "=0.1.4"

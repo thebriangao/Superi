@@ -10,7 +10,7 @@
 
 ## 0. The governing rule
 
-> **Royalty-free → pure-Rust, in our tree. Patent-encumbered → the user's OS (opt-in). Vendor RAW → optional user-installed SDK plugin.**
+> **Royalty-free -> permissive in our tree, using pure Rust where mature. Patent-encumbered -> the user's OS (opt-in). Vendor RAW -> optional user-installed SDK plugin.**
 
 Two facts make this the only coherent policy:
 
@@ -30,7 +30,7 @@ license CI runs the default configuration, so the clean guarantee is machine-pro
 
 A genuinely usable professional editor, every row legal, MIT tree provably clean:
 
-- **In-tree, all users (pure-Rust / permissive):**
+- **In-tree, all users (permissive, using pure Rust where mature):**
   AV1, VP9 · MP3, FLAC, Vorbis, Opus, PCM · EXR, DPX, PNG, JPEG, TIFF · MP4/MOV/MKV/MXF demux.
 - **OS opt-in (`os-codecs`), Mac + Windows:**
   H.264, H.265, ProRes, AAC.
@@ -59,7 +59,7 @@ This opens essentially everything a working editor sees day-to-day.
 |---|---|---|---|
 | **PCM** | free | in-tree `superi-codecs-rs` backend (MIT, no external dependency) | codec complete; WAV and AIFF containers tracked separately |
 | **FLAC** | free | in-tree backend using `claxon` 0.4.3 decode plus `flacenc` 0.4.0 encode (Apache-2.0, pure Rust) | 8, 12, 16, 20, and 24 bit precision; one to eight channels |
-| **Vorbis** | free | in-tree `lewton` (MIT/ISC, pure Rust) | clean |
+| **Vorbis** | free | in-tree `lewton` 0.10.2 decode (MIT OR Apache-2.0) plus `vorbis_rs` 0.5.4, `aotuv_lancer_vorbis_sys` 0.1.4, and `ogg_next_sys` 0.1.3 encode (BSD-3-Clause, bundled C) | codec complete; raw packet transport, exact sample timing, semantic channel mapping, metadata, reset, and deterministic output are covered by public contracts; encoder state is isolated on its worker thread; exact versions preserve Rust 1.80 |
 | **Opus** | free | `libopus` (BSD-3) via FFI; pure-Rust decode thin | license-clean |
 | **MP3** | **expired (2017)** | `oxideav-mp3` at immutable revision `f37901b5d9c691b113e96a3bb95645c67af1a046` (MIT, pure Rust, Rust 1.80) | decode and CBR encode through the default backend |
 | **AAC** | AAC-LC core largely expired ~2017; HE-AAC murkier | route via **OS** (rides in the same MP4s as H.264) | `[VERIFY]` before claiming "free" |
@@ -86,7 +86,7 @@ index, edit-rate, and generic-container essence relationships without claiming c
 | crate | responsibility |
 |---|---|
 | `superi-media-io` | the decode/encode **interface** + pure-Rust container demux + image-sequence IO |
-| `superi-codecs-rs` | **default backend**, in-tree royalty-free video/audio codecs (PCM, AV1, VP9, Opus, Vorbis, FLAC, MP3) |
+| `superi-codecs-rs` | **default backend**, in-tree permissive royalty-free video/audio codecs (PCM, AV1, VP9, Opus, Vorbis, FLAC, MP3), using pure Rust where mature and documented BSD C boundaries where needed |
 | `superi-codecs-platform` | **opt-in backend** (`os-codecs` feature), OS decode for H.264/H.265/H.266/ProRes/AAC (MIT binding code; `unsafe` FFI boundary) |
 | `superi-image::io` | still/sequence image formats (EXR, DPX, PNG, JPEG, TIFF, WebP, …) |
 
@@ -113,7 +113,7 @@ Zlib, Unicode. Copyleft is denied, GPL/LGPL/AGPL **and MPL** (weak copyleft stil
 
 - **Consequence:** `Symphonia` (the popular all-in-one pure-Rust media crate) is **MPL-2.0 → excluded**.
   Compressed audio is assembled from **per-codec permissive crates**
-  (`claxon`/`lewton`/`libopus`) instead, while PCM is implemented in-tree without an external
+  (`claxon`/`lewton`/`vorbis_rs`/`libopus`) instead, while PCM is implemented in-tree without an external
   dependency. This is an accepted, recurring cost of the zero-exception rule.
 - Enforced by `cargo-deny` (`open/deny.toml`); wired into CI in a later pass.
 
@@ -124,10 +124,11 @@ Zlib, Unicode. Copyleft is denied, GPL/LGPL/AGPL **and MPL** (weak copyleft stil
    so H.264/H.265 there leans on *system-installed* libraries the user supplies, still their machine,
    not our tree, but not automatic. "All users" is true for royalty-free; "most users" is the honest
    word for encumbered.
-2. **C-via-FFI creeps back** for `libvpx` / `libopus` / possibly `dav1d`. These are license-clean
+2. **C-via-FFI creeps back** for the Vorbis encoder, `libvpx` / `libopus` / possibly `dav1d`. These are license-clean
    (BSD) and patent-clean (royalty-free), so they pass the rule, but they are C at an `unsafe`
    boundary, against the Rust-native *spirit*. Choose per codec: pure-Rust when mature (AV1 has
-   `rav1d`/`rav1e`), BSD-C binding when not.
+   `rav1d`/`rav1e`), BSD-C binding when not. Vorbis keeps the non-`Send` bundled encoder state on a
+   dedicated worker thread behind the safe `vorbis_rs` API.
 3. **ProRes is Mac-centric.** Decode + encode via VideoToolbox on Mac; Windows OS decode is limited;
    Linux unsupported without user-supplied libs.
 4. **H.266/VVC OS support is thin** in 2026; treat as forward-looking, not a launch guarantee.
@@ -142,9 +143,9 @@ The specific facts to nail down:
 
 - `[VERIFY]` **AAC-LC patent status**, confirm whether AAC-LC can be treated as patent-free, or must
   stay strictly on the OS path.
-- `[VERIFY]` **`rav1d` / `lewton` licenses + maturity**, confirm permissive license and
-  production-readiness for decode. The FLAC backend dependency licenses and Rust floor are pinned
-  and enforced by the workspace gates.
+- `[VERIFY]` **`rav1d` license + maturity**, confirm its permissive license and production-readiness
+  for decode. The FLAC and Vorbis dependency licenses and Rust floor are pinned and enforced by the
+  workspace gates.
 - `[VERIFY]` **DNxHR / VC-3 patent status**, determines whether it can be an in-tree codec.
 - `[VERIFY]` **ProRes-on-Windows** decode path (Media Foundation coverage vs. none).
 

@@ -14,9 +14,14 @@ oxideav-core = { workspace = true }
 oxideav-mp3 = { workspace = true }
 claxon = { workspace = true }
 flacenc = { workspace = true }
+aotuv_lancer_vorbis_sys = { workspace = true }
+lewton = { workspace = true }
+ogg = { workspace = true }
+ogg_next_sys = { workspace = true }
 superi-core = { path = "../superi-core" }
 superi-image = { path = "../superi-image" }
 superi-media-io = { path = "../superi-media-io" }
+vorbis_rs = { workspace = true }
 
 # flacenc 0.4 accepts built 0.7 semver-wide, but built newer than 0.7.1
 # generates constants that do not compile on the workspace Rust 1.80 floor.
