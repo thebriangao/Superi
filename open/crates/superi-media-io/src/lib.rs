@@ -19,6 +19,7 @@ mod mp4_parser;
 pub mod mxf;
 mod mxf_parser;
 pub mod operation;
+pub mod pcm;
 pub mod read;
 pub mod selection;
 pub mod timecode;
