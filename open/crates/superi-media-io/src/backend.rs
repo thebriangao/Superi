@@ -6,12 +6,17 @@
 //! loads, or silently substitutes a concrete codec implementation.
 
 use std::collections::BTreeSet;
+use std::fs::File;
+use std::io::{self, Read};
 use std::sync::Arc;
 
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 
 use crate::decode::{Decoder, DecoderConfig};
-use crate::demux::{BackendId, CodecId, MediaSource, SourceRequest};
+use crate::demux::{
+    BackendId, CodecId, ContainerId, MediaSource, ProbeConfidence, SourceLocation, SourceProbe,
+    SourceProbeLimits, SourceProbeResult, SourceRequest,
+};
 use crate::encode::{Encoder, EncoderConfig};
 
 /// Human-readable identity for one backend implementation.
@@ -220,6 +225,99 @@ pub struct BackendSelection {
     fallback_used: bool,
 }
 
+/// One backend whose content probe recognized a source format.
+pub struct SourceProbeCandidate {
+    backend: Arc<dyn MediaBackend>,
+    container: ContainerId,
+    confidence: ProbeConfidence,
+}
+
+impl SourceProbeCandidate {
+    /// Returns the recognized backend through the codec-neutral interface.
+    #[must_use]
+    pub const fn backend(&self) -> &Arc<dyn MediaBackend> {
+        &self.backend
+    }
+
+    /// Returns the stable recognized container identity.
+    #[must_use]
+    pub const fn container(&self) -> &ContainerId {
+        &self.container
+    }
+
+    /// Returns the content-based detection confidence.
+    #[must_use]
+    pub const fn confidence(&self) -> ProbeConfidence {
+        self.confidence
+    }
+}
+
+/// Deterministically ordered probe result for one immutable source request.
+pub struct SourceProbeSelection {
+    request: SourceRequest,
+    primary: SourceProbeCandidate,
+    fallbacks: Vec<SourceProbeCandidate>,
+    fallback_used: bool,
+    bytes_examined: usize,
+    source_length: u64,
+}
+
+impl SourceProbeSelection {
+    /// Returns the request whose bytes produced this selection.
+    #[must_use]
+    pub const fn request(&self) -> &SourceRequest {
+        &self.request
+    }
+
+    /// Returns the selected source backend and its content match.
+    #[must_use]
+    pub const fn primary(&self) -> &SourceProbeCandidate {
+        &self.primary
+    }
+
+    /// Returns explicitly allowed fallback-tier content matches.
+    #[must_use]
+    pub fn fallbacks(&self) -> &[SourceProbeCandidate] {
+        &self.fallbacks
+    }
+
+    /// Returns whether no primary-tier backend recognized the source.
+    #[must_use]
+    pub const fn fallback_used(&self) -> bool {
+        self.fallback_used
+    }
+
+    /// Returns the final bounded prefix length presented to backends.
+    #[must_use]
+    pub const fn bytes_examined(&self) -> usize {
+        self.bytes_examined
+    }
+
+    /// Returns the source length observed before probing.
+    #[must_use]
+    pub const fn source_length(&self) -> u64 {
+        self.source_length
+    }
+
+    /// Opens the exact request through the selected codec-neutral backend.
+    pub fn open(&self) -> Result<Box<dyn MediaSource>> {
+        self.primary
+            .backend
+            .open_source(&self.request)
+            .map_err(|mut error| {
+                error.push_context(
+                    ErrorContext::new("superi-media-io.backend", "open_probed_source")
+                        .with_field(
+                            "backend_id",
+                            self.primary.backend.descriptor().id().as_str(),
+                        )
+                        .with_field("container_id", self.primary.container.as_str()),
+                );
+                error
+            })
+    }
+}
+
 impl BackendSelection {
     /// Returns the selected primary backend.
     #[must_use]
@@ -334,6 +432,294 @@ impl BackendRegistry {
             fallback_used: true,
         })
     }
+
+    /// Probes a bounded source prefix and deterministically selects a matching backend.
+    ///
+    /// Filesystem access is blocking and must be called by the repository-defined I/O worker.
+    /// Extension and file-name hints are provided to backends, but only a backend content match is
+    /// eligible for selection.
+    pub fn probe_source(
+        &self,
+        request: SourceRequest,
+        limits: SourceProbeLimits,
+        fallback_policy: FallbackPolicy,
+    ) -> Result<SourceProbeSelection> {
+        let source_capability = BackendCapability::Source;
+        let registrations = self
+            .registrations
+            .iter()
+            .filter(|registration| registration.capabilities.contains(&source_capability))
+            .filter(|registration| {
+                registration.tier == BackendTier::Primary
+                    || fallback_policy == FallbackPolicy::AllowRegistered
+            })
+            .collect::<Vec<_>>();
+        if registrations.is_empty() {
+            return Err(unsupported(&BackendRequirement::Source));
+        }
+
+        let mut reader = SourceProbeReader::new(request.location())?;
+        let mut target_bytes = limits.initial_bytes();
+        let matches = loop {
+            reader.read_to(target_bytes)?;
+            let probe = SourceProbe::new(
+                request.location(),
+                reader.bytes(),
+                reader.source_length(),
+                reader.is_complete(),
+            );
+            let mut matches = Vec::new();
+            let mut requested_bytes = reader.bytes().len();
+
+            for registration in &registrations {
+                match registration
+                    .backend
+                    .probe_source(&probe)
+                    .map_err(|mut error| {
+                        error.push_context(
+                            ErrorContext::new("superi-media-io.backend", "probe_backend")
+                                .with_field(
+                                    "backend_id",
+                                    registration.backend.descriptor().id().as_str(),
+                                ),
+                        );
+                        error
+                    })? {
+                    SourceProbeResult::NoMatch => {}
+                    SourceProbeResult::NeedMoreData { minimum_bytes } => {
+                        requested_bytes = requested_bytes.max(minimum_bytes.get());
+                    }
+                    SourceProbeResult::Match {
+                        container,
+                        confidence,
+                    } => matches.push(RankedProbeCandidate {
+                        candidate: SourceProbeCandidate {
+                            backend: Arc::clone(&registration.backend),
+                            container,
+                            confidence,
+                        },
+                        priority: registration.priority,
+                        tier: registration.tier,
+                    }),
+                }
+            }
+
+            if requested_bytes > reader.bytes().len()
+                && !reader.is_complete()
+                && reader.bytes().len() < limits.maximum_bytes()
+            {
+                let grown = reader
+                    .bytes()
+                    .len()
+                    .saturating_mul(2)
+                    .max(requested_bytes)
+                    .min(limits.maximum_bytes());
+                if grown > reader.bytes().len() {
+                    target_bytes = grown;
+                    continue;
+                }
+            }
+            break matches;
+        };
+
+        let bytes_examined = reader.bytes().len();
+        let source_length = reader.source_length();
+        drop(reader);
+        build_probe_selection(
+            request,
+            matches,
+            bytes_examined,
+            source_length,
+            limits.maximum_bytes(),
+        )
+    }
+}
+
+struct RankedProbeCandidate {
+    candidate: SourceProbeCandidate,
+    priority: u16,
+    tier: BackendTier,
+}
+
+fn build_probe_selection(
+    request: SourceRequest,
+    mut matches: Vec<RankedProbeCandidate>,
+    bytes_examined: usize,
+    source_length: u64,
+    maximum_bytes: usize,
+) -> Result<SourceProbeSelection> {
+    matches.sort_by(|left, right| {
+        right
+            .candidate
+            .confidence
+            .cmp(&left.candidate.confidence)
+            .then_with(|| right.priority.cmp(&left.priority))
+            .then_with(|| {
+                left.candidate
+                    .backend
+                    .descriptor()
+                    .id()
+                    .cmp(right.candidate.backend.descriptor().id())
+            })
+    });
+
+    let mut primary = matches
+        .iter()
+        .position(|candidate| candidate.tier == BackendTier::Primary);
+    let fallback_used = primary.is_none();
+    if fallback_used {
+        primary = (!matches.is_empty()).then_some(0);
+    }
+    let Some(primary_index) = primary else {
+        return Err(unrecognized_source(
+            bytes_examined,
+            maximum_bytes,
+            source_length,
+        ));
+    };
+    let primary = matches.remove(primary_index).candidate;
+    let fallbacks = matches
+        .into_iter()
+        .filter(|candidate| candidate.tier == BackendTier::Fallback)
+        .map(|candidate| candidate.candidate)
+        .collect();
+
+    Ok(SourceProbeSelection {
+        request,
+        primary,
+        fallbacks,
+        fallback_used,
+        bytes_examined,
+        source_length,
+    })
+}
+
+enum ProbeReadSource<'a> {
+    File(File),
+    Memory(&'a [u8]),
+}
+
+struct SourceProbeReader<'a> {
+    source: ProbeReadSource<'a>,
+    bytes: Vec<u8>,
+    source_length: u64,
+    exhausted: bool,
+}
+
+impl<'a> SourceProbeReader<'a> {
+    fn new(location: &'a SourceLocation) -> Result<Self> {
+        match location {
+            SourceLocation::Path(path) => {
+                let file =
+                    File::open(path).map_err(|error| probe_io_error("open_probe_source", error))?;
+                let source_length = file
+                    .metadata()
+                    .map_err(|error| probe_io_error("inspect_probe_source", error))?
+                    .len();
+                Ok(Self {
+                    source: ProbeReadSource::File(file),
+                    bytes: Vec::new(),
+                    source_length,
+                    exhausted: source_length == 0,
+                })
+            }
+            SourceLocation::Memory { data, .. } => {
+                let source_length = u64::try_from(data.len()).map_err(|_| {
+                    Error::new(
+                        ErrorCategory::ResourceExhausted,
+                        Recoverability::UserCorrectable,
+                        "memory source length cannot be represented",
+                    )
+                    .with_context(ErrorContext::new(
+                        "superi-media-io.backend",
+                        "inspect_probe_source",
+                    ))
+                })?;
+                Ok(Self {
+                    source: ProbeReadSource::Memory(data),
+                    bytes: Vec::new(),
+                    source_length,
+                    exhausted: data.is_empty(),
+                })
+            }
+        }
+    }
+
+    fn read_to(&mut self, target_bytes: usize) -> Result<()> {
+        let target_bytes = u64::try_from(target_bytes).unwrap_or(u64::MAX);
+        let source_target = usize::try_from(self.source_length.min(target_bytes))
+            .expect("source target never exceeds usize probe limit");
+        if source_target <= self.bytes.len() {
+            return Ok(());
+        }
+        let additional = source_target - self.bytes.len();
+        match &mut self.source {
+            ProbeReadSource::File(file) => {
+                let read = file
+                    .take(u64::try_from(additional).unwrap_or(u64::MAX))
+                    .read_to_end(&mut self.bytes)
+                    .map_err(|error| probe_io_error("read_probe_source", error))?;
+                if read < additional {
+                    self.exhausted = true;
+                }
+            }
+            ProbeReadSource::Memory(data) => {
+                self.bytes
+                    .extend_from_slice(&data[self.bytes.len()..source_target]);
+            }
+        }
+        if self.bytes.len() as u64 >= self.source_length {
+            self.exhausted = true;
+        }
+        Ok(())
+    }
+
+    fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    const fn source_length(&self) -> u64 {
+        self.source_length
+    }
+
+    const fn is_complete(&self) -> bool {
+        self.exhausted
+    }
+}
+
+fn probe_io_error(operation: &'static str, source: io::Error) -> Error {
+    let (category, recoverability) = match source.kind() {
+        io::ErrorKind::NotFound => (ErrorCategory::NotFound, Recoverability::UserCorrectable),
+        io::ErrorKind::PermissionDenied => (
+            ErrorCategory::PermissionDenied,
+            Recoverability::UserCorrectable,
+        ),
+        io::ErrorKind::InvalidInput => {
+            (ErrorCategory::InvalidInput, Recoverability::UserCorrectable)
+        }
+        _ => (ErrorCategory::Unavailable, Recoverability::Retryable),
+    };
+    Error::with_source(
+        category,
+        recoverability,
+        "media source could not be read",
+        source,
+    )
+    .with_context(ErrorContext::new("superi-media-io.backend", operation))
+}
+
+fn unrecognized_source(bytes_examined: usize, maximum_bytes: usize, source_length: u64) -> Error {
+    Error::new(
+        ErrorCategory::Unsupported,
+        Recoverability::Degraded,
+        "no allowed backend recognized the media source",
+    )
+    .with_context(
+        ErrorContext::new("superi-media-io.backend", "probe_source")
+            .with_field("bytes_examined", bytes_examined.to_string())
+            .with_field("maximum_bytes", maximum_bytes.to_string())
+            .with_field("source_length", source_length.to_string()),
+    )
 }
 
 fn rank_order(left: &BackendRegistration, right: &BackendRegistration) -> std::cmp::Ordering {
@@ -368,6 +754,9 @@ fn unsupported(requirement: &BackendRequirement) -> Error {
 pub trait MediaBackend: Send + Sync {
     /// Returns stable backend identity.
     fn descriptor(&self) -> &BackendDescriptor;
+
+    /// Inspects bounded source bytes without opening a concrete decoder.
+    fn probe_source(&self, probe: &SourceProbe<'_>) -> Result<SourceProbeResult>;
 
     /// Opens a source for ingest, playback, or relinking.
     fn open_source(&self, request: &SourceRequest) -> Result<Box<dyn MediaSource>>;

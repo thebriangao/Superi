@@ -19,8 +19,8 @@ use superi_media_io::decode::{
 };
 use superi_media_io::demux::{
     BackendId, CodecId, MediaMetadata, MediaSource, MetadataValue, Packet, PacketTiming, SeekMode,
-    SeekRequest, SourceIdentity, SourceInfo, SourceLocation, SourceRequest, StreamId, StreamInfo,
-    StreamKind,
+    SeekRequest, SourceIdentity, SourceInfo, SourceLocation, SourceProbe, SourceProbeResult,
+    SourceRequest, StreamId, StreamInfo, StreamKind,
 };
 use superi_media_io::encode::{EncodeInput, EncodeOutput, Encoder, EncoderConfig};
 
@@ -484,6 +484,10 @@ fn registry_ranks_capable_backends_and_only_exposes_explicit_fallbacks() {
 impl MediaBackend for MemoryBackend {
     fn descriptor(&self) -> &BackendDescriptor {
         &self.descriptor
+    }
+
+    fn probe_source(&self, _probe: &SourceProbe<'_>) -> Result<SourceProbeResult> {
+        Ok(SourceProbeResult::NoMatch)
     }
 
     fn open_source(&self, request: &SourceRequest) -> Result<Box<dyn MediaSource>> {

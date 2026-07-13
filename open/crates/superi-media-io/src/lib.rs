@@ -1,7 +1,8 @@
 //! Codec-neutral media input, decode, encode, and container contracts.
 //!
-//! Sources keep project identity separate from replaceable local locations, packets retain exact
-//! presentation and decode timing, and decoded video or audio retains its complete representation.
+//! Sources are selected through bounded content probes rather than concrete codec types. Project
+//! identity remains separate from replaceable local locations, packets retain exact presentation
+//! and decode timing, and decoded video or audio retains its complete representation.
 //! Decoder and encoder traits use explicit input, drain, and end-of-stream states so concrete
 //! software and platform backends can share one predictable editor-facing lifecycle.
 

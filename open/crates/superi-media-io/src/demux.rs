@@ -2,7 +2,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
-use std::path::PathBuf;
+use std::num::NonZeroUsize;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
@@ -44,6 +45,7 @@ macro_rules! string_id {
 
 string_id!(BackendId, "backend_id");
 string_id!(CodecId, "codec_id");
+string_id!(ContainerId, "container_id");
 
 /// A stable stream number within one media source.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -442,6 +444,207 @@ pub enum SourceLocation {
     Path(PathBuf),
     /// Immutable caller-owned bytes and a diagnostic name.
     Memory { name: String, data: Arc<[u8]> },
+}
+
+impl SourceLocation {
+    /// Returns the caller-provided file name when it is valid UTF-8.
+    #[must_use]
+    pub fn name(&self) -> Option<&str> {
+        self.hint_path().file_name().and_then(|name| name.to_str())
+    }
+
+    /// Returns the extension hint when it is valid UTF-8.
+    ///
+    /// An extension is untrusted context. A backend must inspect bytes before it reports a match.
+    #[must_use]
+    pub fn extension(&self) -> Option<&str> {
+        self.hint_path()
+            .extension()
+            .and_then(|extension| extension.to_str())
+    }
+
+    fn hint_path(&self) -> &Path {
+        match self {
+            Self::Path(path) => path,
+            Self::Memory { name, .. } => Path::new(name),
+        }
+    }
+}
+
+/// Validated confidence assigned by a backend to a content-based source match.
+///
+/// Values range from 1 through 100. Zero is represented by [`SourceProbeResult::NoMatch`].
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct ProbeConfidence(u8);
+
+impl ProbeConfidence {
+    /// Creates a nonzero confidence percentage.
+    pub fn new(value: u8) -> Result<Self> {
+        if !(1..=100).contains(&value) {
+            return Err(invalid(
+                "create_probe_confidence",
+                "probe confidence must be between 1 and 100",
+            ));
+        }
+        Ok(Self(value))
+    }
+
+    /// Returns the confidence percentage.
+    #[must_use]
+    pub const fn value(self) -> u8 {
+        self.0
+    }
+}
+
+/// Bounded byte counts used while probing one source.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SourceProbeLimits {
+    initial_bytes: usize,
+    maximum_bytes: usize,
+}
+
+impl SourceProbeLimits {
+    /// Default initial prefix length, 4 KiB.
+    pub const DEFAULT_INITIAL_BYTES: usize = 4 * 1024;
+    /// Default maximum prefix length, 1 MiB.
+    pub const DEFAULT_MAXIMUM_BYTES: usize = 1024 * 1024;
+
+    /// Creates limits with a positive initial length no larger than the maximum.
+    pub fn new(initial_bytes: usize, maximum_bytes: usize) -> Result<Self> {
+        if initial_bytes == 0 {
+            return Err(invalid(
+                "create_source_probe_limits",
+                "initial probe bytes must be greater than zero",
+            ));
+        }
+        if initial_bytes > maximum_bytes {
+            return Err(invalid(
+                "create_source_probe_limits",
+                "initial probe bytes must not exceed maximum probe bytes",
+            ));
+        }
+        Ok(Self {
+            initial_bytes,
+            maximum_bytes,
+        })
+    }
+
+    /// Returns the first prefix length shown to source backends.
+    #[must_use]
+    pub const fn initial_bytes(self) -> usize {
+        self.initial_bytes
+    }
+
+    /// Returns the hard per-source byte limit.
+    #[must_use]
+    pub const fn maximum_bytes(self) -> usize {
+        self.maximum_bytes
+    }
+}
+
+impl Default for SourceProbeLimits {
+    fn default() -> Self {
+        Self {
+            initial_bytes: Self::DEFAULT_INITIAL_BYTES,
+            maximum_bytes: Self::DEFAULT_MAXIMUM_BYTES,
+        }
+    }
+}
+
+/// One immutable, bounded view presented to every eligible source backend.
+pub struct SourceProbe<'a> {
+    location: &'a SourceLocation,
+    bytes: &'a [u8],
+    source_length: u64,
+    complete: bool,
+}
+
+impl<'a> SourceProbe<'a> {
+    pub(crate) const fn new(
+        location: &'a SourceLocation,
+        bytes: &'a [u8],
+        source_length: u64,
+        complete: bool,
+    ) -> Self {
+        Self {
+            location,
+            bytes,
+            source_length,
+            complete,
+        }
+    }
+
+    /// Returns the source prefix starting at byte zero.
+    #[must_use]
+    pub const fn bytes(&self) -> &[u8] {
+        self.bytes
+    }
+
+    /// Returns the complete source length observed before probing.
+    #[must_use]
+    pub const fn source_length(&self) -> u64 {
+        self.source_length
+    }
+
+    /// Returns true when the prefix contains the complete source.
+    #[must_use]
+    pub const fn is_complete(&self) -> bool {
+        self.complete
+    }
+
+    /// Returns the caller-provided file name hint when it is valid UTF-8.
+    #[must_use]
+    pub fn name(&self) -> Option<&str> {
+        self.location.name()
+    }
+
+    /// Returns the caller-provided extension hint when it is valid UTF-8.
+    #[must_use]
+    pub fn extension(&self) -> Option<&str> {
+        self.location.extension()
+    }
+}
+
+/// One backend response to a bounded source prefix.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum SourceProbeResult {
+    /// The bytes do not match a format supported by this backend.
+    NoMatch,
+    /// The backend needs at least this many prefix bytes for a decision.
+    NeedMoreData { minimum_bytes: NonZeroUsize },
+    /// The backend recognized a container with explicit confidence.
+    Match {
+        /// Stable container or elementary-stream identity.
+        container: ContainerId,
+        /// Content-based detection confidence.
+        confidence: ProbeConfidence,
+    },
+}
+
+impl SourceProbeResult {
+    /// Requests a larger prefix.
+    pub fn need_more_data(minimum_bytes: usize) -> Result<Self> {
+        if minimum_bytes == 0 {
+            return Err(invalid(
+                "request_more_probe_data",
+                "requested probe bytes must be greater than zero",
+            ));
+        }
+        Ok(Self::NeedMoreData {
+            minimum_bytes: NonZeroUsize::new(minimum_bytes)
+                .expect("validated nonzero probe byte request"),
+        })
+    }
+
+    /// Reports a recognized content format.
+    #[must_use]
+    pub const fn matched(container: ContainerId, confidence: ProbeConfidence) -> Self {
+        Self::Match {
+            container,
+            confidence,
+        }
+    }
 }
 
 /// Request to open or relink a media source.
