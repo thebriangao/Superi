@@ -23,6 +23,8 @@ use superi_media_io::demux::{
     SourceRequest, StreamId, StreamInfo, StreamKind,
 };
 use superi_media_io::encode::{EncodeInput, EncodeOutput, Encoder, EncoderConfig};
+use superi_media_io::operation::{MediaPriority, OperationContext};
+use superi_media_io::read::ReadOutcome;
 
 fn video_format() -> VideoFormat {
     VideoFormat::new(
@@ -207,11 +209,16 @@ impl MediaSource for MemorySource {
         &self.info
     }
 
-    fn read_packet(&mut self) -> Result<Option<Packet>> {
-        Ok(self.packets.pop_front())
+    fn read_packet(&mut self, operation: &OperationContext) -> Result<ReadOutcome<Packet>> {
+        operation.check("read_packet")?;
+        Ok(match self.packets.pop_front() {
+            Some(packet) => ReadOutcome::Complete(packet),
+            None => ReadOutcome::EndOfStream,
+        })
     }
 
-    fn seek(&mut self, request: SeekRequest) -> Result<RationalTime> {
+    fn seek(&mut self, request: SeekRequest, operation: &OperationContext) -> Result<RationalTime> {
+        operation.check("seek")?;
         Ok(request.target())
     }
 }
@@ -228,12 +235,14 @@ impl Decoder for MemoryDecoder {
         CONFIG.get_or_init(|| DecoderConfig::new(video_stream()))
     }
 
-    fn send_packet(&mut self, packet: Packet) -> Result<()> {
+    fn send_packet(&mut self, packet: Packet, operation: &OperationContext) -> Result<()> {
+        operation.check("send_packet")?;
         self.queued.push_back(packet);
         Ok(())
     }
 
-    fn receive(&mut self) -> Result<DecodeOutput> {
+    fn receive(&mut self, operation: &OperationContext) -> Result<DecodeOutput> {
+        operation.check("receive_decoded")?;
         if let Some(packet) = self.queued.pop_front() {
             let timestamp = packet.timing().presentation_time().unwrap().value();
             return Ok(DecodeOutput::Frame(frame(packet.data()[0], timestamp)));
@@ -245,12 +254,14 @@ impl Decoder for MemoryDecoder {
         }
     }
 
-    fn flush(&mut self) -> Result<()> {
+    fn flush(&mut self, operation: &OperationContext) -> Result<()> {
+        operation.check("flush_decoder")?;
         self.draining = true;
         Ok(())
     }
 
-    fn reset(&mut self) -> Result<()> {
+    fn reset(&mut self, operation: &OperationContext) -> Result<()> {
+        operation.check("reset_decoder")?;
         self.queued.clear();
         self.draining = false;
         Ok(())
@@ -268,7 +279,8 @@ impl Encoder for MemoryEncoder {
         &self.config
     }
 
-    fn send(&mut self, input: EncodeInput) -> Result<()> {
+    fn send(&mut self, input: EncodeInput, operation: &OperationContext) -> Result<()> {
+        operation.check("send_encoded_input")?;
         let EncodeInput::Video(frame) = input else {
             panic!("video-only test encoder received audio")
         };
@@ -284,7 +296,8 @@ impl Encoder for MemoryEncoder {
         Ok(())
     }
 
-    fn receive(&mut self) -> Result<EncodeOutput> {
+    fn receive(&mut self, operation: &OperationContext) -> Result<EncodeOutput> {
+        operation.check("receive_encoded")?;
         if let Some(packet) = self.queued.pop_front() {
             return Ok(EncodeOutput::Packet(packet));
         }
@@ -295,12 +308,14 @@ impl Encoder for MemoryEncoder {
         }
     }
 
-    fn flush(&mut self) -> Result<()> {
+    fn flush(&mut self, operation: &OperationContext) -> Result<()> {
+        operation.check("flush_encoder")?;
         self.draining = true;
         Ok(())
     }
 
-    fn reset(&mut self) -> Result<()> {
+    fn reset(&mut self, operation: &OperationContext) -> Result<()> {
+        operation.check("reset_encoder")?;
         self.queued.clear();
         self.draining = false;
         Ok(())
@@ -425,7 +440,11 @@ fn registry_ranks_capable_backends_and_only_exposes_explicit_fallbacks() {
     )
     .with_expected_fingerprint("sha256:test")
     .unwrap();
-    let source = source_selection.primary().open_source(&relink).unwrap();
+    let operation = OperationContext::new(MediaPriority::Interactive);
+    let source = source_selection
+        .primary()
+        .open_source(&relink, &operation)
+        .unwrap();
     assert_eq!(source.info().identity().media_id(), relink.media_id());
     assert_eq!(source.info().identity().fingerprint(), "sha256:test");
 
@@ -486,11 +505,21 @@ impl MediaBackend for MemoryBackend {
         &self.descriptor
     }
 
-    fn probe_source(&self, _probe: &SourceProbe<'_>) -> Result<SourceProbeResult> {
+    fn probe_source(
+        &self,
+        _probe: &SourceProbe<'_>,
+        operation: &OperationContext,
+    ) -> Result<SourceProbeResult> {
+        operation.check("probe_source")?;
         Ok(SourceProbeResult::NoMatch)
     }
 
-    fn open_source(&self, request: &SourceRequest) -> Result<Box<dyn MediaSource>> {
+    fn open_source(
+        &self,
+        request: &SourceRequest,
+        operation: &OperationContext,
+    ) -> Result<Box<dyn MediaSource>> {
+        operation.check("open_source")?;
         let identity = SourceIdentity::new(request.media_id(), "sha256:test").unwrap();
         let info = SourceInfo::new(identity, vec![video_stream()])
             .unwrap()
@@ -502,11 +531,21 @@ impl MediaBackend for MemoryBackend {
         }))
     }
 
-    fn create_decoder(&self, _config: &DecoderConfig) -> Result<Box<dyn Decoder>> {
+    fn create_decoder(
+        &self,
+        _config: &DecoderConfig,
+        operation: &OperationContext,
+    ) -> Result<Box<dyn Decoder>> {
+        operation.check("create_decoder")?;
         Ok(Box::new(MemoryDecoder::default()))
     }
 
-    fn create_encoder(&self, config: &EncoderConfig) -> Result<Box<dyn Encoder>> {
+    fn create_encoder(
+        &self,
+        config: &EncoderConfig,
+        operation: &OperationContext,
+    ) -> Result<Box<dyn Encoder>> {
+        operation.check("create_encoder")?;
         Ok(Box::new(MemoryEncoder {
             config: config.clone(),
             queued: VecDeque::new(),
@@ -529,14 +568,18 @@ fn public_backend_contract_drives_ingest_seek_playback_relink_and_export() {
     );
     assert_eq!(first_request.media_id(), relink_request.media_id());
 
-    let mut source = backend.open_source(&relink_request).unwrap();
+    let operation = OperationContext::new(MediaPriority::Interactive);
+    let mut source = backend.open_source(&relink_request, &operation).unwrap();
     assert_eq!(source.info().identity().media_id(), media_id);
     assert_eq!(source.info().streams()[0].kind(), StreamKind::Video);
     let actual = source
-        .seek(SeekRequest::new(
-            RationalTime::new(0, Timebase::integer(24).unwrap()),
-            SeekMode::NearestKeyframe,
-        ))
+        .seek(
+            SeekRequest::new(
+                RationalTime::new(0, Timebase::integer(24).unwrap()),
+                SeekMode::NearestKeyframe,
+            ),
+            &operation,
+        )
         .unwrap();
     assert_eq!(actual.value(), 0);
 
@@ -547,40 +590,46 @@ fn public_backend_contract_drives_ingest_seek_playback_relink_and_export() {
         Timebase::integer(24).unwrap(),
         video_format(),
     );
-    let mut decoder = backend.create_decoder(&decoder_config).unwrap();
-    let mut encoder = backend.create_encoder(&encoder_config).unwrap();
+    let mut decoder = backend.create_decoder(&decoder_config, &operation).unwrap();
+    let mut encoder = backend.create_encoder(&encoder_config, &operation).unwrap();
 
     let mut exported = Vec::new();
-    while let Some(packet) = source.read_packet().unwrap() {
-        decoder.send_packet(packet).unwrap();
-        let DecodeOutput::Frame(frame) = decoder.receive().unwrap() else {
+    loop {
+        let packet = match source.read_packet(&operation).unwrap() {
+            ReadOutcome::Complete(packet) => packet,
+            ReadOutcome::Partial { .. } => panic!("test source returned a partial packet"),
+            ReadOutcome::EndOfStream => break,
+            _ => panic!("test source returned an unknown read outcome"),
+        };
+        decoder.send_packet(packet, &operation).unwrap();
+        let DecodeOutput::Frame(frame) = decoder.receive(&operation).unwrap() else {
             panic!("decoder did not produce a frame")
         };
-        encoder.send(EncodeInput::Video(frame)).unwrap();
-        let EncodeOutput::Packet(packet) = encoder.receive().unwrap() else {
+        encoder.send(EncodeInput::Video(frame), &operation).unwrap();
+        let EncodeOutput::Packet(packet) = encoder.receive(&operation).unwrap() else {
             panic!("encoder did not produce a packet")
         };
         exported.push(packet.data()[0]);
     }
-    decoder.flush().unwrap();
-    encoder.flush().unwrap();
+    decoder.flush(&operation).unwrap();
+    encoder.flush(&operation).unwrap();
     assert!(matches!(
-        decoder.receive().unwrap(),
+        decoder.receive(&operation).unwrap(),
         DecodeOutput::EndOfStream
     ));
     assert!(matches!(
-        encoder.receive().unwrap(),
+        encoder.receive(&operation).unwrap(),
         EncodeOutput::EndOfStream
     ));
     assert_eq!(exported, [11, 22]);
-    decoder.reset().unwrap();
-    encoder.reset().unwrap();
+    decoder.reset(&operation).unwrap();
+    encoder.reset(&operation).unwrap();
     assert!(matches!(
-        decoder.receive().unwrap(),
+        decoder.receive(&operation).unwrap(),
         DecodeOutput::NeedInput
     ));
     assert!(matches!(
-        encoder.receive().unwrap(),
+        encoder.receive(&operation).unwrap(),
         EncodeOutput::NeedInput
     ));
 }
@@ -594,4 +643,58 @@ fn source_info_rejects_duplicate_streams_and_invalid_metadata_keys() {
         .insert("Invalid Key", MetadataValue::Text("x".into()))
         .is_err());
     assert!(SourceInfo::new(identity, vec![]).is_err());
+}
+
+#[test]
+fn public_media_operations_propagate_cancellation_and_timeout() {
+    let backend = MemoryBackend::new();
+    let request = SourceRequest::new(
+        MediaId::from_raw(101),
+        SourceLocation::Path(PathBuf::from("interrupted.mov")),
+    );
+    let cancelled = OperationContext::new(MediaPriority::Interactive);
+    cancelled.cancellation_token().cancel();
+    let error = match backend.open_source(&request, &cancelled) {
+        Ok(_) => panic!("a cancelled source open must not begin"),
+        Err(error) => error,
+    };
+    assert_eq!(error.category(), ErrorCategory::Cancelled);
+
+    let active = OperationContext::new(MediaPriority::Playback);
+    let mut source = backend.open_source(&request, &active).unwrap();
+    let mut decoder = backend
+        .create_decoder(&DecoderConfig::new(video_stream()), &active)
+        .unwrap();
+    let mut encoder = backend
+        .create_encoder(
+            &EncoderConfig::video(
+                StreamId::new(9),
+                CodecId::new("av1").unwrap(),
+                Timebase::integer(24).unwrap(),
+                video_format(),
+            ),
+            &active,
+        )
+        .unwrap();
+    active.cancellation_token().cancel();
+    assert_eq!(
+        source.read_packet(&active).unwrap_err().category(),
+        ErrorCategory::Cancelled
+    );
+    assert_eq!(
+        decoder.receive(&active).unwrap_err().category(),
+        ErrorCategory::Cancelled
+    );
+    assert_eq!(
+        encoder.receive(&active).unwrap_err().category(),
+        ErrorCategory::Cancelled
+    );
+
+    let expired =
+        OperationContext::new(MediaPriority::Export).with_deadline(std::time::Instant::now());
+    let error = match backend.create_decoder(&DecoderConfig::new(video_stream()), &expired) {
+        Ok(_) => panic!("an expired decoder creation must not begin"),
+        Err(error) => error,
+    };
+    assert_eq!(error.category(), ErrorCategory::Timeout);
 }

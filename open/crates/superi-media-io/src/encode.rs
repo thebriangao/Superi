@@ -6,6 +6,7 @@ use superi_core::time::Timebase;
 use crate::audio_io::{AudioBlock, AudioFormat};
 use crate::decode::{VideoFormat, VideoFrame};
 use crate::demux::{CodecId, Packet, StreamId};
+use crate::operation::OperationContext;
 
 /// Exact uncompressed media accepted by an encoder.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -109,14 +110,14 @@ pub trait Encoder: Send {
     fn config(&self) -> &EncoderConfig;
 
     /// Supplies one decoded frame or audio block in presentation order.
-    fn send(&mut self, input: EncodeInput) -> Result<()>;
+    fn send(&mut self, input: EncodeInput, operation: &OperationContext) -> Result<()>;
 
     /// Receives one compressed packet or an explicit lifecycle state.
-    fn receive(&mut self) -> Result<EncodeOutput>;
+    fn receive(&mut self, operation: &OperationContext) -> Result<EncodeOutput>;
 
     /// Signals end of input while retaining delayed packets for draining.
-    fn flush(&mut self) -> Result<()>;
+    fn flush(&mut self, operation: &OperationContext) -> Result<()>;
 
     /// Discards buffered state so this encoder can start a new stream lifetime.
-    fn reset(&mut self) -> Result<()>;
+    fn reset(&mut self, operation: &OperationContext) -> Result<()>;
 }

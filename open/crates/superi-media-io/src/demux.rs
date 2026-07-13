@@ -10,6 +10,9 @@ use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Res
 use superi_core::ids::MediaId;
 use superi_core::time::{Duration, RationalTime, Timebase};
 
+use crate::operation::OperationContext;
+use crate::read::ReadOutcome;
+
 macro_rules! string_id {
     ($name:ident, $component:literal) => {
         #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -742,11 +745,14 @@ pub trait MediaSource: Send {
     /// Returns immutable source and stream information.
     fn info(&self) -> &SourceInfo;
 
-    /// Returns the next packet in decode order, or `None` at end of source.
-    fn read_packet(&mut self) -> Result<Option<Packet>>;
+    /// Returns one complete or usable partial packet, or explicit end of source.
+    ///
+    /// Implementations must poll the operation before work and between bounded reads. A partial
+    /// packet must carry a corruption report and must never be returned as complete data.
+    fn read_packet(&mut self, operation: &OperationContext) -> Result<ReadOutcome<Packet>>;
 
     /// Seeks and returns the actual presentation coordinate selected by the source.
-    fn seek(&mut self, request: SeekRequest) -> Result<RationalTime>;
+    fn seek(&mut self, request: SeekRequest, operation: &OperationContext) -> Result<RationalTime>;
 }
 
 fn valid_name(value: &str) -> bool {

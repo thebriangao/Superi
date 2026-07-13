@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use superi_codecs_rs::pcm::PcmEncoding;
 use superi_codecs_rs::register::register_default_backends;
@@ -12,6 +12,12 @@ use superi_media_io::demux::{
     MetadataValue, Packet, PacketTiming, StreamId, StreamInfo, StreamKind,
 };
 use superi_media_io::encode::{EncodeInput, EncodeOutput, EncoderConfig};
+use superi_media_io::operation::{MediaPriority, OperationContext};
+
+fn operation() -> &'static OperationContext {
+    static OPERATION: OnceLock<OperationContext> = OnceLock::new();
+    OPERATION.get_or_init(|| OperationContext::new(MediaPriority::Interactive))
+}
 
 fn pcm_backend() -> Arc<dyn MediaBackend> {
     let mut registry = BackendRegistry::new();
@@ -82,10 +88,17 @@ fn pcm_round_trips_every_explicit_integer_and_float_representation() {
         .unwrap();
 
         let encoder_config = EncoderConfig::audio(stream_id, encoding.codec_id(), format.clone());
-        let mut encoder = backend.create_encoder(&encoder_config).unwrap();
-        assert_eq!(encoder.receive().unwrap(), EncodeOutput::NeedInput);
-        encoder.send(EncodeInput::Audio(block.clone())).unwrap();
-        let EncodeOutput::Packet(packet) = encoder.receive().unwrap() else {
+        let mut encoder = backend
+            .create_encoder(&encoder_config, operation())
+            .unwrap();
+        assert_eq!(
+            encoder.receive(operation()).unwrap(),
+            EncodeOutput::NeedInput
+        );
+        encoder
+            .send(EncodeInput::Audio(block.clone()), operation())
+            .unwrap();
+        let EncodeOutput::Packet(packet) = encoder.receive(operation()).unwrap() else {
             panic!("PCM encoder did not return a packet");
         };
         assert!(packet.is_keyframe());
@@ -98,9 +111,11 @@ fn pcm_round_trips_every_explicit_integer_and_float_representation() {
         let decoder_config = DecoderConfig::new(stream(encoding, stream_id, 48_000))
             .with_audio_format(format)
             .unwrap();
-        let mut decoder = backend.create_decoder(&decoder_config).unwrap();
-        decoder.send_packet(packet).unwrap();
-        let DecodeOutput::Audio(decoded) = decoder.receive().unwrap() else {
+        let mut decoder = backend
+            .create_decoder(&decoder_config, operation())
+            .unwrap();
+        decoder.send_packet(packet, operation()).unwrap();
+        let DecodeOutput::Audio(decoded) = decoder.receive(operation()).unwrap() else {
             panic!("PCM decoder did not return an audio block");
         };
         assert_eq!(decoded, block, "failed round trip for {encoding:?}");
@@ -125,9 +140,13 @@ fn big_endian_pcm_interleaves_and_restores_planar_channels_without_precision_los
     .unwrap();
     let encoding = PcmEncoding::I16BigEndian;
     let encoder_config = EncoderConfig::audio(stream_id, encoding.codec_id(), format.clone());
-    let mut encoder = backend.create_encoder(&encoder_config).unwrap();
-    encoder.send(EncodeInput::Audio(block.clone())).unwrap();
-    let EncodeOutput::Packet(packet) = encoder.receive().unwrap() else {
+    let mut encoder = backend
+        .create_encoder(&encoder_config, operation())
+        .unwrap();
+    encoder
+        .send(EncodeInput::Audio(block.clone()), operation())
+        .unwrap();
+    let EncodeOutput::Packet(packet) = encoder.receive(operation()).unwrap() else {
         panic!("PCM encoder did not return a packet");
     };
     assert_eq!(
@@ -138,9 +157,11 @@ fn big_endian_pcm_interleaves_and_restores_planar_channels_without_precision_los
     let decoder_config = DecoderConfig::new(stream(encoding, stream_id, 96_000))
         .with_audio_format(format)
         .unwrap();
-    let mut decoder = backend.create_decoder(&decoder_config).unwrap();
-    decoder.send_packet(packet).unwrap();
-    let DecodeOutput::Audio(decoded) = decoder.receive().unwrap() else {
+    let mut decoder = backend
+        .create_decoder(&decoder_config, operation())
+        .unwrap();
+    decoder.send_packet(packet, operation()).unwrap();
+    let DecodeOutput::Audio(decoded) = decoder.receive(operation()).unwrap() else {
         panic!("PCM decoder did not return an audio block");
     };
     assert_eq!(decoded, block);
@@ -154,7 +175,7 @@ fn canonical_pcm_preserves_planar_storage_including_empty_blocks() {
     let format =
         AudioFormat::new(48_000, SampleFormat::F32Planar, ChannelLayout::stereo()).unwrap();
     let config = EncoderConfig::audio(stream_id, encoding.codec_id(), format.clone());
-    let mut encoder = backend.create_encoder(&config).unwrap();
+    let mut encoder = backend.create_encoder(&config, operation()).unwrap();
 
     for block in [
         AudioBlock::new(
@@ -178,16 +199,20 @@ fn canonical_pcm_preserves_planar_storage_including_empty_blocks() {
         )
         .unwrap(),
     ] {
-        encoder.send(EncodeInput::Audio(block.clone())).unwrap();
-        let EncodeOutput::Packet(packet) = encoder.receive().unwrap() else {
+        encoder
+            .send(EncodeInput::Audio(block.clone()), operation())
+            .unwrap();
+        let EncodeOutput::Packet(packet) = encoder.receive(operation()).unwrap() else {
             panic!("PCM encoder did not return a packet");
         };
         let decoder_config = DecoderConfig::new(stream(encoding, stream_id, 48_000))
             .with_audio_format(format.clone())
             .unwrap();
-        let mut decoder = backend.create_decoder(&decoder_config).unwrap();
-        decoder.send_packet(packet).unwrap();
-        let DecodeOutput::Audio(decoded) = decoder.receive().unwrap() else {
+        let mut decoder = backend
+            .create_decoder(&decoder_config, operation())
+            .unwrap();
+        decoder.send_packet(packet, operation()).unwrap();
+        let DecodeOutput::Audio(decoded) = decoder.receive(operation()).unwrap() else {
             panic!("PCM decoder did not return an audio block");
         };
         assert_eq!(decoded, block);
@@ -203,10 +228,10 @@ fn decoder_infers_contiguous_sample_timing_and_reset_restores_the_lifecycle() {
     let config = DecoderConfig::new(stream(encoding, stream_id, 44_100))
         .with_audio_format(format)
         .unwrap();
-    let mut decoder = backend.create_decoder(&config).unwrap();
+    let mut decoder = backend.create_decoder(&config, operation()).unwrap();
 
     assert!(matches!(
-        decoder.receive().unwrap(),
+        decoder.receive(operation()).unwrap(),
         DecodeOutput::NeedInput
     ));
     for expected_timestamp in [0, 1] {
@@ -215,31 +240,34 @@ fn decoder_infers_contiguous_sample_timing_and_reset_restores_the_lifecycle() {
             Arc::from([1, 0, 2, 0]),
             PacketTiming::new(Timebase::integer(44_100).unwrap(), None, None, None).unwrap(),
         );
-        decoder.send_packet(packet).unwrap();
-        let DecodeOutput::Audio(block) = decoder.receive().unwrap() else {
+        decoder.send_packet(packet, operation()).unwrap();
+        let DecodeOutput::Audio(block) = decoder.receive(operation()).unwrap() else {
             panic!("PCM decoder did not return an audio block");
         };
         assert_eq!(block.timestamp().sample(), expected_timestamp);
         assert_eq!(block.frame_count(), 1);
     }
 
-    decoder.flush().unwrap();
+    decoder.flush(operation()).unwrap();
     assert!(matches!(
-        decoder.receive().unwrap(),
+        decoder.receive(operation()).unwrap(),
         DecodeOutput::EndOfStream
     ));
     let error = decoder
-        .send_packet(Packet::new(
-            stream_id,
-            Arc::from([1, 0, 2, 0]),
-            PacketTiming::new(Timebase::integer(44_100).unwrap(), None, None, None).unwrap(),
-        ))
+        .send_packet(
+            Packet::new(
+                stream_id,
+                Arc::from([1, 0, 2, 0]),
+                PacketTiming::new(Timebase::integer(44_100).unwrap(), None, None, None).unwrap(),
+            ),
+            operation(),
+        )
         .unwrap_err();
     assert_eq!(error.category(), ErrorCategory::Conflict);
 
-    decoder.reset().unwrap();
+    decoder.reset(operation()).unwrap();
     assert!(matches!(
-        decoder.receive().unwrap(),
+        decoder.receive(operation()).unwrap(),
         DecodeOutput::NeedInput
     ));
 }
@@ -253,14 +281,14 @@ fn decoder_reports_partial_sample_frames_as_corrupt_data() {
     let config = DecoderConfig::new(stream(encoding, stream_id, 48_000))
         .with_audio_format(format)
         .unwrap();
-    let mut decoder = backend.create_decoder(&config).unwrap();
+    let mut decoder = backend.create_decoder(&config, operation()).unwrap();
     let packet = Packet::new(
         stream_id,
         Arc::from([1, 2, 3, 4, 5]),
         PacketTiming::new(Timebase::integer(48_000).unwrap(), Some(0), Some(0), None).unwrap(),
     );
 
-    let error = decoder.send_packet(packet).unwrap_err();
+    let error = decoder.send_packet(packet, operation()).unwrap_err();
     assert_eq!(error.category(), ErrorCategory::CorruptData);
     assert_eq!(
         error.contexts().last().unwrap().operation(),

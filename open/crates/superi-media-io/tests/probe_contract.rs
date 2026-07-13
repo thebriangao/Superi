@@ -18,6 +18,12 @@ use superi_media_io::demux::{
     StreamId, StreamInfo, StreamKind,
 };
 use superi_media_io::encode::{Encoder, EncoderConfig};
+use superi_media_io::operation::{MediaPriority, OperationContext};
+use superi_media_io::read::ReadOutcome;
+
+fn operation() -> OperationContext {
+    OperationContext::new(MediaPriority::Interactive)
+}
 
 fn probe_failure(message: &'static str) -> Error {
     Error::new(ErrorCategory::Internal, Recoverability::Terminal, message)
@@ -43,11 +49,20 @@ impl MediaSource for TestSource {
         &self.info
     }
 
-    fn read_packet(&mut self) -> Result<Option<Packet>> {
-        Ok(self.packets.pop_front())
+    fn read_packet(&mut self, operation: &OperationContext) -> Result<ReadOutcome<Packet>> {
+        operation.check("read_packet")?;
+        Ok(match self.packets.pop_front() {
+            Some(packet) => ReadOutcome::Complete(packet),
+            None => ReadOutcome::EndOfStream,
+        })
     }
 
-    fn seek(&mut self, request: superi_media_io::demux::SeekRequest) -> Result<RationalTime> {
+    fn seek(
+        &mut self,
+        request: superi_media_io::demux::SeekRequest,
+        operation: &OperationContext,
+    ) -> Result<RationalTime> {
+        operation.check("seek")?;
         Ok(request.target())
     }
 }
@@ -103,7 +118,12 @@ impl MediaBackend for ProbeBackend {
         &self.descriptor
     }
 
-    fn probe_source(&self, probe: &SourceProbe<'_>) -> Result<SourceProbeResult> {
+    fn probe_source(
+        &self,
+        probe: &SourceProbe<'_>,
+        operation: &OperationContext,
+    ) -> Result<SourceProbeResult> {
+        operation.check("probe_source")?;
         self.observed_lengths
             .lock()
             .unwrap()
@@ -124,7 +144,12 @@ impl MediaBackend for ProbeBackend {
         }
     }
 
-    fn open_source(&self, request: &SourceRequest) -> Result<Box<dyn MediaSource>> {
+    fn open_source(
+        &self,
+        request: &SourceRequest,
+        operation: &OperationContext,
+    ) -> Result<Box<dyn MediaSource>> {
+        operation.check("open_source")?;
         if self.fail_open {
             return Err(probe_failure("test open failed"));
         }
@@ -138,11 +163,21 @@ impl MediaBackend for ProbeBackend {
         }))
     }
 
-    fn create_decoder(&self, _config: &DecoderConfig) -> Result<Box<dyn Decoder>> {
+    fn create_decoder(
+        &self,
+        _config: &DecoderConfig,
+        operation: &OperationContext,
+    ) -> Result<Box<dyn Decoder>> {
+        operation.check("create_decoder")?;
         Err(probe_failure("decoder is outside the probe contract"))
     }
 
-    fn create_encoder(&self, _config: &EncoderConfig) -> Result<Box<dyn Encoder>> {
+    fn create_encoder(
+        &self,
+        _config: &EncoderConfig,
+        operation: &OperationContext,
+    ) -> Result<Box<dyn Encoder>> {
+        operation.check("create_encoder")?;
         Err(probe_failure("encoder is outside the probe contract"))
     }
 }
@@ -235,6 +270,7 @@ fn registry_probes_bounded_content_incrementally_then_opens_the_match() {
             request,
             SourceProbeLimits::new(2, 8).unwrap(),
             FallbackPolicy::Disallow,
+            &operation(),
         )
         .unwrap();
 
@@ -250,7 +286,7 @@ fn registry_probes_bounded_content_incrementally_then_opens_the_match() {
     assert!(!selection.fallback_used());
     assert!(selection.fallbacks().is_empty());
 
-    let source = selection.open().unwrap();
+    let source = selection.open(&operation()).unwrap();
     assert_eq!(source.info().identity().media_id(), MediaId::from_raw(0x33));
     assert_eq!(source.info().identity().fingerprint(), "probe:signature");
 }
@@ -268,6 +304,7 @@ fn path_sources_use_the_same_bounded_probe_contract() {
             SourceRequest::new(MediaId::from_raw(9), SourceLocation::Path(file.path())),
             SourceProbeLimits::new(3, 6).unwrap(),
             FallbackPolicy::Disallow,
+            &operation(),
         )
         .unwrap();
     assert_eq!(*observed.lock().unwrap(), [3, 6]);
@@ -293,6 +330,7 @@ fn confidence_priority_identity_and_tier_make_selection_deterministic() {
             memory_request("clip.bin", b"DATA"),
             SourceProbeLimits::new(4, 4).unwrap(),
             FallbackPolicy::AllowRegistered,
+            &operation(),
         )
         .unwrap();
     assert_eq!(
@@ -328,6 +366,7 @@ fn confidence_priority_identity_and_tier_make_selection_deterministic() {
             memory_request("clip.bin", b"DATA"),
             SourceProbeLimits::new(4, 4).unwrap(),
             FallbackPolicy::Disallow,
+            &operation(),
         )
         .unwrap();
     assert_eq!(
@@ -358,6 +397,7 @@ fn confidence_priority_identity_and_tier_make_selection_deterministic() {
             memory_request("clip.bin", b"DATA"),
             SourceProbeLimits::new(4, 4).unwrap(),
             FallbackPolicy::Disallow,
+            &operation(),
         )
         .is_err());
     let fallback_selection = fallback_only
@@ -365,6 +405,7 @@ fn confidence_priority_identity_and_tier_make_selection_deterministic() {
             memory_request("clip.bin", b"DATA"),
             SourceProbeLimits::new(4, 4).unwrap(),
             FallbackPolicy::AllowRegistered,
+            &operation(),
         )
         .unwrap();
     assert!(fallback_selection.fallback_used());
@@ -389,6 +430,7 @@ fn probe_hints_are_context_only_and_failures_keep_actionable_context() {
         memory_request("looks-right.content", b"WRONG"),
         SourceProbeLimits::new(2, 5).unwrap(),
         FallbackPolicy::Disallow,
+        &operation(),
     );
     let Err(error) = unsupported else {
         panic!("an extension hint must not override nonmatching bytes")
@@ -404,6 +446,7 @@ fn probe_hints_are_context_only_and_failures_keep_actionable_context() {
         ),
         SourceProbeLimits::new(4, 16).unwrap(),
         FallbackPolicy::Disallow,
+        &operation(),
     );
     let Err(error) = missing else {
         panic!("a missing source path must fail probing")
@@ -421,6 +464,7 @@ fn probe_hints_are_context_only_and_failures_keep_actionable_context() {
         memory_request("clip.bin", b"FAIL"),
         SourceProbeLimits::new(4, 4).unwrap(),
         FallbackPolicy::Disallow,
+        &operation(),
     );
     let Err(error) = result else {
         panic!("a backend probe failure must be reported")
@@ -440,12 +484,48 @@ fn probe_hints_are_context_only_and_failures_keep_actionable_context() {
             memory_request("clip.bin", b"OPEN"),
             SourceProbeLimits::new(4, 4).unwrap(),
             FallbackPolicy::Disallow,
+            &operation(),
         )
         .unwrap();
-    let Err(error) = selection.open() else {
+    let Err(error) = selection.open(&operation()) else {
         panic!("a selected backend open failure must be reported")
     };
     assert_eq!(error.category(), ErrorCategory::Internal);
     assert_eq!(error.contexts()[1].field("backend_id"), Some("open-broken"));
     assert_eq!(error.contexts()[1].field("container_id"), Some("open"));
+}
+
+#[test]
+fn probing_and_selected_open_propagate_operation_interruption() {
+    let backend = Arc::new(ProbeBackend::new("interruptible", b"DATA", 4, "data", 90));
+    let mut registry = BackendRegistry::new();
+    register_source(&mut registry, backend, 1, BackendTier::Primary);
+
+    let cancelled = operation();
+    cancelled.cancellation_token().cancel();
+    let error = match registry.probe_source(
+        memory_request("clip.bin", b"DATA"),
+        SourceProbeLimits::new(4, 4).unwrap(),
+        FallbackPolicy::Disallow,
+        &cancelled,
+    ) {
+        Ok(_) => panic!("a cancelled content probe must not begin"),
+        Err(error) => error,
+    };
+    assert_eq!(error.category(), ErrorCategory::Cancelled);
+
+    let active = operation();
+    let selection = registry
+        .probe_source(
+            memory_request("clip.bin", b"DATA"),
+            SourceProbeLimits::new(4, 4).unwrap(),
+            FallbackPolicy::Disallow,
+            &active,
+        )
+        .unwrap();
+    active.cancellation_token().cancel();
+    let Err(error) = selection.open(&active) else {
+        panic!("a cancelled selected open must not begin")
+    };
+    assert_eq!(error.category(), ErrorCategory::Cancelled);
 }

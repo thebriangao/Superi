@@ -24,6 +24,7 @@ use superi_media_io::demux::{
 use superi_media_io::encode::{
     EncodeInput, EncodeOutput, Encoder, EncoderConfig, EncoderMediaFormat,
 };
+use superi_media_io::operation::OperationContext;
 
 /// Stable linear PCM packet representations supported by the default backend.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -171,24 +172,44 @@ impl MediaBackend for PcmBackend {
         &self.descriptor
     }
 
-    fn probe_source(&self, _probe: &SourceProbe<'_>) -> Result<SourceProbeResult> {
+    fn probe_source(
+        &self,
+        _probe: &SourceProbe<'_>,
+        operation: &OperationContext,
+    ) -> Result<SourceProbeResult> {
+        operation.check("probe_pcm_source")?;
         // Raw PCM has no self-describing signature. A container backend must identify and
         // configure it from stream metadata rather than treating arbitrary bytes as PCM.
         Ok(SourceProbeResult::NoMatch)
     }
 
-    fn open_source(&self, _request: &SourceRequest) -> Result<Box<dyn MediaSource>> {
+    fn open_source(
+        &self,
+        _request: &SourceRequest,
+        operation: &OperationContext,
+    ) -> Result<Box<dyn MediaSource>> {
+        operation.check("open_pcm_source")?;
         Err(unsupported(
             "open_pcm_source",
             "the PCM codec backend does not open media containers",
         ))
     }
 
-    fn create_decoder(&self, config: &DecoderConfig) -> Result<Box<dyn Decoder>> {
+    fn create_decoder(
+        &self,
+        config: &DecoderConfig,
+        operation: &OperationContext,
+    ) -> Result<Box<dyn Decoder>> {
+        operation.check("create_pcm_decoder")?;
         Ok(Box::new(PcmDecoder::new(config.clone())?))
     }
 
-    fn create_encoder(&self, config: &EncoderConfig) -> Result<Box<dyn Encoder>> {
+    fn create_encoder(
+        &self,
+        config: &EncoderConfig,
+        operation: &OperationContext,
+    ) -> Result<Box<dyn Encoder>> {
+        operation.check("create_pcm_encoder")?;
         Ok(Box::new(PcmEncoder::new(config.clone())?))
     }
 }
@@ -313,7 +334,8 @@ impl Decoder for PcmDecoder {
         &self.config
     }
 
-    fn send_packet(&mut self, packet: Packet) -> Result<()> {
+    fn send_packet(&mut self, packet: Packet, operation: &OperationContext) -> Result<()> {
+        operation.check("send_pcm_packet")?;
         if self.flushed {
             return Err(conflict(
                 "send_pcm_packet",
@@ -326,7 +348,8 @@ impl Decoder for PcmDecoder {
         Ok(())
     }
 
-    fn receive(&mut self) -> Result<DecodeOutput> {
+    fn receive(&mut self, operation: &OperationContext) -> Result<DecodeOutput> {
+        operation.check("receive_pcm_audio")?;
         if let Some(block) = self.output.pop_front() {
             return Ok(DecodeOutput::Audio(block));
         }
@@ -337,12 +360,14 @@ impl Decoder for PcmDecoder {
         }
     }
 
-    fn flush(&mut self) -> Result<()> {
+    fn flush(&mut self, operation: &OperationContext) -> Result<()> {
+        operation.check("flush_pcm_decoder")?;
         self.flushed = true;
         Ok(())
     }
 
-    fn reset(&mut self) -> Result<()> {
+    fn reset(&mut self, operation: &OperationContext) -> Result<()> {
+        operation.check("reset_pcm_decoder")?;
         self.output.clear();
         self.next_sample = None;
         self.flushed = false;
@@ -417,7 +442,8 @@ impl Encoder for PcmEncoder {
         &self.config
     }
 
-    fn send(&mut self, input: EncodeInput) -> Result<()> {
+    fn send(&mut self, input: EncodeInput, operation: &OperationContext) -> Result<()> {
+        operation.check("send_pcm_block")?;
         if self.flushed {
             return Err(conflict(
                 "send_pcm_block",
@@ -435,7 +461,8 @@ impl Encoder for PcmEncoder {
         Ok(())
     }
 
-    fn receive(&mut self) -> Result<EncodeOutput> {
+    fn receive(&mut self, operation: &OperationContext) -> Result<EncodeOutput> {
+        operation.check("receive_pcm_packet")?;
         if let Some(packet) = self.output.pop_front() {
             return Ok(EncodeOutput::Packet(packet));
         }
@@ -446,12 +473,14 @@ impl Encoder for PcmEncoder {
         }
     }
 
-    fn flush(&mut self) -> Result<()> {
+    fn flush(&mut self, operation: &OperationContext) -> Result<()> {
+        operation.check("flush_pcm_encoder")?;
         self.flushed = true;
         Ok(())
     }
 
-    fn reset(&mut self) -> Result<()> {
+    fn reset(&mut self, operation: &OperationContext) -> Result<()> {
+        operation.check("reset_pcm_encoder")?;
         self.output.clear();
         self.flushed = false;
         Ok(())

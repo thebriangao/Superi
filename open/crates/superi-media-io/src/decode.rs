@@ -11,6 +11,7 @@ use superi_core::time::{Duration, RationalTime};
 
 use crate::audio_io::{AudioBlock, AudioFormat};
 use crate::demux::{MediaMetadata, MetadataValue, Packet, StreamInfo, StreamKind};
+use crate::operation::OperationContext;
 
 /// Complete decoded video representation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -392,16 +393,16 @@ pub trait Decoder: Send {
     fn config(&self) -> &DecoderConfig;
 
     /// Supplies one compressed packet in decode order.
-    fn send_packet(&mut self, packet: Packet) -> Result<()>;
+    fn send_packet(&mut self, packet: Packet, operation: &OperationContext) -> Result<()>;
 
     /// Receives one output item or an explicit lifecycle state.
-    fn receive(&mut self) -> Result<DecodeOutput>;
+    fn receive(&mut self, operation: &OperationContext) -> Result<DecodeOutput>;
 
     /// Signals end of input while retaining buffered output for draining.
-    fn flush(&mut self) -> Result<()>;
+    fn flush(&mut self, operation: &OperationContext) -> Result<()>;
 
     /// Discards buffered state so decoding can resume after a seek.
-    fn reset(&mut self) -> Result<()>;
+    fn reset(&mut self, operation: &OperationContext) -> Result<()>;
 }
 
 fn plane_requirements(

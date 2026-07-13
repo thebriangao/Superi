@@ -7,7 +7,7 @@
 
 use std::collections::BTreeSet;
 use std::fs::File;
-use std::io::{self, Read};
+use std::io;
 use std::sync::Arc;
 
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
@@ -18,6 +18,8 @@ use crate::demux::{
     SourceProbeLimits, SourceProbeResult, SourceRequest,
 };
 use crate::encode::{Encoder, EncoderConfig};
+use crate::operation::OperationContext;
+use crate::read::{read_exact_interruptible, ReadOutcome};
 
 /// Human-readable identity for one backend implementation.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -300,10 +302,10 @@ impl SourceProbeSelection {
     }
 
     /// Opens the exact request through the selected codec-neutral backend.
-    pub fn open(&self) -> Result<Box<dyn MediaSource>> {
+    pub fn open(&self, operation: &OperationContext) -> Result<Box<dyn MediaSource>> {
         self.primary
             .backend
-            .open_source(&self.request)
+            .open_source(&self.request, operation)
             .map_err(|mut error| {
                 error.push_context(
                     ErrorContext::new("superi-media-io.backend", "open_probed_source")
@@ -443,7 +445,9 @@ impl BackendRegistry {
         request: SourceRequest,
         limits: SourceProbeLimits,
         fallback_policy: FallbackPolicy,
+        operation: &OperationContext,
     ) -> Result<SourceProbeSelection> {
+        operation.check("probe_source")?;
         let source_capability = BackendCapability::Source;
         let registrations = self
             .registrations
@@ -458,10 +462,11 @@ impl BackendRegistry {
             return Err(unsupported(&BackendRequirement::Source));
         }
 
-        let mut reader = SourceProbeReader::new(request.location())?;
+        let mut reader = SourceProbeReader::new(request.location(), operation)?;
         let mut target_bytes = limits.initial_bytes();
         let matches = loop {
-            reader.read_to(target_bytes)?;
+            operation.check("probe_source")?;
+            reader.read_to(target_bytes, operation)?;
             let probe = SourceProbe::new(
                 request.location(),
                 reader.bytes(),
@@ -472,9 +477,10 @@ impl BackendRegistry {
             let mut requested_bytes = reader.bytes().len();
 
             for registration in &registrations {
-                match registration
+                operation.check("probe_source")?;
+                let probe_result = registration
                     .backend
-                    .probe_source(&probe)
+                    .probe_source(&probe, operation)
                     .map_err(|mut error| {
                         error.push_context(
                             ErrorContext::new("superi-media-io.backend", "probe_backend")
@@ -484,7 +490,8 @@ impl BackendRegistry {
                                 ),
                         );
                         error
-                    })? {
+                    })?;
+                match probe_result {
                     SourceProbeResult::NoMatch => {}
                     SourceProbeResult::NeedMoreData { minimum_bytes } => {
                         requested_bytes = requested_bytes.max(minimum_bytes.get());
@@ -607,7 +614,8 @@ struct SourceProbeReader<'a> {
 }
 
 impl<'a> SourceProbeReader<'a> {
-    fn new(location: &'a SourceLocation) -> Result<Self> {
+    fn new(location: &'a SourceLocation, operation: &OperationContext) -> Result<Self> {
+        operation.check("open_probe_source")?;
         match location {
             SourceLocation::Path(path) => {
                 let file =
@@ -616,6 +624,7 @@ impl<'a> SourceProbeReader<'a> {
                     .metadata()
                     .map_err(|error| probe_io_error("inspect_probe_source", error))?
                     .len();
+                operation.check("inspect_probe_source")?;
                 Ok(Self {
                     source: ProbeReadSource::File(file),
                     bytes: Vec::new(),
@@ -635,6 +644,7 @@ impl<'a> SourceProbeReader<'a> {
                         "inspect_probe_source",
                     ))
                 })?;
+                operation.check("inspect_probe_source")?;
                 Ok(Self {
                     source: ProbeReadSource::Memory(data),
                     bytes: Vec::new(),
@@ -645,7 +655,8 @@ impl<'a> SourceProbeReader<'a> {
         }
     }
 
-    fn read_to(&mut self, target_bytes: usize) -> Result<()> {
+    fn read_to(&mut self, target_bytes: usize, operation: &OperationContext) -> Result<()> {
+        operation.check("read_probe_source")?;
         let target_bytes = u64::try_from(target_bytes).unwrap_or(u64::MAX);
         let source_target = usize::try_from(self.source_length.min(target_bytes))
             .expect("source target never exceeds usize probe limit");
@@ -655,17 +666,36 @@ impl<'a> SourceProbeReader<'a> {
         let additional = source_target - self.bytes.len();
         match &mut self.source {
             ProbeReadSource::File(file) => {
-                let read = file
-                    .take(u64::try_from(additional).unwrap_or(u64::MAX))
-                    .read_to_end(&mut self.bytes)
-                    .map_err(|error| probe_io_error("read_probe_source", error))?;
-                if read < additional {
-                    self.exhausted = true;
-                }
+                let byte_offset = u64::try_from(self.bytes.len()).map_err(|_| {
+                    Error::new(
+                        ErrorCategory::ResourceExhausted,
+                        Recoverability::UserCorrectable,
+                        "probe byte offset cannot be represented",
+                    )
+                    .with_context(ErrorContext::new(
+                        "superi-media-io.backend",
+                        "read_probe_source",
+                    ))
+                })?;
+                let mut buffer = vec![0_u8; additional];
+                let read =
+                    match read_exact_interruptible(file, &mut buffer, byte_offset, operation)? {
+                        ReadOutcome::Complete(read) => read,
+                        ReadOutcome::Partial { value: read, .. } => {
+                            self.exhausted = true;
+                            read
+                        }
+                        ReadOutcome::EndOfStream => {
+                            self.exhausted = true;
+                            0
+                        }
+                    };
+                self.bytes.extend_from_slice(&buffer[..read]);
             }
             ProbeReadSource::Memory(data) => {
                 self.bytes
                     .extend_from_slice(&data[self.bytes.len()..source_target]);
+                operation.check("read_probe_source")?;
             }
         }
         if self.bytes.len() as u64 >= self.source_length {
@@ -756,14 +786,30 @@ pub trait MediaBackend: Send + Sync {
     fn descriptor(&self) -> &BackendDescriptor;
 
     /// Inspects bounded source bytes without opening a concrete decoder.
-    fn probe_source(&self, probe: &SourceProbe<'_>) -> Result<SourceProbeResult>;
+    fn probe_source(
+        &self,
+        probe: &SourceProbe<'_>,
+        operation: &OperationContext,
+    ) -> Result<SourceProbeResult>;
 
     /// Opens a source for ingest, playback, or relinking.
-    fn open_source(&self, request: &SourceRequest) -> Result<Box<dyn MediaSource>>;
+    fn open_source(
+        &self,
+        request: &SourceRequest,
+        operation: &OperationContext,
+    ) -> Result<Box<dyn MediaSource>>;
 
     /// Creates a decoder for one source stream.
-    fn create_decoder(&self, config: &DecoderConfig) -> Result<Box<dyn Decoder>>;
+    fn create_decoder(
+        &self,
+        config: &DecoderConfig,
+        operation: &OperationContext,
+    ) -> Result<Box<dyn Decoder>>;
 
     /// Creates an encoder for one output stream.
-    fn create_encoder(&self, config: &EncoderConfig) -> Result<Box<dyn Encoder>>;
+    fn create_encoder(
+        &self,
+        config: &EncoderConfig,
+        operation: &OperationContext,
+    ) -> Result<Box<dyn Encoder>>;
 }
