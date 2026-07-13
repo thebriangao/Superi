@@ -17,3 +17,8 @@
 
 # Local agent instructions
 AGENTS.md
+/BASE_INSTRUCTIONS.md
+/plans/
+
+# Local browser test artifacts
+/.playwright-mcp/
