@@ -1,7 +1,7 @@
 # Superi: Codec Support Policy & Matrix
 
 **Status:** Foundational policy. Living document, versioned and dated.
-**Version:** 0.4
+**Version:** 0.5
 **Date:** 2026-07-13
 **Audience:** Engineers, contributors. Operationalizes the codec/licensing boundary from
 `architecture.md §2`, `§4.6`, and open item #1 into a concrete, per-format support plan.
@@ -49,7 +49,7 @@ This opens essentially everything a working editor sees day-to-day.
 | **VP9 / VP8** | web / legacy | royalty-free | in-tree backend over official `libvpx` 1.16.0 (BSD-3-Clause) through a checked local FFI shim | all platforms when the pinned runtime is bundled |
 | **H.264 / H.265** | acquisition + delivery (bulk of footage) | encumbered | **OS**: VideoToolbox / Media Foundation | Mac + Windows ✓ · Linux gap |
 | **H.266 (VVC)** | emerging | encumbered | OS where present (installed-base support thin in 2026) | limited today |
-| **ProRes** | pro mezzanine / acquisition | Apple proprietary | **OS**: VideoToolbox decode **and** encode (Mac) | Mac ✓ · Win decode limited · Linux gap |
+| **ProRes** | pro mezzanine / acquisition | Apple proprietary | **OS**: VideoToolbox on Mac; runtime-discovered Media Foundation transforms on Windows | Mac ✓ · Windows depends on installed MFTs · Linux gap |
 | **DNxHD / DNxHR** | broadcast intermediate | VC-3 is a SMPTE standard, cleaner than ProRes | TBD: possibly in-tree | `[VERIFY]` patent status |
 | **ARRIRAW / R3D / BRAW** | high-end camera RAW | vendor proprietary SDKs | optional **user-installed vendor plugin**; never in MIT tree | opt-in, post-launch |
 
@@ -121,6 +121,32 @@ F64 PCM with one to eight semantic channels is supported. Packet timing remains 
 clock, the configured channel layout is retained, flush drains pending packets, and reset clears
 converter state. Planar PCM and unavailable host operations fail explicitly instead of being
 reported as supported work.
+
+### Windows Media Foundation implementation contract
+
+The opt-in Windows backend discovers synchronous Media Foundation transforms at runtime for H.264,
+HEVC, AAC, and the four 4:2:2 ProRes sample-entry identities. It advertises only operations returned
+by the current host. H.264, HEVC, and AAC availability varies with the Windows edition, version,
+and installed media components. ProRes is exposed only when an installed transform declares
+lossless v210 input or output for the requested profile and direction. ProRes 4444 remains
+unadvertised on Windows because the public frame contract cannot retain its alpha plane without
+loss. No inbox ProRes implementation is assumed.
+
+COM initialization, Media Foundation startup, activation objects, transforms, samples, and shutdown
+remain on dedicated worker threads. The safe media interface preserves packet or frame metadata and
+exact Superi timing through a transform provenance ledger. H.264 and HEVC MP4 configuration and
+length-prefixed samples are checked and converted to the Annex B input required by Media Foundation.
+AAC AudioSpecificConfig or `esds` metadata is validated before constructing native media types.
+Decode produces validated NV12, P010, planar 10-bit 4:2:2, or packed I16 CPU storage. Encode accepts
+NV12, P010, BGRA8, planar 10-bit 4:2:2, or packed I16 as permitted by the selected codec and
+publishes codec configuration on the first output packet when the native type or stable AAC
+configuration provides it.
+
+The backend supports flush and drain, reset after seeking, cancellation checks between bounded
+native calls, deterministic shutdown, and typed unsupported, corrupt-data, conflict, unavailable,
+and resource errors. Hardware and asynchronous transforms are not advertised because their D3D
+manager and event ownership contracts are not yet projected through the public GPU boundary. This
+keeps the current capability set truthful instead of copying GPU media into an undisclosed fallback.
 
 ### MP3 implementation contract
 
@@ -216,8 +242,9 @@ GPL/LGPL/AGPL **and MPL** (weak copyleft still counts).
    `rav1d`/`rav1e`), BSD-C binding when not. Vorbis keeps the non-`Send` bundled encoder state on a
    dedicated worker thread behind the safe `vorbis_rs` API. VP8 and VP9 keep every concrete libvpx
    struct inside a checked local C shim and copy decoded planes into Superi-owned immutable storage.
-3. **ProRes is Mac-centric.** Decode + encode via VideoToolbox on Mac; Windows OS decode is limited;
-   Linux unsupported without user-supplied libs.
+3. **ProRes is Mac-centric.** Decode + encode uses VideoToolbox on Mac. Windows advertises only
+   profile and direction pairs reported by installed Media Foundation transforms; no inbox ProRes
+   transform is assumed. Linux remains unsupported without user-supplied libraries.
 4. **H.266/VVC OS support is thin** in 2026; treat as forward-looking, not a launch guarantee.
 5. **FLAC stays on the Rust 1.80 floor.** `flacenc` 0.4.0 is built without optional default
    features and its `built` helper is pinned to 0.7.1. Newer `flacenc` releases require Rust 1.83,
@@ -239,7 +266,6 @@ The specific facts to nail down:
 - `[VERIFY]` **AAC-LC patent status**, confirm whether AAC-LC can be treated as patent-free, or must
   stay strictly on the OS path.
 - `[VERIFY]` **DNxHR / VC-3 patent status**, determines whether it can be an in-tree codec.
-- `[VERIFY]` **ProRes-on-Windows** decode path (Media Foundation coverage vs. none).
 
 ## 7. The hard line
 

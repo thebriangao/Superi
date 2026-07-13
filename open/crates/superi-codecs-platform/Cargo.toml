@@ -21,3 +21,11 @@ objc2-core-foundation = { workspace = true, features = ["std", "CFBase", "CFData
 objc2-core-media = { workspace = true, features = ["std", "CMBase", "CMBlockBuffer", "CMFormatDescription", "CMSampleBuffer", "CMTime", "objc2-core-video"] }
 objc2-core-video = { workspace = true, features = ["std", "CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn"] }
 objc2-video-toolbox = { workspace = true, features = ["std", "VTBase", "VTCompressionSession", "VTDecompressionSession", "VTErrors", "objc2-core-media", "objc2-core-video"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { workspace = true, features = [
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Variant",
+] }

@@ -72,6 +72,7 @@ impl ProResProfile {
         CodecId::new(self.code()).expect("static ProRes codec identifier is valid")
     }
 
+    #[cfg(target_os = "macos")]
     pub(crate) fn from_id(codec: &CodecId) -> Option<Self> {
         Self::ALL
             .iter()
@@ -153,10 +154,13 @@ impl MediaBackend for VideoToolboxBackend {
             macos::create_decoder(config, operation)
         }
         #[cfg(not(target_os = "macos"))]
-        Err(unsupported(
-            "create_videotoolbox_decoder",
-            "the VideoToolbox backend is available only on macOS",
-        ))
+        {
+            let _ = config;
+            Err(unsupported(
+                "create_videotoolbox_decoder",
+                "the VideoToolbox backend is available only on macOS",
+            ))
+        }
     }
 
     fn create_encoder(
@@ -170,10 +174,13 @@ impl MediaBackend for VideoToolboxBackend {
             macos::create_encoder(config, operation)
         }
         #[cfg(not(target_os = "macos"))]
-        Err(unsupported(
-            "create_videotoolbox_encoder",
-            "the VideoToolbox backend is available only on macOS",
-        ))
+        {
+            let _ = config;
+            Err(unsupported(
+                "create_videotoolbox_encoder",
+                "the VideoToolbox backend is available only on macOS",
+            ))
+        }
     }
 }
 

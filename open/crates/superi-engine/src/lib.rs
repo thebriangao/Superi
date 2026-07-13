@@ -8,6 +8,7 @@ pub mod error;
 pub mod export_queue;
 pub mod introspection;
 pub mod lifecycle;
+pub mod media;
 pub mod nodes;
 pub mod playback;
 pub mod plugins;
