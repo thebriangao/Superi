@@ -749,6 +749,16 @@ impl GpuDevice {
         &self.identity
     }
 
+    pub(crate) fn write_texture(
+        &self,
+        texture: wgpu::ImageCopyTexture<'_>,
+        data: &[u8],
+        data_layout: wgpu::ImageDataLayout,
+        size: wgpu::Extent3d,
+    ) {
+        self.queue.write_texture(texture, data, data_layout, size);
+    }
+
     pub(crate) fn submit_viewport<I>(&self, command_buffers: I)
     where
         I: IntoIterator<Item = wgpu::CommandBuffer>,

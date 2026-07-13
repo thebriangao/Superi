@@ -1,11 +1,13 @@
 //! `superi-engine`, orchestration, the binder that wires all subsystems into one coherent engine.
 //!
-//! § 5.13 in `docs/architecture.md`. Depends on: all T0-T4 crates (+ superi-codecs-platform via os-codecs). Status: skeleton.
+//! Media backend construction and decoded-frame GPU upload are integrated while
+//! the remaining orchestration modules advance through their focused checkpoints.
 
 pub mod av_sync;
 pub mod command;
 pub mod error;
 pub mod export_queue;
+pub mod frame_upload;
 pub mod introspection;
 pub mod lifecycle;
 pub mod media;

@@ -1,9 +1,10 @@
 //! `superi-gpu`, the wgpu pipeline and GPU-resident resource substrate.
 //!
 //! Adapter discovery, capability selection, logical-device ownership, native
-//! viewport surfaces, device-scoped resource management, and aligned texture
-//! reuse share one wgpu path. Managed handles retain dependency ownership and
-//! reject resources from obsolete device lifetimes after recovery.
+//! viewport surfaces, device-scoped resource management, aligned texture reuse,
+//! and decoded-frame upload share one wgpu path. Managed handles retain
+//! dependency ownership and reject resources from obsolete device lifetimes
+//! after recovery.
 
 pub mod binding;
 pub mod buffer;
@@ -24,3 +25,5 @@ pub use wgpu;
 
 #[cfg(test)]
 mod resource_contract;
+#[cfg(test)]
+mod upload_contract;
