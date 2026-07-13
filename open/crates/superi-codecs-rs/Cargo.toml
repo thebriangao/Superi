@@ -16,6 +16,7 @@ claxon = { workspace = true }
 flacenc = { workspace = true }
 aotuv_lancer_vorbis_sys = { workspace = true }
 lewton = { workspace = true }
+libopus_sys = { workspace = true }
 ogg = { workspace = true }
 ogg_next_sys = { workspace = true }
 superi-core = { path = "../superi-core" }

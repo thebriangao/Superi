@@ -1,9 +1,8 @@
 //! `superi-codecs-rs`, default backend for permissive royalty-free codecs. See `docs/codecs.md`.
 //!
-//! The linear PCM, MP3, FLAC, and Vorbis backends are implemented. Other codec modules remain
-//! staged for
-//! their dedicated checkpoints. Section 5.1 in `docs/architecture.md`. Depends on: superi-core,
-//! superi-image, superi-media-io.
+//! The linear PCM, MP3, FLAC, Vorbis, and Opus backends are implemented. Other codec modules remain
+//! staged for their dedicated checkpoints. Section 5.1 in `docs/architecture.md`. Depends on:
+//! superi-core, superi-image, superi-media-io.
 
 pub mod av1;
 pub mod flac;

@@ -60,7 +60,7 @@ This opens essentially everything a working editor sees day-to-day.
 | **PCM** | free | in-tree `superi-codecs-rs` backend (MIT, no external dependency) | codec complete; WAV and AIFF containers tracked separately |
 | **FLAC** | free | in-tree backend using `claxon` 0.4.3 decode plus `flacenc` 0.4.0 encode (Apache-2.0, pure Rust) | 8, 12, 16, 20, and 24 bit precision; one to eight channels |
 | **Vorbis** | free | in-tree `lewton` 0.10.2 decode (MIT OR Apache-2.0) plus `vorbis_rs` 0.5.4, `aotuv_lancer_vorbis_sys` 0.1.4, and `ogg_next_sys` 0.1.3 encode (BSD-3-Clause, bundled C) | codec complete; raw packet transport, exact sample timing, semantic channel mapping, metadata, reset, and deterministic output are covered by public contracts; encoder state is isolated on its worker thread; exact versions preserve Rust 1.80 |
-| **Opus** | free | `libopus` (BSD-3) via FFI; pure-Rust decode thin | license-clean |
+| **Opus** | free | in-tree audited wrapper over `libopus_sys` 0.3.3 (MIT) with statically bundled `libopus` 1.5 (BSD-3-Clause) | codec complete; decode and encode cover 8, 12, 16, 24, and 48 kHz, signed 16-bit and float packed or planar audio, and standard one through eight channel mappings |
 | **MP3** | **expired (2017)** | `oxideav-mp3` at immutable revision `f37901b5d9c691b113e96a3bb95645c67af1a046` (MIT, pure Rust, Rust 1.80) | decode and CBR encode through the default backend |
 | **AAC** | AAC-LC core largely expired ~2017; HE-AAC murkier | route via **OS** (rides in the same MP4s as H.264) | `[VERIFY]` before claiming "free" |
 | **AC-3 / Dolby** | proprietary | OS only | low priority |
@@ -106,6 +106,23 @@ preserves exact sample timestamps and packet metadata, rejects fractional-sample
 unsupported layouts, resets state for seeking, and emits encoded packets after flush because the
 implementation schedules its bit reservoir across the complete input stream.
 
+### Opus implementation contract
+
+The default Opus backend statically builds the permissive `libopus` source bundled by
+`libopus_sys`, so ingest, playback, and export do not require a system codec or a network
+connection. A small audited wrapper in `opus.rs` uniquely owns each native decoder and encoder,
+checks every pointer, length, status, and variadic control call, and destroys the matching state on
+drop. `libopus_sys` 0.3.3 retains Rust 1.80 and uses a CMake 3.16 policy floor compatible with CMake
+4.
+
+Decode and encode support the five native Opus sample rates and signed 16-bit or 32-bit float
+packed or planar audio. OpusHead parsing preserves pre-skip, input sample-rate metadata, output
+gain, mapping family, and standard one through eight channel meaning. Packet timing compensates
+encoder lookahead, final padding is explicit, Matroska discard padding trims the decoded tail, and
+packet or block metadata crosses the codec boundary. Reset clears buffered codec state for seeking
+and stream replay, while unsupported rates, layouts, malformed headers, corrupt packets, timeline
+gaps, and cancelled operations fail through typed media errors.
+
 ## 4. License policy
 
 Permissive-class allowlist, **zero copyleft**: MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, ISC,
@@ -113,8 +130,8 @@ Zlib, Unicode. Copyleft is denied, GPL/LGPL/AGPL **and MPL** (weak copyleft stil
 
 - **Consequence:** `Symphonia` (the popular all-in-one pure-Rust media crate) is **MPL-2.0 → excluded**.
   Compressed audio is assembled from **per-codec permissive crates**
-  (`claxon`/`lewton`/`vorbis_rs`/`libopus`) instead, while PCM is implemented in-tree without an external
-  dependency. This is an accepted, recurring cost of the zero-exception rule.
+  (`claxon`/`lewton`/`vorbis_rs`/`libopus_sys`) instead, while PCM is implemented in-tree
+  without an external dependency. This is an accepted, recurring cost of the zero-exception rule.
 - Enforced by `cargo-deny` (`open/deny.toml`); wired into CI in a later pass.
 
 ## 5. Caveats & accepted tradeoffs
@@ -135,6 +152,10 @@ Zlib, Unicode. Copyleft is denied, GPL/LGPL/AGPL **and MPL** (weak copyleft stil
 5. **FLAC stays on the Rust 1.80 floor.** `flacenc` 0.4.0 is built without optional default
    features and its `built` helper is pinned to 0.7.1. Newer `flacenc` releases require Rust 1.83,
    while newer `built` 0.7 releases generate code that does not compile on Rust 1.80.
+6. **Opus keeps one audited native boundary.** `libopus_sys` 0.3.3 is pinned, `libopus` 1.5 is
+   built statically from the dependency's bundled source, and no system library is loaded at
+   runtime. Native state has unique Rust ownership and is exposed only through the codec-neutral
+   backend.
 
 ## 6. Open items to verify (before these harden)
 

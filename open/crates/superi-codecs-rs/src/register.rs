@@ -5,6 +5,7 @@ use superi_media_io::backend::BackendRegistry;
 
 use crate::flac::FlacBackend;
 use crate::mp3::Mp3Backend;
+use crate::opus::OpusBackend;
 use crate::pcm::PcmBackend;
 use crate::vorbis::VorbisBackend;
 
@@ -13,5 +14,6 @@ pub fn register_default_backends(registry: &mut BackendRegistry) -> Result<()> {
     registry.register(PcmBackend::registration()?)?;
     registry.register(Mp3Backend::registration()?)?;
     registry.register(FlacBackend::registration()?)?;
-    registry.register(VorbisBackend::registration()?)
+    registry.register(VorbisBackend::registration()?)?;
+    registry.register(OpusBackend::registration()?)
 }
