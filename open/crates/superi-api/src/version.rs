@@ -1,3 +1,12 @@
-//! API stability & versioning.
-//!
-//! TODO(§3.5): build this out. Skeleton only.
+//! Stable identifiers and schema versions for the public API.
+
+use superi_core::settings::SemanticVersion;
+
+/// Schema version for media capability snapshots.
+pub const MEDIA_CAPABILITIES_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
+
+/// JSON-RPC method for querying the current media capability snapshot.
+pub const GET_MEDIA_CAPABILITIES_METHOD: &str = "superi.media.capabilities.get";
+
+/// Ordered event name for media capability snapshot changes.
+pub const MEDIA_CAPABILITIES_CHANGED_EVENT: &str = "superi.media.capabilities.changed";

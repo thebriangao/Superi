@@ -159,8 +159,11 @@ dependencies = [
 name = "superi-api"
 version = "0.0.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "superi-core",
  "superi-engine",
+ "superi-media-io",
 ]
 
 [[package]]

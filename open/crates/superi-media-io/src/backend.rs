@@ -63,7 +63,7 @@ impl BackendDescriptor {
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[non_exhaustive]
 pub enum BackendCapability {
-    /// Open a codec-neutral packet source for ingest, playback, or relinking.
+    /// Open a codec-neutral packet source for ingest, seeking, playback, or relinking.
     Source,
     /// Decode packets for a declared compressed codec.
     Decode(CodecId),
@@ -377,6 +377,32 @@ impl BackendRegistry {
         Ok(())
     }
 
+    /// Iterates immutable registrations in registration order.
+    ///
+    /// Consumers that publish capability state must impose their own stable
+    /// presentation order instead of treating initialization order as policy.
+    pub fn registrations(&self) -> impl ExactSizeIterator<Item = &BackendRegistration> {
+        self.registrations.iter()
+    }
+
+    /// Returns registrations for one capability and tier in selection order.
+    #[must_use]
+    pub fn ranked_registrations(
+        &self,
+        capability: &BackendCapability,
+        tier: BackendTier,
+    ) -> Vec<&BackendRegistration> {
+        let mut values = self
+            .registrations
+            .iter()
+            .filter(|registration| {
+                registration.tier == tier && registration.capabilities.contains(capability)
+            })
+            .collect::<Vec<_>>();
+        values.sort_by(|left, right| rank_order(left, right));
+        values
+    }
+
     /// Selects a primary backend and, when allowed, its declared fallbacks.
     pub fn select(
         &self,
@@ -384,26 +410,9 @@ impl BackendRegistry {
         fallback_policy: FallbackPolicy,
     ) -> Result<BackendSelection> {
         let capability = requirement.capability();
-        let mut primary = self
-            .registrations
-            .iter()
-            .filter(|registration| {
-                registration.tier == BackendTier::Primary
-                    && registration.capabilities.contains(&capability)
-            })
-            .collect::<Vec<_>>();
-        primary.sort_by(|left, right| rank_order(left, right));
+        let primary = self.ranked_registrations(&capability, BackendTier::Primary);
         let mut fallback = if fallback_policy == FallbackPolicy::AllowRegistered {
-            let mut values = self
-                .registrations
-                .iter()
-                .filter(|registration| {
-                    registration.tier == BackendTier::Fallback
-                        && registration.capabilities.contains(&capability)
-                })
-                .collect::<Vec<_>>();
-            values.sort_by(|left, right| rank_order(left, right));
-            values
+            self.ranked_registrations(&capability, BackendTier::Fallback)
         } else {
             Vec::new()
         };
