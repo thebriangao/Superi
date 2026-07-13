@@ -27,7 +27,7 @@ use superi_core::time::{SampleTime, TimeRounding, Timebase};
 use superi_media_io::audio_io::{AudioBlock, AudioFormat, AudioPlane};
 use superi_media_io::backend::{
     BackendCapabilities, BackendCapability, BackendDescriptor, BackendRegistration, BackendTier,
-    MediaBackend,
+    CodecCapability, CodecOperation, HardwareAcceleration, MediaBackend,
 };
 use superi_media_io::decode::{DecodeOutput, Decoder, DecoderConfig};
 use superi_media_io::demux::{
@@ -112,12 +112,24 @@ impl VorbisBackend {
     /// Builds the primary registration for Vorbis decode and encode.
     pub fn registration() -> Result<BackendRegistration> {
         let codec = CodecId::new(VORBIS_CODEC_ID)?;
+        let codec_capabilities = [CodecOperation::Decode, CodecOperation::Encode]
+            .into_iter()
+            .map(|operation| {
+                CodecCapability::new(operation, codec.clone())
+                    .with_profiles_not_applicable()
+                    .with_levels_not_applicable()
+                    .with_bit_depths([8, 16, 24, 32, 64])
+                    .map(CodecCapability::with_chroma_sampling_not_applicable)
+            })
+            .collect::<Result<Vec<_>>>()?;
         BackendRegistration::new(
             Arc::new(Self::new()?),
             BackendCapabilities::new([
                 BackendCapability::Decode(codec.clone()),
                 BackendCapability::Encode(codec),
-            ]),
+            ])
+            .with_hardware_acceleration(HardwareAcceleration::Software)
+            .with_codec_capabilities(codec_capabilities)?,
             100,
             BackendTier::Primary,
         )

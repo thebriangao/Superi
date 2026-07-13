@@ -5,7 +5,9 @@ use std::process::Command;
 use std::time::Duration;
 
 use superi_codecs_vendor::VendorPluginConfig;
-use superi_engine::introspection::{MediaCapabilities, MediaOperation};
+use superi_engine::introspection::{
+    MediaCapabilities, MediaCapabilityConstraint, MediaHardwareAcceleration, MediaOperation,
+};
 use superi_engine::media::{media_backend_registry, media_backend_registry_with_vendor_plugins};
 use superi_media_io::operation::{MediaPriority, OperationContext};
 
@@ -42,6 +44,10 @@ fn default_registry_is_vendor_free_and_explicit_registry_reaches_introspection()
         .find(|backend| backend.id() == "test-vendor-raw")
         .unwrap();
     assert_eq!(vendor.display_name(), "Test Vendor RAW");
+    assert_eq!(
+        vendor.hardware_acceleration(),
+        MediaHardwareAcceleration::Unreported
+    );
     for codec in ["arriraw", "r3d", "braw"] {
         let support = capabilities
             .operations()
@@ -54,6 +60,12 @@ fn default_registry_is_vendor_free_and_explicit_registry_reaches_introspection()
             })
             .unwrap();
         assert_eq!(support.primary_backends(), ["test-vendor-raw"]);
+        let detail = vendor
+            .codec_capabilities()
+            .iter()
+            .find(|detail| detail.operation() == support.operation())
+            .unwrap();
+        assert_eq!(detail.profiles(), &MediaCapabilityConstraint::Unreported);
     }
 }
 

@@ -2,10 +2,13 @@
 
 #![cfg_attr(not(target_os = "linux"), allow(dead_code))]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
-use superi_media_io::backend::{BackendCapabilities, BackendCapability};
+use superi_media_io::backend::{
+    BackendCapabilities, BackendCapability, ChromaSampling, CodecCapability, CodecOperation,
+    HardwareAcceleration,
+};
 use superi_media_io::demux::{CodecId, MediaMetadata, MetadataValue, PacketTiming};
 
 #[cfg(target_os = "linux")]
@@ -32,27 +35,72 @@ pub fn registration() -> Result<Option<BackendRegistration>> {
     Ok(None)
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum H264Profile {
+    ConstrainedBaseline,
+    Main,
+    High,
+}
+
+impl H264Profile {
+    const fn code(self) -> &'static str {
+        match self {
+            Self::ConstrainedBaseline => "constrained_baseline",
+            Self::Main => "main",
+            Self::High => "high",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct DriverCapabilities {
-    h264_decode: bool,
+    h264_decode: BTreeSet<H264Profile>,
     hevc_decode: bool,
-    h264_encode: bool,
+    h264_encode: BTreeSet<H264Profile>,
 }
 
 fn capability_set(snapshot: DriverCapabilities) -> Result<BackendCapabilities> {
     let h264 = CodecId::new(H264_CODEC_ID)?;
     let hevc = CodecId::new(HEVC_CODEC_ID)?;
     let mut values = Vec::new();
-    if snapshot.h264_decode {
+    let mut details = Vec::new();
+    if !snapshot.h264_decode.is_empty() {
         values.push(BackendCapability::Decode(h264.clone()));
+        for profile in snapshot.h264_decode {
+            details.push(
+                CodecCapability::new(CodecOperation::Decode, h264.clone())
+                    .with_profiles([profile.code()])?
+                    .with_levels_runtime()
+                    .with_bit_depths([8])?
+                    .with_chroma_sampling([ChromaSampling::Cs420])?,
+            );
+        }
     }
     if snapshot.hevc_decode {
-        values.push(BackendCapability::Decode(hevc));
+        values.push(BackendCapability::Decode(hevc.clone()));
+        details.push(
+            CodecCapability::new(CodecOperation::Decode, hevc)
+                .with_profiles(["main"])?
+                .with_levels_runtime()
+                .with_bit_depths([8])?
+                .with_chroma_sampling([ChromaSampling::Cs420])?,
+        );
     }
-    if snapshot.h264_encode {
-        values.push(BackendCapability::Encode(h264));
+    if !snapshot.h264_encode.is_empty() {
+        values.push(BackendCapability::Encode(h264.clone()));
+        for profile in snapshot.h264_encode {
+            details.push(
+                CodecCapability::new(CodecOperation::Encode, h264.clone())
+                    .with_profiles([profile.code()])?
+                    .with_levels_runtime()
+                    .with_bit_depths([8])?
+                    .with_chroma_sampling([ChromaSampling::Cs420])?,
+            );
+        }
     }
-    Ok(BackendCapabilities::new(values))
+    BackendCapabilities::new(values)
+        .with_hardware_acceleration(HardwareAcceleration::Hardware)
+        .with_codec_capabilities(details)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -612,9 +660,9 @@ mod tests {
     #[test]
     fn capability_snapshot_never_advertises_unavailable_operations() {
         let capabilities = capability_set(DriverCapabilities {
-            h264_decode: true,
+            h264_decode: [H264Profile::Main, H264Profile::High].into_iter().collect(),
             hevc_decode: true,
-            h264_encode: true,
+            h264_encode: [H264Profile::Main].into_iter().collect(),
         })
         .unwrap();
 
@@ -626,6 +674,11 @@ mod tests {
                 BackendCapability::Encode(CodecId::new(H264_CODEC_ID).unwrap()),
             ]
         );
+        assert_eq!(
+            capabilities.hardware_acceleration(),
+            HardwareAcceleration::Hardware
+        );
+        assert_eq!(capabilities.codec_capabilities().count(), 4);
         assert!(capability_set(DriverCapabilities::default())
             .unwrap()
             .is_empty());

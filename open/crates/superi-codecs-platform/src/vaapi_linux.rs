@@ -1,7 +1,7 @@
 //! Linux-only VA-API implementation.
 
 use std::any::Any;
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::env;
 use std::fmt;
 use std::fs;
@@ -46,7 +46,7 @@ use superi_media_io::operation::OperationContext;
 use super::{
     capability_set, categorized, conflict, corrupt, normalize_avc_access_unit,
     normalize_hevc_access_unit, unsupported, validate_opaque_alpha, CodecLifecycle,
-    DriverCapabilities, TimingLedger, H264_CODEC_ID, HEVC_CODEC_ID,
+    DriverCapabilities, H264Profile, TimingLedger, H264_CODEC_ID, HEVC_CODEC_ID,
 };
 
 const BACKEND_ID: &str = "linux-vaapi";
@@ -107,7 +107,7 @@ pub fn registration() -> Result<Option<BackendRegistration>> {
     let Some(probe) = probe_driver()? else {
         return Ok(None);
     };
-    let capabilities = capability_set(probe.capabilities)?;
+    let capabilities = capability_set(probe.capabilities.clone())?;
     if capabilities.is_empty() {
         return Ok(None);
     }
@@ -164,7 +164,7 @@ impl MediaBackend for VaapiBackend {
             ));
         }
         let supported = match codec {
-            VideoCodec::H264 => self.probe.capabilities.h264_decode,
+            VideoCodec::H264 => !self.probe.capabilities.h264_decode.is_empty(),
             VideoCodec::Hevc => self.probe.capabilities.hevc_decode,
         };
         if !supported {
@@ -729,7 +729,9 @@ fn probe_driver() -> Result<Option<DriverProbe>> {
             }
             Err(_) => continue,
         };
-        capabilities.h264_decode &= decoder_is_constructible(&render_node, VideoCodec::H264);
+        if !decoder_is_constructible(&render_node, VideoCodec::H264) {
+            capabilities.h264_decode.clear();
+        }
         capabilities.hevc_decode &= decoder_is_constructible(&render_node, VideoCodec::Hevc);
         if capabilities == DriverCapabilities::default() {
             continue;
@@ -796,22 +798,23 @@ fn query_capabilities(display: &Display) -> std::result::Result<DriverCapabiliti
         .query_config_profiles()
         .map_err(|error| error.to_string())?;
     let h264_profiles = [
-        VAProfile::VAProfileH264ConstrainedBaseline,
-        VAProfile::VAProfileH264Main,
-        VAProfile::VAProfileH264High,
+        (
+            H264Profile::ConstrainedBaseline,
+            VAProfile::VAProfileH264ConstrainedBaseline,
+        ),
+        (H264Profile::Main, VAProfile::VAProfileH264Main),
+        (H264Profile::High, VAProfile::VAProfileH264High),
     ];
     let h264_decode = h264_profiles
         .iter()
         .copied()
-        .filter(|profile| profiles.contains(profile))
-        .any(|profile| supports_config(display, profile, VAEntrypoint::VAEntrypointVLD, false));
-    let h264_bootstrap = profiles.contains(&VAProfile::VAProfileH264Main)
-        && supports_config(
-            display,
-            VAProfile::VAProfileH264Main,
-            VAEntrypoint::VAEntrypointVLD,
-            false,
-        );
+        .filter(|(_, native)| profiles.contains(native))
+        .filter(|(_, native)| {
+            supports_config(display, *native, VAEntrypoint::VAEntrypointVLD, false)
+        })
+        .map(|(profile, _)| profile)
+        .collect::<BTreeSet<_>>();
+    let h264_bootstrap = h264_decode.contains(&H264Profile::Main);
     let hevc_decode = h264_bootstrap
         && profiles.contains(&VAProfile::VAProfileHEVCMain)
         && supports_config(
@@ -823,11 +826,13 @@ fn query_capabilities(display: &Display) -> std::result::Result<DriverCapabiliti
     let h264_encode = h264_profiles
         .iter()
         .copied()
-        .filter(|profile| profiles.contains(profile))
-        .any(|profile| {
-            supports_config(display, profile, VAEntrypoint::VAEntrypointEncSlice, true)
-                || supports_config(display, profile, VAEntrypoint::VAEntrypointEncSliceLP, true)
-        });
+        .filter(|(_, native)| profiles.contains(native))
+        .filter(|(_, native)| {
+            supports_config(display, *native, VAEntrypoint::VAEntrypointEncSlice, true)
+                || supports_config(display, *native, VAEntrypoint::VAEntrypointEncSliceLP, true)
+        })
+        .map(|(profile, _)| profile)
+        .collect::<BTreeSet<_>>();
     Ok(DriverCapabilities {
         h264_decode,
         hevc_decode,
@@ -1219,7 +1224,9 @@ mod encoder {
         backend: &VaapiBackend,
         config: &EncoderConfig,
     ) -> Result<Box<dyn Encoder>> {
-        if config.codec().as_str() != H264_CODEC_ID || !backend.probe.capabilities.h264_encode {
+        if config.codec().as_str() != H264_CODEC_ID
+            || backend.probe.capabilities.h264_encode.is_empty()
+        {
             return Err(unsupported(
                 "create_vaapi_encoder",
                 "the active VA driver does not expose H.264 encoding",

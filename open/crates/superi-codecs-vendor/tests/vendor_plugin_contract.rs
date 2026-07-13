@@ -15,7 +15,8 @@ use superi_core::ids::MediaId;
 use superi_core::pixel::{AlphaMode, PixelFormat};
 use superi_core::time::{RationalTime, Timebase};
 use superi_media_io::backend::{
-    BackendCapability, BackendRegistry, BackendRequirement, FallbackPolicy,
+    BackendCapability, BackendRegistry, BackendRequirement, CapabilityConstraint, CodecOperation,
+    FallbackPolicy, HardwareAcceleration,
 };
 use superi_media_io::decode::{DecodeOutput, DecoderConfig, FrameStorageKind};
 use superi_media_io::demux::{
@@ -125,6 +126,10 @@ fn installed_worker_runs_the_real_probe_source_seek_decode_and_relink_path() {
     assert!(registration
         .capabilities()
         .contains(&BackendCapability::Source));
+    assert_eq!(
+        registration.capabilities().hardware_acceleration(),
+        HardwareAcceleration::Unreported
+    );
     for codec in ["arriraw", "r3d", "braw"] {
         assert!(registration
             .capabilities()
@@ -132,6 +137,26 @@ fn installed_worker_runs_the_real_probe_source_seek_decode_and_relink_path() {
         assert!(!registration
             .capabilities()
             .contains(&BackendCapability::Encode(CodecId::new(codec).unwrap())));
+        let detail = registration
+            .capabilities()
+            .codec_capabilities()
+            .find(|detail| {
+                detail.operation() == CodecOperation::Decode && detail.codec().as_str() == codec
+            })
+            .unwrap();
+        assert!(matches!(
+            detail.profiles(),
+            CapabilityConstraint::Unreported
+        ));
+        assert!(matches!(detail.levels(), CapabilityConstraint::Unreported));
+        assert!(matches!(
+            detail.bit_depths(),
+            CapabilityConstraint::Unreported
+        ));
+        assert!(matches!(
+            detail.chroma_sampling(),
+            CapabilityConstraint::Unreported
+        ));
     }
 
     let request = SourceRequest::new(

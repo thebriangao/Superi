@@ -15,7 +15,7 @@ use superi_core::pixel::{AlphaMode, PixelFormat};
 use superi_core::time::{Duration, RationalTime, Timebase};
 use superi_media_io::backend::{
     BackendCapabilities, BackendCapability, BackendDescriptor, BackendRegistration, BackendTier,
-    MediaBackend,
+    ChromaSampling, CodecCapability, CodecOperation, HardwareAcceleration, MediaBackend,
 };
 use superi_media_io::decode::{
     CpuVideoBuffer, DecodeOutput, Decoder, DecoderConfig, VideoFormat, VideoFrame, VideoPlane,
@@ -101,6 +101,7 @@ impl VpxBackend {
 
     /// Builds the deterministic primary registration for VP8 and VP9 decode and encode.
     pub fn registration() -> Result<BackendRegistration> {
+        let codec_capabilities = vpx_capabilities()?;
         BackendRegistration::new(
             Arc::new(Self::new()?),
             BackendCapabilities::new([
@@ -108,7 +109,9 @@ impl VpxBackend {
                 BackendCapability::Encode(VpxCodec::Vp8.codec_id()),
                 BackendCapability::Decode(VpxCodec::Vp9.codec_id()),
                 BackendCapability::Encode(VpxCodec::Vp9.codec_id()),
-            ]),
+            ])
+            .with_hardware_acceleration(HardwareAcceleration::Software)
+            .with_codec_capabilities(codec_capabilities)?,
             100,
             BackendTier::Primary,
         )
@@ -119,6 +122,42 @@ impl VpxBackend {
     pub fn runtime_version(&self) -> &str {
         self.runtime.version()
     }
+}
+
+fn vpx_capabilities() -> Result<Vec<CodecCapability>> {
+    let mut values = Vec::new();
+    for operation in [CodecOperation::Decode, CodecOperation::Encode] {
+        values.push(
+            CodecCapability::new(operation, VpxCodec::Vp8.codec_id())
+                .with_profiles_not_applicable()
+                .with_levels_not_applicable()
+                .with_bit_depths([8])?
+                .with_chroma_sampling([ChromaSampling::Cs420])?,
+        );
+        for (profile, bit_depths, chroma_sampling) in [
+            ("profile_0", &[8][..], &[ChromaSampling::Cs420][..]),
+            (
+                "profile_1",
+                &[8][..],
+                &[ChromaSampling::Cs422, ChromaSampling::Cs444][..],
+            ),
+            ("profile_2", &[10][..], &[ChromaSampling::Cs420][..]),
+            (
+                "profile_3",
+                &[10][..],
+                &[ChromaSampling::Cs422, ChromaSampling::Cs444][..],
+            ),
+        ] {
+            values.push(
+                CodecCapability::new(operation, VpxCodec::Vp9.codec_id())
+                    .with_profiles([profile])?
+                    .with_levels_runtime()
+                    .with_bit_depths(bit_depths.iter().copied())?
+                    .with_chroma_sampling(chroma_sampling.iter().copied())?,
+            );
+        }
+    }
+    Ok(values)
 }
 
 impl MediaBackend for VpxBackend {

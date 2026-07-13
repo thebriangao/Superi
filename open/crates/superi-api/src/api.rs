@@ -9,6 +9,9 @@ use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Res
 use superi_core::settings::SemanticVersion;
 use superi_engine::introspection::{
     MediaBackendTier as EngineMediaBackendTier, MediaCapabilities as EngineMediaCapabilities,
+    MediaCapabilityConstraint as EngineCapabilityConstraint,
+    MediaChromaSampling as EngineChromaSampling, MediaCodecCapability as EngineCodecCapability,
+    MediaHardwareAcceleration as EngineHardwareAcceleration,
     MediaOperation as EngineMediaOperation,
 };
 
@@ -25,6 +28,55 @@ pub enum MediaBackendTier {
     Primary,
     /// A backend available only under explicit fallback policy.
     Fallback,
+}
+
+/// Whether one media capability dimension is fixed, dynamic, absent, or undeclared.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>"))]
+#[non_exhaustive]
+pub enum CapabilityConstraint<T> {
+    /// The dimension does not apply to this operation.
+    NotApplicable,
+    /// The value is selected when a concrete codec session is created.
+    RuntimeNegotiated,
+    /// The backend or external protocol does not report the value.
+    Unreported,
+    /// Every listed value is supported by this correlated capability row.
+    Values {
+        /// Stable deterministic values.
+        values: Vec<T>,
+    },
+}
+
+/// Chroma sampling exposed by one video codec capability row.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ChromaSampling {
+    /// A luma-only picture.
+    Monochrome,
+    /// 4:2:0 chroma sampling.
+    Cs420,
+    /// 4:2:2 chroma sampling.
+    Cs422,
+    /// 4:4:4 chroma sampling.
+    Cs444,
+}
+
+/// How one backend executes its declared media operations.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum HardwareAcceleration {
+    /// The backend does not report its execution mode.
+    Unreported,
+    /// Operations execute in software.
+    Software,
+    /// Operations require a hardware codec path.
+    Hardware,
+    /// The operating system selects hardware or software for each session.
+    PlatformManaged,
 }
 
 /// One stable media action exposed to API consumers.
@@ -46,6 +98,49 @@ pub enum MediaOperation {
     },
 }
 
+/// One valid correlated profile, level, depth, and chroma tuple.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaCodecCapability {
+    operation: MediaOperation,
+    profiles: CapabilityConstraint<String>,
+    levels: CapabilityConstraint<String>,
+    bit_depths: CapabilityConstraint<u8>,
+    chroma_sampling: CapabilityConstraint<ChromaSampling>,
+}
+
+impl MediaCodecCapability {
+    /// Returns the decode or encode operation covered by this tuple.
+    #[must_use]
+    pub const fn operation(&self) -> &MediaOperation {
+        &self.operation
+    }
+
+    /// Returns profile support for this tuple.
+    #[must_use]
+    pub const fn profiles(&self) -> &CapabilityConstraint<String> {
+        &self.profiles
+    }
+
+    /// Returns level support for this tuple.
+    #[must_use]
+    pub const fn levels(&self) -> &CapabilityConstraint<String> {
+        &self.levels
+    }
+
+    /// Returns meaningful component bit depths for this tuple.
+    #[must_use]
+    pub const fn bit_depths(&self) -> &CapabilityConstraint<u8> {
+        &self.bit_depths
+    }
+
+    /// Returns chroma sampling support for this tuple.
+    #[must_use]
+    pub const fn chroma_sampling(&self) -> &CapabilityConstraint<ChromaSampling> {
+        &self.chroma_sampling
+    }
+}
+
 /// Public capability declaration for one registered backend.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -55,6 +150,8 @@ pub struct MediaBackendCapabilities {
     priority: u16,
     tier: MediaBackendTier,
     capabilities: Vec<MediaOperation>,
+    hardware_acceleration: HardwareAcceleration,
+    codec_capabilities: Vec<MediaCodecCapability>,
 }
 
 impl MediaBackendCapabilities {
@@ -86,6 +183,18 @@ impl MediaBackendCapabilities {
     #[must_use]
     pub fn capabilities(&self) -> &[MediaOperation] {
         &self.capabilities
+    }
+
+    /// Returns how this backend executes its media operations.
+    #[must_use]
+    pub const fn hardware_acceleration(&self) -> HardwareAcceleration {
+        self.hardware_acceleration
+    }
+
+    /// Returns detailed codec tuples in deterministic order.
+    #[must_use]
+    pub fn codec_capabilities(&self) -> &[MediaCodecCapability] {
+        &self.codec_capabilities
     }
 }
 
@@ -228,6 +337,14 @@ fn public_snapshot(engine: &EngineMediaCapabilities, revision: u64) -> MediaCapa
                     .iter()
                     .map(public_operation)
                     .collect(),
+                hardware_acceleration: public_hardware_acceleration(
+                    backend.hardware_acceleration(),
+                ),
+                codec_capabilities: backend
+                    .codec_capabilities()
+                    .iter()
+                    .map(public_codec_capability)
+                    .collect(),
             })
             .collect(),
         operations: engine
@@ -258,5 +375,47 @@ fn public_operation(operation: &EngineMediaOperation) -> MediaOperation {
         EngineMediaOperation::Encode { codec } => MediaOperation::Encode {
             codec: codec.clone(),
         },
+    }
+}
+
+fn public_hardware_acceleration(value: EngineHardwareAcceleration) -> HardwareAcceleration {
+    match value {
+        EngineHardwareAcceleration::Unreported => HardwareAcceleration::Unreported,
+        EngineHardwareAcceleration::Software => HardwareAcceleration::Software,
+        EngineHardwareAcceleration::Hardware => HardwareAcceleration::Hardware,
+        EngineHardwareAcceleration::PlatformManaged => HardwareAcceleration::PlatformManaged,
+    }
+}
+
+fn public_codec_capability(value: &EngineCodecCapability) -> MediaCodecCapability {
+    MediaCodecCapability {
+        operation: public_operation(value.operation()),
+        profiles: public_constraint(value.profiles(), Clone::clone),
+        levels: public_constraint(value.levels(), Clone::clone),
+        bit_depths: public_constraint(value.bit_depths(), |value| *value),
+        chroma_sampling: public_constraint(value.chroma_sampling(), public_chroma_sampling),
+    }
+}
+
+fn public_constraint<T, U>(
+    value: &EngineCapabilityConstraint<T>,
+    convert: impl Fn(&T) -> U,
+) -> CapabilityConstraint<U> {
+    match value {
+        EngineCapabilityConstraint::NotApplicable => CapabilityConstraint::NotApplicable,
+        EngineCapabilityConstraint::RuntimeNegotiated => CapabilityConstraint::RuntimeNegotiated,
+        EngineCapabilityConstraint::Unreported => CapabilityConstraint::Unreported,
+        EngineCapabilityConstraint::Values(values) => CapabilityConstraint::Values {
+            values: values.iter().map(convert).collect(),
+        },
+    }
+}
+
+fn public_chroma_sampling(value: &EngineChromaSampling) -> ChromaSampling {
+    match value {
+        EngineChromaSampling::Monochrome => ChromaSampling::Monochrome,
+        EngineChromaSampling::Cs420 => ChromaSampling::Cs420,
+        EngineChromaSampling::Cs422 => ChromaSampling::Cs422,
+        EngineChromaSampling::Cs444 => ChromaSampling::Cs444,
     }
 }

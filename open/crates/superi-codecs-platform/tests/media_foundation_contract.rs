@@ -182,7 +182,9 @@ fn non_windows_hosts_do_not_advertise_media_foundation_capabilities() {
 fn windows_registry_advertises_only_operations_discovered_from_real_transforms() {
     use std::collections::BTreeSet;
 
-    use superi_media_io::backend::{BackendCapability, BackendTier};
+    use superi_media_io::backend::{
+        BackendCapability, BackendTier, CodecOperation, HardwareAcceleration,
+    };
 
     let registry = platform_backend_registry().unwrap();
     let registrations = registry.registrations().collect::<Vec<_>>();
@@ -194,6 +196,10 @@ fn windows_registry_advertises_only_operations_discovered_from_real_transforms()
     );
     assert_eq!(registration.priority(), 200);
     assert_eq!(registration.tier(), BackendTier::Primary);
+    assert_eq!(
+        registration.capabilities().hardware_acceleration(),
+        HardwareAcceleration::Software
+    );
 
     let capabilities = registration
         .capabilities()
@@ -206,6 +212,19 @@ fn windows_registry_advertises_only_operations_discovered_from_real_transforms()
         })
         .collect::<BTreeSet<_>>();
     assert!(!capabilities.is_empty());
+    let details = registration
+        .capabilities()
+        .codec_capabilities()
+        .map(|detail| {
+            let operation = match detail.operation() {
+                CodecOperation::Decode => "decode",
+                CodecOperation::Encode => "encode",
+                _ => panic!("unexpected codec operation"),
+            };
+            (operation, detail.codec().as_str().to_owned())
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(details, capabilities);
 }
 
 #[cfg(target_os = "windows")]

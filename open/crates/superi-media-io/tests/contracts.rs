@@ -11,7 +11,8 @@ use superi_core::time::{Duration, RationalTime, SampleTime, Timebase};
 use superi_media_io::audio_io::{AudioBlock, AudioFormat, AudioPlane};
 use superi_media_io::backend::{
     BackendCapabilities, BackendCapability, BackendDescriptor, BackendRegistration,
-    BackendRegistry, BackendRequirement, BackendTier, FallbackPolicy, MediaBackend,
+    BackendRegistry, BackendRequirement, BackendTier, CapabilityConstraint, ChromaSampling,
+    CodecCapability, CodecOperation, FallbackPolicy, HardwareAcceleration, MediaBackend,
 };
 use superi_media_io::decode::{
     CpuVideoBuffer, DecodeOutput, Decoder, DecoderConfig, FrameStorageKind, VideoFormat,
@@ -348,6 +349,53 @@ fn memory_capabilities() -> BackendCapabilities {
         BackendCapability::Decode(CodecId::new("av1").unwrap()),
         BackendCapability::Encode(CodecId::new("av1").unwrap()),
     ])
+}
+
+#[test]
+fn detailed_capabilities_validate_declared_operations_and_stable_values() {
+    let codec = CodecId::new("av1").unwrap();
+    let detail = CodecCapability::new(CodecOperation::Decode, codec.clone())
+        .with_profiles(["main", "main"])
+        .unwrap()
+        .with_levels_runtime()
+        .with_bit_depths([10, 8, 10])
+        .unwrap()
+        .with_chroma_sampling([ChromaSampling::Cs420, ChromaSampling::Monochrome])
+        .unwrap();
+    let capabilities = BackendCapabilities::new([BackendCapability::Decode(codec.clone())])
+        .with_hardware_acceleration(HardwareAcceleration::Software)
+        .with_codec_capabilities([detail])
+        .unwrap();
+    assert_eq!(
+        capabilities.hardware_acceleration(),
+        HardwareAcceleration::Software
+    );
+    let detail = capabilities.codec_capabilities().next().unwrap();
+    assert!(matches!(
+        detail.profiles(),
+        CapabilityConstraint::Values(values) if values.iter().map(String::as_str).eq(["main"])
+    ));
+    assert!(matches!(
+        detail.bit_depths(),
+        CapabilityConstraint::Values(values) if values.iter().copied().eq([8, 10])
+    ));
+
+    let undeclared = CodecCapability::new(CodecOperation::Encode, codec)
+        .with_profiles_not_applicable()
+        .with_levels_not_applicable()
+        .with_bit_depths([8])
+        .unwrap()
+        .with_chroma_sampling([ChromaSampling::Cs420])
+        .unwrap();
+    let error = capabilities
+        .with_codec_capabilities([undeclared])
+        .unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::InvalidInput);
+    assert!(
+        CodecCapability::new(CodecOperation::Decode, CodecId::new("av1").unwrap())
+            .with_profiles(Vec::<String>::new())
+            .is_err()
+    );
 }
 
 #[test]

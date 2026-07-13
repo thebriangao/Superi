@@ -71,33 +71,358 @@ pub enum BackendCapability {
     Encode(CodecId),
 }
 
+/// Direction of one detailed codec capability row.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[non_exhaustive]
+pub enum CodecOperation {
+    /// Convert compressed packets into frames or audio blocks.
+    Decode,
+    /// Convert frames or audio blocks into compressed packets.
+    Encode,
+}
+
+/// Chroma sampling carried by a video codec profile.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[non_exhaustive]
+pub enum ChromaSampling {
+    /// A single luma plane with no chroma planes.
+    Monochrome,
+    /// Half horizontal and half vertical chroma resolution.
+    Cs420,
+    /// Half horizontal and full vertical chroma resolution.
+    Cs422,
+    /// Full chroma resolution in both dimensions.
+    Cs444,
+}
+
+/// How a backend can execute its declared media operations.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[non_exhaustive]
+pub enum HardwareAcceleration {
+    /// Capability metadata does not report the execution mode.
+    #[default]
+    Unreported,
+    /// The declared operations execute in software.
+    Software,
+    /// The declared operations require a hardware codec path.
+    Hardware,
+    /// The operating system may select hardware or software for each session.
+    PlatformManaged,
+}
+
+/// Whether one codec dimension is fixed, dynamic, absent, or undeclared.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[non_exhaustive]
+pub enum CapabilityConstraint<T> {
+    /// The codec dimension does not apply to this operation.
+    NotApplicable,
+    /// The concrete value is negotiated when the codec session is created.
+    RuntimeNegotiated,
+    /// The backend or external protocol does not report this dimension.
+    Unreported,
+    /// Every listed value is supported by this capability row.
+    Values(BTreeSet<T>),
+}
+
+impl<T> CapabilityConstraint<T> {
+    /// Returns fixed values, or `None` for a non-fixed constraint state.
+    #[must_use]
+    pub const fn values(&self) -> Option<&BTreeSet<T>> {
+        match self {
+            Self::Values(values) => Some(values),
+            Self::NotApplicable | Self::RuntimeNegotiated | Self::Unreported => None,
+        }
+    }
+}
+
+/// One valid correlated codec capability tuple for a backend.
+///
+/// Multiple rows for the same codec and direction preserve relationships between profile, level,
+/// component depth, and chroma instead of implying that every cross-product is supported.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct CodecCapability {
+    operation: CodecOperation,
+    codec: CodecId,
+    profiles: CapabilityConstraint<String>,
+    levels: CapabilityConstraint<String>,
+    bit_depths: CapabilityConstraint<u8>,
+    chroma_sampling: CapabilityConstraint<ChromaSampling>,
+}
+
+impl CodecCapability {
+    /// Creates an unreported capability row for one codec and direction.
+    #[must_use]
+    pub const fn new(operation: CodecOperation, codec: CodecId) -> Self {
+        Self {
+            operation,
+            codec,
+            profiles: CapabilityConstraint::Unreported,
+            levels: CapabilityConstraint::Unreported,
+            bit_depths: CapabilityConstraint::Unreported,
+            chroma_sampling: CapabilityConstraint::Unreported,
+        }
+    }
+
+    /// Declares one or more stable profile codes.
+    pub fn with_profiles<S>(mut self, values: impl IntoIterator<Item = S>) -> Result<Self>
+    where
+        S: Into<String>,
+    {
+        self.profiles = CapabilityConstraint::Values(text_constraint_values(
+            values,
+            "set_codec_profiles",
+            "codec profile values must use lowercase ASCII letters, digits, dots, underscores, or hyphens",
+        )?);
+        Ok(self)
+    }
+
+    /// Marks profiles as selected when the codec session is created.
+    #[must_use]
+    pub fn with_profiles_runtime(mut self) -> Self {
+        self.profiles = CapabilityConstraint::RuntimeNegotiated;
+        self
+    }
+
+    /// Marks profiles as not applicable to this codec operation.
+    #[must_use]
+    pub fn with_profiles_not_applicable(mut self) -> Self {
+        self.profiles = CapabilityConstraint::NotApplicable;
+        self
+    }
+
+    /// Declares one or more stable level codes.
+    pub fn with_levels<S>(mut self, values: impl IntoIterator<Item = S>) -> Result<Self>
+    where
+        S: Into<String>,
+    {
+        self.levels = CapabilityConstraint::Values(text_constraint_values(
+            values,
+            "set_codec_levels",
+            "codec level values must use lowercase ASCII letters, digits, dots, underscores, or hyphens",
+        )?);
+        Ok(self)
+    }
+
+    /// Marks levels as selected when the codec session is created.
+    #[must_use]
+    pub fn with_levels_runtime(mut self) -> Self {
+        self.levels = CapabilityConstraint::RuntimeNegotiated;
+        self
+    }
+
+    /// Marks levels as not applicable to this codec operation.
+    #[must_use]
+    pub fn with_levels_not_applicable(mut self) -> Self {
+        self.levels = CapabilityConstraint::NotApplicable;
+        self
+    }
+
+    /// Declares one or more meaningful component bit depths.
+    pub fn with_bit_depths(mut self, values: impl IntoIterator<Item = u8>) -> Result<Self> {
+        let values = values.into_iter().collect::<BTreeSet<_>>();
+        if values.is_empty() || values.iter().any(|value| !(1..=64).contains(value)) {
+            return Err(invalid_capability(
+                "set_codec_bit_depths",
+                "codec bit depths must contain values from 1 through 64",
+            ));
+        }
+        self.bit_depths = CapabilityConstraint::Values(values);
+        Ok(self)
+    }
+
+    /// Marks component depth as selected when the codec session is created.
+    #[must_use]
+    pub fn with_bit_depths_runtime(mut self) -> Self {
+        self.bit_depths = CapabilityConstraint::RuntimeNegotiated;
+        self
+    }
+
+    /// Marks component depth as not applicable to this codec operation.
+    #[must_use]
+    pub fn with_bit_depths_not_applicable(mut self) -> Self {
+        self.bit_depths = CapabilityConstraint::NotApplicable;
+        self
+    }
+
+    /// Declares one or more chroma sampling modes.
+    pub fn with_chroma_sampling(
+        mut self,
+        values: impl IntoIterator<Item = ChromaSampling>,
+    ) -> Result<Self> {
+        let values = values.into_iter().collect::<BTreeSet<_>>();
+        if values.is_empty() {
+            return Err(invalid_capability(
+                "set_codec_chroma_sampling",
+                "codec chroma sampling must contain at least one value",
+            ));
+        }
+        self.chroma_sampling = CapabilityConstraint::Values(values);
+        Ok(self)
+    }
+
+    /// Marks chroma sampling as selected when the codec session is created.
+    #[must_use]
+    pub fn with_chroma_sampling_runtime(mut self) -> Self {
+        self.chroma_sampling = CapabilityConstraint::RuntimeNegotiated;
+        self
+    }
+
+    /// Marks chroma sampling as not applicable to this codec operation.
+    #[must_use]
+    pub fn with_chroma_sampling_not_applicable(mut self) -> Self {
+        self.chroma_sampling = CapabilityConstraint::NotApplicable;
+        self
+    }
+
+    /// Returns the decode or encode direction.
+    #[must_use]
+    pub const fn operation(&self) -> CodecOperation {
+        self.operation
+    }
+
+    /// Returns the stable codec identity.
+    #[must_use]
+    pub const fn codec(&self) -> &CodecId {
+        &self.codec
+    }
+
+    /// Returns profile support for this tuple.
+    #[must_use]
+    pub const fn profiles(&self) -> &CapabilityConstraint<String> {
+        &self.profiles
+    }
+
+    /// Returns level support for this tuple.
+    #[must_use]
+    pub const fn levels(&self) -> &CapabilityConstraint<String> {
+        &self.levels
+    }
+
+    /// Returns meaningful component depths for this tuple.
+    #[must_use]
+    pub const fn bit_depths(&self) -> &CapabilityConstraint<u8> {
+        &self.bit_depths
+    }
+
+    /// Returns chroma sampling support for this tuple.
+    #[must_use]
+    pub const fn chroma_sampling(&self) -> &CapabilityConstraint<ChromaSampling> {
+        &self.chroma_sampling
+    }
+
+    fn selection_capability(&self) -> BackendCapability {
+        match self.operation {
+            CodecOperation::Decode => BackendCapability::Decode(self.codec.clone()),
+            CodecOperation::Encode => BackendCapability::Encode(self.codec.clone()),
+        }
+    }
+}
+
 /// Deterministic capability declarations for one backend.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct BackendCapabilities(BTreeSet<BackendCapability>);
+pub struct BackendCapabilities {
+    operations: BTreeSet<BackendCapability>,
+    hardware_acceleration: HardwareAcceleration,
+    codec_capabilities: BTreeSet<CodecCapability>,
+}
 
 impl BackendCapabilities {
     /// Builds a capability set. Duplicate declarations are idempotent.
     #[must_use]
     pub fn new(values: impl IntoIterator<Item = BackendCapability>) -> Self {
-        Self(values.into_iter().collect())
+        Self {
+            operations: values.into_iter().collect(),
+            hardware_acceleration: HardwareAcceleration::Unreported,
+            codec_capabilities: BTreeSet::new(),
+        }
+    }
+
+    /// Sets the backend-wide execution mode reported to capability consumers.
+    #[must_use]
+    pub const fn with_hardware_acceleration(
+        mut self,
+        hardware_acceleration: HardwareAcceleration,
+    ) -> Self {
+        self.hardware_acceleration = hardware_acceleration;
+        self
+    }
+
+    /// Adds correlated codec rows after validating their selection operations.
+    pub fn with_codec_capabilities(
+        mut self,
+        values: impl IntoIterator<Item = CodecCapability>,
+    ) -> Result<Self> {
+        for capability in values {
+            let selection = capability.selection_capability();
+            if !self.operations.contains(&selection) {
+                return Err(invalid_capability(
+                    "set_codec_capabilities",
+                    "detailed codec capability must refer to a declared decode or encode operation",
+                ));
+            }
+            self.codec_capabilities.insert(capability);
+        }
+        Ok(self)
     }
 
     /// Returns whether a capability was declared by the backend.
     #[must_use]
     pub fn contains(&self, capability: &BackendCapability) -> bool {
-        self.0.contains(capability)
+        self.operations.contains(capability)
     }
 
     /// Iterates capabilities in stable declaration order.
     pub fn iter(&self) -> impl ExactSizeIterator<Item = &BackendCapability> {
-        self.0.iter()
+        self.operations.iter()
+    }
+
+    /// Returns the backend-wide execution mode.
+    #[must_use]
+    pub const fn hardware_acceleration(&self) -> HardwareAcceleration {
+        self.hardware_acceleration
+    }
+
+    /// Iterates correlated codec rows in stable tuple order.
+    pub fn codec_capabilities(&self) -> impl ExactSizeIterator<Item = &CodecCapability> {
+        self.codec_capabilities.iter()
     }
 
     /// Returns whether no operation was declared.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.operations.is_empty()
     }
+}
+
+fn text_constraint_values<S>(
+    values: impl IntoIterator<Item = S>,
+    operation: &'static str,
+    message: &'static str,
+) -> Result<BTreeSet<String>>
+where
+    S: Into<String>,
+{
+    let values = values.into_iter().map(Into::into).collect::<BTreeSet<_>>();
+    if values.is_empty() || values.iter().any(|value| !valid_capability_code(value)) {
+        return Err(invalid_capability(operation, message));
+    }
+    Ok(values)
+}
+
+fn valid_capability_code(value: &str) -> bool {
+    !value.is_empty()
+        && value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'_' | b'-')
+        })
+}
+
+fn invalid_capability(operation: &'static str, message: &'static str) -> Error {
+    Error::new(
+        ErrorCategory::InvalidInput,
+        Recoverability::UserCorrectable,
+        message,
+    )
+    .with_context(ErrorContext::new("superi-media-io.backend", operation))
 }
 
 /// One media operation used to select a registered backend.

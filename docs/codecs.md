@@ -99,6 +99,30 @@ Every Superi-owned native codec call is isolated behind that safe interface. The
 operation, ownership, callback, buffer, threading, failure, and target inventory is maintained in
 [`unsafe-ffi.md`](unsafe-ffi.md), together with the compiler and target-specific audit commands.
 
+### Capability introspection contract
+
+The public `superi.media.capabilities.get` snapshot uses schema 2.0.0. Each registered backend
+reports stable identity, selection priority and tier, source, decode, and encode operations,
+hardware acceleration state, and correlated codec capability rows. The same full snapshot is sent
+through `superi.media.capabilities.changed` whenever any of those declarations changes. Backend
+selection and fallback ranking still use the original operation declarations, so richer metadata
+cannot silently change which implementation an editor selects.
+
+Hardware acceleration is one of four explicit states. `software` means Superi knows that the
+backend executes on the CPU. `hardware` means the backend requires a hardware codec path.
+`platform_managed` means the operating system can choose hardware or software when it creates a
+session. `unreported` means the backend or an external protocol does not provide a truthful answer.
+An unknown value is never inferred from backend naming or codec type.
+
+Each codec row describes one valid combination for one decode or encode direction. Multiple rows
+for the same codec preserve relationships between profile, level, component bit depth, and chroma
+sampling instead of publishing an invalid cross-product. Every dimension is either a stable value
+set, `runtime_negotiated`, `not_applicable`, or `unreported`. Audio codecs use `not_applicable` for
+chroma and other video-only dimensions. Legacy registrations and revision 1 vendor workers remain
+visible with `unreported` detail rather than losing their existing operations. Editors can use the
+correlated rows for predictable ingest and export choices while relying on each codec contract for
+timing, metadata, alpha, seek, reset, drain, and fallback behavior.
+
 ### macOS VideoToolbox implementation contract
 
 The opt-in macOS backend uses the generated `objc2` 0.3.2 bindings for Core Foundation, Core

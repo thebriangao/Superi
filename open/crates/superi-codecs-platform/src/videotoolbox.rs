@@ -5,7 +5,7 @@ use std::sync::Arc;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_media_io::backend::{
     BackendCapabilities, BackendCapability, BackendDescriptor, BackendRegistration, BackendTier,
-    MediaBackend,
+    ChromaSampling, CodecCapability, CodecOperation, HardwareAcceleration, MediaBackend,
 };
 use superi_media_io::decode::{Decoder, DecoderConfig};
 use superi_media_io::demux::{
@@ -100,20 +100,65 @@ impl VideoToolboxBackend {
     /// Builds the deterministic native decode and encode registration.
     pub fn registration() -> Result<BackendRegistration> {
         let mut capabilities = Vec::new();
+        let mut codec_capabilities = Vec::new();
         for codec in [H264_CODEC_ID, HEVC_CODEC_ID, AAC_CODEC_ID]
             .into_iter()
             .map(|code| CodecId::new(code).expect("static codec identifier is valid"))
             .chain(ProResProfile::ALL.iter().map(|profile| profile.codec_id()))
         {
             capabilities.push(BackendCapability::Decode(codec.clone()));
-            capabilities.push(BackendCapability::Encode(codec));
+            capabilities.push(BackendCapability::Encode(codec.clone()));
+            for operation in [CodecOperation::Decode, CodecOperation::Encode] {
+                codec_capabilities.push(videotoolbox_capability(operation, codec.clone())?);
+            }
         }
         BackendRegistration::new(
             Arc::new(Self::new()?),
-            BackendCapabilities::new(capabilities),
+            BackendCapabilities::new(capabilities)
+                .with_hardware_acceleration(HardwareAcceleration::PlatformManaged)
+                .with_codec_capabilities(codec_capabilities)?,
             200,
             BackendTier::Primary,
         )
+    }
+}
+
+fn videotoolbox_capability(operation: CodecOperation, codec: CodecId) -> Result<CodecCapability> {
+    let value = CodecCapability::new(operation, codec.clone());
+    match codec.as_str() {
+        H264_CODEC_ID | HEVC_CODEC_ID => Ok(value
+            .with_profiles_runtime()
+            .with_levels_runtime()
+            .with_bit_depths_runtime()
+            .with_chroma_sampling_runtime()),
+        AAC_CODEC_ID => Ok(value
+            .with_profiles_runtime()
+            .with_levels_not_applicable()
+            .with_bit_depths_runtime()
+            .with_chroma_sampling_not_applicable()),
+        code => {
+            let profile = ProResProfile::ALL
+                .iter()
+                .copied()
+                .find(|profile| profile.code() == code)
+                .expect("registration contains only known ProRes profiles");
+            let bit_depth = if profile == ProResProfile::FourFourFourFour {
+                12
+            } else {
+                10
+            };
+            value
+                .with_profiles([profile.code()])
+                .map(CodecCapability::with_levels_not_applicable)?
+                .with_bit_depths([bit_depth])
+                .and_then(|value| {
+                    value.with_chroma_sampling([if profile == ProResProfile::FourFourFourFour {
+                        ChromaSampling::Cs444
+                    } else {
+                        ChromaSampling::Cs422
+                    }])
+                })
+        }
     }
 }
 

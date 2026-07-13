@@ -19,7 +19,7 @@ use superi_media_io::read::ReadOutcome;
 use crate::convert::{
     encode_hex, frame_from_wire, media_id_text, packet_to_wire, read_outcome_from_wire,
     seek_to_wire, source_from_wire, source_location_to_wire, stream_to_wire, time_from_wire,
-    vendor_capabilities, SOURCE_HANDLE_METADATA_KEY,
+    vendor_capabilities, vendor_codec_capabilities, SOURCE_HANDLE_METADATA_KEY,
 };
 use crate::process::{protocol_error, ProcessClient, VendorPluginConfig};
 use crate::protocol::{
@@ -75,7 +75,8 @@ impl VendorBackend {
             return Err(unexpected_response("handshake_vendor_plugin"));
         };
         let (descriptor, formats) = validate_manifest(manifest)?;
-        let capabilities = BackendCapabilities::new(vendor_capabilities(&formats)?);
+        let capabilities = BackendCapabilities::new(vendor_capabilities(&formats)?)
+            .with_codec_capabilities(vendor_codec_capabilities(&formats)?)?;
         BackendRegistration::new(
             Arc::new(Self {
                 descriptor,

@@ -8,7 +8,7 @@ use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Res
 use superi_core::ids::MediaId;
 use superi_core::pixel::{AlphaMode, PixelFormat};
 use superi_core::time::{Duration, RationalTime, Timebase};
-use superi_media_io::backend::BackendCapability;
+use superi_media_io::backend::{BackendCapability, CodecCapability, CodecOperation};
 use superi_media_io::decode::{CpuVideoBuffer, VideoFormat, VideoFrame, VideoPlane};
 use superi_media_io::demux::{
     CodecId, MediaMetadata, MetadataValue, Packet, PacketTiming, SeekMode, SeekRequest,
@@ -33,6 +33,20 @@ pub(crate) fn vendor_capabilities(
         capabilities.push(BackendCapability::Decode(CodecId::new(format.code())?));
     }
     Ok(capabilities)
+}
+
+pub(crate) fn vendor_codec_capabilities(
+    formats: &BTreeSet<VendorRawFormat>,
+) -> Result<Vec<CodecCapability>> {
+    formats
+        .iter()
+        .map(|format| {
+            Ok(CodecCapability::new(
+                CodecOperation::Decode,
+                CodecId::new(format.code())?,
+            ))
+        })
+        .collect()
 }
 
 pub(crate) fn source_location_to_wire(location: &SourceLocation) -> Result<SourceLocationWire> {

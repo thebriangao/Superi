@@ -43,7 +43,8 @@ use superi_core::pixel::{AlphaMode, PixelFormat};
 use superi_core::time::{Duration, RationalTime, Timebase};
 use superi_media_io::backend::{
     BackendCapabilities, BackendCapability, BackendDescriptor, BackendRegistration, BackendTier,
-    MediaBackend,
+    ChromaSampling as CapabilityChromaSampling, CodecCapability, CodecOperation,
+    HardwareAcceleration, MediaBackend,
 };
 use superi_media_io::decode::{
     CpuVideoBuffer, DecodeOutput, Decoder, DecoderConfig, VideoFormat, VideoFrame,
@@ -83,16 +84,50 @@ impl Av1Backend {
     /// Builds the primary registration for AV1 decode and encode.
     pub fn registration() -> Result<BackendRegistration> {
         let codec = CodecId::new(AV1_CODEC_ID)?;
+        let codec_capabilities = av1_capabilities(&codec)?;
         BackendRegistration::new(
             Arc::new(Self::new()?),
             BackendCapabilities::new([
                 BackendCapability::Decode(codec.clone()),
                 BackendCapability::Encode(codec),
-            ]),
+            ])
+            .with_hardware_acceleration(HardwareAcceleration::Software)
+            .with_codec_capabilities(codec_capabilities)?,
             100,
             BackendTier::Primary,
         )
     }
+}
+
+fn av1_capabilities(codec: &CodecId) -> Result<Vec<CodecCapability>> {
+    let mut values = Vec::new();
+    for operation in [CodecOperation::Decode, CodecOperation::Encode] {
+        values.push(
+            CodecCapability::new(operation, codec.clone())
+                .with_profiles(["main"])?
+                .with_levels_runtime()
+                .with_bit_depths([8, 10])?
+                .with_chroma_sampling([
+                    CapabilityChromaSampling::Monochrome,
+                    CapabilityChromaSampling::Cs420,
+                ])?,
+        );
+        values.push(
+            CodecCapability::new(operation, codec.clone())
+                .with_profiles(["high"])?
+                .with_levels_runtime()
+                .with_bit_depths([8, 10])?
+                .with_chroma_sampling([CapabilityChromaSampling::Cs444])?,
+        );
+        values.push(
+            CodecCapability::new(operation, codec.clone())
+                .with_profiles(["professional"])?
+                .with_levels_runtime()
+                .with_bit_depths([8, 10])?
+                .with_chroma_sampling([CapabilityChromaSampling::Cs422])?,
+        );
+    }
+    Ok(values)
 }
 
 impl MediaBackend for Av1Backend {

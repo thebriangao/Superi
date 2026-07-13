@@ -14,8 +14,8 @@ use superi_core::pixel::{AlphaMode, ChannelLayout, PixelFormat, SampleFormat};
 use superi_core::time::{Duration, RationalTime, SampleTime, Timebase};
 use superi_media_io::audio_io::{AudioBlock, AudioFormat, AudioPlane};
 use superi_media_io::backend::{
-    BackendCapability, BackendRegistry, BackendRequirement, BackendTier, FallbackPolicy,
-    MediaBackend,
+    BackendCapability, BackendRegistry, BackendRequirement, BackendTier, CapabilityConstraint,
+    ChromaSampling, CodecOperation, FallbackPolicy, HardwareAcceleration, MediaBackend,
 };
 use superi_media_io::decode::{
     CpuVideoBuffer, DecodeOutput, DecoderConfig, FrameStorageKind, VideoFormat, VideoFrame,
@@ -62,6 +62,10 @@ fn macos_registry_exposes_one_deterministic_primary_native_backend() {
     );
     assert_eq!(registration.priority(), 200);
     assert_eq!(registration.tier(), BackendTier::Primary);
+    assert_eq!(
+        registration.capabilities().hardware_acceleration(),
+        HardwareAcceleration::PlatformManaged
+    );
 
     let expected = std::iter::once(H264_CODEC_ID)
         .chain(std::iter::once(HEVC_CODEC_ID))
@@ -95,6 +99,31 @@ fn macos_registry_exposes_one_deterministic_primary_native_backend() {
     }
     assert_eq!(decoded, expected);
     assert_eq!(encoded, expected);
+    assert_eq!(
+        registration.capabilities().codec_capabilities().count(),
+        expected.len() * 2
+    );
+
+    let prores_4444_encode = registration
+        .capabilities()
+        .codec_capabilities()
+        .find(|detail| {
+            detail.operation() == CodecOperation::Encode && detail.codec().as_str() == "prores-4444"
+        })
+        .unwrap();
+    assert!(matches!(
+        prores_4444_encode.profiles(),
+        CapabilityConstraint::Values(values) if values.contains("prores-4444")
+    ));
+    assert!(matches!(
+        prores_4444_encode.bit_depths(),
+        CapabilityConstraint::Values(values) if values.iter().copied().eq([12])
+    ));
+    assert!(matches!(
+        prores_4444_encode.chroma_sampling(),
+        CapabilityConstraint::Values(values)
+            if values.iter().copied().eq([ChromaSampling::Cs444])
+    ));
 }
 
 #[test]

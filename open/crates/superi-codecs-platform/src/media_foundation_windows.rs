@@ -19,7 +19,7 @@ use superi_core::time::{Duration, RationalTime, SampleTime, TimeRounding, Timeba
 use superi_media_io::audio_io::{AudioBlock, AudioFormat, AudioPlane};
 use superi_media_io::backend::{
     BackendCapabilities, BackendCapability, BackendDescriptor, BackendRegistration, BackendTier,
-    MediaBackend,
+    ChromaSampling, CodecCapability, CodecOperation, HardwareAcceleration, MediaBackend,
 };
 use superi_media_io::decode::{
     CpuVideoBuffer, DecodeOutput, Decoder, DecoderConfig, VideoFormat, VideoFrame, VideoPlane,
@@ -66,7 +66,14 @@ impl MediaFoundationBackend {
             BackendCapabilities::new(supported.iter().map(|(operation, codec)| match operation {
                 MediaFoundationOperation::Decode => BackendCapability::Decode(codec.codec_id()),
                 MediaFoundationOperation::Encode => BackendCapability::Encode(codec.codec_id()),
-            }));
+            }))
+            .with_hardware_acceleration(HardwareAcceleration::Software)
+            .with_codec_capabilities(
+                supported
+                    .iter()
+                    .map(|(operation, codec)| media_foundation_capability(*operation, *codec))
+                    .collect::<Result<Vec<_>>>()?,
+            )?;
         let backend = Arc::new(Self {
             descriptor: BackendDescriptor::new(
                 BackendId::new(BACKEND_ID)?,
@@ -85,6 +92,39 @@ impl MediaFoundationBackend {
 
     fn supports(&self, operation: MediaFoundationOperation, codec: MediaFoundationCodec) -> bool {
         self.supported.contains(&(operation, codec))
+    }
+}
+
+fn media_foundation_capability(
+    operation: MediaFoundationOperation,
+    codec: MediaFoundationCodec,
+) -> Result<CodecCapability> {
+    let operation = match operation {
+        MediaFoundationOperation::Decode => CodecOperation::Decode,
+        MediaFoundationOperation::Encode => CodecOperation::Encode,
+    };
+    let value = CodecCapability::new(operation, codec.codec_id());
+    match codec {
+        MediaFoundationCodec::H264 => value
+            .with_profiles_runtime()
+            .with_levels_runtime()
+            .with_bit_depths([8])
+            .and_then(|value| value.with_chroma_sampling([ChromaSampling::Cs420])),
+        MediaFoundationCodec::Hevc => Ok(value
+            .with_profiles_runtime()
+            .with_levels_runtime()
+            .with_bit_depths_runtime()
+            .with_chroma_sampling_runtime()),
+        MediaFoundationCodec::ProRes(profile) => value
+            .with_profiles([profile.code()])
+            .map(CodecCapability::with_levels_not_applicable)?
+            .with_bit_depths([10])
+            .and_then(|value| value.with_chroma_sampling([ChromaSampling::Cs422])),
+        MediaFoundationCodec::Aac => Ok(value
+            .with_profiles_runtime()
+            .with_levels_not_applicable()
+            .with_bit_depths([16])?
+            .with_chroma_sampling_not_applicable()),
     }
 }
 

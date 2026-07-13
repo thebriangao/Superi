@@ -14,7 +14,7 @@ use superi_core::time::{Duration, SampleTime, TimeRounding, Timebase};
 use superi_media_io::audio_io::{AudioBlock, AudioFormat, AudioPlane};
 use superi_media_io::backend::{
     BackendCapabilities, BackendCapability, BackendDescriptor, BackendRegistration, BackendTier,
-    MediaBackend,
+    CodecCapability, CodecOperation, HardwareAcceleration, MediaBackend,
 };
 use superi_media_io::decode::{DecodeOutput, Decoder, DecoderConfig};
 use superi_media_io::demux::{
@@ -158,9 +158,27 @@ impl PcmBackend {
                 BackendCapability::Encode(codec),
             ]
         });
+        let mut codec_capabilities = Vec::new();
+        for encoding in PcmEncoding::ALL.iter().copied() {
+            let bit_depths = encoding.sample_format().map_or_else(
+                || vec![8, 16, 24, 32, 64],
+                |format| vec![format.bits_per_sample()],
+            );
+            for operation in [CodecOperation::Decode, CodecOperation::Encode] {
+                codec_capabilities.push(
+                    CodecCapability::new(operation, encoding.codec_id())
+                        .with_profiles_not_applicable()
+                        .with_levels_not_applicable()
+                        .with_bit_depths(bit_depths.iter().copied())?
+                        .with_chroma_sampling_not_applicable(),
+                );
+            }
+        }
         BackendRegistration::new(
             Arc::new(Self::new()?),
-            BackendCapabilities::new(capabilities),
+            BackendCapabilities::new(capabilities)
+                .with_hardware_acceleration(HardwareAcceleration::Software)
+                .with_codec_capabilities(codec_capabilities)?,
             100,
             BackendTier::Primary,
         )
