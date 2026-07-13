@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use superi_core::error::Result;
 
+use crate::pool::MemoryReservation;
 use crate::resource::{invalid, GpuResourceId, GpuResourceKind, GpuResources, ResourceLease};
 
 /// An owned snapshot of the descriptor used to create a texture.
@@ -74,6 +75,7 @@ struct GpuTextureInner {
     lease: ResourceLease,
     raw: wgpu::Texture,
     info: GpuTextureInfo,
+    memory: Option<MemoryReservation>,
 }
 
 /// A cloneable, device-scoped owner for one texture allocation.
@@ -103,6 +105,12 @@ impl GpuTexture {
     #[must_use]
     pub fn raw(&self) -> &wgpu::Texture {
         &self.0.raw
+    }
+
+    /// Returns managed payload bytes attached to this allocation, when budgeted.
+    #[must_use]
+    pub fn accounted_bytes(&self) -> Option<u64> {
+        self.0.memory.as_ref().map(MemoryReservation::bytes)
     }
 
     pub(crate) fn has_unique_allocation_owner(&self) -> bool {
@@ -228,6 +236,22 @@ impl GpuTextureView {
 impl GpuResources<'_> {
     /// Creates and tracks a texture in this manager's device lifetime.
     pub fn create_texture(&self, descriptor: &wgpu::TextureDescriptor<'_>) -> Result<GpuTexture> {
+        self.create_texture_inner(descriptor, None)
+    }
+
+    pub(crate) fn create_texture_with_reservation(
+        &self,
+        descriptor: &wgpu::TextureDescriptor<'_>,
+        memory: MemoryReservation,
+    ) -> Result<GpuTexture> {
+        self.create_texture_inner(descriptor, Some(memory))
+    }
+
+    fn create_texture_inner(
+        &self,
+        descriptor: &wgpu::TextureDescriptor<'_>,
+        memory: Option<MemoryReservation>,
+    ) -> Result<GpuTexture> {
         if descriptor.size.width == 0
             || descriptor.size.height == 0
             || descriptor.size.depth_or_array_layers == 0
@@ -262,7 +286,12 @@ impl GpuResources<'_> {
         };
         let raw = self.wgpu_device().create_texture(descriptor);
         let lease = self.lease(GpuResourceKind::Texture, descriptor.label)?;
-        Ok(GpuTexture(Arc::new(GpuTextureInner { lease, raw, info })))
+        Ok(GpuTexture(Arc::new(GpuTextureInner {
+            lease,
+            raw,
+            info,
+            memory,
+        })))
     }
 
     /// Creates a managed view and retains its parent texture for the view lifetime.

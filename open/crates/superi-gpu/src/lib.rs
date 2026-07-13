@@ -3,9 +3,10 @@
 //! Adapter discovery, capability selection, logical-device ownership, native
 //! viewport surfaces, device-scoped resource management, canonical WGSL
 //! validation and reflection, bounded shader caching, aligned texture reuse,
-//! decoded-frame upload, exact pixel conversion, and ordered compute and render
-//! passes share one wgpu path. Managed handles retain dependency ownership
-//! and reject resources from obsolete device lifetimes after recovery.
+//! portable memory budgeting and pressure cooperation, decoded-frame upload,
+//! exact pixel conversion, and ordered compute and render passes share one
+//! wgpu path. Managed handles retain dependency ownership and reject resources
+//! from obsolete device lifetimes after recovery.
 
 pub mod binding;
 pub mod buffer;

@@ -9,6 +9,8 @@ use superi_engine::frame_upload::{UploadedVideoFrame, VideoFrameUploader};
 use superi_gpu::device::{
     AdapterSelection, DeviceRequest, GpuDevice, GpuInstance, InstanceOptions,
 };
+use superi_gpu::pool::{GpuMemoryPool, MemoryBudget};
+use superi_gpu::upload::UploadConfig;
 use superi_media_io::decode::{
     CpuVideoBuffer, FrameStorageKind, VideoFormat, VideoFrame, VideoFrameBuffer, VideoPlane,
 };
@@ -141,4 +143,41 @@ fn non_importable_decoder_storage_returns_a_degraded_fallback_error() {
         error.contexts().last().unwrap().operation(),
         "upload_video_frame"
     );
+}
+
+#[test]
+fn decoded_frame_upload_obeys_the_shared_gpu_memory_budget() {
+    let Some(device) = test_device() else {
+        eprintln!("no wgpu adapter is available, skipping budgeted frame upload consumer");
+        return;
+    };
+    let memory = GpuMemoryPool::new(MemoryBudget::new(8, 8).unwrap());
+    let uploader =
+        VideoFrameUploader::with_memory_pool(&device, UploadConfig::default(), memory).unwrap();
+    let format = VideoFormat::new(
+        2,
+        2,
+        PixelFormat::Rgba8Unorm,
+        ColorSpace::SRGB,
+        AlphaMode::Straight,
+    )
+    .unwrap();
+    let timebase = Timebase::integer(24).unwrap();
+    let plane = VideoPlane::new(Arc::from([0_u8; 16]), 8, 2).unwrap();
+    let buffer = Arc::new(CpuVideoBuffer::new(2, 2, PixelFormat::Rgba8Unorm, vec![plane]).unwrap());
+    let source = VideoFrame::new(
+        format,
+        RationalTime::new(0, timebase),
+        Duration::new(1, timebase).unwrap(),
+        buffer,
+    )
+    .unwrap();
+
+    let error = uploader.upload(&source).unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::ResourceExhausted);
+    assert_eq!(error.recoverability(), Recoverability::Retryable);
+    assert!(error
+        .contexts()
+        .iter()
+        .any(|context| context.component() == "superi-gpu.memory-pool"));
 }

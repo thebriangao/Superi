@@ -3,6 +3,7 @@
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_core::time::{Duration, RationalTime};
 use superi_gpu::device::GpuDevice;
+use superi_gpu::pool::GpuMemoryPool;
 use superi_gpu::upload::{
     DecodedFrameUpload, DecodedFrameUploader, DecodedPlane, UploadConfig, UploadedFrame,
 };
@@ -73,6 +74,17 @@ impl<'device> VideoFrameUploader<'device> {
     pub fn with_config(device: &'device GpuDevice, config: UploadConfig) -> Result<Self> {
         Ok(Self {
             uploader: DecodedFrameUploader::with_config(device, config)?,
+        })
+    }
+
+    /// Creates an uploader with explicit reuse policy and shared GPU memory budget.
+    pub fn with_memory_pool(
+        device: &'device GpuDevice,
+        config: UploadConfig,
+        memory: GpuMemoryPool,
+    ) -> Result<Self> {
+        Ok(Self {
+            uploader: DecodedFrameUploader::with_memory_pool(device, config, memory)?,
         })
     }
 

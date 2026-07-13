@@ -6,6 +6,7 @@ use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Res
 use superi_core::pixel::{ChromaSubsampling, PixelFormat, PixelPacking};
 
 use crate::device::GpuDevice;
+use crate::pool::GpuMemoryPool;
 use crate::resource::{GpuResourceId, GpuResources};
 use crate::texture::GpuTexture;
 use crate::texture_pool::{
@@ -402,6 +403,20 @@ impl<'device> DecodedFrameUploader<'device> {
         Ok(Self {
             device,
             pool: TexturePool::new(resources, config.pool),
+            alignment: config.alignment,
+        })
+    }
+
+    /// Creates an uploader with explicit reuse policy and shared GPU memory budget.
+    pub fn with_memory_pool(
+        device: &'device GpuDevice,
+        config: UploadConfig,
+        memory: GpuMemoryPool,
+    ) -> Result<Self> {
+        let resources = GpuResources::new(device)?;
+        Ok(Self {
+            device,
+            pool: TexturePool::with_memory_pool(resources, config.pool, memory),
             alignment: config.alignment,
         })
     }

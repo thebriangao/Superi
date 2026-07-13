@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 
+use crate::pool::{GpuMemoryPool, MemoryClass, MemoryEvictionRequest, MemoryEvictor};
 use crate::resource::{GpuResourceId, GpuResources};
 use crate::texture::GpuTexture;
 
@@ -215,6 +216,20 @@ impl TextureRequest {
             depth_or_array_layers: self.logical_size.depth_or_array_layers,
         })
     }
+
+    /// Returns deterministic managed payload bytes for the physical allocation.
+    ///
+    /// This includes every mip, array layer or depth slice, and sample. It does
+    /// not claim backend suballocation or driver metadata overhead.
+    pub fn allocation_bytes(&self) -> Result<u64> {
+        texture_payload_bytes(
+            self.allocation_size()?,
+            self.mip_level_count,
+            self.sample_count,
+            self.dimension,
+            self.format,
+        )
+    }
 }
 
 /// Bounded idle retention for one texture pool.
@@ -281,19 +296,28 @@ impl TextureKey {
     }
 }
 
+#[derive(Debug)]
+struct IdleTexture {
+    texture: GpuTexture,
+    returned_at: u64,
+}
+
 #[derive(Debug, Default)]
 struct TexturePoolState {
-    idle: HashMap<TextureKey, Vec<GpuTexture>>,
+    idle: HashMap<TextureKey, Vec<IdleTexture>>,
+    idle_sequence: u64,
     allocations: u64,
     reuses: u64,
     checked_out: u64,
     discarded: u64,
+    evictions: u64,
 }
 
 #[derive(Debug)]
 struct TexturePoolInner<'device> {
     resources: GpuResources<'device>,
     config: TexturePoolConfig,
+    memory: GpuMemoryPool,
     state: Mutex<TexturePoolState>,
 }
 
@@ -316,13 +340,47 @@ impl TexturePoolInner<'_> {
         };
         state.checked_out = state.checked_out.saturating_sub(1);
         if reusable && self.config.max_idle_per_key > 0 {
+            state.idle_sequence = state.idle_sequence.saturating_add(1);
+            let returned_at = state.idle_sequence;
             let idle = state.idle.entry(key).or_default();
             if idle.len() < self.config.max_idle_per_key {
-                idle.push(texture);
+                idle.push(IdleTexture {
+                    texture,
+                    returned_at,
+                });
                 return;
             }
         }
         state.discarded = state.discarded.saturating_add(1);
+    }
+
+    fn evict_idle_at_least(&self, bytes_to_release: u64) -> Result<u64> {
+        let mut removed = Vec::new();
+        let mut released = 0_u64;
+        {
+            let mut state = self.lock("evict_idle_textures")?;
+            while released < bytes_to_release {
+                let Some(texture) = take_oldest_idle(&mut state) else {
+                    break;
+                };
+                let bytes = texture.texture.accounted_bytes().ok_or_else(|| {
+                    internal(
+                        "evict_idle_textures",
+                        "pooled texture is missing its memory reservation",
+                    )
+                })?;
+                released = released.checked_add(bytes).ok_or_else(|| {
+                    internal(
+                        "evict_idle_textures",
+                        "evicted texture bytes exceed diagnostics range",
+                    )
+                })?;
+                state.evictions = state.evictions.saturating_add(1);
+                removed.push(texture);
+            }
+        }
+        drop(removed);
+        Ok(released)
     }
 }
 
@@ -333,7 +391,9 @@ pub struct TexturePoolStats {
     reuses: u64,
     checked_out: u64,
     idle: u64,
+    idle_bytes: u64,
     discarded: u64,
+    evictions: u64,
 }
 
 impl TexturePoolStats {
@@ -361,10 +421,22 @@ impl TexturePoolStats {
         self.idle
     }
 
+    /// Returns managed payload bytes currently retained for reuse.
+    #[must_use]
+    pub const fn idle_bytes(self) -> u64 {
+        self.idle_bytes
+    }
+
     /// Returns the number of returns not retained because they were busy or over capacity.
     #[must_use]
     pub const fn discarded(self) -> u64 {
         self.discarded
+    }
+
+    /// Returns idle allocations removed by cooperative pressure.
+    #[must_use]
+    pub const fn evictions(self) -> u64 {
+        self.evictions
     }
 }
 
@@ -378,13 +450,30 @@ impl<'device> TexturePool<'device> {
     /// Creates a pool for one managed wgpu device lifetime.
     #[must_use]
     pub fn new(resources: GpuResources<'device>, config: TexturePoolConfig) -> Self {
+        Self::with_memory_pool(resources, config, GpuMemoryPool::unbounded())
+    }
+
+    /// Creates a pool backed by a shared managed GPU memory budget.
+    #[must_use]
+    pub fn with_memory_pool(
+        resources: GpuResources<'device>,
+        config: TexturePoolConfig,
+        memory: GpuMemoryPool,
+    ) -> Self {
         Self {
             inner: Arc::new(TexturePoolInner {
                 resources,
                 config,
+                memory,
                 state: Mutex::new(TexturePoolState::default()),
             }),
         }
+    }
+
+    /// Returns the shared memory pool used by this texture pool.
+    #[must_use]
+    pub fn memory_pool(&self) -> GpuMemoryPool {
+        self.inner.memory.clone()
     }
 
     /// Acquires one exclusively checked out physical texture allocation.
@@ -393,13 +482,30 @@ impl<'device> TexturePool<'device> {
     /// before any read. Reused allocations intentionally retain no content
     /// validity promise.
     pub fn acquire(&self, request: &TextureRequest) -> Result<PooledTexture<'device>> {
+        self.acquire_with_eviction(request, &[])
+    }
+
+    /// Acquires a texture after consulting additional shared-budget evictors.
+    ///
+    /// This pool's own idle allocations are considered first. Additional
+    /// participants are called in the provided order if more bytes are needed.
+    pub fn acquire_with_eviction(
+        &self,
+        request: &TextureRequest,
+        evictors: &[&dyn MemoryEvictor],
+    ) -> Result<PooledTexture<'device>> {
         let allocation_size = request.allocation_size()?;
+        let allocation_bytes = request.allocation_bytes()?;
         validate_device_request(&self.inner.resources, request, allocation_size)?;
         let key = TextureKey::from_request(request, allocation_size);
 
         let reused = {
             let mut state = self.inner.lock("acquire_texture")?;
-            let texture = state.idle.get_mut(&key).and_then(Vec::pop);
+            let texture = state
+                .idle
+                .get_mut(&key)
+                .and_then(Vec::pop)
+                .map(|idle| idle.texture);
             if texture.is_some() {
                 state.reuses = state.reuses.saturating_add(1);
                 state.checked_out = state.checked_out.saturating_add(1);
@@ -410,7 +516,17 @@ impl<'device> TexturePool<'device> {
         let texture = if let Some(texture) = reused {
             texture
         } else {
-            let texture = self.inner.resources.create_texture(&key.descriptor())?;
+            let mut participants = Vec::with_capacity(evictors.len().saturating_add(1));
+            participants.push(self as &dyn MemoryEvictor);
+            participants.extend_from_slice(evictors);
+            let memory =
+                self.inner
+                    .memory
+                    .reserve(allocation_bytes, MemoryClass::Texture, &participants)?;
+            let texture = self
+                .inner
+                .resources
+                .create_texture_with_reservation(&key.descriptor(), memory)?;
             let mut state = self.inner.lock("record_texture_allocation")?;
             state.allocations = state.allocations.saturating_add(1);
             state.checked_out = state.checked_out.saturating_add(1);
@@ -429,26 +545,52 @@ impl<'device> TexturePool<'device> {
     /// Returns a consistent snapshot of current pool counters.
     pub fn stats(&self) -> Result<TexturePoolStats> {
         let state = self.inner.lock("read_texture_pool_stats")?;
-        let idle = state.idle.values().try_fold(0_u64, |total, textures| {
-            let count = u64::try_from(textures.len()).map_err(|_| {
-                internal(
-                    "read_texture_pool_stats",
-                    "idle texture count does not fit in diagnostics",
-                )
-            })?;
-            total.checked_add(count).ok_or_else(|| {
-                internal(
-                    "read_texture_pool_stats",
-                    "idle texture count exceeds diagnostics range",
-                )
-            })
-        })?;
+        let (idle, idle_bytes) = state.idle.values().try_fold(
+            (0_u64, 0_u64),
+            |(total_count, total_bytes), textures| {
+                let count = u64::try_from(textures.len()).map_err(|_| {
+                    internal(
+                        "read_texture_pool_stats",
+                        "idle texture count does not fit in diagnostics",
+                    )
+                })?;
+                let bytes = textures.iter().try_fold(0_u64, |bytes, texture| {
+                    let allocation = texture.texture.accounted_bytes().ok_or_else(|| {
+                        internal(
+                            "read_texture_pool_stats",
+                            "pooled texture is missing its memory reservation",
+                        )
+                    })?;
+                    bytes.checked_add(allocation).ok_or_else(|| {
+                        internal(
+                            "read_texture_pool_stats",
+                            "idle texture bytes exceed diagnostics range",
+                        )
+                    })
+                })?;
+                let count_total = total_count.checked_add(count).ok_or_else(|| {
+                    internal(
+                        "read_texture_pool_stats",
+                        "idle texture count exceeds diagnostics range",
+                    )
+                })?;
+                let byte_total = total_bytes.checked_add(bytes).ok_or_else(|| {
+                    internal(
+                        "read_texture_pool_stats",
+                        "idle texture bytes exceed diagnostics range",
+                    )
+                })?;
+                Ok((count_total, byte_total))
+            },
+        )?;
         Ok(TexturePoolStats {
             allocations: state.allocations,
             reuses: state.reuses,
             checked_out: state.checked_out,
             idle,
+            idle_bytes,
             discarded: state.discarded,
+            evictions: state.evictions,
         })
     }
 
@@ -458,7 +600,7 @@ impl<'device> TexturePool<'device> {
             let mut state = self.inner.lock("drain_idle_textures")?;
             std::mem::take(&mut state.idle)
         };
-        drained.values().try_fold(0_u64, |total, textures| {
+        let count = drained.values().try_fold(0_u64, |total, textures| {
             let count = u64::try_from(textures.len()).map_err(|_| {
                 internal(
                     "drain_idle_textures",
@@ -471,7 +613,15 @@ impl<'device> TexturePool<'device> {
                     "idle texture count exceeds diagnostics range",
                 )
             })
-        })
+        })?;
+        drop(drained);
+        Ok(count)
+    }
+}
+
+impl MemoryEvictor for TexturePool<'_> {
+    fn evict(&self, request: MemoryEvictionRequest) -> Result<u64> {
+        self.inner.evict_idle_at_least(request.bytes_to_release())
     }
 }
 
@@ -521,6 +671,14 @@ impl PooledTexture<'_> {
         self.key.size
     }
 
+    /// Returns managed payload bytes retained by the physical allocation.
+    #[must_use]
+    pub fn allocation_bytes(&self) -> u64 {
+        self.texture()
+            .accounted_bytes()
+            .expect("pooled textures always carry a memory reservation")
+    }
+
     /// Returns true because every checkout must initialize its logical region.
     #[must_use]
     pub const fn requires_full_initialization(&self) -> bool {
@@ -551,6 +709,129 @@ impl Drop for PooledTexture<'_> {
             self.pool.release(self.key.clone(), texture);
         }
     }
+}
+
+fn take_oldest_idle(state: &mut TexturePoolState) -> Option<IdleTexture> {
+    let mut oldest: Option<(TextureKey, usize, u64)> = None;
+    for (key, textures) in &state.idle {
+        for (index, texture) in textures.iter().enumerate() {
+            if oldest
+                .as_ref()
+                .map_or(true, |(_, _, sequence)| texture.returned_at < *sequence)
+            {
+                oldest = Some((key.clone(), index, texture.returned_at));
+            }
+        }
+    }
+    let (key, index, _) = oldest?;
+    let (texture, remove_key) = {
+        let textures = state
+            .idle
+            .get_mut(&key)
+            .expect("selected idle texture key remains present");
+        let texture = textures.swap_remove(index);
+        (texture, textures.is_empty())
+    };
+    if remove_key {
+        state.idle.remove(&key);
+    }
+    Some(texture)
+}
+
+fn texture_payload_bytes(
+    size: wgpu::Extent3d,
+    mip_level_count: u32,
+    sample_count: u32,
+    dimension: wgpu::TextureDimension,
+    format: wgpu::TextureFormat,
+) -> Result<u64> {
+    if mip_level_count == 0 || sample_count == 0 {
+        return Err(invalid(
+            "account_texture_memory",
+            "texture mip and sample counts must be greater than zero",
+        ));
+    }
+    if mip_level_count > size.max_mips(dimension) {
+        return Err(invalid(
+            "account_texture_memory",
+            "texture mip count exceeds the physical allocation extent",
+        ));
+    }
+
+    let mut total = 0_u64;
+    for level in 0..mip_level_count {
+        let width = mip_dimension(size.width, level);
+        let height = match dimension {
+            wgpu::TextureDimension::D1 => 1,
+            wgpu::TextureDimension::D2 | wgpu::TextureDimension::D3 => {
+                mip_dimension(size.height, level)
+            }
+        };
+        let depth_or_layers = match dimension {
+            wgpu::TextureDimension::D3 => mip_dimension(size.depth_or_array_layers, level),
+            wgpu::TextureDimension::D1 | wgpu::TextureDimension::D2 => size.depth_or_array_layers,
+        };
+        let mip_bytes = if format == wgpu::TextureFormat::NV12 {
+            let luma = u64::from(width)
+                .checked_mul(u64::from(height))
+                .ok_or_else(|| memory_overflow("account_texture_memory"))?;
+            let chroma = div_ceil_u64(u64::from(width), 2)
+                .checked_mul(div_ceil_u64(u64::from(height), 2))
+                .and_then(|value| value.checked_mul(2))
+                .ok_or_else(|| memory_overflow("account_texture_memory"))?;
+            luma.checked_add(chroma)
+                .ok_or_else(|| memory_overflow("account_texture_memory"))?
+        } else {
+            let (block_width, block_height) = format.block_dimensions();
+            let block_bytes = accounted_block_bytes(format)?;
+            div_ceil_u64(u64::from(width), u64::from(block_width))
+                .checked_mul(div_ceil_u64(u64::from(height), u64::from(block_height)))
+                .and_then(|blocks| blocks.checked_mul(block_bytes))
+                .ok_or_else(|| memory_overflow("account_texture_memory"))?
+        };
+        let mip_bytes = mip_bytes
+            .checked_mul(u64::from(depth_or_layers))
+            .and_then(|value| value.checked_mul(u64::from(sample_count)))
+            .ok_or_else(|| memory_overflow("account_texture_memory"))?;
+        total = total
+            .checked_add(mip_bytes)
+            .ok_or_else(|| memory_overflow("account_texture_memory"))?;
+    }
+    Ok(total)
+}
+
+fn accounted_block_bytes(format: wgpu::TextureFormat) -> Result<u64> {
+    if let Some(bytes) = format.block_copy_size(None) {
+        return Ok(u64::from(bytes));
+    }
+    match format {
+        wgpu::TextureFormat::Depth24Plus | wgpu::TextureFormat::Depth24PlusStencil8 => Ok(4),
+        wgpu::TextureFormat::Depth32FloatStencil8 => Ok(8),
+        _ => Err(Error::new(
+            ErrorCategory::Unsupported,
+            Recoverability::UserCorrectable,
+            "texture format has no portable managed-payload byte representation",
+        )
+        .with_context(
+            ErrorContext::new(COMPONENT, "account_texture_memory")
+                .with_field("format", format!("{format:?}")),
+        )),
+    }
+}
+
+fn mip_dimension(value: u32, level: u32) -> u32 {
+    value.checked_shr(level).unwrap_or(0).max(1)
+}
+
+const fn div_ceil_u64(value: u64, divisor: u64) -> u64 {
+    value / divisor + (value % divisor != 0) as u64
+}
+
+fn memory_overflow(operation: &'static str) -> Error {
+    exhausted(
+        operation,
+        "texture payload bytes exceed the supported range",
+    )
 }
 
 fn validate_logical_extent(size: wgpu::Extent3d, dimension: wgpu::TextureDimension) -> Result<()> {
