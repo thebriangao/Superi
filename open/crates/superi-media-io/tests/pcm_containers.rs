@@ -177,6 +177,45 @@ fn rf64_float_fixture() -> Vec<u8> {
     file
 }
 
+fn rf64_without_ds64_fixture() -> Vec<u8> {
+    let mut file = rf64_float_fixture();
+    file.drain(12..48);
+    let data = file
+        .windows(4)
+        .position(|window| window == b"data")
+        .unwrap();
+    file[data + 4..data + 8].copy_from_slice(&8_u32.to_le_bytes());
+    file
+}
+
+fn rf64_misplaced_ds64_fixture() -> Vec<u8> {
+    let mut file = rf64_float_fixture();
+    let ds64 = file[12..48].to_vec();
+    file.drain(12..48);
+    let format_size = u32::from_le_bytes(file[16..20].try_into().unwrap()) as usize;
+    let after_format = 12 + 8 + format_size + (format_size & 1);
+    file.splice(after_format..after_format, ds64);
+    file
+}
+
+fn rf64_duplicate_ds64_fixture() -> Vec<u8> {
+    let mut file = rf64_float_fixture();
+    let duplicate = file[12..48].to_vec();
+    file.splice(48..48, duplicate);
+    let riff_size = file.len() as u64 - 8;
+    file[20..28].copy_from_slice(&riff_size.to_le_bytes());
+    file
+}
+
+fn rf64_ds64_with_unaccounted_tail_fixture() -> Vec<u8> {
+    let mut file = rf64_float_fixture();
+    file[16..20].copy_from_slice(&30_u32.to_le_bytes());
+    file.splice(48..48, [0_u8; 2]);
+    let riff_size = file.len() as u64 - 8;
+    file[20..28].copy_from_slice(&riff_size.to_le_bytes());
+    file
+}
+
 fn aiff_20_bit_fixture() -> Vec<u8> {
     let mut common = Vec::with_capacity(18);
     common.extend_from_slice(&1_u16.to_be_bytes());
@@ -440,6 +479,53 @@ fn malformed_or_unsupported_containers_fail_without_partial_success() {
     )
     .unwrap_err();
     assert_eq!(error.category(), ErrorCategory::Unsupported);
+}
+
+#[test]
+fn oversized_wave_format_and_aiff_common_chunks_fail_before_tail_retention() {
+    let mut oversized_format = wave_extensible_format();
+    oversized_format.push(0);
+    let wave = riff_wave([
+        chunk_le(*b"fmt ", &oversized_format),
+        chunk_le(*b"data", &[0_u8; 18]),
+    ]);
+    let error = PcmContainerSource::open(
+        &memory_request(131, "oversized-fmt.wav", wave),
+        &operation(),
+    )
+    .unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::CorruptData);
+
+    let mut aiff = aiff_fixture();
+    let common = aiff
+        .windows(4)
+        .position(|window| window == b"COMM")
+        .unwrap();
+    let tail = common + 8 + 18;
+    aiff.splice(tail..tail, [0_u8; 2]);
+    aiff[common + 4..common + 8].copy_from_slice(&19_u32.to_be_bytes());
+    let form_size = u32::from_be_bytes(aiff[4..8].try_into().unwrap()) + 2;
+    aiff[4..8].copy_from_slice(&form_size.to_be_bytes());
+    let error = PcmContainerSource::open(
+        &memory_request(132, "oversized-comm.aiff", aiff),
+        &operation(),
+    )
+    .unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::CorruptData);
+}
+
+#[test]
+fn rf64_requires_one_first_exactly_sized_ds64_chunk() {
+    for (name, bytes) in [
+        ("missing-ds64.wav", rf64_without_ds64_fixture()),
+        ("misplaced-ds64.wav", rf64_misplaced_ds64_fixture()),
+        ("duplicate-ds64.wav", rf64_duplicate_ds64_fixture()),
+        ("tailed-ds64.wav", rf64_ds64_with_unaccounted_tail_fixture()),
+    ] {
+        let error =
+            PcmContainerSource::open(&memory_request(141, name, bytes), &operation()).unwrap_err();
+        assert_eq!(error.category(), ErrorCategory::CorruptData, "{name}");
+    }
 }
 
 #[test]

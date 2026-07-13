@@ -30,12 +30,83 @@ const STREAM_ID: StreamId = StreamId::new(0);
 const PACKET_TARGET_BYTES: u64 = 1024 * 1024;
 const READ_CHUNK_BYTES: usize = 64 * 1024;
 const MAX_ANCILLARY_CHUNK_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_ANCILLARY_CHUNKS: usize = 4_096;
+const MAX_ANCILLARY_TOTAL_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_WAVE_FORMAT_BYTES: u64 = 40;
+const AIFF_COMMON_BYTES: u64 = 18;
+const MAX_RF64_SIZE_TABLE_ENTRIES: u64 = 4_096;
+const MAX_RF64_DS64_BYTES: u64 = 28 + MAX_RF64_SIZE_TABLE_ENTRIES * 12;
 const PCM_SUBFORMAT_GUID: [u8; 16] = [
     0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71,
 ];
 const FLOAT_SUBFORMAT_GUID: [u8; 16] = [
     0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71,
 ];
+
+#[derive(Clone, Copy)]
+struct AncillaryLimits {
+    max_count: usize,
+    max_bytes: u64,
+}
+
+impl AncillaryLimits {
+    const DEFAULT: Self = Self::new(MAX_ANCILLARY_CHUNKS, MAX_ANCILLARY_TOTAL_BYTES);
+
+    const fn new(max_count: usize, max_bytes: u64) -> Self {
+        Self {
+            max_count,
+            max_bytes,
+        }
+    }
+}
+
+struct AncillaryBudget {
+    limits: AncillaryLimits,
+    count: usize,
+    total_bytes: u64,
+}
+
+impl AncillaryBudget {
+    const fn new(limits: AncillaryLimits) -> Self {
+        Self {
+            limits,
+            count: 0,
+            total_bytes: 0,
+        }
+    }
+
+    fn reserve(
+        &mut self,
+        chunks: &mut Vec<AncillaryChunk>,
+        size: u64,
+        operation: &'static str,
+    ) -> Result<()> {
+        let count = self.count.checked_add(1).ok_or_else(|| {
+            resource_exhausted(operation, "ancillary chunk count accounting overflowed")
+        })?;
+        let total_bytes = self.total_bytes.checked_add(size).ok_or_else(|| {
+            resource_exhausted(operation, "ancillary chunk byte accounting overflowed")
+        })?;
+        if count > self.limits.max_count {
+            return Err(resource_exhausted(
+                operation,
+                "ancillary chunk count exceeds the preservation limit",
+            ));
+        }
+        if total_bytes > self.limits.max_bytes {
+            return Err(resource_exhausted(
+                operation,
+                "aggregate ancillary chunk bytes exceed the preservation limit",
+            ));
+        }
+        chunks.try_reserve(1).map_err(|_| {
+            resource_exhausted(operation, "ancillary chunk index could not be allocated")
+        })?;
+        self.count = count;
+        self.total_bytes = total_bytes;
+        Ok(())
+    }
+}
 
 /// In-tree source backend for uncompressed WAV and AIFF containers.
 pub struct PcmContainerBackend {
@@ -609,14 +680,22 @@ struct ParsedContainer {
 }
 
 fn parse_container(storage: &mut Storage, operation: &OperationContext) -> Result<ParsedContainer> {
+    parse_container_with_limits(storage, operation, AncillaryLimits::DEFAULT)
+}
+
+fn parse_container_with_limits(
+    storage: &mut Storage,
+    operation: &OperationContext,
+    ancillary_limits: AncillaryLimits,
+) -> Result<ParsedContainer> {
     let header = read_complete_bytes(storage, 0, 12, "read_container_header", operation)?;
     match (&header[..4], &header[8..12]) {
-        (b"RIFF" | b"RF64", b"WAVE") => parse_wave(storage, &header, operation),
+        (b"RIFF" | b"RF64", b"WAVE") => parse_wave(storage, &header, operation, ancillary_limits),
         (b"RIFX", b"WAVE") => Err(unsupported(
             "parse_wave",
             "big-endian RIFX/WAVE is not supported; use standard RIFF/WAVE",
         )),
-        (b"FORM", b"AIFF") => parse_aiff(storage, &header, operation),
+        (b"FORM", b"AIFF") => parse_aiff(storage, &header, operation, ancillary_limits),
         (b"FORM", b"AIFC") => Err(unsupported(
             "parse_aiff",
             "compressed AIFF-C is outside WAV and AIFF PCM container support",
@@ -632,6 +711,7 @@ fn parse_wave(
     storage: &mut Storage,
     header: &[u8],
     operation: &OperationContext,
+    ancillary_limits: AncillaryLimits,
 ) -> Result<ParsedContainer> {
     let is_rf64 = &header[..4] == b"RF64";
     let declared_size = u64::from(le_u32(&header[4..8]));
@@ -658,10 +738,12 @@ fn parse_wave(
     let mut data_size_override = None;
     let mut sample_count_hint = None;
     let mut rf64_size_table = Vec::new();
+    let mut saw_ds64 = false;
     let mut presentation_origin = 0_u64;
     let mut saw_broadcast_extension = false;
     let mut metadata = MediaMetadata::new();
     let mut ancillary_chunks = Vec::new();
+    let mut ancillary_budget = AncillaryBudget::new(ancillary_limits);
 
     while cursor < container_end {
         operation.check("parse_wave")?;
@@ -672,30 +754,72 @@ fn parse_wave(
         let mut size = u64::from(size32);
         let payload_offset = cursor + 8;
 
+        if is_rf64 && cursor == 12 && id != *b"ds64" {
+            return Err(corrupt(
+                "parse_wave",
+                "RF64 is missing the mandatory first ds64 chunk",
+                Some(cursor),
+            ));
+        }
         if id == *b"ds64" {
-            if !is_rf64 || cursor != 12 || size < 28 {
+            if !is_rf64 {
                 return Err(corrupt(
                     "parse_wave",
-                    "RF64 ds64 chunk is missing, misplaced, or too short",
+                    "ds64 is only valid in an RF64 container",
                     Some(cursor),
                 ));
             }
-            let ds64 = read_ancillary(storage, payload_offset, size, "read_rf64_sizes", operation)?;
+            if saw_ds64 {
+                return Err(corrupt(
+                    "parse_wave",
+                    "RF64 contains more than one ds64 chunk",
+                    Some(cursor),
+                ));
+            }
+            if cursor != 12 {
+                return Err(corrupt(
+                    "parse_wave",
+                    "RF64 ds64 chunk is not the first child chunk",
+                    Some(cursor),
+                ));
+            }
+            if !(28..=MAX_RF64_DS64_BYTES).contains(&size) {
+                return Err(corrupt(
+                    "parse_wave",
+                    "RF64 ds64 chunk size is outside the supported schema bound",
+                    Some(cursor),
+                ));
+            }
+            let ds64 =
+                read_complete_bytes(storage, payload_offset, size, "read_rf64_sizes", operation)?;
             let riff_size = le_u64(&ds64[0..8]);
             let data_size = le_u64(&ds64[8..16]);
             let sample_count = le_u64(&ds64[16..24]);
             let table_length = u64::from(le_u32(&ds64[24..28]));
+            if table_length > MAX_RF64_SIZE_TABLE_ENTRIES {
+                return Err(resource_exhausted(
+                    "parse_wave",
+                    "RF64 ds64 size table exceeds the entry limit",
+                ));
+            }
             let required_size = table_length
                 .checked_mul(12)
                 .and_then(|value| value.checked_add(28))
                 .ok_or_else(|| corrupt("parse_wave", "RF64 size table overflowed", Some(cursor)))?;
-            if required_size > size {
+            if required_size != size {
                 return Err(corrupt(
                     "parse_wave",
-                    "RF64 ds64 chunk is shorter than its size table",
+                    "RF64 ds64 chunk size does not match its size table",
                     Some(cursor),
                 ));
             }
+            let table_capacity =
+                usize::try_from(table_length).expect("bounded RF64 table length fits in usize");
+            rf64_size_table
+                .try_reserve_exact(table_capacity)
+                .map_err(|_| {
+                    resource_exhausted("parse_wave", "RF64 size table could not be allocated")
+                })?;
             for index in 0..table_length {
                 let entry =
                     usize::try_from(28 + index * 12).expect("bounded RF64 size-table offset");
@@ -710,6 +834,7 @@ fn parse_wave(
             validate_container_end(storage, container_end, "parse_wave")?;
             data_size_override = Some(data_size);
             sample_count_hint = Some(sample_count);
+            saw_ds64 = true;
             metadata.insert(
                 "container.rf64.ds64_raw",
                 MetadataValue::Bytes(Arc::from(ds64)),
@@ -757,6 +882,13 @@ fn parse_wave(
                             Some(cursor),
                         ));
                     }
+                    if size > MAX_WAVE_FORMAT_BYTES {
+                        return Err(corrupt(
+                            "parse_wave",
+                            "WAVE format chunk exceeds the supported PCM schema size",
+                            Some(cursor),
+                        ));
+                    }
                     let bytes = read_complete_bytes(
                         storage,
                         payload_offset,
@@ -787,6 +919,11 @@ fn parse_wave(
                     }
                 }
                 _ => {
+                    ancillary_budget.reserve(
+                        &mut ancillary_chunks,
+                        size,
+                        "preserve_wave_ancillary_chunk",
+                    )?;
                     let bytes = read_ancillary(
                         storage,
                         payload_offset,
@@ -829,6 +966,13 @@ fn parse_wave(
             "parse_wave",
             "RF64 ds64 table contains entries with no matching chunk sentinel",
             None,
+        ));
+    }
+    if is_rf64 && !saw_ds64 {
+        return Err(corrupt(
+            "parse_wave",
+            "RF64 is missing its mandatory ds64 chunk",
+            Some(12),
         ));
     }
 
@@ -891,21 +1035,41 @@ fn parse_wave_format(bytes: &[u8], chunk_offset: u64) -> Result<PcmStreamFormat>
     let bits_per_sample = le_u16(&bytes[14..16]);
 
     let (encoding, valid_bits_per_sample, channel_mask) = match tag {
-        0x0001 => (PcmEncoding::Integer, bits_per_sample, None),
-        0x0003 => (PcmEncoding::Float, bits_per_sample, None),
-        0xfffe => {
-            if bytes.len() < 40 {
+        0x0001 | 0x0003 => {
+            if bytes.len() != 16 && bytes.len() != 18 {
                 return Err(corrupt(
                     "parse_wave_format",
-                    "WAVEFORMATEXTENSIBLE fields are incomplete",
+                    "basic PCM WAVE format chunk has an unsupported schema size",
+                    Some(chunk_offset),
+                ));
+            }
+            if bytes.len() == 18 && le_u16(&bytes[16..18]) != 0 {
+                return Err(corrupt(
+                    "parse_wave_format",
+                    "basic PCM WAVE format chunk declares unexpected extra data",
+                    Some(chunk_offset),
+                ));
+            }
+            let encoding = if tag == 0x0001 {
+                PcmEncoding::Integer
+            } else {
+                PcmEncoding::Float
+            };
+            (encoding, bits_per_sample, None)
+        }
+        0xfffe => {
+            if bytes.len() != 40 {
+                return Err(corrupt(
+                    "parse_wave_format",
+                    "WAVEFORMATEXTENSIBLE chunk must match its fixed schema size",
                     Some(chunk_offset),
                 ));
             }
             let extra_size = usize::from(le_u16(&bytes[16..18]));
-            if extra_size < 22 || bytes.len() < 18 + extra_size {
+            if extra_size != 22 {
                 return Err(corrupt(
                     "parse_wave_format",
-                    "WAVEFORMATEXTENSIBLE extra-data size is inconsistent",
+                    "WAVEFORMATEXTENSIBLE extra-data size must be 22 bytes",
                     Some(chunk_offset),
                 ));
             }
@@ -1009,6 +1173,7 @@ fn parse_aiff(
     storage: &mut Storage,
     header: &[u8],
     operation: &OperationContext,
+    ancillary_limits: AncillaryLimits,
 ) -> Result<ParsedContainer> {
     let container_end = u64::from(be_u32(&header[4..8]))
         .checked_add(8)
@@ -1020,6 +1185,7 @@ fn parse_aiff(
     let mut sound = None;
     let mut metadata = MediaMetadata::new();
     let mut ancillary_chunks = Vec::new();
+    let mut ancillary_budget = AncillaryBudget::new(ancillary_limits);
     while cursor < container_end {
         operation.check("parse_aiff")?;
         let chunk_header =
@@ -1033,6 +1199,13 @@ fn parse_aiff(
                     return Err(corrupt(
                         "parse_aiff",
                         "AIFF contains more than one Common Chunk",
+                        Some(cursor),
+                    ));
+                }
+                if size != AIFF_COMMON_BYTES {
+                    return Err(corrupt(
+                        "parse_aiff",
+                        "AIFF Common Chunk must match its fixed schema size",
                         Some(cursor),
                     ));
                 }
@@ -1106,6 +1279,11 @@ fn parse_aiff(
                 sound = Some((data_offset, size - 8 - offset, offset, block_size));
             }
             _ => {
+                ancillary_budget.reserve(
+                    &mut ancillary_chunks,
+                    size,
+                    "preserve_aiff_ancillary_chunk",
+                )?;
                 let bytes =
                     read_ancillary(storage, payload_offset, size, "read_aiff_chunk", operation)?;
                 match id {
@@ -1185,10 +1363,10 @@ fn parse_aiff(
 }
 
 fn parse_aiff_common(bytes: &[u8], chunk_offset: u64) -> Result<(PcmStreamFormat, u64)> {
-    if bytes.len() < 18 {
+    if bytes.len() != AIFF_COMMON_BYTES as usize {
         return Err(corrupt(
             "parse_aiff_common",
-            "AIFF Common Chunk is shorter than its required fields",
+            "AIFF Common Chunk must match its fixed schema size",
             Some(chunk_offset),
         ));
     }
@@ -1770,4 +1948,127 @@ fn resource_exhausted(operation: &'static str, message: &'static str) -> Error {
         message,
     )
     .with_context(ErrorContext::new("superi-media-io.pcm", operation))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        parse_container_with_limits, AncillaryBudget, AncillaryChunk, AncillaryLimits, Storage,
+    };
+    use crate::operation::{MediaPriority, OperationContext};
+    use std::sync::Arc;
+    use superi_core::error::ErrorCategory;
+
+    fn operation() -> OperationContext {
+        OperationContext::new(MediaPriority::Interactive)
+    }
+
+    fn chunk(id: [u8; 4], data: &[u8], little_endian: bool) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&id);
+        let size = data.len() as u32;
+        let encoded_size = if little_endian {
+            size.to_le_bytes()
+        } else {
+            size.to_be_bytes()
+        };
+        bytes.extend_from_slice(&encoded_size);
+        bytes.extend_from_slice(data);
+        if data.len() & 1 == 1 {
+            bytes.push(0);
+        }
+        bytes
+    }
+
+    fn container(form: [u8; 4], kind: [u8; 4], chunks: Vec<Vec<u8>>) -> Vec<u8> {
+        let little_endian = form == *b"RIFF";
+        let mut body = kind.to_vec();
+        for chunk in chunks {
+            body.extend_from_slice(&chunk);
+        }
+        let mut bytes = form.to_vec();
+        let size = body.len() as u32;
+        let encoded_size = if little_endian {
+            size.to_le_bytes()
+        } else {
+            size.to_be_bytes()
+        };
+        bytes.extend_from_slice(&encoded_size);
+        bytes.extend_from_slice(&body);
+        bytes
+    }
+
+    fn parse_with_limits(bytes: Vec<u8>, limits: AncillaryLimits) -> ErrorCategory {
+        let mut storage = Storage::Memory(Arc::from(bytes));
+        match parse_container_with_limits(&mut storage, &operation(), limits) {
+            Ok(_) => panic!("hostile ancillary input unexpectedly parsed"),
+            Err(error) => error.category(),
+        }
+    }
+
+    #[test]
+    fn wave_and_aiff_reject_hostile_ancillary_counts() {
+        let limits = AncillaryLimits::new(2, u64::MAX);
+        let wave = container(
+            *b"RIFF",
+            *b"WAVE",
+            vec![
+                chunk(*b"JUNK", &[], true),
+                chunk(*b"JUNK", &[], true),
+                chunk(*b"JUNK", &[], true),
+            ],
+        );
+        let aiff = container(
+            *b"FORM",
+            *b"AIFF",
+            vec![
+                chunk(*b"NAME", &[], false),
+                chunk(*b"AUTH", &[], false),
+                chunk(*b"ANNO", &[], false),
+            ],
+        );
+        assert_eq!(
+            parse_with_limits(wave, limits),
+            ErrorCategory::ResourceExhausted
+        );
+        assert_eq!(
+            parse_with_limits(aiff, limits),
+            ErrorCategory::ResourceExhausted
+        );
+    }
+
+    #[test]
+    fn wave_and_aiff_reject_hostile_aggregate_ancillary_bytes() {
+        let limits = AncillaryLimits::new(8, 2);
+        let wave = container(*b"RIFF", *b"WAVE", vec![chunk(*b"JUNK", b"abc", true)]);
+        let aiff = container(*b"FORM", *b"AIFF", vec![chunk(*b"NAME", b"abc", false)]);
+        assert_eq!(
+            parse_with_limits(wave, limits),
+            ErrorCategory::ResourceExhausted
+        );
+        assert_eq!(
+            parse_with_limits(aiff, limits),
+            ErrorCategory::ResourceExhausted
+        );
+    }
+
+    #[test]
+    fn ancillary_accounting_rejects_integer_overflow() {
+        let limits = AncillaryLimits::new(usize::MAX, u64::MAX);
+
+        let mut budget = AncillaryBudget::new(limits);
+        budget.count = usize::MAX;
+        let mut chunks: Vec<AncillaryChunk> = Vec::new();
+        let error = budget
+            .reserve(&mut chunks, 0, "test_ancillary_budget")
+            .unwrap_err();
+        assert_eq!(error.category(), ErrorCategory::ResourceExhausted);
+
+        let mut budget = AncillaryBudget::new(limits);
+        budget.total_bytes = u64::MAX;
+        let error = budget
+            .reserve(&mut chunks, 1, "test_ancillary_budget")
+            .unwrap_err();
+        assert_eq!(error.category(), ErrorCategory::ResourceExhausted);
+    }
 }
