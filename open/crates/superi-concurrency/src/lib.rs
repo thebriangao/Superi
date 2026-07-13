@@ -6,9 +6,10 @@
 //! execution. The [`jobs`] module provides deterministic weighted priority scheduling,
 //! transparent derived-media selection, cancellation, deadlines, dependencies, progress, and
 //! typed terminal results. The [`clock`] module provides anchor-based monotonic playback and exact
-//! audio-master clock modes. Work stealing, A/V drift correction, backpressure, shared-state
-//! conventions, and coordinated shutdown advance through their focused checkpoints. See section
-//! 5.7 in `docs/architecture.md`.
+//! audio-master modes, measures exact A/V drift, and returns nonblocking playback-owned video wait,
+//! correction, drop, and rebase decisions. Work stealing, backpressure, shared-state conventions,
+//! and coordinated shutdown advance through their focused checkpoints. See section 5.7 in
+//! `docs/architecture.md`.
 
 pub mod clock;
 pub mod jobs;

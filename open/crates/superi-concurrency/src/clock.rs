@@ -1,4 +1,4 @@
-//! Playback and audio-master clock contracts.
+//! Playback clocks plus exact A/V drift measurement and video scheduling.
 //!
 //! The playback scheduler owns [`PlaybackClock`]. In playback mode, positions
 //! advance from an opaque monotonic [`Instant`] anchor. In audio-master mode,
@@ -9,17 +9,32 @@
 //! Platform audio callbacks publish only one fixed-frequency sample counter.
 //! Successful publication uses one atomic value and neither locks nor
 //! allocates. Device resets and frequency changes require an explicit new
-//! source and clock re-anchor. A/V drift correction and frame-drop policy are
-//! separate scheduler responsibilities.
+//! source and clock re-anchor.
+//!
+//! [`AvSyncScheduler`] is mutable state owned by the playback execution domain.
+//! It compares one video presentation timestamp with a caller-supplied clock
+//! observation, then returns an explicit wait, present, correction, drop, or
+//! rebase action. It never sleeps, waits on a lock, submits work, or changes the
+//! audio clock.
 
+use std::fmt;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result, ResultExt};
-use superi_core::time::{RationalTime, SampleTime, TimeRounding, Timebase};
+use superi_core::time::{
+    Duration as MediaDuration, RationalTime, SampleTime, TimeRounding, Timebase,
+};
+
+use crate::threads::ExecutionDomain;
 
 const COMPONENT: &str = "superi-concurrency.clock";
+const DEFAULT_PRESENTATION_TOLERANCE_NS: u64 = 20_000_000;
+const DEFAULT_DROP_LATENESS_NS: u64 = 40_000_000;
+const DEFAULT_DISCONTINUITY_THRESHOLD_NS: u64 = 10_000_000_000;
+const DEFAULT_MAX_CORRECTION_NS: u64 = 20_000_000;
+const DEFAULT_MAX_CONSECUTIVE_DROPS: u32 = 4;
 
 /// The source that advances a playback timeline.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -455,4 +470,736 @@ impl From<ClockErrorBuilder> for Error {
     fn from(builder: ClockErrorBuilder) -> Self {
         builder.error.with_context(builder.context)
     }
+}
+
+/// Whether video leads, matches, or trails the observed master timeline.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+pub enum AvDriftDirection {
+    /// The video presentation timestamp is later than master time.
+    VideoAhead,
+    /// Video and master time are equal at nanosecond precision.
+    Aligned,
+    /// The video presentation timestamp is earlier than master time.
+    VideoBehind,
+}
+
+impl AvDriftDirection {
+    /// Returns the stable diagnostic code for this direction.
+    #[must_use]
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::VideoAhead => "video_ahead",
+            Self::Aligned => "aligned",
+            Self::VideoBehind => "video_behind",
+        }
+    }
+}
+
+impl fmt::Display for AvDriftDirection {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.code())
+    }
+}
+
+/// One exact signed comparison of video PTS against master time.
+///
+/// Positive values mean video is ahead and must wait. Negative values mean
+/// video is late. The measurement uses one checked rescale into nanoseconds,
+/// with nearest-even rounding only at that public precision boundary.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct AvDriftMeasurement {
+    nanoseconds: i64,
+}
+
+impl AvDriftMeasurement {
+    const fn new(nanoseconds: i64) -> Self {
+        Self { nanoseconds }
+    }
+
+    /// Returns signed video PTS minus master time in nanoseconds.
+    #[must_use]
+    pub const fn nanoseconds(self) -> i64 {
+        self.nanoseconds
+    }
+
+    /// Returns the direction of this measurement.
+    #[must_use]
+    pub const fn direction(self) -> AvDriftDirection {
+        if self.nanoseconds > 0 {
+            AvDriftDirection::VideoAhead
+        } else if self.nanoseconds < 0 {
+            AvDriftDirection::VideoBehind
+        } else {
+            AvDriftDirection::Aligned
+        }
+    }
+
+    /// Returns the magnitude without overflowing for the minimum signed value.
+    #[must_use]
+    pub const fn absolute_duration(self) -> Duration {
+        Duration::from_nanos(self.nanoseconds.unsigned_abs())
+    }
+}
+
+impl fmt::Display for AvDriftMeasurement {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{} ns ({})",
+            self.nanoseconds,
+            self.direction().code()
+        )
+    }
+}
+
+/// Measures video PTS against a master-clock observation.
+///
+/// This pure operation has no execution-domain requirement. Scheduling a frame
+/// from the result is restricted to [`ExecutionDomain::Playback`].
+pub fn measure_av_drift(
+    video_presentation_time: RationalTime,
+    master_time: RationalTime,
+) -> Result<AvDriftMeasurement> {
+    video_presentation_time
+        .checked_sub_at(
+            master_time,
+            Timebase::NANOSECONDS,
+            TimeRounding::NearestTiesEven,
+        )
+        .map(|drift| AvDriftMeasurement::new(drift.value()))
+        .with_error_context(ErrorContext::new(COMPONENT, "measure_av_drift"))
+}
+
+/// Validated thresholds governing one A/V scheduling stream.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AvSyncPolicy {
+    presentation_tolerance: Duration,
+    drop_lateness: Duration,
+    discontinuity_threshold: Duration,
+    maximum_correction: Duration,
+    max_consecutive_drops: u32,
+}
+
+impl AvSyncPolicy {
+    /// Creates a deterministic policy.
+    ///
+    /// Frames within `presentation_tolerance` are presented unchanged. Later
+    /// frames may shorten one display interval up to `maximum_correction`.
+    /// Frames at least `drop_lateness` late may be dropped when the observation
+    /// permits it. Drift at least `discontinuity_threshold` requests a rebase.
+    pub fn new(
+        presentation_tolerance: Duration,
+        drop_lateness: Duration,
+        discontinuity_threshold: Duration,
+        maximum_correction: Duration,
+        max_consecutive_drops: u32,
+    ) -> Result<Self> {
+        let policy = Self {
+            presentation_tolerance,
+            drop_lateness,
+            discontinuity_threshold,
+            maximum_correction,
+            max_consecutive_drops,
+        };
+        policy.validate()?;
+        Ok(policy)
+    }
+
+    /// Returns the allowed early or late region requiring no correction.
+    #[must_use]
+    pub const fn presentation_tolerance(self) -> Duration {
+        self.presentation_tolerance
+    }
+
+    /// Returns the lateness at which eligible video may be dropped.
+    #[must_use]
+    pub const fn drop_lateness(self) -> Duration {
+        self.drop_lateness
+    }
+
+    /// Returns the magnitude treated as a timeline discontinuity.
+    #[must_use]
+    pub const fn discontinuity_threshold(self) -> Duration {
+        self.discontinuity_threshold
+    }
+
+    /// Returns the largest presentation-interval correction for one frame.
+    #[must_use]
+    pub const fn maximum_correction(self) -> Duration {
+        self.maximum_correction
+    }
+
+    /// Returns the drop streak cap that guarantees visible progress.
+    #[must_use]
+    pub const fn max_consecutive_drops(self) -> u32 {
+        self.max_consecutive_drops
+    }
+
+    fn validate(self) -> Result<()> {
+        let tolerance_ns = duration_nanoseconds(
+            self.presentation_tolerance,
+            "validate_policy",
+            "presentation_tolerance",
+        )?;
+        let drop_ns = duration_nanoseconds(self.drop_lateness, "validate_policy", "drop_lateness")?;
+        let discontinuity_ns = duration_nanoseconds(
+            self.discontinuity_threshold,
+            "validate_policy",
+            "discontinuity_threshold",
+        )?;
+        let correction_ns = duration_nanoseconds(
+            self.maximum_correction,
+            "validate_policy",
+            "maximum_correction",
+        )?;
+
+        if tolerance_ns == 0 {
+            return Err(policy_error(
+                "presentation tolerance must be greater than zero",
+                "presentation_tolerance_ns",
+                tolerance_ns,
+            ));
+        }
+        if drop_ns <= tolerance_ns {
+            return Err(policy_error(
+                "drop lateness must exceed presentation tolerance",
+                "drop_lateness_ns",
+                drop_ns,
+            ));
+        }
+        if discontinuity_ns <= drop_ns {
+            return Err(policy_error(
+                "discontinuity threshold must exceed drop lateness",
+                "discontinuity_threshold_ns",
+                discontinuity_ns,
+            ));
+        }
+        if correction_ns == 0 || correction_ns > drop_ns {
+            return Err(policy_error(
+                "maximum correction must be nonzero and no greater than drop lateness",
+                "maximum_correction_ns",
+                correction_ns,
+            ));
+        }
+        if self.max_consecutive_drops == 0 {
+            return Err(policy_error(
+                "maximum consecutive drops must be greater than zero",
+                "max_consecutive_drops",
+                0,
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl Default for AvSyncPolicy {
+    fn default() -> Self {
+        Self {
+            presentation_tolerance: Duration::from_nanos(DEFAULT_PRESENTATION_TOLERANCE_NS),
+            drop_lateness: Duration::from_nanos(DEFAULT_DROP_LATENESS_NS),
+            discontinuity_threshold: Duration::from_nanos(DEFAULT_DISCONTINUITY_THRESHOLD_NS),
+            maximum_correction: Duration::from_nanos(DEFAULT_MAX_CORRECTION_NS),
+            max_consecutive_drops: DEFAULT_MAX_CONSECUTIVE_DROPS,
+        }
+    }
+}
+
+/// One queued video frame compared with the current master timeline.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AvFrameObservation {
+    video_presentation_time: RationalTime,
+    master_time: RationalTime,
+    frame_duration: MediaDuration,
+    following_frame_ready: bool,
+    drop_eligible: bool,
+}
+
+impl AvFrameObservation {
+    /// Creates an observation that conservatively preserves the frame.
+    ///
+    /// Dropping remains disabled until the caller explicitly marks both the
+    /// frame eligible and a following frame ready.
+    #[must_use]
+    pub const fn new(
+        video_presentation_time: RationalTime,
+        master_time: RationalTime,
+        frame_duration: MediaDuration,
+    ) -> Self {
+        Self {
+            video_presentation_time,
+            master_time,
+            frame_duration,
+            following_frame_ready: false,
+            drop_eligible: false,
+        }
+    }
+
+    /// Marks whether presentation can advance immediately after this frame.
+    #[must_use]
+    pub const fn with_following_frame_ready(mut self, ready: bool) -> Self {
+        self.following_frame_ready = ready;
+        self
+    }
+
+    /// Marks whether the caller permits this video frame to be dropped.
+    #[must_use]
+    pub const fn with_drop_eligible(mut self, eligible: bool) -> Self {
+        self.drop_eligible = eligible;
+        self
+    }
+
+    /// Returns the frame presentation timestamp.
+    #[must_use]
+    pub const fn video_presentation_time(self) -> RationalTime {
+        self.video_presentation_time
+    }
+
+    /// Returns the observed master time.
+    #[must_use]
+    pub const fn master_time(self) -> RationalTime {
+        self.master_time
+    }
+
+    /// Returns the nominal frame duration.
+    #[must_use]
+    pub const fn frame_duration(self) -> MediaDuration {
+        self.frame_duration
+    }
+
+    /// Returns whether a successor can be displayed immediately.
+    #[must_use]
+    pub const fn following_frame_ready(self) -> bool {
+        self.following_frame_ready
+    }
+
+    /// Returns whether policy may drop this frame.
+    #[must_use]
+    pub const fn drop_eligible(self) -> bool {
+        self.drop_eligible
+    }
+}
+
+/// A bounded correction applied to one presented video frame.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+pub enum AvFrameCorrection {
+    /// Keep the nominal presentation interval.
+    None,
+    /// Reduce the next video presentation interval by this amount.
+    ShortenBy(Duration),
+}
+
+impl AvFrameCorrection {
+    /// Returns the stable diagnostic code for this correction.
+    #[must_use]
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::ShortenBy(_) => "shorten",
+        }
+    }
+}
+
+/// Why a frame was presented rather than held or dropped.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+pub enum AvPresentationReason {
+    /// Drift fell inside the configured tolerance.
+    InTolerance,
+    /// Moderate lateness was corrected by shortening one video interval.
+    CorrectedLate,
+    /// The caller marked the frame as semantically protected from dropping.
+    ProtectedFromDrop,
+    /// Dropping would empty ready video output, so the late frame was shown.
+    NoReadySuccessor,
+    /// The drop streak reached its cap, so one frame was shown for progress.
+    StarvationGuard,
+}
+
+impl AvPresentationReason {
+    /// Returns the stable diagnostic code for this reason.
+    #[must_use]
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::InTolerance => "in_tolerance",
+            Self::CorrectedLate => "corrected_late",
+            Self::ProtectedFromDrop => "protected_from_drop",
+            Self::NoReadySuccessor => "no_ready_successor",
+            Self::StarvationGuard => "starvation_guard",
+        }
+    }
+}
+
+/// The complete nonblocking instruction returned to the playback loop.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum AvFrameAction {
+    /// Keep the previously presented frame and revisit this frame later.
+    Wait {
+        /// Remaining time outside the allowed early tolerance.
+        duration: Duration,
+    },
+    /// Present the frame now using an explicit next display interval.
+    Present {
+        /// Duration before the playback loop should target the next frame.
+        display_for: Duration,
+        /// Bounded video-only correction applied to this interval.
+        correction: AvFrameCorrection,
+        /// Why the frame was presented.
+        reason: AvPresentationReason,
+    },
+    /// Discard this late video frame and immediately inspect its successor.
+    DropLate,
+    /// Ask the concrete clock owner to anchor master time at this frame.
+    Rebase {
+        /// New master timeline position requested after discontinuity.
+        target_master_time: RationalTime,
+    },
+}
+
+impl AvFrameAction {
+    /// Returns the stable diagnostic code for this action.
+    #[must_use]
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Wait { .. } => "wait",
+            Self::Present { .. } => "present",
+            Self::DropLate => "drop_late",
+            Self::Rebase { .. } => "rebase",
+        }
+    }
+}
+
+/// One action paired with the exact drift that caused it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AvScheduleDecision {
+    drift: AvDriftMeasurement,
+    action: AvFrameAction,
+}
+
+impl AvScheduleDecision {
+    const fn new(drift: AvDriftMeasurement, action: AvFrameAction) -> Self {
+        Self { drift, action }
+    }
+
+    /// Returns signed video drift for diagnostics and upstream QoS decisions.
+    #[must_use]
+    pub const fn drift(self) -> AvDriftMeasurement {
+        self.drift
+    }
+
+    /// Returns the action the playback owner must perform.
+    #[must_use]
+    pub const fn action(self) -> AvFrameAction {
+        self.action
+    }
+}
+
+/// Deterministic counters for one scheduler lifetime.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct AvSyncStatistics {
+    observations: u64,
+    waited: u64,
+    presented: u64,
+    corrected: u64,
+    dropped: u64,
+    rebases: u64,
+    protected_presentations: u64,
+    starvation_presentations: u64,
+    consecutive_drops: u32,
+    maximum_absolute_drift_ns: u64,
+    last_drift: Option<AvDriftMeasurement>,
+}
+
+impl AvSyncStatistics {
+    /// Returns valid scheduling observations processed.
+    #[must_use]
+    pub const fn observations(self) -> u64 {
+        self.observations
+    }
+
+    /// Returns wait decisions.
+    #[must_use]
+    pub const fn waited(self) -> u64 {
+        self.waited
+    }
+
+    /// Returns frames presented, including corrected and protected frames.
+    #[must_use]
+    pub const fn presented(self) -> u64 {
+        self.presented
+    }
+
+    /// Returns presentations whose interval was shortened.
+    #[must_use]
+    pub const fn corrected(self) -> u64 {
+        self.corrected
+    }
+
+    /// Returns late video frames dropped.
+    #[must_use]
+    pub const fn dropped(self) -> u64 {
+        self.dropped
+    }
+
+    /// Returns discontinuities that requested a clock rebase.
+    #[must_use]
+    pub const fn rebases(self) -> u64 {
+        self.rebases
+    }
+
+    /// Returns late presentations caused by drop protection or readiness.
+    #[must_use]
+    pub const fn protected_presentations(self) -> u64 {
+        self.protected_presentations
+    }
+
+    /// Returns presentations forced by the consecutive-drop cap.
+    #[must_use]
+    pub const fn starvation_presentations(self) -> u64 {
+        self.starvation_presentations
+    }
+
+    /// Returns the current consecutive late-drop streak.
+    #[must_use]
+    pub const fn consecutive_drops(self) -> u32 {
+        self.consecutive_drops
+    }
+
+    /// Returns the largest drift magnitude observed.
+    #[must_use]
+    pub const fn maximum_absolute_drift(self) -> Duration {
+        Duration::from_nanos(self.maximum_absolute_drift_ns)
+    }
+
+    /// Returns the most recent drift measurement.
+    #[must_use]
+    pub const fn last_drift(self) -> Option<AvDriftMeasurement> {
+        self.last_drift
+    }
+
+    fn record(&mut self, decision: AvScheduleDecision) {
+        self.observations = self.observations.saturating_add(1);
+        self.maximum_absolute_drift_ns = self
+            .maximum_absolute_drift_ns
+            .max(decision.drift.nanoseconds().unsigned_abs());
+        self.last_drift = Some(decision.drift);
+
+        match decision.action {
+            AvFrameAction::Wait { .. } => {
+                self.waited = self.waited.saturating_add(1);
+            }
+            AvFrameAction::Present {
+                correction, reason, ..
+            } => {
+                self.presented = self.presented.saturating_add(1);
+                self.consecutive_drops = 0;
+                if matches!(correction, AvFrameCorrection::ShortenBy(_)) {
+                    self.corrected = self.corrected.saturating_add(1);
+                }
+                if matches!(
+                    reason,
+                    AvPresentationReason::ProtectedFromDrop
+                        | AvPresentationReason::NoReadySuccessor
+                        | AvPresentationReason::StarvationGuard
+                ) {
+                    self.protected_presentations = self.protected_presentations.saturating_add(1);
+                }
+                if reason == AvPresentationReason::StarvationGuard {
+                    self.starvation_presentations = self.starvation_presentations.saturating_add(1);
+                }
+            }
+            AvFrameAction::DropLate => {
+                self.dropped = self.dropped.saturating_add(1);
+                self.consecutive_drops = self.consecutive_drops.saturating_add(1);
+            }
+            AvFrameAction::Rebase { .. } => {
+                self.rebases = self.rebases.saturating_add(1);
+                self.consecutive_drops = 0;
+            }
+        }
+    }
+}
+
+/// Single-owner A/V scheduler for one playback stream.
+///
+/// The scheduler contains no mutex, condition variable, worker, or callback.
+/// [`Self::schedule`] is constant-time and requires the current thread to own
+/// [`ExecutionDomain::Playback`]. This keeps timing work away from UI and audio
+/// domains while making every wait and correction visible to the caller.
+#[derive(Debug)]
+pub struct AvSyncScheduler {
+    policy: AvSyncPolicy,
+    statistics: AvSyncStatistics,
+}
+
+impl AvSyncScheduler {
+    /// Creates an empty scheduler after revalidating all policy invariants.
+    pub fn new(policy: AvSyncPolicy) -> Result<Self> {
+        policy.validate()?;
+        Ok(Self {
+            policy,
+            statistics: AvSyncStatistics::default(),
+        })
+    }
+
+    /// Returns the immutable policy for this stream.
+    #[must_use]
+    pub const fn policy(&self) -> AvSyncPolicy {
+        self.policy
+    }
+
+    /// Returns a coherent copy of the playback-owned counters.
+    #[must_use]
+    pub const fn statistics(&self) -> AvSyncStatistics {
+        self.statistics
+    }
+
+    /// Clears diagnostics and drop history after a seek or new stream epoch.
+    pub fn reset(&mut self) {
+        self.statistics = AvSyncStatistics::default();
+    }
+
+    /// Produces one bounded scheduling action without waiting or mutating audio.
+    pub fn schedule(&mut self, observation: AvFrameObservation) -> Result<AvScheduleDecision> {
+        ExecutionDomain::Playback.require_current()?;
+
+        let frame_duration = observation
+            .frame_duration
+            .checked_rescale(Timebase::NANOSECONDS, TimeRounding::NearestTiesEven)
+            .with_error_context(ErrorContext::new(COMPONENT, "validate_observation"))?;
+        let frame_duration_ns = frame_duration.value();
+        if frame_duration_ns == 0 {
+            return Err(Error::new(
+                ErrorCategory::InvalidInput,
+                Recoverability::UserCorrectable,
+                "frame duration must be positive at scheduler precision",
+            )
+            .with_context(
+                ErrorContext::new(COMPONENT, "validate_observation")
+                    .with_field("frame_duration_ns", "0"),
+            ));
+        }
+
+        let drift = measure_av_drift(observation.video_presentation_time, observation.master_time)?;
+        let action = self.choose_action(observation, frame_duration_ns, drift);
+        let decision = AvScheduleDecision::new(drift, action);
+        self.statistics.record(decision);
+        Ok(decision)
+    }
+
+    fn choose_action(
+        &self,
+        observation: AvFrameObservation,
+        frame_duration_ns: u64,
+        drift: AvDriftMeasurement,
+    ) -> AvFrameAction {
+        let drift_ns = drift.nanoseconds();
+        let magnitude_ns = drift_ns.unsigned_abs();
+        let tolerance_ns = self.policy.presentation_tolerance.as_nanos() as u64;
+        let drop_ns = self.policy.drop_lateness.as_nanos() as u64;
+        let discontinuity_ns = self.policy.discontinuity_threshold.as_nanos() as u64;
+
+        if magnitude_ns >= discontinuity_ns {
+            return AvFrameAction::Rebase {
+                target_master_time: observation.video_presentation_time,
+            };
+        }
+
+        if drift_ns > tolerance_ns as i64 {
+            return AvFrameAction::Wait {
+                duration: Duration::from_nanos(drift_ns as u64 - tolerance_ns),
+            };
+        }
+
+        if drift_ns >= -(tolerance_ns as i64) {
+            return AvFrameAction::Present {
+                display_for: Duration::from_nanos(frame_duration_ns),
+                correction: AvFrameCorrection::None,
+                reason: AvPresentationReason::InTolerance,
+            };
+        }
+
+        let reason = if magnitude_ns < drop_ns {
+            AvPresentationReason::CorrectedLate
+        } else if !observation.drop_eligible {
+            AvPresentationReason::ProtectedFromDrop
+        } else if !observation.following_frame_ready {
+            AvPresentationReason::NoReadySuccessor
+        } else if self.statistics.consecutive_drops >= self.policy.max_consecutive_drops {
+            AvPresentationReason::StarvationGuard
+        } else {
+            return AvFrameAction::DropLate;
+        };
+
+        self.corrected_presentation(frame_duration_ns, magnitude_ns, tolerance_ns, reason)
+    }
+
+    fn corrected_presentation(
+        &self,
+        frame_duration_ns: u64,
+        lateness_ns: u64,
+        tolerance_ns: u64,
+        reason: AvPresentationReason,
+    ) -> AvFrameAction {
+        let maximum_correction_ns = self.policy.maximum_correction.as_nanos() as u64;
+        let correction_ns = lateness_ns
+            .saturating_sub(tolerance_ns)
+            .min(maximum_correction_ns)
+            .min(frame_duration_ns);
+
+        AvFrameAction::Present {
+            display_for: Duration::from_nanos(frame_duration_ns - correction_ns),
+            correction: if correction_ns == 0 {
+                AvFrameCorrection::None
+            } else {
+                AvFrameCorrection::ShortenBy(Duration::from_nanos(correction_ns))
+            },
+            reason,
+        }
+    }
+}
+
+fn duration_nanoseconds(
+    duration: Duration,
+    operation: &'static str,
+    field: &'static str,
+) -> Result<u64> {
+    let nanoseconds = u64::try_from(duration.as_nanos()).map_err(|_| {
+        Error::new(
+            ErrorCategory::InvalidInput,
+            Recoverability::UserCorrectable,
+            "A/V policy duration exceeds scheduler precision",
+        )
+        .with_context(
+            ErrorContext::new(COMPONENT, operation)
+                .with_field("field", field)
+                .with_field("duration_seconds", duration.as_secs().to_string()),
+        )
+    })?;
+    if nanoseconds > i64::MAX as u64 {
+        return Err(Error::new(
+            ErrorCategory::InvalidInput,
+            Recoverability::UserCorrectable,
+            "A/V policy duration exceeds signed scheduler precision",
+        )
+        .with_context(
+            ErrorContext::new(COMPONENT, operation)
+                .with_field("field", field)
+                .with_field("duration_ns", nanoseconds.to_string()),
+        ));
+    }
+    Ok(nanoseconds)
+}
+
+fn policy_error(message: &'static str, field: &'static str, value: u64) -> Error {
+    Error::new(
+        ErrorCategory::InvalidInput,
+        Recoverability::UserCorrectable,
+        message,
+    )
+    .with_context(
+        ErrorContext::new(COMPONENT, "validate_policy").with_field(field, value.to_string()),
+    )
 }
