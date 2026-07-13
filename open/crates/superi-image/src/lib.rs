@@ -1,6 +1,8 @@
-//! `superi-image`, OIIO/EXR-equivalent image data model + CPU pixel ops + IO.
+//! `superi-image`, OIIO/EXR-equivalent image data model, CPU pixel ops, and I/O.
 //!
-//! § 5.4 in `docs/architecture.md`. Depends on: superi-core. Status: skeleton.
+//! Section 5.4 in `docs/architecture.md`. Channel and nested layer naming is
+//! implemented; pixel storage, operations, metadata, tiling, and I/O remain
+//! separate modules.
 
 pub mod channels;
 pub mod io;
