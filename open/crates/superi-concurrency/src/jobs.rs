@@ -1,9 +1,14 @@
-//! Cooperative job lifecycle contracts shared by schedulers and workers.
+//! Priority scheduling and cooperative job lifecycle contracts shared by queue owners and workers.
 //!
-//! This module owns cancellation, monotonic deadlines, dependency resolution, progress, and
-//! terminal results. Queue selection, priority policy, worker execution, and work stealing remain
-//! separate scheduler responsibilities. Workers must call [`JobControl::check`] between bounded
-//! units of work; cancellation cannot preempt an unbounded foreign or blocking call by itself.
+//! The priority policy owns deterministic queue selection and transparent derived-media behavior.
+//! This module also owns cancellation, monotonic deadlines, dependency resolution, progress, and
+//! terminal results. Worker execution and work stealing remain separate responsibilities. Workers
+//! must call [`JobControl::check`] between bounded units of work; cancellation cannot preempt an
+//! unbounded foreign or blocking call by itself.
+
+mod priority;
+
+pub use priority::*;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, Ordering};
