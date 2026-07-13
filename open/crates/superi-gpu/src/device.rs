@@ -4,6 +4,7 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::task::{Context, Poll, Waker};
 
@@ -607,6 +608,7 @@ impl SelectedAdapter {
             device,
             identity: Arc::new(()),
             error_scope_gate: ErrorScopeGate::default(),
+            submission_owner: AtomicBool::new(false),
         })
     }
 }
@@ -700,6 +702,7 @@ pub struct GpuDevice {
     device: wgpu::Device,
     identity: Arc<()>,
     error_scope_gate: ErrorScopeGate,
+    submission_owner: AtomicBool,
 }
 
 impl fmt::Debug for GpuDevice {
@@ -759,6 +762,31 @@ impl GpuDevice {
         &self.identity
     }
 
+    pub(crate) fn claim_submission_owner(&self) -> Result<()> {
+        self.submission_owner
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map(|_| ())
+            .map_err(|_| {
+                Error::new(
+                    ErrorCategory::Conflict,
+                    Recoverability::UserCorrectable,
+                    "GPU device already has a submission owner",
+                )
+                .with_context(ErrorContext::new(
+                    "superi-gpu.submission",
+                    "claim_submission_owner",
+                ))
+            })
+    }
+
+    pub(crate) fn release_submission_owner(&self) {
+        let claimed = self.submission_owner.swap(false, Ordering::AcqRel);
+        debug_assert!(
+            claimed,
+            "submission ownership must be released exactly once"
+        );
+    }
+
     pub(crate) fn write_texture(
         &self,
         texture: wgpu::ImageCopyTexture<'_>,
@@ -769,11 +797,27 @@ impl GpuDevice {
         self.queue.write_texture(texture, data, data_layout, size);
     }
 
+    #[cfg(test)]
     pub(crate) fn submit_viewport<I>(&self, command_buffers: I)
     where
         I: IntoIterator<Item = wgpu::CommandBuffer>,
     {
-        self.queue.submit(command_buffers);
+        let _ = self.submit_commands(command_buffers);
+    }
+
+    pub(crate) fn submit_commands<I>(&self, command_buffers: I) -> wgpu::SubmissionIndex
+    where
+        I: IntoIterator<Item = wgpu::CommandBuffer>,
+    {
+        self.queue.submit(command_buffers)
+    }
+
+    pub(crate) fn on_submitted_work_done(&self, callback: impl FnOnce() + Send + 'static) {
+        self.queue.on_submitted_work_done(callback);
+    }
+
+    pub(crate) fn poll_submissions(&self) -> wgpu::MaintainResult {
+        self.device.poll(wgpu::Maintain::Poll)
     }
 }
 

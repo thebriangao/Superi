@@ -13,6 +13,7 @@ use crate::pipeline::{
 };
 use crate::resource::GpuResources;
 use crate::shader::{GpuShaderModuleDescriptor, ShaderCache};
+use crate::submission::GpuSubmissionQueue;
 use crate::wgpu;
 
 fn test_device() -> Option<GpuDevice> {
@@ -47,6 +48,7 @@ fn ordered_managed_compute_and_render_reach_real_native_outputs() {
         return;
     };
     let resources = GpuResources::new(&device).unwrap();
+    let submissions = GpuSubmissionQueue::new(&device).unwrap();
     let raw_device = device.wgpu_device();
     let shader_cache = ShaderCache::new(&resources, NonZeroUsize::new(2).unwrap());
 
@@ -231,7 +233,9 @@ fn fragment_main() -> @location(0) vec4<f32> {
     let mut encoder = resources.create_pass_encoder(Some("native output batch"));
     encoder.encode_compute(compute).unwrap();
     encoder.encode_render(render).unwrap();
-    let submission = device.submit_pass_batch(encoder.finish().unwrap()).unwrap();
+    let submission = submissions
+        .submit_pass_batch(encoder.finish().unwrap())
+        .unwrap();
     assert_eq!(submission.passes()[0].kind(), GpuPassKind::Compute);
     assert_eq!(submission.passes()[1].kind(), GpuPassKind::Render);
 
@@ -256,7 +260,10 @@ fn fragment_main() -> @location(0) vec4<f32> {
         },
         render_target.info().size(),
     );
-    device.submit_viewport([readback_encoder.finish()]);
+    let readback_fence = submissions
+        .submit([readback_encoder.finish()], submissions.resources())
+        .unwrap();
+    submissions.wait(&readback_fence).unwrap();
 
     assert_eq!(
         &read_buffer(&device, &compute_readback)[..4],

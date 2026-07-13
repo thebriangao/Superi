@@ -12,6 +12,7 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, Raw
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 
 use crate::device::{AdapterCatalog, GpuDevice, GpuInstance};
+use crate::submission::{GpuFence, GpuSubmissionQueue, GpuSubmissionResources};
 
 /// A shell-owned native child view that can create a wgpu presentation surface.
 ///
@@ -428,7 +429,7 @@ pub struct ViewportFrame<'surface, 'device> {
     surface_borrow: PhantomData<&'surface mut NativeViewportSurface>,
 }
 
-impl ViewportFrame<'_, '_> {
+impl<'device> ViewportFrame<'_, 'device> {
     /// Returns the GPU texture that render passes target directly.
     #[must_use]
     pub const fn texture(&self) -> &wgpu::Texture {
@@ -453,13 +454,23 @@ impl ViewportFrame<'_, '_> {
         self.suboptimal
     }
 
-    /// Submits all rendering work through the surface device's private queue, then presents.
-    pub fn submit_and_present<I>(self, command_buffers: I)
+    /// Submits tracked rendering work through the device owner, then presents.
+    ///
+    /// The returned fence covers all command buffers and retained resource
+    /// owners. Presentation occurs only after successful ordered submission.
+    pub fn submit_and_present<I>(
+        self,
+        submissions: &GpuSubmissionQueue<'device>,
+        command_buffers: I,
+        retained: GpuSubmissionResources<'device>,
+    ) -> Result<GpuFence>
     where
         I: IntoIterator<Item = wgpu::CommandBuffer>,
     {
-        self.device.submit_viewport(command_buffers);
+        submissions.ensure_device(self.device)?;
+        let fence = submissions.submit(command_buffers, retained)?;
         self.surface_texture.present();
+        Ok(fence)
     }
 }
 

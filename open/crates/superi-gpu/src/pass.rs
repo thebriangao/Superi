@@ -3,8 +3,9 @@
 //! Pass plans own every managed pipeline, binding, buffer, and attachment they
 //! reference. [`GpuPassEncoder`] validates an entire plan before touching wgpu,
 //! records accepted plans into one command encoder in call order, and finishes
-//! into a single-use [`GpuPassBatch`]. Submission remains on [`GpuDevice`], so
-//! callers cannot bypass device-lifetime ownership or create a competing queue.
+//! into a single-use [`GpuPassBatch`]. Submission remains on the exclusive
+//! [`GpuSubmissionQueue`], so callers cannot bypass device-lifetime ownership
+//! or release pass dependencies before the matching fence retires.
 
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
@@ -15,11 +16,11 @@ use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Res
 
 use crate::binding::{GpuBindGroup, GpuBindingResource};
 use crate::buffer::GpuBuffer;
-use crate::device::GpuDevice;
 use crate::pipeline::{
     GpuComputePipeline, GpuPipelineLayout, GpuRenderPipeline, GpuVertexBufferInfo,
 };
 use crate::resource::{GpuResourceId, GpuResources};
+use crate::submission::{GpuFence, GpuSubmissionQueue};
 use crate::texture::GpuTextureView;
 
 const COMPONENT: &str = "superi-gpu.pass";
@@ -1584,10 +1585,11 @@ impl GpuPassBatch {
 }
 
 /// Metadata for one accepted queue submission.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct GpuPassSubmission {
     resource_scope: u64,
     passes: Vec<GpuPassInfo>,
+    fence: GpuFence,
 }
 
 impl GpuPassSubmission {
@@ -1602,24 +1604,20 @@ impl GpuPassSubmission {
     pub fn passes(&self) -> &[GpuPassInfo] {
         &self.passes
     }
+
+    /// Returns the fence that governs pass dependency retirement.
+    pub const fn fence(&self) -> &GpuFence {
+        &self.fence
+    }
 }
 
-impl GpuDevice {
-    /// Consumes and submits one managed pass batch through this device's private queue.
+impl<'device> GpuSubmissionQueue<'device> {
+    /// Consumes and submits one managed pass batch through this exclusive queue.
     ///
     /// A batch from an obsolete device lifetime is rejected before queue access.
+    /// Every pass dependency remains retained until the returned fence retires.
     pub fn submit_pass_batch(&self, batch: GpuPassBatch) -> Result<GpuPassSubmission> {
-        if !Arc::ptr_eq(self.identity(), &batch.device_identity) {
-            return Err(Error::new(
-                ErrorCategory::Conflict,
-                Recoverability::UserCorrectable,
-                "GPU pass batch belongs to a different device lifetime",
-            )
-            .with_context(
-                ErrorContext::new(COMPONENT, "submit_pass_batch")
-                    .with_field("resource_scope", batch.resource_scope.to_string()),
-            ));
-        }
+        self.ensure_device_identity(&batch.device_identity, "submit_pass_batch")?;
         let GpuPassBatch {
             resource_scope,
             command_buffer,
@@ -1627,10 +1625,13 @@ impl GpuDevice {
             _retained,
             ..
         } = batch;
-        self.submit_viewport([command_buffer]);
+        let mut retained = self.resources();
+        retained.retain(_retained);
+        let fence = self.submit([command_buffer], retained)?;
         Ok(GpuPassSubmission {
             resource_scope,
             passes,
+            fence,
         })
     }
 }

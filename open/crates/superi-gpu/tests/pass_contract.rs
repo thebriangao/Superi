@@ -17,6 +17,7 @@ use superi_gpu::pipeline::{
 };
 use superi_gpu::resource::GpuResources;
 use superi_gpu::shader::{GpuShaderModuleDescriptor, ShaderCache};
+use superi_gpu::submission::GpuSubmissionQueue;
 use superi_gpu::wgpu;
 
 fn test_device() -> Option<GpuDevice> {
@@ -241,6 +242,7 @@ fn compute_and_render_plans_are_preflighted_then_recorded_in_exact_order() {
         return;
     };
     let resources = GpuResources::new(&device).unwrap();
+    let submissions = GpuSubmissionQueue::new(&device).unwrap();
     let compute_pipeline = compute_pipeline(&resources);
     let render_pipeline = render_pipeline(&resources, wgpu::TextureFormat::Rgba8Unorm);
     let render_view = target_view(&resources);
@@ -294,9 +296,22 @@ fn compute_and_render_plans_are_preflighted_then_recorded_in_exact_order() {
     let batch = encoder.finish().unwrap();
     assert_eq!(batch.resource_scope(), resources.scope_id());
     assert_eq!(batch.passes(), &[compute_info, render_info]);
-    let submission = device.submit_pass_batch(batch).unwrap();
+    let submission = submissions.submit_pass_batch(batch).unwrap();
     assert_eq!(submission.passes()[0].label(), Some("compute first"));
     assert_eq!(submission.passes()[1].label(), Some("render second"));
+    assert_eq!(
+        resources
+            .stats()
+            .count(superi_gpu::resource::GpuResourceKind::ComputePipeline),
+        1
+    );
+    assert_eq!(
+        resources
+            .stats()
+            .count(superi_gpu::resource::GpuResourceKind::RenderPipeline),
+        1
+    );
+    submissions.wait(submission.fence()).unwrap();
     assert_eq!(
         resources
             .stats()
@@ -508,7 +523,8 @@ fn capabilities_usages_ranges_and_recovered_device_lifetimes_fail_before_encodin
     valid.push_command(GpuComputePassCommand::Dispatch { x: 1, y: 1, z: 1 });
     encoder.encode_compute(valid).unwrap();
     let old_batch = encoder.finish().unwrap();
-    let error = second_device.submit_pass_batch(old_batch).unwrap_err();
+    let submissions = GpuSubmissionQueue::new(&second_device).unwrap();
+    let error = submissions.submit_pass_batch(old_batch).unwrap_err();
     assert_eq!(error.category(), ErrorCategory::Conflict);
     assert_eq!(error.recoverability(), Recoverability::UserCorrectable);
 }

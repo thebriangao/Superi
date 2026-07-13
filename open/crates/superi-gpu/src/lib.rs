@@ -4,9 +4,10 @@
 //! viewport surfaces, device-scoped resource management, canonical WGSL
 //! validation and reflection, bounded shader caching, aligned texture reuse,
 //! portable memory budgeting and pressure cooperation, decoded-frame upload,
-//! exact pixel conversion, and ordered compute and render passes share one
-//! wgpu path. Managed handles retain dependency ownership and reject resources
-//! from obsolete device lifetimes after recovery.
+//! exact pixel conversion, ordered compute and render passes, and explicit
+//! submission share one wgpu path. Managed handles retain dependency ownership,
+//! in-flight submissions retain reusable allocations through fence completion,
+//! and obsolete device lifetimes are rejected after recovery.
 
 pub mod binding;
 pub mod buffer;
@@ -18,6 +19,7 @@ pub mod pool;
 pub mod readback;
 pub mod resource;
 pub mod shader;
+pub mod submission;
 pub mod surface;
 pub mod texture;
 pub mod texture_pool;

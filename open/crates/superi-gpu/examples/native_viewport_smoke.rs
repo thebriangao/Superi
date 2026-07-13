@@ -5,6 +5,7 @@ use std::sync::Arc;
 use superi_gpu::device::{
     AdapterSelection, DeviceRequest, GpuDevice, GpuInstance, InstanceOptions,
 };
+use superi_gpu::submission::GpuSubmissionQueue;
 use superi_gpu::surface::{NativeViewportSurface, ViewportExtent};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
@@ -70,6 +71,7 @@ impl SmokeApp {
         self.presented = true;
 
         let device = self.device.as_ref().expect("smoke device exists");
+        let submissions = GpuSubmissionQueue::new(device).expect("claim smoke submission queue");
         let viewport = self.viewport.as_mut().expect("smoke viewport exists");
         let kind = viewport.kind();
         let frame = viewport.acquire_frame(device).expect("acquire smoke frame");
@@ -105,7 +107,16 @@ impl SmokeApp {
         }
         let generation = frame.generation();
         let sequence = frame.sequence();
-        frame.submit_and_present(Some(encoder.finish()));
+        let fence = frame
+            .submit_and_present(
+                &submissions,
+                Some(encoder.finish()),
+                submissions.resources(),
+            )
+            .expect("submit and present smoke frame");
+        submissions
+            .wait(&fence)
+            .expect("retire presented smoke frame");
         println!(
             "presented native viewport frame: kind={}, generation={generation}, sequence={sequence}",
             kind.code()
