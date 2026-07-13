@@ -175,6 +175,7 @@ pub struct GpuResources<'device> {
 impl<'device> GpuResources<'device> {
     /// Creates a resource manager for an acquired Superi device lifetime.
     pub fn new(device: &'device GpuDevice) -> Result<Self> {
+        device.ensure_available_for("create_resource_manager")?;
         let scope = NEXT_SCOPE
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
                 current.checked_add(1)
@@ -247,6 +248,8 @@ impl<'device> GpuResources<'device> {
         kind: GpuResourceKind,
         label: Option<&str>,
     ) -> Result<ResourceLease> {
+        self.device
+            .ensure_available_for("allocate_managed_resource")?;
         let sequence = self
             .context
             .next_sequence

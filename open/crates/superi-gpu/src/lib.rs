@@ -8,10 +8,12 @@
 //! submission, export or thumbnail readback, and ordered multi-adapter
 //! selection share one wgpu path. Multi-adapter selection can create one
 //! independent logical device and queue per available GPU, with one primary
-//! presentation device and optional additional processing devices. Managed
-//! handles retain dependency ownership, in-flight submissions retain reusable
-//! allocations through fence completion, cross-device transfer is never
-//! implicit, and obsolete device lifetimes are rejected after recovery.
+//! presentation device and optional additional processing devices. Device-loss
+//! callbacks, typed reconstruction plans, and reviewed recovery notices replace
+//! lost lifetimes without exposing private queue access. Managed handles retain
+//! dependency ownership, in-flight submissions retain reusable allocations
+//! through fence completion, cross-device transfer is never implicit, and
+//! obsolete device lifetimes are rejected after recovery.
 
 pub mod binding;
 pub mod buffer;
@@ -21,6 +23,7 @@ pub mod pass;
 pub mod pipeline;
 pub mod pool;
 pub mod readback;
+pub mod recovery;
 pub mod resource;
 pub mod shader;
 pub mod submission;

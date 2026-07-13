@@ -461,11 +461,11 @@ impl<'device> DecodedFrameUploader<'device> {
             .zip(checkouts.into_iter().zip(write_plans))
         {
             let path = if write_plan.direct {
-                self.schedule_write(&texture, *layout, plane.bytes, write_plan.bytes_per_row);
+                self.schedule_write(&texture, *layout, plane.bytes, write_plan.bytes_per_row)?;
                 PlaneUploadPath::Direct
             } else {
                 let packed = repack_rows(*plane, *layout);
-                self.schedule_write(&texture, *layout, &packed, write_plan.bytes_per_row);
+                self.schedule_write(&texture, *layout, &packed, write_plan.bytes_per_row)?;
                 PlaneUploadPath::Repacked
             };
             uploaded_planes.push(UploadedPlane {
@@ -495,7 +495,7 @@ impl<'device> DecodedFrameUploader<'device> {
         layout: PlaneUploadLayout,
         bytes: &[u8],
         bytes_per_row: u32,
-    ) {
+    ) -> Result<()> {
         self.device.write_texture(
             wgpu::ImageCopyTexture {
                 texture: texture.raw(),
@@ -510,7 +510,7 @@ impl<'device> DecodedFrameUploader<'device> {
                 rows_per_image: Some(layout.texture_size.height),
             },
             layout.texture_size,
-        );
+        )
     }
 }
 

@@ -278,6 +278,7 @@ impl NativeViewportSurface {
         device: &GpuDevice,
         extent: ViewportExtent,
     ) -> Result<&wgpu::SurfaceConfiguration> {
+        device.ensure_available_for("configure_native_surface")?;
         let capabilities = self.surface.get_capabilities(device.wgpu_adapter());
         let format = capabilities
             .formats
@@ -360,6 +361,7 @@ impl NativeViewportSurface {
         &'surface mut self,
         device: &'device GpuDevice,
     ) -> Result<ViewportFrame<'surface, 'device>> {
+        device.ensure_available_for("acquire_viewport_frame")?;
         let Some(configured_device_identity) = self.configured_device_identity.as_ref() else {
             return Err(Error::new(
                 ErrorCategory::Conflict,

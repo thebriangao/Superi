@@ -651,18 +651,14 @@ impl SelectedAdapter {
                 )
             })?;
 
-        Ok(GpuDevice {
-            raw_adapter: self.adapter,
-            adapter: self.snapshot,
-            label: request.label.clone(),
-            enabled_features: request.required_features,
-            enabled_limits: request.required_limits.clone(),
+        Ok(GpuDevice::from_parts(
+            Arc::new(self.adapter),
+            self.snapshot,
+            request.clone(),
             queue,
             device,
-            identity: Arc::new(()),
-            error_scope_gate: ErrorScopeGate::default(),
-            submission_owner: AtomicBool::new(false),
-        })
+            1,
+        ))
     }
 }
 
@@ -814,20 +810,125 @@ impl Default for DeviceRequest {
     }
 }
 
+/// Stable reason that one operational GPU device lifetime ended.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+pub enum GpuDeviceLossReason {
+    /// The graphics driver or backend reported an unspecified loss.
+    Unknown,
+    /// The wgpu device was explicitly destroyed.
+    Destroyed,
+}
+
+impl GpuDeviceLossReason {
+    /// Returns the permanent diagnostic code for this reason.
+    #[must_use]
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Destroyed => "destroyed",
+        }
+    }
+}
+
+/// An owned snapshot of one confirmed operational device loss.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GpuDeviceLoss {
+    reason: GpuDeviceLossReason,
+    generation: u64,
+    diagnostic_message: Arc<str>,
+}
+
+impl GpuDeviceLoss {
+    /// Returns the stable reason reported by wgpu.
+    #[must_use]
+    pub const fn reason(&self) -> GpuDeviceLossReason {
+        self.reason
+    }
+
+    /// Returns the device generation that was lost.
+    #[must_use]
+    pub const fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Returns backend detail for internal diagnostics only.
+    ///
+    /// Presentation layers must use the reviewed recovery notices instead.
+    #[must_use]
+    pub fn diagnostic_message(&self) -> &str {
+        &self.diagnostic_message
+    }
+
+    pub(crate) fn error(&self, operation: &'static str) -> Error {
+        Error::new(
+            ErrorCategory::Unavailable,
+            Recoverability::Retryable,
+            "GPU device was lost and must be recovered",
+        )
+        .with_context(
+            ErrorContext::new(COMPONENT, operation)
+                .with_field("device_generation", self.generation.to_string())
+                .with_field("loss_reason", self.reason.code())
+                .with_field("driver_message", self.diagnostic_message.to_string()),
+        )
+    }
+}
+
+/// Current availability of one logical GPU device lifetime.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum GpuDeviceStatus {
+    /// The device remains available for resource creation and submission.
+    Available {
+        /// Monotonic generation of this logical device.
+        generation: u64,
+    },
+    /// The device is permanently lost and must be replaced.
+    Lost(GpuDeviceLoss),
+}
+
+#[derive(Debug, Default)]
+struct DeviceLossState {
+    loss: Mutex<Option<GpuDeviceLoss>>,
+}
+
+impl DeviceLossState {
+    fn record(&self, reason: GpuDeviceLossReason, generation: u64, message: impl Into<Arc<str>>) {
+        let mut loss = self
+            .loss
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if loss.is_none() {
+            *loss = Some(GpuDeviceLoss {
+                reason,
+                generation,
+                diagnostic_message: message.into(),
+            });
+        }
+    }
+
+    fn snapshot(&self) -> Option<GpuDeviceLoss> {
+        self.loss
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+}
+
 /// One logical wgpu device with exclusive ownership of its submission queue.
 ///
 /// The raw device is borrowable for resource creation. The queue remains
 /// private so later submission orchestration can enforce ordering and thread
 /// ownership without a competing public submission path.
 pub struct GpuDevice {
-    raw_adapter: wgpu::Adapter,
+    raw_adapter: Arc<wgpu::Adapter>,
     adapter: AdapterSnapshot,
-    label: Option<String>,
-    enabled_features: Features,
-    enabled_limits: Limits,
+    request: DeviceRequest,
     queue: wgpu::Queue,
     device: wgpu::Device,
+    generation: u64,
     identity: Arc<()>,
+    loss_state: Arc<DeviceLossState>,
     error_scope_gate: ErrorScopeGate,
     submission_owner: AtomicBool,
 }
@@ -837,14 +938,49 @@ impl fmt::Debug for GpuDevice {
         formatter
             .debug_struct("GpuDevice")
             .field("adapter", &self.adapter)
-            .field("label", &self.label)
-            .field("enabled_features", &self.enabled_features)
-            .field("enabled_limits", &self.enabled_limits)
+            .field("request", &self.request)
+            .field("generation", &self.generation)
+            .field("status", &self.status())
             .finish_non_exhaustive()
     }
 }
 
 impl GpuDevice {
+    fn from_parts(
+        raw_adapter: Arc<wgpu::Adapter>,
+        adapter: AdapterSnapshot,
+        request: DeviceRequest,
+        queue: wgpu::Queue,
+        device: wgpu::Device,
+        generation: u64,
+    ) -> Self {
+        let loss_state = Arc::new(DeviceLossState::default());
+        let callback_state = Arc::clone(&loss_state);
+        device.set_device_lost_callback(move |reason, message| {
+            let reason = match reason {
+                wgpu::DeviceLostReason::Unknown => Some(GpuDeviceLossReason::Unknown),
+                wgpu::DeviceLostReason::Destroyed => Some(GpuDeviceLossReason::Destroyed),
+                wgpu::DeviceLostReason::Dropped | wgpu::DeviceLostReason::ReplacedCallback => None,
+            };
+            if let Some(reason) = reason {
+                callback_state.record(reason, generation, Arc::<str>::from(message));
+            }
+        });
+
+        Self {
+            raw_adapter,
+            adapter,
+            request,
+            queue,
+            device,
+            generation,
+            identity: Arc::new(()),
+            loss_state,
+            error_scope_gate: ErrorScopeGate::default(),
+            submission_owner: AtomicBool::new(false),
+        }
+    }
+
     /// Returns the adapter that owns this device.
     #[must_use]
     pub const fn adapter(&self) -> &AdapterSnapshot {
@@ -854,19 +990,48 @@ impl GpuDevice {
     /// Returns the optional diagnostic label.
     #[must_use]
     pub fn label(&self) -> Option<&str> {
-        self.label.as_deref()
+        self.request.label()
     }
 
     /// Returns exactly the optional features enabled on this logical device.
     #[must_use]
     pub const fn enabled_features(&self) -> Features {
-        self.enabled_features
+        self.request.required_features
     }
 
     /// Returns exactly the limits enabled on this logical device.
     #[must_use]
     pub const fn enabled_limits(&self) -> &Limits {
-        &self.enabled_limits
+        &self.request.required_limits
+    }
+
+    /// Returns the monotonic logical-device generation, starting at one.
+    #[must_use]
+    pub const fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Returns the latest confirmed availability without driving callbacks.
+    #[must_use]
+    pub fn status(&self) -> GpuDeviceStatus {
+        self.loss_state.snapshot().map_or(
+            GpuDeviceStatus::Available {
+                generation: self.generation,
+            },
+            GpuDeviceStatus::Lost,
+        )
+    }
+
+    /// Polls wgpu once on the GPU submission path, then returns availability.
+    #[must_use]
+    pub(crate) fn poll_status(&self) -> GpuDeviceStatus {
+        let _ = self.device.poll(wgpu::Maintain::Poll);
+        self.status()
+    }
+
+    /// Rejects use after confirmed device loss with a retryable shared error.
+    pub fn ensure_available(&self) -> Result<()> {
+        self.ensure_available_for("use_device")
     }
 
     /// Borrows the raw wgpu device for resource creation.
@@ -877,8 +1042,8 @@ impl GpuDevice {
         &self.device
     }
 
-    pub(crate) const fn wgpu_adapter(&self) -> &wgpu::Adapter {
-        &self.raw_adapter
+    pub(crate) fn wgpu_adapter(&self) -> &wgpu::Adapter {
+        self.raw_adapter.as_ref()
     }
 
     pub(crate) fn lock_error_scopes(&self) -> ErrorScopeLockFuture<'_> {
@@ -887,6 +1052,78 @@ impl GpuDevice {
 
     pub(crate) const fn identity(&self) -> &Arc<()> {
         &self.identity
+    }
+
+    pub(crate) fn ensure_available_for(&self, operation: &'static str) -> Result<()> {
+        match self.status() {
+            GpuDeviceStatus::Available { .. } => Ok(()),
+            GpuDeviceStatus::Lost(loss) => Err(loss.error(operation)),
+        }
+    }
+
+    pub(crate) async fn recreate(&self) -> Result<Self> {
+        let loss = match self.status() {
+            GpuDeviceStatus::Available { .. } => {
+                return Err(Error::new(
+                    ErrorCategory::Conflict,
+                    Recoverability::UserCorrectable,
+                    "GPU recovery requires a confirmed lost device",
+                )
+                .with_context(
+                    ErrorContext::new(COMPONENT, "recreate_device")
+                        .with_field("device_generation", self.generation.to_string()),
+                ));
+            }
+            GpuDeviceStatus::Lost(loss) => loss,
+        };
+        let generation = self.generation.checked_add(1).ok_or_else(|| {
+            Error::new(
+                ErrorCategory::ResourceExhausted,
+                Recoverability::Terminal,
+                "GPU device generations are exhausted",
+            )
+            .with_context(ErrorContext::new(COMPONENT, "recreate_device"))
+        })?;
+        let descriptor = wgpu::DeviceDescriptor {
+            label: self.request.label.as_deref(),
+            required_features: self.request.required_features,
+            required_limits: self.request.required_limits.clone(),
+            memory_hints: self.request.memory_hints.clone(),
+        };
+        let (device, queue) = self
+            .raw_adapter
+            .request_device(&descriptor, None)
+            .await
+            .map_err(|source| {
+                Error::with_source(
+                    ErrorCategory::Unavailable,
+                    Recoverability::Retryable,
+                    "wgpu could not recreate the lost device",
+                    source,
+                )
+                .with_context(
+                    adapter_context(&self.adapter, "recreate_device")
+                        .with_field("previous_generation", loss.generation.to_string())
+                        .with_field("loss_reason", loss.reason.code()),
+                )
+            })?;
+        Ok(Self::from_parts(
+            Arc::clone(&self.raw_adapter),
+            self.adapter.clone(),
+            self.request.clone(),
+            queue,
+            device,
+            generation,
+        ))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn record_loss_for_test(
+        &self,
+        reason: GpuDeviceLossReason,
+        message: impl Into<Arc<str>>,
+    ) {
+        self.loss_state.record(reason, self.generation, message);
     }
 
     pub(crate) fn claim_submission_owner(&self) -> Result<()> {
@@ -920,8 +1157,21 @@ impl GpuDevice {
         data: &[u8],
         data_layout: wgpu::ImageDataLayout,
         size: wgpu::Extent3d,
-    ) {
+    ) -> Result<()> {
+        self.ensure_available_for("write_texture")?;
         self.queue.write_texture(texture, data, data_layout, size);
+        Ok(())
+    }
+
+    pub(crate) fn write_buffer(
+        &self,
+        buffer: &wgpu::Buffer,
+        offset: wgpu::BufferAddress,
+        data: &[u8],
+    ) -> Result<()> {
+        self.ensure_available_for("write_buffer")?;
+        self.queue.write_buffer(buffer, offset, data);
+        Ok(())
     }
 
     #[cfg(test)]
