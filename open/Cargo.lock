@@ -2635,6 +2635,7 @@ dependencies = [
 name = "superi-concurrency"
 version = "0.0.0"
 dependencies = [
+ "pollster",
  "superi-core",
  "superi-gpu",
 ]

@@ -12,3 +12,6 @@ workspace = true
 [dependencies]
 superi-core = { path = "../superi-core" }
 superi-gpu = { path = "../superi-gpu" }
+
+[dev-dependencies]
+pollster = { workspace = true }
