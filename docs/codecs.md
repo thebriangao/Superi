@@ -1,7 +1,7 @@
 # Superi: Codec Support Policy & Matrix
 
 **Status:** Foundational policy. Living document, versioned and dated.
-**Version:** 0.2
+**Version:** 0.3
 **Date:** 2026-07-12
 **Audience:** Engineers, contributors. Operationalizes the codec/licensing boundary from
 `architecture.md §2`, `§4.6`, and open item #1 into a concrete, per-format support plan.
@@ -58,7 +58,7 @@ This opens essentially everything a working editor sees day-to-day.
 | codec | patent | acquisition path | note |
 |---|---|---|---|
 | **PCM** | free | in-tree `superi-codecs-rs` backend (MIT, no external dependency) | codec complete; WAV and AIFF containers tracked separately |
-| **FLAC** | free | in-tree `claxon` (Apache-2.0, pure Rust) | clean |
+| **FLAC** | free | in-tree backend using `claxon` 0.4.3 decode plus `flacenc` 0.4.0 encode (Apache-2.0, pure Rust) | 8, 12, 16, 20, and 24 bit precision; one to eight channels |
 | **Vorbis** | free | in-tree `lewton` (MIT/ISC, pure Rust) | clean |
 | **Opus** | free | `libopus` (BSD-3) via FFI; pure-Rust decode thin | license-clean |
 | **MP3** | **expired (2017)** | `oxideav-mp3` at immutable revision `f37901b5d9c691b113e96a3bb95645c67af1a046` (MIT, pure Rust, Rust 1.80) | decode and CBR encode through the default backend |
@@ -131,6 +131,9 @@ Zlib, Unicode. Copyleft is denied, GPL/LGPL/AGPL **and MPL** (weak copyleft stil
 3. **ProRes is Mac-centric.** Decode + encode via VideoToolbox on Mac; Windows OS decode is limited;
    Linux unsupported without user-supplied libs.
 4. **H.266/VVC OS support is thin** in 2026; treat as forward-looking, not a launch guarantee.
+5. **FLAC stays on the Rust 1.80 floor.** `flacenc` 0.4.0 is built without optional default
+   features and its `built` helper is pinned to 0.7.1. Newer `flacenc` releases require Rust 1.83,
+   while newer `built` 0.7 releases generate code that does not compile on Rust 1.80.
 
 ## 6. Open items to verify (before these harden)
 
@@ -139,8 +142,9 @@ The specific facts to nail down:
 
 - `[VERIFY]` **AAC-LC patent status**, confirm whether AAC-LC can be treated as patent-free, or must
   stay strictly on the OS path.
-- `[VERIFY]` **`rav1d` / `claxon` / `lewton` licenses + maturity**, confirm permissive license and
-  production-readiness for decode.
+- `[VERIFY]` **`rav1d` / `lewton` licenses + maturity**, confirm permissive license and
+  production-readiness for decode. The FLAC backend dependency licenses and Rust floor are pinned
+  and enforced by the workspace gates.
 - `[VERIFY]` **DNxHR / VC-3 patent status**, determines whether it can be an in-tree codec.
 - `[VERIFY]` **ProRes-on-Windows** decode path (Media Foundation coverage vs. none).
 

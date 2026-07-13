@@ -31,3 +31,6 @@ wgpu = "23"
 sha2 = "=0.10.9"
 oxideav-core = "=0.1.29"
 oxideav-mp3 = { git = "https://github.com/OxideAV/oxideav-mp3.git", rev = "f37901b5d9c691b113e96a3bb95645c67af1a046" }
+claxon = "=0.4.3"
+flacenc = { version = "=0.4.0", default-features = false }
+built = "=0.7.1"

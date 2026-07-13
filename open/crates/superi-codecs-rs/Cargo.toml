@@ -12,6 +12,13 @@ workspace = true
 [dependencies]
 oxideav-core = { workspace = true }
 oxideav-mp3 = { workspace = true }
+claxon = { workspace = true }
+flacenc = { workspace = true }
 superi-core = { path = "../superi-core" }
 superi-image = { path = "../superi-image" }
 superi-media-io = { path = "../superi-media-io" }
+
+# flacenc 0.4 accepts built 0.7 semver-wide, but built newer than 0.7.1
+# generates constants that do not compile on the workspace Rust 1.80 floor.
+[build-dependencies]
+built = { workspace = true }

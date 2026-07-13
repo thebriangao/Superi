@@ -1,7 +1,7 @@
 //! `superi-codecs-rs`, default backend, pure-Rust royalty-free codecs. See `docs/codecs.md`.
 //!
-//! The linear PCM and MP3 backends are implemented. Other codec modules remain staged for their
-//! dedicated checkpoints. Section 5.1 in `docs/architecture.md`. Depends on: superi-core,
+//! The linear PCM, MP3, and FLAC backends are implemented. Other codec modules remain staged for
+//! their dedicated checkpoints. Section 5.1 in `docs/architecture.md`. Depends on: superi-core,
 //! superi-image, superi-media-io.
 
 pub mod av1;
