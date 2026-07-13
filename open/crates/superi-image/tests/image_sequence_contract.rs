@@ -736,3 +736,20 @@ fn failed_sequence_encode_cleans_temporary_data_and_can_retry_the_same_number() 
     );
     assert_eq!(writer.frames_written(), 1);
 }
+
+#[test]
+fn sequence_writer_does_not_expand_long_destination_names_for_temporary_output() {
+    let directory = TemporaryDirectory::new("long-output-name");
+    let pattern =
+        ImageSequencePattern::new(directory.path().to_path_buf(), "x".repeat(230), ".png", 4)
+            .unwrap();
+    let mut writer =
+        ImageSequenceWriter::new(pattern.clone(), 1, 1, WriteOptions::default()).unwrap();
+
+    let written = writer.write_image(&rgba16_image([0; 8])).unwrap();
+    assert_eq!(
+        written.path(),
+        Some(pattern.path_for_frame(1).unwrap().as_path())
+    );
+    assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+}

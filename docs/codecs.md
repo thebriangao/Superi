@@ -96,6 +96,22 @@ unmodeled chunks. Re-encoding rejects signed windows, tiled or mip storage, unsu
 mixed channel types, nonstandard channels, premultiplied alpha, or metadata the target cannot
 carry. Every reader applies explicit dimension and decoded-byte limits before exposing storage.
 
+`superi-image::sequence` discovers filesystem sequences from the rightmost signed decimal frame
+number while preserving the selected directory, filename prefix and suffix, and minimum digit
+width. Callers provide the positive frame step explicitly; discovery sorts matching files by their
+signed labels, keeps zero-based logical image numbers separate, and reports gaps instead of
+inferring timing from filenames. Missing frames use one explicit policy: return an error, hold the
+last earlier image, or synthesize opaque black from an earlier available representation, falling
+forward to the next image only for a leading gap.
+
+Sequence reads attach the requested media and logical image identity to every decoded layer while
+also reporting the concrete held source label. Exact and held images retain the still-image codec's
+native channels, layers, sample precision, storage organization, mip levels, metadata, alpha mode,
+and windows. Black images retain the same contract, zero non-alpha samples, and set recognized
+alpha channels to the native opaque value. Sequential writes infer one of the complete supported
+still-image formats from the suffix, use checked signed numbering, never replace an existing frame,
+clean failed temporary output, and advance only after an atomic no-clobber publication.
+
 ### Containers (demux)
 
 Parsing a container has **no** patent issue (distinct from decoding the codec inside it).
@@ -112,7 +128,7 @@ index, edit-rate, and generic-container essence relationships without claiming c
 | `superi-codecs-rs` | **default backend**, in-tree permissive royalty-free video/audio codecs (PCM, AV1, VP9, Opus, Vorbis, FLAC, MP3), using pure Rust where mature and documented BSD C boundaries where needed |
 | `superi-codecs-platform` | **opt-in backend** (`os-codecs` feature), OS decode for H.264/H.265/H.266/ProRes/AAC (MIT binding code; `unsafe` FFI boundary) |
 | `superi-codecs-vendor` | **opt-in host adapter** (`vendor-codecs` feature), revisioned process protocol for explicitly selected ARRIRAW, R3D, and BRAW worker executables; contains no vendor SDK or vendor code |
-| `superi-image::io` | still/sequence image formats (EXR, DPX, PNG, JPEG, TIFF, WebP, …) |
+| `superi-image::{io, sequence}` | still-image formats plus deterministic sequence discovery, gap policy, and collision-safe output |
 
 Backends register behind the `superi-media-io` interface; the engine core only ever knows the
 interface, never a concrete codec.

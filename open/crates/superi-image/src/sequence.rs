@@ -863,7 +863,7 @@ impl ImageSequenceWriter {
         self.format
     }
 
-    /// Returns the number of frames durably published by this session.
+    /// Returns the number of frames successfully published by this session.
     #[must_use]
     pub const fn frames_written(&self) -> u64 {
         self.frames_written
@@ -1097,7 +1097,7 @@ fn black_storage(storage: &ImageStorage, access: &ImageAccess) -> Result<ImageSt
         let sample_type = descriptor
             .sample_type(crate::channels::ChannelIndex::new(channel_index))
             .expect("validated descriptor channel has a sample type");
-        let opaque = opaque_sample_bytes(sample_type)?;
+        let opaque = opaque_sample_bytes(sample_type);
         if opaque.len() != channel.sample_bytes() {
             return Err(internal(
                 "build_black_storage",
@@ -1163,41 +1163,22 @@ fn black_storage(storage: &ImageStorage, access: &ImageAccess) -> Result<ImageSt
     )
 }
 
-fn opaque_sample_bytes(sample_type: ImageSampleType) -> Result<Vec<u8>> {
-    let bytes = match sample_type {
+fn opaque_sample_bytes(sample_type: ImageSampleType) -> Vec<u8> {
+    match sample_type {
         ImageSampleType::U8 => vec![u8::MAX],
         ImageSampleType::U16 => u16::MAX.to_ne_bytes().to_vec(),
         ImageSampleType::U32 => u32::MAX.to_ne_bytes().to_vec(),
         ImageSampleType::F16 => f16::from_f32(1.0).to_bits().to_ne_bytes().to_vec(),
         ImageSampleType::F32 => 1.0_f32.to_bits().to_ne_bytes().to_vec(),
-        _ => {
-            return Err(unsupported(
-                "build_black_storage",
-                "black image generation does not support this alpha sample representation",
-            ))
-        }
-    };
-    Ok(bytes)
+    }
 }
 
 fn create_temporary_file(final_path: &Path) -> Result<(PathBuf, File)> {
     let directory = final_path.parent().unwrap_or_else(|| Path::new("."));
-    let file_name = final_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| {
-            invalid_with_path(
-                "create_sequence_temporary_file",
-                "image sequence output filename must be UTF-8",
-                final_path,
-            )
-        })?;
     for _ in 0..64 {
         let serial = NEXT_TEMPORARY_FILE.fetch_add(1, Ordering::Relaxed);
-        let temporary_path = directory.join(format!(
-            ".{file_name}.superi-{}-{serial}.tmp",
-            std::process::id()
-        ));
+        let temporary_path =
+            directory.join(format!(".superi-image-{}-{serial}.tmp", std::process::id()));
         match OpenOptions::new()
             .write(true)
             .create_new(true)
