@@ -10,8 +10,13 @@ use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Res
 use superi_core::time::{Duration, RationalTime, TimeRange, Timebase};
 
 use crate::demux::PacketTiming;
+use crate::operation::{MediaPriority, OperationContext};
 
 const COMPONENT: &str = "superi-media-io.vfr";
+const OPERATION_POLL_INTERVAL: usize = 1_024;
+
+/// Maximum frame count accepted by one presentation map.
+pub const MAX_PRESENTATION_FRAMES: usize = 2_000_000;
 
 /// Container or decoder timing used to build a presentation map.
 ///
@@ -130,6 +135,21 @@ impl VariableFrameRateMap {
     /// exactly at half-open boundaries. Timestamp normalization and edit-list
     /// gaps are separate operations and must be resolved before construction.
     pub fn new(frames: Vec<PresentationFrame>) -> Result<Self> {
+        Self::new_with_operation(frames, &OperationContext::new(MediaPriority::Background))
+    }
+
+    /// Creates a bounded map while cooperatively polling `operation`.
+    pub fn new_with_operation(
+        frames: Vec<PresentationFrame>,
+        operation: &OperationContext,
+    ) -> Result<Self> {
+        operation.check("create_variable_frame_rate_map")?;
+        if frames.len() > MAX_PRESENTATION_FRAMES {
+            return Err(resource_exhausted(
+                "create_variable_frame_rate_map",
+                "presentation frame count exceeds the bounded map limit",
+            ));
+        }
         let first = frames.first().copied().ok_or_else(|| {
             invalid(
                 "create_variable_frame_rate_map",
@@ -138,6 +158,7 @@ impl VariableFrameRateMap {
         })?;
         let timebase = first.presentation_time().timebase();
         for (index, frame) in frames.iter().copied().enumerate() {
+            poll_operation(operation, index, "create_variable_frame_rate_map")?;
             if frame.presentation_time().timebase() != timebase
                 || frame.duration().timebase() != timebase
             {
@@ -149,10 +170,18 @@ impl VariableFrameRateMap {
             }
         }
         for (index, pair) in frames.windows(2).enumerate() {
-            if pair[0].end_exclusive() != pair[1].presentation_time() {
+            poll_operation(operation, index, "create_variable_frame_rate_map")?;
+            if pair[0].end_exclusive() < pair[1].presentation_time() {
                 return Err(invalid_at(
                     "create_variable_frame_rate_map",
-                    "frame presentation intervals must be ordered and contiguous",
+                    "frame presentation intervals contain a gap",
+                    index + 1,
+                ));
+            }
+            if pair[0].end_exclusive() > pair[1].presentation_time() {
+                return Err(invalid_at(
+                    "create_variable_frame_rate_map",
+                    "frame presentation intervals overlap",
                     index + 1,
                 ));
             }
@@ -177,6 +206,7 @@ impl VariableFrameRateMap {
             .iter()
             .skip(1)
             .any(|frame| frame.duration() != first_duration);
+        operation.check("create_variable_frame_rate_map")?;
 
         Ok(Self {
             frames,
@@ -192,7 +222,18 @@ impl VariableFrameRateMap {
     /// derived from adjacent timestamps in presentation order and any supplied
     /// values must agree. The last sample requires its own explicit duration.
     pub fn from_samples(samples: impl IntoIterator<Item = PresentationSample>) -> Result<Self> {
-        Self::from_samples_internal(samples, None)
+        Self::from_samples_with_operation(
+            samples,
+            &OperationContext::new(MediaPriority::Background),
+        )
+    }
+
+    /// Builds a bounded map while cooperatively polling `operation`.
+    pub fn from_samples_with_operation(
+        samples: impl IntoIterator<Item = PresentationSample>,
+        operation: &OperationContext,
+    ) -> Result<Self> {
+        Self::from_samples_internal(samples, None, operation)
     }
 
     /// Builds a map using an exclusive presentation end for the final sample.
@@ -203,7 +244,20 @@ impl VariableFrameRateMap {
         samples: impl IntoIterator<Item = PresentationSample>,
         presentation_end: RationalTime,
     ) -> Result<Self> {
-        Self::from_samples_internal(samples, Some(presentation_end))
+        Self::from_samples_with_end_and_operation(
+            samples,
+            presentation_end,
+            &OperationContext::new(MediaPriority::Background),
+        )
+    }
+
+    /// Builds a bounded final-end map while cooperatively polling `operation`.
+    pub fn from_samples_with_end_and_operation(
+        samples: impl IntoIterator<Item = PresentationSample>,
+        presentation_end: RationalTime,
+        operation: &OperationContext,
+    ) -> Result<Self> {
+        Self::from_samples_internal(samples, Some(presentation_end), operation)
     }
 
     /// Builds a map directly from normalized backend packet timing.
@@ -212,6 +266,17 @@ impl VariableFrameRateMap {
     /// deliberately excluded from presentation ordering and duration.
     pub fn from_packet_timings(timings: impl IntoIterator<Item = PacketTiming>) -> Result<Self> {
         Self::from_samples(timings.into_iter().map(PresentationSample::from))
+    }
+
+    /// Builds a packet-timing map while cooperatively polling `operation`.
+    pub fn from_packet_timings_with_operation(
+        timings: impl IntoIterator<Item = PacketTiming>,
+        operation: &OperationContext,
+    ) -> Result<Self> {
+        Self::from_samples_with_operation(
+            timings.into_iter().map(PresentationSample::from),
+            operation,
+        )
     }
 
     /// Builds a packet-timing map with an exclusive final presentation end.
@@ -225,11 +290,66 @@ impl VariableFrameRateMap {
         )
     }
 
+    /// Builds a final-end packet map while cooperatively polling `operation`.
+    pub fn from_packet_timings_with_end_and_operation(
+        timings: impl IntoIterator<Item = PacketTiming>,
+        presentation_end: RationalTime,
+        operation: &OperationContext,
+    ) -> Result<Self> {
+        Self::from_samples_with_end_and_operation(
+            timings.into_iter().map(PresentationSample::from),
+            presentation_end,
+            operation,
+        )
+    }
+
     fn from_samples_internal(
         samples: impl IntoIterator<Item = PresentationSample>,
         presentation_end: Option<RationalTime>,
+        operation: &OperationContext,
     ) -> Result<Self> {
-        let mut samples: Vec<_> = samples.into_iter().collect();
+        operation.check("map_presentation_samples")?;
+        let mut iterator = samples.into_iter();
+        if iterator
+            .size_hint()
+            .1
+            .is_some_and(|upper| upper > MAX_PRESENTATION_FRAMES)
+        {
+            return Err(resource_exhausted(
+                "map_presentation_samples",
+                "presentation sample count exceeds the bounded map limit",
+            ));
+        }
+        let mut samples = Vec::new();
+        samples
+            .try_reserve_exact(iterator.size_hint().1.unwrap_or(0))
+            .map_err(|_| {
+                resource_exhausted(
+                    "map_presentation_samples",
+                    "presentation sample allocation could not be satisfied",
+                )
+            })?;
+        for (index, sample) in iterator.by_ref().enumerate() {
+            poll_operation(operation, index, "map_presentation_samples")?;
+            if samples.len() == MAX_PRESENTATION_FRAMES {
+                return Err(resource_exhausted(
+                    "map_presentation_samples",
+                    "presentation sample count exceeds the bounded map limit",
+                ));
+            }
+            if samples.len() == samples.capacity() {
+                let additional = MAX_PRESENTATION_FRAMES
+                    .saturating_sub(samples.len())
+                    .min(OPERATION_POLL_INTERVAL);
+                samples.try_reserve_exact(additional).map_err(|_| {
+                    resource_exhausted(
+                        "map_presentation_samples",
+                        "presentation sample allocation could not be satisfied",
+                    )
+                })?;
+            }
+            samples.push(sample);
+        }
         let first_time = samples
             .iter()
             .find_map(|sample| sample.presentation_time())
@@ -242,6 +362,7 @@ impl VariableFrameRateMap {
         let timebase = first_time.timebase();
 
         for (index, sample) in samples.iter().copied().enumerate() {
+            poll_operation(operation, index, "map_presentation_samples")?;
             let timestamp = sample.presentation_time().ok_or_else(|| {
                 invalid_at(
                     "map_presentation_samples",
@@ -282,13 +403,15 @@ impl VariableFrameRateMap {
             }
         }
 
-        samples.sort_by_key(|sample| {
+        operation.check("map_presentation_samples")?;
+        samples.sort_unstable_by_key(|sample| {
             sample
                 .presentation_time()
                 .expect("validated presentation timestamp")
                 .value()
         });
         for (index, pair) in samples.windows(2).enumerate() {
+            poll_operation(operation, index, "map_presentation_samples")?;
             let left = pair[0]
                 .presentation_time()
                 .expect("validated presentation timestamp");
@@ -304,8 +427,15 @@ impl VariableFrameRateMap {
             }
         }
 
-        let mut frames = Vec::with_capacity(samples.len());
+        let mut frames = Vec::new();
+        frames.try_reserve_exact(samples.len()).map_err(|_| {
+            resource_exhausted(
+                "map_presentation_samples",
+                "presentation frame allocation could not be satisfied",
+            )
+        })?;
         for (index, sample) in samples.iter().copied().enumerate() {
+            poll_operation(operation, index, "map_presentation_samples")?;
             let start = sample
                 .presentation_time()
                 .expect("validated presentation timestamp");
@@ -356,19 +486,25 @@ impl VariableFrameRateMap {
                     index,
                 ));
             }
-            if sample
-                .duration()
-                .is_some_and(|supplied| supplied != duration)
-            {
-                return Err(invalid_at(
-                    "map_presentation_samples",
-                    "sample duration does not match its presentation interval",
-                    index,
-                ));
+            if let Some(supplied) = sample.duration() {
+                if supplied < duration {
+                    return Err(invalid_at(
+                        "map_presentation_samples",
+                        "sample duration leaves a gap before the next presentation timestamp",
+                        index,
+                    ));
+                }
+                if supplied > duration {
+                    return Err(invalid_at(
+                        "map_presentation_samples",
+                        "sample duration overlaps the next presentation timestamp",
+                        index,
+                    ));
+                }
             }
             frames.push(PresentationFrame::new(start, duration)?);
         }
-        Self::new(frames)
+        Self::new_with_operation(frames, operation)
     }
 
     /// Returns the shared exact presentation timebase.
@@ -459,4 +595,24 @@ fn invalid_at(operation: &'static str, message: &'static str, index: usize) -> E
     .with_context(
         ErrorContext::new(COMPONENT, operation).with_field("presentation_index", index.to_string()),
     )
+}
+
+fn resource_exhausted(operation: &'static str, message: &'static str) -> Error {
+    Error::new(
+        ErrorCategory::ResourceExhausted,
+        Recoverability::UserCorrectable,
+        message,
+    )
+    .with_context(ErrorContext::new(COMPONENT, operation))
+}
+
+fn poll_operation(
+    operation: &OperationContext,
+    work_index: usize,
+    operation_name: &'static str,
+) -> Result<()> {
+    if work_index % OPERATION_POLL_INTERVAL == 0 {
+        operation.check(operation_name)?;
+    }
+    Ok(())
 }

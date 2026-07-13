@@ -407,6 +407,65 @@ fn fixture_with_file_type(brand: FixtureBrand, include_file_type: bool) -> Fixtu
     }
 }
 
+fn vfr_mov_fixture() -> Fixture {
+    let mut ftyp_payload = Vec::new();
+    ftyp_payload.extend_from_slice(b"qt  ");
+    push_u32(&mut ftyp_payload, 512);
+    ftyp_payload.extend_from_slice(b"qt  ");
+    let ftyp = atom(b"ftyp", ftyp_payload);
+    let mdat = atom(b"mdat", b"V0V1V2".to_vec());
+    let video_offset = u64::try_from(ftyp.len() + 8).unwrap();
+
+    let mut stts = Vec::new();
+    push_u32(&mut stts, 3);
+    for duration in [40, 60, 100] {
+        push_u32(&mut stts, 1);
+        push_u32(&mut stts, duration);
+    }
+    let mut stss = Vec::new();
+    push_u32(&mut stss, 1);
+    push_u32(&mut stss, 1);
+    let mut stsc = Vec::new();
+    push_u32(&mut stsc, 1);
+    push_u32(&mut stsc, 1);
+    push_u32(&mut stsc, 3);
+    push_u32(&mut stsc, 1);
+    let mut stsz = Vec::new();
+    push_u32(&mut stsz, 0);
+    push_u32(&mut stsz, 3);
+    for _ in 0..3 {
+        push_u32(&mut stsz, 2);
+    }
+    let mut stco = Vec::new();
+    push_u32(&mut stco, 1);
+    push_u32(&mut stco, u32::try_from(video_offset).unwrap());
+    let mut stbl = sample_description(b"vxyz");
+    stbl.extend(full_atom(b"stts", 0, 0, stts));
+    stbl.extend(full_atom(b"stss", 0, 0, stss));
+    stbl.extend(full_atom(b"stsc", 0, 0, stsc));
+    stbl.extend(full_atom(b"stsz", 0, 0, stsz));
+    stbl.extend(full_atom(b"stco", 0, 0, stco));
+    let mut minf = full_atom(b"vmhd", 0, 1, vec![0; 8]);
+    minf.extend(data_information());
+    minf.extend(atom(b"stbl", stbl));
+    let mut mdia = media_header(1_000);
+    mdia.extend(handler(b"vide", "VFR Picture Handler"));
+    mdia.extend(atom(b"minf", minf));
+    let mut trak = track_header(1, 1_920, 1_080, 0);
+    trak.extend(atom(b"mdia", mdia));
+    let mut moov = movie_header();
+    moov.extend(atom(b"trak", trak));
+
+    let mut bytes = ftyp;
+    bytes.extend(mdat);
+    bytes.extend(atom(b"moov", moov));
+    Fixture {
+        bytes,
+        video_offset,
+        audio_offset: video_offset,
+    }
+}
+
 fn memory_request(media_id: u128, name: &str, bytes: &[u8]) -> SourceRequest {
     SourceRequest::new(
         MediaId::from_raw(media_id),
@@ -484,7 +543,15 @@ fn mp4_demux_preserves_tracks_edits_timestamps_offsets_and_metadata() {
     assert_eq!(video.kind(), StreamKind::Video);
     assert_eq!(video.codec().as_str(), "fourcc-7678797a");
     assert_eq!(video.timebase(), Timebase::integer(1_000).unwrap());
-    assert_eq!(video.duration().unwrap().value(), 2_000);
+    assert_eq!(video.duration().unwrap().value(), 1_900);
+    assert_eq!(
+        video.metadata().get("timeline.presentation-frame-count"),
+        Some(&MetadataValue::Unsigned(2))
+    );
+    assert_eq!(
+        video.metadata().get("timeline.variable-frame-rate"),
+        Some(&MetadataValue::Boolean(true))
+    );
     assert_eq!(video.edits().len(), 2);
     assert_eq!(video.edits()[0].segment_duration().value(), 500);
     assert!(video.edits()[0].media_time().is_none());
@@ -633,6 +700,58 @@ fn fragmented_mp4_preserves_fragment_sample_offsets_and_timing() {
         Some(&MetadataValue::Unsigned(fixture.video_offset))
     );
     assert!(next_packet(source.as_mut()).is_none());
+}
+
+#[test]
+fn vfr_mov_uses_mapped_duration_and_frame_boundaries_end_to_end() {
+    let fixture = vfr_mov_fixture();
+    let request = memory_request(0xc9, "variable.mov", &fixture.bytes);
+    let mut source = open_through_registry(&request, "mov");
+    assert_eq!(source.info().duration().unwrap().value(), 200);
+    let video = &source.info().streams()[0];
+    assert_eq!(video.duration().unwrap().value(), 200);
+    assert_eq!(
+        video.metadata().get("timeline.presentation-frame-count"),
+        Some(&MetadataValue::Unsigned(3))
+    );
+    assert_eq!(
+        video.metadata().get("timeline.variable-frame-rate"),
+        Some(&MetadataValue::Boolean(true))
+    );
+
+    let packets = std::iter::from_fn(|| next_packet(source.as_mut())).collect::<Vec<_>>();
+    assert_eq!(
+        packets
+            .iter()
+            .map(|packet| packet.timing().duration().unwrap().value())
+            .collect::<Vec<_>>(),
+        [40, 60, 100]
+    );
+
+    let mut source = open_through_registry(&request, "mov");
+    let actual = source
+        .seek(
+            SeekRequest::new(
+                RationalTime::new(40, Timebase::MILLISECONDS),
+                SeekMode::Exact,
+            ),
+            &operation(),
+        )
+        .unwrap();
+    assert_eq!(actual.value(), 40);
+    assert_eq!(next_packet(source.as_mut()).unwrap().data(), b"V0");
+    assert_eq!(next_packet(source.as_mut()).unwrap().data(), b"V1");
+
+    let error = source
+        .seek(
+            SeekRequest::new(
+                RationalTime::new(50, Timebase::MILLISECONDS),
+                SeekMode::Exact,
+            ),
+            &operation(),
+        )
+        .unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::InvalidInput);
 }
 
 #[test]

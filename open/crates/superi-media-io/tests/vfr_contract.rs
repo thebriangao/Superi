@@ -1,6 +1,10 @@
+use superi_core::error::ErrorCategory;
 use superi_core::time::{Duration, RationalTime, Timebase};
 use superi_media_io::demux::PacketTiming;
-use superi_media_io::vfr::{PresentationFrame, VariableFrameRateMap};
+use superi_media_io::operation::{MediaPriority, OperationContext};
+use superi_media_io::vfr::{
+    PresentationFrame, PresentationSample, VariableFrameRateMap, MAX_PRESENTATION_FRAMES,
+};
 
 fn milliseconds() -> Timebase {
     Timebase::MILLISECONDS
@@ -176,4 +180,81 @@ fn explicit_frame_maps_require_one_contiguous_positive_timeline() {
         Duration::new(1, Timebase::SECONDS).unwrap(),
     )
     .is_err());
+}
+
+#[test]
+fn negative_timestamps_and_coordinate_boundaries_are_checked_exactly() {
+    let mapping = VariableFrameRateMap::from_packet_timings([
+        packet(Some(-100), Some(0), Some(60)),
+        packet(Some(-40), Some(1), Some(40)),
+        packet(Some(0), Some(2), Some(20)),
+    ])
+    .unwrap();
+    assert_eq!(mapping.presentation_start().value(), -100);
+    assert_eq!(mapping.presentation_end().value(), 20);
+    assert_eq!(mapping.duration().value(), 120);
+
+    assert!(VariableFrameRateMap::from_packet_timings_with_end(
+        [
+            packet(Some(-10), Some(0), None),
+            packet(Some(10), Some(1), None)
+        ],
+        RationalTime::new(5, milliseconds()),
+    )
+    .is_err());
+    assert!(PresentationFrame::new(
+        RationalTime::new(i64::MAX, milliseconds()),
+        Duration::new(1, milliseconds()).unwrap(),
+    )
+    .is_err());
+    assert!(VariableFrameRateMap::from_packet_timings_with_end(
+        [
+            packet(Some(i64::MIN), Some(0), None),
+            packet(Some(i64::MAX), Some(1), None),
+        ],
+        RationalTime::new(i64::MAX, milliseconds()),
+    )
+    .is_err());
+}
+
+#[test]
+fn gaps_and_overlaps_have_distinct_failures() {
+    let frame = |start, duration| {
+        PresentationFrame::new(
+            RationalTime::new(start, milliseconds()),
+            Duration::new(duration, milliseconds()).unwrap(),
+        )
+        .unwrap()
+    };
+    let gap = VariableFrameRateMap::new(vec![frame(0, 40), frame(50, 40)]).unwrap_err();
+    let overlap = VariableFrameRateMap::new(vec![frame(0, 50), frame(40, 40)]).unwrap_err();
+    assert!(gap.message().contains("gap"));
+    assert!(overlap.message().contains("overlap"));
+}
+
+#[test]
+fn construction_is_resource_bounded_and_interruptible() {
+    let sample = PresentationSample::new(
+        Some(RationalTime::zero(milliseconds())),
+        Some(Duration::new(1, milliseconds()).unwrap()),
+    );
+    let error = VariableFrameRateMap::from_samples(
+        std::iter::repeat(sample).take(MAX_PRESENTATION_FRAMES + 1),
+    )
+    .unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::ResourceExhausted);
+
+    let operation = OperationContext::new(MediaPriority::Interactive);
+    let cancellation = operation.cancellation_token().clone();
+    let samples = (0_i64..4_096).map(|value| {
+        if value == 1_024 {
+            cancellation.cancel();
+        }
+        PresentationSample::new(
+            Some(RationalTime::new(value, milliseconds())),
+            Some(Duration::new(1, milliseconds()).unwrap()),
+        )
+    });
+    let error = VariableFrameRateMap::from_samples_with_operation(samples, &operation).unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::Cancelled);
 }

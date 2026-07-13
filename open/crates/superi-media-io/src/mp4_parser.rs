@@ -3,6 +3,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
+use crate::vfr::MAX_PRESENTATION_FRAMES;
+
 #[derive(Debug)]
 pub(crate) struct ParseError {
     message: &'static str,
@@ -24,7 +26,7 @@ impl std::error::Error for ParseError {}
 
 type Result<T> = std::result::Result<T, ParseError>;
 
-const MAX_TABLE_ENTRIES: usize = 10_000_000;
+const MAX_TABLE_ENTRIES: usize = MAX_PRESENTATION_FRAMES;
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ParsedMetadata {
