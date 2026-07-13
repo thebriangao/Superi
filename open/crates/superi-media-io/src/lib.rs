@@ -23,3 +23,4 @@ pub mod pcm;
 pub mod read;
 pub mod selection;
 pub mod timecode;
+pub mod vfr;
