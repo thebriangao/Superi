@@ -9,6 +9,7 @@ pub mod geometry;
 pub mod ids;
 pub mod pixel;
 pub mod prelude;
+pub mod serialization;
 pub mod settings;
 pub mod time;
 pub mod timecode;
