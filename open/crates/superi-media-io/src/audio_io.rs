@@ -1,4 +1,8 @@
 //! Codec-neutral decoded audio blocks.
+//!
+//! Multi-byte PCM samples use canonical little-endian byte order. Packed
+//! storage interleaves samples in channel-layout order, while planar storage
+//! keeps one complete plane for each channel in that same order.
 
 use std::sync::Arc;
 

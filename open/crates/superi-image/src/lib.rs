@@ -6,8 +6,9 @@
 //! layouts, semantic image values, and metadata remain separate composable
 //! contracts; explicit alpha association and dense CPU operations build on
 //! those contracts. Deterministic CPU reference validation makes their output
-//! available as a bounded oracle for GPU implementations. Tiled access and
-//! still-image I/O build on this foundation.
+//! available as a bounded oracle for GPU implementations. Tiled access,
+//! still-image I/O, and isolated thumbnail and waveform previews build on this
+//! foundation.
 
 pub mod alpha;
 pub mod channels;
@@ -15,6 +16,7 @@ pub mod io;
 pub mod metadata;
 pub mod model;
 pub mod ops;
+pub mod preview;
 pub mod reference;
 pub mod tiling;
 pub mod value;

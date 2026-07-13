@@ -4,7 +4,8 @@
 //! identity remains separate from replaceable local locations, packets retain exact presentation
 //! and decode timing, and decoded video or audio retains its complete representation.
 //! Decoder and encoder traits use explicit input, drain, and end-of-stream states so concrete
-//! software and platform backends can share one predictable editor-facing lifecycle.
+//! software and platform backends can share one predictable editor-facing lifecycle. Isolated
+//! waveform previews consume decoded audio without entering playback or rendering.
 
 pub mod audio_io;
 pub mod backend;
@@ -20,6 +21,7 @@ pub mod mxf;
 mod mxf_parser;
 pub mod operation;
 pub mod pcm;
+pub mod preview;
 pub mod read;
 pub mod selection;
 pub mod timecode;
