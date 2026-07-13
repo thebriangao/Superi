@@ -77,8 +77,8 @@ MIT/Apache) · `TIFF` · `WebP` (royalty-free) · `TGA` / `BMP`.
 
 Parsing a container has **no** patent issue (distinct from decoding the codec inside it).
 
-`MP4 / MOV` and `MKV / WebM`, in-tree pure Rust (`mp4` / `re_mp4`, MIT). `MXF`, later (engineering
-effort, not a legal one).
+`MP4 / MOV` uses the bounds-checked pure-Rust parser in `superi-media-io`; `MKV / WebM` will use an
+audited permissive Rust parser. `MXF` comes later as an engineering task, not a legal one.
 
 ## 3. Where each lives (crate mapping)
 

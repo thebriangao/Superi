@@ -143,6 +143,60 @@ pub enum StreamKind {
     Data,
 }
 
+/// One exact timeline edit from a container edit list.
+///
+/// Segment duration uses the movie timebase, while a present media time uses
+/// the edited stream's timebase. A missing media time represents an empty edit.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct StreamEdit {
+    segment_duration: Duration,
+    media_time: Option<RationalTime>,
+    rate_integer: i16,
+    rate_fraction: i16,
+}
+
+impl StreamEdit {
+    /// Creates a preserved edit-list entry without normalizing its exact rate.
+    #[must_use]
+    pub const fn new(
+        segment_duration: Duration,
+        media_time: Option<RationalTime>,
+        rate_integer: i16,
+        rate_fraction: i16,
+    ) -> Self {
+        Self {
+            segment_duration,
+            media_time,
+            rate_integer,
+            rate_fraction,
+        }
+    }
+
+    /// Returns the edit duration in the movie timebase.
+    #[must_use]
+    pub const fn segment_duration(self) -> Duration {
+        self.segment_duration
+    }
+
+    /// Returns the stream-relative media start, or `None` for an empty edit.
+    #[must_use]
+    pub const fn media_time(self) -> Option<RationalTime> {
+        self.media_time
+    }
+
+    /// Returns the signed integer portion of the fixed-point playback rate.
+    #[must_use]
+    pub const fn rate_integer(self) -> i16 {
+        self.rate_integer
+    }
+
+    /// Returns the signed fraction portion of the fixed-point playback rate.
+    #[must_use]
+    pub const fn rate_fraction(self) -> i16 {
+        self.rate_fraction
+    }
+}
+
 /// Codec-neutral information required to route packets from one stream.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StreamInfo {
@@ -150,6 +204,8 @@ pub struct StreamInfo {
     kind: StreamKind,
     codec: CodecId,
     timebase: Timebase,
+    duration: Option<Duration>,
+    edits: Vec<StreamEdit>,
     metadata: MediaMetadata,
 }
 
@@ -162,8 +218,37 @@ impl StreamInfo {
             kind,
             codec,
             timebase,
+            duration: None,
+            edits: Vec::new(),
             metadata: MediaMetadata::new(),
         }
+    }
+
+    /// Adds the stream duration in its exact timestamp timebase.
+    pub fn with_duration(mut self, duration: Duration) -> Result<Self> {
+        if duration.timebase() != self.timebase {
+            return Err(invalid(
+                "set_stream_duration",
+                "stream duration must use the stream timebase",
+            ));
+        }
+        self.duration = Some(duration);
+        Ok(self)
+    }
+
+    /// Adds the ordered container edit list for this stream.
+    pub fn with_edits(mut self, edits: Vec<StreamEdit>) -> Result<Self> {
+        if edits.iter().any(|edit| {
+            edit.media_time()
+                .is_some_and(|media_time| media_time.timebase() != self.timebase)
+        }) {
+            return Err(invalid(
+                "set_stream_edits",
+                "stream edit media times must use the stream timebase",
+            ));
+        }
+        self.edits = edits;
+        Ok(self)
     }
 
     /// Returns the source-local stream identifier.
@@ -188,6 +273,18 @@ impl StreamInfo {
     #[must_use]
     pub const fn timebase(&self) -> Timebase {
         self.timebase
+    }
+
+    /// Returns the stream duration when supplied by the container.
+    #[must_use]
+    pub const fn duration(&self) -> Option<Duration> {
+        self.duration
+    }
+
+    /// Returns container edits in their original order.
+    #[must_use]
+    pub fn edits(&self) -> &[StreamEdit] {
+        &self.edits
     }
 
     /// Returns preserved stream metadata.

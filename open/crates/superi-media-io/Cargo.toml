@@ -10,5 +10,6 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+sha2 = { workspace = true }
 superi-core = { path = "../superi-core" }
 superi-image = { path = "../superi-image" }
