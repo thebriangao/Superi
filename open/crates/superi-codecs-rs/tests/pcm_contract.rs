@@ -295,3 +295,196 @@ fn decoder_reports_partial_sample_frames_as_corrupt_data() {
         "decode_pcm_packet"
     );
 }
+
+#[test]
+fn pcm_factories_reject_incompatible_configs_and_honor_cancellation() {
+    let backend = pcm_backend();
+    let stream_id = StreamId::new(15);
+    let i16_format = AudioFormat::new(48_000, SampleFormat::I16, ChannelLayout::stereo()).unwrap();
+    let f32_format = AudioFormat::new(48_000, SampleFormat::F32, ChannelLayout::stereo()).unwrap();
+
+    let missing_format =
+        DecoderConfig::new(stream(PcmEncoding::I16LittleEndian, stream_id, 48_000));
+    let error = match backend.create_decoder(&missing_format, operation()) {
+        Ok(_) => panic!("PCM decoding without an audio format must fail"),
+        Err(error) => error,
+    };
+    assert_eq!(error.category(), ErrorCategory::InvalidInput);
+
+    let video_stream = StreamInfo::new(
+        stream_id,
+        StreamKind::Video,
+        PcmEncoding::I16LittleEndian.codec_id(),
+        Timebase::integer(48_000).unwrap(),
+    );
+    let video_config = DecoderConfig::new(video_stream);
+    let error = match backend.create_decoder(&video_config, operation()) {
+        Ok(_) => panic!("PCM decoding a video stream must fail"),
+        Err(error) => error,
+    };
+    assert_eq!(error.category(), ErrorCategory::InvalidInput);
+
+    let mismatched_decoder =
+        DecoderConfig::new(stream(PcmEncoding::I16LittleEndian, stream_id, 48_000))
+            .with_audio_format(f32_format.clone())
+            .unwrap();
+    let error = match backend.create_decoder(&mismatched_decoder, operation()) {
+        Ok(_) => panic!("a PCM decoder codec and sample format mismatch must fail"),
+        Err(error) => error,
+    };
+    assert_eq!(error.category(), ErrorCategory::InvalidInput);
+
+    let mismatched_encoder = EncoderConfig::audio(
+        stream_id,
+        PcmEncoding::I16LittleEndian.codec_id(),
+        f32_format,
+    );
+    let error = match backend.create_encoder(&mismatched_encoder, operation()) {
+        Ok(_) => panic!("a PCM encoder codec and sample format mismatch must fail"),
+        Err(error) => error,
+    };
+    assert_eq!(error.category(), ErrorCategory::InvalidInput);
+
+    let cancelled = OperationContext::new(MediaPriority::Interactive);
+    cancelled.cancellation_token().cancel();
+    let valid_decoder = DecoderConfig::new(stream(PcmEncoding::I16LittleEndian, stream_id, 48_000))
+        .with_audio_format(i16_format)
+        .unwrap();
+    let error = match backend.create_decoder(&valid_decoder, &cancelled) {
+        Ok(_) => panic!("a cancelled PCM decoder creation must fail"),
+        Err(error) => error,
+    };
+    assert_eq!(error.category(), ErrorCategory::Cancelled);
+}
+
+#[test]
+fn pcm_decoder_rejects_stream_timing_and_duration_corruption() {
+    let backend = pcm_backend();
+    let stream_id = StreamId::new(21);
+    let encoding = PcmEncoding::I16LittleEndian;
+    let format = AudioFormat::new(48_000, SampleFormat::I16, ChannelLayout::stereo()).unwrap();
+
+    let make_decoder = |timebase| {
+        let source = StreamInfo::new(stream_id, StreamKind::Audio, encoding.codec_id(), timebase);
+        let config = DecoderConfig::new(source)
+            .with_audio_format(format.clone())
+            .unwrap();
+        backend.create_decoder(&config, operation()).unwrap()
+    };
+
+    let mut decoder = make_decoder(Timebase::integer(48_000).unwrap());
+    let wrong_stream = Packet::new(
+        StreamId::new(22),
+        Arc::from([1, 0, 2, 0]),
+        PacketTiming::new(
+            Timebase::integer(48_000).unwrap(),
+            Some(0),
+            Some(0),
+            Some(1),
+        )
+        .unwrap(),
+    );
+    let error = decoder.send_packet(wrong_stream, operation()).unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::Conflict);
+
+    let wrong_timebase = Packet::new(
+        stream_id,
+        Arc::from([1, 0, 2, 0]),
+        PacketTiming::new(
+            Timebase::integer(44_100).unwrap(),
+            Some(0),
+            Some(0),
+            Some(1),
+        )
+        .unwrap(),
+    );
+    let error = decoder
+        .send_packet(wrong_timebase, operation())
+        .unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::CorruptData);
+
+    let wrong_duration = Packet::new(
+        stream_id,
+        Arc::from([1, 0, 2, 0]),
+        PacketTiming::new(
+            Timebase::integer(48_000).unwrap(),
+            Some(0),
+            Some(0),
+            Some(2),
+        )
+        .unwrap(),
+    );
+    let error = decoder
+        .send_packet(wrong_duration, operation())
+        .unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::CorruptData);
+
+    let mut fractional_decoder = make_decoder(Timebase::integer(44_100).unwrap());
+    let fractional_timestamp = Packet::new(
+        stream_id,
+        Arc::from([1, 0, 2, 0]),
+        PacketTiming::new(Timebase::integer(44_100).unwrap(), Some(1), Some(1), None).unwrap(),
+    );
+    let error = fractional_decoder
+        .send_packet(fractional_timestamp, operation())
+        .unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::CorruptData);
+    assert_eq!(
+        error.contexts().last().unwrap().operation(),
+        "decode_pcm_packet"
+    );
+}
+
+#[test]
+fn pcm_encoder_cancellation_flush_and_reset_preserve_timing_and_metadata() {
+    let backend = pcm_backend();
+    let stream_id = StreamId::new(31);
+    let encoding = PcmEncoding::I24BigEndian;
+    let format = AudioFormat::new(96_000, SampleFormat::I24, ChannelLayout::stereo()).unwrap();
+    let config = EncoderConfig::audio(stream_id, encoding.codec_id(), format.clone());
+    let mut encoder = backend.create_encoder(&config, operation()).unwrap();
+    let block = AudioBlock::new(
+        format,
+        SampleTime::new(960, 96_000).unwrap(),
+        1,
+        vec![AudioPlane::new(Arc::from([1, 2, 3, 4, 5, 6]))],
+    )
+    .unwrap()
+    .with_metadata("pcm.source", MetadataValue::Text("timeline".into()))
+    .unwrap();
+
+    let cancelled = OperationContext::new(MediaPriority::Export);
+    cancelled.cancellation_token().cancel();
+    let error = encoder
+        .send(EncodeInput::Audio(block.clone()), &cancelled)
+        .unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::Cancelled);
+    assert_eq!(
+        encoder.receive(operation()).unwrap(),
+        EncodeOutput::NeedInput
+    );
+
+    encoder.flush(operation()).unwrap();
+    assert_eq!(
+        encoder.receive(operation()).unwrap(),
+        EncodeOutput::EndOfStream
+    );
+    let error = encoder
+        .send(EncodeInput::Audio(block.clone()), operation())
+        .unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::Conflict);
+
+    encoder.reset(operation()).unwrap();
+    encoder
+        .send(EncodeInput::Audio(block.clone()), operation())
+        .unwrap();
+    let EncodeOutput::Packet(packet) = encoder.receive(operation()).unwrap() else {
+        panic!("reset PCM encoder did not return a packet");
+    };
+    assert_eq!(
+        packet.timing().presentation_time().unwrap(),
+        block.timestamp().rational_time()
+    );
+    assert_eq!(packet.timing().duration().unwrap(), block.duration());
+    assert_eq!(packet.metadata(), block.metadata());
+}
