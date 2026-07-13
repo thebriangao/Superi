@@ -31,11 +31,11 @@ license CI runs the default configuration, so the clean guarantee is machine-pro
 A genuinely usable professional editor, every row legal, MIT tree provably clean:
 
 - **In-tree, all users (pure-Rust / permissive):**
-  AV1, VP9 · MP3, FLAC, Vorbis, Opus, PCM · EXR, DPX, PNG, JPEG, TIFF · MP4/MOV/MKV demux.
+  AV1, VP9 · MP3, FLAC, Vorbis, Opus, PCM · EXR, DPX, PNG, JPEG, TIFF · MP4/MOV/MKV/MXF demux.
 - **OS opt-in (`os-codecs`), Mac + Windows:**
   H.264, H.265, ProRes, AAC.
 - **Later (post-launch):**
-  H.266 (VVC), DNxHR, MXF demux, camera RAW (ARRIRAW / R3D / BRAW via vendor plugins).
+  H.266 (VVC), DNxHR, camera RAW (ARRIRAW / R3D / BRAW via vendor plugins).
 
 This opens essentially everything a working editor sees day-to-day.
 
@@ -77,8 +77,9 @@ MIT/Apache) · `TIFF` · `WebP` (royalty-free) · `TGA` / `BMP`.
 
 Parsing a container has **no** patent issue (distinct from decoding the codec inside it).
 
-`MP4 / MOV` uses the bounds-checked pure-Rust parser in `superi-media-io`; `MKV / WebM` will use an
-audited permissive Rust parser. `MXF` comes later as an engineering task, not a legal one.
+`MP4 / MOV` and `MXF` use bounds-checked pure-Rust parsers in `superi-media-io`; `MKV / WebM` will
+use an audited permissive Rust parser. The MXF path preserves partition, package, track, descriptor,
+index, edit-rate, and generic-container essence relationships without claiming codec decode.
 
 ## 3. Where each lives (crate mapping)
 
