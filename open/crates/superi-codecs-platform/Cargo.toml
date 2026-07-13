@@ -13,3 +13,11 @@ workspace = true
 superi-core = { path = "../superi-core" }
 superi-image = { path = "../superi-image" }
 superi-media-io = { path = "../superi-media-io" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-audio-toolbox = { workspace = true, features = ["std", "AudioConverter", "objc2-core-audio-types"] }
+objc2-core-audio-types = { workspace = true, features = ["std", "CoreAudioBaseTypes"] }
+objc2-core-foundation = { workspace = true, features = ["std", "CFBase", "CFData", "CFDictionary", "CFNumber", "CFString"] }
+objc2-core-media = { workspace = true, features = ["std", "CMBase", "CMBlockBuffer", "CMFormatDescription", "CMSampleBuffer", "CMTime", "objc2-core-video"] }
+objc2-core-video = { workspace = true, features = ["std", "CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn"] }
+objc2-video-toolbox = { workspace = true, features = ["std", "VTBase", "VTCompressionSession", "VTDecompressionSession", "VTErrors", "objc2-core-media", "objc2-core-video"] }

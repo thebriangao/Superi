@@ -356,10 +356,18 @@ fn fragmented_fixture() -> Fixture {
 }
 
 fn fixture(brand: FixtureBrand) -> Fixture {
-    fixture_with_file_type(brand, true)
+    fixture_with_video_codec(brand, true, b"vxyz")
 }
 
 fn fixture_with_file_type(brand: FixtureBrand, include_file_type: bool) -> Fixture {
+    fixture_with_video_codec(brand, include_file_type, b"vxyz")
+}
+
+fn fixture_with_video_codec(
+    brand: FixtureBrand,
+    include_file_type: bool,
+    video_codec: &[u8; 4],
+) -> Fixture {
     let major_brand = match brand {
         FixtureBrand::Mp4 => b"isom",
         FixtureBrand::Mov => b"qt  ",
@@ -381,7 +389,7 @@ fn fixture_with_file_type(brand: FixtureBrand, include_file_type: bool) -> Fixtu
         1,
         b"vide",
         "Picture Handler",
-        b"vxyz",
+        video_codec,
         1_000,
         u32::try_from(video_offset).unwrap(),
         Some([100, 0]),
@@ -404,6 +412,29 @@ fn fixture_with_file_type(brand: FixtureBrand, include_file_type: bool) -> Fixtu
         bytes,
         video_offset,
         audio_offset,
+    }
+}
+
+#[test]
+fn mov_demux_normalizes_supported_prores_profiles_for_native_backend_selection() {
+    for (fourcc, expected) in [
+        (b"apco", "prores-422-proxy"),
+        (b"apcs", "prores-422-lt"),
+        (b"apcn", "prores-422"),
+        (b"apch", "prores-422-hq"),
+        (b"ap4h", "prores-4444"),
+    ] {
+        let fixture = fixture_with_video_codec(FixtureBrand::Mov, true, fourcc);
+        let request = memory_request(0x1234, "prores.mov", &fixture.bytes);
+        let source = open_through_registry(&request, "mov");
+        let stream = &source.info().streams()[0];
+        assert_eq!(stream.codec().as_str(), expected);
+        assert_eq!(
+            stream.metadata().get("codec.rfc6381"),
+            Some(&MetadataValue::Text(
+                String::from_utf8_lossy(fourcc).into_owned()
+            ))
+        );
     }
 }
 

@@ -93,6 +93,35 @@ index, edit-rate, and generic-container essence relationships without claiming c
 Backends register behind the `superi-media-io` interface; the engine core only ever knows the
 interface, never a concrete codec.
 
+### macOS VideoToolbox implementation contract
+
+The opt-in macOS backend uses the generated `objc2` 0.3.2 bindings for Core Foundation, Core
+Media, Core Video, VideoToolbox, Core Audio Types, and AudioToolbox. These dependencies are enabled
+only for the macOS target and are licensed under permissive alternatives. The backend registers the
+stable identity `apple-videotoolbox` as one primary candidate. It never probes or opens containers,
+and it never silently substitutes another codec backend after a native failure.
+
+Video decode and encode support `h264`, `hevc`, `prores-422-proxy`, `prores-422-lt`, `prores-422`,
+`prores-422-hq`, and `prores-4444`. MP4 and MOV sample entries `apco`, `apcs`, `apcn`, `apch`, and
+`ap4h` normalize to those profile-specific identifiers while retaining the original RFC 6381
+metadata. H.264 and HEVC ingest requires a bounds-checked `codec.configuration` byte record. ProRes
+ingest requires explicit `video.width` and `video.height` metadata.
+
+Decoded video retains its `CVPixelBuffer` and crosses the media interface as External storage, so a
+native frame can be passed directly into the matching encoder without a pixel copy. CPU encoder
+input accepts BGRA8 and RGBA16F. CoreMedia timestamps are converted only when the exact rational
+value fits; malformed configuration, incompatible storage, host rejection, cancellation, and
+post-flush input each return an explicit typed error. Flush drains delayed native output, and reset
+recreates the session for seeking or a new stream lifetime.
+
+AAC decode and encode use AudioConverter with the stable `aac` identifier. Decode requires an
+explicit packed PCM output format plus checked `codec.configuration` metadata. Both raw
+AudioSpecificConfig and ESDS magic-cookie forms are accepted. Packed U8, I16, I24, I32, F32, and
+F64 PCM with one to eight semantic channels is supported. Packet timing remains on the exact sample
+clock, the configured channel layout is retained, flush drains pending packets, and reset clears
+converter state. Planar PCM and unavailable host operations fail explicitly instead of being
+reported as supported work.
+
 ### MP3 implementation contract
 
 `superi-codecs-rs` adapts the MIT `oxideav-mp3` implementation at the exact Git revision above,

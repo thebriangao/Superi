@@ -1,6 +1,8 @@
-//! `superi-codecs-platform`, opt-in OS backend for encumbered codecs (H.264/H.265/H.266/ProRes/AAC), MIT binding code only; enabled via the `os-codecs` feature in `superi-engine`. See `docs/codecs.md`.
+//! `superi-codecs-platform`, opt-in OS backends for encumbered codecs, enabled through the
+//! `os-codecs` feature in `superi-engine`. The macOS backend provides H.264, HEVC, ProRes, and AAC
+//! through Apple media frameworks. See `docs/codecs.md`.
 //!
-//! § 5.1 in `docs/architecture.md`. Depends on: superi-core, superi-image, superi-media-io. Status: skeleton.
+//! Section 5.1 in `docs/architecture.md`. Depends on: superi-core, superi-image, superi-media-io.
 
 pub mod media_foundation;
 pub mod register;
