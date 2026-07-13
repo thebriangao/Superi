@@ -34,7 +34,9 @@ fn platform_registrations() -> Result<Vec<BackendRegistration>> {
     return Ok(MediaFoundationBackend::registration()?
         .into_iter()
         .collect());
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(target_os = "linux")]
+    return Ok(crate::vaapi::registration()?.into_iter().collect());
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     Ok(Vec::new())
 }
 
@@ -64,4 +66,28 @@ fn ensure_backend_ids_available(
         }
     }
     Ok(())
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod linux_tests {
+    use super::*;
+
+    #[test]
+    fn live_probe_registers_at_most_one_truthful_vaapi_backend() {
+        let registrations = platform_registrations().unwrap();
+        assert!(registrations.len() <= 1);
+        if let Some(registration) = registrations.first() {
+            assert_eq!(
+                registration.backend().descriptor().id().as_str(),
+                "linux-vaapi"
+            );
+            assert!(!registration.capabilities().is_empty());
+        }
+    }
+
+    #[test]
+    fn live_probe_is_consumable_through_the_public_registry() {
+        let registry = platform_backend_registry().unwrap();
+        assert!(registry.registrations().count() <= 1);
+    }
 }

@@ -1,6 +1,6 @@
 //! `superi-codecs-platform`, opt-in OS backends for encumbered codecs, enabled through the
-//! `os-codecs` feature in `superi-engine`. The macOS and Windows backends provide H.264, HEVC,
-//! ProRes, and AAC through native media frameworks. See `docs/codecs.md`.
+//! `os-codecs` feature in `superi-engine`. The macOS, Windows, and Linux backends provide the
+//! codecs exposed by their installed native media frameworks. See `docs/codecs.md`.
 //!
 //! Section 5.1 in `docs/architecture.md`. Depends on: superi-core, superi-image, superi-media-io.
 

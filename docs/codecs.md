@@ -32,8 +32,9 @@ A genuinely usable professional editor, every row legal, MIT tree provably clean
 
 - **In-tree, all users (permissive, using pure Rust where mature):**
   AV1, VP9, VP8 · MP3, FLAC, Vorbis, Opus, PCM · EXR, DPX, PNG, JPEG, TIFF · MP4/MOV/MKV/MXF demux.
-- **OS opt-in (`os-codecs`), Mac + Windows:**
-  H.264, H.265, ProRes, AAC.
+- **OS opt-in (`os-codecs`), Mac + Windows + supported Linux VA drivers:**
+  H.264, H.265, ProRes, AAC. Linux currently covers H.264 and HEVC Main 8-bit decode plus H.264
+  opaque NV12 export when the installed VA driver exposes those operations.
 - **Later (post-launch):**
   H.266 (VVC), DNxHR, camera RAW (ARRIRAW / R3D / BRAW via vendor plugins).
 
@@ -47,7 +48,7 @@ This opens essentially everything a working editor sees day-to-day.
 |---|---|---|---|---|
 | **AV1** | delivery, modern web | royalty-free | in-tree: `rav1d` 1.0.0 decode + `rav1e` 0.7.1 encode (BSD-2-Clause, pure Rust) | all platforms |
 | **VP9 / VP8** | web / legacy | royalty-free | in-tree backend over official `libvpx` 1.16.0 (BSD-3-Clause) through a checked local FFI shim | all platforms when the pinned runtime is bundled |
-| **H.264 / H.265** | acquisition + delivery (bulk of footage) | encumbered | **OS**: VideoToolbox / Media Foundation | Mac + Windows ✓ · Linux gap |
+| **H.264 / H.265** | acquisition + delivery (bulk of footage) | encumbered | **OS**: VideoToolbox / Media Foundation / Linux VA-API | Mac and Windows system support; Linux H.264 and HEVC Main 8-bit support is driver-dependent |
 | **H.266 (VVC)** | emerging | encumbered | OS where present (installed-base support thin in 2026) | limited today |
 | **ProRes** | pro mezzanine / acquisition | Apple proprietary | **OS**: VideoToolbox on Mac; runtime-discovered Media Foundation transforms on Windows | Mac ✓ · Windows depends on installed MFTs · Linux gap |
 | **DNxHD / DNxHR** | broadcast intermediate | VC-3 is a SMPTE standard, cleaner than ProRes | TBD: possibly in-tree | `[VERIFY]` patent status |
@@ -217,6 +218,39 @@ NV12 and P010 conversion. Unsupported precision, GPU-only storage, and non-opaqu
 explicitly instead of changing media silently. Reset reconstructs codec state for predictable seek
 and relink replay, while flush drains the stream to a deterministic end-of-stream result.
 
+### Linux VA-API implementation contract
+
+The opt-in `linux-vaapi` backend uses `cros-codecs` 0.0.6 and `cros-libva` 0.0.12, both
+BSD-3-Clause, to parse compressed syntax and submit VA parameter buffers. The pixel decode and
+encode transform remains inside the user's installed VA driver. Superi does not ship a VA driver,
+software H.264 or HEVC transform, FFmpeg, GStreamer, or a native codec object through this path.
+The dependencies are Linux-targeted and enter the build only through the platform codec crate.
+
+Building the opt-in path requires the system development files for `libva`, `libva-drm`, DRM, GBM,
+Clang, and `pkg-config`. A Debian-family development environment can provide them with `libva-dev`,
+`libdrm-dev`, `libgbm-dev`, `clang`, and `pkg-config`. Runtime operation requires a readable and
+writable DRM render node plus a VA driver that exposes the requested profile and entrypoint.
+`SUPERI_VAAPI_RENDER_NODE` can select one absolute render-node path; otherwise nodes under
+`/dev/dri` are considered in stable lexical order.
+
+Registration is capability-based. A machine with no usable render node, GBM device, or supported
+profile registers no Linux platform backend, leaving normal registry selection and fallback intact.
+The current truthful surface is H.264 Baseline, Main, or High 8-bit decode, HEVC Main 8-bit decode,
+and H.264 opaque NV12 encode. HEVC Main10 is not advertised because the current public frame path
+does not describe the native high-bit-depth layout exactly. H.264 and HEVC alpha payloads are not
+supported and are rejected instead of discarded. H.264 export accepts CPU NV12 and frames returned
+by this VA backend. Declared color signaling on export is rejected until the native encoder can
+write the exact requested VUI fields.
+
+Native display, decoder, and encoder objects stay on dedicated worker threads. Decoded DMA-BUF
+owners cross the public media boundary without CPU readback. MP4 and Matroska AVC or HEVC decoder
+configuration records are converted to checked Annex B access units, while existing Annex B input
+passes through. Opaque tokens restore signed presentation timestamps, decode timestamps, exact
+durations, timebases, keyframe state, and metadata after native reordering. Flush drains delayed
+output, and reset clears timing, configuration, references, and queued output for predictable seek
+and relink replay. Native dependency panics are contained at the worker boundary and reported as
+typed unavailable errors instead of unwinding through editor code.
+
 ## 4. License policy
 
 Permissive-class allowlist, **zero copyleft**: MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0,
@@ -231,11 +265,11 @@ GPL/LGPL/AGPL **and MPL** (weak copyleft still counts).
 
 ## 5. Caveats & accepted tradeoffs
 
-1. **Linux is the encumbered-codec gap.** The OS path covers Mac + Windows (the large majority of
-   pros). Linux has no universal licensed OS codec layer (VA-API is hardware-accel, driver-dependent),
-   so H.264/H.265 there leans on *system-installed* libraries the user supplies, still their machine,
-   not our tree, but not automatic. "All users" is true for royalty-free; "most users" is the honest
-   word for encumbered.
+1. **Linux system-codec coverage remains driver-dependent.** Linux has no universal licensed OS
+   codec layer. The VA-API path leans on system-installed libraries and drivers the user supplies,
+   still their machine and not our tree. Supported H.264 and HEVC operations register only when the
+   active render node exposes them. "All users" is true for royalty-free codecs; "most users" is
+   the honest word for encumbered codecs.
 2. **C-via-FFI creeps back** for the Vorbis encoder, `libvpx`, and `libopus`. These are license-clean
    (BSD) and patent-clean (royalty-free), so they pass the rule, but they are C at an `unsafe`
    boundary, against the Rust-native *spirit*. Choose per codec: pure-Rust when mature (AV1 uses
