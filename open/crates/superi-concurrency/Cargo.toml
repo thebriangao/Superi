@@ -10,8 +10,10 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+crossbeam-queue = { workspace = true }
 superi-core = { path = "../superi-core" }
 superi-gpu = { path = "../superi-gpu" }
 
 [dev-dependencies]
 pollster = { workspace = true }
+superi-media-io = { path = "../superi-media-io" }

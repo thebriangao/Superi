@@ -24,6 +24,7 @@ undocumented_unsafe_blocks = "deny"
 [workspace.dependencies]
 thiserror = "2"
 tracing = "0.1"
+crossbeam-queue = "=0.3.13"
 bytemuck = "1"
 half = { version = "=2.4.1", default-features = false }
 exr = { version = "=1.73.0", default-features = false }
