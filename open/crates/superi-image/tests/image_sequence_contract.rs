@@ -1,11 +1,24 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
+use superi_core::color_space::ColorSpace;
 use superi_core::error::{ErrorCategory, Recoverability};
-use superi_image::sequence::{
-    ImageSequenceManifest, ImageSequencePattern, MissingFramePolicy, SequenceSubstitution,
+use superi_core::geometry::PixelBounds;
+use superi_core::ids::MediaId;
+use superi_core::pixel::AlphaMode;
+use superi_image::channels::ChannelList;
+use superi_image::io::{ReadOptions, StillImage, WriteOptions};
+use superi_image::model::{
+    ByteAlignment, ChannelSlice, ChannelStorageLayout, ImageStorage, StoragePlane,
 };
+use superi_image::sequence::{
+    ImageSequenceManifest, ImageSequencePattern, ImageSequenceReader, ImageSequenceWriter,
+    MissingFramePolicy, SequenceSubstitution,
+};
+use superi_image::tiling::{ImageAccess, ImageAccessDescriptor, ImageSequencePosition};
+use superi_image::value::ImageSampleType;
 
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 
@@ -38,6 +51,37 @@ impl Drop for TemporaryDirectory {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);
     }
+}
+
+fn rgba16_image(samples: [u16; 8]) -> StillImage {
+    let bounds = PixelBounds::from_origin_size(0, 0, 2, 1).unwrap();
+    rgba16_image_with_bounds(bounds, samples)
+}
+
+fn rgba16_image_with_bounds(bounds: PixelBounds, samples: [u16; 8]) -> StillImage {
+    let descriptor = ImageAccessDescriptor::new(
+        bounds,
+        bounds,
+        ChannelList::from_full_names(["R", "G", "B", "A"]).unwrap(),
+        vec![ImageSampleType::U16; 4],
+        ColorSpace::SRGB,
+        AlphaMode::Straight,
+    )
+    .unwrap();
+    let bytes = samples
+        .into_iter()
+        .flat_map(u16::to_ne_bytes)
+        .collect::<Vec<_>>();
+    let storage = ImageStorage::new(
+        bounds,
+        ChannelStorageLayout::Interleaved,
+        vec![StoragePlane::new(Arc::from(bytes), 0, 16, ByteAlignment::new(2).unwrap()).unwrap()],
+        (0..4)
+            .map(|channel| ChannelSlice::new(0, channel * 2, 2, 8).unwrap())
+            .collect(),
+    )
+    .unwrap();
+    StillImage::from_access(ImageAccess::from_scanline(descriptor, storage).unwrap())
 }
 
 #[test]
@@ -237,4 +281,223 @@ fn discovery_rejects_zero_steps_missing_directories_and_out_of_range_addresses()
             .category(),
         ErrorCategory::InvalidInput
     );
+}
+
+#[test]
+fn concrete_sequence_write_discover_and_read_preserve_semantics_and_requested_identity() {
+    fn assert_send<T: Send>() {}
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send::<ImageSequenceWriter>();
+    assert_send_sync::<ImageSequenceReader>();
+    assert_send_sync::<ImageSequenceManifest>();
+
+    let directory = TemporaryDirectory::new("real-io");
+    let pattern =
+        ImageSequencePattern::new(directory.path().to_path_buf(), "plate.", ".png", 4).unwrap();
+    let first_image = rgba16_image([0, 1, 2, u16::MAX, 3, 4, 5, 32_768]);
+    let middle_image = rgba16_image([6, 7, 8, u16::MAX, 9, 10, 11, u16::MAX]);
+    let last_image = rgba16_image([12, 13, 14, u16::MAX, 15, 16, 17, u16::MAX]);
+    let mut writer =
+        ImageSequenceWriter::new(pattern.clone(), 1001, 1, WriteOptions::default()).unwrap();
+
+    let first = writer.write_image(&first_image).unwrap();
+    assert_eq!(first.image_number(), 0);
+    assert_eq!(first.file_frame_number(), 1001);
+    assert_eq!(
+        first.path(),
+        Some(pattern.path_for_frame(1001).unwrap().as_path())
+    );
+    writer.write_image(&middle_image).unwrap();
+    writer.write_image(&last_image).unwrap();
+    assert_eq!(writer.frames_written(), 3);
+
+    fs::remove_file(pattern.path_for_frame(1002).unwrap()).unwrap();
+    let manifest =
+        ImageSequenceManifest::discover(pattern.path_for_frame(1001).unwrap(), 1).unwrap();
+    assert_eq!(manifest.missing_frame_numbers(), &[1002]);
+    let media_id = MediaId::from_raw(404);
+
+    let exact_reader = ImageSequenceReader::new(
+        manifest.clone(),
+        media_id,
+        MissingFramePolicy::Error,
+        ReadOptions::default(),
+    );
+    let exact = exact_reader.read_image(0).unwrap();
+    assert_eq!(exact.substitution(), SequenceSubstitution::None);
+    assert_eq!(exact.source_frame_number(), Some(1001));
+    let exact_access = exact.image().single_access().unwrap();
+    assert_eq!(
+        exact_access.descriptor().sequence_position(),
+        Some(ImageSequencePosition::new(media_id, 0))
+    );
+    assert_eq!(
+        exact_access.scanline_storage().unwrap(),
+        first_image
+            .single_access()
+            .unwrap()
+            .scanline_storage()
+            .unwrap()
+    );
+    assert_eq!(
+        exact_access.descriptor().channels(),
+        first_image.single_access().unwrap().descriptor().channels()
+    );
+    assert_eq!(
+        exact_access.descriptor().sample_types(),
+        first_image
+            .single_access()
+            .unwrap()
+            .descriptor()
+            .sample_types()
+    );
+    assert_eq!(exact_access.descriptor().alpha_mode(), AlphaMode::Straight);
+
+    let hold_reader = ImageSequenceReader::new(
+        manifest,
+        media_id,
+        MissingFramePolicy::Hold,
+        ReadOptions::default(),
+    );
+    let held = hold_reader.read_image(1).unwrap();
+    assert_eq!(held.requested().file_frame_number(), 1002);
+    assert_eq!(held.source_frame_number(), Some(1001));
+    assert_eq!(held.substitution(), SequenceSubstitution::Hold);
+    assert_eq!(
+        held.image()
+            .single_access()
+            .unwrap()
+            .descriptor()
+            .sequence_position(),
+        Some(ImageSequencePosition::new(media_id, 1))
+    );
+    assert_eq!(
+        held.image()
+            .single_access()
+            .unwrap()
+            .scanline_storage()
+            .unwrap(),
+        exact_access.scanline_storage().unwrap()
+    );
+}
+
+#[test]
+fn black_policy_generates_opaque_black_without_changing_image_representation() {
+    let directory = TemporaryDirectory::new("black-io");
+    let pattern =
+        ImageSequencePattern::new(directory.path().to_path_buf(), "comp.", ".png", 4).unwrap();
+    let image = rgba16_image([10, 20, 30, 40, 50, 60, 70, 80]);
+    let mut writer =
+        ImageSequenceWriter::new(pattern.clone(), 1, 1, WriteOptions::default()).unwrap();
+    writer.write_image(&image).unwrap();
+    writer.write_image(&image).unwrap();
+    writer.write_image(&image).unwrap();
+    fs::remove_file(pattern.path_for_frame(2).unwrap()).unwrap();
+
+    let manifest = ImageSequenceManifest::discover(pattern.path_for_frame(1).unwrap(), 1).unwrap();
+    let reader = ImageSequenceReader::new(
+        manifest,
+        MediaId::from_raw(505),
+        MissingFramePolicy::Black,
+        ReadOptions::default(),
+    );
+    let reference = reader.read_image(0).unwrap();
+    let black = reader.read_image(1).unwrap();
+    assert_eq!(black.substitution(), SequenceSubstitution::Black);
+    assert_eq!(black.source_frame_number(), None);
+    let access = black.image().single_access().unwrap();
+    assert_eq!(
+        access.organization(),
+        image.single_access().unwrap().organization()
+    );
+    assert_eq!(
+        access.descriptor().channels(),
+        image.single_access().unwrap().descriptor().channels()
+    );
+    assert_eq!(
+        access.descriptor().sample_types(),
+        &[ImageSampleType::U16; 4]
+    );
+    assert_eq!(access.descriptor().alpha_mode(), AlphaMode::Straight);
+    assert_eq!(
+        access.descriptor().data_window(),
+        image.single_access().unwrap().descriptor().data_window()
+    );
+    assert_eq!(
+        access.descriptor().display_window(),
+        image.single_access().unwrap().descriptor().display_window()
+    );
+    assert_eq!(
+        access.descriptor().color_tags(),
+        reference
+            .image()
+            .single_access()
+            .unwrap()
+            .descriptor()
+            .color_tags()
+    );
+    assert_eq!(
+        access.descriptor().metadata(),
+        reference
+            .image()
+            .single_access()
+            .unwrap()
+            .descriptor()
+            .metadata()
+    );
+    assert_eq!(
+        access.descriptor().sequence_position(),
+        Some(ImageSequencePosition::new(MediaId::from_raw(505), 1))
+    );
+    let storage = access.scanline_storage().unwrap();
+    for y in storage.bounds().min_y()..storage.bounds().max_y() {
+        for x in storage.bounds().min_x()..storage.bounds().max_x() {
+            for channel in 0..3 {
+                assert_eq!(storage.sample_bytes(channel, x, y), Some(&[0, 0][..]));
+            }
+            assert_eq!(
+                storage.sample_bytes(3, x, y),
+                Some(&u16::MAX.to_ne_bytes()[..])
+            );
+        }
+    }
+}
+
+#[test]
+fn sequence_writer_refuses_existing_frames_and_only_advances_after_publish() {
+    let directory = TemporaryDirectory::new("collision");
+    let pattern =
+        ImageSequencePattern::new(directory.path().to_path_buf(), "render.", ".png", 4).unwrap();
+    directory.touch("render.0001.png");
+    let mut writer = ImageSequenceWriter::new(pattern, 1, 1, WriteOptions::default()).unwrap();
+
+    let error = writer.write_image(&rgba16_image([0; 8])).unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::Conflict);
+    assert_eq!(error.recoverability(), Recoverability::UserCorrectable);
+    assert_eq!(writer.frames_written(), 0);
+}
+
+#[test]
+fn failed_sequence_encode_cleans_temporary_data_and_can_retry_the_same_number() {
+    let directory = TemporaryDirectory::new("encode-retry");
+    let pattern =
+        ImageSequencePattern::new(directory.path().to_path_buf(), "retry.", ".png", 4).unwrap();
+    let mut writer =
+        ImageSequenceWriter::new(pattern.clone(), 1, 1, WriteOptions::default()).unwrap();
+    let signed_bounds = PixelBounds::from_origin_size(-1, 0, 2, 1).unwrap();
+    let unsupported = rgba16_image_with_bounds(signed_bounds, [0; 8]);
+
+    let error = writer.write_image(&unsupported).unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::Unsupported);
+    assert_eq!(writer.frames_written(), 0);
+    assert!(fs::read_dir(directory.path()).unwrap().next().is_none());
+
+    let written = writer.write_image(&rgba16_image([0; 8])).unwrap();
+    assert_eq!(written.image_number(), 0);
+    assert_eq!(written.file_frame_number(), 1);
+    assert_eq!(
+        written.path(),
+        Some(pattern.path_for_frame(1).unwrap().as_path())
+    );
+    assert_eq!(writer.frames_written(), 1);
 }

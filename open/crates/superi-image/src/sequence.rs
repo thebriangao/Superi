@@ -6,13 +6,27 @@
 //! callers never have to infer editorial timing from directory enumeration.
 
 use std::collections::BTreeMap;
-use std::fs;
-use std::io;
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
+use half::f16;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
+use superi_core::ids::MediaId;
+
+use crate::channels::StandardChannel;
+use crate::io::{
+    read_path, write as write_still_image, ReadOptions, StillImage, StillImageFormat,
+    StillImageLayer, WriteOptions,
+};
+use crate::model::{ImageStorage, StoragePlane};
+use crate::tiling::{ImageAccess, ImageOrganization, ImageSequencePosition, ImageTile};
+use crate::value::ImageSampleType;
 
 const COMPONENT: &str = "superi-image.sequence";
+static NEXT_TEMPORARY_FILE: AtomicU64 = AtomicU64::new(0);
 
 /// A filesystem filename pattern with one signed decimal frame number.
 ///
@@ -645,6 +659,566 @@ impl ResolvedSequenceFrame {
     }
 }
 
+/// A decoded image together with requested and concrete sequence identity.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SequenceImage {
+    requested: ImageSequenceFrame,
+    source_frame_number: Option<i64>,
+    substitution: SequenceSubstitution,
+    image: StillImage,
+}
+
+impl SequenceImage {
+    /// Returns the requested logical and file-frame coordinates.
+    #[must_use]
+    pub const fn requested(&self) -> &ImageSequenceFrame {
+        &self.requested
+    }
+
+    /// Returns the concrete file-frame label read for exact or held images.
+    #[must_use]
+    pub const fn source_frame_number(&self) -> Option<i64> {
+        self.source_frame_number
+    }
+
+    /// Returns the applied substitution behavior.
+    #[must_use]
+    pub const fn substitution(&self) -> SequenceSubstitution {
+        self.substitution
+    }
+
+    /// Returns the decoded image with the requested logical sequence position.
+    #[must_use]
+    pub const fn image(&self) -> &StillImage {
+        &self.image
+    }
+
+    /// Consumes the result and returns the decoded image.
+    #[must_use]
+    pub fn into_image(self) -> StillImage {
+        self.image
+    }
+}
+
+/// Filesystem sequence reader with explicit project identity and gap behavior.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ImageSequenceReader {
+    manifest: ImageSequenceManifest,
+    media_id: MediaId,
+    missing_frame_policy: MissingFramePolicy,
+    read_options: ReadOptions,
+}
+
+impl ImageSequenceReader {
+    /// Creates a reader over an immutable discovery snapshot.
+    #[must_use]
+    pub const fn new(
+        manifest: ImageSequenceManifest,
+        media_id: MediaId,
+        missing_frame_policy: MissingFramePolicy,
+        read_options: ReadOptions,
+    ) -> Self {
+        Self {
+            manifest,
+            media_id,
+            missing_frame_policy,
+            read_options,
+        }
+    }
+
+    /// Returns the immutable discovery snapshot.
+    #[must_use]
+    pub const fn manifest(&self) -> &ImageSequenceManifest {
+        &self.manifest
+    }
+
+    /// Returns the stable project media identity attached to decoded images.
+    #[must_use]
+    pub const fn media_id(&self) -> MediaId {
+        self.media_id
+    }
+
+    /// Returns the configured missing-frame behavior.
+    #[must_use]
+    pub const fn missing_frame_policy(&self) -> MissingFramePolicy {
+        self.missing_frame_policy
+    }
+
+    /// Reads one logical image through concrete still-image I/O.
+    pub fn read_image(&self, image_number: u64) -> Result<SequenceImage> {
+        let resolved = self
+            .manifest
+            .resolve(image_number, self.missing_frame_policy)?;
+        let position = ImageSequencePosition::new(self.media_id, image_number);
+        let options = self.read_options.with_sequence_position(position);
+        let path = resolved
+            .read_path()
+            .or_else(|| resolved.reference_path())
+            .expect("resolved sequence image has a read or reference path");
+        let mut image = read_path(path, &options).map_err(|error| {
+            error.with_context(sequence_frame_context(
+                "read_sequence_image",
+                resolved.requested(),
+                path,
+            ))
+        })?;
+        if resolved.substitution == SequenceSubstitution::Black {
+            image = black_still_image(&image).map_err(|error| {
+                error.with_context(sequence_frame_context(
+                    "build_black_sequence_image",
+                    resolved.requested(),
+                    path,
+                ))
+            })?;
+        }
+        Ok(SequenceImage {
+            requested: resolved.requested,
+            source_frame_number: resolved.source_frame_number,
+            substitution: resolved.substitution,
+            image,
+        })
+    }
+}
+
+/// Collision-safe sequential filesystem image writer.
+#[derive(Debug)]
+pub struct ImageSequenceWriter {
+    pattern: ImageSequencePattern,
+    first_frame_number: i64,
+    frame_step: u32,
+    format: StillImageFormat,
+    write_options: WriteOptions,
+    frames_written: u64,
+}
+
+impl ImageSequenceWriter {
+    /// Creates a writer and ensures its destination directory exists.
+    pub fn new(
+        pattern: ImageSequencePattern,
+        first_frame_number: i64,
+        frame_step: u32,
+        write_options: WriteOptions,
+    ) -> Result<Self> {
+        require_step(frame_step)?;
+        let first_path = pattern.path_for_frame(first_frame_number)?;
+        let format = first_path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .and_then(StillImageFormat::from_extension)
+            .ok_or_else(|| {
+                unsupported(
+                    "create_sequence_writer",
+                    "image sequence output has an unsupported or missing still-image extension",
+                )
+                .with_context(pattern_context("infer_sequence_format", &pattern))
+            })?;
+        let directory = if pattern.directory().as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            pattern.directory()
+        };
+        fs::create_dir_all(directory)
+            .map_err(|error| filesystem_error("create_sequence_directory", directory, error))?;
+        if !fs::metadata(directory)
+            .map_err(|error| filesystem_error("inspect_sequence_directory", directory, error))?
+            .is_dir()
+        {
+            return Err(invalid_with_path(
+                "create_sequence_writer",
+                "image sequence output parent is not a directory",
+                directory,
+            ));
+        }
+        Ok(Self {
+            pattern,
+            first_frame_number,
+            frame_step,
+            format,
+            write_options,
+            frames_written: 0,
+        })
+    }
+
+    /// Returns the immutable output filename pattern.
+    #[must_use]
+    pub const fn pattern(&self) -> &ImageSequencePattern {
+        &self.pattern
+    }
+
+    /// Returns the signed label assigned to logical image zero.
+    #[must_use]
+    pub const fn first_frame_number(&self) -> i64 {
+        self.first_frame_number
+    }
+
+    /// Returns the positive difference between adjacent output labels.
+    #[must_use]
+    pub const fn frame_step(&self) -> u32 {
+        self.frame_step
+    }
+
+    /// Returns the concrete still-image representation inferred from the suffix.
+    #[must_use]
+    pub const fn format(&self) -> StillImageFormat {
+        self.format
+    }
+
+    /// Returns the number of frames durably published by this session.
+    #[must_use]
+    pub const fn frames_written(&self) -> u64 {
+        self.frames_written
+    }
+
+    /// Writes and atomically publishes the next numbered image.
+    ///
+    /// Existing destination files are never replaced. A failed encode or
+    /// publish leaves the logical position unchanged so the caller can retry.
+    pub fn write_image(&mut self, image: &StillImage) -> Result<ImageSequenceFrame> {
+        let next_frames_written = self.frames_written.checked_add(1).ok_or_else(|| {
+            exhausted(
+                "write_sequence_image",
+                "image sequence logical number is exhausted",
+            )
+        })?;
+        let frame_number = checked_frame_number(
+            self.first_frame_number,
+            self.frame_step,
+            self.frames_written,
+            "write_sequence_image",
+        )?;
+        let final_path = self.pattern.path_for_frame(frame_number)?;
+        match fs::symlink_metadata(&final_path) {
+            Ok(_) => {
+                return Err(output_collision(
+                    "write_sequence_image",
+                    "image sequence destination already exists",
+                    &final_path,
+                    self.frames_written,
+                    frame_number,
+                ))
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(filesystem_error(
+                    "inspect_sequence_destination",
+                    &final_path,
+                    error,
+                ))
+            }
+        }
+
+        let (temporary_path, file) = create_temporary_file(&final_path)?;
+        let encode_result = encode_temporary_image(
+            file,
+            self.format,
+            image,
+            &self.write_options,
+            &temporary_path,
+        );
+        if let Err(error) = encode_result {
+            let _ = fs::remove_file(&temporary_path);
+            return Err(error.with_context(sequence_output_context(
+                "write_sequence_image",
+                &final_path,
+                self.frames_written,
+                frame_number,
+            )));
+        }
+
+        if let Err(error) = fs::hard_link(&temporary_path, &final_path) {
+            let _ = fs::remove_file(&temporary_path);
+            if error.kind() == io::ErrorKind::AlreadyExists {
+                return Err(output_collision(
+                    "publish_sequence_image",
+                    "image sequence destination appeared while publishing",
+                    &final_path,
+                    self.frames_written,
+                    frame_number,
+                ));
+            }
+            return Err(
+                filesystem_error("publish_sequence_image", &final_path, error).with_context(
+                    sequence_output_context(
+                        "publish_sequence_image",
+                        &final_path,
+                        self.frames_written,
+                        frame_number,
+                    ),
+                ),
+            );
+        }
+        let _ = fs::remove_file(&temporary_path);
+        let image_number = self.frames_written;
+        self.frames_written = next_frames_written;
+        Ok(ImageSequenceFrame {
+            image_number,
+            file_frame_number: frame_number,
+            path: Some(final_path),
+        })
+    }
+}
+
+fn black_still_image(source: &StillImage) -> Result<StillImage> {
+    let mut layers = Vec::new();
+    layers
+        .try_reserve_exact(source.layers().len())
+        .map_err(|error| {
+            Error::with_source(
+                ErrorCategory::ResourceExhausted,
+                Recoverability::UserCorrectable,
+                "black image layer allocation failed",
+                error,
+            )
+            .with_context(ErrorContext::new(COMPONENT, "build_black_sequence_image"))
+        })?;
+    for layer in source.layers() {
+        layers.push(StillImageLayer::new(
+            layer.name().map(str::to_owned),
+            black_access(layer.access())?,
+        )?);
+    }
+    StillImage::new(layers)
+}
+
+fn black_access(source: &ImageAccess) -> Result<ImageAccess> {
+    let descriptor = source.descriptor().clone();
+    match source.organization() {
+        ImageOrganization::Scanline => ImageAccess::from_scanline(
+            descriptor,
+            black_storage(
+                source
+                    .scanline_storage()
+                    .expect("scanline image has scanline storage"),
+                source,
+            )?,
+        ),
+        ImageOrganization::Tiled => {
+            let mut output_tiles = Vec::new();
+            for level in source.levels() {
+                for tile in source.tiles(level)? {
+                    output_tiles.push(ImageTile::new(
+                        tile.level(),
+                        tile.index(),
+                        black_storage(tile.storage(), source)?,
+                    ));
+                }
+            }
+            ImageAccess::tiled(
+                descriptor,
+                source
+                    .tile_description()
+                    .expect("tiled image has a tile description"),
+                output_tiles,
+            )
+        }
+    }
+}
+
+fn black_storage(storage: &ImageStorage, access: &ImageAccess) -> Result<ImageStorage> {
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(storage.planes().len())
+        .map_err(|error| {
+            Error::with_source(
+                ErrorCategory::ResourceExhausted,
+                Recoverability::UserCorrectable,
+                "black image plane allocation failed",
+                error,
+            )
+            .with_context(ErrorContext::new(COMPONENT, "build_black_storage"))
+        })?;
+    for plane in storage.planes() {
+        let mut plane_bytes = Vec::new();
+        plane_bytes
+            .try_reserve_exact(plane.bytes().len())
+            .map_err(|error| {
+                Error::with_source(
+                    ErrorCategory::ResourceExhausted,
+                    Recoverability::UserCorrectable,
+                    "black image byte allocation failed",
+                    error,
+                )
+                .with_context(ErrorContext::new(COMPONENT, "build_black_storage"))
+            })?;
+        plane_bytes.resize(plane.bytes().len(), 0);
+        bytes.push(plane_bytes);
+    }
+    let descriptor = access.descriptor();
+    let bounds = storage.bounds();
+    let width = usize::try_from(bounds.width()).map_err(|_| {
+        exhausted(
+            "build_black_storage",
+            "black image width exceeds platform capacity",
+        )
+    })?;
+    let height = usize::try_from(bounds.height()).map_err(|_| {
+        exhausted(
+            "build_black_storage",
+            "black image height exceeds platform capacity",
+        )
+    })?;
+    for (channel_index, channel) in storage.channels().iter().copied().enumerate() {
+        let name = descriptor
+            .channels()
+            .get(crate::channels::ChannelIndex::new(channel_index))
+            .expect("validated storage and descriptor channels match");
+        if !matches!(
+            name.standard(),
+            Some(
+                StandardChannel::Alpha
+                    | StandardChannel::RedAlpha
+                    | StandardChannel::GreenAlpha
+                    | StandardChannel::BlueAlpha
+            )
+        ) {
+            continue;
+        }
+        let sample_type = descriptor
+            .sample_type(crate::channels::ChannelIndex::new(channel_index))
+            .expect("validated descriptor channel has a sample type");
+        let opaque = opaque_sample_bytes(sample_type)?;
+        if opaque.len() != channel.sample_bytes() {
+            return Err(internal(
+                "build_black_storage",
+                "alpha sample representation does not match its storage slice",
+            ));
+        }
+        let plane = storage
+            .planes()
+            .get(channel.plane_index())
+            .expect("validated channel plane exists");
+        let output = bytes
+            .get_mut(channel.plane_index())
+            .expect("validated output plane exists");
+        for y in 0..height {
+            for x in 0..width {
+                let start = plane
+                    .origin()
+                    .checked_add(y.checked_mul(plane.row_stride()).ok_or_else(|| {
+                        exhausted("build_black_storage", "black image row offset overflowed")
+                    })?)
+                    .and_then(|offset| {
+                        x.checked_mul(channel.pixel_stride())
+                            .and_then(|x_offset| offset.checked_add(x_offset))
+                    })
+                    .and_then(|offset| offset.checked_add(channel.byte_offset()))
+                    .ok_or_else(|| {
+                        exhausted(
+                            "build_black_storage",
+                            "black image sample offset overflowed",
+                        )
+                    })?;
+                let end = start.checked_add(opaque.len()).ok_or_else(|| {
+                    exhausted("build_black_storage", "black image sample range overflowed")
+                })?;
+                let target = output.get_mut(start..end).ok_or_else(|| {
+                    internal(
+                        "build_black_storage",
+                        "validated black image sample range is outside its plane",
+                    )
+                })?;
+                target.copy_from_slice(&opaque);
+            }
+        }
+    }
+    let planes = storage
+        .planes()
+        .iter()
+        .zip(bytes)
+        .map(|(source, bytes)| {
+            StoragePlane::new(
+                Arc::from(bytes),
+                source.origin(),
+                source.row_stride(),
+                source.row_alignment(),
+            )
+        })
+        .collect::<Result<Vec<_>>>()?;
+    ImageStorage::new(
+        storage.bounds(),
+        storage.layout(),
+        planes,
+        storage.channels().to_vec(),
+    )
+}
+
+fn opaque_sample_bytes(sample_type: ImageSampleType) -> Result<Vec<u8>> {
+    let bytes = match sample_type {
+        ImageSampleType::U8 => vec![u8::MAX],
+        ImageSampleType::U16 => u16::MAX.to_ne_bytes().to_vec(),
+        ImageSampleType::U32 => u32::MAX.to_ne_bytes().to_vec(),
+        ImageSampleType::F16 => f16::from_f32(1.0).to_bits().to_ne_bytes().to_vec(),
+        ImageSampleType::F32 => 1.0_f32.to_bits().to_ne_bytes().to_vec(),
+        _ => {
+            return Err(unsupported(
+                "build_black_storage",
+                "black image generation does not support this alpha sample representation",
+            ))
+        }
+    };
+    Ok(bytes)
+}
+
+fn create_temporary_file(final_path: &Path) -> Result<(PathBuf, File)> {
+    let directory = final_path.parent().unwrap_or_else(|| Path::new("."));
+    let file_name = final_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            invalid_with_path(
+                "create_sequence_temporary_file",
+                "image sequence output filename must be UTF-8",
+                final_path,
+            )
+        })?;
+    for _ in 0..64 {
+        let serial = NEXT_TEMPORARY_FILE.fetch_add(1, Ordering::Relaxed);
+        let temporary_path = directory.join(format!(
+            ".{file_name}.superi-{}-{serial}.tmp",
+            std::process::id()
+        ));
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary_path)
+        {
+            Ok(file) => return Ok((temporary_path, file)),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(filesystem_error(
+                    "create_sequence_temporary_file",
+                    &temporary_path,
+                    error,
+                ))
+            }
+        }
+    }
+    Err(Error::new(
+        ErrorCategory::Conflict,
+        Recoverability::Retryable,
+        "could not reserve a unique image sequence temporary file",
+    )
+    .with_context(path_context("create_sequence_temporary_file", final_path)))
+}
+
+fn encode_temporary_image(
+    file: File,
+    format: StillImageFormat,
+    image: &StillImage,
+    options: &WriteOptions,
+    path: &Path,
+) -> Result<()> {
+    let mut writer = BufWriter::new(file);
+    write_still_image(&mut writer, format, image, options)?;
+    writer
+        .flush()
+        .map_err(|error| filesystem_error("flush_sequence_image", path, error))?;
+    writer
+        .get_ref()
+        .sync_all()
+        .map_err(|error| filesystem_error("sync_sequence_image", path, error))
+}
+
 fn scan_pattern(pattern: &ImageSequencePattern) -> Result<BTreeMap<i64, PathBuf>> {
     let directory = if pattern.directory().as_os_str().is_empty() {
         Path::new(".")
@@ -793,6 +1367,40 @@ fn exhausted(operation: &'static str, message: &'static str) -> Error {
     .with_context(ErrorContext::new(COMPONENT, operation))
 }
 
+fn unsupported(operation: &'static str, message: &'static str) -> Error {
+    Error::new(
+        ErrorCategory::Unsupported,
+        Recoverability::UserCorrectable,
+        message,
+    )
+    .with_context(ErrorContext::new(COMPONENT, operation))
+}
+
+fn internal(operation: &'static str, message: &'static str) -> Error {
+    Error::new(ErrorCategory::Internal, Recoverability::Terminal, message)
+        .with_context(ErrorContext::new(COMPONENT, operation))
+}
+
+fn output_collision(
+    operation: &'static str,
+    message: &'static str,
+    path: &Path,
+    image_number: u64,
+    frame_number: i64,
+) -> Error {
+    Error::new(
+        ErrorCategory::Conflict,
+        Recoverability::UserCorrectable,
+        message,
+    )
+    .with_context(sequence_output_context(
+        operation,
+        path,
+        image_number,
+        frame_number,
+    ))
+}
+
 fn path_context(operation: &'static str, path: &Path) -> ErrorContext {
     ErrorContext::new(COMPONENT, operation).with_field("path", path.display().to_string())
 }
@@ -803,6 +1411,29 @@ fn pattern_context(operation: &'static str, pattern: &ImageSequencePattern) -> E
         .with_field("prefix", pattern.prefix.clone())
         .with_field("suffix", pattern.suffix.clone())
         .with_field("zero_padding", pattern.zero_padding.to_string())
+}
+
+fn sequence_frame_context(
+    operation: &'static str,
+    frame: &ImageSequenceFrame,
+    path: &Path,
+) -> ErrorContext {
+    ErrorContext::new(COMPONENT, operation)
+        .with_field("image_number", frame.image_number.to_string())
+        .with_field("file_frame", frame.file_frame_number.to_string())
+        .with_field("path", path.display().to_string())
+}
+
+fn sequence_output_context(
+    operation: &'static str,
+    path: &Path,
+    image_number: u64,
+    frame_number: i64,
+) -> ErrorContext {
+    ErrorContext::new(COMPONENT, operation)
+        .with_field("image_number", image_number.to_string())
+        .with_field("file_frame", frame_number.to_string())
+        .with_field("path", path.display().to_string())
 }
 
 fn filesystem_error(operation: &'static str, path: &Path, source: io::Error) -> Error {
