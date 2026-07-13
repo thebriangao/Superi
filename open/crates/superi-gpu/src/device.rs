@@ -1,7 +1,11 @@
 //! Native wgpu adapter discovery, selection, capability reporting, and device creation.
 
+use std::collections::VecDeque;
 use std::fmt;
-use std::sync::Arc;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::task::{Context, Poll, Waker};
 
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 
@@ -602,6 +606,7 @@ impl SelectedAdapter {
             queue,
             device,
             identity: Arc::new(()),
+            error_scope_gate: ErrorScopeGate::default(),
         })
     }
 }
@@ -694,6 +699,7 @@ pub struct GpuDevice {
     queue: wgpu::Queue,
     device: wgpu::Device,
     identity: Arc<()>,
+    error_scope_gate: ErrorScopeGate,
 }
 
 impl fmt::Debug for GpuDevice {
@@ -745,6 +751,10 @@ impl GpuDevice {
         &self.raw_adapter
     }
 
+    pub(crate) fn lock_error_scopes(&self) -> ErrorScopeLockFuture<'_> {
+        self.error_scope_gate.lock()
+    }
+
     pub(crate) const fn identity(&self) -> &Arc<()> {
         &self.identity
     }
@@ -764,6 +774,126 @@ impl GpuDevice {
         I: IntoIterator<Item = wgpu::CommandBuffer>,
     {
         self.queue.submit(command_buffers);
+    }
+}
+
+#[derive(Debug, Default)]
+struct ErrorScopeGate {
+    state: Mutex<ErrorScopeGateState>,
+}
+
+impl ErrorScopeGate {
+    fn lock(&self) -> ErrorScopeLockFuture<'_> {
+        ErrorScopeLockFuture {
+            gate: self,
+            waiter_id: None,
+        }
+    }
+
+    fn state(&self) -> MutexGuard<'_, ErrorScopeGateState> {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+#[derive(Debug, Default)]
+struct ErrorScopeGateState {
+    locked: bool,
+    next_waiter: u64,
+    waiters: VecDeque<ErrorScopeWaiter>,
+}
+
+#[derive(Debug)]
+struct ErrorScopeWaiter {
+    id: u64,
+    waker: Waker,
+}
+
+pub(crate) struct ErrorScopeLockFuture<'a> {
+    gate: &'a ErrorScopeGate,
+    waiter_id: Option<u64>,
+}
+
+impl<'a> Future for ErrorScopeLockFuture<'a> {
+    type Output = ErrorScopeGuard<'a>;
+
+    fn poll(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+        let mut state = this.gate.state();
+        if let Some(waiter_id) = this.waiter_id {
+            let is_front = state.waiters.front().map(|waiter| waiter.id) == Some(waiter_id);
+            if !state.locked && is_front {
+                state.waiters.pop_front();
+                state.locked = true;
+                this.waiter_id = None;
+                return Poll::Ready(ErrorScopeGuard { gate: this.gate });
+            }
+            if let Some(waiter) = state
+                .waiters
+                .iter_mut()
+                .find(|waiter| waiter.id == waiter_id)
+            {
+                if !waiter.waker.will_wake(context.waker()) {
+                    waiter.waker = context.waker().clone();
+                }
+            }
+            return Poll::Pending;
+        }
+
+        if !state.locked && state.waiters.is_empty() {
+            state.locked = true;
+            return Poll::Ready(ErrorScopeGuard { gate: this.gate });
+        }
+
+        let waiter_id = state.next_waiter;
+        state.next_waiter = state.next_waiter.wrapping_add(1);
+        state.waiters.push_back(ErrorScopeWaiter {
+            id: waiter_id,
+            waker: context.waker().clone(),
+        });
+        this.waiter_id = Some(waiter_id);
+        Poll::Pending
+    }
+}
+
+impl Drop for ErrorScopeLockFuture<'_> {
+    fn drop(&mut self) {
+        let Some(waiter_id) = self.waiter_id else {
+            return;
+        };
+        let mut state = self.gate.state();
+        let was_front = state.waiters.front().map(|waiter| waiter.id) == Some(waiter_id);
+        if let Some(position) = state
+            .waiters
+            .iter()
+            .position(|waiter| waiter.id == waiter_id)
+        {
+            state.waiters.remove(position);
+        }
+        let wake = (!state.locked && was_front)
+            .then(|| state.waiters.front().map(|waiter| waiter.waker.clone()))
+            .flatten();
+        drop(state);
+        if let Some(waker) = wake {
+            waker.wake();
+        }
+    }
+}
+
+pub(crate) struct ErrorScopeGuard<'a> {
+    gate: &'a ErrorScopeGate,
+}
+
+impl Drop for ErrorScopeGuard<'_> {
+    fn drop(&mut self) {
+        let mut state = self.gate.state();
+        state.locked = false;
+        let wake = state.waiters.front().map(|waiter| waiter.waker.clone());
+        drop(state);
+        if let Some(waker) = wake {
+            waker.wake();
+        }
     }
 }
 

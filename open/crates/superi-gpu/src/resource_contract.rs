@@ -1,10 +1,13 @@
-use std::num::NonZeroU64;
+use std::num::{NonZeroU64, NonZeroUsize};
 use std::sync::mpsc;
 
 use crate::binding::{GpuBindGroupDescriptor, GpuBindGroupEntry, GpuPipelineLayoutDescriptor};
 use crate::device::{AdapterSelection, DeviceRequest, GpuDevice, GpuInstance, InstanceOptions};
-use crate::pipeline::{GpuComputePipelineDescriptor, GpuRenderPipelineDescriptor};
+use crate::pipeline::{
+    GpuComputePipelineDescriptor, GpuFragmentState, GpuRenderPipelineDescriptor, GpuVertexState,
+};
 use crate::resource::{GpuResourceKind, GpuResources};
+use crate::shader::{GpuShaderModuleDescriptor, ShaderCache};
 use crate::wgpu;
 use superi_core::error::{ErrorCategory, Recoverability};
 
@@ -55,6 +58,7 @@ fn managed_resources_execute_compute_and_render_with_retained_lifetimes() {
     #[cfg(target_os = "macos")]
     assert_eq!(adapter_info.backend, wgpu::Backend::Metal);
     let resources = GpuResources::new(&device).unwrap();
+    let shader_cache = ShaderCache::new(&resources, NonZeroUsize::new(4).unwrap());
     let raw_device = device.wgpu_device();
 
     let storage = resources
@@ -220,10 +224,9 @@ fn managed_resources_execute_compute_and_render_with_retained_lifetimes() {
     assert_eq!(resources.stats().count(GpuResourceKind::TextureView), 1);
     assert_eq!(resources.stats().count(GpuResourceKind::Sampler), 1);
 
-    let compute_shader = raw_device.create_shader_module(wgpu::ShaderModuleDescriptor {
+    let compute_shader = pollster::block_on(shader_cache.compile_wgsl(GpuShaderModuleDescriptor {
         label: Some("sample compute"),
-        source: wgpu::ShaderSource::Wgsl(
-            r#"
+        source: r#"
 @group(0) @binding(0) var<storage, read_write> result: array<u32>;
 @group(0) @binding(1) var source_texture: texture_2d<f32>;
 @group(0) @binding(2) var source_sampler: sampler;
@@ -233,20 +236,20 @@ fn main() {
     let sampled = textureSampleLevel(source_texture, source_sampler, vec2<f32>(0.5, 0.5), 0.0);
     result[0] = bitcast<u32>(sampled.r);
 }
-"#
-            .into(),
-        ),
-    });
-    let compute_pipeline = resources
-        .create_compute_pipeline(GpuComputePipelineDescriptor {
+"#,
+    }))
+    .unwrap();
+    let compute_pipeline = pollster::block_on(resources.create_compute_pipeline(
+        GpuComputePipelineDescriptor {
             label: Some("sample compute"),
             layout: Some(&compute_layout),
             module: &compute_shader,
-            entry_point: Some("main"),
+            entry_point: "main",
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             cache: None,
-        })
-        .unwrap();
+        },
+    ))
+    .unwrap();
     assert_eq!(
         compute_pipeline.info().explicit_layout(),
         Some(compute_layout.id())
@@ -319,10 +322,9 @@ fn main() {
             push_constant_ranges: &[],
         })
         .unwrap();
-    let render_shader = raw_device.create_shader_module(wgpu::ShaderModuleDescriptor {
+    let render_shader = pollster::block_on(shader_cache.compile_wgsl(GpuShaderModuleDescriptor {
         label: Some("solid render"),
-        source: wgpu::ShaderSource::Wgsl(
-            r#"
+        source: r#"
 @vertex
 fn vertex_main(@builtin(vertex_index) vertex_index: u32) -> @builtin(position) vec4<f32> {
     let positions = array<vec2<f32>, 3>(
@@ -337,38 +339,38 @@ fn vertex_main(@builtin(vertex_index) vertex_index: u32) -> @builtin(position) v
 fn fragment_main() -> @location(0) vec4<f32> {
     return vec4<f32>(0.25, 0.5, 0.75, 1.0);
 }
-"#
-            .into(),
-        ),
-    });
+"#,
+    }))
+    .unwrap();
     let color_targets = [Some(wgpu::ColorTargetState {
         format: wgpu::TextureFormat::Rgba8Unorm,
         blend: None,
         write_mask: wgpu::ColorWrites::ALL,
     })];
-    let render_pipeline = resources
-        .create_render_pipeline(GpuRenderPipelineDescriptor {
+    let render_pipeline = pollster::block_on(resources.create_render_pipeline(
+        GpuRenderPipelineDescriptor {
             label: Some("solid render"),
             layout: Some(&render_layout),
-            vertex: wgpu::VertexState {
+            vertex: GpuVertexState {
                 module: &render_shader,
-                entry_point: Some("vertex_main"),
+                entry_point: "vertex_main",
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 buffers: &[],
             },
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            fragment: Some(wgpu::FragmentState {
+            fragment: Some(GpuFragmentState {
                 module: &render_shader,
-                entry_point: Some("fragment_main"),
+                entry_point: "fragment_main",
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &color_targets,
             }),
             multiview: None,
             cache: None,
-        })
-        .unwrap();
+        },
+    ))
+    .unwrap();
     drop(render_layout);
     assert_eq!(resources.stats().count(GpuResourceKind::PipelineLayout), 1);
 

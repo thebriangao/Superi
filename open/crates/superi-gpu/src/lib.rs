@@ -1,7 +1,8 @@
 //! `superi-gpu`, the wgpu pipeline and GPU-resident resource substrate.
 //!
 //! Adapter discovery, capability selection, logical-device ownership, native
-//! viewport surfaces, device-scoped resource management, aligned texture reuse,
+//! viewport surfaces, device-scoped resource management, canonical WGSL
+//! validation and reflection, bounded shader caching, aligned texture reuse,
 //! and decoded-frame upload share one wgpu path. Managed handles retain
 //! dependency ownership and reject resources from obsolete device lifetimes
 //! after recovery.

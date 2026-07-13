@@ -8,7 +8,7 @@ use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Res
 
 use crate::device::GpuDevice;
 
-const RESOURCE_KIND_COUNT: usize = 9;
+const RESOURCE_KIND_COUNT: usize = 10;
 static NEXT_SCOPE: AtomicU64 = AtomicU64::new(1);
 
 /// One managed GPU resource domain.
@@ -27,6 +27,8 @@ pub enum GpuResourceKind {
     BindGroupLayout,
     /// A bind group and its retained resources.
     BindGroup,
+    /// A validated WGSL shader module.
+    ShaderModule,
     /// An explicit pipeline layout.
     PipelineLayout,
     /// A render pipeline.
@@ -36,7 +38,7 @@ pub enum GpuResourceKind {
 }
 
 impl GpuResourceKind {
-    /// Every resource kind managed by this checkpoint.
+    /// Every resource kind managed by this resource owner.
     pub const ALL: &'static [Self] = &[
         Self::Buffer,
         Self::Texture,
@@ -44,6 +46,7 @@ impl GpuResourceKind {
         Self::Sampler,
         Self::BindGroupLayout,
         Self::BindGroup,
+        Self::ShaderModule,
         Self::PipelineLayout,
         Self::RenderPipeline,
         Self::ComputePipeline,
@@ -59,6 +62,7 @@ impl GpuResourceKind {
             Self::Sampler => "sampler",
             Self::BindGroupLayout => "bind_group_layout",
             Self::BindGroup => "bind_group",
+            Self::ShaderModule => "shader_module",
             Self::PipelineLayout => "pipeline_layout",
             Self::RenderPipeline => "render_pipeline",
             Self::ComputePipeline => "compute_pipeline",
@@ -73,9 +77,10 @@ impl GpuResourceKind {
             Self::Sampler => 3,
             Self::BindGroupLayout => 4,
             Self::BindGroup => 5,
-            Self::PipelineLayout => 6,
-            Self::RenderPipeline => 7,
-            Self::ComputePipeline => 8,
+            Self::ShaderModule => 6,
+            Self::PipelineLayout => 7,
+            Self::RenderPipeline => 8,
+            Self::ComputePipeline => 9,
         }
     }
 }
@@ -188,6 +193,10 @@ impl<'device> GpuResources<'device> {
 
     pub(crate) const fn wgpu_device(&self) -> &wgpu::Device {
         self.device.wgpu_device()
+    }
+
+    pub(crate) const fn device(&self) -> &GpuDevice {
+        self.device
     }
 
     pub(crate) fn texture_format_features(
