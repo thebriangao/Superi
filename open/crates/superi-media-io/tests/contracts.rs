@@ -4,12 +4,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use superi_core::color_space::ColorSpace;
-use superi_core::error::Result;
+use superi_core::error::{ErrorCategory, Result};
 use superi_core::ids::MediaId;
 use superi_core::pixel::{AlphaMode, ChannelLayout, PixelFormat, SampleFormat};
 use superi_core::time::{Duration, RationalTime, SampleTime, Timebase};
 use superi_media_io::audio_io::{AudioBlock, AudioFormat, AudioPlane};
-use superi_media_io::backend::{BackendDescriptor, MediaBackend};
+use superi_media_io::backend::{
+    BackendCapabilities, BackendCapability, BackendDescriptor, BackendRegistration,
+    BackendRegistry, BackendRequirement, BackendTier, FallbackPolicy, MediaBackend,
+};
 use superi_media_io::decode::{
     CpuVideoBuffer, DecodeOutput, Decoder, DecoderConfig, FrameStorageKind, VideoFormat,
     VideoFrame, VideoFrameBuffer, VideoPlane,
@@ -310,14 +313,172 @@ struct MemoryBackend {
 
 impl MemoryBackend {
     fn new() -> Self {
+        Self::with_id("memory")
+    }
+
+    fn with_id(id: &str) -> Self {
         Self {
             descriptor: BackendDescriptor::new(
-                BackendId::new("memory").unwrap(),
+                BackendId::new(id).unwrap(),
                 "Memory contract backend",
             )
             .unwrap(),
         }
     }
+}
+
+fn memory_capabilities() -> BackendCapabilities {
+    BackendCapabilities::new([
+        BackendCapability::Source,
+        BackendCapability::Decode(CodecId::new("av1").unwrap()),
+        BackendCapability::Encode(CodecId::new("av1").unwrap()),
+    ])
+}
+
+#[test]
+fn registry_ranks_capable_backends_and_only_exposes_explicit_fallbacks() {
+    let primary = Arc::new(MemoryBackend::with_id("primary"));
+    let lower_ranked_primary = Arc::new(MemoryBackend::with_id("lower-ranked-primary"));
+    let tied_primary = Arc::new(MemoryBackend::with_id("z-tied-primary"));
+    let fallback = Arc::new(MemoryBackend::with_id("fallback"));
+    let unavailable_codec = Arc::new(MemoryBackend::with_id("vp9-only"));
+    let platform_only = Arc::new(MemoryBackend::with_id("platform-only"));
+    let mut registry = BackendRegistry::new();
+
+    registry
+        .register(
+            BackendRegistration::new(primary, memory_capabilities(), 10, BackendTier::Primary)
+                .unwrap(),
+        )
+        .unwrap();
+    registry
+        .register(
+            BackendRegistration::new(
+                tied_primary,
+                memory_capabilities(),
+                10,
+                BackendTier::Primary,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    registry
+        .register(
+            BackendRegistration::new(
+                lower_ranked_primary,
+                memory_capabilities(),
+                9,
+                BackendTier::Primary,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    registry
+        .register(
+            BackendRegistration::new(
+                platform_only,
+                BackendCapabilities::new([BackendCapability::Decode(
+                    CodecId::new("h264").unwrap(),
+                )]),
+                50,
+                BackendTier::Fallback,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    registry
+        .register(
+            BackendRegistration::new(fallback, memory_capabilities(), 100, BackendTier::Fallback)
+                .unwrap(),
+        )
+        .unwrap();
+    registry
+        .register(
+            BackendRegistration::new(
+                unavailable_codec,
+                BackendCapabilities::new([BackendCapability::Decode(CodecId::new("vp9").unwrap())]),
+                1,
+                BackendTier::Primary,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+    let decode_av1 = BackendRequirement::decode(CodecId::new("av1").unwrap());
+    let no_fallback = registry
+        .select(&decode_av1, FallbackPolicy::Disallow)
+        .unwrap();
+    assert_eq!(no_fallback.primary().descriptor().id().as_str(), "primary");
+    assert!(no_fallback.fallbacks().is_empty());
+    assert!(!no_fallback.fallback_used());
+
+    let source_selection = registry
+        .select(&BackendRequirement::source(), FallbackPolicy::Disallow)
+        .unwrap();
+    assert_eq!(
+        source_selection.primary().descriptor().id().as_str(),
+        "primary"
+    );
+    let relink = SourceRequest::new(
+        MediaId::from_raw(48),
+        SourceLocation::Path(PathBuf::from("relinked.mov")),
+    )
+    .with_expected_fingerprint("sha256:test")
+    .unwrap();
+    let source = source_selection.primary().open_source(&relink).unwrap();
+    assert_eq!(source.info().identity().media_id(), relink.media_id());
+    assert_eq!(source.info().identity().fingerprint(), "sha256:test");
+
+    let with_fallback = registry
+        .select(&decode_av1, FallbackPolicy::AllowRegistered)
+        .unwrap();
+    assert_eq!(
+        with_fallback.primary().descriptor().id().as_str(),
+        "primary"
+    );
+    assert_eq!(
+        with_fallback
+            .fallbacks()
+            .iter()
+            .map(|backend| backend.descriptor().id().as_str())
+            .collect::<Vec<_>>(),
+        ["fallback"]
+    );
+    assert!(!with_fallback.fallback_used());
+
+    assert!(registry
+        .select(
+            &BackendRequirement::decode(CodecId::new("h264").unwrap()),
+            FallbackPolicy::Disallow,
+        )
+        .is_err());
+    let platform_fallback = registry
+        .select(
+            &BackendRequirement::decode(CodecId::new("h264").unwrap()),
+            FallbackPolicy::AllowRegistered,
+        )
+        .unwrap();
+    assert_eq!(
+        platform_fallback.primary().descriptor().id().as_str(),
+        "platform-only"
+    );
+    assert!(platform_fallback.fallback_used());
+    assert!(platform_fallback.fallbacks().is_empty());
+
+    let unsupported = registry.select(
+        &BackendRequirement::encode(CodecId::new("vp9").unwrap()),
+        FallbackPolicy::AllowRegistered,
+    );
+    let Err(error) = unsupported else {
+        panic!("a vp9 encoder must not be selected from av1-only registrations")
+    };
+    assert_eq!(error.category(), ErrorCategory::Unsupported);
+    assert_eq!(
+        error.recoverability(),
+        superi_core::error::Recoverability::Degraded
+    );
+    assert_eq!(error.contexts()[0].field("operation"), Some("encode"));
+    assert_eq!(error.contexts()[0].field("codec"), Some("vp9"));
 }
 
 impl MediaBackend for MemoryBackend {
