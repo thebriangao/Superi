@@ -2,8 +2,8 @@
 
 use std::cmp::Ordering;
 use std::fmt::Write as _;
-use std::fs;
-use std::io;
+use std::fs::File;
+use std::io::{self, Read};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 
@@ -22,6 +22,8 @@ use crate::demux::{
 };
 use crate::encode::{Encoder, EncoderConfig};
 use crate::mp4_parser::{self, ParsedMetadata, ParsedMovie, ParsedSample, ParsedTrack};
+use crate::operation::OperationContext;
+use crate::read::ReadOutcome;
 
 const COMPONENT: &str = "superi-media-io.mp4-mov";
 
@@ -58,7 +60,12 @@ impl MediaBackend for Mp4MovBackend {
         &self.descriptor
     }
 
-    fn probe_source(&self, probe: &SourceProbe<'_>) -> Result<SourceProbeResult> {
+    fn probe_source(
+        &self,
+        probe: &SourceProbe<'_>,
+        operation: &OperationContext,
+    ) -> Result<SourceProbeResult> {
+        operation.check("probe_mp4_mov_source")?;
         match inspect_container_prefix(probe.bytes(), probe.source_length(), probe.is_complete()) {
             ProbeDecision::NoMatch => Ok(SourceProbeResult::NoMatch),
             ProbeDecision::NeedMoreData(minimum_bytes) => {
@@ -71,9 +78,14 @@ impl MediaBackend for Mp4MovBackend {
         }
     }
 
-    fn open_source(&self, request: &SourceRequest) -> Result<Box<dyn MediaSource>> {
-        let data = read_source(request.location())?;
-        let fingerprint = sha256_fingerprint(&data);
+    fn open_source(
+        &self,
+        request: &SourceRequest,
+        operation: &OperationContext,
+    ) -> Result<Box<dyn MediaSource>> {
+        operation.check("open_mp4_mov_source")?;
+        let data = read_source(request.location(), operation)?;
+        let fingerprint = sha256_fingerprint_interruptible(&data, operation)?;
         if let Some(expected) = request.expected_fingerprint() {
             if expected != fingerprint {
                 return Err(Error::new(
@@ -90,7 +102,9 @@ impl MediaBackend for Mp4MovBackend {
             }
         }
 
+        operation.check("open_mp4_mov_source")?;
         let kind = detect_complete_container(&data)?;
+        operation.check("parse_mp4_mov_source")?;
         let parsed = catch_unwind(AssertUnwindSafe(|| mp4_parser::parse(&data)))
             .map_err(|_| {
                 corrupt(
@@ -99,6 +113,7 @@ impl MediaBackend for Mp4MovBackend {
                 )
             })?
             .map_err(map_parser_error)?;
+        operation.check("parse_mp4_mov_source")?;
 
         let source = Mp4MovSource::from_parsed(
             request.media_id(),
@@ -106,15 +121,26 @@ impl MediaBackend for Mp4MovBackend {
             kind,
             Arc::clone(&data),
             parsed,
+            operation,
         )?;
         Ok(Box::new(source))
     }
 
-    fn create_decoder(&self, _config: &DecoderConfig) -> Result<Box<dyn Decoder>> {
+    fn create_decoder(
+        &self,
+        _config: &DecoderConfig,
+        operation: &OperationContext,
+    ) -> Result<Box<dyn Decoder>> {
+        operation.check("create_mp4_mov_decoder")?;
         Err(unsupported_operation("create_decoder", "decode"))
     }
 
-    fn create_encoder(&self, _config: &EncoderConfig) -> Result<Box<dyn Encoder>> {
+    fn create_encoder(
+        &self,
+        _config: &EncoderConfig,
+        operation: &OperationContext,
+    ) -> Result<Box<dyn Encoder>> {
+        operation.check("create_mp4_mov_encoder")?;
         Err(unsupported_operation("create_encoder", "encode"))
     }
 }
@@ -295,36 +321,67 @@ fn detect_complete_container(bytes: &[u8]) -> Result<ContainerKind> {
     }
 }
 
-fn read_source(location: &SourceLocation) -> Result<Arc<[u8]>> {
+fn read_source(location: &SourceLocation, operation: &OperationContext) -> Result<Arc<[u8]>> {
+    operation.check("read_mp4_mov_source")?;
     match location {
         SourceLocation::Memory { data, .. } => Ok(Arc::clone(data)),
-        SourceLocation::Path(path) => fs::read(path).map(Arc::from).map_err(|source| {
-            let (category, recoverability) = match source.kind() {
-                io::ErrorKind::NotFound => {
-                    (ErrorCategory::NotFound, Recoverability::UserCorrectable)
+        SourceLocation::Path(path) => {
+            let mut file = File::open(path).map_err(source_read_error)?;
+            let mut data = Vec::new();
+            let mut buffer = [0_u8; 64 * 1024];
+            loop {
+                operation.check("read_mp4_mov_source")?;
+                match file.read(&mut buffer) {
+                    Ok(0) => break,
+                    Ok(count) => data.extend_from_slice(&buffer[..count]),
+                    Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                    Err(error) => return Err(source_read_error(error)),
                 }
-                io::ErrorKind::PermissionDenied => (
-                    ErrorCategory::PermissionDenied,
-                    Recoverability::UserCorrectable,
-                ),
-                io::ErrorKind::InvalidInput => {
-                    (ErrorCategory::InvalidInput, Recoverability::UserCorrectable)
-                }
-                _ => (ErrorCategory::Unavailable, Recoverability::Retryable),
-            };
-            Error::with_source(
-                category,
-                recoverability,
-                "media source could not be read",
-                source,
-            )
-            .with_context(ErrorContext::new(COMPONENT, "read_source"))
-        }),
+                operation.check("read_mp4_mov_source")?;
+            }
+            Ok(Arc::from(data))
+        }
     }
 }
 
+fn source_read_error(source: io::Error) -> Error {
+    let (category, recoverability) = match source.kind() {
+        io::ErrorKind::NotFound => (ErrorCategory::NotFound, Recoverability::UserCorrectable),
+        io::ErrorKind::PermissionDenied => (
+            ErrorCategory::PermissionDenied,
+            Recoverability::UserCorrectable,
+        ),
+        io::ErrorKind::InvalidInput => {
+            (ErrorCategory::InvalidInput, Recoverability::UserCorrectable)
+        }
+        _ => (ErrorCategory::Unavailable, Recoverability::Retryable),
+    };
+    Error::with_source(
+        category,
+        recoverability,
+        "media source could not be read",
+        source,
+    )
+    .with_context(ErrorContext::new(COMPONENT, "read_source"))
+}
+
+fn sha256_fingerprint_interruptible(data: &[u8], operation: &OperationContext) -> Result<String> {
+    let mut hasher = Sha256::new();
+    for chunk in data.chunks(64 * 1024) {
+        operation.check("fingerprint_mp4_mov_source")?;
+        hasher.update(chunk);
+    }
+    operation.check("fingerprint_mp4_mov_source")?;
+    Ok(format_fingerprint(hasher.finalize()))
+}
+
+#[cfg(test)]
 fn sha256_fingerprint(data: &[u8]) -> String {
-    let digest = Sha256::digest(data);
+    format_fingerprint(Sha256::digest(data))
+}
+
+fn format_fingerprint(digest: impl AsRef<[u8]>) -> String {
+    let digest = digest.as_ref();
     let mut fingerprint = String::with_capacity(7 + digest.len() * 2);
     fingerprint.push_str("sha256:");
     for byte in digest {
@@ -364,7 +421,9 @@ impl Mp4MovSource {
         container_kind: ContainerKind,
         data: Arc<[u8]>,
         parsed: ParsedMovie,
+        operation: &OperationContext,
     ) -> Result<Self> {
+        operation.check("build_mp4_mov_source")?;
         let movie_timescale = timebase(parsed.timescale, "movie_timescale")?;
         let source_duration = Duration::new(parsed.duration, movie_timescale)
             .with_error_context(ErrorContext::new(COMPONENT, "read_movie_duration"))?;
@@ -372,6 +431,7 @@ impl Mp4MovSource {
         let mut stream_infos = Vec::with_capacity(parsed.tracks.len());
         let mut tracks = Vec::with_capacity(parsed.tracks.len());
         for track in &parsed.tracks {
+            operation.check("build_mp4_mov_source")?;
             validate_samples(track, &data)?;
             let stream_info = build_stream_info(track, movie_timescale)?;
             tracks.push(TrackState {
@@ -430,6 +490,7 @@ impl Mp4MovSource {
             MetadataValue::Unsigned(parsed.event_message_count as u64),
         )?;
         info = add_source_meta(info, &parsed.metadata)?;
+        operation.check("build_mp4_mov_source")?;
 
         Ok(Self { info, data, tracks })
     }
@@ -440,13 +501,13 @@ impl MediaSource for Mp4MovSource {
         &self.info
     }
 
-    fn read_packet(&mut self) -> Result<Option<Packet>> {
+    fn read_packet(&mut self, operation: &OperationContext) -> Result<ReadOutcome<Packet>> {
+        operation.check("read_mp4_mov_packet")?;
         let Some(track_index) = self.next_track_index() else {
-            return Ok(None);
+            return Ok(ReadOutcome::EndOfStream);
         };
         let track = &mut self.tracks[track_index];
         let sample = track.samples[track.cursor];
-        track.cursor += 1;
 
         let start = usize::try_from(sample.offset).map_err(|_| {
             corrupt(
@@ -497,10 +558,13 @@ impl MediaSource for Mp4MovSource {
                 "container.composition-offset",
                 MetadataValue::Signed(composition_offset),
             )?;
-        Ok(Some(packet))
+        operation.check("read_mp4_mov_packet")?;
+        track.cursor += 1;
+        Ok(ReadOutcome::Complete(packet))
     }
 
-    fn seek(&mut self, request: SeekRequest) -> Result<RationalTime> {
+    fn seek(&mut self, request: SeekRequest, operation: &OperationContext) -> Result<RationalTime> {
+        operation.check("seek_mp4_mov_source")?;
         let anchor_index = self
             .tracks
             .iter()
@@ -525,8 +589,10 @@ impl MediaSource for Mp4MovSource {
             anchor.timebase,
         );
 
-        for (index, track) in self.tracks.iter_mut().enumerate() {
-            track.cursor = if index == anchor_index {
+        let mut cursors = Vec::with_capacity(self.tracks.len());
+        for (index, track) in self.tracks.iter().enumerate() {
+            operation.check("seek_mp4_mov_source")?;
+            let cursor = if index == anchor_index {
                 selected
             } else {
                 track
@@ -540,6 +606,11 @@ impl MediaSource for Mp4MovSource {
                     })
                     .unwrap_or(track.samples.len())
             };
+            cursors.push(cursor);
+        }
+        operation.check("seek_mp4_mov_source")?;
+        for (track, cursor) in self.tracks.iter_mut().zip(cursors) {
+            track.cursor = cursor;
         }
         Ok(actual)
     }

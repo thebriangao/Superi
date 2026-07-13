@@ -24,6 +24,8 @@ impl std::error::Error for ParseError {}
 
 type Result<T> = std::result::Result<T, ParseError>;
 
+const MAX_TABLE_ENTRIES: usize = 10_000_000;
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ParsedMetadata {
     pub(crate) title: Option<String>,
@@ -252,6 +254,23 @@ impl<'a> Reader<'a> {
 
 fn full_box(reader: &mut Reader<'_>) -> Result<(u8, u32)> {
     Ok((reader.u8()?, reader.u24()?))
+}
+
+fn bounded_table_count(reader: &Reader<'_>, count: u32, bytes_per_entry: usize) -> Result<usize> {
+    let count = usize::try_from(count)
+        .map_err(|_| ParseError::new("table entry count exceeds this platform"))?;
+    if count > MAX_TABLE_ENTRIES {
+        return Err(ParseError::new(
+            "table entry count exceeds the resource limit",
+        ));
+    }
+    let required = count
+        .checked_mul(bytes_per_entry)
+        .ok_or_else(|| ParseError::new("table byte count overflows"))?;
+    if required > reader.remaining().len() {
+        return Err(ParseError::new("table entries extend beyond their atom"));
+    }
+    Ok(count)
 }
 
 #[derive(Clone, Copy, Default)]
@@ -545,12 +564,18 @@ fn parse_edts(data: &[u8]) -> Result<Vec<ParsedEdit>> {
             let mut reader = Reader::new(atom.data);
             let (version, _) = full_box(&mut reader)?;
             let count = reader.u32()?;
-            let mut edits = Vec::with_capacity(count as usize);
+            let entry_size = match version {
+                0 => 12,
+                1 => 20,
+                _ => return Err(ParseError::new("elst version is unsupported")),
+            };
+            let count = bounded_table_count(&reader, count, entry_size)?;
+            let mut edits = Vec::with_capacity(count);
             for _ in 0..count {
                 let (segment_duration, media_time) = match version {
                     0 => (u64::from(reader.u32()?), i64::from(reader.i32()?)),
                     1 => (reader.u64()?, reader.i64()?),
-                    _ => return Err(ParseError::new("elst version is unsupported")),
+                    _ => unreachable!("edit-list version was validated"),
                 };
                 edits.push(ParsedEdit {
                     segment_duration,
@@ -700,6 +725,7 @@ fn parse_stts(data: &[u8]) -> Result<Vec<(u32, u32)>> {
     let mut reader = Reader::new(data);
     full_box(&mut reader)?;
     let count = reader.u32()?;
+    let count = bounded_table_count(&reader, count, 8)?;
     (0..count)
         .map(|_| Ok((reader.u32()?, reader.u32()?)))
         .collect()
@@ -709,13 +735,17 @@ fn parse_ctts(data: &[u8]) -> Result<Vec<(u32, i64)>> {
     let mut reader = Reader::new(data);
     let (version, _) = full_box(&mut reader)?;
     let count = reader.u32()?;
+    if !matches!(version, 0 | 1) {
+        return Err(ParseError::new("ctts version is unsupported"));
+    }
+    let count = bounded_table_count(&reader, count, 8)?;
     (0..count)
         .map(|_| {
             let sample_count = reader.u32()?;
             let offset = match version {
                 0 => i64::from(reader.u32()?),
                 1 => i64::from(reader.i32()?),
-                _ => return Err(ParseError::new("ctts version is unsupported")),
+                _ => unreachable!("composition-offset version was validated"),
             };
             Ok((sample_count, offset))
         })
@@ -726,6 +756,7 @@ fn parse_stsc(data: &[u8]) -> Result<Vec<SampleToChunk>> {
     let mut reader = Reader::new(data);
     full_box(&mut reader)?;
     let count = reader.u32()?;
+    let count = bounded_table_count(&reader, count, 12)?;
     (0..count)
         .map(|_| {
             let value = SampleToChunk {
@@ -743,8 +774,9 @@ fn parse_stsz(data: &[u8]) -> Result<Vec<u64>> {
     full_box(&mut reader)?;
     let uniform = reader.u32()?;
     let count = reader.u32()?;
+    let count = bounded_table_count(&reader, count, usize::from(uniform == 0) * 4)?;
     if uniform != 0 {
-        return Ok(vec![u64::from(uniform); count as usize]);
+        return Ok(vec![u64::from(uniform); count]);
     }
     (0..count).map(|_| reader.u32().map(u64::from)).collect()
 }
@@ -753,6 +785,7 @@ fn parse_stco(data: &[u8]) -> Result<Vec<u64>> {
     let mut reader = Reader::new(data);
     full_box(&mut reader)?;
     let count = reader.u32()?;
+    let count = bounded_table_count(&reader, count, 4)?;
     (0..count).map(|_| reader.u32().map(u64::from)).collect()
 }
 
@@ -760,6 +793,7 @@ fn parse_co64(data: &[u8]) -> Result<Vec<u64>> {
     let mut reader = Reader::new(data);
     full_box(&mut reader)?;
     let count = reader.u32()?;
+    let count = bounded_table_count(&reader, count, 8)?;
     (0..count).map(|_| reader.u64()).collect()
 }
 
@@ -767,6 +801,7 @@ fn parse_stss(data: &[u8]) -> Result<BTreeSet<u32>> {
     let mut reader = Reader::new(data);
     full_box(&mut reader)?;
     let count = reader.u32()?;
+    let count = bounded_table_count(&reader, count, 4)?;
     (0..count).map(|_| reader.u32()).collect()
 }
 
@@ -1044,7 +1079,15 @@ fn parse_trun(data: &[u8]) -> Result<FragmentRun> {
     let count = reader.u32()?;
     let data_offset = (flags & 0x000001 != 0).then(|| reader.i32()).transpose()?;
     let first_sample_flags = (flags & 0x000004 != 0).then(|| reader.u32()).transpose()?;
-    let mut samples = Vec::with_capacity(count as usize);
+    if !matches!(version, 0 | 1) {
+        return Err(ParseError::new("trun version is unsupported"));
+    }
+    let fields = usize::from(flags & 0x000100 != 0)
+        + usize::from(flags & 0x000200 != 0)
+        + usize::from(flags & 0x000400 != 0)
+        + usize::from(flags & 0x000800 != 0);
+    let count = bounded_table_count(&reader, count, fields * 4)?;
+    let mut samples = Vec::with_capacity(count);
     for _ in 0..count {
         samples.push(FragmentSample {
             duration: (flags & 0x000100 != 0).then(|| reader.u32()).transpose()?,
@@ -1054,7 +1097,7 @@ fn parse_trun(data: &[u8]) -> Result<FragmentRun> {
                 match version {
                     0 => i64::from(reader.u32()?),
                     1 => i64::from(reader.i32()?),
-                    _ => return Err(ParseError::new("trun version is unsupported")),
+                    _ => unreachable!("fragment-run version was validated"),
                 }
             } else {
                 0
@@ -1126,4 +1169,27 @@ fn parse_ilst(data: &[u8]) -> Result<ParsedMetadata> {
         }
     }
     Ok(metadata)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_stsz, parse_stts, parse_trun, MAX_TABLE_ENTRIES};
+
+    #[test]
+    fn hostile_table_counts_are_rejected_before_allocation() {
+        let oversized = u32::try_from(MAX_TABLE_ENTRIES + 1).unwrap();
+
+        let mut stsz = vec![0_u8; 4];
+        stsz.extend_from_slice(&1_u32.to_be_bytes());
+        stsz.extend_from_slice(&oversized.to_be_bytes());
+        assert!(parse_stsz(&stsz).is_err());
+
+        let mut stts = vec![0_u8; 4];
+        stts.extend_from_slice(&2_u32.to_be_bytes());
+        assert!(parse_stts(&stts).is_err());
+
+        let mut trun = vec![0_u8; 4];
+        trun.extend_from_slice(&oversized.to_be_bytes());
+        assert!(parse_trun(&trun).is_err());
+    }
 }

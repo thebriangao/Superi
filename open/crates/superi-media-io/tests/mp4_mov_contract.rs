@@ -9,10 +9,25 @@ use superi_media_io::backend::{
     FallbackPolicy, MediaBackend,
 };
 use superi_media_io::demux::{
-    MediaSource, MetadataValue, SeekMode, SeekRequest, SourceLocation, SourceProbeLimits,
+    MediaSource, MetadataValue, Packet, SeekMode, SeekRequest, SourceLocation, SourceProbeLimits,
     SourceRequest, StreamKind,
 };
 use superi_media_io::mp4_mov::Mp4MovBackend;
+use superi_media_io::operation::{MediaPriority, OperationContext};
+use superi_media_io::read::ReadOutcome;
+
+fn operation() -> OperationContext {
+    OperationContext::new(MediaPriority::Interactive)
+}
+
+fn next_packet(source: &mut dyn MediaSource) -> Option<Packet> {
+    match source.read_packet(&operation()).unwrap() {
+        ReadOutcome::Complete(packet) => Some(packet),
+        ReadOutcome::EndOfStream => None,
+        ReadOutcome::Partial { .. } => panic!("MP4 and MOV packets are atomic"),
+        _ => panic!("unknown MP4 or MOV packet outcome"),
+    }
+}
 
 #[derive(Clone, Copy)]
 enum FixtureBrand {
@@ -425,6 +440,7 @@ fn open_through_registry(
             request.clone(),
             SourceProbeLimits::default(),
             FallbackPolicy::Disallow,
+            &operation(),
         )
         .unwrap();
     assert_eq!(
@@ -432,7 +448,7 @@ fn open_through_registry(
         "mp4-mov"
     );
     assert_eq!(selection.primary().container().as_str(), expected_container);
-    selection.open().unwrap()
+    selection.open(&operation()).unwrap()
 }
 
 #[test]
@@ -501,9 +517,7 @@ fn mp4_demux_preserves_tracks_edits_timestamps_offsets_and_metadata() {
     assert_eq!(audio.duration().unwrap().value(), 96_000);
     assert!(audio.edits().is_empty());
 
-    let packets = std::iter::from_fn(|| source.read_packet().transpose())
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap();
+    let packets = std::iter::from_fn(|| next_packet(source.as_mut())).collect::<Vec<_>>();
     assert_eq!(packets.len(), 4);
     assert_eq!(
         packets
@@ -553,7 +567,7 @@ fn content_probe_opens_classic_mov_without_file_type_or_extension_hints() {
         source.info().metadata().get("container.major-brand"),
         Some(&MetadataValue::Text("qt  ".into()))
     );
-    assert_eq!(source.read_packet().unwrap().unwrap().data(), b"V0");
+    assert_eq!(next_packet(source.as_mut()).unwrap().data(), b"V0");
 }
 
 #[test]
@@ -580,6 +594,7 @@ fn content_probe_rejects_unrelated_iso_base_media_brands() {
         memory_request(0x88, "still.mp4", &bytes),
         SourceProbeLimits::default(),
         FallbackPolicy::Disallow,
+        &operation(),
     ) {
         Ok(_) => panic!("an AVIF file must not probe as MP4 video"),
         Err(error) => error,
@@ -596,7 +611,7 @@ fn fragmented_mp4_preserves_fragment_sample_offsets_and_timing() {
         source.info().metadata().get("container.fragmented"),
         Some(&MetadataValue::Boolean(true))
     );
-    let packet = source.read_packet().unwrap().unwrap();
+    let packet = next_packet(source.as_mut()).unwrap();
     assert_eq!(packet.data(), b"V0");
     assert_eq!(packet.timing().decode_time().unwrap().value(), 0);
     assert_eq!(packet.timing().duration().unwrap().value(), 1_000);
@@ -604,7 +619,7 @@ fn fragmented_mp4_preserves_fragment_sample_offsets_and_timing() {
         packet.metadata().get("container.offset"),
         Some(&MetadataValue::Unsigned(fixture.video_offset))
     );
-    assert!(source.read_packet().unwrap().is_none());
+    assert!(next_packet(source.as_mut()).is_none());
 }
 
 #[test]
@@ -618,7 +633,7 @@ fn mov_path_ingest_seek_and_relink_are_predictable() {
         SourceLocation::Path(PathBuf::from(&path)),
     );
     let backend = Mp4MovBackend::new().unwrap();
-    let mut source = backend.open_source(&request).unwrap();
+    let mut source = backend.open_source(&request, &operation()).unwrap();
     assert_eq!(
         source.info().metadata().get("container.kind"),
         Some(&MetadataValue::Text("mov".into()))
@@ -629,13 +644,16 @@ fn mov_path_ingest_seek_and_relink_are_predictable() {
     );
 
     let actual = source
-        .seek(SeekRequest::new(
-            RationalTime::new(950, Timebase::integer(1_000).unwrap()),
-            SeekMode::PreviousKeyframe,
-        ))
+        .seek(
+            SeekRequest::new(
+                RationalTime::new(950, Timebase::integer(1_000).unwrap()),
+                SeekMode::PreviousKeyframe,
+            ),
+            &operation(),
+        )
         .unwrap();
     assert_eq!(actual.value(), 900);
-    let packet = source.read_packet().unwrap().unwrap();
+    let packet = next_packet(source.as_mut()).unwrap();
     assert_eq!(packet.stream_id().value(), 1);
     assert_eq!(packet.data(), b"V1");
 
@@ -646,7 +664,7 @@ fn mov_path_ingest_seek_and_relink_are_predictable() {
     )
     .with_expected_fingerprint(fingerprint)
     .unwrap();
-    assert!(backend.open_source(&matching).is_ok());
+    assert!(backend.open_source(&matching, &operation()).is_ok());
 
     let mismatched = SourceRequest::new(
         MediaId::from_raw(0x55),
@@ -654,7 +672,7 @@ fn mov_path_ingest_seek_and_relink_are_predictable() {
     )
     .with_expected_fingerprint("sha256:not-the-same-content")
     .unwrap();
-    let error = match backend.open_source(&mismatched) {
+    let error = match backend.open_source(&mismatched, &operation()) {
         Ok(_) => panic!("a relink with different content must fail"),
         Err(error) => error,
     };
@@ -672,7 +690,10 @@ fn malformed_sample_ranges_fail_as_corrupt_data_without_panicking() {
     let offset = usize::try_from(fixture.video_offset).unwrap();
     fixture.bytes.truncate(offset + 1);
     let backend = Mp4MovBackend::new().unwrap();
-    let error = match backend.open_source(&memory_request(1, "truncated.mp4", &fixture.bytes)) {
+    let error = match backend.open_source(
+        &memory_request(1, "truncated.mp4", &fixture.bytes),
+        &operation(),
+    ) {
         Ok(_) => panic!("a truncated container must not open"),
         Err(error) => error,
     };
@@ -686,7 +707,7 @@ fn every_truncated_atom_prefix_fails_without_panicking() {
     for length in 0..fixture.bytes.len() {
         let bytes = fixture.bytes[..length].to_vec();
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            backend.open_source(&memory_request(1, "prefix.mp4", &bytes))
+            backend.open_source(&memory_request(1, "prefix.mp4", &bytes), &operation())
         }));
         assert!(outcome.is_ok(), "opening a {length}-byte prefix panicked");
         assert!(
@@ -694,4 +715,41 @@ fn every_truncated_atom_prefix_fails_without_panicking() {
             "a truncated {length}-byte prefix unexpectedly opened"
         );
     }
+}
+
+#[test]
+fn cancelled_operations_do_not_open_consume_or_seek_media() {
+    let fixture = fixture(FixtureBrand::Mp4);
+    let request = memory_request(0x99, "cancelled.mp4", &fixture.bytes);
+    let backend = Mp4MovBackend::new().unwrap();
+
+    let cancelled_open = operation();
+    cancelled_open.cancellation_token().cancel();
+    let error = match backend.open_source(&request, &cancelled_open) {
+        Ok(_) => panic!("cancelled source open must fail"),
+        Err(error) => error,
+    };
+    assert_eq!(error.category(), ErrorCategory::Cancelled);
+
+    let mut source = backend.open_source(&request, &operation()).unwrap();
+    let cancelled_read = operation();
+    cancelled_read.cancellation_token().cancel();
+    let error = source.read_packet(&cancelled_read).unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::Cancelled);
+    assert_eq!(next_packet(source.as_mut()).unwrap().data(), b"V0");
+
+    let mut source = backend.open_source(&request, &operation()).unwrap();
+    let cancelled_seek = operation();
+    cancelled_seek.cancellation_token().cancel();
+    let error = source
+        .seek(
+            SeekRequest::new(
+                RationalTime::new(950, Timebase::integer(1_000).unwrap()),
+                SeekMode::PreviousKeyframe,
+            ),
+            &cancelled_seek,
+        )
+        .unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::Cancelled);
+    assert_eq!(next_packet(source.as_mut()).unwrap().data(), b"V0");
 }
