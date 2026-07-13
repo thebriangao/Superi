@@ -12,4 +12,5 @@ pub mod decode;
 pub mod demux;
 pub mod encode;
 pub mod image_seq;
+pub mod selection;
 pub mod timecode;
