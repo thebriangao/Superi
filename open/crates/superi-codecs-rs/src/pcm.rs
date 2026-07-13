@@ -18,7 +18,8 @@ use superi_media_io::backend::{
 };
 use superi_media_io::decode::{DecodeOutput, Decoder, DecoderConfig};
 use superi_media_io::demux::{
-    BackendId, CodecId, MediaSource, Packet, PacketTiming, SourceRequest, StreamKind,
+    BackendId, CodecId, MediaSource, Packet, PacketTiming, SourceProbe, SourceProbeResult,
+    SourceRequest, StreamKind,
 };
 use superi_media_io::encode::{
     EncodeInput, EncodeOutput, Encoder, EncoderConfig, EncoderMediaFormat,
@@ -168,6 +169,12 @@ impl PcmBackend {
 impl MediaBackend for PcmBackend {
     fn descriptor(&self) -> &BackendDescriptor {
         &self.descriptor
+    }
+
+    fn probe_source(&self, _probe: &SourceProbe<'_>) -> Result<SourceProbeResult> {
+        // Raw PCM has no self-describing signature. A container backend must identify and
+        // configure it from stream metadata rather than treating arbitrary bytes as PCM.
+        Ok(SourceProbeResult::NoMatch)
     }
 
     fn open_source(&self, _request: &SourceRequest) -> Result<Box<dyn MediaSource>> {
