@@ -5,20 +5,23 @@
 //! validation and reflection, bounded shader caching, aligned texture reuse,
 //! portable memory budgeting and pressure cooperation, decoded-frame upload,
 //! exact pixel conversion, ordered compute and render passes, explicit
-//! submission, export or thumbnail readback, and ordered multi-adapter
-//! selection share one wgpu path. Multi-adapter selection can create one
-//! independent logical device and queue per available GPU, with one primary
-//! presentation device and optional additional processing devices. Device-loss
-//! callbacks, typed reconstruction plans, and reviewed recovery notices replace
-//! lost lifetimes without exposing private queue access. Managed handles retain
-//! dependency ownership, in-flight submissions retain reusable allocations
-//! through fence completion, cross-device transfer is never implicit, and
-//! obsolete device lifetimes are rejected after recovery.
+//! submission, privacy-safe aggregate diagnostics and pass timing, export or
+//! thumbnail readback, and ordered multi-adapter selection share one wgpu
+//! path. Multi-adapter selection can create one independent logical device and
+//! queue per available GPU, with one primary presentation device and optional
+//! additional processing devices. Device-loss callbacks, typed reconstruction
+//! plans, and reviewed recovery notices replace lost lifetimes without exposing
+//! private queue access. Managed handles retain dependency ownership, in-flight
+//! submissions retain reusable allocations through fence completion,
+//! cross-device transfer is never implicit, diagnostic output never retains
+//! media-derived text or bytes, and obsolete device lifetimes are rejected
+//! after recovery.
 
 pub mod binding;
 pub mod buffer;
 pub mod convert;
 pub mod device;
+pub mod diagnostics;
 pub mod pass;
 pub mod pipeline;
 pub mod pool;

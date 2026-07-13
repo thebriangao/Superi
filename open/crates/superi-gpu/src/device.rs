@@ -1193,6 +1193,10 @@ impl GpuDevice {
         self.queue.on_submitted_work_done(callback);
     }
 
+    pub(crate) fn timestamp_period(&self) -> f32 {
+        self.queue.get_timestamp_period()
+    }
+
     pub(crate) fn poll_submissions(&self) -> wgpu::MaintainResult {
         self.device.poll(wgpu::Maintain::Poll)
     }

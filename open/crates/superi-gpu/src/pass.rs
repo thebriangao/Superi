@@ -16,6 +16,9 @@ use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Res
 
 use crate::binding::{GpuBindGroup, GpuBindingResource};
 use crate::buffer::GpuBuffer;
+use crate::diagnostics::{
+    EncodedGpuTiming, GpuTimingConfig, GpuTimingEncoder, GpuTimingHandle, GpuTimingTarget,
+};
 use crate::pipeline::{
     GpuComputePipeline, GpuPipelineLayout, GpuRenderPipeline, GpuVertexBufferInfo,
 };
@@ -528,6 +531,7 @@ pub struct GpuPassEncoder<'device> {
     capabilities: GpuPassCapabilities,
     encoder: wgpu::CommandEncoder,
     encoded: Vec<(GpuPassInfo, RetainedPass)>,
+    timing: Option<GpuTimingEncoder>,
 }
 
 impl<'device> GpuPassEncoder<'device> {
@@ -546,12 +550,27 @@ impl<'device> GpuPassEncoder<'device> {
     /// Validates and records one complete compute pass.
     pub fn encode_compute(&mut self, plan: GpuComputePassPlan) -> Result<GpuPassInfo> {
         self.validate_compute(&plan)?;
+        let timing_indices = self
+            .timing
+            .as_mut()
+            .map(GpuTimingEncoder::reserve_pass)
+            .transpose()?;
+        let timestamp_writes =
+            timing_indices.map(|(beginning, end)| wgpu::ComputePassTimestampWrites {
+                query_set: self
+                    .timing
+                    .as_ref()
+                    .expect("timing indices require a timing encoder")
+                    .query_set(),
+                beginning_of_pass_write_index: Some(beginning),
+                end_of_pass_write_index: Some(end),
+            });
         {
             let mut pass = self
                 .encoder
                 .begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label: plan.label(),
-                    timestamp_writes: None,
+                    timestamp_writes,
                 });
             for command in plan.commands() {
                 match command {
@@ -585,6 +604,21 @@ impl<'device> GpuPassEncoder<'device> {
     /// Validates and records one complete render pass.
     pub fn encode_render(&mut self, plan: GpuRenderPassPlan) -> Result<GpuPassInfo> {
         self.validate_render(&plan)?;
+        let timing_indices = self
+            .timing
+            .as_mut()
+            .map(GpuTimingEncoder::reserve_pass)
+            .transpose()?;
+        let timestamp_writes =
+            timing_indices.map(|(beginning, end)| wgpu::RenderPassTimestampWrites {
+                query_set: self
+                    .timing
+                    .as_ref()
+                    .expect("timing indices require a timing encoder")
+                    .query_set(),
+                beginning_of_pass_write_index: Some(beginning),
+                end_of_pass_write_index: Some(end),
+            });
         let color_attachments = plan
             .color_attachments()
             .iter()
@@ -610,7 +644,7 @@ impl<'device> GpuPassEncoder<'device> {
                 label: plan.label(),
                 color_attachments: &color_attachments,
                 depth_stencil_attachment,
-                timestamp_writes: None,
+                timestamp_writes,
                 occlusion_query_set: None,
             });
             for command in plan.commands() {
@@ -684,13 +718,23 @@ impl<'device> GpuPassEncoder<'device> {
     }
 
     /// Finishes a nonempty encoder into a single-use managed batch.
-    pub fn finish(self) -> Result<GpuPassBatch> {
+    pub fn finish(mut self) -> Result<GpuPassBatch> {
         if self.encoded.is_empty() {
             return Err(invalid(
                 "finish_pass_batch",
                 "a GPU pass batch must contain at least one accepted pass",
             ));
         }
+        let timing_targets = self
+            .encoded
+            .iter()
+            .map(|(info, _)| GpuTimingTarget::new(info.sequence, info.kind))
+            .collect::<Vec<_>>();
+        let timing = self
+            .timing
+            .take()
+            .map(|timing| timing.finish(&mut self.encoder, timing_targets))
+            .transpose()?;
         let (passes, retained) = self.encoded.into_iter().unzip();
         Ok(GpuPassBatch {
             device_identity: Arc::clone(self.resources.device_identity()),
@@ -698,6 +742,7 @@ impl<'device> GpuPassEncoder<'device> {
             command_buffer: self.encoder.finish(),
             passes,
             _retained: retained,
+            timing,
         })
     }
 
@@ -1556,7 +1601,35 @@ impl<'device> GpuResources<'device> {
                 .wgpu_device()
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor { label }),
             encoded: Vec::new(),
+            timing: None,
         }
+    }
+
+    /// Creates a bounded managed pass encoder with beginning and end GPU timestamps.
+    ///
+    /// Timing is explicit and requires `TIMESTAMP_QUERY` on the logical device.
+    /// Completed reports retain only pass order, pass kind, and duration. The
+    /// caller label remains an internal wgpu debugging label and is never copied
+    /// into timing handles, reports, events, or their `Debug` output.
+    pub fn create_timed_pass_encoder(
+        &self,
+        label: Option<&str>,
+        config: GpuTimingConfig,
+    ) -> Result<GpuPassEncoder<'device>> {
+        let timing = GpuTimingEncoder::new(self, config)?;
+        Ok(GpuPassEncoder {
+            resources: self.clone(),
+            capabilities: GpuPassCapabilities {
+                features: self.enabled_features(),
+                limits: self.enabled_limits().clone(),
+                resource_scope: self.scope_id(),
+            },
+            encoder: self
+                .wgpu_device()
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor { label }),
+            encoded: Vec::new(),
+            timing: Some(timing),
+        })
     }
 }
 
@@ -1568,6 +1641,7 @@ pub struct GpuPassBatch {
     command_buffer: wgpu::CommandBuffer,
     passes: Vec<GpuPassInfo>,
     _retained: Vec<RetainedPass>,
+    timing: Option<EncodedGpuTiming>,
 }
 
 impl GpuPassBatch {
@@ -1590,6 +1664,7 @@ pub struct GpuPassSubmission {
     resource_scope: u64,
     passes: Vec<GpuPassInfo>,
     fence: GpuFence,
+    timing: Option<GpuTimingHandle>,
 }
 
 impl GpuPassSubmission {
@@ -1609,6 +1684,12 @@ impl GpuPassSubmission {
     pub const fn fence(&self) -> &GpuFence {
         &self.fence
     }
+
+    /// Returns the privacy-safe timing handle for an explicitly timed batch.
+    #[must_use]
+    pub const fn timing(&self) -> Option<&GpuTimingHandle> {
+        self.timing.as_ref()
+    }
 }
 
 impl<'device> GpuSubmissionQueue<'device> {
@@ -1619,19 +1700,26 @@ impl<'device> GpuSubmissionQueue<'device> {
     pub fn submit_pass_batch(&self, batch: GpuPassBatch) -> Result<GpuPassSubmission> {
         self.ensure_device_identity(&batch.device_identity, "submit_pass_batch")?;
         let GpuPassBatch {
+            device_identity,
             resource_scope,
             command_buffer,
             passes,
             _retained,
-            ..
+            timing,
         } = batch;
+        let pending_timing = timing.as_ref().map(EncodedGpuTiming::pending_submission);
         let mut retained = self.resources();
         retained.retain(_retained);
+        if let Some(timing) = timing {
+            retained.retain(timing);
+        }
         let fence = self.submit([command_buffer], retained)?;
+        let timing = pending_timing.map(|timing| timing.begin(device_identity, fence.clone()));
         Ok(GpuPassSubmission {
             resource_scope,
             passes,
             fence,
+            timing,
         })
     }
 }
