@@ -220,13 +220,18 @@ impl EditTimeline {
                 .value()
                 .checked_sub(start)
                 .ok_or_else(|| overflow("map_presentation_to_media"))?;
-            let media_delta = presentation_delta_to_media(
-                delta,
-                self.presentation_timebase,
-                self.media_timebase,
-                fixed_rate(edit)?,
-                rounding,
-            )?;
+            let rate = fixed_rate(edit)?;
+            let media_delta = if rate == 0 {
+                0
+            } else {
+                presentation_delta_to_media(
+                    delta,
+                    self.presentation_timebase,
+                    self.media_timebase,
+                    rate,
+                    rounding,
+                )?
+            };
             let media_value = media_start
                 .value()
                 .checked_add(media_delta)
@@ -274,6 +279,15 @@ impl EditTimeline {
                 continue;
             }
             let rate = fixed_rate(edit)?;
+            if rate == 0 {
+                if media_time == media_start {
+                    presentations.push(RationalTime::new(
+                        self.starts[index],
+                        self.presentation_timebase,
+                    ));
+                }
+                continue;
+            }
             let floor_delta = media_delta_to_presentation(
                 media_delta,
                 self.media_timebase,
@@ -293,6 +307,11 @@ impl EditTimeline {
                 rate,
                 rounding,
             )?;
+            if !edit.segment_duration().is_zero()
+                && presentation_delta >= edit.segment_duration().value() as i64
+            {
+                continue;
+            }
             let value = self.starts[index]
                 .checked_add(presentation_delta)
                 .ok_or_else(|| overflow("map_media_to_presentation"))?;
@@ -313,12 +332,6 @@ fn fixed_rate(edit: StreamEdit) -> Result<u64> {
     }
     let rate =
         (u64::from(edit.rate_integer() as u16) << 16) | u64::from(edit.rate_fraction() as u16);
-    if rate == 0 {
-        return Err(invalid(
-            "create_edit_timeline",
-            "edit playback rate must be positive",
-        ));
-    }
     Ok(rate)
 }
 

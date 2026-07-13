@@ -127,17 +127,32 @@ fn edit_timeline_supports_fixed_point_rates_and_repeated_media() {
         ]
     );
 
-    assert!(EditTimeline::new(
+    let dwell = EditTimeline::new(
         movie_timebase,
         media_timebase,
         vec![StreamEdit::new(
             Duration::new(1_000, movie_timebase).unwrap(),
-            Some(RationalTime::zero(media_timebase)),
+            Some(RationalTime::new(25, media_timebase)),
             0,
             0,
         )],
     )
-    .is_err());
+    .unwrap();
+    assert_eq!(
+        dwell
+            .presentation_to_media(RationalTime::new(750, movie_timebase), TimeRounding::Exact)
+            .unwrap(),
+        EditMapping::Media {
+            edit_index: 0,
+            media_time: RationalTime::new(25, media_timebase),
+        }
+    );
+    assert_eq!(
+        dwell
+            .media_to_presentations(RationalTime::new(25, media_timebase), TimeRounding::Exact)
+            .unwrap(),
+        [RationalTime::zero(movie_timebase)]
+    );
 
     let half_rate = EditTimeline::new(
         movie_timebase,
@@ -168,4 +183,26 @@ fn edit_timeline_supports_fixed_point_rates_and_repeated_media() {
             media_time: RationalTime::new(25, media_timebase),
         }
     );
+}
+
+#[test]
+fn reverse_mapping_never_rounds_onto_the_exclusive_edit_end() {
+    let movie_timebase = Timebase::integer(10).unwrap();
+    let media_timebase = Timebase::integer(3).unwrap();
+    let timeline = EditTimeline::new(
+        movie_timebase,
+        media_timebase,
+        vec![StreamEdit::new(
+            Duration::new(10, movie_timebase).unwrap(),
+            Some(RationalTime::zero(media_timebase)),
+            1,
+            0,
+        )],
+    )
+    .unwrap();
+
+    assert!(timeline
+        .media_to_presentations(RationalTime::new(3, media_timebase), TimeRounding::Ceil)
+        .unwrap()
+        .is_empty());
 }

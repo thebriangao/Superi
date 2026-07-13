@@ -27,6 +27,10 @@ use crate::read::ReadOutcome;
 use crate::timecode::{EditTimeline, TimestampNormalizer};
 
 const COMPONENT: &str = "superi-media-io.mp4-mov";
+const MAX_EDIT_LIST_ENTRIES: usize = 4_096;
+const MAX_PRESENTED_SAMPLE_ENTRIES: usize = 2_000_000;
+const MAX_PRESENTATIONS_PER_SAMPLE: usize = 256;
+const OPERATION_POLL_INTERVAL: usize = 1_024;
 
 /// The in-tree container backend for MP4 and QuickTime MOV sources.
 pub struct Mp4MovBackend {
@@ -413,11 +417,12 @@ struct TrackState {
     timebase: Timebase,
     samples: Vec<ParsedSample>,
     presented_samples: Vec<PresentedSample>,
+    edit_timeline: EditTimeline,
     normalizer: TimestampNormalizer,
     cursor: usize,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct PresentedSample {
     sample_index: usize,
     presentation_time: RationalTime,
@@ -457,16 +462,15 @@ impl Mp4MovSource {
                 stream_timebase,
                 stream_info.edits().to_vec(),
             )
-            .map_err(|error| {
-                error.with_context(ErrorContext::new(COMPONENT, "build_edit_timeline"))
-            })?;
-            let presented_samples = build_presented_samples(&samples, &edit_timeline)?;
+            .map_err(|error| corrupt_container_edit("build_edit_timeline", error))?;
+            let presented_samples = build_presented_samples(&samples, &edit_timeline, operation)?;
             tracks.push(TrackState {
                 id: stream_info.id(),
                 kind: stream_info.kind(),
                 timebase: stream_info.timebase(),
                 samples,
                 presented_samples,
+                edit_timeline,
                 normalizer,
                 cursor: 0,
             });
@@ -629,7 +633,7 @@ impl MediaSource for Mp4MovSource {
                 unsupported_container("seek", "media source contains no seekable packets")
             })?;
         let anchor = &self.tracks[anchor_index];
-        let selected = select_seek_sample(anchor, request)?;
+        let selected = select_seek_sample(anchor, request, operation)?;
         let actual = selected.presentation_time;
 
         let mut cursors = Vec::with_capacity(self.tracks.len());
@@ -638,7 +642,7 @@ impl MediaSource for Mp4MovSource {
             let cursor = if index == anchor_index {
                 selected.decode_start
             } else {
-                cursor_for_presentation(track, actual)?
+                cursor_for_presentation(track, actual, operation)?
             };
             cursors.push(cursor);
         }
@@ -674,33 +678,63 @@ struct SeekSelection {
     decode_start: usize,
 }
 
-fn select_seek_sample(track: &TrackState, request: SeekRequest) -> Result<SeekSelection> {
+fn select_seek_sample(
+    track: &TrackState,
+    request: SeekRequest,
+    operation: &OperationContext,
+) -> Result<SeekSelection> {
     match request.mode() {
         SeekMode::Exact => {
-            let selected = track
-                .presented_samples
-                .iter()
-                .find(|sample| sample.presentation_time == request.target())
-                .ok_or_else(|| {
-                    invalid_seek("exact seek target is not a presented frame boundary")
+            let presentation_time = request
+                .target()
+                .checked_rescale(
+                    track.edit_timeline.presentation_timebase(),
+                    TimeRounding::Exact,
+                )
+                .map_err(|error| {
+                    error.with_context(ErrorContext::new(COMPONENT, "seek_mp4_mov_source"))
                 })?;
+            let media_time = match track
+                .edit_timeline
+                .presentation_to_media(presentation_time, TimeRounding::Exact)?
+            {
+                crate::timecode::EditMapping::Media { media_time, .. } => media_time,
+                crate::timecode::EditMapping::Empty { .. } => {
+                    return Err(invalid_seek("exact seek target lies in an empty edit"));
+                }
+                crate::timecode::EditMapping::Outside => {
+                    return Err(invalid_seek(
+                        "exact seek target is outside the presentation",
+                    ));
+                }
+            };
+            let mut selected_index = None;
+            for (index, sample) in track.samples.iter().enumerate() {
+                poll_operation(operation, index, "seek_mp4_mov_source")?;
+                if sample.composition_timestamp == media_time.value() {
+                    selected_index = Some(index);
+                    break;
+                }
+            }
+            let selected_index = selected_index.ok_or_else(|| {
+                invalid_seek("exact seek target is not a presented frame boundary")
+            })?;
             Ok(SeekSelection {
-                presentation_time: selected.presentation_time,
-                decode_start: preceding_sync_sample(track, selected.sample_index)?,
+                presentation_time,
+                decode_start: preceding_sync_sample(track, selected_index, operation)?,
             })
         }
         SeekMode::PreviousKeyframe => {
-            let selected = track
-                .presented_samples
-                .iter()
-                .filter(|sample| {
-                    track.samples[sample.sample_index].is_sync
-                        && time_cmp(sample.presentation_time, request.target()) != Ordering::Greater
-                })
-                .max_by(|left, right| {
-                    time_cmp(left.presentation_time, right.presentation_time)
-                        .then_with(|| left.sample_index.cmp(&right.sample_index))
-                })
+            let mut selected = None;
+            for (index, sample) in track.presented_samples.iter().enumerate() {
+                poll_operation(operation, index, "seek_mp4_mov_source")?;
+                if track.samples[sample.sample_index].is_sync
+                    && time_cmp(sample.presentation_time, request.target()) != Ordering::Greater
+                {
+                    selected = Some(sample);
+                }
+            }
+            let selected = selected
                 .ok_or_else(|| invalid_seek("no keyframe exists at or before the seek target"))?;
             Ok(SeekSelection {
                 presentation_time: selected.presentation_time,
@@ -720,18 +754,25 @@ fn select_seek_sample(track: &TrackState, request: SeekRequest) -> Result<SeekSe
                     TimeRounding::NearestTiesEven,
                 )?
                 .value();
-            let selected = track
-                .presented_samples
-                .iter()
-                .filter(|sample| track.samples[sample.sample_index].is_sync)
-                .min_by_key(|sample| {
-                    (
-                        sample.presentation_time.value().abs_diff(target),
-                        sample.presentation_time.value(),
-                        sample.sample_index,
-                    )
-                })
-                .ok_or_else(|| invalid_seek("media source contains no keyframes"))?;
+            let mut selected = None;
+            let mut selected_key = None;
+            for (index, sample) in track.presented_samples.iter().enumerate() {
+                poll_operation(operation, index, "seek_mp4_mov_source")?;
+                if !track.samples[sample.sample_index].is_sync {
+                    continue;
+                }
+                let key = (
+                    sample.presentation_time.value().abs_diff(target),
+                    sample.presentation_time.value(),
+                    sample.sample_index,
+                );
+                if selected_key.map_or(true, |current| key < current) {
+                    selected = Some(sample);
+                    selected_key = Some(key);
+                }
+            }
+            let selected =
+                selected.ok_or_else(|| invalid_seek("media source contains no keyframes"))?;
             Ok(SeekSelection {
                 presentation_time: selected.presentation_time,
                 decode_start: selected.sample_index,
@@ -740,28 +781,40 @@ fn select_seek_sample(track: &TrackState, request: SeekRequest) -> Result<SeekSe
     }
 }
 
-fn preceding_sync_sample(track: &TrackState, sample_index: usize) -> Result<usize> {
-    track.samples[..=sample_index]
-        .iter()
-        .rposition(|sample| sample.is_sync)
-        .ok_or_else(|| invalid_seek("exact frame has no preceding random-access packet"))
+fn preceding_sync_sample(
+    track: &TrackState,
+    sample_index: usize,
+    operation: &OperationContext,
+) -> Result<usize> {
+    for (work, index) in (0..=sample_index).rev().enumerate() {
+        poll_operation(operation, work, "seek_mp4_mov_source")?;
+        if track.samples[index].is_sync {
+            return Ok(index);
+        }
+    }
+    Err(invalid_seek(
+        "exact frame has no preceding random-access packet",
+    ))
 }
 
-fn cursor_for_presentation(track: &TrackState, target: RationalTime) -> Result<usize> {
-    let selected = track
+fn cursor_for_presentation(
+    track: &TrackState,
+    target: RationalTime,
+    operation: &OperationContext,
+) -> Result<usize> {
+    operation.check("seek_mp4_mov_source")?;
+    let upper = track
         .presented_samples
-        .iter()
-        .filter(|sample| time_cmp(sample.presentation_time, target) != Ordering::Greater)
-        .max_by(|left, right| {
-            time_cmp(left.presentation_time, right.presentation_time)
-                .then_with(|| left.sample_index.cmp(&right.sample_index))
-        })
+        .partition_point(|sample| time_cmp(sample.presentation_time, target) != Ordering::Greater);
+    let selected = upper
+        .checked_sub(1)
+        .and_then(|index| track.presented_samples.get(index))
         .or_else(|| track.presented_samples.first());
     let Some(selected) = selected else {
         return Ok(track.samples.len());
     };
     if track.kind == StreamKind::Video {
-        preceding_sync_sample(track, selected.sample_index)
+        preceding_sync_sample(track, selected.sample_index, operation)
     } else {
         Ok(selected.sample_index)
     }
@@ -795,13 +848,30 @@ fn normalize_samples(
 fn build_presented_samples(
     samples: &[ParsedSample],
     timeline: &EditTimeline,
+    operation: &OperationContext,
 ) -> Result<Vec<PresentedSample>> {
+    if timeline.edits().len() > MAX_EDIT_LIST_ENTRIES {
+        return Err(resource_exhausted(
+            "build_presented_samples",
+            "container edit list exceeds the bounded seek-index limit",
+        ));
+    }
     let mut presented = Vec::new();
     for (sample_index, sample) in samples.iter().enumerate() {
-        for presentation_time in timeline.media_to_presentations(
+        poll_operation(operation, sample_index, "build_mp4_mov_source")?;
+        let presentations = timeline.media_to_presentations(
             RationalTime::new(sample.composition_timestamp, timeline.media_timebase()),
             TimeRounding::Floor,
-        )? {
+        )?;
+        if presentations.len() > MAX_PRESENTATIONS_PER_SAMPLE
+            || presented.len().saturating_add(presentations.len()) > MAX_PRESENTED_SAMPLE_ENTRIES
+        {
+            return Err(resource_exhausted(
+                "build_presented_samples",
+                "edited sample index exceeds the bounded expansion limit",
+            ));
+        }
+        for presentation_time in presentations {
             presented.push(PresentedSample {
                 sample_index,
                 presentation_time,
@@ -812,7 +882,19 @@ fn build_presented_samples(
         time_cmp(left.presentation_time, right.presentation_time)
             .then_with(|| left.sample_index.cmp(&right.sample_index))
     });
+    operation.check("build_mp4_mov_source")?;
     Ok(presented)
+}
+
+fn poll_operation(
+    operation: &OperationContext,
+    work_index: usize,
+    operation_name: &'static str,
+) -> Result<()> {
+    if work_index % OPERATION_POLL_INTERVAL == 0 {
+        operation.check(operation_name)?;
+    }
+    Ok(())
 }
 
 fn build_stream_info(
@@ -937,7 +1019,7 @@ fn build_edits(
         .iter()
         .map(|entry| {
             let segment_duration = Duration::new(entry.segment_duration, movie_timebase)
-                .with_error_context(ErrorContext::new(COMPONENT, "read_stream_edit"))?;
+                .map_err(|error| corrupt_container_edit("read_stream_edit", error))?;
             Ok(StreamEdit::new(
                 segment_duration,
                 if entry.media_time == -1 {
@@ -945,7 +1027,8 @@ fn build_edits(
                 } else {
                     Some(
                         normalizer
-                            .normalize(RationalTime::new(entry.media_time, stream_timebase))?,
+                            .normalize(RationalTime::new(entry.media_time, stream_timebase))
+                            .map_err(|error| corrupt_container_edit("read_stream_edit", error))?,
                     )
                 },
                 entry.rate_integer,
@@ -1092,6 +1175,25 @@ fn corrupt(operation: &'static str, message: &'static str) -> Error {
     .with_context(ErrorContext::new(COMPONENT, operation))
 }
 
+fn corrupt_container_edit(operation: &'static str, source: Error) -> Error {
+    Error::with_source(
+        ErrorCategory::CorruptData,
+        Recoverability::UserCorrectable,
+        "container edit list contains invalid timing or playback-rate data",
+        source,
+    )
+    .with_context(ErrorContext::new(COMPONENT, operation))
+}
+
+fn resource_exhausted(operation: &'static str, message: &'static str) -> Error {
+    Error::new(
+        ErrorCategory::ResourceExhausted,
+        Recoverability::UserCorrectable,
+        message,
+    )
+    .with_context(ErrorContext::new(COMPONENT, operation))
+}
+
 fn unsupported_container(operation: &'static str, message: &'static str) -> Error {
     Error::new(
         ErrorCategory::Unsupported,
@@ -1112,7 +1214,14 @@ fn unsupported_operation(operation: &'static str, capability: &'static str) -> E
 
 #[cfg(test)]
 mod tests {
-    use super::sha256_fingerprint;
+    use super::{
+        build_presented_samples, select_seek_sample, sha256_fingerprint, EditTimeline,
+        ParsedSample, RationalTime, SeekMode, SeekRequest, StreamEdit, StreamId, StreamKind,
+        Timebase, TimestampNormalizer, TrackState, MAX_PRESENTATIONS_PER_SAMPLE,
+    };
+    use crate::operation::{MediaPriority, OperationContext};
+    use superi_core::error::ErrorCategory;
+    use superi_core::time::Duration;
 
     #[test]
     fn content_fingerprint_uses_canonical_sha256() {
@@ -1120,5 +1229,90 @@ mod tests {
             sha256_fingerprint(b"abc"),
             "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    #[test]
+    fn presented_sample_expansion_is_bounded() {
+        let timebase = Timebase::integer(1_000).unwrap();
+        let edits = (0..=MAX_PRESENTATIONS_PER_SAMPLE)
+            .map(|_| {
+                StreamEdit::new(
+                    Duration::new(1, timebase).unwrap(),
+                    Some(RationalTime::zero(timebase)),
+                    1,
+                    0,
+                )
+            })
+            .collect();
+        let timeline = EditTimeline::new(timebase, timebase, edits).unwrap();
+        let samples = [ParsedSample {
+            id: 1,
+            is_sync: true,
+            size: 1,
+            offset: 0,
+            decode_timestamp: 0,
+            composition_timestamp: 0,
+            duration: 1,
+        }];
+        let error = build_presented_samples(
+            &samples,
+            &timeline,
+            &OperationContext::new(MediaPriority::Interactive),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.category(), ErrorCategory::ResourceExhausted);
+    }
+
+    #[test]
+    fn exact_seek_resolves_inside_a_dwell_edit() {
+        let presentation_timebase = Timebase::integer(1_000).unwrap();
+        let media_timebase = Timebase::integer(100).unwrap();
+        let edit_timeline = EditTimeline::new(
+            presentation_timebase,
+            media_timebase,
+            vec![StreamEdit::new(
+                Duration::new(1_000, presentation_timebase).unwrap(),
+                Some(RationalTime::new(25, media_timebase)),
+                0,
+                0,
+            )],
+        )
+        .unwrap();
+        let samples = vec![ParsedSample {
+            id: 1,
+            is_sync: true,
+            size: 1,
+            offset: 0,
+            decode_timestamp: 25,
+            composition_timestamp: 25,
+            duration: 1,
+        }];
+        let presented_samples = build_presented_samples(
+            &samples,
+            &edit_timeline,
+            &OperationContext::new(MediaPriority::Interactive),
+        )
+        .unwrap();
+        let track = TrackState {
+            id: StreamId::new(1),
+            kind: StreamKind::Video,
+            timebase: media_timebase,
+            samples,
+            presented_samples,
+            edit_timeline,
+            normalizer: TimestampNormalizer::new(RationalTime::zero(media_timebase)),
+            cursor: 0,
+        };
+        let target = RationalTime::new(750, presentation_timebase);
+        let selected = select_seek_sample(
+            &track,
+            SeekRequest::new(target, SeekMode::Exact),
+            &OperationContext::new(MediaPriority::Interactive),
+        )
+        .unwrap();
+
+        assert_eq!(selected.presentation_time, target);
+        assert_eq!(selected.decode_start, 0);
     }
 }
