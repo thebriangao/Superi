@@ -379,6 +379,7 @@ or editing will actually be implemented.
 | T1 | `superi-media-io` | Codec-independent decode/encode contracts, demuxing, timecode, image sequences, audio streams, and backend registration. |
 | T1b | `superi-codecs-rs` | Default permissive codec backend and its registration surface. |
 | T1b | `superi-codecs-platform` | Optional platform codec backend behind the `os-codecs` feature and isolated FFI boundaries. |
+| T1b | `superi-codecs-vendor` | Host protocol and process adapter for explicitly selected, separately installed vendor RAW workers. |
 | T2 | `superi-graph` | Node DAG, typed contracts, lazy evaluation, mutation, serialization, regions of interest, expressions, and headless execution. |
 | T2 | `superi-cache` | Frame and intermediate caches, proxies, background render caching, prefetch, eviction, and disk persistence. |
 | T3 | `superi-color` | Linear working space, input/output transforms, configuration, views, HDR, LUTs, and display profiles. |

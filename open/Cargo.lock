@@ -1385,6 +1385,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "superi-codecs-vendor"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "superi-core",
+ "superi-image",
+ "superi-media-io",
+]
+
+[[package]]
 name = "superi-color"
 version = "0.0.0"
 dependencies = [
@@ -1429,6 +1440,7 @@ dependencies = [
  "superi-cache",
  "superi-codecs-platform",
  "superi-codecs-rs",
+ "superi-codecs-vendor",
  "superi-color",
  "superi-concurrency",
  "superi-core",

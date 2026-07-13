@@ -12,6 +12,7 @@ workspace = true
 [features]
 default = []
 os-codecs = ["dep:superi-codecs-platform"]
+vendor-codecs = ["dep:superi-codecs-vendor"]
 
 [dependencies]
 superi-core = { path = "../superi-core" }
@@ -29,3 +30,4 @@ superi-audio = { path = "../superi-audio" }
 superi-ai = { path = "../superi-ai" }
 superi-project = { path = "../superi-project" }
 superi-codecs-platform = { path = "../superi-codecs-platform", optional = true }
+superi-codecs-vendor = { path = "../superi-codecs-vendor", optional = true }

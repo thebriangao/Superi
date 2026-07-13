@@ -19,6 +19,7 @@ rule, and the codec boundary are enforced by the Rust compiler, not by conventio
 | T1 | `superi-media-io` | core, image |
 | T1b | `superi-codecs-rs` (default backend) | core, image, media-io |
 | T1b | `superi-codecs-platform` (opt-in, `os-codecs`) | core, image, media-io |
+| T1b | `superi-codecs-vendor` (opt-in host, `vendor-codecs`) | core, image, media-io |
 | T2 | `superi-graph` (node-agnostic) | core, gpu, image, concurrency |
 | T2 | `superi-cache` | core, gpu, image, graph |
 | T3 | `superi-color` | core, gpu, image, graph |
@@ -27,7 +28,7 @@ rule, and the codec boundary are enforced by the Rust compiler, not by conventio
 | T3 | `superi-audio` | core, concurrency |
 | T3 | `superi-ai` | core, image, graph |
 | T4 | `superi-project` | core, graph, timeline |
-| T4 | `superi-engine` (orchestration) | all T0-T4 (+ codecs-platform via `os-codecs`) |
+| T4 | `superi-engine` (orchestration) | all T0-T4 (+ codecs-platform via `os-codecs`, codecs-vendor via `vendor-codecs`) |
 | T5 | `superi-api` (the public seam) | core, engine |
 | T6 | `superi-cli` (first consumer) | core, api |
 
@@ -37,8 +38,9 @@ the graph, never the reverse. New capability = new node type, not a new dependen
 ## Codecs
 
 See `../../docs/codecs.md`. Default build = royalty-free, pure-Rust, in-tree. `--features os-codecs`
-adds the user's-OS decode path for encumbered formats. Nothing encumbered or copyleft ever links into
-the MIT core.
+adds the user's-OS decode path for encumbered formats. `--features vendor-codecs` adds only the MIT
+host adapter for explicitly selected external ARRIRAW, R3D, and BRAW worker executables. Nothing
+encumbered, proprietary, or copyleft ever links into the MIT core.
 
 ## Suggested ownership (6 engineers)
 
@@ -46,7 +48,7 @@ the MIT core.
 |---|---|---|
 | 1 | `superi-gpu`, `superi-concurrency` | graphics / systems |
 | 2 | `superi-graph`, `superi-cache` | core engine |
-| 3 | `superi-media-io`, `superi-codecs-rs`, `superi-codecs-platform`, `superi-image` | media / IO / codecs |
+| 3 | `superi-media-io`, `superi-codecs-rs`, `superi-codecs-platform`, `superi-codecs-vendor`, `superi-image` | media / IO / codecs |
 | 4 | `superi-color`, `superi-effects` | color / comp |
 | 5 | `superi-timeline`, `superi-project`, `superi-api` | editorial + public surface |
 | 6 | `superi-audio`, `superi-ai` | audio + AI |

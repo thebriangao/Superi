@@ -1,7 +1,7 @@
 # Superi: Codec Support Policy & Matrix
 
 **Status:** Foundational policy. Living document, versioned and dated.
-**Version:** 0.5
+**Version:** 0.6
 **Date:** 2026-07-13
 **Audience:** Engineers, contributors. Operationalizes the codec/licensing boundary from
 `architecture.md §2`, `§4.6`, and open item #1 into a concrete, per-format support plan.
@@ -52,7 +52,7 @@ This opens essentially everything a working editor sees day-to-day.
 | **H.266 (VVC)** | emerging | encumbered | OS where present (installed-base support thin in 2026) | limited today |
 | **ProRes** | pro mezzanine / acquisition | Apple proprietary | **OS**: VideoToolbox on Mac; runtime-discovered Media Foundation transforms on Windows | Mac ✓ · Windows depends on installed MFTs · Linux gap |
 | **DNxHD / DNxHR** | broadcast intermediate | VC-3 is a SMPTE standard, cleaner than ProRes | TBD: possibly in-tree | `[VERIFY]` patent status |
-| **ARRIRAW / R3D / BRAW** | high-end camera RAW | vendor proprietary SDKs | optional **user-installed vendor plugin**; never in MIT tree | opt-in, post-launch |
+| **ARRIRAW / R3D / BRAW** | high-end camera RAW | vendor proprietary SDKs | optional **user-installed vendor worker** through the MIT host adapter; SDK code never enters the MIT tree | explicit opt-in, worker availability and platform support are reported at runtime |
 
 ### Audio
 
@@ -89,6 +89,7 @@ index, edit-rate, and generic-container essence relationships without claiming c
 | `superi-media-io` | the decode/encode **interface** + pure-Rust container demux + image-sequence IO |
 | `superi-codecs-rs` | **default backend**, in-tree permissive royalty-free video/audio codecs (PCM, AV1, VP9, Opus, Vorbis, FLAC, MP3), using pure Rust where mature and documented BSD C boundaries where needed |
 | `superi-codecs-platform` | **opt-in backend** (`os-codecs` feature), OS decode for H.264/H.265/H.266/ProRes/AAC (MIT binding code; `unsafe` FFI boundary) |
+| `superi-codecs-vendor` | **opt-in host adapter** (`vendor-codecs` feature), revisioned process protocol for explicitly selected ARRIRAW, R3D, and BRAW worker executables; contains no vendor SDK or vendor code |
 | `superi-image::io` | still/sequence image formats (EXR, DPX, PNG, JPEG, TIFF, WebP, …) |
 
 Backends register behind the `superi-media-io` interface; the engine core only ever knows the
@@ -152,6 +153,44 @@ native calls, deterministic shutdown, and typed unsupported, corrupt-data, confl
 and resource errors. Hardware and asynchronous transforms are not advertised because their D3D
 manager and event ownership contracts are not yet projected through the public GPU boundary. This
 keeps the current capability set truthful instead of copying GPU media into an undisclosed fallback.
+
+### Vendor RAW worker implementation contract
+
+ARRIRAW, R3D, and BRAW support is absent from the ordinary engine registry. Enabling the
+`vendor-codecs` feature compiles only the MIT host adapter. A caller must provide each worker
+executable through `VendorPluginConfig`; Superi does not search for, download, bundle, or load a
+vendor SDK. The engine starts each selected executable in a separate process with an empty inherited
+environment, validates its handshake completely, and publishes capabilities only after every new
+worker can be registered atomically. Duplicate backend identifiers, protocol mismatches, empty or
+duplicate format declarations, missing executables, and failed handshakes leave the registry
+unchanged.
+
+Protocol revision 1 uses one strict, bounded, newline-delimited JSON request and response at a time.
+It covers content-based probing, source open and close, source fingerprints, packet reads, exact
+seeking, decoder creation, packet submission, receive, flush, reset, and classified failure. Every
+identifier, timebase, duration, metadata key, pixel format, color tag, alpha mode, plane geometry,
+and hexadecimal payload is rebuilt through checked public constructors before it reaches an engine
+consumer. Operation cancellation and deadlines remain active while waiting on process locks, writes,
+and reads. A timed out, oversized, invalid-JSON, unterminated, mismatched-identifier, closed, or
+unresponsive worker is terminated. Other invalid protocol values return a terminal typed failure
+instead of silently falling back.
+
+The worker may expose `arriraw`, `r3d`, `braw`, or any nonempty subset, and the host advertises only
+`Source` plus decode for those declared formats. Vendor RAW encode is not advertised. Revision 1
+returns validated CPU frames and can preserve any pixel, color, alpha, timing, and metadata semantics
+already represented by `superi-media-io`. Cross-process shared memory and GPU handles require a
+future negotiated protocol revision after their ownership model is added to the public GPU boundary.
+General discovery, signature scanning, operating-system sandbox policy, permissions UI, and
+quarantine remain owned by their later extension checkpoints; this media checkpoint provides the
+explicit worker boundary and crash containment they will coordinate.
+
+Current vendor facts are tracked from primary sources. The
+[ARRI Image SDK](https://www.arri.com/en/learn-help/learn-help-camera-system/pre-postproduction/file-formats-data-handling/arriraw)
+is available to ARRI Partner Program developers for ARRIRAW and MXF/ARRIRAW processing. The
+[RED R3D SDK](https://www.red.com/developers) supports R3D loading and decoding on Windows, macOS,
+and Linux. [Blackmagic RAW SDK 5.1](https://www.blackmagicdesign.com/developer/products/braw/sdk-and-software)
+provides macOS, Windows x86, and Linux packages plus CPU or GPU decode, metadata, and sidecar APIs.
+Those SDKs remain the responsibility of the separately installed worker and its distributor.
 
 ### MP3 implementation contract
 
