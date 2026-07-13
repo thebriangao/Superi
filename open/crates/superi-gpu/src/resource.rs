@@ -190,6 +190,23 @@ impl<'device> GpuResources<'device> {
         self.device.wgpu_device()
     }
 
+    pub(crate) fn texture_format_features(
+        &self,
+        format: wgpu::TextureFormat,
+    ) -> wgpu::TextureFormatFeatures {
+        if self
+            .device
+            .enabled_features()
+            .contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
+        {
+            self.device
+                .wgpu_adapter()
+                .get_texture_format_features(format)
+        } else {
+            format.guaranteed_format_features(self.device.enabled_features())
+        }
+    }
+
     /// Returns this device lifetime's process-local ownership scope.
     #[must_use]
     pub fn scope_id(&self) -> u64 {

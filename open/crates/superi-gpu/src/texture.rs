@@ -105,6 +105,10 @@ impl GpuTexture {
         &self.0.raw
     }
 
+    pub(crate) fn has_unique_allocation_owner(&self) -> bool {
+        Arc::strong_count(&self.0) == 1
+    }
+
     pub(crate) fn lease(&self) -> &ResourceLease {
         &self.0.lease
     }
