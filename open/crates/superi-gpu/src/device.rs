@@ -1,6 +1,7 @@
 //! Native wgpu adapter discovery, selection, capability reporting, and device creation.
 
 use std::fmt;
+use std::sync::Arc;
 
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 
@@ -62,6 +63,7 @@ impl Default for InstanceOptions {
 pub struct GpuInstance {
     inner: wgpu::Instance,
     enabled_backends: Backends,
+    identity: Arc<()>,
 }
 
 impl GpuInstance {
@@ -93,6 +95,7 @@ impl GpuInstance {
         Ok(Self {
             inner,
             enabled_backends,
+            identity: Arc::new(()),
         })
     }
 
@@ -100,6 +103,14 @@ impl GpuInstance {
     #[must_use]
     pub const fn enabled_backends(&self) -> Backends {
         self.enabled_backends
+    }
+
+    pub(crate) const fn wgpu_instance(&self) -> &wgpu::Instance {
+        &self.inner
+    }
+
+    pub(crate) const fn identity(&self) -> &Arc<()> {
+        &self.identity
     }
 
     /// Enumerates every native adapter exposed by the enabled backends.
@@ -331,6 +342,21 @@ impl AdapterCatalog {
     /// Iterates immutable adapter snapshots in deterministic order.
     pub fn snapshots(&self) -> impl ExactSizeIterator<Item = &AdapterSnapshot> {
         self.adapters.iter().map(|candidate| &candidate.snapshot)
+    }
+
+    pub(crate) fn retain_surface_compatible(mut self, surface: &wgpu::Surface<'_>) -> Self {
+        self.adapters.retain(|candidate| {
+            let capabilities = surface.get_capabilities(&candidate.adapter);
+            !capabilities.formats.is_empty()
+                && capabilities
+                    .present_modes
+                    .contains(&wgpu::PresentMode::Fifo)
+                && !capabilities.alpha_modes.is_empty()
+                && capabilities
+                    .usages
+                    .contains(wgpu::TextureUsages::RENDER_ATTACHMENT)
+        });
+        self
     }
 
     /// Selects and consumes one compatible adapter.
@@ -568,12 +594,14 @@ impl SelectedAdapter {
             })?;
 
         Ok(GpuDevice {
+            raw_adapter: self.adapter,
             adapter: self.snapshot,
             label: request.label.clone(),
             enabled_features: request.required_features,
             enabled_limits: request.required_limits.clone(),
-            _queue: queue,
+            queue,
             device,
+            identity: Arc::new(()),
         })
     }
 }
@@ -658,12 +686,14 @@ impl Default for DeviceRequest {
 /// private so later submission orchestration can enforce ordering and thread
 /// ownership without a competing public submission path.
 pub struct GpuDevice {
+    raw_adapter: wgpu::Adapter,
     adapter: AdapterSnapshot,
     label: Option<String>,
     enabled_features: Features,
     enabled_limits: Limits,
-    _queue: wgpu::Queue,
+    queue: wgpu::Queue,
     device: wgpu::Device,
+    identity: Arc<()>,
 }
 
 impl fmt::Debug for GpuDevice {
@@ -709,6 +739,21 @@ impl GpuDevice {
     #[must_use]
     pub const fn wgpu_device(&self) -> &wgpu::Device {
         &self.device
+    }
+
+    pub(crate) const fn wgpu_adapter(&self) -> &wgpu::Adapter {
+        &self.raw_adapter
+    }
+
+    pub(crate) const fn identity(&self) -> &Arc<()> {
+        &self.identity
+    }
+
+    pub(crate) fn submit_viewport<I>(&self, command_buffers: I)
+    where
+        I: IntoIterator<Item = wgpu::CommandBuffer>,
+    {
+        self.queue.submit(command_buffers);
     }
 }
 
