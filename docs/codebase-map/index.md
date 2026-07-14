@@ -377,10 +377,11 @@ and no persisted credentials. It installs the current stable toolchain with rust
 records Rust, Cargo, toolchain, and commit identity, then runs the locked open-tree boundary command,
 formatting, a locked workspace build, locked workspace tests, strict all-target Clippy, and locked
 documentation tests from `open/`.
-Linux lanes first install `libva-dev`, which supplies the `libva.pc` metadata required to compile
-the locked media dependency graph on GitHub-hosted Ubuntu images. Linux and macOS lanes build the
-approved libvpx 1.16.0 source after verifying its pinned archive checksum, then expose the exact
-shared runtime to capability and codec tests.
+Linux lanes first install `libva-dev` and `nasm`, which supply the `libva.pc` metadata required to
+compile the locked media dependency graph and the assembler required by the approved runtime build.
+Intel macOS lanes install `nasm` with Homebrew. Linux and macOS lanes build the approved libvpx
+1.16.0 source after verifying its pinned archive checksum, then expose the exact shared runtime to
+capability and codec tests.
 Hosted macOS skips only three named VideoToolbox or AudioConverter lifecycle tests whose physical
 codec evidence belongs to the documented hardware lane; Linux and Windows run the exact full
 workspace test command. Matrix fail-fast is disabled, superseded branch runs are cancelled, and

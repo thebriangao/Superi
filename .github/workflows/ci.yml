@@ -70,7 +70,11 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libva-dev
+          sudo apt-get install --yes libva-dev nasm
+
+      - name: Install macOS media build dependencies
+        if: runner.os == 'macOS'
+        run: brew install nasm
 
       - name: Build approved libvpx runtime
         if: runner.os != 'Windows'
@@ -165,7 +169,11 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libva-dev
+          sudo apt-get install --yes libva-dev nasm
+
+      - name: Install macOS media build dependencies
+        if: runner.os == 'macOS'
+        run: brew install nasm
 
       - name: Build approved libvpx runtime
         if: runner.os != 'Windows'

@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 97b54e84ac5a0c8a272870294fbb29974db084833c17ddec3813910569b367ef
+source_hash: bff1acafac60a9cdd1e80512f3ff19299e14bf8a5d5dcbe5bc3a68d8cc69c71b
 source_files: 52
 mapped_at_commit: working-tree
 ---
@@ -66,8 +66,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   rustfmt and Clippy, record build identity, enforce the open-tree boundary with the locked
   repository scanner, and run formatting, locked build and test commands, strict all-target Clippy,
   and locked documentation tests from `open/`. Hosted macOS excludes only three named native codec
-  lifecycle tests that require the physical hardware lane. Linux jobs install `libva-dev` so the
-  locked media dependency graph can discover `libva.pc` before compilation. Linux and macOS jobs
+  lifecycle tests that require the physical hardware lane. Linux jobs install `libva-dev` and
+  `nasm` so the locked media dependency graph can discover `libva.pc` and the approved runtime can
+  retain its optimized x86 code. Intel macOS jobs install `nasm` with Homebrew. Linux and macOS jobs
   build the approved libvpx 1.16.0 archive after verifying its pinned checksum and expose that exact
   shared runtime to capability and codec tests.
 - `.github/workflows/dependency-policy.yml`: Defines the current GitHub Actions dependency-policy
@@ -332,8 +333,9 @@ condition. Both jobs use read-only permissions, immutable `actions/checkout` wit
 credentials disabled, stable Rust with rustfmt and Clippy, recorded tool and commit identity,
 formatting, a locked full-workspace build, locked workspace tests, strict all-target Clippy, and
 locked documentation tests. Linux jobs provision `libva-dev` for the locked media dependency's
-pkg-config discovery. Linux and macOS jobs build checksum-pinned libvpx 1.16.0 and set its explicit
-runtime path. Hosted macOS skips only the three named native VideoToolbox or
+pkg-config discovery plus `nasm` for the x86 libvpx build; Intel macOS jobs provision `nasm` with
+Homebrew. Linux and macOS jobs build checksum-pinned libvpx 1.16.0 and set its explicit runtime
+path. Hosted macOS skips only the three named native VideoToolbox or
 AudioConverter lifecycles whose physical evidence belongs to the documented hardware lane. Linux
 and Windows run the exact full workspace test command. Concurrency cancels superseded work for the
 same pull request or ref, while matrix fail-fast is disabled so platform results remain independent.
@@ -463,8 +465,8 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   strictly lints, and documentation-tests the workspace on five pull-request and `main` lanes, plus
   Ubuntu 22.04 on weekly or manual runs. YAML parsing and all six lane-ID presence checks, preview
   policy, disabled credentials, one locked boundary command per job, complete two-job command
-  coverage, exact Linux `libva-dev` provisioning, checksum-pinned libvpx 1.16.0 provisioning, and
-  the hosted macOS native-test condition passed during this refresh.
+  coverage, exact Linux `libva-dev` and cross-platform x86 `nasm` provisioning, checksum-pinned
+  libvpx 1.16.0 provisioning, and the hosted macOS native-test condition passed during this refresh.
 - `docs/checkpoints/P1.W07.C008.md` records fresh Rust 1.80 formatting, eight focused boundary
   contracts, the canonical scan of 304 files and 23 manifests, warnings-denied focused Clippy,
   workflow syntax, a locked full workspace build, and the complete workspace test and documentation
@@ -598,7 +600,7 @@ The largest current risk is cross-document drift:
 
 This map is based on the local mapping commit rebased onto `origin/main` plus this uncommitted map
 refresh, so `mapped_at_commit` is `working-tree`. The remote base was
-`b8f947f7187d6be15c45ef324d5cf99cee3d6a6e` when the map was refreshed. Its hash describes the exact
+`0024b910d582a1303350ad5fb6302ad33d7f3027` when the map was refreshed. Its hash describes the exact
 52 discovered source files layered on that revision, not the remote commit alone.
 
 ## Maintenance notes
