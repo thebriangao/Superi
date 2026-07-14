@@ -616,6 +616,8 @@ it remains distinguishable from implementation evidence.
   inventory.
 - [`docs/codecs.md`](docs/codecs.md) describes the codec abstraction, format targets, and current
   licensing policy.
+- [`docs/platform-testing.md`](docs/platform-testing.md) defines the required operating-system,
+  physical hardware, suite, cadence, and result-evidence matrix.
 - [`open/docs/STRUCTURE.md`](open/docs/STRUCTURE.md) is the concise guide to the Cargo dependency
   hierarchy and proposed subsystem ownership.
 
