@@ -27,7 +27,7 @@ against raw source before changing code.
 | `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Reserved effect-node catalog, animation, mask, transition, text, tracking, and OFX boundary | Skeleton: public module names only |
 | `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: canonical command state, registry, capability introspection, and CPU-frame GPU upload implemented |
 | `superi-gpu` | [module map](modules/superi-gpu.md) | `open/crates/superi-gpu` | wgpu device, resource, upload, conversion, pass, submission, presentation, and recovery substrate | Implemented substrate with explicit application-level integration gaps |
-| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, typed parameter links and expressions, dependency invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, cache identity, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, typed driver state, bounded expressions, parameter-cycle protection, exact invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic cache-key inspection, run-local timing, and role-neutral editable-to-runtime evaluation implemented; cache storage, production catalog, project persistence, and rendered integration absent |
+| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, typed parameter links and expressions, derived missing-node resolution, dependency invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, cache identity, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, typed driver state, bounded expressions, parameter-cycle protection, fail-closed missing-node placeholders, exact invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic cache-key inspection, run-local timing, and role-neutral editable-to-runtime evaluation implemented; cache storage, production catalog and plugin binding, project persistence, and rendered integration absent |
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; production source registration and muxing absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
@@ -106,9 +106,9 @@ execution substrates, while color, effects, cache, timeline, AI, project, and en
 graph. Graph must not depend upward on a domain catalog. Its implemented surface uses core-owned
 object identifiers and core semantic contracts for schema definitions, and it owns generic
 deterministic DAG storage, opaque typed bindings, deterministic request-scoped scheduling and
-evaluation, typed parameter drivers and bounded expressions, and structured validation errors. Catalog
-relationships still exist only in manifests because downstream consumers remain skeletons or have
-no graph call site.
+evaluation, typed parameter drivers and bounded expressions, derived exact-schema availability, and
+structured validation errors. Catalog relationships still exist only in manifests because
+downstream consumers remain skeletons or have no graph call site.
 
 Codec implementations depend down on the codec-neutral `superi-media-io` interface. Media I/O does
 not depend on a concrete codec, engine, or registry assembler. The engine owns the current assembly
@@ -222,6 +222,23 @@ Versioned graph documents preserve that same editable state without claiming pro
 4. Independent editor, script, and headless-style tests load the document, observe equal snapshots,
    and evaluate equal results through the shared evaluator. No project file, SQLite, autosave,
    recovery journal, engine, API, CLI, or product runtime path consumes the codec yet.
+
+Missing plugin schemas now degrade that same editable state without creating a second model:
+
+1. `superi_graph::missing::resolve_graph` compares each node's complete embedded schema with one
+   immutable `NodeRegistrySnapshot` and retains the original `GraphSnapshot<T>` unchanged.
+2. Exact identity and schema equality is available. An absent identity produces an unregistered
+   placeholder, while different fields under the same identity produce an incompatible placeholder
+   and fail closed rather than reinterpreting typed state.
+3. Resolved nodes expose original schemas, ports, parameters, drivers, edges, and order beside the
+   derived availability. Missing state never enters transactions, document bytes, or migrations, so
+   users may inspect, edit, and resave the graph while a plugin is absent.
+4. The shared evaluation gate returns one canonical `Unavailable` and `Degraded` result containing
+   graph and registry revisions plus every blocker in stable node order. Registering exact saved
+   schemas later restores evaluation without changing graph revision or authored meaning.
+5. Public integration tests are the current consumer. A future engine plugin host still owns
+   implementation factories, worker containment, version compatibility policy, and production
+   compilation above this node-neutral boundary.
 
 Deterministic graph scheduling and lazy evaluation are implemented over caller-owned DAG payloads
 without a production catalog:
@@ -498,6 +515,9 @@ The following constraints cross multiple modules and should be preserved togethe
   dependency is explicit, direct links preserve exact types and payloads, expressions are bounded
   and pure, parameter cycles fail before publication, and all caller roles evaluate one immutable
   snapshot through the same request-local result path.
+- Plugin availability is derived from immutable graph and registry snapshots, never persisted into
+  authored state. Only an exact saved schema definition is available; absent or conflicting schemas
+  retain typed placeholders and produce one stable degraded evaluation result for every caller.
 - Graph ROI derives exact connected work from one immutable snapshot, current per-output domains,
   schema behavior, and stable typed edges. Plans retain graph identity and revision, never mutate
   state, and cannot be treated as cache-generation ownership.
@@ -681,10 +701,10 @@ Partial modules contain these explicit placeholder areas:
   undo ownership, engine coordination, cache storage and generations, production node catalogs, and
   runtime consumers beyond its implemented identifier, node-schema, typed DAG storage and
   validation, schema-bound instances, immutable snapshots, atomic editable transactions, canonical
-  versioned graph documents, typed parameter drivers and expressions, exact dirty regions,
-  dependency invalidation, snapshot-bound ROI planning, deterministic request-scoped scheduling,
-  node introspection, versioned cache identity, run-local timing, and shared interactive and
-  headless evaluation surfaces.
+  versioned graph documents, typed parameter drivers and expressions, derived fail-closed plugin
+  availability, exact dirty regions, dependency invalidation, snapshot-bound ROI planning,
+  deterministic request-scoped scheduling, node introspection, versioned cache identity, run-local
+  timing, and shared interactive and headless evaluation surfaces.
 
 Substantive modules also have intentionally incomplete boundaries. Media I/O has no muxer or
 production registry owner for its source backends. GPU has no cross-adapter transfer or external
@@ -723,9 +743,10 @@ For common concerns, begin at these owners:
 - Jobs, domains, clocks, handoffs, lifecycle, and liveness: `superi-concurrency`.
 - Graph-facing identifiers, node schemas, deterministic DAG state, typed binding validation,
   schema-bound instances, editable transactions, canonical graph documents, typed parameter links
-  and expressions, exact dirty regions, dependency invalidation, snapshot-bound ROI propagation,
-  deterministic request-scoped scheduling and evaluation, pre-execution node introspection, cache
-  identity, run-local timing, and shared interactive and headless evaluation:
+  and expressions, missing-node resolution, exact dirty regions, dependency invalidation,
+  snapshot-bound ROI propagation, deterministic request-scoped scheduling and evaluation,
+  pre-execution node introspection, cache identity, run-local timing, and shared interactive and
+  headless evaluation:
   `superi-graph`, with value identity, rational time, and pixel bounds owned by `superi-core`.
 - Current assembly and public capability flow: `superi-engine` then `superi-api`.
 - Product law, open and closed boundaries, CI, fixtures, and maintenance workflow: `workspace`.

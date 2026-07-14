@@ -6,9 +6,9 @@
 //! exact dependency invalidation, region-of-interest propagation, deterministic request-scoped
 //! scheduling and evaluation, typed parameter links and bounded pure expressions, deterministic
 //! node introspection and cache identity, run-local evaluation timing, shared interactive and
-//! headless evaluation snapshots, and versioned integrity-checked graph documents with migration
-//! are implemented; cache storage and production node-catalog and render integration remain
-//! pending.
+//! headless evaluation snapshots, derived missing-node placeholders, and versioned
+//! integrity-checked graph documents with migration are implemented; cache storage and production
+//! node-catalog and render integration remain pending.
 
 pub mod dag;
 pub mod diagnostics;
@@ -17,6 +17,7 @@ pub mod expr;
 pub mod headless;
 pub mod ids;
 pub mod invalidation;
+pub mod missing;
 pub mod mutate;
 pub mod node;
 pub mod roi;

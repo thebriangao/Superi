@@ -2,8 +2,8 @@
 module_id: superi-graph
 source_paths:
   - open/crates/superi-graph
-source_hash: ea651f2b6512ff78d6bf09afb1ba2665f34c81f9833758e2c406a2fe110c518a
-source_files: 26
+source_hash: ed296008c60f25f7d145e267a57045d59b5096423d272fbcbfff86769df30502
+source_files: 28
 mapped_at_commit: working-tree
 ---
 
@@ -19,9 +19,10 @@ state, atomic revisioned mutation transactions, exact dirty-region algebra, dete
 dependency invalidation planning, snapshot-bound region-of-interest propagation, exact
 requested-versus-dirty work intersection, lazy request-scoped evaluation, deterministic work
 scheduling, typed parameter links, bounded pure expressions, parameter dependency-cycle
-protection, and deterministic parameter evaluation are implemented. Deterministic pre-execution
-node introspection, policy-scoped cache keys, actionable non-cacheable decisions, and run-local
-evaluator timing are also implemented without changing semantic result equality. One immutable
+protection, deterministic parameter evaluation, and derived missing-node resolution against an
+immutable schema registry are implemented. Deterministic pre-execution node introspection,
+policy-scoped cache keys, actionable non-cacheable decisions, and run-local evaluator timing are
+also implemented without changing semantic result equality. One immutable
 role-neutral evaluation snapshot retains the exact editable graph revision, compiles caller-owned
 runtime node payloads without changing topology, and delegates both interactive and headless work
 to the shared stateless evaluator. Versioned deterministic graph documents preserve exact schemas,
@@ -43,7 +44,7 @@ cache, or atomic project save system.
 
 ## Source inventory
 
-The module owns 26 text files:
+The module owns 28 text files:
 
 - `open/crates/superi-graph/Cargo.toml`: Declares dependencies on `superi-core`, `superi-gpu`,
   `superi-image`, `superi-concurrency`, Serde, JSON, and SHA-256 hashing.
@@ -76,8 +77,12 @@ The module owns 26 text files:
   propagation, identity-region convenience, edge-aware mapping, and structured failure context.
 - `open/crates/superi-graph/src/lib.rs`: Documents the partial implementation and exports the
   identifier, node-schema, DAG, diagnostics, validation, mutation, invalidation, evaluator, ROI,
-  parameter link, expression, shared evaluation snapshot, and graph document surfaces beside the
-  remaining module tree.
+  parameter link, expression, shared evaluation snapshot, missing-node resolution, and graph
+  document surfaces beside the remaining module tree.
+- `open/crates/superi-graph/src/missing.rs`: Derives exact schema availability from one immutable
+  editable graph snapshot and one registry snapshot, retains unavailable nodes as inspectable
+  placeholders over their original typed state, rejects incompatible same-identity definitions,
+  and provides a deterministic degraded evaluation gate without changing authored state.
 - `open/crates/superi-graph/src/mutate.rs`: Implements complete schema-bound editable node
   instances, opaque typed parameters, canonical authored driver state, immutable graph snapshots,
   optimistic revisions, ordered atomic add, remove, connect, disconnect, reorder, parameter, set
@@ -122,6 +127,11 @@ The module owns 26 text files:
   clipping, stable dependency propagation, edge-specific mapping and branch stopping, actionable
   errors, clean-node exclusion, mutation-snapshot integration, and editor-script-headless parity
   across insertion histories.
+- `open/crates/superi-graph/tests/missing_node_contract.rs`: Proves graph documents load without
+  plugin discovery, unavailable nodes retain exact schemas, bindings, parameters, edges, and
+  canonical bytes, edits remain possible while unavailable, incompatible registrations fail
+  closed, exact schemas restore evaluation, and editor-script-headless callers observe identical
+  state, blocker diagnostics, and results.
 - `open/crates/superi-graph/tests/mutation_contract.rs`: Proves all six mutation forms, exact
   instance binding, typed parameters and connections, input cardinality, immutable snapshots,
   deterministic state, revision conflicts, explicit removal, cycle safety, and full rollback.
@@ -300,6 +310,25 @@ use a schema identity or a separate payload without coupling the DAG algorithm t
   deterministic dependency-completion order, with one request-local memo and no caller mode or
   persistent cache.
 
+`superi_graph::missing` exposes the derived plugin-availability boundary:
+
+- `resolve_graph` compares every authored node's exact embedded `NodeSchema` with one immutable
+  `NodeRegistrySnapshot`. It returns a `GraphResolution<T>` containing the unchanged
+  `GraphSnapshot<T>`, registry revision, and canonical `NodeId`-ordered availability state.
+- `NodeAvailability::Available` requires both exact `NodeSchemaId` identity and structural schema
+  equality. An absent identity produces `MissingNodeReason::UnregisteredSchema`, while a
+  same-identity definition with different fields produces `IncompatibleSchema` and fails closed.
+- `MissingNodePlaceholder` records the stable node identity, saved schema identity, and reason.
+  `ResolvedNode` pairs that derived state with the original `EditableNode<T>`, so callers can still
+  inspect exact ports, parameters, behavior, capabilities, drivers, and connected graph state.
+- `GraphResolution::require_evaluable` returns the exact authored snapshot when every node is
+  available. Otherwise it returns one `Unavailable` and `Degraded` shared error with graph and
+  registry revisions plus every blocker in canonical order. Editing, serialization, and later
+  registry resolution remain possible after that evaluation result.
+- Availability is never serialized, migrated, or written into the graph. Registering the exact
+  saved schema in a later registry snapshot restores availability without a graph transaction or
+  document rewrite.
+
 `superi_graph::serialize` exposes the editable graph document boundary:
 
 - `GRAPH_DOCUMENT_FORMAT_REVISION` identifies the current strict envelope revision.
@@ -446,6 +475,24 @@ use SemVer precedence, followed by canonical version text so build-metadata vari
 and totally ordered. Input ports, output ports, and parameters each use an independent `BTreeMap`,
 which preserves direction-specific namespaces and canonical field ordering.
 
+The missing-node resolution flow is:
+
+1. A caller loads or edits a normal `GraphSnapshot<T>` whose nodes retain complete embedded schemas
+   independently of current plugin discovery.
+2. `resolve_graph` walks authored nodes in stable identity order against one exact
+   `NodeRegistrySnapshot`. Equal identity and definition is available, an absent identity is
+   unregistered, and a differing definition under the same identity is incompatible.
+3. `GraphResolution<T>` retains the exact graph snapshot and stores only derived availability.
+   `ResolvedNode` exposes each original typed node beside `NodeAvailability`, while
+   `MissingNodePlaceholder` exposes stable blocker identity and reason.
+4. Editing and graph serialization continue through the original checked graph owners. Availability
+   never enters a transaction or document, so absent plugins cannot erase ports, parameter payloads,
+   expressions, drivers, edges, presentation order, or schema behavior.
+5. A compiler or render caller invokes `require_evaluable` before binding implementations. Missing
+   nodes produce one canonical degraded unavailable result shared by editor, script, and headless
+   callers. A later registry containing the exact saved definitions returns the same authored graph
+   as evaluable without migration.
+
 The typed validation flow is:
 
 1. The evaluator resolves only payloads required by its request and leaves truthful `ValueTypeId`
@@ -566,8 +613,10 @@ stored `PortId` endpoints to `PortName`, exact schemas, and `ValueTypeId` compat
 adding catalog knowledge to topology. The invalidation planner derives work directly from the same
 checked DAG exposed by each immutable `GraphSnapshot`. The ROI planner consumes the same snapshot,
 schema behavior, typed edges, and exact region algebra to derive upstream work. Parameter
-evaluation consumes the same snapshot's opaque literals and authored drivers. The generic evaluator
-resolves caller-owned DAG payloads, while the evaluation snapshot binds one complete
+evaluation consumes the same snapshot's opaque literals and authored drivers. Missing-node
+resolution compares that snapshot's exact schemas with immutable current discovery without changing
+either owner. The generic evaluator resolves caller-owned DAG payloads, while the evaluation
+snapshot binds one complete
 `GraphSnapshot<T>` to those payloads through a caller-owned compiler without adding catalog
 knowledge. Runtime payloads can expose exact schema, behavior, and canonical state identity by
 opting into `IntrospectNode`. The document codec preserves and reconstructs that same checked
@@ -592,10 +641,10 @@ graph evaluation or runtime integration.
   render coordinators and `superi-concurrency`.
 - Direct manifest consumers are `superi-ai`, `superi-cache`, `superi-color`, `superi-effects`,
   `superi-timeline`, `superi-project`, and `superi-engine`.
-- None of those consumers currently imports a `superi_graph` Rust item. The twelve public integration
-  test targets are the real consumers of identifier, schema-discovery, DAG, validation, mutation,
-  invalidation, ROI, serialization, expression, diagnostics, evaluation, and shared
-  evaluation-snapshot APIs.
+- None of those consumers currently imports a `superi_graph` Rust item. The thirteen public
+  integration test targets are the real consumers of identifier, schema-discovery, DAG, validation,
+  mutation, invalidation, ROI, serialization, expression, diagnostics, evaluation, shared
+  evaluation-snapshot, and missing-node APIs.
 
 ## Invariants and operational boundaries
 
@@ -647,6 +696,15 @@ graph evaluation or runtime integration.
   Equivalent explicit transactions produce equal snapshots regardless of insertion history.
 - Graph snapshots are immutable `Arc` views. A later transaction cannot change a prior reader's
   nodes, parameters, drivers, edges, presentation order, topology, or revision.
+- Plugin availability is derived from one graph snapshot and one registry snapshot. It is never
+  authored, serialized, migrated, or cached into node state, so changing discovery cannot change
+  the graph revision or editable meaning.
+- An available node requires exact schema identity and structural equality. Missing identities and
+  same-identity definition conflicts retain the original typed node as a stable placeholder and
+  never substitute a latest version, coerce bindings, or rewrite saved schema fields.
+- Missing-node iteration and degraded evaluation diagnostics use stable `NodeId` order and record
+  both graph and registry revisions. Editor, script, and headless callers receive the same state and
+  result for equal snapshots.
 - Current graph documents are deterministic for equal editable meaning. Canonical collection and
   JSON object order, exact identifier text, explicit format and primitive revisions, and payload
   integrity cannot depend on insertion history, caller role, locale, platform, or hash iteration.
@@ -728,9 +786,9 @@ graph evaluation or runtime integration.
 
 ## Tests and verification
 
-The graph crate owns 72 integration tests across twelve files. The two identifier tests prove all six
-public domains are distinct, each canonical text value parses back exactly, and every graph export
-has the same Rust `TypeId` as its official core owner.
+The graph crate owns 75 integration tests across thirteen files. The two identifier tests prove all
+six public domains are distinct, each canonical text value parses back exactly, and every graph
+export has the same Rust `TypeId` as its official core owner.
 
 Five node-registry tests prove strict typed definition names, complete and inspectable schema fields,
 canonical port and parameter ordering, SemVer and build-metadata discovery order, exact and latest
@@ -804,7 +862,13 @@ upgraded bytes, integrity and future-revision rejection, unknown-field and inter
 duplicate-order, mistyped-parameter, and cycle rejection through checked contracts, and equal
 editor, script, and headless evaluation after independent loads.
 
-Focused verification runs all twelve integration targets through the crate's public API. Crate-wide
+Three missing-node tests prove independent graph loading before plugin discovery, exact preservation
+of typed schemas, instance bindings, parameters, edges, and canonical bytes while unavailable,
+continued checked editing, stable placeholder order and diagnostics, fail-closed incompatible
+same-identity registration, recovery when the exact saved schema returns, and identical editor,
+script, and headless state plus evaluation results through the shared evaluation snapshot.
+
+Focused verification runs all thirteen integration targets through the crate's public API. Crate-wide
 tests, strict Clippy, and rustdoc cover the library and integration targets. The complete workspace
 suite exercises downstream compatibility. The repository map validator checks the source inventory
 and hash, while dependency and boundary tools enforce the one-way open architecture. No test yet
@@ -832,10 +896,15 @@ evaluator. No production catalog implements that compiler or connects complete R
 plans to render orchestration yet.
 The versioned graph document codec now preserves and validates that complete editable state,
 migrates the supported legacy envelope, returns canonical upgraded bytes, and retains typed links
-and editable expression source through save and load. The crate cannot
-store a project atomically, retain or persist cached values, dispatch work through an outer job
-system, or render production values, and no downstream production catalog consumes the mutation,
-invalidation, ROI, serialization, scheduling, expression, diagnostics, or evaluation owner.
+and editable expression source through save and load. Missing-node resolution now derives exact
+current schema availability without changing those bytes or that editable state, retains absent or
+incompatible nodes as typed placeholders, and gives every caller one deterministic degraded
+evaluation result until exact schemas return. Exact schemas then enable the shared interactive and
+headless evaluation snapshot without a graph rewrite. The crate cannot store a project atomically,
+retain or persist cached values, dispatch work through an outer job system, bind plugin
+implementations, or render production values, and no downstream production catalog consumes the
+mutation, invalidation, ROI, serialization, scheduling, expression, diagnostics, evaluation, or
+missing-node owner.
 
 The latest-version rule deterministically selects the lexically highest build-metadata variant when
 SemVer precedence ties. Consumers that require one deployment-specific build must request its exact
@@ -882,6 +951,10 @@ mapping, or reusing a plan after its stamped graph revision has changed.
 Serialization-specific risks are extending the wire format without a migration, accepting partial
 state outside checked constructors, mistaking a payload digest for durable file replacement, or
 letting a caller-specific wrapper become a competing editable graph model.
+Missing-node-specific risks are persisting derived availability, selecting a newer schema without an
+approved compatibility contract, accepting a same-identity definition conflict, or letting a
+placeholder become a second editable model. The current boundary avoids all four by preserving the
+original graph and requiring exact registry equality before evaluation.
 
 ## Maintenance notes
 
@@ -930,8 +1003,14 @@ state owners. Additive fields must remain canonically omittable for old current-
 incompatible fields require an explicit format revision and migration. Preserve unknown-future
 rejection, and leave atomic project storage, recovery selection, and locking in `superi-project`.
 
+Keep plugin availability derived from the immutable graph and registry snapshots. Preserve exact
+saved schemas, typed instance state, stable blocker order, fail-closed definition conflicts, and the
+shared degraded evaluation gate together. A future plugin host may register explicitly supported
+historical schemas and implementation factories above this crate, but it must not teach the neutral
+resolver to guess compatibility or persist discovery state.
+
 Update this map when mutation, invalidation, ROI, serialization, expressions, diagnostics, and
 evaluation integrate, cache storage or generations, ROI-to-evaluator binding, outer job dispatch,
-missing-node handling, project storage, undo ownership, engine coordination, or a downstream
+project storage, undo ownership, engine coordination, plugin implementation lookup, or a downstream
 catalog becomes real. Recheck direct consumer maps whenever they begin importing any public graph
 contract.
