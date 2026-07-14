@@ -71,6 +71,6 @@ integrity rules documented in `../test-fixtures/README.md` without network acces
 
 ## Deferred (not in this scaffold)
 
-Network-isolated offline CI test · license-audit CI (`deny.toml` is present, unwired) · the vertical
-slice (`import → trim → effect → export`) · the `closed/` tree · the web UI · codec legal sign-off
-(open item #1) · the OTIO mechanism (open item #2).
+Network-isolated offline CI test · the vertical slice (`import → trim → effect → export`) · the
+`closed/` tree · the web UI · codec legal sign-off (open item #1) · the OTIO mechanism (open item
+#2).

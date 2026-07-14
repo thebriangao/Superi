@@ -596,7 +596,7 @@ The present scaffold does **not** contain:
 - project serialization;
 - audio processing;
 - local model inference;
-- the network-isolated and license-audit CI rails;
+- the network-isolated CI rail;
 - the web application or native shell;
 - Superi Max services, generation integrations, accounts, credits, or agent; or
 - a public release.

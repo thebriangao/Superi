@@ -1,4 +1,4 @@
-# cargo-deny configuration. Validated in CI in a later pass (not this scaffold).
+# Canonical cargo-deny policy, enforced by the dependency-policy CI workflow.
 # Permissive-only, ZERO copyleft (GPL/LGPL/AGPL/MPL all intentionally absent).
 
 [licenses]

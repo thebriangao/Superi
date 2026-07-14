@@ -1,0 +1,24 @@
+name: Dependency policy
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-deny:
+    name: cargo deny
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Check approved licenses and sources
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: open/Cargo.toml
+          command: check
+          arguments: --all-features
+          command-arguments: licenses sources
