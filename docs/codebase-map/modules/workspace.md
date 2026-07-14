@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 817ff81e05d1c6d06cf56c984df87c7866d4f513a3f17173fca9243d4e8e112d
-source_files: 43
+source_hash: 94d0aad1e06a4f3c92d6d7782f3940eabbe95f0d98e656cd72ce1bc449f73e5a
+source_files: 44
 mapped_at_commit: working-tree
 ---
 
@@ -22,7 +22,7 @@ completion protocol, requires safe synchronization with `origin/main`, and makes
 full selected raw-file reads a prerequisite for implementation. It routes a single checkpoint
 through mapping, planning, and execution, and routes multiple checkpoints into separate
 Codex-managed worktree tasks. It is ignored by Git and copied into managed worktrees through
-`.worktreeinclude`, so the mapping script does not include it in this module's 43-file inventory or
+`.worktreeinclude`, so the mapping script does not include it in this module's 44-file inventory or
 source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
@@ -108,6 +108,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   checkpoint. It records the outcome, integration boundary, red-to-green process, local checks,
   initial successful GitHub Actions run `29302533491`, delivery commits, and remaining limitations.
   It is evidence of the checkpoint rather than the canonical policy source.
+- `docs/checkpoints/P1.W07.C007.md`: Durable implementation evidence for the automated open-tree
+  dependency-direction gate. It records the executable policy, focused and widening proof, delivery
+  boundary, and the host codec limitation observed during the full workspace test attempt.
 - `docs/codecs.md`: Version 0.6 of the codec and licensing policy. It separates permissive in-tree
   codecs, opt-in operating-system codecs, vendor RAW workers, still-image handling, containers,
   capability introspection, platform backend contracts, and currently documented MP3, VPx, Opus,
@@ -154,7 +157,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 
 ### Cargo workspace and repository configuration
 
-- `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 20 local
+- `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 21 local
   workspace packages, registry dependencies, target-support dependency trees, and the exact
   `oxideav-mp3` Git revision. It is generated resolution evidence and is not hand-edited policy.
 - `open/Cargo.toml`: Root Cargo workspace manifest using resolver 2 and glob members under
@@ -163,7 +166,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   images, GPU, codecs, hashes, platform APIs, and native build support.
 - `open/README.md`: Compact open-tree orientation and build commands. It describes an offline engine,
   codec features, downward dependency tiers, and an architectural skeleton, but its 18-crate and
-  implementation-status claims lag the current 19 crate packages plus one repository tool.
+  implementation-status claims lag the current 19 crate packages plus two repository tools.
 - `open/deny.toml`: Cargo-deny policy allowing a bounded permissive license set, warning on duplicate
   versions and yanked advisories, rejecting unknown Git sources, requiring pinned Git revisions, and
   permitting only the pinned OxideAV MP3 repository as a Git source.
@@ -198,7 +201,7 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
   commitments.
 - `open/Cargo.toml` exports inherited workspace package metadata, lints, and dependency declarations
   to every member manifest. The current glob expansion is 19 crate packages plus
-  `superi-fixture-tool`, for 20 members total.
+  `superi-fixture-tool` and `superi-dependency-check`, for 21 members total.
 - `open/Cargo.lock` is the reproducible dependency-resolution surface for builds and audit tools.
 - `open/deny.toml`, `open/rust-toolchain.toml`, and `open/rustfmt.toml` are entry points for license
   audit, toolchain installation, and formatting.
@@ -267,8 +270,14 @@ shared package metadata and lint defaults, resolves member and external dependen
 dependency direction is downward through the crate tiers: core and representation types support
 GPU, concurrency, media, graph, and codecs; feature catalogs and timeline build on those; engine
 orchestration assembles them; the API is the stable facade; and CLI is a headless consumer. The
-fixture tool is a workspace member for common build, test, Clippy, and MSRV coverage, but it is not
-part of the runtime DAG.
+fixture and dependency-check tools are workspace members for common build, test, Clippy, and MSRV
+coverage, but neither is part of the runtime DAG.
+
+The dependency-direction path is a separate local architecture gate. `superi-dependency-check`
+reads locked offline Cargo metadata, classifies all 19 runtime crates, and checks internal normal,
+build, and dev-only edges against explicit reviewed policies. Its live-workspace contract runs in
+ordinary workspace tests, while the direct command gives contributors a deterministic failure
+before review.
 
 The dependency-policy CI path begins on a push, pull request, or manual dispatch. The read-only job
 checks out the tree, runs `.github/scripts/check-dependency-policy.sh` to verify the expected
@@ -339,6 +348,7 @@ The documents deliberately point into other modules:
 - `superi-project` owns persistence, `superi-engine` owns integration, `superi-api` owns the stable
   seam, and `superi-cli` is the headless consumer.
 - `superi-fixture-tool` validates repository fixture policy but does not enter runtime engine flow.
+- `superi-dependency-check` validates the runtime Cargo graph but does not enter runtime engine flow.
 
 The closed tier is only a consumer of the open API. It is never a workspace dependency or a source
 of open runtime behavior.
@@ -439,11 +449,12 @@ lane, an unimplemented suite is a gap, and a retry retains its original failure 
 ## Current status and risks
 
 The workspace is beyond the original empty scaffold even though the public orientation has not been
-updated consistently. Fresh Cargo metadata expands the member globs to 20 packages: 19 crates under
-`open/crates/` and the `superi-fixture-tool` repository utility. The lockfile includes a substantial
+updated consistently. Fresh Cargo metadata expands the member globs to 21 packages: 19 crates under
+`open/crates/` plus the `superi-fixture-tool` and `superi-dependency-check` repository utilities. The
+lockfile includes a substantial
 GPU, image, codec, serialization, platform, and native-build dependency graph, and current codec,
 image, platform, and unsafe documents describe implemented contracts rather than empty placeholders.
-The synchronized remote revision now ends at `045434b48951f24ebaa678f125107b0800999409`.
+The synchronized remote revision now ends at `329cc74c991050a3b306888fa7e28faf83b5ab77`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
 root README, deny policy, and structure guide with license-audit CI. Commit
 `e0b3af9f099f527a8544d1b0317896640969903b` added the executable dependency-policy contract and its
@@ -515,8 +526,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the local mapping commit rebased onto `origin/main` plus this uncommitted map
 refresh, so `mapped_at_commit` is `working-tree`. The remote base was
-`045434b48951f24ebaa678f125107b0800999409` when the map was refreshed. Its hash describes the exact
-43 discovered source files layered on that revision, not the remote commit alone.
+`329cc74c991050a3b306888fa7e28faf83b5ab77` when the map was refreshed. Its hash describes the exact
+44 discovered source files layered on that revision, not the remote commit alone.
 
 ## Maintenance notes
 

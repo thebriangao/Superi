@@ -69,6 +69,21 @@ Clippy, and minimum-Rust verification cover them. They do not participate in the
 `superi-fixture-tool` enforces the immutable layout, provenance, lineage, inventory, and content
 integrity rules documented in `../test-fixtures/README.md` without network access.
 
+### Automated dependency-direction gate
+
+Run the architecture gate from `open/`:
+
+```bash
+cargo run -p superi-dependency-check --locked
+```
+
+The checker reads locked, offline Cargo metadata and validates every internal normal and build
+dependency against the exact runtime edges above. Test-only dependencies use a separate reviewed
+allowlist, so a dev edge cannot silently authorize the same production edge. New runtime crates and
+new internal edges fail closed until this document and the checker policy are updated together in
+the architecture review that introduces them. Because the checker is a wildcard workspace member,
+its live-workspace contract also runs under the ordinary workspace test gate.
+
 ## Deferred (not in this scaffold)
 
 Network-isolated offline CI test · the vertical slice (`import → trim → effect → export`) · the

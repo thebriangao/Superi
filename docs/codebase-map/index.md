@@ -32,6 +32,7 @@ against raw source before changing code.
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; production source registration and muxing absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
 | `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Reserved editorial model, edits, OTIO, nesting, multicam, and graph compilation | Skeleton: no timeline model, OTIO path, or compiler |
+| `tool-superi-dependency-check` | [module map](modules/tool-superi-dependency-check.md) | `open/tools/superi-dependency-check` | Offline executable policy for the open runtime dependency graph | Implemented exact runtime, build, dev, and new-crate checks |
 | `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline validator for canonical repository fixtures | Implemented validation library and CLI; it does not generate fixtures |
 | `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active policy and build control layer with known cross-document status drift |
 
@@ -49,8 +50,9 @@ outside the generated workspace inventory and hash. It must be read separately f
 when all maps validate. `.worktreeinclude` copies it into Codex-managed worktrees.
 
 The open runtime and tool workspace lives under `open/`. Current Cargo membership is 19 runtime
-crates plus `superi-fixture-tool`. The tool is built with the workspace but is outside the runtime
-dependency graph. The root `closed/README.md` is only a boundary notice for the separately
+crates plus `superi-fixture-tool` and `superi-dependency-check`. Both tools are built with the
+workspace but are outside the runtime dependency graph. The root `closed/README.md` is only a
+boundary notice for the separately
 maintained proprietary tier. Open Superi must never import, link, or depend on closed code. Closed
 Superi may consume the same open public API as any other client and must produce ordinary editable
 artifacts through that public seam.
@@ -288,6 +290,11 @@ identity, provenance, lineage, payload ownership, byte counts, hashes, path safe
 files under `open/test-fixtures`. It is offline and read-only. It does not generate fixtures,
 execute recorded generator commands, prove repository-history immutability, or verify legal and
 semantic claims inside free-form provenance fields.
+
+`superi-dependency-check` is also a repository utility. It reads the locked workspace graph offline
+and fails when a runtime crate adds an unreviewed normal, build, or dev-only internal edge, or when a
+new runtime crate has no explicit policy. The structure guide and executable policy are reviewed as
+one architecture contract.
 
 ## Shared invariants
 

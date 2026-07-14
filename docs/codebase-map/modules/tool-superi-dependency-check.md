@@ -1,0 +1,89 @@
+---
+module_id: tool-superi-dependency-check
+source_paths:
+  - open/tools/superi-dependency-check
+source_hash: e7818d5c52d22a6d9429eed57f97e797b4271e743aed085258beaa2b38027403
+source_files: 4
+mapped_at_commit: working-tree
+---
+
+## Purpose and ownership
+
+`superi-dependency-check` owns the executable open-workspace dependency-direction policy. It is a
+repository utility, not a runtime crate, and verifies that the runtime Cargo graph remains within
+the reviewed architecture documented in `open/docs/STRUCTURE.md`.
+
+## Source inventory
+
+- `open/tools/superi-dependency-check/Cargo.toml`: Declares the workspace package, Serde dependencies,
+  shared lint policy, library target, and command target.
+- `open/tools/superi-dependency-check/src/lib.rs`: Runs locked offline Cargo metadata, parses the
+  workspace package graph, applies exact runtime and dev policies, and reports deterministic errors.
+- `open/tools/superi-dependency-check/src/main.rs`: Runs the library against the containing workspace,
+  prints a successful package and edge summary, and returns a failing process status on violations.
+- `open/tools/superi-dependency-check/tests/dependency_direction_contract.rs`: Covers the checked-in
+  workspace, forbidden runtime and build edges, separation of dev and production policy, and
+  fail-closed behavior for new runtime crates.
+
+## Public surface
+
+The library exports `check_workspace`, `validate_metadata`, `CheckReport`, and `CheckError`.
+`check_workspace` accepts a workspace path and executes Cargo metadata with `--no-deps`, `--locked`,
+and `--offline`. `validate_metadata` accepts Cargo metadata format 1 JSON, which provides a focused
+contract-test seam without invoking Cargo. The binary takes no arguments and reports either the
+number of checked runtime crates and internal edges or the complete ordered violation list.
+
+## Architecture and data flow
+
+The checker asks Cargo for the live workspace packages without resolving dependency source graphs.
+It classifies packages whose manifest path contains `crates` as runtime crates, then selects an
+explicit policy for each runtime package. Internal path dependencies use the normal and build
+allowlist unless Cargo marks them as dev-only. Dev dependencies use a separate allowlist, so a test
+relationship cannot authorize the same production edge. Unknown runtime crates and every
+unapproved edge fail closed.
+
+Violations are collected in a `BTreeSet`, making diagnostics stable for identical metadata. A clean
+graph returns counts, and the command prints the summary for contributor and CI use.
+
+## Dependencies and consumers
+
+The implementation uses the Rust standard library for process execution, paths, collections, and
+errors. Serde and Serde JSON parse Cargo metadata. It has no dependency on any Superi runtime crate.
+The binary and contract tests consume the library. Cargo workspace tests discover its live-workspace
+contract automatically because `open/Cargo.toml` includes `tools/*` members. Contributors consume
+the direct command documented by `open/docs/STRUCTURE.md`.
+
+## Invariants and operational boundaries
+
+- Metadata collection is locked and offline and cannot update the dependency resolution.
+- Runtime crates require an explicit policy entry even when they currently have no internal edges.
+- Normal and build dependencies share the production policy; dev dependencies never widen it.
+- Only internal path dependencies between workspace packages are checked. Registry dependency
+  licensing and source policy remain owned by cargo-deny and its workflow.
+- Tools are outside the runtime crate DAG and are not treated as runtime policy subjects.
+- Policy changes must update the executable table and the human-readable structure document
+  together through architecture review.
+
+## Tests and verification
+
+Four integration contracts exercise the current workspace and synthetic metadata failures. Fresh
+checkpoint proof passed the focused contracts, package tests, strict package and all-target workspace
+Clippy, workspace documentation tests, locked default and all-feature builds, the workspace test
+suite excluding the host codec package, and a Rust 1.80 package check. The direct command validated
+19 runtime crates and 64 internal edges.
+
+## Current status and risks
+
+The checker covers every current runtime crate and exact internal normal, build, and reviewed dev
+edges. Its policy is intentionally explicit rather than inferred from tier names. This makes drift
+visible but requires a deliberate policy and documentation update whenever architecture changes.
+The path-based runtime classification assumes repository runtime crates remain under `open/crates`.
+It does not replace license checks, source checks, network-client scans, or the open-to-closed source
+boundary scan.
+
+## Maintenance notes
+
+When a runtime crate or internal dependency changes, update `policy_for`, its negative and live graph
+contracts, and `open/docs/STRUCTURE.md` in the same review. Preserve the separate dev policy and
+fail-closed unknown-crate behavior. Recompute this map hash and file count after every owned source,
+test, or manifest change, and rerun the direct locked command plus focused contracts.
