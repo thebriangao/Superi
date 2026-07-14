@@ -31,7 +31,7 @@ against raw source before changing code.
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; production source registration and muxing absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
-| `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Reserved editorial model, edits, OTIO, nesting, multicam, and graph compilation | Production skeleton with canonical OTIO 0.18.1 semantic fixture proof |
+| `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Typed video, audio, caption, and data track semantics plus reserved editorial model, edits, OTIO, nesting, multicam, and graph compilation | Partial: exact track clocks, audio routing and linked sample reshaping, continuity inspection, and canonical OTIO 0.18.1 fixture proof implemented; containers, edit operations, native serde, and compilation absent |
 | `tool-superi-dependency-check` | [module map](modules/tool-superi-dependency-check.md) | `open/tools/superi-dependency-check` | Offline executable policy for the open runtime dependency graph | Implemented exact runtime, build, dev, and new-crate checks |
 | `tool-superi-boundary-tool` | [module map](modules/tool-superi-boundary-tool.md) | `open/tools/superi-boundary-tool` | Offline scanner for network-client and open-to-closed policy | Implemented library, CLI, workspace gate, and hosted-build command |
 | `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline validator and deterministic video, audio, timing, color, media-error, and OTIO fixture generator | Implemented validation library, six generators, seven-command CLI, and focused contracts |
@@ -669,6 +669,13 @@ preserve-opaque warning contract through a development-only JSON consumer, while
 OpenTimelineIO 0.18.1 proves both files load and remain semantically equivalent through targeted
 write and read. This is trusted fixture evidence, not a production importer or exporter.
 
+The native timeline model now exposes embeddable video, audio, caption, and data semantics using
+core-owned clocks, identifiers, and ordered channel meanings. Audio routes require one explicit
+decision per source channel, sample placements retain typed clip links through split and trim, and
+continuity reports expose every record gap, overlap, source jump, or linked-clip change. This public
+model is integration-test-backed but is not yet embedded by a production timeline container,
+project, engine, API, CLI, playback path, audio engine, or graph compiler.
+
 The largest verification gap is the absence of a production import-to-export slice. Its canonical
 contract, source fixture, reference project state, graph control state, public action flow, and
 contract runner now exist. Process contracts run the CLI twice and prove all eight timing and
@@ -684,9 +691,11 @@ encodes and muxes output, persists a project, and drives the flow through the pu
 
 ## Placeholders and incomplete integration
 
-Entire crate skeletons are `superi-ai`, `superi-audio`, `superi-cache`, `superi-effects`,
-`superi-project`, and `superi-timeline`. Their manifests establish intended dependency direction,
-but their public modules expose no substantive types or operations.
+Entire crate skeletons are `superi-ai`, `superi-audio`, `superi-cache`, `superi-effects`, and
+`superi-project`. Their manifests establish intended dependency direction, but their public modules
+expose no substantive types or operations. `superi-timeline` is partial: track semantics are
+implemented while containers, editing, native OTIO serde, nesting, multicam, and graph compilation
+remain placeholders.
 
 Partial modules contain these explicit placeholder areas:
 
