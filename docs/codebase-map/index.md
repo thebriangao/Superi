@@ -362,22 +362,24 @@ driver. A host-independent parser test does not prove native lifecycle, pixel fi
 or hardware behavior.
 
 Repository-level CI now has three implemented workflow surfaces. The dependency-policy workflow
-checks licenses and sources with cargo-deny on Ubuntu 24.04. The cross-platform workflow builds the
-locked open workspace on GitHub-hosted macOS, Windows, and Ubuntu runners. Pull requests and pushes
-to `main` run five matrix lanes: blocking `ci-macos-26-arm64` on `macos-26`, blocking
+checks licenses and sources with cargo-deny on Ubuntu 24.04. The cross-platform workflow runs the
+locked Rust quality suite on GitHub-hosted macOS, Windows, and Ubuntu runners. Pull requests and
+pushes to `main` run five matrix lanes: blocking `ci-macos-26-arm64` on `macos-26`, blocking
 `ci-macos-15-x64` on `macos-15-intel`, blocking `ci-windows-2025-x64` on `windows-2025`, blocking
 `ci-ubuntu-24-x64` on `ubuntu-24.04`, and nonblocking preview `ci-ubuntu-26-x64` on
 `ubuntu-26.04`. The same matrix runs on the weekly Monday 07:00 UTC schedule and manual dispatch;
 those two triggers also add the blocking `ci-ubuntu-22-x64` job on `ubuntu-22.04`.
 
-Every hosted build lane checks out with read-only permissions, an immutable pinned checkout action,
-and no persisted credentials. It installs the current stable toolchain, records Rust, Cargo,
-toolchain, and commit identity, runs the locked open-tree boundary command, then runs
-`cargo build --workspace --locked` from `open/`.
-Matrix fail-fast is disabled so platform results report independently, superseded branch runs are
-cancelled, and each build has a 90-minute timeout. This proves that the default-feature source for
-every open workspace member can compile against the locked dependency graph on those hosted runner
-images. Ubuntu 26.04 remains experimental, so its failure does not fail the workflow.
+Every hosted Rust lane checks out with read-only permissions, an immutable pinned checkout action,
+and no persisted credentials. It installs the current stable toolchain with rustfmt and Clippy,
+records Rust, Cargo, toolchain, and commit identity, then runs the locked open-tree boundary command,
+formatting, a locked workspace build, locked workspace tests, strict all-target Clippy, and locked
+documentation tests from `open/`.
+Hosted macOS skips only three named VideoToolbox or AudioConverter lifecycle tests whose physical
+codec evidence belongs to the documented hardware lane; Linux and Windows run the exact full
+workspace test command. Matrix fail-fast is disabled, superseded branch runs are cancelled, and
+each build has a 90-minute timeout. Ubuntu 26.04 remains experimental, so its failure does not fail
+the workflow.
 
 The durable CI checkpoint record also reports focused workflow-contract verification, one local
 locked workspace build with stable Rust 1.97.0, and successful offline fixture-tool policy tests.
@@ -390,10 +392,10 @@ runs strict no-emit TypeScript 5.9.3 checking, creates a Vite 7.3.6 production b
 the workflow contract plus generated hashed JavaScript entry. Its `ci/frontend-smoke/` consumer is
 an isolated toolchain contract, not the deferred React application or Tauri desktop shell.
 
-The cross-platform Rust workflow does not run formatting, tests, strict Clippy, documentation tests,
-the `os-codecs` feature matrix, malformed-input suites, frontend or Tauri checks, golden comparisons,
-benchmarks, soak, or the vertical slice. The separate frontend workflow does not prove React, Tauri,
-the native viewport, API integration, editorial behavior, or product UI. Neither is an MSRV lane,
+The cross-platform Rust workflow does not run the `os-codecs` feature matrix, malformed-input
+suites, frontend or Tauri checks, golden comparisons, benchmarks, soak, or the vertical slice. The
+separate frontend workflow does not prove React, Tauri, the native viewport, API integration,
+editorial behavior, or product UI. Neither is an MSRV lane,
 and neither is an offline proof because hosted setup and installation may use the network. Hosted
 virtual machines also do not satisfy the
 physical GPU, display, audio-device, hardware-codec, performance, and long-session lanes in

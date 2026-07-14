@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 4ad39385432b49504b1877895f530aadf095b7adc7c6839ecff7317eb06c66a2
-source_files: 46
+source_hash: 9bf1c17007cdb74f9d034fa3b5449d4aff0a711aaf0caf99d6fef29b7c910e45
+source_files: 47
 mapped_at_commit: working-tree
 ---
 
@@ -60,11 +60,13 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   policy workflow. It requires exact workflow name, permissions, checker invocation, cargo-deny
   action inputs, unknown-Git denial, revision-pinned Git policy, and the approved OxideAV source;
   any missing required line fails before cargo-deny runs.
-- `.github/workflows/ci.yml`: Defines cross-platform locked-workspace build jobs. Pull requests and
+- `.github/workflows/ci.yml`: Defines cross-platform locked-workspace quality jobs. Pull requests and
   pushes to `main` run five macOS, Windows, and Ubuntu lanes, with Ubuntu 26.04 marked experimental;
-  a separate Ubuntu 22.04 job runs weekly or by manual dispatch. Both jobs install stable Rust,
-  record build identity, enforce the open-tree boundary with the locked repository scanner, and run
-  `cargo build --workspace --locked` from `open/`.
+  a separate Ubuntu 22.04 job runs weekly or by manual dispatch. Both jobs install stable Rust with
+  rustfmt and Clippy, record build identity, enforce the open-tree boundary with the locked
+  repository scanner, and run formatting, locked build and test commands, strict all-target Clippy,
+  and locked documentation tests from `open/`. Hosted macOS excludes only three named native codec
+  lifecycle tests that require the physical hardware lane.
 - `.github/workflows/dependency-policy.yml`: Defines the current GitHub Actions dependency-policy
   workflow. Pushes, pull requests, and manual dispatch run a read-only Ubuntu 24.04 job. After
   `actions/checkout@v4`, the job runs the repository contract checker, then uses
@@ -104,6 +106,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   deliverable output color transforms. It records integration with working images, gamut and HDR
   contracts, focused and widening verification, delivery context, and intentionally separate ICC,
   look, YUV, legal-range, quantization, and GPU stages.
+- `docs/checkpoints/P1.W07.C002.md`: Durable implementation evidence for the complete Rust CI quality
+  suite. It records the low-risk configuration boundary, both-job command coverage, the explicit
+  hosted macOS native codec exception, focused local proof, hosted proof requirement, delivery
+  context, and deferred feature and frontend coverage.
 - `docs/checkpoints/P1.W07.C004.md`: Durable implementation evidence for frontend CI. It records the
   isolated contract boundary, exact Node.js, TypeScript, and Vite versions, advisory-driven Vite
   update, red-to-green and negative controls, clean locked npm verification, locked Rust tests,
@@ -197,7 +203,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `open/test-fixtures/policy/utf8/v1/hello.txt`: The six-byte UTF-8 payload `hello` followed by a
   newline. It is the fixture validator's deterministic self-test input.
 
-All 46 assigned artifacts are valid UTF-8 text. The mapping inventory reports no binary artifact
+All 47 assigned artifacts are valid UTF-8 text. The mapping inventory reports no binary artifact
 for this module, so no binary metadata or producer-consumer relationship needs separate treatment.
 
 ## Public surface
@@ -295,14 +301,17 @@ features and the `licenses` and `sources` checks. `open/deny.toml` remains the p
 shell checker guards integration drift, and cargo-deny evaluates the resolved crate graph. Neither
 step adds a runtime dependency or outbound path to the open editor.
 
-The cross-platform build path begins on every pull request, push to `main`, weekly schedule, or
+The cross-platform Rust quality path begins on every pull request, push to `main`, weekly schedule, or
 manual dispatch. A five-lane matrix builds on macOS 26 arm64, macOS 15 Intel, Windows Server 2025,
 Ubuntu 26.04, and Ubuntu 24.04; only the preview Ubuntu 26.04 lane continues on error. Ubuntu 22.04
 is a separate weekly or manual job because matrix values are unavailable to a job-level cadence
 condition. Both jobs use read-only permissions, immutable `actions/checkout` with persisted
-credentials disabled, stable Rust, recorded tool and commit identity, and the locked full-workspace
-build. Concurrency cancels superseded work for the same pull request or ref, while matrix fail-fast
-is disabled so platform results remain independent.
+credentials disabled, stable Rust with rustfmt and Clippy, recorded tool and commit identity,
+formatting, a locked full-workspace build, locked workspace tests, strict all-target Clippy, and
+locked documentation tests. Hosted macOS skips only the three named native VideoToolbox or
+AudioConverter lifecycles whose physical evidence belongs to the documented hardware lane. Linux
+and Windows run the exact full workspace test command. Concurrency cancels superseded work for the
+same pull request or ref, while matrix fail-fast is disabled so platform results remain independent.
 
 The frontend CI path begins on pull requests, pushes to `main`, or manual dispatch. Its isolated
 Ubuntu 24.04 job installs the exact Node.js 24.13.0 declaration, performs a lockfile-only `npm ci`,
@@ -415,15 +424,19 @@ workflow or fresh result demonstrates execution.
   shell, license, and source checks plus successful initial GitHub Actions run `29302533491`. Those
   are durable checkpoint claims; only the shell and cargo-deny checks above were rerun during this
   map refresh.
-- `.github/workflows/ci.yml` builds all workspace members with the locked dependency graph on five
-  pull-request and `main` lanes, plus Ubuntu 22.04 on weekly or manual runs. YAML parsing and all six
-  lane-ID presence checks, preview policy, disabled credentials, one locked boundary command per
-  build job, and locked-build checks passed during this refresh.
+- `.github/workflows/ci.yml` enforces the locked open-tree boundary, then formats, builds, tests,
+  strictly lints, and documentation-tests the workspace on five pull-request and `main` lanes, plus
+  Ubuntu 22.04 on weekly or manual runs. YAML parsing and all six lane-ID presence checks, preview
+  policy, disabled credentials, one locked boundary command per job, complete two-job command
+  coverage, and the exact hosted macOS native-test condition passed during this refresh.
 - `docs/checkpoints/P1.W07.C008.md` records fresh Rust 1.80 formatting, eight focused boundary
   contracts, the canonical scan of 304 files and 23 manifests, warnings-denied focused Clippy,
   workflow syntax, a locked full workspace build, and the complete workspace test and documentation
   suite from the checkpoint-owned target. Full strict workspace Clippy reached only pre-existing
   missing safety comments outside the boundary tool.
+- `docs/checkpoints/P1.W07.C002.md` records the focused red-to-green workflow contract, low-risk
+  verification scope, isolated local proof, hosted workflow requirement, and delivery context for
+  the complete Rust quality suite.
 - `docs/checkpoints/P1.W07.C001.md` records that the workflow's red-to-green contract, YAML parsing,
   immutable checkout, lane mappings, locked workspace build, diff hygiene, and prose-dash checks
   passed. It also records a local `cargo build --workspace --locked` on stable Rust 1.97.0 and all
@@ -477,8 +490,7 @@ root README, deny policy, and structure guide with license-audit CI. Commit
 durable record. Commit `68c007309c3c548d28c2001c1673c61c57da3ac0` added the cross-platform hosted
 build workflow and durable `P1.W07.C001` checkpoint record. Commit
 `cb1fe287c5ca3d9f5fd91d25c1a4b90b70594867` added the locked frontend CI contract and durable
-`P1.W07.C004` record. The current remote commit corrects that record to describe a clean locked npm
-installation without claiming an offline cache.
+`P1.W07.C004` record. Later mapping and dependency-direction work reached the current remote base.
 
 The largest current risk is cross-document drift:
 
@@ -520,10 +532,12 @@ The largest current risk is cross-document drift:
 - The initial GitHub Actions run is recorded as successful, but this refresh did not rerun the
   hosted workflow at the follow-up commit. Fresh local Bash and cargo-deny checks prove the current
   checked-out contract, not hosted-run containment.
-- The cross-platform workflow currently executes only `cargo build --workspace --locked`. The
-  platform matrix defines each automated lane's `toolchain`, `features`, `fixtures`, and `malformed`
-  suites, but formatting, workspace tests, strict Clippy, documentation tests, feature coverage,
-  fixture behavior, and malformed-input checks are intentionally owned by later checkpoints.
+- The cross-platform workflow now runs the complete Rust formatting, locked build and test, strict
+  Clippy, and documentation-test suite. Feature coverage, fixture behavior, and malformed-input
+  checks remain intentionally owned by later checkpoints.
+- Hosted macOS omits only three native VideoToolbox or AudioConverter lifecycle tests because the
+  documented physical codec lane owns that evidence. The workflow keeps their names and rationale
+  explicit; it does not weaken or remove their source contracts.
 - Ubuntu 22.04 has weekly and manual triggers but no distinct release-event trigger. Manual dispatch
   can supply release evidence, but this workflow does not automatically enforce that release cadence.
 - Ubuntu 26.04 is explicitly experimental and nonblocking while its hosted image remains preview.
@@ -543,8 +557,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the local mapping commit rebased onto `origin/main` plus this uncommitted map
 refresh, so `mapped_at_commit` is `working-tree`. The remote base was
-`8072bae033e7904a6f2ca0a18399faf2cfe93c6d` when the map was refreshed. Its hash describes the exact
-45 discovered source files layered on that revision, not the remote commit alone.
+`f328f2fd4bc18c7191e0df2e3316298f032af56e` when the map was refreshed. Its hash describes the exact
+47 discovered source files layered on that revision, not the remote commit alone.
 
 ## Maintenance notes
 

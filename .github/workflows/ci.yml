@@ -60,7 +60,7 @@ jobs:
           persist-credentials: false
 
       - name: Install declared Rust toolchain
-        run: rustup toolchain install stable --profile minimal
+        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
 
       - name: Record build identity
         run: |
@@ -74,6 +74,27 @@ jobs:
 
       - name: Build open workspace
         run: cargo build --workspace --locked
+
+      - name: Check open workspace formatting
+        run: cargo fmt --all -- --check
+
+      - name: Test open workspace
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            # Native codec lifecycle tests require a physical macOS hardware lane.
+            cargo test --workspace --locked -- \
+              --skip h264_native_roundtrip_preserves_timing_and_external_frame_ownership \
+              --skip hevc_and_every_advertised_prores_profile_complete_native_roundtrips \
+              --skip aac_audio_converter_roundtrip_preserves_sample_timing_and_channel_layout
+          else
+            cargo test --workspace --locked
+          fi
+
+      - name: Lint open workspace
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test open workspace documentation
+        run: cargo test --workspace --doc --locked
 
   extended-linux-build:
     name: ci-ubuntu-22-x64
@@ -99,7 +120,7 @@ jobs:
           persist-credentials: false
 
       - name: Install declared Rust toolchain
-        run: rustup toolchain install stable --profile minimal
+        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
 
       - name: Record build identity
         run: |
@@ -113,3 +134,15 @@ jobs:
 
       - name: Build open workspace
         run: cargo build --workspace --locked
+
+      - name: Check open workspace formatting
+        run: cargo fmt --all -- --check
+
+      - name: Test open workspace
+        run: cargo test --workspace --locked
+
+      - name: Lint open workspace
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test open workspace documentation
+        run: cargo test --workspace --doc --locked
