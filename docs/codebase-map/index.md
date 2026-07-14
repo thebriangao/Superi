@@ -16,7 +16,7 @@ against raw source before changing code.
 | `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
 | `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade for capabilities and canonical editorial state | Partial: capability and canonical scenario controls implemented; transport, general API, and scripting absent |
 | `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Reserved audio graph, playback, mixing, resampling, metering, and plugin boundary | Skeleton: public module names only |
-| `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Reserved frame, proxy, render, prefetch, eviction, and disk cache boundary | Skeleton: public module names only |
+| `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Reserved frame, proxy, render, prefetch, eviction, and disk cache boundary | Narrow color-pipeline identity seam implemented; storage and policy remain skeletons |
 | `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario consumer | Implemented portable expectation verifier and eight instrumented contract stages; rendered media flow absent |
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
 | `superi-codecs-rs` | [module map](modules/superi-codecs-rs.md) | `open/crates/superi-codecs-rs` | Default permissive software codec implementations | Implemented: AV1, FLAC, MP3, Opus, PCM, Vorbis, VP8, and VP9 decode and encode |
@@ -25,13 +25,13 @@ against raw source before changing code.
 | `superi-concurrency` | [module map](modules/superi-concurrency.md) | `open/crates/superi-concurrency` | Execution domains, jobs, clocks, handoffs, shared snapshots, lifecycle, and liveness | Substantial but not engine-integrated; GPU submission module is a placeholder |
 | `superi-core` | [module map](modules/superi-core.md) | `open/crates/superi-core` | Tier-zero values, validation, exact time, identifiers, errors, diagnostics, and stable serialization | Implemented and broadly consumed; crate-level skeleton wording is stale |
 | `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Reserved effect-node catalog, animation, mask, transition, text, tracking, and OFX boundary | Skeleton: public module names only |
-| `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: canonical command state, registry, capability introspection, and CPU-frame GPU upload implemented |
+| `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: canonical command state, registry, capability introspection, CPU-frame GPU upload, and viewport or export color metadata branching implemented |
 | `superi-gpu` | [module map](modules/superi-gpu.md) | `open/crates/superi-gpu` | wgpu device, resource, upload, conversion, pass, submission, presentation, and recovery substrate | Implemented substrate with explicit application-level integration gaps |
 | `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, typed parameter links and expressions, derived missing-node resolution, dependency invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, cache identity, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, typed driver state, bounded expressions, parameter-cycle protection, fail-closed missing-node placeholders, exact invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic cache-key inspection, run-local timing, and role-neutral editable-to-runtime evaluation implemented; cache storage, production catalog and plugin binding, project persistence, and rendered integration absent |
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; production source registration and muxing absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
-| `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Native editorial project state, rational range maps and availability, typed tracks, exact timing, authoritative edit intent, clip relationships, and atomic foundational edit operations with staged OTIO and graph compilation | Foundational model, exact range resolution, track clocks, linked sample reshaping, selection, targeting, synchronization, clip relationships, and six primary edit batches are test-backed; interchange, advanced trims, compilation, persistence, and runtime integration absent |
+| `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Native editorial project state, rational range maps and availability, typed tracks, exact timing, authoritative edit intent, clip relationships, atomic foundational edit operations, color metadata propagation, and staged OTIO and graph compilation | Foundational model, exact range resolution, track clocks, linked sample reshaping, selection, targeting, synchronization, clip relationships, six primary edit batches, and the graph color metadata seam are test-backed; interchange, advanced trims, compilation, persistence, and runtime integration absent |
 | `tool-superi-dependency-check` | [module map](modules/tool-superi-dependency-check.md) | `open/tools/superi-dependency-check` | Offline executable policy for the open runtime dependency graph | Implemented exact runtime, build, dev, and new-crate checks |
 | `tool-superi-boundary-tool` | [module map](modules/tool-superi-boundary-tool.md) | `open/tools/superi-boundary-tool` | Offline scanner for network-client and open-to-closed policy | Implemented library, CLI, workspace gate, and hosted-build command |
 | `tool-superi-bench` | [module map](modules/tool-superi-bench.md) | `open/tools/superi-bench` | Stable benchmark harnesses and reproducible stage reporting | Implemented seven-stage runner with real graph evaluation and explicit gaps |
@@ -86,7 +86,7 @@ superi-engine
   -> image, concurrency, graph, cache, color, effects, timeline,
      audio, ai, and project        mostly manifest-only today
 
-superi-project -> superi-timeline -> superi-graph
+superi-project -> superi-timeline -> superi-graph -> superi-image
 superi-color, superi-effects, superi-cache, superi-ai -> lower graph/image/GPU/core layers
 superi-audio -> superi-concurrency -> superi-core
 superi-graph -> superi-gpu, superi-image, superi-concurrency, superi-core
@@ -111,8 +111,9 @@ graph. Graph must not depend upward on a domain catalog. Its implemented surface
 object identifiers and core semantic contracts for schema definitions, and it owns generic
 deterministic DAG storage, opaque typed bindings, deterministic request-scoped scheduling and
 evaluation, typed parameter drivers and bounded expressions, derived exact-schema availability, and
-structured validation errors. Catalog relationships still exist only in manifests because
-downstream consumers remain skeletons or have no graph call site.
+structured validation errors. Most catalog relationships still exist only in manifests because
+downstream consumers remain skeletons or have no production graph call site. Timeline and cache
+now consume the graph-owned color metadata wrapper, but not graph evaluation or storage.
 
 Codec implementations depend down on the codec-neutral `superi-media-io` interface. Media I/O does
 not depend on a concrete codec, engine, or registry assembler. The engine owns the current assembly
@@ -401,20 +402,27 @@ primaries or transfer functions because those are color-management operations.
 The implemented decoded-frame bridge is:
 
 ```text
-superi-media-io VideoFrame with CPU storage
+superi-media-io VideoFrame with CPU storage and exact color pipeline
   -> superi-engine VideoFrameUploader
   -> superi-gpu DecodedFrameUploader
   -> pooled GPU plane textures
-  -> UploadedVideoFrame retaining format, timing, metadata, and GPU ownership
+  -> UploadedVideoFrame retaining format, timing, metadata, color pipeline, and GPU ownership
 ```
 
-The uploader preserves decoded bits, plane order, timestamps, duration, format, and metadata. It
+The uploader preserves decoded bits, plane order, timestamps, duration, format, metadata, and the
+complete image-owned color pipeline. It
 uses direct row writes when compatible and a tight CPU repack otherwise. Logical initialized
 texture extent remains distinct from aligned physical allocation extent. Pooled allocations and
 all command dependencies must remain retained until the matching fence retires.
 
-No implemented engine path sends `UploadedVideoFrame` into graph evaluation, color processing,
-cache, playback, display, or encode. Official graph identifiers, schema registration, immutable
+An adjacent metadata-only path carries exact source color tags, ICC bytes, named-space identity,
+working and current spaces, and ordered input or creative transforms from media into graph,
+timeline, and complete cache identity. Engine render metadata derives independent display and
+delivery branches by appending a correctly typed terminal stage without mutating cached scene state.
+This path does not execute transforms or render pixels.
+
+No implemented engine path sends `UploadedVideoFrame` into graph evaluation, pixel color processing,
+cache storage, playback, display, or encode. Official graph identifiers, schema registration, immutable
 discovery, generic graph topology storage, typed input and output bindings, and schema-level
 connection compatibility, a schema-bound editable graph, atomic mutation, and a caller-owned lazy
 evaluator plus snapshot-owned typed parameter links and bounded expressions exist. A role-neutral

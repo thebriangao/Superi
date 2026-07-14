@@ -2,7 +2,7 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: a7a3cd5056d1e756e336e01c2f9faf81a3530a98cc2906f8fafcde1985cbb979
+source_hash: 99f22af0cf32506c9d511269b5bead9957752ff4ff5f7b72837950c551011904
 source_files: 17
 mapped_at_commit: working-tree
 ---
@@ -21,6 +21,9 @@ and extract commands reshape those objects while reporting every inserted, remov
 split, or invalidated relationship. Whole-project validation and revision-checked atomic batches
 keep linked objects, user intent, timing, synchronization, nesting, and direct edits valid at
 publication boundaries.
+
+The model also owns a narrow immutable color metadata seam that retains graph color state through
+the future compilation boundary without changing source meaning.
 
 The crate continues to reserve advanced trim operations, markers, multicam behavior, OTIO-compatible
 interchange, and deterministic timeline-to-graph compilation. Those surfaces are not implemented.
@@ -46,8 +49,8 @@ than a production reader or writer.
   management.
 - `open/crates/superi-timeline/src/model.rs`: Implements four track kinds, track-specific timing and
   media semantics, exact clip range maps, linked availability context, every foundational
-  editorial object, ordered tracks, timelines, validated project snapshots, and atomic
-  revision-checked editing.
+  editorial object, ordered tracks, timelines, validated project snapshots, atomic revision-checked
+  editing, and `TimelineColorMetadata`, which retains exact graph color metadata through compilation.
 - `open/crates/superi-timeline/src/multicam.rs`: Placeholder for a multicam data model.
 - `open/crates/superi-timeline/src/nested.rs`: Placeholder for higher-level compound clip and
   nested sequence operations. The foundational model already supports clips sourced from another
@@ -139,6 +142,9 @@ The foundational operation surface includes:
 `compile`, `markers`, `multicam`, `nested`, and `otio` remain public namespace reservations without
 production operations. `edit_ops` is a substantive public operation surface.
 
+`TimelineColorMetadata::from_graph` retains exact graph-owned color state, `graph` exposes it, and
+`compile` returns an unchanged clone for a later graph compiler.
+
 ## Architecture and data flow
 
 Callers first construct complete track semantics. Video carries a frame rate and compositing mode.
@@ -214,12 +220,12 @@ assertions. It does not enter the native model yet.
 
 - `superi-core` supplies shared errors, exact rational and sample time, channel layouts, project and
   media identity, and all typed editorial identities used by production source.
-- `superi-graph` remains a declared dependency for future compilation but is not imported by
-  production timeline source.
+- `superi-graph` supplies `GraphColorMetadata` to the narrow color propagation seam and remains the
+  future compilation target for the substantive editorial model.
 - `serde_json` is development-only and reads checked-in canonical JSON. No OTIO library, Python
   package, network path, or fixture-tool runtime dependency enters the crate.
-- `superi-project` and `superi-engine` declare `superi-timeline` as a dependency, but neither source
-  tree imports a production timeline item yet.
+- `superi-project` and `superi-engine` declare `superi-timeline` as a dependency. Engine integration
+  tests consume the color metadata seam; neither source tree consumes the editorial model yet.
 - Public integration tests are the current real consumers. No API or CLI surface exposes the
   general editorial model.
 
@@ -272,6 +278,8 @@ assertions. It does not enter the native model yet.
 - Advanced retiming, ripple and roll trims, slip, slide, razor, three-point and four-point edits,
   production OTIO preservation, deterministic graph compilation, undo-history ownership, markers,
   multicam, and higher-level editorial commands remain outside this state.
+- The timeline color seam preserves exact graph metadata and performs no transform, inference,
+  normalization, or reordering.
 
 ## Tests and verification
 
@@ -326,7 +334,9 @@ participating tracks but performs no transform on its own. Links and groups are 
 have no independent durable ID. Edit material is currently one timed object per command;
 multi-object source sequences and link-group targeting belong to later command and orchestration
 layers. Audio continuity is structural evidence rather than signal analysis or playback. The model
-has no stable Serde schema, hostile-input collection bounds, or consumer outside its contract tests.
+has no stable Serde schema, hostile-input collection bounds, or production consumer outside its
+contract tests. The engine color propagation contract consumes only the narrow metadata
+seam and does not make timeline-to-graph compilation operational.
 
 ## Maintenance notes
 
