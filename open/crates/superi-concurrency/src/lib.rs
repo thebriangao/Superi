@@ -15,10 +15,13 @@
 //! independently bounded, nonblocking, preallocated handoffs that never discard a saturated
 //! payload. The [`lifecycle`] module coordinates acknowledged startup, pause, resume, sleep, wake,
 //! failure, shutdown, and restart transitions while exposing a lock-free signal to
-//! latency-sensitive paths. See section 5.7 in `docs/architecture.md`.
+//! latency-sensitive paths. The [`diagnostics`] module publishes lock-free actor
+//! progress and performs observer-side starvation and wait-for-cycle analysis.
+//! See section 5.7 in `docs/architecture.md`.
 
 pub mod backpressure;
 pub mod clock;
+pub mod diagnostics;
 pub mod jobs;
 pub mod lifecycle;
 pub mod shared;
