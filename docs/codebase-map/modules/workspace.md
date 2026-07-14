@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 24fb0c1597befaca7025282c568f093b83b6acb40ce10c0a222b4af18ebe42e9
-source_files: 96
+source_hash: 2d69dced065d1dfa664b9d31af4cf8eda521e09437d16a05cbf4bc52ed2a92e8
+source_files: 98
 mapped_at_commit: working-tree
 ---
 
@@ -22,7 +22,7 @@ completion protocol, requires safe synchronization with `origin/main`, and makes
 full selected raw-file reads a prerequisite for implementation. It routes a single checkpoint
 through mapping, planning, and execution, and routes multiple checkpoints into separate
 Codex-managed worktree tasks. It is ignored by Git and copied into managed worktrees through
-`.worktreeinclude`, so the mapping script does not include it in this module's 96-file inventory or
+`.worktreeinclude`, so the mapping script does not include it in this module's 98-file inventory or
 source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
@@ -64,6 +64,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   It installs exact source-build tools, verifies the official libva 2.22.0 archive against a pinned
   SHA-256, builds a private prefix, verifies the VVC header and API version, and publishes header,
   pkg-config, and runtime library paths to subsequent hosted steps.
+- `.github/scripts/check-ci-features.py`: Standard-library contract that binds supported matrix
+  lanes to explicit default or `os-codecs` policy, the real CLI feature build, engine and API
+  consumer tests, and a default-only Ubuntu 22.04 job.
 - `.github/workflows/ci.yml`: Defines cross-platform locked-workspace quality jobs. Pull requests and
   pushes to `main` run five macOS, Windows, and Ubuntu lanes, with Ubuntu 26.04 marked experimental;
   a separate Ubuntu 22.04 job runs weekly or by manual dispatch. Both jobs install stable Rust with
@@ -76,7 +79,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   media dependency graph sees the required VVC API and the approved runtime retains optimized x86
   code. Intel macOS jobs install `nasm` with Homebrew. Linux and macOS jobs build the approved
   libvpx 1.16.0 archive after verifying its pinned checksum and expose that exact shared runtime to
-  capability and codec tests.
+  capability and codec tests. Both macOS lanes, Windows 2025, and Ubuntu 26.04
+  also build the CLI with `os-codecs` and test the engine and API consumers; Ubuntu 24.04 and the
+  Ubuntu 22.04 job remain default-only.
 - `.github/workflows/dependency-policy.yml`: Defines the current GitHub Actions dependency-policy
   workflow. Pushes, pull requests, and manual dispatch run a read-only Ubuntu 24.04 job. After
   `actions/checkout@v4`, the job runs the repository contract checker, then uses
@@ -134,6 +139,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   suite. It records the low-risk configuration boundary, both-job command coverage, the explicit
   hosted macOS native codec exception, focused local proof, hosted proof requirement, delivery
   context, and deferred feature and frontend coverage.
+- `docs/checkpoints/P1.W07.C003.md`: Durable implementation evidence for explicit default and
+  `os-codecs` consumer coverage, the reviewed rav1d dependency correction, critical local proof,
+  hosted Windows requirements, delivery context, and physical-lane limitations.
 - `docs/checkpoints/P1.W07.C004.md`: Durable implementation evidence for frontend CI. It records the
   isolated contract boundary, exact Node.js, TypeScript, and Vite versions, advisory-driven Vite
   update, red-to-green and negative controls, clean locked npm verification, locked Rust tests,
@@ -365,7 +373,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and OTIO_CORE:0.18.1, exact timeline durations, identity and opaque data policy, JSON pointers,
   and preserve plus diagnose behavior for unsupported constructs.
 
-The mapping inventory contains 84 UTF-8 text artifacts and twelve binary payloads. Binary media is
+The mapping inventory contains 86 UTF-8 text artifacts and twelve binary payloads. Binary media is
 intentionally read through metadata, producers, provenance, manifests, and consumers rather than
 interpreted as prose.
 
@@ -518,6 +526,10 @@ path. Hosted macOS skips only the three named native VideoToolbox or
 AudioConverter lifecycles whose physical evidence belongs to the documented hardware lane. Linux
 and Windows run the exact full workspace test command. Concurrency cancels superseded work for the
 same pull request or ref, while matrix fail-fast is disabled so platform results remain independent.
+The matrix also enables `os-codecs` on both macOS lanes, Windows 2025, and Ubuntu 26.04. Those lanes
+build the CLI feature path and test the engine and API consumers after the complete default suite.
+Ubuntu 24.04 and Ubuntu 22.04 remain default-only because their distribution libva APIs do not meet
+the platform crate's required version.
 
 The frontend CI path begins on pull requests, pushes to `main`, or manual dispatch. Its isolated
 Ubuntu 24.04 job installs the exact Node.js 24.13.0 declaration, performs a lockfile-only `npm ci`,
@@ -682,6 +694,12 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   policy, disabled credentials, one locked boundary command per job, complete two-job command
   coverage, exact Linux `libva-dev` and cross-platform x86 `nasm` provisioning, checksum-pinned
   libvpx 1.16.0 provisioning, and the hosted macOS native-test condition passed during this refresh.
+- `.github/scripts/check-ci-features.py` verifies the explicit feature policy for all five matrix
+  lanes, the default-only extended job, the exact CLI build and engine/API test commands, and the
+  absence of accidental all-feature expansion. Fresh local execution and YAML parsing passed.
+- `docs/checkpoints/P1.W07.C003.md` records the rav1d 1.1.0 checksum and policy review, focused AV1
+  and registry contracts, default and `os-codecs` consumer builds and tests, critical workspace
+  verification, and the required unchanged hosted Windows proof.
 - `docs/checkpoints/P1.W07.C008.md` records fresh Rust 1.80 formatting, eight focused boundary
   contracts, the canonical scan of 304 files and 23 manifests, warnings-denied focused Clippy,
   workflow syntax, a locked full workspace build, and the complete workspace test and documentation
@@ -849,9 +867,9 @@ The largest current risk is cross-document drift:
   hosted workflow at the follow-up commit. Fresh local Bash and cargo-deny checks prove the current
   checked-out contract, not hosted-run containment.
 - The cross-platform workflow now runs the complete Rust formatting, locked build and test, strict
-  Clippy, and documentation-test suite. Default workspace tests therefore include the focused PCM
-  media-error contract, while optional-feature coverage and broader malformed-input matrices remain
-  intentionally separate.
+  Clippy, and documentation-test suite. Default workspace tests include the focused PCM media-error
+  contract, and supported lanes also run the explicit `os-codecs` CLI, engine, and API consumers.
+  Broader malformed-input matrices remain intentionally separate.
 - The first C009 hosted run after nasm provisioning, `29308007012`, failed before namespace entry
   because Ubuntu 24.04's libva API 1.20 was below the unchanged H.266 API 1.22 requirement. Both Rust
   workflows now use one checksum-pinned libva 2.22 source helper; hosted reruns remain required.
@@ -877,8 +895,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`776f9721d676bbf337692a5e5702ad7228bf4103` when the map was refreshed. Its hash describes the exact
-96 discovered source files, including twelve generated binary payloads, layered on that revision.
+`bb9111cfc98302547bc02d6513ea6ebf5131c0fa` when the map was refreshed. Its hash describes the exact
+98 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 

@@ -33,18 +33,23 @@ jobs:
           - lane: ci-macos-26-arm64
             runner: macos-26
             experimental: false
+            os_codecs: true
           - lane: ci-macos-15-x64
             runner: macos-15-intel
             experimental: false
+            os_codecs: true
           - lane: ci-windows-2025-x64
             runner: windows-2025
             experimental: false
+            os_codecs: true
           - lane: ci-ubuntu-26-x64
             runner: ubuntu-26.04
             experimental: true
+            os_codecs: true
           - lane: ci-ubuntu-24-x64
             runner: ubuntu-24.04
             experimental: false
+            os_codecs: false
 
     env:
       CARGO_INCREMENTAL: "0"
@@ -62,6 +67,9 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
+
+      - name: Validate CI feature coverage
+        run: python3 ../.github/scripts/check-ci-features.py
 
       - name: Install declared Rust toolchain
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
@@ -131,11 +139,17 @@ jobs:
             cargo test --workspace --locked
           fi
 
-      - name: Build optional platform codec configuration
+      - name: Build CLI with operating system codecs
+        if: matrix.os_codecs
         run: cargo build --locked -p superi-cli --features os-codecs
 
-      - name: Test optional platform codec configuration
+      - name: Test CLI with operating system codecs
+        if: matrix.os_codecs
         run: cargo test --locked -p superi-cli --features os-codecs
+
+      - name: Test operating system codec consumers
+        if: matrix.os_codecs
+        run: cargo test --locked -p superi-engine -p superi-api --features superi-engine/os-codecs,superi-api/os-codecs
 
       - name: Lint open workspace
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -230,12 +244,6 @@ jobs:
 
       - name: Test open workspace
         run: cargo test --workspace --locked
-
-      - name: Build optional platform codec configuration
-        run: cargo build --locked -p superi-cli --features os-codecs
-
-      - name: Test optional platform codec configuration
-        run: cargo test --locked -p superi-cli --features os-codecs
 
       - name: Lint open workspace
         run: cargo clippy --workspace --all-targets --locked -- -D warnings

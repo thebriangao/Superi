@@ -4,7 +4,7 @@ source_paths:
   - open/crates/superi-codecs-rs
 source_hash: d7e33afc85a9108b5b843f4603aa25e1e43d0131025efc779d810d1fbaca58d2
 source_files: 36
-mapped_at_commit: 217e9d48703bcfd4736d949aea510c94505071bc
+mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
@@ -283,7 +283,7 @@ sample formats, and channel layouts; `superi-media-io` for backend registration 
 packets, streams, metadata, operation contexts, decoder/encoder lifecycles, CPU video buffers, and
 audio blocks; and the currently unused manifest dependency `superi-image`.
 
-Pinned codec dependencies are `rav1d` 1.0.0, `rav1e` 0.7.1, and `av1-grain` 0.2.4 for AV1;
+Pinned codec dependencies are `rav1d` 1.1.0, `rav1e` 0.7.1, and `av1-grain` 0.2.4 for AV1;
 `claxon` 0.4.3 and `flacenc` 0.4.0 for FLAC; `oxideav-core` 0.1.29 and `oxideav-mp3` at immutable
 revision `f37901b5d9c691b113e96a3bb95645c67af1a046` for MP3; `lewton` 0.10.2,
 `vorbis_rs` 0.5.4, `aotuv_lancer_vorbis_sys` 0.1.4, `ogg_next_sys` 0.1.3, and `ogg` 0.8.0 for

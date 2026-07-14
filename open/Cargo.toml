@@ -54,7 +54,7 @@ cc = "=1.2.67"
 windows = "=0.61.3"
 libc = "=0.2.186"
 sysinfo = { version = "=0.36.1", default-features = false, features = ["system"] }
-rav1d = { version = "=1.0.0", default-features = false, features = ["bitdepth_8", "bitdepth_16"] }
+rav1d = { version = "=1.1.0", default-features = false, features = ["bitdepth_8", "bitdepth_16"] }
 rav1e = { version = "=0.7.1", default-features = false }
 av1-grain = "=0.2.4"
 jobserver = "=0.1.34"

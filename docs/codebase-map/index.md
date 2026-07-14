@@ -446,6 +446,13 @@ workspace test command. Matrix fail-fast is disabled, superseded branch runs are
 each build has a 90-minute timeout. Ubuntu 26.04 remains experimental, so its failure does not fail
 the workflow.
 
+The matrix records an explicit `os_codecs` policy. Both macOS lanes, Windows 2025, and Ubuntu 26.04
+build the real CLI consumer with `os-codecs` and run the engine and API consumer suites with their
+forwarded features. Ubuntu 24.04 and the separate Ubuntu 22.04 job remain default-only because
+their distribution libva APIs are below the platform crate's required version. The default AV1
+path pins crates.io rav1d 1.1.0, whose packaged build script removes the broken rav1d 1.0.0 MSVC
+reference to an excluded compatibility source.
+
 The durable CI checkpoint record also reports focused workflow-contract verification, one local
 locked workspace build with stable Rust 1.97.0, and successful offline fixture-tool policy tests.
 The boundary scan is now a recurring workflow step; the other local verification remains delivery
@@ -466,9 +473,9 @@ the unchanged H.266 API 1.22 requirement; both Rust workflows now use the shared
 The final hosted run remains the offline execution proof, not an offline acquisition proof or a
 runtime import-to-export slice.
 
-The cross-platform Rust workflow does not run the `os-codecs` feature matrix, an all-container
-malformed-input matrix beyond default workspace contracts, frontend or Tauri checks, golden
-comparisons, benchmarks, soak, or the vertical slice. The
+The cross-platform Rust workflow does not run an all-container malformed-input matrix beyond
+default workspace contracts, frontend or Tauri checks, golden comparisons, benchmarks, soak, or
+the vertical slice. The
 separate frontend workflow does not prove React, Tauri, the native viewport, API integration,
 editorial behavior, or product UI. Neither is an MSRV lane,
 and neither is an end-to-end offline build proof because hosted setup and installation may use the network. Hosted

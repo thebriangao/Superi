@@ -227,16 +227,16 @@ fn cross_platform_ci_runs_fixture_and_slice_contracts_in_every_build_job() {
             .lines()
             .filter(|line| *line == feature_build_command)
             .count(),
-        build_jobs,
-        "every build job must compile the supported platform codec configuration"
+        1,
+        "the platform matrix job must compile its capability-gated codec configuration"
     );
     assert_eq!(
         workflow
             .lines()
             .filter(|line| *line == feature_test_command)
             .count(),
-        build_jobs,
-        "every build job must test the supported platform codec configuration"
+        1,
+        "the platform matrix job must test its capability-gated codec configuration"
     );
     assert_eq!(
         workflow

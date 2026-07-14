@@ -2,7 +2,7 @@
 module_id: superi-cli
 source_paths:
   - open/crates/superi-cli
-source_hash: 739f5b60c36c21fba846c48ea576985ce9d4ec21431bb80110294acae61f5397
+source_hash: c026c8dca00868008d2d2d8a6119fe3f8700b8b9bdd7c3f8e091e1cc9a2c7141
 source_files: 6
 mapped_at_commit: working-tree
 ---
@@ -185,10 +185,11 @@ paths.
 Focused unit contracts prove all applicable canonical observations pass, one changed RGBA payload
 is rejected as corruption before comparison, and one changed project-state digest is classified as
 a terminal contract mismatch rather than fixture corruption. A command unit contract proves two
-checkout roots produce the same portable project digest. The process suite also requires locked
-default and `os-codecs` configuration commands, one exact fixture validator, and one exact slice
-command for every declared hosted Rust build job, and verifies active feature identity. The tests do
-not claim runtime media decoding, pixel evaluation, audio rendering, or playable export.
+checkout roots produce the same portable project digest. The process suite also requires one exact
+fixture validator and one exact slice command for every declared hosted Rust build job. It requires
+the locked `os-codecs` build and test in the capability-gated platform matrix job, while the Ubuntu
+22.04 job remains default-only, and verifies active feature identity. The tests do not claim runtime
+media decoding, pixel evaluation, audio rendering, or playable export.
 
 Negative process contracts prove unknown scenario rejection, preservation of a nonempty artifact
 directory, preservation of an existing report, exact status 2, and help, version, and usage output.
