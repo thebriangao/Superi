@@ -157,6 +157,38 @@ From an empty output directory, the manifest's recorded FFmpeg command reproduce
 the pinned tool versions. The delivery proof generated it twice and compared the complete bytes.
 Any future byte change requires `v2`; never rewrite this released `v1` fixture.
 
+## Deterministic color and image-sequence baseline
+
+`color/image-sequences/v1` contains eight 2 by 2 RGBA images covering premultiplied sRGB SDR,
+straight-alpha Display P3 at 16-bit integer precision, BT.2020 PQ and HLG HDR, scene-linear ACEScg
+at half-float precision, and three full-float ACEScg sequence frames. PQ carries an explicit 100 nit
+reference white. The samples include zero alpha, negative scene values, values above one, and exact
+half-float and full-float bit patterns so transfer order, alpha association, and precision loss are
+observable.
+
+`image-cases.csv` uses a fixed 19-field, CRLF-delimited schema. Each record identifies source intent,
+complete color tags, pixel and alpha representation, payload range and SHA-256, output intent, and
+the PQ reference white when required. `image-samples.bin` stores every little-endian image
+contiguously with no gaps. The `superi-color` contract constructs each public `Image`, transforms it
+into ACEScg, transforms it back to the declared output, and proves scene meaning, transfer order,
+alpha behavior, authoritative output tags, and stored precision.
+
+`sequence-cases.csv` identifies three logical images separately from file frame numbers -2, 0, and
+2. Their presentation timestamps are 48, 49, and 50 at 24000/1001 fps. The `superi-media-io`
+contract resolves the catalog through `ImageSequenceSource`, exercises random access and seeking,
+and proves exact payload bytes and independent logical, file, and presentation identities. Expected
+rendered outputs and perceptual tolerances remain separate because their lifecycle belongs to the
+golden-image baseline.
+
+Reproduce the version into a new absent directory from `open/`:
+
+```text
+cargo run -p superi-fixture-tool -- generate-color <OUTPUT_DIRECTORY>
+```
+
+The generator refuses to overwrite any existing output path. Compare all four generated artifacts
+byte for byte with the canonical version. Do not regenerate into the checked-in `v1` directory.
+
 ## Contributor workflow
 
 1. Prefer the smallest synthetic fixture that exposes the behavior. Use representative recorded or

@@ -2,8 +2,8 @@
 module_id: superi-media-io
 source_paths:
   - open/crates/superi-media-io
-source_hash: 2090db2ab7b2c615a4029f86600e5fdd5a9af625103b97769d32a58c711d7575
-source_files: 37
+source_hash: 83b23b9d6ddda568921190b3516708111525e57dd1ddbb79dee3ab6129e62e22
+source_files: 38
 mapped_at_commit: working-tree
 ---
 
@@ -40,6 +40,10 @@ This crate owns contracts and demuxing, not a complete editor media pipeline. It
 - `open/crates/superi-media-io/src/vfr.rs`: Builds bounded, interruptible, exact contiguous presentation maps from packet timing or explicit frames and provides half-open frame lookup and VFR classification.
 - `open/crates/superi-media-io/tests/contracts.rs`: Exercises public media values, CPU and opaque GPU frame storage, audio layout validation, capability declarations and selection, thread-safety markers, interruption propagation, and a fake packet-to-decode-to-encode lifecycle.
 - `open/crates/superi-media-io/tests/audio_fixture_contract.rs`: Consumes the three canonical synchronized multichannel WAVE fixtures through `PcmContainerSource` and proves exact common sample rates, frame timing, channel masks and order, full interleaved sample identity, shared signal boundaries, distinct routing gains, and bounded audible continuity.
+- `open/crates/superi-media-io/tests/color_image_sequence_fixture_contract.rs`: Consumes the
+  canonical color and image-sequence catalogs, verifies exact references, per-image hashes, rational
+  timing, and noncontiguous file numbering, and reads and seeks exact f32 frame bytes through the
+  public `ImageSequenceSource` path.
 - `open/crates/superi-media-io/tests/image_sequence_contract.rs`: Exercises logical, file-frame, and presentation addressing, authoritative frame validation, relinking, retryable writes and finalization, and idempotent completion using memory fixtures.
 - `open/crates/superi-media-io/tests/interruption_contract.rs`: Exercises priority ordering, cancellation, deadlines, exact reads, retry after `Interrupted`, partial truncation evidence, impossible-reader defense, and send/sync contracts.
 - `open/crates/superi-media-io/tests/mkv_webm_contract.rs`: Exercises content probing, EBML defaults, metadata, all lacing modes, absent timing, unknown-size elements, packet ordering, seeking, relinking, source bounds, and malformed Matroska/WebM fixtures.
@@ -156,6 +160,9 @@ Waveform preview begins after audio decode. The adapter checks one stable audio 
 - `superi-concurrency` has a test-only direct dependency used to prove backpressure with decoded frame, audio block, and media metadata payloads.
 - Codec integration tests in `superi-codecs-rs` directly connect `MkvWebmBackend` packets to AV1, VP8/VP9, Opus, and FLAC codec implementations, proving selected cross-crate compositions beyond the media-I/O fake backend tests.
 - The canonical audio-fixture integration test directly consumes `superi-fixture-tool` output without adding a runtime dependency. It exercises the real PCM container source and shared channel and time contracts for 44,100 Hz stereo, 48,000 Hz 5.1, and 96,000 Hz 7.1.
+- The canonical image-sequence integration test likewise consumes generated repository artifacts
+  without a runtime tool dependency. It binds three ACEScg f32 payloads to logical images, signed
+  file labels, and presentation timestamps through the public sequence reader contract.
 
 No production Rust source outside this crate constructs `MkvWebmBackend`, `Mp4MovBackend`, `MxfBackend`, or `PcmContainerBackend`; those concrete source adapters are registered or constructed only in tests. The current `superi-engine::media` registry assembly adds codec backends but not these four container backends. Engine `nodes`, playback, render, and export orchestration are placeholders, so there is not yet a production source-to-decode-to-playback or encode-to-mux flow. Repository search likewise finds no production consumer for paired selection, source timecode tracks, image-sequence traits, or waveform generation.
 
@@ -178,10 +185,12 @@ No production Rust source outside this crate constructs `MkvWebmBackend`, `Mp4Mo
 
 ## Tests and verification
 
-The sixteen integration-test files exercise each public concern with deterministic in-memory builders, temporary path fixtures, and the canonical shared video, audio, and timing baselines:
+The seventeen integration-test files exercise each public concern with deterministic in-memory builders, temporary path fixtures, and the canonical shared video, audio, timing, and image-sequence baselines:
 
 - Shared values and fake decode/encode composition: `contracts.rs`.
 - Canonical synchronized multichannel PCM coverage: `audio_fixture_contract.rs`.
+- Canonical color image-sequence addressing and payload coverage:
+  `color_image_sequence_fixture_contract.rs`.
 - Image-sequence input/output: `image_sequence_contract.rs`.
 - Priority, cancellation, deadlines, exact reads, and corruption reports: `interruption_contract.rs`.
 - Content probing, ranking, and fallback exposure: `probe_contract.rs`.
@@ -208,13 +217,22 @@ The canonical timing contract reads five cases and 18 samples from one fixed CRL
 and reversible normalization for every declared continuity segment. This is public timing-contract
 proof over synthetic metadata, not container parsing, codec output, scheduler behavior, or hardware.
 
+The canonical image-sequence contract reads three ACEScg f32 image references from fixed CRLF
+catalogs. It proves logical images 0 through 2, file labels -2, 0, and 2, presentation timestamps 48
+through 50 at 24000/1001 fps, contiguous payload hashes, random access, seek resolution, and exact
+public `VideoFrame` bytes. The test uses an in-memory fixture reader, so concrete filesystem naming,
+still-image decoding, publication, and operation cancellation remain unproved.
+
 The other fixtures prove implemented contracts, not broad real-world compatibility, native codec behavior, encrypted media, muxing, scheduling, export atomicity, or real-time performance. The fake decode/encode pipeline proves trait composition and lifecycle only. Waveform tests assert peak data but not complete raster pixels. Image-sequence tests use memory backends and do not prove filesystem naming or publication. Timeout behavior is tested at shared boundaries, not inside every format parser.
 
 ## Current status and risks
 
 The module is substantive and test-rich at the value, probing, demux, timing, selection, interruption, PCM, and waveform-adapter layers. It provides four real source backends and exact contracts consumed by three codec families and engine introspection/upload. It is not merely a scaffold.
 
-Its canonical fixture consumers now cover the complete current raw pixel-format and standard-video-rate matrix plus synchronized multichannel PCM at three common audio rates. These are format, container, and representation contracts, not a production ingest registry or editorial runtime.
+Its canonical fixture consumers now cover the complete current raw pixel-format and
+standard-video-rate matrix, synchronized multichannel PCM at three common audio rates, exact timing
+cadences, and noncontiguous image-sequence addressing. These are format, container, timing, and
+representation contracts, not a production ingest registry or editorial runtime.
 
 Principal incomplete behavior and risks are:
 
@@ -239,6 +257,11 @@ When adding or changing media behavior, update the common contract and its actua
 Container changes should keep probe, full parser, public metadata projection, packet ordering, seek behavior, fingerprint checks, resource bounds, operation polling, and contract fixtures aligned. Do not generalize one format's cancellation, error category, packet atomicity, source cap, or seek behavior to another.
 
 Keep the synchronized audio fixture contract aligned with shared channel layouts, exact sample clocks, the PCM parser's WAVE mask projection, and the repository fixture generator. Changing waveform bytes, timing boundaries, rates, masks, or channel order requires a new immutable fixture version and matching reproduction evidence.
+
+Keep the canonical image-sequence fixture aligned with `ImageSequenceTiming`, signed file-frame
+labels, presentation-start semantics, constant `VideoFormat`, and exact referenced sample bytes.
+Changing catalog identity, numbering, timing, or payloads requires a new immutable fixture version
+and matching color and sequence consumer evidence.
 
 Preserve the distinction among decode order, presentation order, edited presentation time, source timecode, and sample-clock coordinates. Changes to `StreamEdit`, timestamp normalization, VFR mapping, or timecode metadata require reviewing MP4/MOV seek and duration behavior plus selection and downstream codec expectations.
 

@@ -2,8 +2,8 @@
 module_id: superi-color
 source_paths:
   - open/crates/superi-color
-source_hash: abf2772c1c28d495622e6af9d7ba1a3d850409e905767528b6ed20b78c0f00e9
-source_files: 21
+source_hash: 2508b0985cc4753215879c1c2cbab8a2aa54e802d5850e0136179389fcd905f3
+source_files: 22
 mapped_at_commit: working-tree
 ---
 
@@ -62,6 +62,10 @@ selection, and invalidation only.
   tokens, monitor move and profile refresh handling, and guarded GPU submission and presentation.
 - `open/crates/superi-color/src/working_space.rs`: canonical scene-linear working-space,
   binary16 storage, binary32 computation, CPU image, and GPU descriptor contracts.
+- `open/crates/superi-color/tests/color_fixture_contract.rs`: Consumes the versioned color
+  baseline through public image and transform interfaces and proves source and output intent,
+  transfer order, HDR meaning, alpha association, wide-gamut round trips, and exact f16 and f32
+  sample bits.
 - `open/crates/superi-color/tests/gamut_contract.rs`: reference primaries and matrix checks,
   adaptation, round trips, gamut policies, premultiplied alpha, metadata retention, and failure
   classification.
@@ -243,7 +247,9 @@ current `superi_color` use in engine Rust source. Repository-wide code consumers
 crate's own contract tests. `docs/phase-0-build-contracts.md` assigns the shell-to-color display
 handoff and every viewer and export transform to this subsystem, but those runtime callers are not
 wired in the current source tree. The output transform is currently consumed by its public
-integration contract and is ready for the later engine output-node consumer.
+integration contracts, including the canonical repository color fixture, and is ready for the later
+engine output-node consumer. The fixture contract reads versioned artifacts directly and does not
+add a runtime dependency on the repository fixture generator.
 
 `docs/unsafe-ffi.md` consumes the macOS boundary as an audit inventory, and
 `open/crates/superi-color/tests/icc_contract.rs` verifies that this inventory remains present.
@@ -289,7 +295,12 @@ integration contract and is ready for the later engine output-node consumer.
 
 ## Tests and verification
 
-The eight integration suites cover the implemented CPU and presentation-state contracts:
+The nine integration suites cover the implemented CPU and presentation-state contracts:
+
+- `open/crates/superi-color/tests/color_fixture_contract.rs` checks all eight canonical SDR,
+  wide-gamut, PQ, HLG, alpha, f16, and f32 images through explicit input and output intent. It also
+  verifies contiguous payload offsets, per-image SHA-256, exact source bits, and authoritative
+  output tags.
 
 - `open/crates/superi-color/tests/working_space_contract.rs` proves canonical descriptors, exact
   half payload retention, promotion and quantization, and rejection of mislabeled storage.
@@ -332,7 +343,7 @@ contracts are implemented and extensively tested. The module is not yet a comple
   not evaluated. `MonitorAwareViewport` prevents stale profile use but does not color-convert the
   rendered texture by itself.
 - There is no live engine or shell consumer in current Rust source. The implemented color paths are
-  exercised only by `superi-color` tests.
+  exercised only by `superi-color` tests, including the canonical fixture consumer.
 - `superi-graph` is an unused manifest dependency. No color node catalog or graph-visible transform
   integration exists in this crate.
 - CPU input, gamut, and LUT application allocate replacement sample vectors and iterate pixels on
@@ -354,7 +365,7 @@ contracts are implemented and extensively tested. The module is not yet a comple
 ## Maintenance notes
 
 After any source change under `open/crates/superi-color`, rerun the mapping script's `files` and
-`hash` commands, update both metadata and prose, and run all eight contract suites. Any new source
+`hash` commands, update both metadata and prose, and run all nine contract suites. Any new source
 file must appear in the inventory.
 
 Changes to canonical image meaning must be reconciled with `superi-core` color and pixel tags,

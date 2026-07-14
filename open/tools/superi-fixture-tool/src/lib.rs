@@ -22,6 +22,10 @@ pub const AUDIO_SURROUND_7_1_96000_NAME: &str = "surround-7-1-96000.wav";
 pub const AUDIO_MANIFEST_NAME: &str = MANIFEST_NAME;
 pub const TIMING_CATALOG_NAME: &str = "timing-cases.csv";
 pub const TIMING_MANIFEST_NAME: &str = MANIFEST_NAME;
+pub const COLOR_IMAGE_CATALOG_NAME: &str = "image-cases.csv";
+pub const COLOR_SEQUENCE_CATALOG_NAME: &str = "sequence-cases.csv";
+pub const COLOR_PAYLOAD_NAME: &str = "image-samples.bin";
+pub const COLOR_MANIFEST_NAME: &str = MANIFEST_NAME;
 
 const TIMING_CATALOG: &str = concat!(
     "case_id,kind,segment,decode_index,presentation_index,rate_numerator,rate_denominator,presentation_timestamp,decode_timestamp,duration,timecode_label\r\n",
@@ -47,6 +51,8 @@ const TIMING_CATALOG: &str = concat!(
 
 pub const TIMING_BASELINE_CASE_COUNT: usize = 5;
 pub const TIMING_BASELINE_SAMPLE_COUNT: usize = 18;
+pub const COLOR_BASELINE_IMAGE_COUNT: usize = 8;
+pub const COLOR_BASELINE_SEQUENCE_FRAME_COUNT: usize = 3;
 
 const VIDEO_WIDTH: usize = 5;
 const VIDEO_HEIGHT: u32 = 3;
@@ -740,6 +746,349 @@ fn timing_manifest(catalog: &[u8]) -> String {
 "#,
         catalog.len(),
         digest_bytes(catalog)
+    )
+}
+
+const COLOR_IMAGE_CATALOG_HEADER: &str = "image_id,source_kind,source_primaries,source_transfer,source_matrix,source_range,pixel_format,alpha_mode,width,height,offset,bytes,sha256,output_target,output_primaries,output_transfer,output_matrix,output_range,pq_reference_white_nits";
+const COLOR_SEQUENCE_CATALOG: &str = concat!(
+    "sequence_id,image_number,file_frame_number,presentation_timestamp,rate_numerator,rate_denominator,image_id\r\n",
+    "acescg-editorial-sequence,0,-2,48,24000,1001,sequence-acescg-f32-0\r\n",
+    "acescg-editorial-sequence,1,0,49,24000,1001,sequence-acescg-f32-1\r\n",
+    "acescg-editorial-sequence,2,2,50,24000,1001,sequence-acescg-f32-2\r\n",
+);
+
+#[derive(Clone, Copy)]
+enum ColorSamples {
+    U16([u16; 16]),
+    F16([u16; 16]),
+    F32([f32; 16]),
+}
+
+impl ColorSamples {
+    fn append_to(self, payload: &mut Vec<u8>) {
+        match self {
+            Self::U16(samples) | Self::F16(samples) => {
+                for sample in samples {
+                    payload.extend_from_slice(&sample.to_le_bytes());
+                }
+            }
+            Self::F32(samples) => {
+                for sample in samples {
+                    payload.extend_from_slice(&sample.to_le_bytes());
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ColorCase {
+    image_id: &'static str,
+    source_kind: &'static str,
+    primaries: &'static str,
+    transfer: &'static str,
+    pixel_format: &'static str,
+    alpha_mode: &'static str,
+    output_target: &'static str,
+    pq_reference_white_nits: &'static str,
+    samples: ColorSamples,
+}
+
+fn color_cases() -> [ColorCase; COLOR_BASELINE_IMAGE_COUNT] {
+    [
+        ColorCase {
+            image_id: "sdr-srgb-premultiplied-f32",
+            source_kind: "display_referred",
+            primaries: "bt709",
+            transfer: "srgb",
+            pixel_format: "rgba32_float",
+            alpha_mode: "premultiplied",
+            output_target: "display",
+            pq_reference_white_nits: "",
+            samples: ColorSamples::F32([
+                0.367_678_5,
+                0.367_678_5,
+                0.367_678_5,
+                0.5,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                1.0,
+                0.0,
+                1.0,
+            ]),
+        },
+        ColorCase {
+            image_id: "wide-display-p3-straight-u16",
+            source_kind: "display_referred",
+            primaries: "display_p3",
+            transfer: "srgb",
+            pixel_format: "rgba16_unorm",
+            alpha_mode: "straight",
+            output_target: "display",
+            pq_reference_white_nits: "",
+            samples: ColorSamples::U16([
+                65_535, 0, 32_768, 32_768, 0, 65_535, 0, 65_535, 0, 0, 65_535, 16_384, 32_768,
+                32_768, 32_768, 0,
+            ]),
+        },
+        ColorCase {
+            image_id: "hdr-bt2020-pq-opaque-f32",
+            source_kind: "display_referred",
+            primaries: "bt2020",
+            transfer: "pq",
+            pixel_format: "rgba32_float",
+            alpha_mode: "opaque",
+            output_target: "deliverable",
+            pq_reference_white_nits: "100",
+            samples: ColorSamples::F32([
+                0.508_078_4,
+                0.508_078_4,
+                0.508_078_4,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.25,
+                0.25,
+                0.25,
+                1.0,
+                0.75,
+                0.75,
+                0.75,
+                1.0,
+            ]),
+        },
+        ColorCase {
+            image_id: "hdr-bt2020-hlg-opaque-f32",
+            source_kind: "scene_referred",
+            primaries: "bt2020",
+            transfer: "hlg",
+            pixel_format: "rgba32_float",
+            alpha_mode: "opaque",
+            output_target: "deliverable",
+            pq_reference_white_nits: "",
+            samples: ColorSamples::F32([
+                0.5, 0.5, 0.5, 1.0, 0.0, 0.0, 0.0, 1.0, 0.75, 0.75, 0.75, 1.0, 1.0, 1.0, 1.0, 1.0,
+            ]),
+        },
+        ColorCase {
+            image_id: "scene-acescg-premultiplied-f16",
+            source_kind: "camera",
+            primaries: "aces_ap1",
+            transfer: "linear",
+            pixel_format: "rgba16_float",
+            alpha_mode: "premultiplied",
+            output_target: "deliverable",
+            pq_reference_white_nits: "",
+            samples: ColorSamples::F16([
+                0xb400, 0x3800, 0x4000, 0x3800, 0x0000, 0x0000, 0x0000, 0x0000, 0x3c00, 0x3400,
+                0xb800, 0x3c00, 0x3000, 0x2c00, 0x2800, 0x3400,
+            ]),
+        },
+        ColorCase {
+            image_id: "sequence-acescg-f32-0",
+            source_kind: "camera",
+            primaries: "aces_ap1",
+            transfer: "linear",
+            pixel_format: "rgba32_float",
+            alpha_mode: "premultiplied",
+            output_target: "deliverable",
+            pq_reference_white_nits: "",
+            samples: ColorSamples::F32([
+                f32::from_bits(0x3eaa_aaab),
+                0.25,
+                0.125,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.5,
+                0.25,
+                0.125,
+                0.5,
+                2.0,
+                1.0,
+                0.5,
+                1.0,
+            ]),
+        },
+        ColorCase {
+            image_id: "sequence-acescg-f32-1",
+            source_kind: "camera",
+            primaries: "aces_ap1",
+            transfer: "linear",
+            pixel_format: "rgba32_float",
+            alpha_mode: "premultiplied",
+            output_target: "deliverable",
+            pq_reference_white_nits: "",
+            samples: ColorSamples::F32([
+                0.5, 0.25, 0.125, 1.0, 0.25, 0.5, 0.125, 1.0, -0.25, 0.5, 1.5, 1.0, 0.0, 0.0, 0.0,
+                0.0,
+            ]),
+        },
+        ColorCase {
+            image_id: "sequence-acescg-f32-2",
+            source_kind: "camera",
+            primaries: "aces_ap1",
+            transfer: "linear",
+            pixel_format: "rgba32_float",
+            alpha_mode: "premultiplied",
+            output_target: "deliverable",
+            pq_reference_white_nits: "",
+            samples: ColorSamples::F32([
+                1.0, 0.5, 0.25, 1.0, 0.125, 0.25, 0.5, 1.0, 2.0, 1.0, 0.5, 1.0, -0.5, 0.25, 1.25,
+                1.0,
+            ]),
+        },
+    ]
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ColorBaselineReport {
+    image_count: usize,
+    sequence_frame_count: usize,
+    payload_bytes: usize,
+}
+
+impl ColorBaselineReport {
+    #[must_use]
+    pub const fn image_count(self) -> usize {
+        self.image_count
+    }
+
+    #[must_use]
+    pub const fn sequence_frame_count(self) -> usize {
+        self.sequence_frame_count
+    }
+
+    #[must_use]
+    pub const fn payload_bytes(self) -> usize {
+        self.payload_bytes
+    }
+}
+
+pub fn generate_color_baseline(output_directory: &Path) -> io::Result<ColorBaselineReport> {
+    match fs::symlink_metadata(output_directory) {
+        Ok(_) => {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "output directory already exists",
+            ));
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+
+    let mut image_catalog = String::from(COLOR_IMAGE_CATALOG_HEADER);
+    image_catalog.push_str("\r\n");
+    let mut payload = Vec::new();
+    for case in color_cases() {
+        let offset = payload.len();
+        case.samples.append_to(&mut payload);
+        let bytes = payload.len() - offset;
+        let digest = digest_bytes(&payload[offset..]);
+        image_catalog.push_str(&format!(
+            "{},{},{},{},rgb,full,{},{},2,2,{offset},{bytes},{digest},{},{},{},rgb,full,{}\r\n",
+            case.image_id,
+            case.source_kind,
+            case.primaries,
+            case.transfer,
+            case.pixel_format,
+            case.alpha_mode,
+            case.output_target,
+            case.primaries,
+            case.transfer,
+            case.pq_reference_white_nits,
+        ));
+    }
+
+    let image_catalog = image_catalog.into_bytes();
+    let sequence_catalog = COLOR_SEQUENCE_CATALOG.as_bytes();
+    let manifest = color_manifest(&image_catalog, sequence_catalog, &payload);
+
+    if let Some(parent) = output_directory.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+    fs::create_dir(output_directory)?;
+    fs::write(
+        output_directory.join(COLOR_IMAGE_CATALOG_NAME),
+        &image_catalog,
+    )?;
+    fs::write(
+        output_directory.join(COLOR_SEQUENCE_CATALOG_NAME),
+        sequence_catalog,
+    )?;
+    fs::write(output_directory.join(COLOR_PAYLOAD_NAME), &payload)?;
+    fs::write(output_directory.join(COLOR_MANIFEST_NAME), manifest)?;
+
+    Ok(ColorBaselineReport {
+        image_count: COLOR_BASELINE_IMAGE_COUNT,
+        sequence_frame_count: COLOR_BASELINE_SEQUENCE_FRAME_COUNT,
+        payload_bytes: payload.len(),
+    })
+}
+
+fn color_manifest(image_catalog: &[u8], sequence_catalog: &[u8], payload: &[u8]) -> String {
+    format!(
+        r#"{{
+  "schema_version": 1,
+  "fixture_id": "color/image-sequences",
+  "fixture_version": 1,
+  "description": "Deterministic SDR, wide-gamut, HDR, alpha, high-bit-depth, and image-sequence samples with explicit color and timing intent.",
+  "provenance": {{
+    "kind": "generated",
+    "source": "Authored and generated in the Superi repository from fixed color and sequence cases aligned with public transform and media-I/O contracts.",
+    "author": "Superi contributors",
+    "created_on": "2026-07-14",
+    "license": "CC0-1.0",
+    "rights": "Original synthetic samples approved for unrestricted redistribution.",
+    "generator": {{
+      "name": "superi-fixture-tool",
+      "version": "0.0.0",
+      "command": "cargo run -p superi-fixture-tool -- generate-color <OUTPUT_DIRECTORY>",
+      "seed": "superi-color-image-sequence-baseline-v1"
+    }},
+    "parents": []
+  }},
+  "files": [
+    {{
+      "path": "{COLOR_IMAGE_CATALOG_NAME}",
+      "media_type": "text/csv; charset=utf-8",
+      "bytes": {},
+      "sha256": "{}"
+    }},
+    {{
+      "path": "{COLOR_SEQUENCE_CATALOG_NAME}",
+      "media_type": "text/csv; charset=utf-8",
+      "bytes": {},
+      "sha256": "{}"
+    }},
+    {{
+      "path": "{COLOR_PAYLOAD_NAME}",
+      "media_type": "application/octet-stream",
+      "bytes": {},
+      "sha256": "{}"
+    }}
+  ]
+}}
+"#,
+        image_catalog.len(),
+        digest_bytes(image_catalog),
+        sequence_catalog.len(),
+        digest_bytes(sequence_catalog),
+        payload.len(),
+        digest_bytes(payload),
     )
 }
 

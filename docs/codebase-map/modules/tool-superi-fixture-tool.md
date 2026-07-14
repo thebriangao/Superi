@@ -2,41 +2,50 @@
 module_id: tool-superi-fixture-tool
 source_paths:
   - open/tools/superi-fixture-tool
-source_hash: 8a91e9857cd1ce11c8bee36d59c39aec701c2689f6d4d54a0048cf4c8dc7818a
-source_files: 10
+source_hash: 520aa50e6e697deaa1c8fd4b79dce4cca04e1fb3628ec96dcf73be7a93a2ee7c
+source_files: 12
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
 `superi-fixture-tool` owns offline validation for shared canonical fixtures and deterministic
-generation for the version 1 raw-video, synchronized multichannel audio, and timing baselines. It
+generation for the version 1 raw-video, synchronized multichannel audio, timing, and color and
+image-sequence baselines. It
 validates layout, manifest schema, provenance, lineage, payload inventory, byte counts, and SHA-256
-digests without fetching data or executing documentary generator commands. All three generators
+digests without fetching data or executing documentary generator commands. All four generators
 create approved synthetic evidence directly and never replace an existing output path.
 
 The package is a repository utility, not a runtime crate. The canonical fixture store and policy
-remain under `open/test-fixtures`; this tool creates a requested new video, audio, or timing version
-directory and validates any fixture root, but it does not select versions for consumers or mutate
-released data.
+remain under `open/test-fixtures`; this tool creates a requested new video, audio, timing, or color
+version directory and validates any fixture root, but it does not select versions for consumers or
+mutate released data.
 
 ## Source inventory
 
 - `open/tools/superi-fixture-tool/Cargo.toml`: Declares the workspace library and binary package and
   opts into workspace `serde`, `serde_json`, and `sha2` dependencies.
 - `open/tools/superi-fixture-tool/src/lib.rs`: Implements strict fixture validation plus
-  dependency-free video, audio, and timing baseline generators. The video path owns stable format
+  dependency-free video, audio, timing, and color baseline generators. The video path owns stable format
   and rate tables, exact plane geometry, finite sample synthesis, CSV serialization, and manifest
   creation. The audio path owns WAVEFORMATEXTENSIBLE serialization, common sample rates, speaker
   masks, synchronized integer waveforms, and PCM interleaving. The timing path owns stable cadence,
-  continuity, and timecode tables. All three own exact manifests, reports, and no-overwrite guards.
+  continuity, and timecode tables. The color path owns fixed SDR, wide-gamut, HDR, alpha,
+  high-bit-depth, and image-sequence cases, exact little-endian samples, two catalogs, and sequence
+  timing. All four own exact manifests, reports, and no-overwrite guards.
 - `open/tools/superi-fixture-tool/src/main.rs`: Implements `check`, `generate-video`,
-  `generate-audio`, and `generate-timing`, exact usage, summaries, diagnostics, and process exit
-  statuses.
+  `generate-audio`, `generate-timing`, and `generate-color`, exact usage, summaries, diagnostics,
+  and process exit statuses.
 - `open/tools/superi-fixture-tool/tests/audio_cli_contract.rs`: Proves process-level audio
   generation, exact summary, manifest creation, complete usage, and no-overwrite failure.
 - `open/tools/superi-fixture-tool/tests/audio_generator_contract.rs`: Compares every generated audio
   artifact byte for byte with the canonical version and proves report bounds and overwrite refusal.
+- `open/tools/superi-fixture-tool/tests/color_cli_contract.rs`: Proves process-level color
+  generation, exact image and sequence summary, manifest creation, complete usage, and no-overwrite
+  failure.
+- `open/tools/superi-fixture-tool/tests/color_generator_contract.rs`: Generates all color artifacts
+  twice, compares them byte for byte with the canonical version, checks report and payload bounds,
+  and proves preservation of an existing directory.
 - `open/tools/superi-fixture-tool/tests/timing_cli_contract.rs`: Proves process-level timing
   generation, exact case and sample summary, manifest creation, and no-overwrite failure.
 - `open/tools/superi-fixture-tool/tests/timing_generator_contract.rs`: Generates timing artifacts
@@ -73,6 +82,12 @@ The timing surface exports
 samples, and catalog bytes. It accepts only an absent output path and emits `timing-cases.csv` plus
 `fixture.json`.
 
+The color surface exports
+`generate_color_baseline(&Path) -> io::Result<ColorBaselineReport>`, stable artifact names,
+`COLOR_BASELINE_IMAGE_COUNT`, and `COLOR_BASELINE_SEQUENCE_FRAME_COUNT`. Its report exposes eight
+images, three sequence frames, and 448 payload bytes. It accepts only an absent output path and
+emits `image-cases.csv`, `sequence-cases.csv`, `image-samples.bin`, and `fixture.json`.
+
 The executable accepts exactly these forms:
 
 ```text
@@ -80,17 +95,19 @@ superi-fixture-tool check [FIXTURE_ROOT]
 superi-fixture-tool generate-video <OUTPUT_DIRECTORY>
 superi-fixture-tool generate-audio <OUTPUT_DIRECTORY>
 superi-fixture-tool generate-timing <OUTPUT_DIRECTORY>
+superi-fixture-tool generate-color <OUTPUT_DIRECTORY>
 ```
 
 Validation defaults to `test-fixtures`, prints fixture and payload counts on success, and exits 1
 for policy failure. Video generation prints `generated 207 video cases`; audio generation prints
-`generated 3 audio cases`; timing generation prints `generated 5 timing cases and 18 samples`.
+`generated 3 audio cases`; timing generation prints `generated 5 timing cases and 18 samples`;
+color generation prints `generated 8 color images and 3 sequence frames`.
 Every generator exits 1 for filesystem or overwrite failure. Invalid command shapes print the
-complete four-line usage and exit 2.
+complete five-line usage and exit 2.
 
 The accepted manifest format remains strict schema version 1. Its manifest, provenance, generator,
 parent, and payload objects reject unknown fields. Generator records remain documentary for general
-fixtures; the video, audio, and timing commands are separate executable implementations whose
+fixtures; the video, audio, timing, and color commands are separate executable implementations whose
 canonical byte identities are proved by their integration tests.
 
 ## Architecture and data flow
@@ -127,6 +144,14 @@ while labels skip from `00:00:59;29` to `00:01:00;02`. Forward-gap and reset cas
 continuity segments. The generated schema 1 manifest records CC0 provenance, exact size, digest,
 command, and stable seed before the absent output directory is created.
 
+Color generation serializes a fixed 19-field image catalog and a fixed 7-field sequence catalog.
+Eight 2 by 2 images cover premultiplied sRGB, straight Display P3 u16, BT.2020 PQ and HLG, ACEScg
+f16, and three ACEScg f32 sequence frames. Exact little-endian values include zero alpha, negative
+and above-one scene values, a 100 nit PQ reference white, and stable f16 and f32 bit patterns. The
+sequence maps logical images 0 through 2 to file frames -2, 0, and 2 and presentation timestamps 48
+through 50 at 24000/1001 fps. All 448 payload bytes and both catalogs are computed before the absent
+output directory is created.
+
 ## Dependencies and consumers
 
 The standard library supplies filesystem, path, collection, formatting, byte, and process support.
@@ -134,15 +159,17 @@ The standard library supplies filesystem, path, collection, formatting, byte, an
 digests. No external media tool, platform encoder, network service, or random source participates in
 generation.
 
-The binary and seven integration-test files consume the library. `open/test-fixtures/README.md`
-documents all four commands. The canonical-root validator consumes the complete fixture store.
-That store now includes the separately generated encoded canonical slice source, which this tool
+The binary and nine integration-test files consume the library. `open/test-fixtures/README.md`
+documents all five commands. The canonical-root validator consumes the complete fixture store.
+That store includes the separately generated encoded canonical slice source, which this tool
 validates as an ordinary strict manifest and opaque payload but does not reproduce.
-`superi-media-io` does not depend on this tool at runtime; separate integration tests consume the
-emitted canonical video, audio, and timing artifacts. The video test checks generator tables
+Runtime crates do not depend on this tool; separate integration tests consume the emitted canonical
+video, audio, timing, color, and image-sequence artifacts. The video test checks generator tables
 indirectly against live core definitions. The audio test opens every WAVE through the production PCM
 source and checks exact sample clocks, masks, routing, synchronization, and continuity. The timing
-test exercises packet, presentation-map, timestamp, and source-timecode behavior.
+test exercises packet, presentation-map, timestamp, and source-timecode behavior. The color test
+uses public input and output transforms, while the image-sequence test uses public random-access and
+seek interfaces.
 
 ## Invariants and operational boundaries
 
@@ -159,6 +186,8 @@ test exercises packet, presentation-map, timestamp, and source-timecode behavior
   Rust.
 - Timing output is deterministic across supported hosts because case order, exact rational clocks,
   source timestamps, continuity segments, labels, CRLF records, manifest text, and seed are fixed.
+- Color output is deterministic across supported hosts because case order, exact numeric bits,
+  little-endian byte order, color and timing fields, CRLF records, manifest text, and seed are fixed.
 - Odd dimensions use ceiling division for chroma. Ten-bit planar values stay in 10 bits, P010 values
   occupy the high 10 bits of 16-bit containers, and floating-point samples are finite.
 - The generator table is intentionally local to this repository tool. The media consumer contract
@@ -169,13 +198,13 @@ test exercises packet, presentation-map, timestamp, and source-timecode behavior
 ## Tests and verification
 
 Seven validator contracts cover the canonical root, success counts, content and inventory drift,
-identity, versions, provenance, unsafe paths, and Unix symlinks. Six generator contracts prove the
-video, audio, and timing artifacts reproduce byte for byte, report exact case and sample counts, stay
-within their payload bounds, and leave existing directories unchanged. Five CLI contracts prove all
-three generation summaries, no-overwrite diagnostics, complete usage, manifest creation, and exit
-statuses.
+identity, versions, provenance, unsafe paths, and Unix symlinks. Eight generator contracts prove the
+video, audio, timing, and color artifacts reproduce byte for byte, report exact case and sample
+counts, stay within their payload bounds, and leave existing directories unchanged. CLI contracts
+prove all four generation summaries, no-overwrite diagnostics, complete usage, manifest creation,
+and exit statuses.
 
-Separate `superi-media-io` contracts validate all three canonical baselines through real consumers.
+Separate `superi-media-io` contracts validate all four canonical baselines through real consumers.
 The video contract proves the full 23 by 9 matrix, exact rates and geometry, contiguous offsets,
 per-plane hashes, numeric representation rules, and construction through public video frame types.
 The audio contract proves all three common rates, exact WAVE channel masks and canonical layouts,
@@ -183,15 +212,18 @@ sample-aligned timing, synchronized signal boundaries, distinct channel routing,
 sample identity, and bounded adjacent-sample continuity through `PcmContainerSource`. The canonical
 timing contract proves its strict schema, CFR and VFR maps, decode and presentation order,
 continuous drop-frame samples, unsegmented discontinuity rejection, and reversible segment
-normalization. The canonical validator reports five fixture versions and eight payloads with the
-encoded slice source included.
+normalization. The color contract proves transfer order, HDR meaning, alpha association, output
+intent, and exact high-bit-depth sample bits. The image-sequence contract proves exact catalog
+references, timing, random access, seeking, and unmodified frame bytes. The canonical validator
+reports six fixture versions and eleven payloads with the encoded slice source included.
 
 ## Current status and risks
 
-Validation, deterministic video, audio, and timing generation, all four CLI commands, canonical
+Validation, deterministic video, audio, timing, and color generation, all five CLI commands, canonical
 artifacts, and real consumer proof are implemented. The video baseline is raw single-frame evidence,
-the audio baseline is PCM-container evidence, and the timing baseline is metadata evidence. Together
-they still do not prove encoded codecs, HDR, malformed media payloads, playback, physical devices,
+the audio baseline is PCM-container evidence, the timing baseline is metadata evidence, and the
+color baseline is raw color-transform and sequence evidence. Together they still do not prove
+encoded codec HDR, malformed media payloads, playback, physical devices,
 hardware clocks, A/V synchronization, scheduling, real-time behavior, or the editorial slice. The
 encoded slice fixture participates in strict generic validation but has a separate documentary
 FFmpeg generator and is not reproduced by this tool.
@@ -204,11 +236,11 @@ the caller to inspect and remove.
 
 ## Maintenance notes
 
-Keep all generator tables, WAVE schema, waveform math, and serializations intentionally stable for
+Keep all generator tables, WAVE schema, waveform math, color sample bits, and serializations intentionally stable for
 version 1. Add a new fixture version when bytes or schema change. Any new core pixel format,
-standard video rate, canonical audio rate, channel layout, timing case, cadence, or discontinuity
-representation must first make the corresponding media consumer contract fail, then receive
-deliberate generator, fixture-version, documentation, and proof updates.
+standard video rate, canonical audio rate, channel layout, timing case, cadence, discontinuity,
+color case, or sequence representation must first make the corresponding consumer contract fail,
+then receive deliberate generator, fixture-version, documentation, and proof updates.
 
 Keep this map, fixture policy, command usage, validator behavior, and tests synchronized. Extend
 red contracts before changing schema, generation layouts, overwrite rules, errors, or output. After

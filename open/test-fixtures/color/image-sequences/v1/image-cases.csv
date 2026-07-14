@@ -1,0 +1,9 @@
+image_id,source_kind,source_primaries,source_transfer,source_matrix,source_range,pixel_format,alpha_mode,width,height,offset,bytes,sha256,output_target,output_primaries,output_transfer,output_matrix,output_range,pq_reference_white_nits
+sdr-srgb-premultiplied-f32,display_referred,bt709,srgb,rgb,full,rgba32_float,premultiplied,2,2,0,64,c86c73ed66bedd6fe446a0b8070090625361e089bba86dcb9e8c6a43e8919087,display,bt709,srgb,rgb,full,
+wide-display-p3-straight-u16,display_referred,display_p3,srgb,rgb,full,rgba16_unorm,straight,2,2,64,32,888a87789841728fa7bfe8c972a31c8e8493004ffb13b623af5d49e852d320f6,display,display_p3,srgb,rgb,full,
+hdr-bt2020-pq-opaque-f32,display_referred,bt2020,pq,rgb,full,rgba32_float,opaque,2,2,96,64,a5db6659fa8fd251f2fb59b6000a61af800bf19eb8b52bd74c9eaeccff324aff,deliverable,bt2020,pq,rgb,full,100
+hdr-bt2020-hlg-opaque-f32,scene_referred,bt2020,hlg,rgb,full,rgba32_float,opaque,2,2,160,64,37cc5650c134c7e0cb17fa66fd7c222de58bcabcf1b6d50c54ed3194aae86cd5,deliverable,bt2020,hlg,rgb,full,
+scene-acescg-premultiplied-f16,camera,aces_ap1,linear,rgb,full,rgba16_float,premultiplied,2,2,224,32,ae91fbcd533e5b16622ed57066beff85d8409a605a665b0c96a4e580cc4515d5,deliverable,aces_ap1,linear,rgb,full,
+sequence-acescg-f32-0,camera,aces_ap1,linear,rgb,full,rgba32_float,premultiplied,2,2,256,64,d970ce88170c3b59df0922dc5bf6665b8d8c548e7d0b9255c213169bc751ba82,deliverable,aces_ap1,linear,rgb,full,
+sequence-acescg-f32-1,camera,aces_ap1,linear,rgb,full,rgba32_float,premultiplied,2,2,320,64,8c5f4e83f06730384c461340dbca7a345b4c8df4d1d92d9c7a44fb9a44bd6705,deliverable,aces_ap1,linear,rgb,full,
+sequence-acescg-f32-2,camera,aces_ap1,linear,rgb,full,rgba32_float,premultiplied,2,2,384,64,be41cd077cbcb6c77d102af094fc59bf1f7bc077c8520c202ccdd0050619b0c7,deliverable,aces_ap1,linear,rgb,full,

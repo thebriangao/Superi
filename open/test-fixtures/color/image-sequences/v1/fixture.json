@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "fixture_id": "color/image-sequences",
+  "fixture_version": 1,
+  "description": "Deterministic SDR, wide-gamut, HDR, alpha, high-bit-depth, and image-sequence samples with explicit color and timing intent.",
+  "provenance": {
+    "kind": "generated",
+    "source": "Authored and generated in the Superi repository from fixed color and sequence cases aligned with public transform and media-I/O contracts.",
+    "author": "Superi contributors",
+    "created_on": "2026-07-14",
+    "license": "CC0-1.0",
+    "rights": "Original synthetic samples approved for unrestricted redistribution.",
+    "generator": {
+      "name": "superi-fixture-tool",
+      "version": "0.0.0",
+      "command": "cargo run -p superi-fixture-tool -- generate-color <OUTPUT_DIRECTORY>",
+      "seed": "superi-color-image-sequence-baseline-v1"
+    },
+    "parents": []
+  },
+  "files": [
+    {
+      "path": "image-cases.csv",
+      "media_type": "text/csv; charset=utf-8",
+      "bytes": 1811,
+      "sha256": "cfbf7e95750450c229df217439cb7db0cff47bb94eb0e4f342865261555fb755"
+    },
+    {
+      "path": "sequence-cases.csv",
+      "media_type": "text/csv; charset=utf-8",
+      "bytes": 310,
+      "sha256": "e28b8442e27c8775929de2b295db9cba4a0ac0ac5e56b768df7ad0062c23c63e"
+    },
+    {
+      "path": "image-samples.bin",
+      "media_type": "application/octet-stream",
+      "bytes": 448,
+      "sha256": "44b9aa18a26252321e89ae66f72adc56d5315de8a92a933416617f90c0356c90"
+    }
+  ]
+}

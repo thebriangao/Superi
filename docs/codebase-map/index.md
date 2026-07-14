@@ -34,8 +34,8 @@ against raw source before changing code.
 | `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Reserved editorial model, edits, OTIO, nesting, multicam, and graph compilation | Skeleton: no timeline model, OTIO path, or compiler |
 | `tool-superi-dependency-check` | [module map](modules/tool-superi-dependency-check.md) | `open/tools/superi-dependency-check` | Offline executable policy for the open runtime dependency graph | Implemented exact runtime, build, dev, and new-crate checks |
 | `tool-superi-boundary-tool` | [module map](modules/tool-superi-boundary-tool.md) | `open/tools/superi-boundary-tool` | Offline scanner for network-client and open-to-closed policy | Implemented library, CLI, workspace gate, and hosted-build command |
-| `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline validator and deterministic video, audio, and timing fixture generator | Implemented validation library, three generators, four-command CLI, and focused contracts |
-| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: canonical fixture and contract runner delivered, timing fixture coverage expanded, runtime slice absent |
+| `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline validator and deterministic video, audio, timing, and color fixture generator | Implemented validation library, four generators, five-command CLI, and focused contracts |
+| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: canonical fixture and contract runner delivered, color and timing coverage expanded, runtime slice absent |
 
 ## Ownership and repository boundaries
 
@@ -233,6 +233,12 @@ deliverable target, converts linear working primaries, encodes SDR, HLG, or abso
 premultiplied alpha and image identity, and emits authoritative full-range RGB binary32 output for
 later storage conversion.
 
+The versioned color baseline now exercises that public CPU transform path with eight compact SDR,
+Display P3, PQ, HLG, alpha, f16, and f32 images. It separately maps three ACEScg f32 payloads through
+the public media-I/O image-sequence source with noncontiguous file numbers and exact 24000/1001
+presentation timestamps. These are real consumer contracts over canonical raw fixtures, not an
+engine, GPU, viewer, still-image decoder, or rendered golden-output path.
+
 `superi-gpu` owns device identities, resources, memory budgets, pooled textures, decoded upload,
 storage conversion, shaders, passes, the exclusive submission queue, fences, readback, native
 surfaces, diagnostics, and device-loss reconstruction. Its storage converter may change packing,
@@ -319,7 +325,9 @@ standard-frame-rate cases, a fixed catalog, raw payload, and exact manifest. Its
 creates three WAVEFORMATEXTENSIBLE PCM16 files covering 44,100 Hz stereo, 48,000 Hz 5.1, and 96,000
 Hz 7.1 with exact sample timing, channel masks, synchronized signal boundaries, and integer-only
 waveforms. Its timing command emits five fixed CFR, VFR, drop-frame, gap, and reset cases with 18
-samples and explicit continuity segments. All generators refuse overwrite. The tool does not
+samples and explicit continuity segments. Its color command emits eight deterministic SDR,
+wide-gamut, HDR, alpha, high-bit-depth, and sequence images with two strict catalogs and one 448-byte
+sample payload. All generators refuse overwrite. The tool does not
 execute recorded commands, prove repository-history immutability, or verify legal and semantic
 claims inside arbitrary free-form provenance fields.
 
@@ -454,8 +462,13 @@ bounded continuity. The deterministic timing baseline adds five cases and 18 sam
 decode-order VFR, 29.97 drop-frame labels, a forward gap, and a reset. Its media-I/O consumer proves
 real packet and presentation maps, unsegmented discontinuity rejection, and reversible explicit
 segments. These remain synthetic raw-frame, PCM-container, and timing-metadata proofs, not encoded
-codec, HDR, malformed media, hardware, playback, device, A/V synchronization, scheduling, or
-editorial-slice proof. Snapshot validation still does not prove Git-history immutability,
+codec, malformed media, hardware, playback, device, A/V synchronization, scheduling, or
+editorial-slice proof. The deterministic color baseline adds eight SDR, wide-gamut, PQ, HLG, alpha,
+f16, and f32 images plus three ACEScg sequence frames. Public color transforms prove transfer order,
+HDR scene meaning, reference-white handling, output intent, alpha association, and exact high-depth
+bits, while public media sequence access proves logical, file, and presentation identity. It does
+not prove encoded HDR, still-image decoding, display rendering, perceptual golden tolerances, or GPU
+color execution. Snapshot validation still does not prove Git-history immutability,
 provenance truth, legal clearance, or semantic quality beyond focused contracts. The separate
 `slice/video-cfr` fixture provides one digest-bound 96-frame AV1 WebM for the canonical runner. Its
 decoded traits remain expected values because current contract import does not open it.

@@ -1,0 +1,4 @@
+sequence_id,image_number,file_frame_number,presentation_timestamp,rate_numerator,rate_denominator,image_id
+acescg-editorial-sequence,0,-2,48,24000,1001,sequence-acescg-f32-0
+acescg-editorial-sequence,1,0,49,24000,1001,sequence-acescg-f32-1
+acescg-editorial-sequence,2,2,50,24000,1001,sequence-acescg-f32-2

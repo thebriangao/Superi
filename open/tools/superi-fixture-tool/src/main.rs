@@ -2,10 +2,11 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use superi_fixture_tool::{
-    generate_audio_baseline, generate_timing_baseline, generate_video_baseline, validate_root,
+    generate_audio_baseline, generate_color_baseline, generate_timing_baseline,
+    generate_video_baseline, validate_root,
 };
 
-const USAGE: &str = "usage:\n  superi-fixture-tool check [FIXTURE_ROOT]\n  superi-fixture-tool generate-video <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-audio <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-timing <OUTPUT_DIRECTORY>";
+const USAGE: &str = "usage:\n  superi-fixture-tool check [FIXTURE_ROOT]\n  superi-fixture-tool generate-video <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-audio <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-timing <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-color <OUTPUT_DIRECTORY>";
 
 fn main() -> ExitCode {
     let mut arguments = std::env::args_os().skip(1);
@@ -45,6 +46,15 @@ fn main() -> ExitCode {
                 return usage();
             }
             generate_timing(output_directory)
+        }
+        Some(command) if command == std::ffi::OsStr::new("generate-color") => {
+            let Some(output_directory) = arguments.next().map(PathBuf::from) else {
+                return usage();
+            };
+            if arguments.next().is_some() {
+                return usage();
+            }
+            generate_color(output_directory)
         }
         _ => usage(),
     }
@@ -100,6 +110,23 @@ fn generate_timing(output_directory: PathBuf) -> ExitCode {
                 "generated {} timing cases and {} samples",
                 report.case_count(),
                 report.sample_count()
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("failed to generate {}: {error}", output_directory.display());
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn generate_color(output_directory: PathBuf) -> ExitCode {
+    match generate_color_baseline(&output_directory) {
+        Ok(report) => {
+            println!(
+                "generated {} color images and {} sequence frames",
+                report.image_count(),
+                report.sequence_frame_count()
             );
             ExitCode::SUCCESS
         }
