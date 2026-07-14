@@ -2,7 +2,7 @@
 module_id: superi-color
 source_paths:
   - open/crates/superi-color
-source_hash: 2508b0985cc4753215879c1c2cbab8a2aa54e802d5850e0136179389fcd905f3
+source_hash: 3674e9a711aef195f8986940d132c336612eabe2cad1bc7d34ef839ddffacb92
 source_files: 22
 mapped_at_commit: working-tree
 ---
@@ -22,9 +22,9 @@ Implemented ownership is narrower than the full color architecture described by
 conversion, working-space storage, LUTs, ICC validation and discovery, and stale-profile
 presentation checks are implemented. Versioned color configuration remains a skeleton.
 
-The crate owns color interpretation and transform policy, but it does not own YUV matrix or legal
-range normalization, media decoding, image storage primitives, GPU device creation, GPU command
-submission, native window creation, or graph scheduling. ICC transform evaluation is also not
+The crate owns color interpretation, transform policy, and explicit legal-range RGB normalization,
+but it does not own YUV matrix conversion, media decoding, image storage primitives, GPU device
+creation, GPU command submission, native window creation, or graph scheduling. ICC transform evaluation is also not
 implemented here yet: the ICC path currently owns profile discovery, validation, identity,
 selection, and invalidation only.
 
@@ -57,7 +57,8 @@ selection, and invalidation only.
   scene-referred RGB input transforms into a selected working space.
 - `open/crates/superi-color/src/transform_out.rs`: explicit working-to-display and
   working-to-deliverable RGB transform, including target validation, wide-gamut conversion,
-  premultiplied alpha handling, SDR, HLG, and PQ encoding, and artifact preservation.
+  luminance-preserving tone mapping, premultiplied alpha handling, SDR, HLG, and PQ encoding,
+  artifact preservation, and a separate legal-range RGB storage encoder.
 - `open/crates/superi-color/src/view.rs`: profile-bound native viewport state, frame acquisition
   tokens, monitor move and profile refresh handling, and guarded GPU submission and presentation.
 - `open/crates/superi-color/src/working_space.rs`: canonical scene-linear working-space,
@@ -142,10 +143,13 @@ real `NativeViewportSurface` and exposes compatible-adapter discovery, configura
 profile rebinding, guarded acquisition, the target texture, surface diagnostics, and guarded
 submission plus presentation.
 
-The output surface consists of `OutputTargetKind`, `OutputTransformOptions`, and
-`OutputColorTransform`. Options select chromatic adaptation, explicit gamut mapping, and an
+The output surface consists of `OutputTargetKind`, `ToneMapParameters`, `ToneMapping`,
+`OutputTransformOptions`, `OutputColorTransform`, and `LegalRangeEncoder`. Options select chromatic
+adaptation, explicit gamut mapping, an explicit luminance shoulder or no tone mapping, and an
 optional PQ reference white. Construction binds one working space to one full-range RGB output
 interpretation, while `apply` and `apply_f32` emit premultiplied RGBA binary32 `Image` artifacts.
+`LegalRangeEncoder` is a separate downstream stage that exposes exact 8 through 16-bit RGB code
+anchors and emits normalized, quantized, limited-range straight-alpha binary32 storage values.
 `config` remains a public namespace commitment with no usable API.
 
 The rules surface consists of `SourceRole`, `ViewApplicability`, `LookRule`, `ViewRule`,
@@ -168,11 +172,14 @@ A working image reaches a display or deliverable through a second explicit seque
 `OutputColorTransform::new` requires full-range RGB, explicit primaries and transfer, rejects a
 linear display target, and requires a positive PQ reference white only for PQ deliverables.
 Application validates the bound working space, unassociates nonzero premultiplied alpha, converts
-linear primaries through `WideGamutTransform`, encodes relative SDR or HLG light or absolute PQ
-luminance, reassociates alpha, and returns RGBA binary32 with the destination color interpretation.
+linear primaries through `WideGamutTransform`, applies the selected destination-luminance shoulder,
+encodes relative SDR or HLG light or absolute PQ luminance, reassociates alpha, and returns RGBA
+binary32 with the destination color interpretation.
 Windows, channels, source named-space and ICC payloads, and metadata are retained. The transform
-does not itself apply a look, evaluate ICC tags, tone map, quantize to integer storage, or perform YUV
-matrix and legal-range conversion.
+does not itself apply a look, evaluate ICC tags, quantize to integer storage, or perform YUV matrix
+conversion. The separate legal-range encoder unassociates full-range output RGB, rejects values
+outside zero through one instead of clipping, rounds to the configured legal integer code, preserves
+alpha, channels, windows, color payloads, and metadata, and tags the result limited range.
 
 `ColorRuleSet` composes the existing operations without duplicating their math. A display chooses
 the first source-applicable ordered view unless a compatible view is explicitly requested. Display
@@ -266,9 +273,12 @@ add a runtime dependency on the repository fixture generator.
   matrices, legal-range scaling, source family, transfer function, PQ reference white, chromatic
   adaptation, or gamut policy.
 - Output transforms likewise emit full-range RGB and require callers to choose target kind,
-  destination interpretation, chromatic adaptation, gamut policy, and PQ reference white. They do
-  not silently perform tone mapping, looks, ICC evaluation, YUV conversion, legal-range packing,
-  or integer quantization.
+  destination interpretation, chromatic adaptation, gamut policy, tone mapping, and PQ reference
+  white. They do not silently perform looks, ICC evaluation, YUV conversion, legal-range packing,
+  or integer quantization. Tone mapping defaults to none and uses one RGB scale factor when enabled.
+- Legal-range RGB encoding is explicitly downstream of the full-range output transform. It requires
+  premultiplied RGBA binary32 RGB, preserves alpha, rejects extended values, and never chooses a YUV
+  matrix or hides integer code rounding.
 - Rule names and look references are validated at construction. Display views accept only display
   transforms, delivery rules accept only deliverable transforms, explicit inapplicable views fail,
   and look process spaces must match the working image.
@@ -315,8 +325,9 @@ The nine integration suites cover the implemented CPU and presentation-state con
 - `open/crates/superi-color/tests/lut_contract.rs` covers strict parsing, all interpolation modes,
   red-fastest storage, bounds, premultiplied application, and deterministic results.
 - `open/crates/superi-color/tests/output_transform_contract.rs` covers display and delivery target
-  validation, canonical and promoted working inputs, primary conversion before encoding, SDR, HLG,
-  absolute PQ, alpha and artifact preservation, physical-domain failures, and determinism.
+  validation, canonical and promoted working inputs, primary conversion and tone mapping before
+  encoding, SDR, HLG, absolute PQ, exact legal-range anchors and stage separation, alpha and artifact
+  preservation, physical-domain failures, and determinism.
 - `open/crates/superi-color/tests/rules_contract.rs` covers ordered default selection, explicit
   applicability, real LUT ordering before encoding, independent delivery selection, metadata and
   window preservation, transform-role validation, missing references, and process-space failures.
@@ -336,8 +347,9 @@ contracts are implemented and extensively tested. The module is not yet a comple
 - `open/crates/superi-color/src/config.rs` is only a placeholder, so immutable versioned
   `ColorConfig`, roles, named spaces, file rules, looks, displays, views, context variables, and
   transform graphs do not exist.
-- Output transforms and rule evaluation are CPU-only and emit RGBA binary32 artifacts. Tone mapping,
-  executable ICC profile evaluation, project-configured rule persistence, integer encoding, GPU output transforms, and a production
+- Output transforms and rule evaluation are CPU-only and emit RGBA binary32 artifacts. Executable
+  ICC profile evaluation, project-configured rule persistence, concrete integer or YUV encoding,
+  GPU output transforms, and a production
   export or viewport consumer remain absent.
 - ICC profiles are validated and bound to presentation, but their matrix/TRC or LUT payloads are
   not evaluated. `MonitorAwareViewport` prevents stale profile use but does not color-convert the
@@ -380,6 +392,7 @@ profile absence explicit and retain atomic snapshot publication.
 When configuration becomes real, replace the placeholder in
 `open/crates/superi-color/src/config.rs`, add its complete contracts and tests, and update the
 dependency and consumer trace. When an engine output node consumes `OutputColorTransform`, record
-the exact viewport and export integration. Do not describe future OCIO, ICC evaluation, tone
-mapping, GPU output conversion, or export orchestration as implemented before the source and
-end-to-end consumers exist.
+the exact viewport and export integration. Do not describe future OCIO, ICC evaluation, GPU output
+conversion, or export orchestration as implemented before the source and
+end-to-end consumers exist. Keep legal-range RGB encoding distinct from later YUV matrix and packed
+integer storage ownership.

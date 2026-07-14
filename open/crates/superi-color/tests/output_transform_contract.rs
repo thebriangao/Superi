@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use superi_color::gamut::{ChromaticAdaptation, GamutMapping};
 use superi_color::hdr::{pq_inverse_eotf, Nits};
-use superi_color::transform_out::{OutputColorTransform, OutputTargetKind, OutputTransformOptions};
+use superi_color::transform_out::{
+    LegalRangeEncoder, OutputColorTransform, OutputTargetKind, OutputTransformOptions,
+    ToneMapParameters, ToneMapping,
+};
 use superi_color::working_space::{WorkingImage, WorkingImageF32, WorkingSpace};
 use superi_core::color_space::{
     ColorPrimaries, ColorRange, ColorSpace, MatrixCoefficients, TransferFunction,
@@ -14,6 +17,123 @@ use superi_image::metadata::{ImageColorTags, ImageMetadata, ImageMetadataValue};
 use superi_image::value::{Image, ImageDescriptor, ImageSamples};
 
 const STRICT: f32 = 3.0e-6;
+
+#[test]
+fn legal_range_uses_normative_rgb_anchor_codes_at_each_depth() {
+    for (depth, black, white) in [(8, 16, 235), (10, 64, 940), (12, 256, 3760)] {
+        let range = LegalRangeEncoder::new(depth).unwrap();
+        assert_eq!(range.bit_depth(), depth);
+        assert_eq!(range.black_code(), black);
+        assert_eq!(range.white_code(), white);
+        assert_eq!(range.encode_code_value(0.0).unwrap(), black);
+        assert_eq!(range.encode_code_value(1.0).unwrap(), white);
+        assert_close(
+            range.encode_normalized(0.0).unwrap() as f32,
+            f32::from(black) / f32::from(range.maximum_code()),
+        );
+        assert_close(
+            range.encode_normalized(1.0).unwrap() as f32,
+            f32::from(white) / f32::from(range.maximum_code()),
+        );
+    }
+    let ten_bit = LegalRangeEncoder::new(10).unwrap();
+    assert_eq!(ten_bit.encode_code_value(0.5).unwrap(), 502);
+    assert_close(
+        ten_bit.encode_normalized(0.5).unwrap() as f32,
+        502.0 / 1023.0,
+    );
+}
+
+#[test]
+fn luminance_shoulder_is_identity_below_knee_and_preserves_rgb_ratios() {
+    let space = rgb_space(ColorPrimaries::Bt2020, TransferFunction::Linear);
+    let working_space = WorkingSpace::new(space).unwrap();
+    let source = working_f32_pixels(
+        [0.05, 0.1, 0.15, 1.0, 2.0, 4.0, 8.0, 1.0, 8.0, 8.0, 8.0, 1.0],
+        working_space,
+    );
+    let parameters = ToneMapParameters::new(0.2, 8.0, 1.0).unwrap();
+    let options =
+        OutputTransformOptions::new().with_tone_mapping(ToneMapping::LuminanceShoulder(parameters));
+    let transform =
+        OutputColorTransform::new(OutputTargetKind::Deliverable, working_space, space, options)
+            .unwrap();
+
+    let output = transform.apply_f32(&source).unwrap();
+    for (actual, expected) in output_rgb(&output, 0).into_iter().zip([0.05, 0.1, 0.15]) {
+        assert_close(actual, expected);
+    }
+    let mapped = output_rgb(&output, 4);
+    assert_close(mapped[1] / mapped[0], 2.0);
+    assert_close(mapped[2] / mapped[0], 4.0);
+    assert!(mapped[2] < 8.0);
+    for component in output_rgb(&output, 8) {
+        assert_close(component, 1.0);
+    }
+    assert_eq!(output.samples().float_value(7), Some(1.0));
+    assert_eq!(parameters.knee(), 0.2);
+    assert_eq!(parameters.source_peak(), 8.0);
+    assert_eq!(parameters.destination_peak(), 1.0);
+    assert!(parameters.shoulder_scale() > 0.0);
+    assert_eq!(transform.options().tone_mapping(), options.tone_mapping());
+}
+
+#[test]
+fn legal_range_is_a_separate_storage_stage_after_authoritative_output() {
+    let space = rgb_space(ColorPrimaries::Bt2020, TransferFunction::Linear);
+    let working_space = WorkingSpace::new(space).unwrap();
+    let source = working_f32_pixels([0.0, 0.0, 0.0, 0.25, 0.5, 0.5, 0.5, 0.5], working_space);
+    let output = OutputColorTransform::new(
+        OutputTargetKind::Deliverable,
+        working_space,
+        space,
+        OutputTransformOptions::new(),
+    )
+    .unwrap()
+    .apply_f32(&source)
+    .unwrap();
+    assert_eq!(output.descriptor().color_space().range(), ColorRange::Full);
+    assert_eq!(output.descriptor().alpha_mode(), AlphaMode::Premultiplied);
+
+    let encoder = LegalRangeEncoder::new(10).unwrap();
+    let limited = encoder.apply(&output).unwrap();
+    let black = 64.0_f32 / 1023.0;
+    let white = 940.0_f32 / 1023.0;
+    for value in output_rgb(&limited, 0) {
+        assert_close(value, black);
+    }
+    for value in output_rgb(&limited, 4) {
+        assert_close(value, white);
+    }
+    assert_eq!(limited.samples().float_value(3), Some(0.25));
+    assert_eq!(limited.samples().float_value(7), Some(0.5));
+    assert_eq!(
+        limited.descriptor().color_space().range(),
+        ColorRange::Limited
+    );
+    assert_eq!(limited.descriptor().alpha_mode(), AlphaMode::Straight);
+}
+
+#[test]
+fn tone_and_legal_configuration_fail_closed_and_remain_shareable() {
+    for depth in [0, 7, 17, u8::MAX] {
+        assert_invalid(LegalRangeEncoder::new(depth));
+    }
+    assert_invalid(ToneMapParameters::new(1.0, 1.0, 1.0));
+    assert_invalid(ToneMapParameters::new(1.0, 4.0, 4.0));
+
+    let encoder = LegalRangeEncoder::new(10).unwrap();
+    let extended = output_image(
+        [1.1, 0.0, 0.0, 1.0],
+        rgb_space(ColorPrimaries::Bt2020, TransferFunction::Gamma24),
+    );
+    assert_invalid(encoder.apply(&extended));
+
+    fn assert_send_sync_copy<T: Send + Sync + Copy>() {}
+    assert_send_sync_copy::<ToneMapParameters>();
+    assert_send_sync_copy::<ToneMapping>();
+    assert_send_sync_copy::<LegalRangeEncoder>();
+}
 
 #[test]
 fn display_output_converts_primaries_then_encodes_and_preserves_artifact_identity() {
@@ -197,6 +317,9 @@ fn output_contracts_are_deterministic_copyable_and_shareable() {
     assert_send_sync_copy::<OutputTargetKind>();
     assert_send_sync_copy::<OutputTransformOptions>();
     assert_send_sync_copy::<OutputColorTransform>();
+    assert_send_sync_copy::<ToneMapParameters>();
+    assert_send_sync_copy::<ToneMapping>();
+    assert_send_sync_copy::<LegalRangeEncoder>();
 
     let options = OutputTransformOptions::new()
         .with_chromatic_adaptation(ChromaticAdaptation::Bradford)
@@ -236,7 +359,16 @@ fn working_f16(samples: [f32; 4], space: WorkingSpace) -> WorkingImage {
 }
 
 fn working_f32(samples: [f32; 4], space: WorkingSpace) -> WorkingImageF32 {
-    let bounds = PixelBounds::from_origin_size(0, 0, 1, 1).unwrap();
+    working_f32_pixels(samples, space)
+}
+
+fn working_f32_pixels(
+    samples: impl IntoIterator<Item = f32>,
+    space: WorkingSpace,
+) -> WorkingImageF32 {
+    let samples = samples.into_iter().collect::<Vec<_>>();
+    let width = u32::try_from(samples.len() / 4).unwrap();
+    let bounds = PixelBounds::from_origin_size(0, 0, width, 1).unwrap();
     let descriptor = ImageDescriptor::new(
         bounds,
         bounds,
@@ -247,6 +379,27 @@ fn working_f32(samples: [f32; 4], space: WorkingSpace) -> WorkingImageF32 {
     .unwrap();
     let image = Image::new(descriptor, ImageSamples::from_f32(samples)).unwrap();
     WorkingImageF32::new(space, image).unwrap()
+}
+
+fn output_image(samples: [f32; 4], color_space: ColorSpace) -> Image {
+    let bounds = PixelBounds::from_origin_size(0, 0, 1, 1).unwrap();
+    let descriptor = ImageDescriptor::new(
+        bounds,
+        bounds,
+        PixelFormat::Rgba32Float,
+        color_space,
+        AlphaMode::Premultiplied,
+    )
+    .unwrap();
+    Image::new(descriptor, ImageSamples::from_f32(samples)).unwrap()
+}
+
+fn output_rgb(image: &Image, start: usize) -> [f32; 3] {
+    [
+        image.samples().float_value(start).unwrap(),
+        image.samples().float_value(start + 1).unwrap(),
+        image.samples().float_value(start + 2).unwrap(),
+    ]
 }
 
 fn assert_invalid<T>(result: superi_core::error::Result<T>) {

@@ -3,7 +3,9 @@ use superi_color::rules::{
     ColorRuleSet, DisplayRule, LookRule, OutputRule, SourceRole, ViewApplicability, ViewRule,
 };
 use superi_color::transform_in::InputSourceKind;
-use superi_color::transform_out::{OutputColorTransform, OutputTargetKind, OutputTransformOptions};
+use superi_color::transform_out::{
+    OutputColorTransform, OutputTargetKind, OutputTransformOptions, ToneMapParameters, ToneMapping,
+};
 use superi_color::working_space::{WorkingImage, WorkingImageF32, WorkingSpace};
 use superi_core::color_space::{
     ColorPrimaries, ColorRange, ColorSpace, MatrixCoefficients, TransferFunction,
@@ -172,6 +174,46 @@ fn delivery_rules_are_independent_from_display_selection() {
 }
 
 #[test]
+fn display_and_delivery_rules_share_explicit_tone_mapping_without_hidden_packing() {
+    let parameters = ToneMapParameters::new(0.2, 8.0, 1.0).unwrap();
+    let options =
+        OutputTransformOptions::new().with_tone_mapping(ToneMapping::LuminanceShoulder(parameters));
+    let display = ViewRule::new(
+        "mapped",
+        ViewApplicability::Any,
+        vec![],
+        output_transform_with_options(OutputTargetKind::Display, display_acescg(), options),
+    )
+    .unwrap();
+    let delivery = OutputRule::new(
+        "mapped-master",
+        ViewApplicability::Any,
+        vec![],
+        output_transform_with_options(OutputTargetKind::Deliverable, linear_acescg(), options),
+    )
+    .unwrap();
+    let rules = ColorRuleSet::new(
+        vec![],
+        vec![DisplayRule::new("monitor", vec![display]).unwrap()],
+        vec![delivery],
+    )
+    .unwrap();
+    let source = working_image([4.0, 4.0, 4.0, 1.0]);
+
+    let monitor = rules
+        .render_display("monitor", None, SourceRole::SceneReferred, &source)
+        .unwrap();
+    let master = rules
+        .render_output("mapped-master", SourceRole::SceneReferred, &source)
+        .unwrap();
+
+    assert!(sample(&monitor, 0) < 1.0);
+    assert!(sample(&master, 0) < 1.0);
+    assert_eq!(monitor.descriptor().color_space().range(), ColorRange::Full);
+    assert_eq!(master.descriptor().color_space().range(), ColorRange::Full);
+}
+
+#[test]
 fn construction_rejects_duplicate_names_and_missing_look_references() {
     let duplicate = ColorRuleSet::new(
         vec![
@@ -291,13 +333,15 @@ fn view(name: &str, applicability: ViewApplicability, looks: Vec<String>) -> Vie
 }
 
 fn output_transform(kind: OutputTargetKind, destination: ColorSpace) -> OutputColorTransform {
-    OutputColorTransform::new(
-        kind,
-        WorkingSpace::ACESCG,
-        destination,
-        OutputTransformOptions::new(),
-    )
-    .unwrap()
+    output_transform_with_options(kind, destination, OutputTransformOptions::new())
+}
+
+fn output_transform_with_options(
+    kind: OutputTargetKind,
+    destination: ColorSpace,
+    options: OutputTransformOptions,
+) -> OutputColorTransform {
+    OutputColorTransform::new(kind, WorkingSpace::ACESCG, destination, options).unwrap()
 }
 
 fn display_acescg() -> ColorSpace {

@@ -1,9 +1,10 @@
 //! Explicit transforms from scene-linear working space to display and delivery RGB.
 //!
 //! Output transforms operate on promoted binary32 working images. Their order
-//! is alpha unassociation, primary conversion, explicit gamut policy, transfer
-//! encoding, alpha reassociation, and authoritative output tagging. Matrix,
-//! legal-range, integer, and texture packing remain separate storage stages.
+//! is alpha unassociation, primary conversion, explicit gamut policy, tone
+//! mapping, transfer encoding, alpha reassociation, and authoritative output
+//! tagging. Matrix, legal-range, integer, and texture packing remain separate
+//! storage stages.
 
 use superi_core::color_space::{
     ColorPrimaries, ColorRange, ColorSpace, MatrixCoefficients, TransferFunction,
@@ -38,11 +39,117 @@ impl OutputTargetKind {
     }
 }
 
+/// Parameters for a luminance preserving highlight shoulder.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ToneMapParameters {
+    knee: f64,
+    source_peak: f64,
+    destination_peak: f64,
+    shoulder_scale: f64,
+}
+
+impl ToneMapParameters {
+    /// Creates a shoulder that is identity through `knee` and maps the source peak exactly.
+    pub fn new(knee: f64, source_peak: f64, destination_peak: f64) -> Result<Self> {
+        if !knee.is_finite()
+            || !source_peak.is_finite()
+            || !destination_peak.is_finite()
+            || knee < 0.0
+            || knee >= destination_peak
+            || destination_peak >= source_peak
+        {
+            return Err(invalid(
+                "configure_tone_mapping",
+                "tone-map values must be finite and ordered as zero <= knee < destination peak < source peak",
+            ));
+        }
+        let source_span = source_peak - knee;
+        let destination_span = destination_peak - knee;
+        let shoulder_scale = destination_span.recip() - source_span.recip();
+        Ok(Self {
+            knee,
+            source_peak,
+            destination_peak,
+            shoulder_scale,
+        })
+    }
+
+    /// Returns the greatest luminance left unchanged.
+    #[must_use]
+    pub const fn knee(self) -> f64 {
+        self.knee
+    }
+
+    /// Returns the greatest expected source luminance.
+    #[must_use]
+    pub const fn source_peak(self) -> f64 {
+        self.source_peak
+    }
+
+    /// Returns the luminance produced for the source peak.
+    #[must_use]
+    pub const fn destination_peak(self) -> f64 {
+        self.destination_peak
+    }
+
+    /// Returns the derived rational shoulder coefficient.
+    #[must_use]
+    pub const fn shoulder_scale(self) -> f64 {
+        self.shoulder_scale
+    }
+
+    fn map_luminance(self, luminance: f64) -> f64 {
+        if luminance <= self.knee {
+            return luminance;
+        }
+        let source = luminance.min(self.source_peak) - self.knee;
+        self.knee + source / (1.0 + self.shoulder_scale * source)
+    }
+}
+
+/// Explicit output tone-mapping policy.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum ToneMapping {
+    /// Preserve scene-linear output values without a tone curve.
+    #[default]
+    None,
+    /// Compress luminance above a configured knee while retaining RGB ratios.
+    LuminanceShoulder(ToneMapParameters),
+}
+
+impl ToneMapping {
+    fn apply(self, rgb: [f64; 3], luma: [f64; 3]) -> Result<[f64; 3]> {
+        let Self::LuminanceShoulder(parameters) = self else {
+            return Ok(rgb);
+        };
+        let luminance = rgb[0] * luma[0] + rgb[1] * luma[1] + rgb[2] * luma[2];
+        if !luminance.is_finite() {
+            return Err(invalid(
+                "tone_map_output",
+                "output luminance must be finite",
+            ));
+        }
+        if luminance <= parameters.knee() {
+            return Ok(rgb);
+        }
+        let scale = parameters.map_luminance(luminance) / luminance;
+        let mapped = rgb.map(|component| component * scale);
+        if mapped.into_iter().any(|component| !component.is_finite()) {
+            return Err(invalid(
+                "tone_map_output",
+                "tone-mapped output components must be finite",
+            ));
+        }
+        Ok(mapped)
+    }
+}
+
 /// Explicit policy used to compose an output transform.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct OutputTransformOptions {
     chromatic_adaptation: ChromaticAdaptation,
     gamut_mapping: GamutMapping,
+    tone_mapping: ToneMapping,
     pq_reference_white: Option<Nits>,
 }
 
@@ -53,6 +160,7 @@ impl OutputTransformOptions {
         Self {
             chromatic_adaptation: ChromaticAdaptation::Bradford,
             gamut_mapping: GamutMapping::Preserve,
+            tone_mapping: ToneMapping::None,
             pq_reference_white: None,
         }
     }
@@ -74,6 +182,13 @@ impl OutputTransformOptions {
         self
     }
 
+    /// Replaces the output tone-mapping policy.
+    #[must_use]
+    pub const fn with_tone_mapping(mut self, tone_mapping: ToneMapping) -> Self {
+        self.tone_mapping = tone_mapping;
+        self
+    }
+
     /// Sets the absolute PQ luminance represented by working value one.
     #[must_use]
     pub const fn with_pq_reference_white(mut self, reference_white: Nits) -> Self {
@@ -91,6 +206,12 @@ impl OutputTransformOptions {
     #[must_use]
     pub const fn gamut_mapping(self) -> GamutMapping {
         self.gamut_mapping
+    }
+
+    /// Returns the output tone-mapping policy.
+    #[must_use]
+    pub const fn tone_mapping(self) -> ToneMapping {
+        self.tone_mapping
     }
 
     /// Returns the explicit PQ reference white, when configured.
@@ -205,10 +326,14 @@ impl OutputColorTransform {
             ];
             let straight = unassociate(premultiplied, alpha)?;
             let converted = self.gamut.apply_rgb(LinearRgb::new(straight)?)?.values();
+            let tone_mapped = self
+                .options
+                .tone_mapping
+                .apply(converted, self.gamut.destination_luma())?;
             let encoded = [
-                self.encode_component(converted[0])?,
-                self.encode_component(converted[1])?,
-                self.encode_component(converted[2])?,
+                self.encode_component(tone_mapped[0])?,
+                self.encode_component(tone_mapped[1])?,
+                self.encode_component(tone_mapped[2])?,
             ];
             for component in [
                 encoded[0] * alpha,
@@ -278,6 +403,148 @@ impl OutputColorTransform {
             ));
         }
         Ok(encoded)
+    }
+}
+
+/// A deterministic downstream encoder for legal-range RGB storage values.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LegalRangeEncoder {
+    bit_depth: u8,
+    black_code: u16,
+    white_code: u16,
+    maximum_code: u16,
+}
+
+impl LegalRangeEncoder {
+    /// Creates an encoder for an integer storage depth from 8 through 16 bits.
+    pub fn new(bit_depth: u8) -> Result<Self> {
+        if !(8..=16).contains(&bit_depth) {
+            return Err(invalid(
+                "configure_legal_range",
+                "legal-range RGB bit depth must be from 8 through 16",
+            ));
+        }
+        let scale = 1_u32 << u32::from(bit_depth - 8);
+        let maximum_code = ((1_u32 << u32::from(bit_depth)) - 1) as u16;
+        Ok(Self {
+            bit_depth,
+            black_code: (16 * scale) as u16,
+            white_code: (235 * scale) as u16,
+            maximum_code,
+        })
+    }
+
+    /// Returns the configured integer storage depth.
+    #[must_use]
+    pub const fn bit_depth(self) -> u8 {
+        self.bit_depth
+    }
+
+    /// Returns the normative code for RGB zero.
+    #[must_use]
+    pub const fn black_code(self) -> u16 {
+        self.black_code
+    }
+
+    /// Returns the normative code for RGB one.
+    #[must_use]
+    pub const fn white_code(self) -> u16 {
+        self.white_code
+    }
+
+    /// Returns the greatest code representable at this depth.
+    #[must_use]
+    pub const fn maximum_code(self) -> u16 {
+        self.maximum_code
+    }
+
+    /// Encodes one full-range RGB component as a legal-range integer code.
+    pub fn encode_code_value(self, value: f64) -> Result<u16> {
+        self.validate_component(value)?;
+        let span = f64::from(self.white_code - self.black_code);
+        Ok((f64::from(self.black_code) + value * span).round() as u16)
+    }
+
+    /// Encodes one full-range RGB component as a normalized legal-range value.
+    pub fn encode_normalized(self, value: f64) -> Result<f64> {
+        Ok(f64::from(self.encode_code_value(value)?) / f64::from(self.maximum_code))
+    }
+
+    /// Applies legal-range RGB encoding after an authoritative output transform.
+    ///
+    /// The source must be full-range premultiplied binary32 RGB. The result is
+    /// normalized legal-range binary32 RGB with straight alpha, leaving integer
+    /// quantization and any YUV matrix conversion to later storage stages.
+    pub fn apply(self, source: &Image) -> Result<Image> {
+        let descriptor = source.descriptor();
+        let color_space = descriptor.color_space();
+        if descriptor.pixel_format() != PixelFormat::Rgba32Float
+            || descriptor.alpha_mode() != AlphaMode::Premultiplied
+            || color_space.matrix() != MatrixCoefficients::Rgb
+            || color_space.range() != ColorRange::Full
+        {
+            return Err(unsupported(
+                "encode_legal_range_image",
+                "legal-range encoding requires full-range premultiplied RGBA binary32 output",
+            ));
+        }
+
+        let samples = source.samples();
+        let mut output = Vec::with_capacity(samples.len());
+        for pixel_start in (0..samples.len()).step_by(4) {
+            let alpha = sample(samples, pixel_start + 3)?;
+            if !(0.0..=1.0).contains(&alpha) {
+                return Err(invalid(
+                    "encode_legal_range_image",
+                    "output alpha must be within zero to one",
+                )
+                .with_context(sample_context(pixel_start + 3, alpha)));
+            }
+            let straight = unassociate(
+                [
+                    sample(samples, pixel_start)?,
+                    sample(samples, pixel_start + 1)?,
+                    sample(samples, pixel_start + 2)?,
+                ],
+                alpha,
+            )?;
+            for component in straight {
+                output.push(self.encode_normalized(component)? as f32);
+            }
+            output.push(alpha as f32);
+        }
+
+        let limited = ColorSpace::new(
+            color_space.primaries(),
+            color_space.transfer(),
+            color_space.matrix(),
+            ColorRange::Limited,
+        );
+        let color_tags = descriptor.color_tags().clone().with_interpretation(limited);
+        let output_descriptor = ImageDescriptor::new_with_color_tags(
+            descriptor.data_window(),
+            descriptor.display_window(),
+            PixelFormat::Rgba32Float,
+            color_tags,
+            AlphaMode::Straight,
+        )?
+        .with_channels(descriptor.channels().clone())?;
+        Image::new_with_metadata(
+            output_descriptor,
+            ImageSamples::from_f32(output),
+            source.metadata().clone(),
+        )
+    }
+
+    fn validate_component(self, value: f64) -> Result<()> {
+        if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+            return Err(invalid(
+                "encode_legal_range_component",
+                "full-range RGB components must be finite and within zero to one",
+            )
+            .with_context(sample_context(0, value)));
+        }
+        Ok(())
     }
 }
 

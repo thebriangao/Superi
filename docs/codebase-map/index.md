@@ -21,7 +21,7 @@ against raw source before changing code.
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
 | `superi-codecs-rs` | [module map](modules/superi-codecs-rs.md) | `open/crates/superi-codecs-rs` | Default permissive software codec implementations | Implemented: AV1, FLAC, MP3, Opus, PCM, Vorbis, VP8, and VP9 decode and encode |
 | `superi-codecs-vendor` | [module map](modules/superi-codecs-vendor.md) | `open/crates/superi-codecs-vendor` | Explicit process adapter for separately installed vendor RAW workers | Implemented first revision: decode-only, CPU-only, JSON and hexadecimal IPC |
-| `superi-color` | [module map](modules/superi-color.md) | `open/crates/superi-color` | Color math, input and output transforms, working images, LUTs, ICC discovery, and presentation profile guards | Substantial but partial: output transforms are implemented; versioned configuration and ICC evaluation remain absent |
+| `superi-color` | [module map](modules/superi-color.md) | `open/crates/superi-color` | Color math, input and output transforms, tone mapping, legal-range RGB encoding, working images, LUTs, ICC discovery, and presentation profile guards | Substantial but partial: output transforms are implemented; versioned configuration and ICC evaluation remain absent |
 | `superi-concurrency` | [module map](modules/superi-concurrency.md) | `open/crates/superi-concurrency` | Execution domains, jobs, clocks, handoffs, shared snapshots, lifecycle, and liveness | Substantial but not engine-integrated; GPU submission module is a placeholder |
 | `superi-core` | [module map](modules/superi-core.md) | `open/crates/superi-core` | Tier-zero values, validation, exact time, identifiers, errors, diagnostics, and stable serialization | Implemented and broadly consumed; crate-level skeleton wording is stale |
 | `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Reserved effect-node catalog, animation, mask, transition, text, tracking, and OFX boundary | Skeleton: public module names only |
@@ -242,7 +242,10 @@ select the first applicable ordered display view or an independent delivery outp
 LUT looks in declared order. The output path validates one display or
 deliverable target, converts linear working primaries, encodes SDR, HLG, or absolute PQ, preserves
 premultiplied alpha and image identity, and emits authoritative full-range RGB binary32 output for
-later storage conversion.
+later storage conversion. An explicit luminance shoulder can preserve RGB ratios while mapping a
+declared source peak before transfer encoding. A separate legal-range encoder unassociates the
+output, rounds RGB to exact 8 through 16-bit legal codes, preserves alpha, and emits normalized
+limited-range straight-alpha storage without choosing a YUV matrix.
 
 The versioned color baseline now exercises that public CPU transform path with eight compact SDR,
 Display P3, PQ, HLG, alpha, f16, and f32 images. It separately maps three ACEScg f32 payloads through
@@ -534,7 +537,7 @@ Partial modules contain these explicit placeholder areas:
 
 - `superi-api`: scripting and every general command, dispatcher, transport, subscription, and
   transaction path beyond capabilities and the fixed canonical scenario.
-- `superi-color`: versioned configuration, ICC transform evaluation, tone mapping, GPU output
+- `superi-color`: versioned configuration, ICC transform evaluation, GPU output
   conversion, and production viewport or export integration.
 - `superi-concurrency`: GPU submission coordination module and all production engine composition.
 - `superi-engine`: ten orchestration modules covering A/V sync, errors, export, lifecycle, nodes,
@@ -542,7 +545,7 @@ Partial modules contain these explicit placeholder areas:
 
 Substantive modules also have intentionally incomplete boundaries. Media I/O has no muxer or
 production registry owner for its source backends. GPU has no cross-adapter transfer or external
-decoder import. Color has no ICC transform evaluation, project-configured rule persistence, tone mapper, or
+decoder import. Color has no ICC transform evaluation, project-configured rule persistence, or
 production output-transform consumer. Vendor IPC has no
 shared memory, GPU transport, sandbox, or encode. Platform capability and proof depth differ by
 host. Repository status documents disagree about package count, implementation maturity, CI, and

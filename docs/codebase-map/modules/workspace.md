@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 6135c788638b79ff5d23970bd3e6c2723596c4b5dbd4403c7206163613e68186
-source_files: 94
+source_hash: c0f4c16cb3e25b85e63a94fc14811da856370cbc7bcec6ea538c5528b21994b5
+source_files: 95
 mapped_at_commit: working-tree
 ---
 
@@ -22,7 +22,7 @@ completion protocol, requires safe synchronization with `origin/main`, and makes
 full selected raw-file reads a prerequisite for implementation. It routes a single checkpoint
 through mapping, planning, and execution, and routes multiple checkpoints into separate
 Codex-managed worktree tasks. It is ignored by Git and copied into managed worktrees through
-`.worktreeinclude`, so the mapping script does not include it in this module's 90-file inventory or
+`.worktreeinclude`, so the mapping script does not include it in this module's 95-file inventory or
 source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
@@ -122,6 +122,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   view, look, and delivery rules. It records source-role selection, ordered LUT processing,
   authoritative output-transform integration, critical-tier verification, delivery context, and
   intentionally separate persistence, ICC, GPU, storage, viewport, and export stages.
+- `docs/checkpoints/P1.W05.C010.md`: Durable implementation evidence for explicit luminance-preserving
+  tone mapping and the separate legal-range RGB storage encoder. It records stage ordering, public
+  rule consumption, normative code anchors, alpha and artifact behavior, critical verification,
+  delivery context, and the intentionally separate YUV, packed storage, ICC, GPU, and engine work.
 - `docs/checkpoints/P1.W07.C002.md`: Durable implementation evidence for the complete Rust CI quality
   suite. It records the low-risk configuration boundary, both-job command coverage, the explicit
   hosted macOS native codec exception, focused local proof, hosted proof requirement, delivery
@@ -865,8 +869,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`5649d9075b29eef79b181caa880a650a59786ae1` when the map was refreshed. Its hash describes the exact
-94 discovered source files, including twelve generated binary payloads, layered on that revision.
+`fcd7f599415b3c6a73f14d7b6912996c13dd71f8` when the map was refreshed. Its hash describes the exact
+95 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 
