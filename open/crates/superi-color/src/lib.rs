@@ -7,6 +7,7 @@
 //! that representation without changing its storage contract.
 
 pub mod config;
+pub mod gamut;
 pub mod hdr;
 pub mod icc;
 pub mod lut;
