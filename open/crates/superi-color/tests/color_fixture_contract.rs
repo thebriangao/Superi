@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
+use superi_color::config::ColorManagementConfig;
 use superi_color::hdr::Nits;
 use superi_color::transform_in::{InputColorTransform, InputSourceKind, InputTransformOptions};
 use superi_color::transform_out::{OutputColorTransform, OutputTargetKind, OutputTransformOptions};
@@ -14,6 +15,20 @@ use superi_core::pixel::{AlphaMode, PixelFormat};
 use superi_image::value::{Image, ImageDescriptor, ImageSamples};
 
 const HEADER: &str = "image_id,source_kind,source_primaries,source_transfer,source_matrix,source_range,pixel_format,alpha_mode,width,height,offset,bytes,sha256,output_target,output_primaries,output_transfer,output_matrix,output_range,pq_reference_white_nits";
+const CONFIG: &[u8] = br#"{
+  "schema": "superi.color-config",
+  "version": 1,
+  "id": "canonical-fixture",
+  "default_working_space": "acescg",
+  "roles": { "scene_linear": "acescg" },
+  "working_spaces": [{
+    "id": "acescg",
+    "primaries": "aces_ap1",
+    "transfer": "linear",
+    "matrix": "rgb",
+    "range": "full"
+  }]
+}"#;
 
 #[derive(Clone, Copy, Debug)]
 struct ImageRow<'a> {
@@ -181,7 +196,13 @@ fn input_transform(row: ImageRow<'_>) -> InputColorTransform {
     if let Some(reference_white) = row.pq_reference_white_nits {
         options = options.with_pq_reference_white(Nits::new(reference_white).unwrap());
     }
-    InputColorTransform::new(row.source_kind, row.source, WorkingSpace::ACESCG, options).unwrap()
+    InputColorTransform::new(
+        row.source_kind,
+        row.source,
+        configured_working_space(),
+        options,
+    )
+    .unwrap()
 }
 
 fn output_transform(row: ImageRow<'_>) -> OutputColorTransform {
@@ -189,7 +210,22 @@ fn output_transform(row: ImageRow<'_>) -> OutputColorTransform {
     if let Some(reference_white) = row.pq_reference_white_nits {
         options = options.with_pq_reference_white(Nits::new(reference_white).unwrap());
     }
-    OutputColorTransform::new(row.output_target, WorkingSpace::ACESCG, row.output, options).unwrap()
+    OutputColorTransform::new(
+        row.output_target,
+        configured_working_space(),
+        row.output,
+        options,
+    )
+    .unwrap()
+}
+
+fn configured_working_space() -> WorkingSpace {
+    let config = ColorManagementConfig::from_json(CONFIG).unwrap();
+    assert_eq!(
+        config.role("scene_linear"),
+        Some(config.default_working_space())
+    );
+    config.default_working_space()
 }
 
 fn numeric_samples(image: &Image) -> Vec<f32> {

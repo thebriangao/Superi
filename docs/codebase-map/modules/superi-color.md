@@ -2,8 +2,8 @@
 module_id: superi-color
 source_paths:
   - open/crates/superi-color
-source_hash: 3674e9a711aef195f8986940d132c336612eabe2cad1bc7d34ef839ddffacb92
-source_files: 22
+source_hash: adfcfaed9d543718cfd5078216f3d4bd85a538ceb086238866314e11069398c8
+source_files: 23
 mapped_at_commit: working-tree
 ---
 
@@ -11,7 +11,7 @@ mapped_at_commit: working-tree
 
 `superi-color` owns Superi's color-management math, canonical scene-linear image contract,
 input color transforms, LUT parsing and evaluation, deterministic display, view, look, and output
-rules, ICC display-profile discovery state, and the
+rules, immutable versioned configuration, project working-space selections, ICC display-profile discovery state, and the
 monitor-aware presentation guard around a native GPU viewport. It is the T3 color subsystem in
 the open-tree dependency graph. It consumes platform-neutral color tags from `superi-core`, dense
 CPU image artifacts from `superi-image`, and GPU frame and presentation ownership from
@@ -20,7 +20,7 @@ CPU image artifacts from `superi-image`, and GPU frame and presentation ownershi
 Implemented ownership is narrower than the full color architecture described by
 `docs/phase-0-build-contracts.md`. Input and output transforms, transfer functions, primary
 conversion, working-space storage, LUTs, ICC validation and discovery, and stale-profile
-presentation checks are implemented. Versioned color configuration remains a skeleton.
+presentation checks are implemented. Executable ICC evaluation and production engine orchestration remain absent.
 
 The crate owns color interpretation, transform policy, and explicit legal-range RGB normalization,
 but it does not own YUV matrix conversion, media decoding, image storage primitives, GPU device
@@ -30,11 +30,12 @@ selection, and invalidation only.
 
 ## Source inventory
 
-- `open/crates/superi-color/Cargo.toml`: crate manifest. It declares `sha2`, `superi-core`,
+- `open/crates/superi-color/Cargo.toml`: crate manifest. It declares `serde`, `serde_json`, `sha2`, `superi-core`,
   `superi-gpu`, `superi-image`, and `superi-graph`, plus macOS-only Core Foundation and
   CoreGraphics bindings.
-- `open/crates/superi-color/src/config.rs`: public color-configuration module. It is a three-line
-  skeleton with no types or behavior.
+- `open/crates/superi-color/src/config.rs`: strict bounded JSON color-management files, immutable
+  named scene-linear working spaces, aliases, roles, normalized SHA-256 semantic identity, and
+  serializable project settings pinned to one exact configuration.
 - `open/crates/superi-color/src/gamut.rs`: CIE xy colorimetry, RGB-to-XYZ matrix derivation,
   Bradford adaptation, wide-gamut RGB conversion, explicit negative-gamut policies, and working
   image conversion.
@@ -64,9 +65,12 @@ selection, and invalidation only.
 - `open/crates/superi-color/src/working_space.rs`: canonical scene-linear working-space,
   binary16 storage, binary32 computation, CPU image, and GPU descriptor contracts.
 - `open/crates/superi-color/tests/color_fixture_contract.rs`: Consumes the versioned color
-  baseline through public image and transform interfaces and proves source and output intent,
+  baseline through a config-selected working space plus public image and transform interfaces and proves source and output intent,
   transfer order, HDR meaning, alpha association, wide-gamut round trips, and exact f16 and f32
   sample bits.
+- `open/crates/superi-color/tests/config_contract.rs`: versioned schema, named spaces, aliases,
+  roles, stable semantic hashing, project persistence and drift rejection, bounded real-file
+  loading, strict malformed input, and sharing contracts.
 - `open/crates/superi-color/tests/gamut_contract.rs`: reference primaries and matrix checks,
   adaptation, round trips, gamut policies, premultiplied alpha, metadata retention, and failure
   classification.
@@ -150,7 +154,12 @@ optional PQ reference white. Construction binds one working space to one full-ra
 interpretation, while `apply` and `apply_f32` emit premultiplied RGBA binary32 `Image` artifacts.
 `LegalRangeEncoder` is a separate downstream stage that exposes exact 8 through 16-bit RGB code
 anchors and emits normalized, quantized, limited-range straight-alpha binary32 storage values.
-`config` remains a public namespace commitment with no usable API.
+
+The configuration surface consists of `ColorManagementConfig`, `ConfigWorkingSpace`, and
+`ProjectColorSettings`. A config exposes its stable ID and normalized semantic fingerprint,
+resolves canonical names or aliases, resolves roles, and selects a default scene-linear working
+space. Project settings persist their schema version, config ID, fingerprint, and canonical
+working-space ID, and resolve only against the exact config semantics they pin.
 
 The rules surface consists of `SourceRole`, `ViewApplicability`, `LookRule`, `ViewRule`,
 `DisplayRule`, `OutputRule`, and `ColorRuleSet`. Construction validates names, transform roles,
@@ -205,6 +214,12 @@ Numerically sensitive work uses a separate `Rgba32Float` owner. Promotion and qu
 windows, color tags, channel names, and metadata. They change only sample precision. GPU working
 frames use one `Rgba16Float` texture plane with the same color and alpha interpretation.
 
+Configuration loading reads at most 1 MiB plus one detection byte, parses one strict schema and
+version, validates every declared space through `WorkingSpace`, canonicalizes aliases and role
+targets, and hashes normalized semantics in deterministic map order. A project selection stores the
+canonical space ID and exact config fingerprint, so JSON formatting changes do not break identity
+while any color-semantic change prevents silent project reinterpretation.
+
 LUT parsing accepts exactly one 1D or 3D declaration, optional title and domain directives, and a
 complete finite table. 1D application interpolates channels independently. 3D application uses
 the `.cube` red-fastest order and caller-selected trilinear or tetrahedral interpolation. Working
@@ -241,6 +256,7 @@ Direct runtime dependencies are:
 - `superi-gpu` for working-frame descriptors, texture formats, GPU devices and instances, native
   viewport surfaces, acquired frames, submission resources, and fences.
 - `sha2` for complete ICC-profile content identity.
+- `serde` and `serde_json` for strict configuration input and stable project-settings persistence.
 - macOS-only `objc2-core-graphics` and `objc2-core-foundation` framework bindings for active
   display and profile discovery.
 
@@ -265,6 +281,9 @@ add a runtime dependency on the repository fixture generator.
 
 - A `WorkingSpace` must use explicit BT.2020, Display P3, ACES AP0, or ACES AP1 primaries with
   linear transfer, RGB matrix, and full range. ACEScg is the default.
+- Color config files are capped at 1 MiB and 64 working spaces. Schema versions, unknown fields,
+  nonlinear or limited-range spaces, duplicate names or aliases, missing role targets, and config
+  drift fail closed. Project identity uses validated semantics, not JSON formatting.
 - Canonical CPU and GPU storage is premultiplied `Rgba16Float`. Binary32 is a distinct computation
   representation and cannot be constructed as canonical storage.
 - Working images require exactly the unqualified `R`, `G`, `B`, `A` channel order. Construction
@@ -305,12 +324,16 @@ add a runtime dependency on the repository fixture generator.
 
 ## Tests and verification
 
-The nine integration suites cover the implemented CPU and presentation-state contracts:
+The ten integration suites cover the implemented CPU and presentation-state contracts:
 
 - `open/crates/superi-color/tests/color_fixture_contract.rs` checks all eight canonical SDR,
   wide-gamut, PQ, HLG, alpha, f16, and f32 images through explicit input and output intent. It also
   verifies contiguous payload offsets, per-image SHA-256, exact source bits, and authoritative
   output tags.
+
+- `open/crates/superi-color/tests/config_contract.rs` checks strict versioned parsing, deterministic
+  semantic identity, named spaces, aliases, roles, bounded disk loading, stable project serialization,
+  config-drift rejection, invalid inputs, and concurrency traits.
 
 - `open/crates/superi-color/tests/working_space_contract.rs` proves canonical descriptors, exact
   half payload retention, promotion and quantization, and rejection of mislabeled storage.
@@ -335,18 +358,17 @@ The nine integration suites cover the implemented CPU and presentation-state con
   transactional catalog state, stale monitor tokens, shell-provided native IDs, audit inventory,
   and macOS discovery when a display server is available.
 
-There is no behavior to test in `open/crates/superi-color/src/config.rs`. There is also no current
-end-to-end engine test that imports decoded media, produces a working image, applies project-configured
+There is no current end-to-end engine test that imports decoded media, produces a working image, applies project-configured
 looks and ICC processing, renders it to the viewport, and exports it.
 
 ## Current status and risks
 
-The working-space, gamut, transfer, input, output, LUT, ICC state, and profile-guarded viewport
+The configuration, working-space, gamut, transfer, input, output, LUT, ICC state, and profile-guarded viewport
 contracts are implemented and extensively tested. The module is not yet a complete color pipeline.
 
-- `open/crates/superi-color/src/config.rs` is only a placeholder, so immutable versioned
-  `ColorConfig`, roles, named spaces, file rules, looks, displays, views, context variables, and
-  transform graphs do not exist.
+- Versioned named scene-linear spaces, aliases, roles, and project pinning are implemented. File
+  rules, config-persisted looks, displays, views, context variables, and transform graphs do not
+  exist in this configuration schema; runtime look and output rules remain separate typed APIs.
 - Output transforms and rule evaluation are CPU-only and emit RGBA binary32 artifacts. Executable
   ICC profile evaluation, project-configured rule persistence, concrete integer or YUV encoding,
   GPU output transforms, and a production

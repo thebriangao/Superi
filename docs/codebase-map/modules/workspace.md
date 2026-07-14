@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 2d69dced065d1dfa664b9d31af4cf8eda521e09437d16a05cbf4bc52ed2a92e8
-source_files: 98
+source_hash: 7a8a2d33ec397704c1aed6e91c6aca3d36fb88dff7b6b946c67ac993ac6feec5
+source_files: 99
 mapped_at_commit: working-tree
 ---
 
@@ -127,6 +127,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   deliverable output color transforms. It records integration with working images, gamut and HDR
   contracts, focused and widening verification, delivery context, and intentionally separate ICC,
   look, YUV, legal-range, quantization, and GPU stages.
+- `docs/checkpoints/P1.W05.C004.md`: Durable implementation evidence for bounded versioned color
+  configuration, named scene-linear spaces and roles, semantic identity, drift-safe project
+  working-space persistence, canonical fixture integration, critical proof, and delivery context.
 - `docs/checkpoints/P1.W05.C005.md`: Durable implementation evidence for deterministic display,
   view, look, and delivery rules. It records source-role selection, ordered LUT processing,
   authoritative output-transform integration, critical-tier verification, delivery context, and
@@ -373,7 +376,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and OTIO_CORE:0.18.1, exact timeline durations, identity and opaque data policy, JSON pointers,
   and preserve plus diagnose behavior for unsupported constructs.
 
-The mapping inventory contains 86 UTF-8 text artifacts and twelve binary payloads. Binary media is
+The mapping inventory contains 87 UTF-8 text artifacts and twelve binary payloads. Binary media is
 intentionally read through metadata, producers, provenance, manifests, and consumers rather than
 interpreted as prose.
 
@@ -896,7 +899,7 @@ The largest current risk is cross-document drift:
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
 `bb9111cfc98302547bc02d6513ea6ebf5131c0fa` when the map was refreshed. Its hash describes the exact
-98 discovered source files, including twelve generated binary payloads, layered on that revision.
+99 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 
