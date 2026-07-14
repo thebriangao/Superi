@@ -828,9 +828,10 @@ The largest current risk is cross-document drift:
   API projection, and contract runner now exist, and every stage reports bounded timing and
   resident-memory boundary evidence. The hosted workflow directly runs fixture validation and the
   portable eight-stage contract, and expectation version 2 removes checkout location from project
-  identity. Production timeline and graph owners, rendered comparison,
-  color and render integration, muxing, playable output, and all-runtime execution remain future
-  work. The current contract-conformant run must not be reported as product or runtime conformance.
+  identity. Generic typed DAG storage and cycle prevention now exist independently, while
+  production timeline compilation, graph evaluation and orchestration, rendered comparison, color
+  and render integration, muxing, playable output, and all-runtime execution remain future work.
+  The current contract-conformant run must not be reported as product or runtime conformance.
   Boundary samples are not continuous intra-stage peaks, constrained-device thresholds, or
   long-session soak proof.
 

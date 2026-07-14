@@ -139,7 +139,7 @@ execution.
 Canonical command state is substantive and test-backed, but it is a reference boundary whose
 implementation identity is disclosed as such. It validates fixture bytes without opening their
 container or decoding frames. Timeline and graph state are exact control models but do not use the
-skeleton production timeline or graph crates.
+production timeline owner or the generic `superi-graph` DAG store.
 
 Ten orchestration files remain documentation-only placeholders. There is no coherent source
 registry integration, playback clock, audio flow, cache coordination, render, color integration,

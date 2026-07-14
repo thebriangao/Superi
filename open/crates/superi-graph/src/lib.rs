@@ -2,7 +2,7 @@
 //!
 //! Section 5.5 in `docs/architecture.md`. Depends on: superi-core, superi-gpu,
 //! superi-image, superi-concurrency. Status: typed identifiers, node schema registration, and
-//! schema discovery are implemented; graph storage and evaluation remain skeletons.
+//! schema discovery, and deterministic DAG storage are implemented; evaluation remains pending.
 
 pub mod dag;
 pub mod eval;
