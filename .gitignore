@@ -8,6 +8,10 @@
 /app/src-tauri/gen/
 /ci/frontend-smoke/dist/
 
+# Python tool output
+**/__pycache__/
+*.pyc
+
 # macOS
 .DS_Store
 
