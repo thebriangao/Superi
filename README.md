@@ -481,6 +481,9 @@ Components are built in dependency order, but they are pulled into a running end
 soon as they exist. Integration is therefore continuous; the later orchestration phase deepens and
 hardens integration rather than initiating it.
 
+The exact revisioned scenario, typed state, stage ownership, fixture role, and proof boundary are
+defined in [`docs/vertical-slice.md`](docs/vertical-slice.md).
+
 ---
 
 ## Build sequence

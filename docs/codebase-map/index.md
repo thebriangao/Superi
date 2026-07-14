@@ -35,7 +35,7 @@ against raw source before changing code.
 | `tool-superi-dependency-check` | [module map](modules/tool-superi-dependency-check.md) | `open/tools/superi-dependency-check` | Offline executable policy for the open runtime dependency graph | Implemented exact runtime, build, dev, and new-crate checks |
 | `tool-superi-boundary-tool` | [module map](modules/tool-superi-boundary-tool.md) | `open/tools/superi-boundary-tool` | Offline scanner for network-client and open-to-closed policy | Implemented library, CLI, workspace gate, and hosted-build command |
 | `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline validator for canonical repository fixtures | Implemented validation library and CLI; it does not generate fixtures |
-| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active policy and build control layer with known cross-document status drift |
+| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: canonical slice defined, runtime absent, other status drift remains |
 
 ## Ownership and repository boundaries
 
@@ -146,6 +146,13 @@ publication. Bulk frames, audio, packets, and GPU resources are intended to stay
 That target must not be read as current behavior. Project, timeline, graph, cache, audio, effects,
 and most engine orchestration are still placeholders, so no complete edit, playback, render, save,
 or export control flow exists.
+
+`docs/vertical-slice.md` now defines the exact first control flow as scenario
+`superi.slice.canonical.v1`: one immutable WebM and AV1 fixture role, one 24 fps video track, a
+half-open middle trim, one typed horizontal-mirror transform node, explicit sRGB delivery, and eight
+ordered stage records. It permits disclosed stubs only for contract conformance. Runtime
+conformance requires every stage to use its production owner, so the document is not evidence that
+the flow executes today.
 
 ## Media ingest and codec flow
 
@@ -422,11 +429,12 @@ Shared fixtures are versioned, immutable by repository policy, and validated off
 `superi-fixture-tool`. The validator proves the current filesystem snapshot and manifest digests,
 not Git-history immutability, provenance truth, legal clearance, or semantic quality.
 
-The largest verification gap is the absence of a production import-to-export slice. There is no
-current test or runtime that imports through the engine, selects and decodes media, edits a
-timeline, evaluates a graph, applies input and output color, coordinates audio and playback,
-renders through the GPU, encodes and muxes output, persists a project, and drives the flow through
-the public API.
+The largest verification gap is the absence of a production import-to-export slice. Its canonical
+video-only contract is now defined, but its fixture, runner, expected-output record, project state,
+timeline compiler, graph evaluator, effect node, muxer, and complete public flow are not integrated.
+There is no current test or runtime that imports through the engine, selects and decodes media,
+edits a timeline, evaluates a graph, applies input and output color, renders through the GPU,
+encodes and muxes output, persists a project, and drives the flow through the public API.
 
 ## Placeholders and incomplete integration
 
@@ -482,6 +490,7 @@ For common concerns, begin at these owners:
 - Jobs, domains, clocks, handoffs, lifecycle, and liveness: `superi-concurrency`.
 - Current assembly and public capability flow: `superi-engine` then `superi-api`.
 - Product law, open and closed boundaries, CI, fixtures, and maintenance workflow: `workspace`.
+- Canonical first editorial slice, typed scenario state, replacement stages, and proof: `workspace`.
 - Reviewed internal runtime dependency direction: `tool-superi-dependency-check`.
 - Static network-client and open-to-closed enforcement: `tool-superi-boundary-tool`.
 

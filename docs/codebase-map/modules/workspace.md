@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: bff1acafac60a9cdd1e80512f3ff19299e14bf8a5d5dcbe5bc3a68d8cc69c71b
-source_files: 52
+source_hash: 0bb8b55d2ea322166fb84af3cd4573ab51ce34965f393a80967c9eb61b2df25c
+source_files: 53
 mapped_at_commit: working-tree
 ---
 
@@ -22,7 +22,7 @@ completion protocol, requires safe synchronization with `origin/main`, and makes
 full selected raw-file reads a prerequisite for implementation. It routes a single checkpoint
 through mapping, planning, and execution, and routes multiple checkpoints into separate
 Codex-managed worktree tasks. It is ignored by Git and copied into managed worktrees through
-`.worktreeinclude`, so the mapping script does not include it in this module's 45-file inventory or
+`.worktreeinclude`, so the mapping script does not include it in this module's 53-file inventory or
 source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
@@ -97,8 +97,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   Chen, and includes the standard permission, notice-retention, and warranty-disclaimer terms.
 - `README.md`: Gives the public project orientation, product split, graph and GPU model, subsystem
   hierarchy, build commands, vertical slice, phases, invariants, open questions, and claimed current
-  status. Several scaffold-status statements are stale relative to current manifests and policy
-  documents, as recorded below.
+  status. Its first executable thread links to the exact canonical slice contract. Several other
+  scaffold-status statements are stale relative to current manifests and policy documents, as
+  recorded below.
 - `closed/README.md`: Defines `closed/` as a notice for the separately maintained proprietary
   Superi Max tier and states the one-way dependency rule: Max may consume open Superi, while open
   Superi must never import, link, or depend on Max.
@@ -165,6 +166,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   CoreGraphics, AV1, Opus, VPx, VideoToolbox, AudioConverter, Windows Media Foundation, and Linux
   VVC VA-API boundaries. It records ownership, buffer, thread, failure, and target proof for each
   boundary plus required source scans, Clippy runs, and focused tests.
+- `docs/vertical-slice.md`: Defines revision 1 of `superi.slice.canonical.v1`. It pins the immutable
+  video fixture role, exact one-track edit and trim, one typed horizontal-mirror graph effect,
+  explicit delivery, eight stable replacement stages, runner report, conformance levels,
+  reproducibility proof, and the boundaries owned by P1.W07.C017 through P1.W07.C026.
 
 ### Frontend CI contract
 
@@ -196,7 +201,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   images, GPU, codecs, hashes, platform APIs, and native build support.
 - `open/README.md`: Compact open-tree orientation and build commands. It describes an offline engine,
   codec features, downward dependency tiers, and an architectural skeleton, but its 18-crate and
-  implementation-status claims lag the current 19 crate packages plus two repository tools.
+  implementation-status claims lag the current 19 crate packages plus three repository tools.
 - `open/ci/network-isolated-contract.sh`: Executable contract binding the dedicated workflow to
   immutable checkout, least privilege, locked artifact preparation, namespace isolation, fixture
   validation, and the headless CLI consumer.
@@ -224,7 +229,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `open/test-fixtures/policy/utf8/v1/hello.txt`: The six-byte UTF-8 payload `hello` followed by a
   newline. It is the fixture validator's deterministic self-test input.
 
-All 52 assigned artifacts are valid UTF-8 text. The mapping inventory reports no binary artifact
+All 53 assigned artifacts are valid UTF-8 text. The mapping inventory reports no binary artifact
 for this module, so no binary metadata or producer-consumer relationship needs separate treatment.
 
 ## Public surface
@@ -235,6 +240,10 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
 - The root README, north star, architecture, Phase 0 contracts, codec policy, phase plan, platform
   matrix, unsafe inventory, and MIT license define the repository's public technical and product
   commitments.
+- `docs/vertical-slice.md` is the normative integration contract for the first editorial thread.
+  It distinguishes disclosed-stub contract conformance from all-runtime conformance and reserves
+  concrete fixture, runner, expectation, instrumentation, and replacement work for their owning
+  checkpoints.
 - `open/Cargo.toml` exports inherited workspace package metadata, lints, and dependency declarations
   to every member manifest. The current glob expansion is 19 crate packages plus
   `superi-fixture-tool`, `superi-dependency-check`, and `superi-boundary-tool`, for 22 members total.
@@ -365,6 +374,12 @@ state. Engine transactions coordinate project, timeline, graph, caches, persiste
 playback, and export. The API presents the same command surface to UI, CLI, scripts, extensions, and
 Superi Max, with no privileged closed-tier route.
 
+The canonical slice makes that target executable in stable increments. It fixes one default-build
+WebM and AV1 fixture role, exact 24 fps half-open trim, one video track, one typed transform effect,
+an independent sRGB deliverable, and eight ordered stage records. A stage reports `stub` until its
+production owner replaces it, and any reported stub prevents runtime conformance. This contract
+defines integration intent only; no current engine or CLI path executes the complete scenario.
+
 Shared fixture data flows from a versioned directory to `fixture.json`, whose byte counts and hashes
 bind every payload. `superi-fixture-tool` validates path safety, schema, provenance, lineage,
 inventory completeness, size, and digest before crate tests, golden tests, fuzzing, benchmarks, or
@@ -388,7 +403,8 @@ Every crate and repository tool consumes `open/Cargo.toml` package defaults and 
 central dependency declarations. Cargo, CI, developers, and audit tooling consume the lockfile,
 toolchain, formatter, ignore rules, and deny policy. Crate tests and end-to-end workflows consume the
 shared fixture contract and fixture versions. Contributors, planners, reviewers, UI and engine
-teams, and release operators consume the architecture and verification documents.
+teams, and release operators consume the architecture and verification documents. The future slice
+runner and each production subsystem consume the stable scenario state, stages, and report boundary.
 
 The documents deliberately point into other modules:
 
@@ -419,6 +435,8 @@ of open runtime behavior.
   not cross JSON-RPC or webview IPC.
 - The graph is the render primitive, and timeline compilation is deterministic. UI state is not a
   hidden render input. Local AI and automation produce normal editable, undoable artifacts.
+- The canonical slice keeps one typed editable graph state across timeline inspection, preview, CLI,
+  scripting, and export. Stub stages remain visible and can never satisfy runtime conformance.
 - Canonical working images are tagged, scene-linear, premultiplied RGBA 16-bit float, with ACEScg as
   the default space and explicit transforms at input, display, and output boundaries.
 - GPU residency, bounded resource use, immutable render snapshots, explicit thread ownership,
@@ -506,6 +524,11 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   `cargo run -p superi-fixture-tool -- check test-fixtures` as the shared fixture validation path.
   The present fixture's payload is 6 bytes and its SHA-256 is
   `5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03`, matching its manifest.
+- The canonical slice contract passed a focused semantic check for its scenario identity, exact
+  fixture and edit, one effect, eight stages, conformance levels, default offline boundary,
+  adjacent checkpoint ownership, and root README discovery. Fresh fixture validation reported one
+  valid fixture version and payload, and the boundary scanner reported 306 files across 23 Cargo
+  manifests. These checks validate the contract and existing repository policy, not a runtime slice.
 - Phase 0 completion additionally requires written codec counsel, a Tauri, React, and native wgpu
   viewport demonstration on all three operating systems, an API command and ordered event round
   trip, reference-validated OTIO interchange, color reference proof, and named subsystem owners.
@@ -526,7 +549,7 @@ updated consistently. Fresh Cargo metadata expands the member globs to 22 packag
 lockfile includes a substantial
 GPU, image, codec, serialization, platform, and native-build dependency graph, and current codec,
 image, platform, and unsafe documents describe implemented contracts rather than empty placeholders.
-The synchronized remote revision now ends at `8072bae033e7904a6f2ca0a18399faf2cfe93c6d`.
+The synchronized remote revision now ends at `137776921c2212bb059f8de2ad0e83859ace1d3f`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
 root README, deny policy, and structure guide with license-audit CI. Commit
 `e0b3af9f099f527a8544d1b0317896640969903b` added the executable dependency-policy contract and its
@@ -536,6 +559,10 @@ build workflow and durable `P1.W07.C001` checkpoint record. Commit
 `P1.W07.C004` record. Later mapping and dependency-direction work reached the current remote base.
 
 The largest current risk is cross-document drift:
+
+- The canonical vertical slice is now exact, but its named fixture, runner, expectation record,
+  project and graph state, muxer, and all-runtime execution remain future checkpoint work. A
+  contract-conformant stub run must not be reported as product or runtime conformance.
 
 - `README.md` and `open/README.md` say the tree is an architectural skeleton, count 18 crates, claim
   that only the CLI scaffold has executable behavior, and say no external workspace dependency has
@@ -600,8 +627,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the local mapping commit rebased onto `origin/main` plus this uncommitted map
 refresh, so `mapped_at_commit` is `working-tree`. The remote base was
-`0024b910d582a1303350ad5fb6302ad33d7f3027` when the map was refreshed. Its hash describes the exact
-52 discovered source files layered on that revision, not the remote commit alone.
+`137776921c2212bb059f8de2ad0e83859ace1d3f` when the map was refreshed. Its hash describes the exact
+53 discovered source files layered on that revision, not the remote commit alone.
 
 ## Maintenance notes
 
