@@ -2,15 +2,16 @@
 module_id: superi-color
 source_paths:
   - open/crates/superi-color
-source_hash: 94bc821b7beab2c70550498e3d8612a9cd7a886ecb6300f6999b714d72453589
-source_files: 19
+source_hash: abf2772c1c28d495622e6af9d7ba1a3d850409e905767528b6ed20b78c0f00e9
+source_files: 21
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
 `superi-color` owns Superi's color-management math, canonical scene-linear image contract,
-input color transforms, LUT parsing and evaluation, ICC display-profile discovery state, and the
+input color transforms, LUT parsing and evaluation, deterministic display, view, look, and output
+rules, ICC display-profile discovery state, and the
 monitor-aware presentation guard around a native GPU viewport. It is the T3 color subsystem in
 the open-tree dependency graph. It consumes platform-neutral color tags from `superi-core`, dense
 CPU image artifacts from `superi-image`, and GPU frame and presentation ownership from
@@ -49,6 +50,9 @@ selection, and invalidation only.
 - `open/crates/superi-color/src/lut.rs`: strict bounded `.cube` parser, 1D and 3D LUT models,
   linear, trilinear, and tetrahedral interpolation, explicit domain policy, and application to
   promoted working images.
+- `open/crates/superi-color/src/rules.rs`: validated immutable look, view, display, and delivery
+  rules; explicit source-role filtering; first-applicable view selection; ordered LUT processing;
+  and delegation to authoritative output transforms.
 - `open/crates/superi-color/src/transform_in.rs`: explicit camera, display-referred, and
   scene-referred RGB input transforms into a selected working space.
 - `open/crates/superi-color/src/transform_out.rs`: explicit working-to-display and
@@ -73,6 +77,9 @@ selection, and invalidation only.
 - `open/crates/superi-color/tests/output_transform_contract.rs`: display and delivery target
   semantics, primary conversion before transfer encoding, SDR, HLG, and PQ behavior, metadata and
   window preservation, invalid configurations, physical PQ limits, and determinism.
+- `open/crates/superi-color/tests/rules_contract.rs`: default and explicit view selection,
+  source-role applicability, ordered look processing, independent delivery rules, artifact
+  preservation, and fail-closed validation.
 - `open/crates/superi-color/tests/transfer_contract.rs`: SDR reference anchors, PQ absolute
   luminance, HLG scene and display functions, round trips, domains, nonfinite failures, and sharing
   traits.
@@ -82,8 +89,8 @@ selection, and invalidation only.
 
 ## Public surface
 
-`open/crates/superi-color/src/lib.rs` exposes nine public modules: `config`, `gamut`, `hdr`, `icc`,
-`lut`, `transform_in`, `transform_out`, `view`, and `working_space`. It does not re-export their
+`open/crates/superi-color/src/lib.rs` exposes ten public modules: `config`, `gamut`, `hdr`, `icc`,
+`lut`, `rules`, `transform_in`, `transform_out`, `view`, and `working_space`. It does not re-export their
 members at the crate root.
 
 The working representation surface consists of:
@@ -137,6 +144,11 @@ optional PQ reference white. Construction binds one working space to one full-ra
 interpretation, while `apply` and `apply_f32` emit premultiplied RGBA binary32 `Image` artifacts.
 `config` remains a public namespace commitment with no usable API.
 
+The rules surface consists of `SourceRole`, `ViewApplicability`, `LookRule`, `ViewRule`,
+`DisplayRule`, `OutputRule`, and `ColorRuleSet`. Construction validates names, transform roles,
+and look references. Selection retains explicit source semantics, and rendering applies named LUT
+looks in declared order before the selected display or deliverable transform.
+
 ## Architecture and data flow
 
 An input image reaches working space through a fixed semantic sequence. `InputColorTransform::new`
@@ -155,8 +167,14 @@ Application validates the bound working space, unassociates nonzero premultiplie
 linear primaries through `WideGamutTransform`, encodes relative SDR or HLG light or absolute PQ
 luminance, reassociates alpha, and returns RGBA binary32 with the destination color interpretation.
 Windows, channels, source named-space and ICC payloads, and metadata are retained. The transform
-does not apply a look, evaluate ICC tags, tone map, quantize to integer storage, or perform YUV
+does not itself apply a look, evaluate ICC tags, tone map, quantize to integer storage, or perform YUV
 matrix and legal-range conversion.
+
+`ColorRuleSet` composes the existing operations without duplicating their math. A display chooses
+the first source-applicable ordered view unless a compatible view is explicitly requested. Display
+and delivery rules independently resolve ordered look names, apply each LUT in its declared working
+process space, and then call the role-correct `OutputColorTransform`. Rule evaluation never mutates
+the source working image or monitor presentation state.
 
 Transfer ordering is deliberately split from numeric range and component-matrix conversion.
 Relative SDR and scene HLG paths decode to `RelativeLight`. PQ decodes a normalized signal to
@@ -245,6 +263,9 @@ integration contract and is ready for the later engine output-node consumer.
   destination interpretation, chromatic adaptation, gamut policy, and PQ reference white. They do
   not silently perform tone mapping, looks, ICC evaluation, YUV conversion, legal-range packing,
   or integer quantization.
+- Rule names and look references are validated at construction. Display views accept only display
+  transforms, delivery rules accept only deliverable transforms, explicit inapplicable views fail,
+  and look process spaces must match the working image.
 - Premultiplied input alpha must be finite and within zero through one. Zero-alpha premultiplied
   input must have zero RGB. Gamut application rejects negative or nonfinite alpha.
 - Primary and transfer calculations reject nonfinite inputs and successful nonfinite results.
@@ -268,7 +289,7 @@ integration contract and is ready for the later engine output-node consumer.
 
 ## Tests and verification
 
-The seven integration suites cover the implemented CPU and presentation-state contracts:
+The eight integration suites cover the implemented CPU and presentation-state contracts:
 
 - `open/crates/superi-color/tests/working_space_contract.rs` proves canonical descriptors, exact
   half payload retention, promotion and quantization, and rejection of mislabeled storage.
@@ -285,12 +306,15 @@ The seven integration suites cover the implemented CPU and presentation-state co
 - `open/crates/superi-color/tests/output_transform_contract.rs` covers display and delivery target
   validation, canonical and promoted working inputs, primary conversion before encoding, SDR, HLG,
   absolute PQ, alpha and artifact preservation, physical-domain failures, and determinism.
+- `open/crates/superi-color/tests/rules_contract.rs` covers ordered default selection, explicit
+  applicability, real LUT ordering before encoding, independent delivery selection, metadata and
+  window preservation, transform-role validation, missing references, and process-space failures.
 - `open/crates/superi-color/tests/icc_contract.rs` covers ICC parser limits and models,
   transactional catalog state, stale monitor tokens, shell-provided native IDs, audit inventory,
   and macOS discovery when a display server is available.
 
 There is no behavior to test in `open/crates/superi-color/src/config.rs`. There is also no current
-end-to-end engine test that imports decoded media, produces a working image, applies configured
+end-to-end engine test that imports decoded media, produces a working image, applies project-configured
 looks and ICC processing, renders it to the viewport, and exports it.
 
 ## Current status and risks
@@ -301,8 +325,8 @@ contracts are implemented and extensively tested. The module is not yet a comple
 - `open/crates/superi-color/src/config.rs` is only a placeholder, so immutable versioned
   `ColorConfig`, roles, named spaces, file rules, looks, displays, views, context variables, and
   transform graphs do not exist.
-- Output transforms are CPU-only and emit RGBA binary32 artifacts. Tone mapping, executable ICC
-  profile evaluation, configured looks, integer encoding, GPU output transforms, and a production
+- Output transforms and rule evaluation are CPU-only and emit RGBA binary32 artifacts. Tone mapping,
+  executable ICC profile evaluation, project-configured rule persistence, integer encoding, GPU output transforms, and a production
   export or viewport consumer remain absent.
 - ICC profiles are validated and bound to presentation, but their matrix/TRC or LUT payloads are
   not evaluated. `MonitorAwareViewport` prevents stale profile use but does not color-convert the
@@ -330,7 +354,7 @@ contracts are implemented and extensively tested. The module is not yet a comple
 ## Maintenance notes
 
 After any source change under `open/crates/superi-color`, rerun the mapping script's `files` and
-`hash` commands, update both metadata and prose, and run all six contract suites. Any new source
+`hash` commands, update both metadata and prose, and run all eight contract suites. Any new source
 file must appear in the inventory.
 
 Changes to canonical image meaning must be reconciled with `superi-core` color and pixel tags,

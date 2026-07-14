@@ -12,6 +12,7 @@ pub mod gamut;
 pub mod hdr;
 pub mod icc;
 pub mod lut;
+pub mod rules;
 pub mod transform_in;
 pub mod transform_out;
 pub mod view;

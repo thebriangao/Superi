@@ -209,7 +209,9 @@ converts primaries in binary64; applies an explicit gamut policy; and produces c
 premultiplied scene-linear working storage. Canonical storage is RGBA binary16 with ACEScg as the
 default working space, while numerically sensitive computation uses a separate RGBA binary32
 value. LUT parsing and evaluation, HDR transfer functions, ICC profile validation and discovery,
-and monitor-profile freshness checks are also implemented. The output path validates one display or
+and monitor-profile freshness checks are also implemented. Validated rule sets retain source roles,
+select the first applicable ordered display view or an independent delivery output, and apply named
+LUT looks in declared order. The output path validates one display or
 deliverable target, converts linear working primaries, encodes SDR, HLG, or absolute PQ, preserves
 premultiplied alpha and image identity, and emits authoritative full-range RGB binary32 output for
 later storage conversion.
@@ -236,9 +238,9 @@ texture extent remains distinct from aligned physical allocation extent. Pooled 
 all command dependencies must remain retained until the matching fence retires.
 
 No implemented engine path sends `UploadedVideoFrame` into graph evaluation, color processing,
-cache, playback, display, or encode. The graph is a skeleton. Color input, output, and LUT
+cache, playback, display, or encode. The graph is a skeleton. Color input, output, LUT, and rule
 transforms are CPU implementations and have no graph-visible node catalog. Output transforms do
-not evaluate validated ICC profile state, apply configured looks, or provide a GPU viewport or
+not evaluate validated ICC profile state or provide a GPU viewport or
 export consumer. `MonitorAwareViewport` prevents stale-profile presentation but does not
 color-convert a frame.
 
@@ -432,7 +434,7 @@ Partial modules contain these explicit placeholder areas:
 
 Substantive modules also have intentionally incomplete boundaries. Media I/O has no muxer or
 production registry owner for its source backends. GPU has no cross-adapter transfer or external
-decoder import. Color has no ICC transform evaluation, configured look pipeline, tone mapper, or
+decoder import. Color has no ICC transform evaluation, project-configured rule persistence, tone mapper, or
 production output-transform consumer. Vendor IPC has no
 shared memory, GPU transport, sandbox, or encode. Platform capability and proof depth differ by
 host. Repository status documents disagree about package count, implementation maturity, CI, and

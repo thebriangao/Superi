@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 9bf1c17007cdb74f9d034fa3b5449d4aff0a711aaf0caf99d6fef29b7c910e45
-source_files: 47
+source_hash: 22ea72a828e9e879fcb9e189cb647c9440535c6a1ff0e2b028a4040f45983a4a
+source_files: 48
 mapped_at_commit: working-tree
 ---
 
@@ -106,6 +106,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   deliverable output color transforms. It records integration with working images, gamut and HDR
   contracts, focused and widening verification, delivery context, and intentionally separate ICC,
   look, YUV, legal-range, quantization, and GPU stages.
+- `docs/checkpoints/P1.W05.C005.md`: Durable implementation evidence for deterministic display,
+  view, look, and delivery rules. It records source-role selection, ordered LUT processing,
+  authoritative output-transform integration, critical-tier verification, delivery context, and
+  intentionally separate persistence, ICC, GPU, storage, viewport, and export stages.
 - `docs/checkpoints/P1.W07.C002.md`: Durable implementation evidence for the complete Rust CI quality
   suite. It records the low-risk configuration boundary, both-job command coverage, the explicit
   hosted macOS native codec exception, focused local proof, hosted proof requirement, delivery
