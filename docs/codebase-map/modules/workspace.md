@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 94d0aad1e06a4f3c92d6d7782f3940eabbe95f0d98e656cd72ce1bc449f73e5a
-source_files: 44
+source_hash: 8a17f658115726c0a38e258df548f7802f729fab98374c3c8b7fe99d0fbe5937
+source_files: 45
 mapped_at_commit: working-tree
 ---
 
@@ -22,7 +22,7 @@ completion protocol, requires safe synchronization with `origin/main`, and makes
 full selected raw-file reads a prerequisite for implementation. It routes a single checkpoint
 through mapping, planning, and execution, and routes multiple checkpoints into separate
 Codex-managed worktree tasks. It is ignored by Git and copied into managed worktrees through
-`.worktreeinclude`, so the mapping script does not include it in this module's 44-file inventory or
+`.worktreeinclude`, so the mapping script does not include it in this module's 45-file inventory or
 source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
@@ -99,6 +99,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   CI. It records the six documented lane mappings, workflow security choices, corrected Ubuntu
   22.04 cadence design, local YAML and contract proof, locked workspace build, fixture-tool tests,
   documentation tests, delivery context, and explicitly deferred CI coverage.
+- `docs/checkpoints/P1.W05.C003.md`: Durable implementation evidence for explicit display and
+  deliverable output color transforms. It records integration with working images, gamut and HDR
+  contracts, focused and widening verification, delivery context, and intentionally separate ICC,
+  look, YUV, legal-range, quantization, and GPU stages.
 - `docs/checkpoints/P1.W07.C004.md`: Durable implementation evidence for frontend CI. It records the
   isolated contract boundary, exact Node.js, TypeScript, and Vite versions, advisory-driven Vite
   update, red-to-green and negative controls, clean locked npm verification, locked Rust tests,
@@ -188,7 +192,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `open/test-fixtures/policy/utf8/v1/hello.txt`: The six-byte UTF-8 payload `hello` followed by a
   newline. It is the fixture validator's deterministic self-test input.
 
-All 33 assigned artifacts are valid UTF-8 text. The mapping inventory reports no binary artifact
+All 45 assigned artifacts are valid UTF-8 text. The mapping inventory reports no binary artifact
 for this module, so no binary metadata or producer-consumer relationship needs separate treatment.
 
 ## Public surface
@@ -454,7 +458,7 @@ updated consistently. Fresh Cargo metadata expands the member globs to 21 packag
 lockfile includes a substantial
 GPU, image, codec, serialization, platform, and native-build dependency graph, and current codec,
 image, platform, and unsafe documents describe implemented contracts rather than empty placeholders.
-The synchronized remote revision now ends at `329cc74c991050a3b306888fa7e28faf83b5ab77`.
+The synchronized remote revision now ends at `a5158a443b8243d8b47ebe82ecf8c4740bf74177`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
 root README, deny policy, and structure guide with license-audit CI. Commit
 `e0b3af9f099f527a8544d1b0317896640969903b` added the executable dependency-policy contract and its
@@ -526,8 +530,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the local mapping commit rebased onto `origin/main` plus this uncommitted map
 refresh, so `mapped_at_commit` is `working-tree`. The remote base was
-`329cc74c991050a3b306888fa7e28faf83b5ab77` when the map was refreshed. Its hash describes the exact
-44 discovered source files layered on that revision, not the remote commit alone.
+`a5158a443b8243d8b47ebe82ecf8c4740bf74177` when the map was refreshed. Its hash describes the exact
+45 discovered source files layered on that revision, not the remote commit alone.
 
 ## Maintenance notes
 

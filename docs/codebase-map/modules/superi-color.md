@@ -2,9 +2,9 @@
 module_id: superi-color
 source_paths:
   - open/crates/superi-color
-source_hash: 9f2ef6b141f1fe7b76f5a49264c8eb5e4d89f8bcc8d7996fb2e3093a87af13d9
-source_files: 18
-mapped_at_commit: a11cecdbf19ae1de90d94324abe844db49ed0c85
+source_hash: 94bc821b7beab2c70550498e3d8612a9cd7a886ecb6300f6999b714d72453589
+source_files: 19
+mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
@@ -17,10 +17,9 @@ CPU image artifacts from `superi-image`, and GPU frame and presentation ownershi
 `superi-gpu`.
 
 Implemented ownership is narrower than the full color architecture described by
-`docs/phase-0-build-contracts.md`. Input transforms, transfer functions, primary conversion,
-working-space storage, LUTs, ICC validation and discovery, and stale-profile presentation checks
-are implemented. Versioned color configuration and working-to-display or delivery transforms are
-not implemented. Their public modules exist only as skeletons.
+`docs/phase-0-build-contracts.md`. Input and output transforms, transfer functions, primary
+conversion, working-space storage, LUTs, ICC validation and discovery, and stale-profile
+presentation checks are implemented. Versioned color configuration remains a skeleton.
 
 The crate owns color interpretation and transform policy, but it does not own YUV matrix or legal
 range normalization, media decoding, image storage primitives, GPU device creation, GPU command
@@ -52,8 +51,9 @@ selection, and invalidation only.
   promoted working images.
 - `open/crates/superi-color/src/transform_in.rs`: explicit camera, display-referred, and
   scene-referred RGB input transforms into a selected working space.
-- `open/crates/superi-color/src/transform_out.rs`: public working-to-display or delivery transform
-  module. It is a three-line skeleton with no types or behavior.
+- `open/crates/superi-color/src/transform_out.rs`: explicit working-to-display and
+  working-to-deliverable RGB transform, including target validation, wide-gamut conversion,
+  premultiplied alpha handling, SDR, HLG, and PQ encoding, and artifact preservation.
 - `open/crates/superi-color/src/view.rs`: profile-bound native viewport state, frame acquisition
   tokens, monitor move and profile refresh handling, and guarded GPU submission and presentation.
 - `open/crates/superi-color/src/working_space.rs`: canonical scene-linear working-space,
@@ -70,6 +70,9 @@ selection, and invalidation only.
 - `open/crates/superi-color/tests/lut_contract.rs`: `.cube` parsing, red-fastest 3D order,
   interpolation, parser limits, premultiplied working-image behavior, finite failures, and
   deterministic output.
+- `open/crates/superi-color/tests/output_transform_contract.rs`: display and delivery target
+  semantics, primary conversion before transfer encoding, SDR, HLG, and PQ behavior, metadata and
+  window preservation, invalid configurations, physical PQ limits, and determinism.
 - `open/crates/superi-color/tests/transfer_contract.rs`: SDR reference anchors, PQ absolute
   luminance, HLG scene and display functions, round trips, domains, nonfinite failures, and sharing
   traits.
@@ -128,8 +131,11 @@ real `NativeViewportSurface` and exposes compatible-adapter discovery, configura
 profile rebinding, guarded acquisition, the target texture, surface diagnostics, and guarded
 submission plus presentation.
 
-`config` and `transform_out` are public namespace commitments only. They currently expose no
-usable API.
+The output surface consists of `OutputTargetKind`, `OutputTransformOptions`, and
+`OutputColorTransform`. Options select chromatic adaptation, explicit gamut mapping, and an
+optional PQ reference white. Construction binds one working space to one full-range RGB output
+interpretation, while `apply` and `apply_f32` emit premultiplied RGBA binary32 `Image` artifacts.
+`config` remains a public namespace commitment with no usable API.
 
 ## Architecture and data flow
 
@@ -141,6 +147,16 @@ alpha, unassociates premultiplied RGB, decodes the transfer function, converts p
 binary64, applies the selected gamut policy, reassociates alpha, and creates a canonical
 premultiplied RGBA binary32 image. `apply` checks every result against the finite binary16 magnitude
 limit and quantizes it; `apply_f32` leaves it in the distinct computation representation.
+
+A working image reaches a display or deliverable through a second explicit sequence.
+`OutputColorTransform::new` requires full-range RGB, explicit primaries and transfer, rejects a
+linear display target, and requires a positive PQ reference white only for PQ deliverables.
+Application validates the bound working space, unassociates nonzero premultiplied alpha, converts
+linear primaries through `WideGamutTransform`, encodes relative SDR or HLG light or absolute PQ
+luminance, reassociates alpha, and returns RGBA binary32 with the destination color interpretation.
+Windows, channels, source named-space and ICC payloads, and metadata are retained. The transform
+does not apply a look, evaluate ICC tags, tone map, quantize to integer storage, or perform YUV
+matrix and legal-range conversion.
 
 Transfer ordering is deliberately split from numeric range and component-matrix conversion.
 Relative SDR and scene HLG paths decode to `RelativeLight`. PQ decodes a normalized signal to
@@ -206,9 +222,10 @@ node catalogs or orchestration must consume both from above.
 
 `superi-engine` declares `superi-color` in `open/crates/superi-engine/Cargo.toml`, but there is no
 current `superi_color` use in engine Rust source. Repository-wide code consumers are therefore the
-crate's own contract tests. `docs/phase-0-build-contracts.md` assigns the future shell-to-color
-display handoff and every viewer and export transform to this subsystem, but those runtime callers
-are not wired in the current source tree.
+crate's own contract tests. `docs/phase-0-build-contracts.md` assigns the shell-to-color display
+handoff and every viewer and export transform to this subsystem, but those runtime callers are not
+wired in the current source tree. The output transform is currently consumed by its public
+integration contract and is ready for the later engine output-node consumer.
 
 `docs/unsafe-ffi.md` consumes the macOS boundary as an audit inventory, and
 `open/crates/superi-color/tests/icc_contract.rs` verifies that this inventory remains present.
@@ -224,6 +241,10 @@ are not wired in the current source tree.
 - Input transforms require prior full-range RGB conversion. They do not silently choose YUV
   matrices, legal-range scaling, source family, transfer function, PQ reference white, chromatic
   adaptation, or gamut policy.
+- Output transforms likewise emit full-range RGB and require callers to choose target kind,
+  destination interpretation, chromatic adaptation, gamut policy, and PQ reference white. They do
+  not silently perform tone mapping, looks, ICC evaluation, YUV conversion, legal-range packing,
+  or integer quantization.
 - Premultiplied input alpha must be finite and within zero through one. Zero-alpha premultiplied
   input must have zero RGB. Gamut application rejects negative or nonfinite alpha.
 - Primary and transfer calculations reject nonfinite inputs and successful nonfinite results.
@@ -247,7 +268,7 @@ are not wired in the current source tree.
 
 ## Tests and verification
 
-The six integration suites cover the implemented CPU and presentation-state contracts:
+The seven integration suites cover the implemented CPU and presentation-state contracts:
 
 - `open/crates/superi-color/tests/working_space_contract.rs` proves canonical descriptors, exact
   half payload retention, promotion and quantization, and rejection of mislabeled storage.
@@ -261,26 +282,28 @@ The six integration suites cover the implemented CPU and presentation-state cont
   binary16 overflow rejection.
 - `open/crates/superi-color/tests/lut_contract.rs` covers strict parsing, all interpolation modes,
   red-fastest storage, bounds, premultiplied application, and deterministic results.
+- `open/crates/superi-color/tests/output_transform_contract.rs` covers display and delivery target
+  validation, canonical and promoted working inputs, primary conversion before encoding, SDR, HLG,
+  absolute PQ, alpha and artifact preservation, physical-domain failures, and determinism.
 - `open/crates/superi-color/tests/icc_contract.rs` covers ICC parser limits and models,
   transactional catalog state, stale monitor tokens, shell-provided native IDs, audit inventory,
   and macOS discovery when a display server is available.
 
-There is no behavior to test in `open/crates/superi-color/src/config.rs` or
-`open/crates/superi-color/src/transform_out.rs`. There is also no current end-to-end engine test
-that imports decoded media, produces a working image, compiles an ICC transform, renders it to the
-viewport, and exports it.
+There is no behavior to test in `open/crates/superi-color/src/config.rs`. There is also no current
+end-to-end engine test that imports decoded media, produces a working image, applies configured
+looks and ICC processing, renders it to the viewport, and exports it.
 
 ## Current status and risks
 
-The working-space, gamut, transfer, input, LUT, ICC state, and profile-guarded viewport contracts
-are implemented and extensively unit-tested. The module is not yet a complete color pipeline.
+The working-space, gamut, transfer, input, output, LUT, ICC state, and profile-guarded viewport
+contracts are implemented and extensively tested. The module is not yet a complete color pipeline.
 
 - `open/crates/superi-color/src/config.rs` is only a placeholder, so immutable versioned
   `ColorConfig`, roles, named spaces, file rules, looks, displays, views, context variables, and
   transform graphs do not exist.
-- `open/crates/superi-color/src/transform_out.rs` is only a placeholder. There is no working-space
-  to display or delivery transform, ICC tag evaluation, tone mapping, output encoding, or export
-  color path.
+- Output transforms are CPU-only and emit RGBA binary32 artifacts. Tone mapping, executable ICC
+  profile evaluation, configured looks, integer encoding, GPU output transforms, and a production
+  export or viewport consumer remain absent.
 - ICC profiles are validated and bound to presentation, but their matrix/TRC or LUT payloads are
   not evaluated. `MonitorAwareViewport` prevents stale profile use but does not color-convert the
   rendered texture by itself.
@@ -319,8 +342,9 @@ Changes to `open/crates/superi-color/src/icc/macos.rs`, its target dependencies,
 boundary require a matching update to `docs/unsafe-ffi.md` and target-specific Clippy proof. Keep
 profile absence explicit and retain atomic snapshot publication.
 
-When configuration or output transforms become real, replace the placeholders in
-`open/crates/superi-color/src/config.rs` and `open/crates/superi-color/src/transform_out.rs`, add
-their complete contracts and tests, and update the dependency and consumer trace. Do not describe
-future OCIO, display rendering, tone mapping, or export behavior as implemented before the source
-and end-to-end consumers exist.
+When configuration becomes real, replace the placeholder in
+`open/crates/superi-color/src/config.rs`, add its complete contracts and tests, and update the
+dependency and consumer trace. When an engine output node consumes `OutputColorTransform`, record
+the exact viewport and export integration. Do not describe future OCIO, ICC evaluation, tone
+mapping, GPU output conversion, or export orchestration as implemented before the source and
+end-to-end consumers exist.

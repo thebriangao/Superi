@@ -21,7 +21,7 @@ against raw source before changing code.
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
 | `superi-codecs-rs` | [module map](modules/superi-codecs-rs.md) | `open/crates/superi-codecs-rs` | Default permissive software codec implementations | Implemented: AV1, FLAC, MP3, Opus, PCM, Vorbis, VP8, and VP9 decode and encode |
 | `superi-codecs-vendor` | [module map](modules/superi-codecs-vendor.md) | `open/crates/superi-codecs-vendor` | Explicit process adapter for separately installed vendor RAW workers | Implemented first revision: decode-only, CPU-only, JSON and hexadecimal IPC |
-| `superi-color` | [module map](modules/superi-color.md) | `open/crates/superi-color` | Color math, input transforms, working images, LUTs, ICC discovery, and presentation profile guards | Substantial but partial: output transforms and versioned configuration are placeholders |
+| `superi-color` | [module map](modules/superi-color.md) | `open/crates/superi-color` | Color math, input and output transforms, working images, LUTs, ICC discovery, and presentation profile guards | Substantial but partial: output transforms are implemented; versioned configuration and ICC evaluation remain absent |
 | `superi-concurrency` | [module map](modules/superi-concurrency.md) | `open/crates/superi-concurrency` | Execution domains, jobs, clocks, handoffs, shared snapshots, lifecycle, and liveness | Substantial but not engine-integrated; GPU submission module is a placeholder |
 | `superi-core` | [module map](modules/superi-core.md) | `open/crates/superi-core` | Tier-zero values, validation, exact time, identifiers, errors, diagnostics, and stable serialization | Implemented and broadly consumed; crate-level skeleton wording is stale |
 | `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Reserved effect-node catalog, animation, mask, transition, text, tracking, and OFX boundary | Skeleton: public module names only |
@@ -202,13 +202,16 @@ The host image and decoded-video representations are intentionally distinct.
 operations, thumbnails, waveforms, and reference comparison. Native access does not silently
 repack into dense processing storage. Dense processing does not silently upload to a GPU.
 
-`superi-color` consumes dense images for explicit input transforms. The implemented path validates
+`superi-color` consumes dense images for explicit input and output transforms. The input path validates
 source family, transfer, primaries, range, matrix expectations, and alpha; decodes transfer;
 converts primaries in binary64; applies an explicit gamut policy; and produces canonical
 premultiplied scene-linear working storage. Canonical storage is RGBA binary16 with ACEScg as the
 default working space, while numerically sensitive computation uses a separate RGBA binary32
 value. LUT parsing and evaluation, HDR transfer functions, ICC profile validation and discovery,
-and monitor-profile freshness checks are also implemented.
+and monitor-profile freshness checks are also implemented. The output path validates one display or
+deliverable target, converts linear working primaries, encodes SDR, HLG, or absolute PQ, preserves
+premultiplied alpha and image identity, and emits authoritative full-range RGB binary32 output for
+later storage conversion.
 
 `superi-gpu` owns device identities, resources, memory budgets, pooled textures, decoded upload,
 storage conversion, shaders, passes, the exclusive submission queue, fences, readback, native
@@ -232,10 +235,11 @@ texture extent remains distinct from aligned physical allocation extent. Pooled 
 all command dependencies must remain retained until the matching fence retires.
 
 No implemented engine path sends `UploadedVideoFrame` into graph evaluation, color processing,
-cache, playback, display, or encode. The graph is a skeleton. Color input and LUT transforms are
-CPU implementations and have no graph-visible node catalog. `transform_out` is a placeholder, so
-validated ICC profile state does not yet execute a working-to-display or delivery transform.
-`MonitorAwareViewport` prevents stale-profile presentation but does not color-convert a frame.
+cache, playback, display, or encode. The graph is a skeleton. Color input, output, and LUT
+transforms are CPU implementations and have no graph-visible node catalog. Output transforms do
+not evaluate validated ICC profile state, apply configured looks, or provide a GPU viewport or
+export consumer. `MonitorAwareViewport` prevents stale-profile presentation but does not
+color-convert a frame.
 
 GPU readback is explicit and limited to export or thumbnail storage bytes. It performs no color
 conversion, swizzle, encoding, or resize. Image preview and CPU reference validation require an
@@ -410,14 +414,16 @@ Partial modules contain these explicit placeholder areas:
 - `superi-api`: scripting and every general command, dispatcher, transport, subscription, and
   transaction path beyond media capabilities.
 - `superi-cli`: private command module and all API or engine behavior.
-- `superi-color`: versioned configuration and working-to-display or delivery transforms.
+- `superi-color`: versioned configuration, ICC transform evaluation, tone mapping, GPU output
+  conversion, and production viewport or export integration.
 - `superi-concurrency`: GPU submission coordination module and all production engine composition.
 - `superi-engine`: eleven orchestration modules covering A/V sync, commands, errors, export,
   lifecycle, nodes, playback, plugins, render, resources, and validation.
 
 Substantive modules also have intentionally incomplete boundaries. Media I/O has no muxer or
 production registry owner for its source backends. GPU has no cross-adapter transfer or external
-decoder import. Color has no ICC transform evaluation or output transform. Vendor IPC has no
+decoder import. Color has no ICC transform evaluation, configured look pipeline, tone mapper, or
+production output-transform consumer. Vendor IPC has no
 shared memory, GPU transport, sandbox, or encode. Platform capability and proof depth differ by
 host. Repository status documents disagree about package count, implementation maturity, CI, and
 legal completion.
