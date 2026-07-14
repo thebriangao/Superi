@@ -406,13 +406,14 @@ runs strict no-emit TypeScript 5.9.3 checking, creates a Vite 7.3.6 production b
 the workflow contract plus generated hashed JavaScript entry. Its `ci/frontend-smoke/` consumer is
 an isolated toolchain contract, not the deferred React application or Tauri desktop shell.
 
-The dedicated network-isolated workflow prepares locked Cargo artifacts, libva headers, and a
-checksum-pinned approved libvpx 1.16 runtime on Ubuntu 24.04 while online, then runs workspace tests,
-canonical fixture validation, and the headless CLI inside a distinct Linux network namespace with
-only loopback, no IPv4 route, a failed numeric outbound probe, and Cargo offline mode. Its pinned
-checkout, read-only permissions, disabled credentials, timeout, and cancellation policy match the
-repository CI boundary. This is an offline execution proof for current core commands after setup,
-not an offline dependency-acquisition proof or a replacement for the absent editorial slice.
+The dedicated network-isolated workflow prepares locked Cargo artifacts, libva headers, nasm, and
+a checksum-pinned approved libvpx 1.16 runtime on Ubuntu 24.04 while online, then runs workspace
+tests, canonical fixture validation, and the headless CLI inside a distinct Linux network namespace
+with only loopback, no IPv4 route, a failed numeric outbound probe, and Cargo offline mode. Its
+pinned checkout, read-only permissions, disabled credentials, timeout, and cancellation policy
+match the repository CI boundary. This is an offline execution proof for current core commands
+after setup, not an offline dependency-acquisition proof or a replacement for the absent editorial
+slice.
 
 The cross-platform Rust workflow does not run the `os-codecs` feature matrix, malformed-input
 suites, frontend or Tauri checks, golden comparisons, benchmarks, soak, or the vertical slice. The

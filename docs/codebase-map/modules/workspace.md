@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 0bb8b55d2ea322166fb84af3cd4573ab51ce34965f393a80967c9eb61b2df25c
+source_hash: 38aef1bb3ab952a5a1c6adee1e5acca9f645e0dcd8eeb8e7574a69dea1b62f05
 source_files: 53
 mapped_at_commit: working-tree
 ---
@@ -81,9 +81,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   only npm's cache, runs `npm ci`, strict TypeScript checking, a Vite production build, and the
   generated-bundle contract tests from `ci/frontend-smoke/`.
 - `.github/workflows/network-isolated.yml`: Defines a blocking Ubuntu 24.04 job that prepares locked
-  Rust dependencies, libva headers, checksum-pinned libvpx 1.16, and test artifacts online, then
-  enters a distinct Linux network namespace and runs workspace tests, fixture validation, and the
-  CLI consumer with Cargo forced offline.
+  Rust dependencies, libva headers, nasm, checksum-pinned libvpx 1.16, and test artifacts online,
+  then enters a distinct Linux network namespace and runs workspace tests, fixture validation, and
+  the CLI consumer with Cargo forced offline.
 - `.gitignore`: Excludes Rust and JavaScript build output, editor and macOS files, local agent law,
   checkpoint plans, Python bytecode and cache directories, browser artifacts, and the frontend CI
   contract's generated `dist/`. In particular, `AGENTS.md`, `BASE_INSTRUCTIONS.md`, and `/plans/`
@@ -357,7 +357,7 @@ and independent gates without creating a second application architecture or clai
 editorial behavior, native viewport integration, or product UI coverage.
 
 The network-isolated path begins on pull requests, pushes to `main`, or manual dispatch. It pins
-checkout, disables persisted credentials, installs stable Rust and libva headers, builds the
+checkout, disables persisted credentials, installs stable Rust, libva headers, and nasm, builds the
 checksum-pinned approved libvpx 1.16 runtime, fetches locked dependencies, and builds the workspace
 and test executables while online. It records the host namespace and uses privileged `unshare
 --net` to enter a new namespace, carrying only the required Rust environment and approved libvpx
@@ -503,10 +503,10 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   no-emit checking, immutable actions, read-only credentials, every independent gate, and a hashed
   JavaScript entry in the generated production bundle.
 - `.github/workflows/network-isolated.yml` prepares locked inputs and test executables on Ubuntu
-  24.04 after installing libva headers and building checksum-pinned libvpx 1.16, then uses a distinct
-  empty network namespace and Cargo offline mode for workspace tests, canonical fixture validation,
-  and the CLI consumer. The delivered hosted run is the authoritative namespace proof because the
-  local macOS host cannot execute Linux `unshare --net`.
+  24.04 after installing libva headers and nasm and building checksum-pinned libvpx 1.16, then uses
+  a distinct empty network namespace and Cargo offline mode for workspace tests, canonical fixture
+  validation, and the CLI consumer. The delivered hosted run is the authoritative namespace proof
+  because the local macOS host cannot execute Linux `unshare --net`.
 - `docs/checkpoints/P1.W07.C004.md` records a fresh clean npm installation, typecheck, production
   build, three passing contract tests, zero reported vulnerabilities, negative TypeScript and
   missing-bundle controls, YAML parsing, and a complete locked Rust test run. These are delivery
@@ -627,7 +627,7 @@ The largest current risk is cross-document drift:
 
 This map is based on the local mapping commit rebased onto `origin/main` plus this uncommitted map
 refresh, so `mapped_at_commit` is `working-tree`. The remote base was
-`137776921c2212bb059f8de2ad0e83859ace1d3f` when the map was refreshed. Its hash describes the exact
+`0d406d39a938fa352d105bb3477f983e6c2259e7` when the map was refreshed. Its hash describes the exact
 53 discovered source files layered on that revision, not the remote commit alone.
 
 ## Maintenance notes

@@ -37,7 +37,7 @@ jobs:
       - name: Install Linux media build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libva-dev
+          sudo apt-get install --yes libva-dev nasm
 
       - name: Build approved libvpx runtime
         run: |

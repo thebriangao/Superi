@@ -25,8 +25,8 @@ grep -Fq 'persist-credentials: false' "$workflow" ||
     fail "workflow must disable persisted checkout credentials"
 grep -Fq 'rustup toolchain install stable --profile minimal' "$workflow" ||
     fail "workflow must install the declared Rust toolchain"
-grep -Fq 'sudo apt-get install --yes libva-dev' "$workflow" ||
-    fail "workflow must install the approved Linux media headers"
+grep -Fq 'sudo apt-get install --yes libva-dev nasm' "$workflow" ||
+    fail "workflow must install the approved Linux media build dependencies"
 grep -Fq 'LIBVPX_VERSION: "1.16.0"' "$workflow" ||
     fail "workflow must pin the approved libvpx version"
 grep -Fq 'LIBVPX_SOURCE_SHA256:' "$workflow" ||
