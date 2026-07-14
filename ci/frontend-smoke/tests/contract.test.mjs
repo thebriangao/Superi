@@ -1,0 +1,61 @@
+import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import test from "node:test";
+
+const moduleRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const repositoryRoot = resolve(moduleRoot, "../..");
+
+function readJson(path) {
+  return JSON.parse(readFileSync(path, "utf8"));
+}
+
+test("frontend contract pins strict type checking and production Vite", () => {
+  const packageJson = readJson(resolve(moduleRoot, "package.json"));
+  const tsconfig = readJson(resolve(moduleRoot, "tsconfig.json"));
+
+  assert.equal(packageJson.private, true);
+  assert.equal(packageJson.scripts.typecheck, "tsc --noEmit");
+  assert.equal(packageJson.scripts.build, "vite build");
+  assert.equal(packageJson.devDependencies.typescript, "5.9.3");
+  assert.equal(packageJson.devDependencies.vite, "7.3.6");
+  assert.equal(tsconfig.compilerOptions.strict, true);
+  assert.equal(tsconfig.compilerOptions.noEmit, true);
+  assert.deepEqual(tsconfig.include, ["src"]);
+});
+
+test("workflow installs the lockfile and runs independent frontend gates", () => {
+  const workflow = readFileSync(
+    resolve(repositoryRoot, ".github/workflows/frontend.yml"),
+    "utf8",
+  );
+
+  assert.match(workflow, /permissions:\n  contents: read/);
+  assert.match(
+    workflow,
+    /actions\/checkout@11bd71901bbe5b1630ceea73d27597364c9af683/,
+  );
+  assert.match(
+    workflow,
+    /actions\/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020/,
+  );
+  assert.match(workflow, /working-directory: ci\/frontend-smoke/);
+  assert.match(workflow, /cache-dependency-path: ci\/frontend-smoke\/package-lock\.json/);
+  assert.match(workflow, /run: npm ci/);
+  assert.match(workflow, /run: npm run typecheck/);
+  assert.match(workflow, /run: npm run build/);
+  assert.match(workflow, /run: npm test/);
+  assert.doesNotMatch(workflow, /--if-present/);
+});
+
+test("production build contains a generated hashed JavaScript entry", () => {
+  const distRoot = resolve(moduleRoot, "dist");
+  const html = readFileSync(resolve(distRoot, "index.html"), "utf8");
+  const assets = readdirSync(resolve(distRoot, "assets"));
+  const script = assets.find((name) => /^index-[a-zA-Z0-9_-]+\.js$/.test(name));
+
+  assert.ok(script, `missing hashed JavaScript entry in ${assets.join(", ")}`);
+  assert.match(html, new RegExp(`/assets/${script.replace(".", "\\.")}`));
+  assert.match(html, /<title>Superi frontend CI contract<\/title>/);
+});

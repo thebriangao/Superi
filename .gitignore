@@ -6,6 +6,7 @@
 **/node_modules/
 /app/dist/
 /app/src-tauri/gen/
+/ci/frontend-smoke/dist/
 
 # macOS
 .DS_Store

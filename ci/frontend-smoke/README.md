@@ -1,0 +1,20 @@
+# Frontend CI contract
+
+This CI-only browser entry proves that Superi's locked TypeScript and Vite toolchain can install from
+the committed lockfile, perform strict type checking without emitting JavaScript, and create a
+production bundle. It is not the deferred React application or Tauri desktop shell, and it contains
+no authoritative project or editing behavior.
+
+Run the same gates as CI:
+
+```bash
+npm ci
+npm run typecheck
+npm run build
+npm test
+```
+
+The final test reads the generated bundle, so `npm run build` must run before `npm test`. When the
+real application enters the repository in Phase 3, this workflow must run the same independent
+typecheck and production-build gates against that application rather than treating this contract as
+application coverage.
