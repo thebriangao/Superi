@@ -2,7 +2,7 @@
 module_id: superi-image
 source_paths:
   - open/crates/superi-image
-source_hash: 35e2b0bece0bb57ea678dfa181e89e6b39fadc0acc4151a70ec8621fb41dab65
+source_hash: 04daec6661a0191f4e1df34ea826e808a03dca74c13c30524e3090cd4dd773f0
 source_files: 26
 mapped_at_commit: 217e9d48703bcfd4736d949aea510c94505071bc
 ---
@@ -48,8 +48,8 @@ or residency object. `superi-color` owns actual color transforms over dense `Ima
 - `open/crates/superi-image/src/limits.rs`: Defines finite dimension, allocation, channel, layer,
   metadata, and tile limits plus checked allocation and clone helpers.
 - `open/crates/superi-image/src/metadata.rs`: Defines orientation, exact metadata floats, typed
-  metadata values, authoritative color tags, ICC and named-space payload retention, pixel aspect,
-  timecode, and deterministic attributes.
+  metadata values, authoritative color tags, ICC and named-space payload retention, ordered color
+  transform stages, complete pipeline metadata, pixel aspect, timecode, and deterministic attributes.
 - `open/crates/superi-image/src/model.rs`: Defines immutable interleaved or planar CPU byte storage,
   including plane origins, row strides, relative alignment, channel slices, and checked addressing.
 - `open/crates/superi-image/src/ops.rs`: Implements dense CPU crop, resize, affine transform, flip,
@@ -137,6 +137,11 @@ Metadata and resource contracts:
   text and ICC bytes. Those source payloads do not override the interpretation or select a
   transform. `ImageMetadata` separately retains optional orientation, aspect, timecode, and
   deterministically ordered arbitrary attributes.
+- `ColorTransformStageKind` classifies input, creative, display, and output stages.
+  `ColorTransformStage` retains a stable transform identity and exact source and destination tags.
+  `ColorPipelineMetadata` retains source interpretation, current tags, ordered stage history, and
+  optional working, display, and delivery spaces while enforcing source continuity and semantic
+  stage order.
 - `ImageLimits` defaults to 65,536 by 65,536 pixels, 512 MiB per checked allocation or result,
   1,024 channels, 64 layers, 16 MiB metadata, and 1,048,576 tiles. Builders can replace each
   maximum with a nonzero tighter or broader policy.
@@ -259,14 +264,19 @@ Current source-level consumers are narrower than the manifest graph:
   originates here.
 - `superi-media-io` consumes `WaveformEnvelope`, `WaveformPeak`, `WaveformRasterStyle`,
   `WaveformImage`, and `render_waveform_image`. It owns decoded PCM validation and peak extraction,
-  then delegates validated rasterization to this crate.
+  then delegates validated rasterization to this crate. Its decoded `VideoFrame` also retains the
+  image-owned `ColorPipelineMetadata` contract.
+- `superi-graph` directly consumes color pipeline metadata as the neutral graph propagation seam.
+  Cache, timeline, and engine surfaces then preserve that exact value without moving transform
+  execution into this crate.
 
-`superi-ai`, `superi-cache`, `superi-codecs-platform`, `superi-codecs-rs`,
-`superi-codecs-vendor`, `superi-effects`, `superi-engine`, and `superi-graph` also declare
-`superi-image` dependencies. No direct `superi_image` imports were found in their current Rust
-sources during synthesis, so these are declared integration, scaffold, or transitive boundaries,
-not evidence of an implemented direct runtime consumer. `superi-color`, `superi-gpu`, and
-`superi-media-io` are both manifest and source consumers.
+`superi-cache` directly owns complete pipeline equality at its cached-frame seam.
+
+`superi-ai`, `superi-codecs-platform`, `superi-codecs-rs`,
+`superi-codecs-vendor`, `superi-effects`, and `superi-engine` also declare `superi-image`
+dependencies. The engine imports pipeline metadata directly for upload and terminal intent;
+the remaining listed crates are declared integration, scaffold, or transitive boundaries.
+`superi-color`, `superi-gpu`, `superi-media-io`, `superi-graph`, `superi-cache`, and `superi-engine` are source consumers.
 
 ## Invariants and operational boundaries
 
@@ -288,6 +298,8 @@ not evidence of an implemented direct runtime consumer. `superi-color`, `superi-
   separate from the authoritative `ColorSpace`. Ordinary operations preserve tags. No image
   operation evaluates ICC, applies a transfer function, converts a gamut, adapts a white point,
   tone maps, or renders scene values to a display.
+- Color pipeline history is append-only through validated construction. Input may occur only first;
+  display and output are terminal; every stage source must equal the preceding current tags.
 - `ImageLimits` is finite by default, and checked producers validate dimensions, counts, arithmetic,
   and allocation before constructing results. It is mainly an operation and decode policy, not a
   global process-memory cap: retained source bytes and decoded planes can coexist, and

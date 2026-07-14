@@ -171,7 +171,7 @@ impl ImageMetadataValue {
 /// source space and ICC profile are retained exactly for interchange and later
 /// color-management decisions; their presence never silently overrides the
 /// authoritative interpretation or chooses a transform.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ImageColorTags {
     interpretation: ColorSpace,
     named_space: Option<String>,
@@ -248,6 +248,202 @@ impl ImageColorTags {
 impl Default for ImageColorTags {
     fn default() -> Self {
         Self::new(ColorSpace::UNSPECIFIED)
+    }
+}
+
+/// The semantic position of one transform in an image color pipeline.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[non_exhaustive]
+pub enum ColorTransformStageKind {
+    /// Source interpretation into a scene processing space.
+    Input,
+    /// A scene-referred creative operation that preserves pipeline continuity.
+    Creative,
+    /// A terminal scene-to-display operation for monitoring.
+    Display,
+    /// A terminal scene-to-delivery operation for export.
+    Output,
+}
+
+impl ColorTransformStageKind {
+    const fn rank(self) -> u8 {
+        match self {
+            Self::Input => 0,
+            Self::Creative => 1,
+            Self::Display => 2,
+            Self::Output => 2,
+        }
+    }
+
+    const fn is_terminal(self) -> bool {
+        matches!(self, Self::Display | Self::Output)
+    }
+}
+
+/// One identified color transform with exact input and output interpretations.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct ColorTransformStage {
+    kind: ColorTransformStageKind,
+    transform_id: String,
+    source: ColorSpace,
+    destination: ColorSpace,
+}
+
+impl ColorTransformStage {
+    /// Creates a stage with a stable transform identifier and explicit endpoints.
+    pub fn new(
+        kind: ColorTransformStageKind,
+        transform_id: impl Into<String>,
+        source: ColorSpace,
+        destination: ColorSpace,
+    ) -> Result<Self> {
+        let transform_id = transform_id.into();
+        validate_text(
+            &transform_id,
+            "create_color_transform_stage",
+            "color transform identifier",
+        )?;
+        Ok(Self {
+            kind,
+            transform_id,
+            source,
+            destination,
+        })
+    }
+
+    /// Returns the semantic pipeline position.
+    #[must_use]
+    pub const fn kind(&self) -> ColorTransformStageKind {
+        self.kind
+    }
+
+    /// Returns the stable transform or configuration identifier.
+    #[must_use]
+    pub fn transform_id(&self) -> &str {
+        &self.transform_id
+    }
+
+    /// Returns the interpretation required before this stage.
+    #[must_use]
+    pub const fn source(&self) -> ColorSpace {
+        self.source
+    }
+
+    /// Returns the interpretation produced by this stage.
+    #[must_use]
+    pub const fn destination(&self) -> ColorSpace {
+        self.destination
+    }
+}
+
+/// Immutable source color identity and ordered transform history for one image.
+///
+/// Source tags remain unchanged as stages are appended. Display and output are
+/// terminal, mutually exclusive branches, so cached scene metadata cannot be
+/// contaminated by a monitoring or delivery decision.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct ColorPipelineMetadata {
+    source_tags: ImageColorTags,
+    current_space: ColorSpace,
+    stages: Vec<ColorTransformStage>,
+    working_space: Option<ColorSpace>,
+    display_space: Option<ColorSpace>,
+    delivery_space: Option<ColorSpace>,
+}
+
+impl ColorPipelineMetadata {
+    /// Creates pipeline metadata at the exact source interpretation.
+    pub fn new(source_tags: ImageColorTags) -> Result<Self> {
+        Ok(Self {
+            current_space: source_tags.interpretation(),
+            source_tags,
+            stages: Vec::new(),
+            working_space: None,
+            display_space: None,
+            delivery_space: None,
+        })
+    }
+
+    /// Appends one validated transform without changing preserved source tags.
+    pub fn with_stage(mut self, stage: ColorTransformStage) -> Result<Self> {
+        if self
+            .stages
+            .last()
+            .is_some_and(|last| last.kind.is_terminal())
+        {
+            return Err(invalid(
+                "append_color_transform_stage",
+                "a display or output transform must be the terminal pipeline stage",
+            ));
+        }
+        if stage.source != self.current_space {
+            return Err(invalid(
+                "append_color_transform_stage",
+                "color transform source does not match the current pipeline interpretation",
+            ));
+        }
+        if stage.kind == ColorTransformStageKind::Input && !self.stages.is_empty() {
+            return Err(invalid(
+                "append_color_transform_stage",
+                "an input transform must be the first pipeline stage",
+            ));
+        }
+        if self
+            .stages
+            .last()
+            .is_some_and(|last| stage.kind.rank() < last.kind.rank())
+        {
+            return Err(invalid(
+                "append_color_transform_stage",
+                "color transform stages must remain in semantic order",
+            ));
+        }
+
+        match stage.kind {
+            ColorTransformStageKind::Input => self.working_space = Some(stage.destination),
+            ColorTransformStageKind::Display => self.display_space = Some(stage.destination),
+            ColorTransformStageKind::Output => self.delivery_space = Some(stage.destination),
+            ColorTransformStageKind::Creative => {}
+        }
+        self.current_space = stage.destination;
+        self.stages.push(stage);
+        Ok(self)
+    }
+
+    /// Returns exact source interpretation and preserved source payloads.
+    #[must_use]
+    pub const fn source_tags(&self) -> &ImageColorTags {
+        &self.source_tags
+    }
+
+    /// Returns the interpretation after every recorded stage.
+    #[must_use]
+    pub const fn current_space(&self) -> ColorSpace {
+        self.current_space
+    }
+
+    /// Returns transforms in their exact application order.
+    #[must_use]
+    pub fn stages(&self) -> &[ColorTransformStage] {
+        &self.stages
+    }
+
+    /// Returns the scene processing interpretation established by input conversion.
+    #[must_use]
+    pub const fn working_space(&self) -> Option<ColorSpace> {
+        self.working_space
+    }
+
+    /// Returns the terminal monitoring interpretation, when this is a viewport branch.
+    #[must_use]
+    pub const fn display_space(&self) -> Option<ColorSpace> {
+        self.display_space
+    }
+
+    /// Returns the terminal delivery interpretation, when this is an export branch.
+    #[must_use]
+    pub const fn delivery_space(&self) -> Option<ColorSpace> {
+        self.delivery_space
     }
 }
 

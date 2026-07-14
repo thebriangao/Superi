@@ -2,7 +2,7 @@
 module_id: superi-media-io
 source_paths:
   - open/crates/superi-media-io
-source_hash: 834a9195f784c70935bd08357fdc3cd092628d2f989e68405fe95ed2cc8436c3
+source_hash: 62bc4d621705bdcaa15e41595578b52754a4489873940b55ae8327549bcffc66
 source_files: 39
 mapped_at_commit: working-tree
 ---
@@ -20,7 +20,7 @@ This crate owns contracts and demuxing, not a complete editor media pipeline. It
 - `open/crates/superi-media-io/Cargo.toml`: Declares the crate, workspace policy, SHA-256 implementation dependency, and direct `superi-core` and `superi-image` dependencies.
 - `open/crates/superi-media-io/src/audio_io.rs`: Defines validated decoded `AudioFormat`, immutable `AudioPlane`, and timed packed or planar `AudioBlock` values with exact byte-layout and metadata checks.
 - `open/crates/superi-media-io/src/backend.rs`: Defines backend descriptors, coarse and detailed capability declarations, registrations, tiers, fallback policy, deterministic selection, bounded content probing, source-probe selections, and the `MediaBackend` factory trait.
-- `open/crates/superi-media-io/src/decode.rs`: Defines decoded video descriptors, CPU/GPU/external buffer ownership, plane-layout validation, `VideoFrame`, `DecoderConfig`, decoder outputs, and the decoder lifecycle trait.
+- `open/crates/superi-media-io/src/decode.rs`: Defines decoded video descriptors, CPU/GPU/external buffer ownership, plane-layout validation, `VideoFrame` with complete color pipeline metadata, `DecoderConfig`, decoder outputs, and the decoder lifecycle trait.
 - `open/crates/superi-media-io/src/demux.rs`: Defines stable backend, codec, container, and stream identifiers; typed metadata; source identity and location; streams and edits; packet values and timing; source probing requests; seek modes; and the `MediaSource` trait.
 - `open/crates/superi-media-io/src/encode.rs`: Defines decoded encoder inputs, output stream configuration, packet outputs, and the encoder input, drain, reset, and end-of-stream lifecycle trait.
 - `open/crates/superi-media-io/src/image_seq.rs`: Defines logical image-sequence timing, stable file-frame labels, random-access frame reads, sequential validated output, retryable finalization, and image-sequence backend traits.
@@ -75,7 +75,7 @@ The crate root exposes `audio_io`, `backend`, `decode`, `demux`, `encode`, `imag
 
 - `demux` owns ordered string identifiers with a restricted lowercase grammar, source-local `StreamId`, deterministic typed `MediaMetadata`, `StreamInfo`, exact `StreamEdit`, optional-field `PacketTiming`, immutable packet bytes, source identity and location, probe requests, seek requests, and `MediaSource`.
 - `audio_io` owns exact decoded audio representation. Packed data is one interleaved plane; planar data is one plane per ordered channel; decoded multi-byte samples are little-endian. Construction checks frame counts, sample clocks, plane count, byte count, and overflow.
-- `decode` owns nonzero `VideoFormat`, validated `CpuVideoBuffer`, opaque object-safe `VideoFrameBuffer` for CPU, GPU, or external owners, immutable timed `VideoFrame`, `DecoderConfig`, `DecodeOutput`, and `Decoder`.
+- `decode` owns nonzero `VideoFormat`, validated `CpuVideoBuffer`, opaque object-safe `VideoFrameBuffer` for CPU, GPU, or external owners, immutable timed `VideoFrame` with exact image-owned color pipeline metadata, `DecoderConfig`, `DecodeOutput`, and `Decoder`. New frames default that pipeline to the format's authoritative color space; `with_color_pipeline` accepts richer source payloads and ordered transform history only when source interpretation matches the format.
 - `encode` owns audio or video `EncoderMediaFormat`, stream and codec `EncoderConfig`, `EncodeInput`, `EncodeOutput`, and `Encoder`.
 - Decoder and encoder contracts use explicit `NeedInput` and `EndOfStream` states. `flush` preserves delayed output and `reset` discards buffered state after a discontinuity. The traits carry `OperationContext`, but lifecycle legality and config/input consistency remain concrete-backend responsibilities.
 
@@ -152,7 +152,7 @@ Waveform preview begins after audio decode. The adapter checks one stable audio 
 ### Direct dependencies
 
 - `superi-core` supplies the canonical error taxonomy and context, `MediaId`, exact timebases, rational time, duration, sample time, frame rate, time ranges and rounding, timecode labels, pixel formats, color spaces, alpha modes, sample formats, and ordered channel layouts. This crate validates and composes those types rather than duplicating them.
-- `superi-image` supplies waveform envelope, peak, style, raster result, and rendering contracts. Dependency direction is one way: media I/O interprets decoded PCM and asks image preview to rasterize validated peaks; image preview explicitly leaves PCM interpretation here.
+- `superi-image` supplies waveform envelope, peak, style, raster result, rendering contracts, and the canonical color pipeline metadata used by decoded video. Dependency direction is one way: media I/O retains image-owned metadata and interprets decoded PCM, while image remains independent of media lifecycles.
 - `sha2` computes canonical source fingerprints for all four in-tree container adapters. Identity hashing is interruptible in adapter-sized chunks and is distinct from project identity.
 
 ### Verified consumers and implementers
@@ -160,7 +160,7 @@ Waveform preview begins after audio decode. The adapter checks one stable audio 
 - `superi-codecs-rs` implements permissive AV1, linear PCM, MP3, FLAC, Vorbis, Opus, VP8, and VP9 backends against the registry, capability, packet, frame, audio, decode, encode, and operation contracts. Its default registration function populates an external `BackendRegistry` atomically.
 - `superi-codecs-platform` implements host-dependent VideoToolbox, Media Foundation, and VA-API registrations behind the same public contracts. Registration is opt-in through the engine's `os-codecs` feature and includes only host-discovered operations.
 - `superi-codecs-vendor` adapts explicitly configured external RAW workers into `MediaBackend` implementations and uses operation, packet, decoder, encoder, corruption, and frame-conversion contracts. It does not alter this crate's discovery policy.
-- `superi-engine` constructs registries from Rust codecs and optional platform or vendor backends, converts declarations into deterministic capability snapshots, and consumes `VideoFrame` and `MediaMetadata` at its CPU-frame-to-GPU upload boundary.
+- `superi-engine` constructs registries from Rust codecs and optional platform or vendor backends, converts declarations into deterministic capability snapshots, and consumes `VideoFrame`, `MediaMetadata`, and the complete color pipeline at its CPU-frame-to-GPU upload boundary.
 - `superi-api` has a test-only direct dependency for public capability fixtures; its production path consumes engine-owned projections rather than media-I/O types directly.
 - `superi-concurrency` has a test-only direct dependency used to prove backpressure with decoded frame, audio block, and media metadata payloads.
 - Codec integration tests in `superi-codecs-rs` directly connect `MkvWebmBackend` packets to AV1, VP8/VP9, Opus, and FLAC codec implementations, proving selected cross-crate compositions beyond the media-I/O fake backend tests.
@@ -182,7 +182,7 @@ No production Rust source outside this crate constructs `MkvWebmBackend`, `Mp4Mo
 - Identifiers and metadata keys use deterministic syntax, maps and sets preserve stable order, and backend ranking has explicit tie-breakers. The registry is intended to be shared after registration; concurrent mutation is not synchronized.
 - `SourceInfo` requires at least one stream and unique stream IDs. Packet PTS, DTS, and duration are optional and remain absent when a container cannot derive them safely.
 - Exact timebases remain attached to every timing value. Edit and presentation intervals are half-open. Cross-timebase conversions are checked and apply an explicit rounding rule where exact representation is unavailable.
-- Decoded video format must match buffer dimensions and pixel format. CPU plane counts, rows, minimum strides, and exact allocation lengths are validated. Opaque GPU/external storage keeps backend ownership and synchronization responsibilities.
+- Decoded video format must match buffer dimensions and pixel format. CPU plane counts, rows, minimum strides, and exact allocation lengths are validated. The pipeline's source color interpretation must equal the frame format, while named-space and ICC payloads remain exact. Opaque GPU/external storage keeps backend ownership and synchronization responsibilities.
 - Decoded audio timestamp rate must equal format rate. Packed and planar byte counts are overflow-checked and channel ordering follows the shared `ChannelLayout`.
 - Decoder and encoder lifecycle ordering is documented at trait boundaries, not encoded as a type-state machine. Concrete implementations must reject illegal send, receive, flush, and reset sequences and preserve state across interruption correctly.
 - Operation cancellation and deadlines are cooperative. Most adapters poll around bounded chunks, but a single platform read cannot be preempted, MP4 and MXF private parsers do not receive the operation, image-sequence and waveform APIs have no operation argument, and several seek or sort loops have weaker polling.

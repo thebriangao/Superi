@@ -7,6 +7,7 @@ use superi_gpu::pool::GpuMemoryPool;
 use superi_gpu::upload::{
     DecodedFrameUpload, DecodedFrameUploader, DecodedPlane, UploadConfig, UploadedFrame,
 };
+use superi_image::metadata::ColorPipelineMetadata;
 use superi_media_io::decode::{
     CpuVideoBuffer, FrameStorageKind, VideoFormat, VideoFrame, VideoFrameBuffer,
 };
@@ -21,6 +22,7 @@ pub struct UploadedVideoFrame<'device> {
     timestamp: RationalTime,
     duration: Duration,
     metadata: MediaMetadata,
+    color_pipeline: ColorPipelineMetadata,
     gpu_frame: UploadedFrame<'device>,
 }
 
@@ -47,6 +49,12 @@ impl UploadedVideoFrame<'_> {
     #[must_use]
     pub const fn metadata(&self) -> &MediaMetadata {
         &self.metadata
+    }
+
+    /// Returns exact source color identity and ordered transform history.
+    #[must_use]
+    pub const fn color_pipeline(&self) -> &ColorPipelineMetadata {
+        &self.color_pipeline
     }
 
     /// Returns the GPU-resident plane owner.
@@ -125,6 +133,7 @@ impl<'device> VideoFrameUploader<'device> {
             timestamp: source.timestamp(),
             duration: source.duration(),
             metadata: source.metadata().clone(),
+            color_pipeline: source.color_pipeline().clone(),
             gpu_frame,
         })
     }

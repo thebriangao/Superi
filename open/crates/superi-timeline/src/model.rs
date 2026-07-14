@@ -15,6 +15,7 @@ use superi_core::pixel::{ChannelLayout, ChannelPosition};
 use superi_core::time::{
     Duration, FrameRate, RationalTime, SampleTime, TimeRange, TimeRounding, Timebase,
 };
+use superi_graph::node::GraphColorMetadata;
 
 use crate::edit_state::{SelectionExpansion, SelectionUpdate, TimelineEditState};
 
@@ -2716,4 +2717,30 @@ fn conflict(
     .with_context(
         ErrorContext::new("superi-timeline.model", operation).with_field(field, value.to_string()),
     )
+}
+
+/// Immutable color state retained by a timeline item.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct TimelineColorMetadata {
+    graph: GraphColorMetadata,
+}
+
+impl TimelineColorMetadata {
+    /// Captures upstream graph metadata without changing source meaning.
+    #[must_use]
+    pub const fn from_graph(graph: GraphColorMetadata) -> Self {
+        Self { graph }
+    }
+
+    /// Returns the exact graph metadata retained by this timeline value.
+    #[must_use]
+    pub const fn graph(&self) -> &GraphColorMetadata {
+        &self.graph
+    }
+
+    /// Compiles a timeline item into graph metadata deterministically.
+    #[must_use]
+    pub fn compile(&self) -> GraphColorMetadata {
+        self.graph.clone()
+    }
 }

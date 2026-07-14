@@ -9,6 +9,7 @@ use std::sync::Arc;
 use superi_core::color_space::ColorSpace;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_core::settings::{CapabilitySet, ComponentId, ParseSharedNameError, SemanticVersion};
+use superi_image::metadata::{ColorPipelineMetadata, ColorTransformStage};
 
 macro_rules! define_namespaced_identifier {
     ($name:ident, $summary:literal) => {
@@ -706,5 +707,38 @@ impl NodeRegistrySnapshot {
     #[must_use]
     pub fn latest(&self, node_type: &NodeTypeId) -> Option<&NodeSchema> {
         self.versions(node_type).next_back()
+    }
+}
+
+/// Immutable color state carried beside graph pixel flow.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct GraphColorMetadata {
+    pipeline: ColorPipelineMetadata,
+}
+
+impl GraphColorMetadata {
+    /// Creates graph metadata from an upstream image or media pipeline record.
+    #[must_use]
+    pub const fn new(pipeline: ColorPipelineMetadata) -> Self {
+        Self { pipeline }
+    }
+
+    /// Appends one graph-owned transform while preserving all prior metadata.
+    pub fn with_stage(self, stage: ColorTransformStage) -> Result<Self> {
+        Ok(Self {
+            pipeline: self.pipeline.with_stage(stage)?,
+        })
+    }
+
+    /// Returns the complete source identity and ordered transform history.
+    #[must_use]
+    pub const fn pipeline(&self) -> &ColorPipelineMetadata {
+        &self.pipeline
+    }
+
+    /// Consumes the graph wrapper and returns the canonical metadata value.
+    #[must_use]
+    pub fn into_pipeline(self) -> ColorPipelineMetadata {
+        self.pipeline
     }
 }

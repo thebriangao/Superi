@@ -8,6 +8,7 @@ use superi_core::color_space::ColorSpace;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_core::pixel::{AlphaMode, ChromaSubsampling, PixelFormat, PixelModel, PixelPacking};
 use superi_core::time::{Duration, RationalTime};
+use superi_image::metadata::{ColorPipelineMetadata, ImageColorTags};
 
 use crate::audio_io::{AudioBlock, AudioFormat};
 use crate::demux::{MediaMetadata, MetadataValue, Packet, StreamInfo, StreamKind};
@@ -254,6 +255,7 @@ pub struct VideoFrame {
     duration: Duration,
     buffer: Arc<dyn VideoFrameBuffer>,
     metadata: MediaMetadata,
+    color_pipeline: ColorPipelineMetadata,
 }
 
 impl VideoFrame {
@@ -279,18 +281,32 @@ impl VideoFrame {
                 "video format and buffer descriptors do not match",
             ));
         }
+        let color_pipeline = ColorPipelineMetadata::new(ImageColorTags::new(format.color_space()))?;
         Ok(Self {
             format,
             timestamp,
             duration,
             buffer,
             metadata: MediaMetadata::new(),
+            color_pipeline,
         })
     }
 
     /// Adds preserved decoded-frame metadata.
     pub fn with_metadata(mut self, key: impl Into<String>, value: MetadataValue) -> Result<Self> {
         self.metadata.insert(key, value)?;
+        Ok(self)
+    }
+
+    /// Replaces typed color history after validating the decoded source interpretation.
+    pub fn with_color_pipeline(mut self, color_pipeline: ColorPipelineMetadata) -> Result<Self> {
+        if color_pipeline.source_tags().interpretation() != self.format.color_space {
+            return Err(invalid(
+                "set_video_frame_color_pipeline",
+                "color pipeline source interpretation must match the decoded video format",
+            ));
+        }
+        self.color_pipeline = color_pipeline;
         Ok(self)
     }
 
@@ -328,6 +344,12 @@ impl VideoFrame {
     #[must_use]
     pub const fn metadata(&self) -> &MediaMetadata {
         &self.metadata
+    }
+
+    /// Returns exact source color identity and ordered transform history.
+    #[must_use]
+    pub const fn color_pipeline(&self) -> &ColorPipelineMetadata {
+        &self.color_pipeline
     }
 }
 

@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 535cd424364d4627ad64f8776ced3ef7fe92a22ddc82b0f0a7a28c76fcfc7c04
-source_files: 120
+source_hash: e3e709fc3c95e0b0e071af28ccaaf82c2af9a3bb9fdb8c4a70be4951959c0e2d
+source_files: 121
 mapped_at_commit: working-tree
 ---
 
@@ -141,6 +141,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   tone mapping and the separate legal-range RGB storage encoder. It records stage ordering, public
   rule consumption, normative code anchors, alpha and artifact behavior, critical verification,
   delivery context, and the intentionally separate YUV, packed storage, ICC, GPU, and engine work.
+- `docs/checkpoints/P1.W05.C011.md`: Durable implementation evidence for exact color metadata
+  propagation across decoded media, graph, timeline, cache, GPU upload, viewport intent, and export
+  intent. It records ordered transform history, exact source payload retention, cache identity,
+  branch independence, verification, delivery context, and intentionally separate pixel execution.
 - `docs/checkpoints/P1.W05.C012.md`: Durable implementation evidence for managed GPU-resident
   wide-gamut transforms, binary64 CPU reference parity, explicit pass and fence ownership, native
   export-readback proof, delivery context, and intentionally separate engine integration.
@@ -961,8 +965,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`62174d6e62d4d3e7158c350c50225147ef1c4392` when the map was refreshed. Its hash describes the exact
-119 discovered source files, including twelve generated binary payloads, layered on that revision.
+`eb6cd7262eafe457f49570273621c1ab604c572f` when the map was refreshed. Its hash describes the exact
+121 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 

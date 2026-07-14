@@ -2,7 +2,7 @@
 module_id: superi-graph
 source_paths:
   - open/crates/superi-graph
-source_hash: ed296008c60f25f7d145e267a57045d59b5096423d272fbcbfff86769df30502
+source_hash: 63863e956adc5328328f4438c78bf8bd3adc49a818ff45b45f02c0134bc4573d
 source_files: 28
 mapped_at_commit: working-tree
 ---
@@ -89,7 +89,8 @@ The module owns 28 text files:
   driver, and clear driver transactions, dependency validation and cycle rejection, and shared
   request-local parameter evaluation.
 - `open/crates/superi-graph/src/node.rs`: Implements typed versioned schemas, complete node behavior
-  declarations, atomic registration, and immutable deterministic discovery snapshots.
+  declarations, atomic registration, immutable deterministic discovery snapshots, and
+  `GraphColorMetadata`, which preserves the image-owned pipeline across graph boundaries.
 - `open/crates/superi-graph/src/roi.rs`: Owns exact requested output regions, per-output regions of
   definition, built-in and custom node mapping, dependency-only upstream propagation, immutable
   snapshot stamping, stable evaluation order, and invalidation intersection.
@@ -173,6 +174,8 @@ Serde behavior. Graph does not wrap or alias those values into a second runtime 
 - Construction and registration failures use `superi_core::error::Error` with stable category,
   recoverability, component, operation, schema identity, collection, and field context where
   applicable.
+- `GraphColorMetadata` owns one exact `ColorPipelineMetadata` snapshot for graph state, can append a
+  validated transform stage, and exposes or returns the unchanged image-owned pipeline.
 
 `superi_graph::dag` exposes `GraphEndpoint`, `GraphEdge`, and `DirectedAcyclicGraph<N>`. Endpoints
 combine official node and port IDs; edges add official edge identity and direction. A graph combines
@@ -634,15 +637,17 @@ graph evaluation or runtime integration.
   semantic versions, canonical namespaced validation, and capability sets. The document codec uses
   Serde and JSON for generic strict records. SHA-256 owns canonical document integrity, node-state
   fingerprints, and versioned evaluation cache identity.
-- `superi-gpu`, `superi-image`, and `superi-concurrency` remain declared for later concrete
+- `superi-image` supplies the exact color pipeline and transform-stage contracts used by
+  `GraphColorMetadata`. `superi-gpu` and `superi-concurrency` remain declared for later concrete
   evaluation integration and are not imported by current graph source. The implemented generic
   evaluator and semantic scheduler use only core values plus graph-owned storage, ordered standard
   collections, and payload behavior. Outer job priority and bounded worker dispatch remain with
   render coordinators and `superi-concurrency`.
 - Direct manifest consumers are `superi-ai`, `superi-cache`, `superi-color`, `superi-effects`,
   `superi-timeline`, `superi-project`, and `superi-engine`.
-- None of those consumers currently imports a `superi_graph` Rust item. The thirteen public
-  integration test targets are the real consumers of identifier, schema-discovery, DAG, validation,
+- Timeline and cache consume `GraphColorMetadata`, and the engine color propagation contract
+  exercises those seams. Other declared domain consumers still have no production graph call site.
+  The thirteen graph integration test targets remain the direct consumers of identifier, schema-discovery, DAG, validation,
   mutation, invalidation, ROI, serialization, expression, diagnostics, evaluation, shared
   evaluation-snapshot, and missing-node APIs.
 
@@ -655,6 +660,8 @@ graph evaluation or runtime integration.
 - Graph remains below color, effects, timeline, cache, AI, project, and engine catalogs. The neutral
   identifier, schema, DAG, validation, mutation, invalidation, evaluator, diagnostics, and ROI APIs
   import no domain catalog and introduce no new dependency edge.
+- Graph color metadata preserves the complete image-owned pipeline exactly and does not execute,
+  infer, normalize, or reorder color transforms.
 - Node type and value type definition identities are strict namespaced values. Port and parameter
   schema names are distinct types and are never normalized. Exact schema identity includes full
   SemVer build metadata.

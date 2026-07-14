@@ -66,6 +66,7 @@ fn decoded_video_frame_upload_preserves_semantics_without_retaining_cpu_pixels()
     assert_eq!(uploaded.timestamp(), timestamp);
     assert_eq!(uploaded.duration(), duration);
     assert_eq!(uploaded.metadata(), source.metadata());
+    assert_eq!(uploaded.color_pipeline(), source.color_pipeline());
     assert_eq!(uploaded.gpu_frame().width(), 2);
     assert_eq!(uploaded.gpu_frame().height(), 2);
     assert_eq!(uploaded.gpu_frame().pixel_format(), PixelFormat::Rgba8Unorm);
