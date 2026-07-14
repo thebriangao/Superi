@@ -10,6 +10,9 @@ use std::sync::Arc;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 
 use crate::dag::{DirectedAcyclicGraph, GraphEdge};
+use crate::expr::{
+    ExpressionParameterValue, ParameterAddress, ParameterDriver, ParameterReference,
+};
 use crate::ids::{EdgeId, GraphId, NodeId, ParameterId, PortId};
 use crate::node::{NodeSchema, ParameterName, PortCardinality, PortName, PortSchema, ValueTypeId};
 use crate::validation::validate_connection;
@@ -287,6 +290,18 @@ pub enum GraphMutation<T> {
         /// Complete replacement value.
         value: TypedParameterValue<T>,
     },
+    /// Creates or replaces one typed parameter driver.
+    SetParameterDriver {
+        /// Stable graph-local target parameter.
+        target: ParameterAddress,
+        /// Complete direct-link or expression state.
+        driver: ParameterDriver,
+    },
+    /// Removes one parameter driver and exposes the stored literal again.
+    ClearParameterDriver {
+        /// Stable graph-local target parameter.
+        target: ParameterAddress,
+    },
 }
 
 impl<T> GraphMutation<T> {
@@ -300,6 +315,8 @@ impl<T> GraphMutation<T> {
             Self::Disconnect { .. } => "disconnect",
             Self::Reorder { .. } => "reorder",
             Self::SetParameter { .. } => "set_parameter",
+            Self::SetParameterDriver { .. } => "set_parameter_driver",
+            Self::ClearParameterDriver { .. } => "clear_parameter_driver",
         }
     }
 }
@@ -361,6 +378,7 @@ impl<T> GraphTransaction<T> {
 struct GraphState<T> {
     dag: DirectedAcyclicGraph<EditableNode<T>>,
     node_order: Vec<NodeId>,
+    parameter_drivers: BTreeMap<ParameterAddress, ParameterDriver>,
 }
 
 /// An immutable revisioned view shared by editor, script, and headless readers.
@@ -400,6 +418,225 @@ impl<T> GraphSnapshot<T> {
     pub fn node(&self, id: NodeId) -> Option<&EditableNode<T>> {
         self.state.dag.node(id)
     }
+
+    /// Returns every authored driver in canonical target-address order.
+    #[must_use]
+    pub fn parameter_drivers(&self) -> &BTreeMap<ParameterAddress, ParameterDriver> {
+        &self.state.parameter_drivers
+    }
+
+    /// Returns the driver attached to one target parameter.
+    #[must_use]
+    pub fn parameter_driver(&self, target: ParameterAddress) -> Option<&ParameterDriver> {
+        self.state.parameter_drivers.get(&target)
+    }
+}
+
+/// One deterministic typed parameter result from an immutable graph snapshot.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ParameterEvaluation<T> {
+    target: ParameterAddress,
+    value: TypedParameterValue<T>,
+    evaluated_parameters: Vec<ParameterAddress>,
+}
+
+impl<T> ParameterEvaluation<T> {
+    /// Returns the requested target parameter.
+    #[must_use]
+    pub const fn target(&self) -> ParameterAddress {
+        self.target
+    }
+
+    /// Returns the resolved typed value.
+    #[must_use]
+    pub const fn value(&self) -> &TypedParameterValue<T> {
+        &self.value
+    }
+
+    /// Returns unique parameters in deterministic dependency-completion order.
+    #[must_use]
+    pub fn evaluated_parameters(&self) -> &[ParameterAddress] {
+        &self.evaluated_parameters
+    }
+}
+
+impl<T: ExpressionParameterValue> GraphSnapshot<T> {
+    /// Resolves one parameter from this exact immutable editable snapshot.
+    ///
+    /// Direct links clone the source payload without conversion. Expressions resolve their
+    /// explicit dependencies first and use [`ExpressionParameterValue`] only at the numeric
+    /// expression boundary. Every call starts with an empty request-local result set.
+    ///
+    /// # Errors
+    ///
+    /// Returns user-correctable errors for a missing target or payload conversion failure. A cycle
+    /// or dangling reference in already published state is classified as an internal invariant
+    /// failure because mutation validation prevents either condition.
+    pub fn evaluate_parameter(&self, target: ParameterAddress) -> Result<ParameterEvaluation<T>> {
+        if self
+            .state
+            .dag
+            .node(target.node_id())
+            .and_then(|node| node.parameter(target.parameter_id()))
+            .is_none()
+        {
+            return Err(parameter_evaluation_error(
+                self.graph_id(),
+                target,
+                ErrorCategory::NotFound,
+                Recoverability::UserCorrectable,
+                "missing_parameter_target",
+                "requested graph parameter does not exist",
+            ));
+        }
+
+        let mut evaluated = BTreeMap::new();
+        let mut completion = Vec::new();
+        let mut active = BTreeSet::new();
+        let value = resolve_parameter(
+            self.state.as_ref(),
+            target,
+            &mut evaluated,
+            &mut completion,
+            &mut active,
+        )?;
+        Ok(ParameterEvaluation {
+            target,
+            value,
+            evaluated_parameters: completion,
+        })
+    }
+}
+
+fn resolve_parameter<T: ExpressionParameterValue>(
+    state: &GraphState<T>,
+    address: ParameterAddress,
+    evaluated: &mut BTreeMap<ParameterAddress, TypedParameterValue<T>>,
+    completion: &mut Vec<ParameterAddress>,
+    active: &mut BTreeSet<ParameterAddress>,
+) -> Result<TypedParameterValue<T>> {
+    if let Some(value) = evaluated.get(&address) {
+        return Ok(value.clone());
+    }
+    if !active.insert(address) {
+        return Err(parameter_evaluation_error(
+            state.dag.id(),
+            address,
+            ErrorCategory::Internal,
+            Recoverability::Terminal,
+            "parameter_dependency_cycle",
+            "published parameter state contains a dependency cycle",
+        ));
+    }
+
+    let result = resolve_parameter_uncached(state, address, evaluated, completion, active);
+    active.remove(&address);
+    let value = result?;
+    evaluated.insert(address, value.clone());
+    completion.push(address);
+    Ok(value)
+}
+
+fn resolve_parameter_uncached<T: ExpressionParameterValue>(
+    state: &GraphState<T>,
+    address: ParameterAddress,
+    evaluated: &mut BTreeMap<ParameterAddress, TypedParameterValue<T>>,
+    completion: &mut Vec<ParameterAddress>,
+    active: &mut BTreeSet<ParameterAddress>,
+) -> Result<TypedParameterValue<T>> {
+    let literal = state
+        .dag
+        .node(address.node_id())
+        .and_then(|node| node.parameter(address.parameter_id()))
+        .map(|parameter| parameter.value().clone())
+        .ok_or_else(|| {
+            parameter_evaluation_error(
+                state.dag.id(),
+                address,
+                ErrorCategory::Internal,
+                Recoverability::Terminal,
+                "dangling_parameter_dependency",
+                "published parameter driver references a missing parameter",
+            )
+        })?;
+    let Some(driver) = state.parameter_drivers.get(&address) else {
+        return Ok(literal);
+    };
+
+    for dependency in driver.dependencies() {
+        let _ = resolve_parameter(state, dependency.address(), evaluated, completion, active)?;
+    }
+
+    if let Some(source) = driver.as_link() {
+        return evaluated.get(&source.address()).cloned().ok_or_else(|| {
+            parameter_evaluation_error(
+                state.dag.id(),
+                address,
+                ErrorCategory::Internal,
+                Recoverability::Terminal,
+                "missing_parameter_result",
+                "parameter link dependency did not produce a value",
+            )
+        });
+    }
+
+    let expression = driver
+        .as_expression()
+        .expect("parameter driver kind is link or expression");
+    let scalar = expression.evaluate_with(|name, reference| {
+        let value = evaluated.get(&reference.address()).ok_or_else(|| {
+            parameter_evaluation_error(
+                state.dag.id(),
+                address,
+                ErrorCategory::Internal,
+                Recoverability::Terminal,
+                "missing_parameter_result",
+                "expression dependency did not produce a value",
+            )
+        })?;
+        value
+            .payload()
+            .to_expression_scalar(reference.value_type())
+            .map_err(|mut error| {
+                error.push_context(
+                    ErrorContext::new(COMPONENT, "evaluate_parameter")
+                        .with_field("graph_id", state.dag.id().to_string())
+                        .with_field("target", address.to_string())
+                        .with_field("variable", name.as_str())
+                        .with_field("dependency", reference.address().to_string()),
+                );
+                error
+            })
+    })?;
+    let payload = T::from_expression_scalar(driver.value_type(), scalar).map_err(|mut error| {
+        error.push_context(
+            ErrorContext::new(COMPONENT, "evaluate_parameter")
+                .with_field("graph_id", state.dag.id().to_string())
+                .with_field("target", address.to_string())
+                .with_field("result_type", driver.value_type().as_str()),
+        );
+        error
+    })?;
+    Ok(TypedParameterValue::new(
+        driver.value_type().clone(),
+        payload,
+    ))
+}
+
+fn parameter_evaluation_error(
+    graph_id: GraphId,
+    target: ParameterAddress,
+    category: ErrorCategory,
+    recoverability: Recoverability,
+    reason: &'static str,
+    message: &'static str,
+) -> Error {
+    Error::new(category, recoverability, message).with_context(
+        ErrorContext::new(COMPONENT, "evaluate_parameter")
+            .with_field("graph_id", graph_id.to_string())
+            .with_field("target", target.to_string())
+            .with_field("reason", reason),
+    )
 }
 
 /// The mutable owner that atomically publishes immutable graph snapshots.
@@ -418,6 +655,7 @@ impl<T> EditableGraph<T> {
             state: Arc::new(GraphState {
                 dag: DirectedAcyclicGraph::new(id),
                 node_order: Vec::new(),
+                parameter_drivers: BTreeMap::new(),
             }),
         }
     }
@@ -684,6 +922,7 @@ fn apply_mutation<T>(state: &mut GraphState<T>, mutation: GraphMutation<T>) -> R
             Ok(())
         }
         GraphMutation::Remove { node_id } => {
+            validate_node_driver_removal(state, node_id)?;
             let _ = state.dag.remove_node(node_id)?;
             let position = state
                 .node_order
@@ -732,7 +971,208 @@ fn apply_mutation<T>(state: &mut GraphState<T>, mutation: GraphMutation<T>) -> R
                 .ok_or_else(|| missing_node_error(graph_id, "set_parameter", node_id))?
                 .set_parameter(parameter_id, value)
         }
+        GraphMutation::SetParameterDriver { target, driver } => {
+            validate_parameter_driver(state, target, &driver)?;
+            state.parameter_drivers.insert(target, driver);
+            if parameter_dependency_reaches(state, target, target, &mut BTreeSet::new()) {
+                return Err(parameter_driver_error(
+                    state.dag.id(),
+                    "set_parameter_driver",
+                    target,
+                    ErrorCategory::Conflict,
+                    "parameter_dependency_cycle",
+                    "parameter driver would create a dependency cycle",
+                ));
+            }
+            Ok(())
+        }
+        GraphMutation::ClearParameterDriver { target } => {
+            let _ = parameter_value_type(
+                state,
+                target,
+                "clear_parameter_driver",
+                "missing_parameter_target",
+            )?;
+            if state.parameter_drivers.remove(&target).is_none() {
+                return Err(parameter_driver_error(
+                    state.dag.id(),
+                    "clear_parameter_driver",
+                    target,
+                    ErrorCategory::NotFound,
+                    "missing_parameter_driver",
+                    "parameter does not have an authored driver",
+                ));
+            }
+            Ok(())
+        }
     }
+}
+
+fn validate_parameter_driver<T>(
+    state: &GraphState<T>,
+    target: ParameterAddress,
+    driver: &ParameterDriver,
+) -> Result<()> {
+    let target_type = parameter_value_type(
+        state,
+        target,
+        "set_parameter_driver",
+        "missing_parameter_target",
+    )?;
+    if target_type != driver.value_type() {
+        return Err(parameter_driver_type_error(
+            state.dag.id(),
+            target,
+            None,
+            "parameter_driver_type_mismatch",
+            target_type,
+            driver.value_type(),
+            "parameter driver result type does not match its target",
+        ));
+    }
+
+    for dependency in driver.dependencies() {
+        let source_type = parameter_value_type(
+            state,
+            dependency.address(),
+            "set_parameter_driver",
+            "missing_parameter_dependency",
+        )?;
+        if source_type != dependency.value_type() {
+            return Err(parameter_driver_type_error(
+                state.dag.id(),
+                target,
+                Some(dependency),
+                "parameter_dependency_type_mismatch",
+                source_type,
+                dependency.value_type(),
+                "parameter dependency type does not match its source",
+            ));
+        }
+        if driver.as_link().is_some() && source_type != target_type {
+            return Err(parameter_driver_type_error(
+                state.dag.id(),
+                target,
+                Some(dependency),
+                "parameter_link_type_mismatch",
+                target_type,
+                source_type,
+                "direct parameter link requires equal source and target types",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_node_driver_removal<T>(state: &GraphState<T>, node_id: NodeId) -> Result<()> {
+    let reference = state.parameter_drivers.iter().find(|(target, driver)| {
+        target.node_id() == node_id
+            || driver
+                .dependencies()
+                .iter()
+                .any(|dependency| dependency.address().node_id() == node_id)
+    });
+    if let Some((target, _)) = reference {
+        return Err(parameter_driver_error(
+            state.dag.id(),
+            "remove",
+            *target,
+            ErrorCategory::Conflict,
+            "parameter_driver_references_node",
+            "node remains referenced by an authored parameter driver",
+        )
+        .with_context(
+            ErrorContext::new(COMPONENT, "remove").with_field("node_id", node_id.to_string()),
+        ));
+    }
+    Ok(())
+}
+
+fn parameter_dependency_reaches<T>(
+    state: &GraphState<T>,
+    current: ParameterAddress,
+    target: ParameterAddress,
+    visited: &mut BTreeSet<ParameterAddress>,
+) -> bool {
+    let Some(driver) = state.parameter_drivers.get(&current) else {
+        return false;
+    };
+    for dependency in driver.dependencies() {
+        let address = dependency.address();
+        if address == target {
+            return true;
+        }
+        if visited.insert(address) && parameter_dependency_reaches(state, address, target, visited)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn parameter_value_type<'a, T>(
+    state: &'a GraphState<T>,
+    address: ParameterAddress,
+    operation: &'static str,
+    reason: &'static str,
+) -> Result<&'a ValueTypeId> {
+    state
+        .dag
+        .node(address.node_id())
+        .and_then(|node| node.parameter(address.parameter_id()))
+        .map(|parameter| parameter.value().value_type())
+        .ok_or_else(|| {
+            parameter_driver_error(
+                state.dag.id(),
+                operation,
+                address,
+                ErrorCategory::NotFound,
+                reason,
+                "graph parameter dependency does not exist",
+            )
+        })
+}
+
+fn parameter_driver_type_error(
+    graph_id: GraphId,
+    target: ParameterAddress,
+    dependency: Option<&ParameterReference>,
+    reason: &'static str,
+    expected: &ValueTypeId,
+    actual: &ValueTypeId,
+    message: &'static str,
+) -> Error {
+    let mut context = ErrorContext::new(COMPONENT, "set_parameter_driver")
+        .with_field("graph_id", graph_id.to_string())
+        .with_field("target", target.to_string())
+        .with_field("reason", reason)
+        .with_field("expected_type", expected.as_str())
+        .with_field("actual_type", actual.as_str());
+    if let Some(dependency) = dependency {
+        context.insert_field("dependency", dependency.address().to_string());
+    }
+    Error::new(
+        ErrorCategory::InvalidInput,
+        Recoverability::UserCorrectable,
+        message,
+    )
+    .with_context(context)
+}
+
+fn parameter_driver_error(
+    graph_id: GraphId,
+    operation: &'static str,
+    target: ParameterAddress,
+    category: ErrorCategory,
+    reason: &'static str,
+    message: &'static str,
+) -> Error {
+    Error::new(category, Recoverability::UserCorrectable, message).with_context(
+        ErrorContext::new(COMPONENT, operation)
+            .with_field("graph_id", graph_id.to_string())
+            .with_field("target", target.to_string())
+            .with_field("reason", reason),
+    )
 }
 
 fn validate_stored_connection<T>(

@@ -2,8 +2,8 @@
 module_id: superi-graph
 source_paths:
   - open/crates/superi-graph
-source_hash: 285b401fc8037e69f612cde1f8e05b4d22e92968c8f63d89ce0cea75cba7e930
-source_files: 22
+source_hash: 3d8cf3b2e36b5dcc8aebbd983b3fbf1d285d4b39a5c1101fe8583edd8b792760
+source_files: 23
 mapped_at_commit: working-tree
 ---
 
@@ -17,11 +17,12 @@ cycle prevention, stable inspection, topological ordering, typed input and outpu
 validation, schema-level connection compatibility, editable node instances, runtime parameter
 state, atomic revisioned mutation transactions, exact dirty-region algebra, deterministic
 dependency invalidation planning, snapshot-bound region-of-interest propagation, exact
-requested-versus-dirty work intersection, lazy request-scoped evaluation, and deterministic work
-scheduling are implemented.
-Versioned deterministic graph documents now preserve exact schemas, typed editable nodes,
-parameters, presentation order, edges, graph identity, and optimistic revision across strict
-serialization, checked deserialization, integrity validation, and explicit legacy migration.
+requested-versus-dirty work intersection, lazy request-scoped evaluation, deterministic work
+scheduling, typed parameter links, bounded pure expressions, parameter dependency-cycle
+protection, and deterministic parameter evaluation are implemented. Versioned deterministic graph
+documents preserve exact schemas, typed editable nodes, literal parameters, parameter drivers,
+presentation order, edges, graph identity, and optimistic revision across strict serialization,
+checked deserialization, integrity validation, and explicit legacy migration.
 
 The crate does not own identifier value representation. `superi-core` remains the single identity
 owner, while graph state owns payload and connection membership. Schema type identities and
@@ -29,14 +30,14 @@ schema-local names are definition metadata, separate from the core object identi
 editable graph instances.
 
 Cache generation integration, editable-snapshot and ROI-plan evaluator binding, outer job dispatch,
-expressions, project storage, and explicit headless integration remain absent or placeholders. The
-implemented storage, schema, validation, mutation, invalidation, ROI planning, scheduling,
-document, and generic evaluator surfaces must not be interpreted as a working production render
-path or an atomic project save system.
+project storage, and explicit headless integration remain absent or placeholders. The implemented
+storage, schema, validation, mutation, invalidation, ROI planning, scheduling, document, and generic
+image and parameter evaluator surfaces must not be interpreted as a working production render path
+or an atomic project save system.
 
 ## Source inventory
 
-The module owns 22 text files:
+The module owns 23 text files:
 
 - `open/crates/superi-graph/Cargo.toml`: Declares dependencies on `superi-core`, `superi-gpu`,
   `superi-image`, `superi-concurrency`, Serde, JSON, and SHA-256 hashing.
@@ -48,7 +49,10 @@ The module owns 22 text files:
   requests, node-declared incoming dependencies, request-local reuse, canonical dependency pulls,
   inspectable deterministic ready batches, scheduled evaluation, one shared stateless evaluator,
   and structured failure context.
-- `open/crates/superi-graph/src/expr.rs`: Placeholder for expressions and parameter links.
+- `open/crates/superi-graph/src/expr.rs`: Owns graph-local parameter addresses, exact typed
+  references, direct and expression drivers, bounded ASCII expression compilation, editable source
+  plus checked postfix instructions, finite deterministic arithmetic, and the domain-owned payload
+  conversion seam.
 - `open/crates/superi-graph/src/headless.rs`: Placeholder for deterministic CLI and CI evaluation
   parity.
 - `open/crates/superi-graph/src/ids.rs`: Re-exports the six official graph-facing core identifier
@@ -57,11 +61,13 @@ The module owns 22 text files:
   requested-work clipping, immutable invalidation seeds and plans, stable topological dependency
   propagation, identity-region convenience, edge-aware mapping, and structured failure context.
 - `open/crates/superi-graph/src/lib.rs`: Documents the partial implementation and exports the
-  identifier, node-schema, DAG, validation, mutation, invalidation, evaluator, ROI, and graph
-  document surfaces beside the remaining module tree.
+  identifier, node-schema, DAG, validation, mutation, invalidation, evaluator, ROI, parameter link,
+  expression, and graph document surfaces beside the remaining module tree.
 - `open/crates/superi-graph/src/mutate.rs`: Implements complete schema-bound editable node
-  instances, opaque typed parameters, immutable graph snapshots, optimistic revisions, and ordered
-  atomic add, remove, connect, disconnect, reorder, and parameter transactions.
+  instances, opaque typed parameters, canonical authored driver state, immutable graph snapshots,
+  optimistic revisions, ordered atomic add, remove, connect, disconnect, reorder, parameter, set
+  driver, and clear driver transactions, dependency validation and cycle rejection, and shared
+  request-local parameter evaluation.
 - `open/crates/superi-graph/src/node.rs`: Implements typed versioned schemas, complete node behavior
   declarations, atomic registration, and immutable deterministic discovery snapshots.
 - `open/crates/superi-graph/src/roi.rs`: Owns exact requested output regions, per-output regions of
@@ -80,6 +86,11 @@ The module owns 22 text files:
   and exact-region request identity, at-most-once request-local work, canonical dependency order,
   deterministic ready batches, distinct-edge input meaning, exact invalidated request clipping,
   temporal requests, caller parity, and structured evaluator failures.
+- `open/crates/superi-graph/tests/expression_contract.rs`: Proves checked inspectable expression
+  source, canonical instructions and variables, language bounds, finite arithmetic, typed links and
+  expressions, deterministic transitive results, driver replacement and clearing, immutable
+  snapshots, cycle and dependency rejection, explicit node-removal cleanup, transaction rollback,
+  and editor-script-headless parameter parity.
 - `open/crates/superi-graph/tests/identifier_contract.rs`: Proves the public six-type identifier
   surface, domain distinction, canonical text round trips, and exact type identity with core.
 - `open/crates/superi-graph/tests/invalidation_contract.rs`: Proves exact dirty-region unions and
@@ -175,6 +186,23 @@ use a schema identity or a separate payload without coupling the DAG algorithm t
   `ValueTypeId` equality. DAG storage remains responsible for instance endpoints, connection
   counts, edge ordering, and cycle prevention.
 
+`superi_graph::expr` exposes the node-neutral parameter dependency contract:
+
+- `ParameterAddress` combines one stable `NodeId` and its node-local `ParameterId`.
+  `ParameterReference` adds the exact source `ValueTypeId` expected by the author.
+- `ParameterDriver` stores either one lossless typed direct link or one `ParameterExpression`, and
+  exposes dependencies in canonical parameter-address and type order.
+- `ParameterExpression::compile` accepts editable ASCII source and explicit named typed bindings.
+  Its bounded pure language supports finite decimal constants, parentheses, unary negation, and
+  addition, subtraction, multiplication, and division, with no I/O, mutation, functions, loops,
+  recursion, or host script escape.
+- A successful expression retains trimmed editable source, variables in canonical name order, and
+  checked postfix `ExpressionInstruction` values. Missing, duplicate, and unused bindings, invalid
+  syntax, excessive source, instruction count, or nesting, and nonfinite constants fail before
+  authored graph state exists.
+- `ExpressionParameterValue` is the catalog-owned conversion seam between opaque typed payloads and
+  finite scalar expression arithmetic. Direct links never convert their payload.
+
 `superi_graph::mutate` exposes the editable state boundary:
 
 - `InstancePort` binds one stable `PortId` to one exact input or output `PortName`.
@@ -182,19 +210,24 @@ use a schema identity or a separate payload without coupling the DAG algorithm t
   `TypedParameterValue<T>`. `EditableNode<T>` requires a complete one-to-one binding against an
   immutable `NodeSchema` and rejects unknown, missing, duplicate, cross-direction, or mistyped
   state before graph insertion.
-- `GraphMutation<T>` represents add, remove, connect, disconnect, presentation reorder, and typed
-  parameter replacement. `GraphTransaction<T>` retains ordered mutations and the exact revision
-  they expect.
+- `GraphMutation<T>` represents add, remove, connect, disconnect, presentation reorder, typed
+  parameter replacement, driver set or replacement, and driver clearing. `GraphTransaction<T>`
+  retains ordered mutations and the exact revision they expect.
 - `EditableGraph<T>` applies nonempty transactions to a cloned candidate, publishes one new
   revision only after every mutation succeeds, and rejects stale revisions. Empty current-revision
   transactions are idempotent.
 - `GraphSnapshot<T>` shares one immutable `Arc` state containing the checked DAG and explicit node
-  presentation order. Processing order remains the DAG's deterministic topological order.
+  presentation order plus authored parameter drivers in canonical target order. Processing order
+  remains the DAG's deterministic topological order.
 - Connect resolves stored instance ports to schema names, reuses `validate_connection`, enforces
   target `Single` and `Optional` cardinality, and then enters the checked DAG boundary. Remove stays
   explicit: incident edges must be disconnected earlier in the same transaction or a prior one.
 - Mutation failures preserve their original shared error classification and add stable graph,
   expected revision, mutation index, and mutation code context.
+- `GraphSnapshot::evaluate_parameter` resolves literals, direct links, and expressions from that
+  exact immutable state. `ParameterEvaluation<T>` returns the typed result and unique parameters in
+  deterministic dependency-completion order, with one request-local memo and no caller mode or
+  persistent cache.
 
 `superi_graph::serialize` exposes the editable graph document boundary:
 
@@ -250,8 +283,7 @@ use a schema identity or a separate payload without coupling the DAG algorithm t
 - Missing nodes, wrong-direction requests, absent domains, overflow, missing custom mapping, and
   invalid custom output use shared actionable diagnostics without mutating graph state.
 
-The crate also exports placeholder `expr` and `headless` modules. They expose no expression or
-explicit headless API.
+The crate also exports the placeholder `headless` module. It exposes no explicit headless API.
 
 ## Architecture and data flow
 
@@ -341,12 +373,37 @@ The mutation transaction flow is:
    state into a private candidate. Every mutation then sees prior mutations from the same batch.
 4. Connect resolves source and target instance ports, calls the pure schema validator, checks the
    candidate target connection count, and calls checked DAG insertion. Parameter replacement uses a
-   narrow mutable payload lookup on the candidate DAG and rechecks its schema type.
+   narrow mutable payload lookup on the candidate DAG and rechecks its schema type. Driver mutation
+   resolves every target and dependency against the candidate, validates exact declared types,
+   inserts the authored driver in canonical state, and rejects any dependency path that returns to
+   the target.
 5. Any failure adds the ordered mutation index and code, then discards the candidate. A successful
    nonempty batch publishes one new `Arc` state and advances exactly one revision, while every older
    snapshot keeps its exact state.
 6. Editor, script, and headless callers clone the same `GraphSnapshot<T>` and observe identical
-   typed nodes, parameters, edges, visual order, and topological order without a second model.
+   typed nodes, parameters, drivers, edges, visual order, and topological order without a second
+   model. Node removal remains explicit and is rejected until every driver targeting or depending
+   on that node is cleared.
+
+The parameter evaluation flow is:
+
+1. A caller requests one `ParameterAddress` from an immutable `GraphSnapshot<T>`. Missing authored
+   targets fail as user-correctable input before dependency traversal.
+2. Literal parameters return their exact stored `TypedParameterValue<T>`. A direct link resolves
+   its source first and clones that lossless typed payload.
+3. An expression resolves unique referenced addresses in canonical address and type order. A
+   request-local ordered memo evaluates shared transitive dependencies once while retaining stable
+   dependency-completion order.
+4. The concrete payload owner converts each explicit expression variable to a finite scalar through
+   `ExpressionParameterValue`. The checked postfix program performs only basic arithmetic, rejects
+   division by zero and nonfinite values or results, and converts the finite result back to the
+   driver's exact target type.
+5. Every call starts empty and reads only the immutable snapshot. Editor, script, and headless
+   callers therefore observe the same authored state, typed result, and completion order without a
+   parallel expression store, caller-specific interpreter, or persistent cache.
+6. Mutation-time cycle rejection is authoritative. Evaluation retains an active parameter set as a
+   defensive terminal invariant check for corrupted future deserialization rather than permitting
+   recursive execution.
 
 The graph document flow is:
 
@@ -401,11 +458,13 @@ The region-of-interest flow is:
    can intersect each required output with a node-level `InvalidationPlan` without filling clean
    gaps or taking cache ownership.
 
-The mutation layer is the integration contract across the DAG, registry, and validator. It binds
+The mutation layer is the integration contract across the DAG, registry, validator, and parameter
+driver owner. It binds
 stored `PortId` endpoints to `PortName`, exact schemas, and `ValueTypeId` compatibility without
 adding catalog knowledge to topology. The invalidation planner derives work directly from the same
 checked DAG exposed by each immutable `GraphSnapshot`. The ROI planner consumes the same snapshot,
-schema behavior, typed edges, and exact region algebra to derive upstream work. The generic
+schema behavior, typed edges, and exact region algebra to derive upstream work. Parameter
+evaluation consumes the same snapshot's opaque literals and authored drivers. The generic
 evaluator resolves caller-owned DAG payloads but has no production binding from `EditableNode<T>`.
 The document codec preserves and reconstructs that same checked snapshot without assuming a project
 container. Production evaluation integration, project persistence, cache generations, undo history,
@@ -427,9 +486,9 @@ graph evaluation or runtime integration.
   render coordinators and `superi-concurrency`.
 - Direct manifest consumers are `superi-ai`, `superi-cache`, `superi-color`, `superi-effects`,
   `superi-timeline`, `superi-project`, and `superi-engine`.
-- None of those consumers currently imports a `superi_graph` Rust item. The nine public integration
+- None of those consumers currently imports a `superi_graph` Rust item. The ten public integration
   test targets are the real consumers of identifier, schema-discovery, DAG, validation, mutation,
-  invalidation, ROI, serialization, and evaluation APIs.
+  invalidation, ROI, serialization, evaluation, and expression APIs.
 
 ## Invariants and operational boundaries
 
@@ -459,6 +518,16 @@ graph evaluation or runtime integration.
 - Every editable node binds all schema inputs, outputs, and parameters exactly once. Input and output
   IDs cannot overlap within one node, and every initial or replacement parameter retains the exact
   declared `ValueTypeId` without exposing its payload representation.
+- Every parameter driver has one existing typed target and only existing explicitly typed
+  dependencies. Direct links require exact source and target type identity. Expressions retain
+  explicit typed variables, while the catalog remains responsible for numeric conversion of each
+  value type.
+- Parameter dependencies form a separate checked graph from pixel-flow edges. Driver mutation
+  rejects direct and transitive cycles before snapshot publication, and a referenced node cannot be
+  removed until every affected driver is explicitly cleared.
+- Expression source, bindings, and checked instructions are ordinary immutable snapshot state.
+  Compilation is bounded and pure, arithmetic accepts and produces only finite values, and no
+  editor, script, or headless caller can attach hidden host code or external state.
 - Stored connections resolve source outputs and target inputs through those exact bindings. Single
   and optional inputs accept at most one stored edge; variadic inputs retain stable edge identity
   order through the DAG adjacency set.
@@ -470,16 +539,19 @@ graph evaluation or runtime integration.
 - Presentation order is explicit and independent of deterministic topological processing order.
   Equivalent explicit transactions produce equal snapshots regardless of insertion history.
 - Graph snapshots are immutable `Arc` views. A later transaction cannot change a prior reader's
-  nodes, parameters, edges, presentation order, topology, or revision.
+  nodes, parameters, drivers, edges, presentation order, topology, or revision.
 - Current graph documents are deterministic for equal editable meaning. Canonical collection and
   JSON object order, exact identifier text, explicit format and primitive revisions, and payload
   integrity cannot depend on insertion history, caller role, locale, platform, or hash iteration.
-- Deserialization never bypasses schema, node, transaction, connection, cardinality, or cycle
-  validation. The persisted graph revision becomes visible only after one complete candidate state
-  is accepted, and a nonempty graph may not claim revision zero.
+- Deserialization never bypasses schema, node, transaction, connection, cardinality, parameter
+  driver, type, or cycle validation. The persisted graph revision becomes visible only after one
+  complete candidate state is accepted, and a nonempty graph may not claim revision zero.
 - Legacy migration is explicit and bounded to known source revisions. Unknown future format or
   primitive revisions, unknown fields, corrupt digests, duplicate presentation entries, invalid
   typed parameters, cycles, and interrupted documents fail instead of being repaired or guessed.
+- Parameter evaluation reads one immutable snapshot, resolves unique dependencies in deterministic
+  completion order, evaluates each address once per call, and owns no persistent cache or caller
+  mode. Direct links preserve the exact source payload; expression conversion is explicit.
 - Input validation never merges duplicate binding groups. Each declared port appears exactly once
   after validation, variadic value order is preserved, and absent optional or variadic ports do not
   become evaluator work.
@@ -528,7 +600,7 @@ graph evaluation or runtime integration.
 
 ## Tests and verification
 
-The graph crate owns 55 integration tests across nine files. The two identifier tests prove all six
+The graph crate owns 63 integration tests across ten files. The two identifier tests prove all six
 public domains are distinct, each canonical text value parses back exactly, and every graph export
 has the same Rust `TypeId` as its official core owner.
 
@@ -554,6 +626,13 @@ parameters and connections, target cardinality, explicit disconnect plus remove,
 topological order separation, stale revision handling, immutable old snapshots, identical editor,
 script, and headless sharing, equivalent deterministic state, cycle safety, and full rollback after
 failures in the middle of a candidate batch.
+
+Eight expression tests prove editable source and checked postfix inspection, canonical named
+variables, syntax and resource bounds, duplicate, missing, and unused binding rejection, finite
+arithmetic, direct links, transitive expressions, exact driver typing, deterministic dependency
+completion, replacement and clearing, immutable old snapshots, missing references, direct and
+multi-hop cycle rejection, full candidate rollback, explicit driver cleanup before node removal,
+lossless versioned document round trips, and equal editor-script-headless parameter results.
 
 Nine invalidation tests prove exact dirty-region union decomposition, clean-gap preservation,
 full-frame subsumption, empty-region handling, requested-work clipping, stable topological
@@ -582,7 +661,7 @@ upgraded bytes, integrity and future-revision rejection, unknown-field and inter
 duplicate-order, mistyped-parameter, and cycle rejection through checked contracts, and equal
 editor, script, and headless evaluation after independent loads.
 
-Focused verification runs all nine integration targets through the crate's public API. Crate-wide
+Focused verification runs all ten integration targets through the crate's public API. Crate-wide
 tests, strict Clippy, and rustdoc cover the library and integration targets. The complete workspace
 suite exercises downstream compatibility. The repository map validator checks the source inventory
 and hash, while dependency and boundary tools enforce the one-way open architecture. No test yet
@@ -592,20 +671,23 @@ connects evaluation to a production node catalog, GPU value, engine, CLI, or ren
 
 Official graph-facing identifiers, node registration, schema discovery, deterministic DAG storage,
 typed binding validation, schema-level output-to-input compatibility, complete schema-bound node
-instances, editable parameters, immutable snapshots, and revisioned atomic mutation transactions
+instances, editable parameters, typed parameter drivers, immutable snapshots, and revisioned atomic
+mutation transactions
 are implemented and test-backed beside exact dirty-region sets, deterministic dependency
 invalidation planning, and snapshot-bound ROI propagation. Registered definitions can be
-instantiated, topology and visual order can be edited, exact state can be shared across reader
-roles, and callers can derive both dirty and requested work from the same published DAG snapshot.
+instantiated, topology, visual order, literal parameters, typed links, and expressions can be
+edited, exact state can be shared across reader roles, and callers can derive both dirty and
+requested work plus deterministic parameter results from the same published DAG snapshot.
 Lazy request-scoped evaluation and deterministic semantic scheduling are also implemented and
 test-backed, so caller-owned evaluator payloads can resolve stored topology through inspectable
 readiness batches and stable completion order. No production binding makes `EditableNode<T>` an
 evaluator node or connects ROI and invalidation plans to evaluator requests yet.
 The versioned graph document codec now preserves and validates that complete editable state,
-migrates the supported legacy envelope, and returns canonical upgraded bytes. The crate cannot
+migrates the supported legacy envelope, returns canonical upgraded bytes, and retains typed links
+and editable expression source through save and load. The crate cannot
 store a project atomically, persistently cache, dispatch work through an outer job system, or render
 production values, and no downstream production catalog consumes the mutation, invalidation, ROI,
-serialization, scheduling, or evaluation owner.
+serialization, scheduling, evaluation, or expression owner.
 
 The latest-version rule deterministically selects the lexically highest build-metadata variant when
 SemVer precedence ties. Consumers that require one deployment-specific build must request its exact
@@ -618,6 +700,13 @@ must be benchmarked before replacement. Subsequent checkpoints must extend the s
 storage and mutation boundary, neutral registry, pure validator, and shared evaluator rather than
 creating competing topology, identity, schema, validation, revision, or caller-specific execution
 systems.
+
+The expression language is intentionally a bounded numeric foundation rather than a general script
+runtime. It supports explicit typed parameter variables and basic finite arithmetic only. Node
+catalogs must implement `ExpressionParameterValue` for their actual payload representation, and
+later keyframing or rigging work must extend this same authored driver state rather than storing
+editor-only formulas. Persistence must serialize editable source, exact typed bindings, and checked
+meaning or deterministically recompile and validate the source during migration.
 
 Public request-local value lookup remains linear and bounded by reached work. Planning and execution
 indexes use `BTreeMap` keys whose total order matches endpoint, physical-time, and exact-region
@@ -633,6 +722,9 @@ treating a derived plan as cache generation state.
 Evaluation-specific risks are treating node-declared regions as completed ROI propagation, treating
 semantic readiness batches as a worker-pool or GPU-submission guarantee, or treating generic
 evaluation as production graph, GPU, headless, or render proof.
+Expression-specific risks are adding implicit variables, type coercion, platform math functions,
+unbounded evaluation, host script escape, or a caller-specific formula store. Reusing a parameter
+result across graph revisions without a revisioned cache key is also invalid.
 ROI-specific risks are supplying stale regions of definition, implementing nondeterministic custom
 mapping, or reusing a plan after its stamped graph revision has changed.
 Serialization-specific risks are extending the wire format without a migration, accepting partial
@@ -662,17 +754,23 @@ persistent reuse only with revisioned cache keys and invalidation proof, and map
 bounded workers only through the outer render coordinator. Preserve work-key equality, unique
 prerequisite counting, full distinct-edge inputs, batch order, and result completion order together.
 
+Keep parameter drivers inside the same editable snapshot and transaction boundary. Preserve exact
+target and dependency types, explicit named variables, bounded pure compilation, deterministic
+address order, mutation-time cycle rejection, and request-local evaluation together. Do not add
+implicit catalog lookup, host scripting, caller-specific formulas, or cached results without graph
+revision ownership and invalidation proof.
+
 Keep ROI pure over one immutable editable snapshot. Preserve per-output regions of definition,
 exact region-set union, checked expansion, strict custom input validation, dependency-only reverse
 traversal, forward topological result order, and graph revision stamping. Do not create an
 editor-specific, script-specific, or headless-specific propagation path.
 
 Keep graph documents strict, versioned, canonical, and reconstructed through the existing checked
-state owners. Add every new field through an explicit format revision and migration, preserve
-unknown-future rejection, and leave atomic project storage, recovery selection, and locking in
-`superi-project`.
+state owners. Additive fields must remain canonically omittable for old current-format documents;
+incompatible fields require an explicit format revision and migration. Preserve unknown-future
+rejection, and leave atomic project storage, recovery selection, and locking in `superi-project`.
 
-Update this map when mutation, invalidation, ROI, serialization, and evaluation integrate, cache
-generations, ROI-to-evaluator binding, outer job dispatch, expressions, missing-node handling,
+Update this map when mutation, invalidation, ROI, serialization, expressions, and evaluation
+integrate, cache generations, ROI-to-evaluator binding, outer job dispatch, missing-node handling,
 project storage, undo ownership, engine coordination, or a downstream catalog becomes real. Recheck
 direct consumer maps whenever they begin importing any public graph contract.

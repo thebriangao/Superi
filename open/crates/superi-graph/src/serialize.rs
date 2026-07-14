@@ -20,6 +20,10 @@ use superi_core::serialization::STABLE_PRIMITIVE_SCHEMA_REVISION;
 use superi_core::settings::{CapabilityId, CapabilitySet, SemanticVersion};
 
 use crate::dag::{GraphEdge, GraphEndpoint};
+use crate::expr::{
+    ExpressionVariableName, ParameterAddress, ParameterDriver, ParameterExpression,
+    ParameterReference,
+};
 use crate::ids::{EdgeId, GraphId, NodeId, ParameterId, PortId};
 use crate::mutate::{
     EditableGraph, EditableNode, EditableParameter, GraphMutation, GraphSnapshot, GraphTransaction,
@@ -206,6 +210,8 @@ struct GraphPayloadWire {
     nodes: Vec<NodeWire>,
     edges: Vec<EdgeWire>,
     node_order: Vec<NodeId>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    parameter_drivers: Vec<ParameterDriverWire>,
 }
 
 impl GraphPayloadWire {
@@ -248,6 +254,11 @@ impl GraphPayloadWire {
                 .map(EdgeWire::from)
                 .collect(),
             node_order: snapshot.node_order().to_vec(),
+            parameter_drivers: snapshot
+                .parameter_drivers()
+                .iter()
+                .map(|(target, driver)| ParameterDriverWire::from_driver(*target, driver))
+                .collect(),
         })
     }
 
@@ -291,6 +302,13 @@ impl GraphPayloadWire {
             }
         }
         self.edges.sort_by_key(|edge| edge.id);
+        self.parameter_drivers
+            .sort_by_key(|driver| (driver.target.node_id, driver.target.parameter_id));
+        for driver in &mut self.parameter_drivers {
+            if let ParameterDriverKindWire::Expression { variables, .. } = &mut driver.driver {
+                variables.sort_by(|left, right| left.name.cmp(&right.name));
+            }
+        }
     }
 
     fn into_graph<T>(self) -> Result<EditableGraph<T>>
@@ -329,7 +347,8 @@ impl GraphPayloadWire {
         }
 
         validate_node_order(&self.node_order, &nodes)?;
-        let mut mutations = Vec::with_capacity(nodes.len() + self.edges.len());
+        let mut mutations =
+            Vec::with_capacity(nodes.len() + self.edges.len() + self.parameter_drivers.len());
         for (position, node_id) in self.node_order.into_iter().enumerate() {
             let node = nodes
                 .remove(&node_id)
@@ -359,6 +378,20 @@ impl GraphPayloadWire {
                 .into_values()
                 .map(|edge| GraphMutation::Connect { edge }),
         );
+
+        let mut driver_targets = BTreeSet::new();
+        for driver in self.parameter_drivers {
+            if !driver_targets.insert(driver.target.address()) {
+                return Err(document_error(
+                    ErrorCategory::InvalidInput,
+                    Recoverability::UserCorrectable,
+                    "validate_document",
+                    "graph document contains a duplicate parameter driver target",
+                    [("parameter", driver.target.address().to_string())],
+                ));
+            }
+            mutations.push(driver.into_mutation()?);
+        }
 
         let mut graph = EditableGraph::new(self.graph_id);
         if !mutations.is_empty() {
@@ -837,6 +870,134 @@ struct ParameterWire {
     name: String,
     value_type: String,
     payload: Value,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ParameterAddressWire {
+    node_id: NodeId,
+    parameter_id: ParameterId,
+}
+
+impl ParameterAddressWire {
+    const fn from_address(address: ParameterAddress) -> Self {
+        Self {
+            node_id: address.node_id(),
+            parameter_id: address.parameter_id(),
+        }
+    }
+
+    const fn address(self) -> ParameterAddress {
+        ParameterAddress::new(self.node_id, self.parameter_id)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ParameterReferenceWire {
+    node_id: NodeId,
+    parameter_id: ParameterId,
+    value_type: String,
+}
+
+impl ParameterReferenceWire {
+    fn from_reference(reference: &ParameterReference) -> Self {
+        Self {
+            node_id: reference.address().node_id(),
+            parameter_id: reference.address().parameter_id(),
+            value_type: reference.value_type().as_str().to_owned(),
+        }
+    }
+
+    fn into_reference(self) -> Result<ParameterReference> {
+        Ok(ParameterReference::new(
+            ParameterAddress::new(self.node_id, self.parameter_id),
+            parse_value_type(&self.value_type)?,
+        ))
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExpressionVariableWire {
+    name: String,
+    reference: ParameterReferenceWire,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum ParameterDriverKindWire {
+    Link {
+        source: ParameterReferenceWire,
+    },
+    Expression {
+        source: String,
+        variables: Vec<ExpressionVariableWire>,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ParameterDriverWire {
+    target: ParameterAddressWire,
+    value_type: String,
+    driver: ParameterDriverKindWire,
+}
+
+impl ParameterDriverWire {
+    fn from_driver(target: ParameterAddress, driver: &ParameterDriver) -> Self {
+        let driver_kind = if let Some(source) = driver.as_link() {
+            ParameterDriverKindWire::Link {
+                source: ParameterReferenceWire::from_reference(source),
+            }
+        } else {
+            let expression = driver
+                .as_expression()
+                .expect("a parameter driver is either a link or expression");
+            ParameterDriverKindWire::Expression {
+                source: expression.source().to_owned(),
+                variables: expression
+                    .variables()
+                    .iter()
+                    .map(|(name, reference)| ExpressionVariableWire {
+                        name: name.as_str().to_owned(),
+                        reference: ParameterReferenceWire::from_reference(reference),
+                    })
+                    .collect(),
+            }
+        };
+        Self {
+            target: ParameterAddressWire::from_address(target),
+            value_type: driver.value_type().as_str().to_owned(),
+            driver: driver_kind,
+        }
+    }
+
+    fn into_mutation<T>(self) -> Result<GraphMutation<T>> {
+        let target = self.target.address();
+        let value_type = parse_value_type(&self.value_type)?;
+        let driver = match self.driver {
+            ParameterDriverKindWire::Link { source } => {
+                ParameterDriver::link(value_type, source.into_reference()?)
+            }
+            ParameterDriverKindWire::Expression { source, variables } => {
+                let variables = variables
+                    .into_iter()
+                    .map(|variable| {
+                        Ok((
+                            ExpressionVariableName::new(variable.name)?,
+                            variable.reference.into_reference()?,
+                        ))
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                ParameterDriver::expression(
+                    value_type,
+                    ParameterExpression::compile(&source, variables)?,
+                )
+            }
+        };
+        Ok(GraphMutation::SetParameterDriver { target, driver })
+    }
 }
 
 impl ParameterWire {
