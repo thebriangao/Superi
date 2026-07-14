@@ -10,7 +10,12 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+sha2 = { workspace = true }
 superi-core = { path = "../superi-core" }
 superi-gpu = { path = "../superi-gpu" }
 superi-image = { path = "../superi-image" }
 superi-graph = { path = "../superi-graph" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-foundation = { workspace = true, features = ["alloc", "CFData"] }
+objc2-core-graphics = { workspace = true, features = ["std", "libc", "CGColorSpace", "CGDirectDisplay", "CGDisplayConfiguration", "CGError"] }

@@ -1659,6 +1659,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-core-graphics"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e022c9d066895efa1345f8e33e584b9f958da2fd4cd116792e15e07e4720a807"
+dependencies = [
+ "bitflags 2.13.0",
+ "libc",
+ "objc2-core-foundation",
+]
+
+[[package]]
 name = "objc2-core-image"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2634,6 +2645,9 @@ dependencies = [
 name = "superi-color"
 version = "0.0.0"
 dependencies = [
+ "objc2-core-foundation",
+ "objc2-core-graphics",
+ "sha2",
  "superi-core",
  "superi-gpu",
  "superi-graph",

@@ -1,9 +1,9 @@
 # Unsafe FFI boundaries
 
 Superi denies Rust `unsafe` code by default. The open tree currently permits it only inside the
-codec boundary modules listed here. Every unsafe block and unsafe trait implementation must have a
-local `SAFETY:` comment that states the concrete pointer, length, lifetime, ownership, or threading
-invariant that makes the operation valid.
+audited target boundary modules listed here. Every unsafe block and unsafe trait implementation
+must have a local `SAFETY:` comment that states the concrete pointer, length, lifetime, ownership,
+or threading invariant that makes the operation valid.
 
 The public boundary remains `superi-media-io`. Sources, packets, video frames, audio blocks,
 decoders, encoders, backend registrations, operation cancellation, and typed errors cross that
@@ -26,6 +26,29 @@ against this inventory. New native dependencies, modules, callbacks, raw handles
 implementations require an inventory update and target-specific Clippy proof in the same change.
 
 ## Boundary inventory
+
+### macOS CoreGraphics display profile discovery
+
+- Source: `open/crates/superi-color/src/icc/macos.rs`
+- Dependency and target: pinned `objc2-core-graphics` framework bindings on macOS only
+- Safe entry: `SystemDisplayProfileDiscovery` through `DisplayProfileDiscovery`, then
+  `DisplayProfileCatalog` and the monitor-aware viewport presentation owner
+- Unsafe surface: `CGGetActiveDisplayList` count queries and the bounded active-display ID fill
+- Pointer and count rules: the count query passes a null display-list pointer only with a zero
+  maximum. The fill allocates exactly the previously validated count, passes that exact length,
+  and keeps the count output live for the complete call. A confirmation query rejects display-set
+  changes instead of accepting a truncated or stale list.
+- Retained ownership: `CGDisplayCopyColorSpace` returns a retained color-space owner through the
+  generated binding. `CGColorSpace::icc_data` returns retained Core Foundation data, and Superi
+  copies those bytes into an `Arc<[u8]>` before the native owners are released.
+- Threading: the application shell invokes discovery from its display-event owner. Published
+  profiles and snapshots are immutable safe Rust values and contain no raw CoreGraphics handles.
+- Failure and fallback: CoreGraphics status codes, zero displays, resource limits, and display-set
+  races become typed errors. A display with no exported ICC bytes remains explicitly unprofiled;
+  no sRGB profile or profile from another monitor is guessed.
+- Target proof: macOS focused tests exercise the count limit and real active-display query when a
+  display server is available. Strict Clippy with undocumented unsafe blocks denied checks both
+  `CGGetActiveDisplayList` calls and their local `SAFETY:` invariants.
 
 ### AV1 through rav1d
 

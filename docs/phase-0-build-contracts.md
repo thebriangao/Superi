@@ -132,6 +132,20 @@ but the webview never receives serialized frame pixels.
 Native presentation preserves GPU residency, HDR potential, low-latency output, and 8K scalability
 without binding the renderer to webview performance or IPC bandwidth.
 
+### Display profile handoff
+
+The shell connection that owns a native viewport also owns monitor selection and display-profile
+events. It publishes one complete `NativeDisplayProfileProvider` snapshot to `superi-color`, using
+`macos-cgdisplay:<CGDirectDisplayID>` on macOS, the Win32 display device name on Windows,
+`linux-x11-crtc:<RandR CRTC ID>` on X11, or a connection-local Wayland output ID. Exact ICC bytes
+are included when the platform exports them; their absence is an explicit unprofiled state.
+
+`MonitorAwareViewport` owns the resulting binding beside the real `NativeViewportSurface`. The
+shell supplies the current monitor identity at frame acquisition and presentation, and the color
+owner checks both monitor identity and immutable profile generation at both boundaries. Window
+moves and profile notifications therefore require an explicit reversible rebind, while a change
+during an acquired frame rejects presentation instead of using a stale transform.
+
 ## 6. OpenTimelineIO interchange
 
 ### Contract
