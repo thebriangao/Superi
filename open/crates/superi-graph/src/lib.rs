@@ -3,7 +3,8 @@
 //! Section 5.5 in `docs/architecture.md`. Depends on: superi-core, superi-gpu,
 //! superi-image, superi-concurrency. Status: typed identifiers, node schema registration, schema
 //! discovery, deterministic DAG storage, typed port validation, atomic editable graph transactions,
-//! and dependency invalidation are implemented; evaluation remains pending.
+//! exact dependency invalidation, and lazy request-scoped evaluation are implemented; scheduling
+//! and runtime integration remain pending.
 
 pub mod dag;
 pub mod eval;
