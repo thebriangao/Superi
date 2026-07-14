@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "fixture_id": "media/error-cases",
+  "fixture_version": 1,
+  "description": "Deterministic malformed, truncated, unsupported, and post-open partially readable PCM container cases.",
+  "provenance": {
+    "kind": "generated",
+    "source": "Authored and generated in the Superi repository from fixed WAVE, AIFF, mutation, and truncation rules aligned with public media-I/O contracts.",
+    "author": "Superi contributors",
+    "created_on": "2026-07-14",
+    "license": "CC0-1.0",
+    "rights": "Original synthetic media and metadata approved for unrestricted redistribution.",
+    "generator": {
+      "name": "superi-fixture-tool",
+      "version": "0.0.0",
+      "command": "cargo run -p superi-fixture-tool -- generate-media-errors <OUTPUT_DIRECTORY>",
+      "seed": "superi-media-error-baseline-v1"
+    },
+    "parents": []
+  },
+  "files": [
+    {
+      "path": "media-error-cases.csv",
+      "media_type": "text/csv; charset=utf-8",
+      "bytes": 514,
+      "sha256": "cb20e88fde0e561e6a4a72f054ac846e5b5ba3f1c3e2c317f4a6f0b91b04fdc4"
+    },
+    {
+      "path": "malformed.wav",
+      "media_type": "audio/wav",
+      "bytes": 60,
+      "sha256": "487f943cb4ae02c37974035f1dd4ff2d334e04f34b63d299db80d1c59037c5a4"
+    },
+    {
+      "path": "truncated.aiff",
+      "media_type": "audio/aiff",
+      "bytes": 69,
+      "sha256": "876269dbc868343c1bf4b4a1301ab8a0f40a17a810b5c482870d0103d860e42d"
+    },
+    {
+      "path": "unsupported.aifc",
+      "media_type": "audio/aiff",
+      "bytes": 70,
+      "sha256": "60c80c218a3e4dc9ab8164b84262a00ceb5dc406ae2bce211d4cbf66f51e55d0"
+    },
+    {
+      "path": "partial-readable.wav",
+      "media_type": "audio/wav",
+      "bytes": 60,
+      "sha256": "73f5dad5f8ec78aaf212d8c2f8c9d5da214c84711803fb50ef088a8760d5e623"
+    }
+  ]
+}

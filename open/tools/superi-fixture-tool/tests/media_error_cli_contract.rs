@@ -10,8 +10,10 @@ struct TemporaryOutput(PathBuf);
 impl TemporaryOutput {
     fn new() -> Self {
         let suffix = NEXT_TEMP.fetch_add(1, Ordering::Relaxed);
-        let path =
-            std::env::temp_dir().join(format!("superi-audio-cli-{}-{suffix}", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "superi-media-error-cli-{}-{suffix}",
+            std::process::id()
+        ));
         let _ = fs::remove_dir_all(&path);
         Self(path)
     }
@@ -32,23 +34,23 @@ fn command() -> Command {
 }
 
 #[test]
-fn generate_audio_command_reports_success_and_refuses_overwrite() {
+fn generate_media_errors_command_reports_success_and_refuses_overwrite() {
     let output = TemporaryOutput::new();
 
     let generated = command()
-        .arg("generate-audio")
+        .arg("generate-media-errors")
         .arg(output.path())
         .output()
         .expect("generator command must run");
     assert!(generated.status.success());
     assert_eq!(
         String::from_utf8(generated.stdout).expect("stdout must be UTF-8"),
-        "generated 3 audio cases\n"
+        "generated 4 media error cases\n"
     );
     assert!(output.path().join("fixture.json").is_file());
 
     let repeated = command()
-        .arg("generate-audio")
+        .arg("generate-media-errors")
         .arg(output.path())
         .output()
         .expect("repeated command must run");
@@ -59,9 +61,9 @@ fn generate_audio_command_reports_success_and_refuses_overwrite() {
 }
 
 #[test]
-fn invalid_generate_audio_arguments_print_complete_usage() {
+fn invalid_generate_media_errors_arguments_print_complete_usage() {
     let output = command()
-        .arg("generate-audio")
+        .arg("generate-media-errors")
         .output()
         .expect("invalid command must run");
 

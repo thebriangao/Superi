@@ -34,8 +34,8 @@ against raw source before changing code.
 | `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Reserved editorial model, edits, OTIO, nesting, multicam, and graph compilation | Skeleton: no timeline model, OTIO path, or compiler |
 | `tool-superi-dependency-check` | [module map](modules/tool-superi-dependency-check.md) | `open/tools/superi-dependency-check` | Offline executable policy for the open runtime dependency graph | Implemented exact runtime, build, dev, and new-crate checks |
 | `tool-superi-boundary-tool` | [module map](modules/tool-superi-boundary-tool.md) | `open/tools/superi-boundary-tool` | Offline scanner for network-client and open-to-closed policy | Implemented library, CLI, workspace gate, and hosted-build command |
-| `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline validator and deterministic video, audio, timing, and color fixture generator | Implemented validation library, four generators, five-command CLI, and focused contracts |
-| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: canonical fixture and contract runner delivered, color and timing coverage expanded, runtime slice absent |
+| `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline validator and deterministic video, audio, timing, color, and media-error fixture generator | Implemented validation library, five generators, six-command CLI, and focused contracts |
+| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: canonical fixture and contract runner delivered, color, timing, and media-error coverage expanded, runtime slice absent |
 
 ## Ownership and repository boundaries
 
@@ -327,7 +327,9 @@ Hz 7.1 with exact sample timing, channel masks, synchronized signal boundaries, 
 waveforms. Its timing command emits five fixed CFR, VFR, drop-frame, gap, and reset cases with 18
 samples and explicit continuity segments. Its color command emits eight deterministic SDR,
 wide-gamut, HDR, alpha, high-bit-depth, and sequence images with two strict catalogs and one 448-byte
-sample payload. All generators refuse overwrite. The tool does not
+sample payload. Its media-error command emits four fixed PCM container
+cases for malformed, truncated, unsupported, and post-open partially readable behavior, with one
+strict outcome catalog. All generators refuse overwrite. The tool does not
 execute recorded commands, prove repository-history immutability, or verify legal and semantic
 claims inside arbitrary free-form provenance fields.
 
@@ -440,8 +442,9 @@ pinned checkout, read-only permissions, disabled credentials, timeout, and cance
 match the repository CI boundary. This is an offline execution proof for current core commands
 after setup, not an offline dependency-acquisition proof or a runtime import-to-export slice.
 
-The cross-platform Rust workflow does not run the `os-codecs` feature matrix, malformed-input
-suites, frontend or Tauri checks, golden comparisons, benchmarks, soak, or the vertical slice. The
+The cross-platform Rust workflow does not run the `os-codecs` feature matrix, an all-container
+malformed-input matrix beyond default workspace contracts, frontend or Tauri checks, golden
+comparisons, benchmarks, soak, or the vertical slice. The
 separate frontend workflow does not prove React, Tauri, the native viewport, API integration,
 editorial behavior, or product UI. Neither is an MSRV lane,
 and neither is an end-to-end offline build proof because hosted setup and installation may use the network. Hosted
@@ -461,14 +464,17 @@ consumption prove sample clocks, masks, routing order, exact samples, shared sig
 bounded continuity. The deterministic timing baseline adds five cases and 18 samples for CFR,
 decode-order VFR, 29.97 drop-frame labels, a forward gap, and a reset. Its media-I/O consumer proves
 real packet and presentation maps, unsegmented discontinuity rejection, and reversible explicit
-segments. These remain synthetic raw-frame, PCM-container, and timing-metadata proofs, not encoded
-codec, malformed media, hardware, playback, device, A/V synchronization, scheduling, or
-editorial-slice proof. The deterministic color baseline adds eight SDR, wide-gamut, PQ, HLG, alpha,
+segments. The deterministic color baseline adds eight SDR, wide-gamut, PQ, HLG, alpha,
 f16, and f32 images plus three ACEScg sequence frames. Public color transforms prove transfer order,
 HDR scene meaning, reference-white handling, output intent, alpha association, and exact high-depth
 bits, while public media sequence access proves logical, file, and presentation identity. It does
 not prove encoded HDR, still-image decoding, display rendering, perceptual golden tolerances, or GPU
-color execution. Snapshot validation still does not prove Git-history immutability,
+color execution. The deterministic media-error baseline adds malformed WAVE, truncated AIFF, unsupported
+AIFC, and post-open partial-read coverage. Its production PCM consumer proves shared error and
+recovery classifications plus exact aligned packet and corruption evidence. These remain synthetic
+raw-frame, PCM-container, timing-metadata, color, and focused PCM-failure proofs, not encoded codec
+corruption, malformed Matroska, MP4, or MXF, hardware, playback, device, A/V synchronization,
+scheduling, or editorial-slice proof. Snapshot validation still does not prove Git-history immutability,
 provenance truth, legal clearance, or semantic quality beyond focused contracts. The separate
 `slice/video-cfr` fixture provides one digest-bound 96-frame AV1 WebM for the canonical runner. Its
 decoded traits remain expected values because current contract import does not open it.

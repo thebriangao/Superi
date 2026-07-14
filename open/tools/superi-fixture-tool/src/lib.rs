@@ -26,6 +26,22 @@ pub const COLOR_IMAGE_CATALOG_NAME: &str = "image-cases.csv";
 pub const COLOR_SEQUENCE_CATALOG_NAME: &str = "sequence-cases.csv";
 pub const COLOR_PAYLOAD_NAME: &str = "image-samples.bin";
 pub const COLOR_MANIFEST_NAME: &str = MANIFEST_NAME;
+pub const MEDIA_ERROR_CATALOG_NAME: &str = "media-error-cases.csv";
+pub const MEDIA_ERROR_MALFORMED_WAVE_NAME: &str = "malformed.wav";
+pub const MEDIA_ERROR_TRUNCATED_AIFF_NAME: &str = "truncated.aiff";
+pub const MEDIA_ERROR_UNSUPPORTED_AIFC_NAME: &str = "unsupported.aifc";
+pub const MEDIA_ERROR_PARTIAL_WAVE_NAME: &str = "partial-readable.wav";
+pub const MEDIA_ERROR_MANIFEST_NAME: &str = MANIFEST_NAME;
+
+const MEDIA_ERROR_CATALOG: &str = concat!(
+    "case_id,payload,container,trigger,error_category,recoverability,corruption_kind,mutation_offset,truncate_to,data_offset,expected_bytes,actual_bytes,usable_bytes,usable_frames\r\n",
+    "malformed-wave,malformed.wav,wave,open,corrupt_data,user_correctable,,32,,,,,,\r\n",
+    "truncated-aiff,truncated.aiff,aiff,open,corrupt_data,user_correctable,,,69,,,,,\r\n",
+    "unsupported-aifc,unsupported.aifc,aifc,open,unsupported,degraded,,8,,,,,,\r\n",
+    "partial-readable-wave,partial-readable.wav,wave,read,corrupt_data,degraded,truncated,,53,44,16,9,8,2\r\n",
+);
+
+pub const MEDIA_ERROR_BASELINE_CASE_COUNT: usize = 4;
 
 const TIMING_CATALOG: &str = concat!(
     "case_id,kind,segment,decode_index,presentation_index,rate_numerator,rate_denominator,presentation_timestamp,decode_timestamp,duration,timecode_label\r\n",
@@ -1089,6 +1105,226 @@ fn color_manifest(image_catalog: &[u8], sequence_catalog: &[u8], payload: &[u8])
         digest_bytes(sequence_catalog),
         payload.len(),
         digest_bytes(payload),
+    )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MediaErrorBaselineReport {
+    case_count: usize,
+    payload_bytes: usize,
+    catalog_bytes: usize,
+}
+
+impl MediaErrorBaselineReport {
+    #[must_use]
+    pub const fn case_count(self) -> usize {
+        self.case_count
+    }
+
+    #[must_use]
+    pub const fn payload_bytes(self) -> usize {
+        self.payload_bytes
+    }
+
+    #[must_use]
+    pub const fn catalog_bytes(self) -> usize {
+        self.catalog_bytes
+    }
+}
+
+struct MediaErrorArtifact {
+    name: &'static str,
+    media_type: &'static str,
+    bytes: Vec<u8>,
+}
+
+/// Creates deterministic malformed, truncated, unsupported, and partial-read media fixtures.
+pub fn generate_media_error_baseline(
+    output_directory: &Path,
+) -> io::Result<MediaErrorBaselineReport> {
+    match fs::symlink_metadata(output_directory) {
+        Ok(_) => {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "output directory already exists",
+            ));
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+
+    let wave = media_error_wave();
+    let aiff = media_error_aiff();
+    let mut malformed_wave = wave.clone();
+    malformed_wave[32..34].copy_from_slice(&2_u16.to_le_bytes());
+    let truncated_aiff = aiff[..aiff.len() - 1].to_vec();
+    let mut unsupported_aifc = aiff;
+    unsupported_aifc[8..12].copy_from_slice(b"AIFC");
+    let artifacts = [
+        MediaErrorArtifact {
+            name: MEDIA_ERROR_MALFORMED_WAVE_NAME,
+            media_type: "audio/wav",
+            bytes: malformed_wave,
+        },
+        MediaErrorArtifact {
+            name: MEDIA_ERROR_TRUNCATED_AIFF_NAME,
+            media_type: "audio/aiff",
+            bytes: truncated_aiff,
+        },
+        MediaErrorArtifact {
+            name: MEDIA_ERROR_UNSUPPORTED_AIFC_NAME,
+            media_type: "audio/aiff",
+            bytes: unsupported_aifc,
+        },
+        MediaErrorArtifact {
+            name: MEDIA_ERROR_PARTIAL_WAVE_NAME,
+            media_type: "audio/wav",
+            bytes: wave,
+        },
+    ];
+    let catalog = MEDIA_ERROR_CATALOG.as_bytes();
+    let payload_bytes = artifacts.iter().map(|artifact| artifact.bytes.len()).sum();
+    let manifest = media_error_manifest(catalog, &artifacts);
+
+    if let Some(parent) = output_directory.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+    fs::create_dir(output_directory)?;
+    fs::write(output_directory.join(MEDIA_ERROR_CATALOG_NAME), catalog)?;
+    for artifact in &artifacts {
+        fs::write(output_directory.join(artifact.name), &artifact.bytes)?;
+    }
+    fs::write(output_directory.join(MEDIA_ERROR_MANIFEST_NAME), manifest)?;
+
+    Ok(MediaErrorBaselineReport {
+        case_count: artifacts.len(),
+        payload_bytes,
+        catalog_bytes: catalog.len(),
+    })
+}
+
+fn media_error_wave() -> Vec<u8> {
+    const SAMPLE_BYTES: [u8; 16] = [
+        0x00, 0x00, 0xff, 0x7f, 0x00, 0x80, 0x01, 0x00, 0xff, 0xff, 0x34, 0x12, 0xcc, 0xed, 0x02,
+        0x00,
+    ];
+    let mut bytes = Vec::with_capacity(60);
+    bytes.extend_from_slice(b"RIFF");
+    bytes.extend_from_slice(&52_u32.to_le_bytes());
+    bytes.extend_from_slice(b"WAVE");
+    bytes.extend_from_slice(b"fmt ");
+    bytes.extend_from_slice(&16_u32.to_le_bytes());
+    bytes.extend_from_slice(&1_u16.to_le_bytes());
+    bytes.extend_from_slice(&2_u16.to_le_bytes());
+    bytes.extend_from_slice(&48_000_u32.to_le_bytes());
+    bytes.extend_from_slice(&192_000_u32.to_le_bytes());
+    bytes.extend_from_slice(&4_u16.to_le_bytes());
+    bytes.extend_from_slice(&16_u16.to_le_bytes());
+    bytes.extend_from_slice(b"data");
+    bytes.extend_from_slice(&16_u32.to_le_bytes());
+    bytes.extend_from_slice(&SAMPLE_BYTES);
+    bytes
+}
+
+fn media_error_aiff() -> Vec<u8> {
+    const SAMPLE_BYTES: [u8; 16] = [
+        0x00, 0x00, 0x7f, 0xff, 0x80, 0x00, 0x00, 0x01, 0xff, 0xff, 0x12, 0x34, 0xed, 0xcc, 0x00,
+        0x02,
+    ];
+    let mut bytes = Vec::with_capacity(70);
+    bytes.extend_from_slice(b"FORM");
+    bytes.extend_from_slice(&62_u32.to_be_bytes());
+    bytes.extend_from_slice(b"AIFF");
+    bytes.extend_from_slice(b"COMM");
+    bytes.extend_from_slice(&18_u32.to_be_bytes());
+    bytes.extend_from_slice(&2_u16.to_be_bytes());
+    bytes.extend_from_slice(&4_u32.to_be_bytes());
+    bytes.extend_from_slice(&16_u16.to_be_bytes());
+    bytes.extend_from_slice(&[0x40, 0x0e, 0xbb, 0x80, 0, 0, 0, 0, 0, 0]);
+    bytes.extend_from_slice(b"SSND");
+    bytes.extend_from_slice(&24_u32.to_be_bytes());
+    bytes.extend_from_slice(&0_u32.to_be_bytes());
+    bytes.extend_from_slice(&0_u32.to_be_bytes());
+    bytes.extend_from_slice(&SAMPLE_BYTES);
+    bytes
+}
+
+fn media_error_manifest(catalog: &[u8], artifacts: &[MediaErrorArtifact; 4]) -> String {
+    format!(
+        r#"{{
+  "schema_version": 1,
+  "fixture_id": "media/error-cases",
+  "fixture_version": 1,
+  "description": "Deterministic malformed, truncated, unsupported, and post-open partially readable PCM container cases.",
+  "provenance": {{
+    "kind": "generated",
+    "source": "Authored and generated in the Superi repository from fixed WAVE, AIFF, mutation, and truncation rules aligned with public media-I/O contracts.",
+    "author": "Superi contributors",
+    "created_on": "2026-07-14",
+    "license": "CC0-1.0",
+    "rights": "Original synthetic media and metadata approved for unrestricted redistribution.",
+    "generator": {{
+      "name": "superi-fixture-tool",
+      "version": "0.0.0",
+      "command": "cargo run -p superi-fixture-tool -- generate-media-errors <OUTPUT_DIRECTORY>",
+      "seed": "superi-media-error-baseline-v1"
+    }},
+    "parents": []
+  }},
+  "files": [
+    {{
+      "path": "{MEDIA_ERROR_CATALOG_NAME}",
+      "media_type": "text/csv; charset=utf-8",
+      "bytes": {},
+      "sha256": "{}"
+    }},
+    {{
+      "path": "{}",
+      "media_type": "{}",
+      "bytes": {},
+      "sha256": "{}"
+    }},
+    {{
+      "path": "{}",
+      "media_type": "{}",
+      "bytes": {},
+      "sha256": "{}"
+    }},
+    {{
+      "path": "{}",
+      "media_type": "{}",
+      "bytes": {},
+      "sha256": "{}"
+    }},
+    {{
+      "path": "{}",
+      "media_type": "{}",
+      "bytes": {},
+      "sha256": "{}"
+    }}
+  ]
+}}
+"#,
+        catalog.len(),
+        digest_bytes(catalog),
+        artifacts[0].name,
+        artifacts[0].media_type,
+        artifacts[0].bytes.len(),
+        digest_bytes(&artifacts[0].bytes),
+        artifacts[1].name,
+        artifacts[1].media_type,
+        artifacts[1].bytes.len(),
+        digest_bytes(&artifacts[1].bytes),
+        artifacts[2].name,
+        artifacts[2].media_type,
+        artifacts[2].bytes.len(),
+        digest_bytes(&artifacts[2].bytes),
+        artifacts[3].name,
+        artifacts[3].media_type,
+        artifacts[3].bytes.len(),
+        digest_bytes(&artifacts[3].bytes),
     )
 }
 

@@ -1,0 +1,5 @@
+case_id,payload,container,trigger,error_category,recoverability,corruption_kind,mutation_offset,truncate_to,data_offset,expected_bytes,actual_bytes,usable_bytes,usable_frames
+malformed-wave,malformed.wav,wave,open,corrupt_data,user_correctable,,32,,,,,,
+truncated-aiff,truncated.aiff,aiff,open,corrupt_data,user_correctable,,,69,,,,,
+unsupported-aifc,unsupported.aifc,aifc,open,unsupported,degraded,,8,,,,,,
+partial-readable-wave,partial-readable.wav,wave,read,corrupt_data,degraded,truncated,,53,44,16,9,8,2

@@ -139,6 +139,32 @@ cargo run -p superi-fixture-tool -- generate-timing <OUTPUT_DIRECTORY>
 The generator refuses to overwrite any existing output path. Compare both generated artifacts byte
 for byte with the canonical version. Do not regenerate into the checked-in `v1` directory.
 
+## Deterministic media error baseline
+
+`media/error-cases/v1` contains four compact PCM container cases: malformed WAVE block alignment,
+a one-byte-truncated AIFF, an unsupported AIFC form, and a complete WAVE seed for a deterministic
+partially readable path. `media-error-cases.csv` uses a fixed 14-field, CRLF-delimited schema. Each
+record binds a case to its payload, container, trigger stage, shared error classification, mutation
+or truncation operation, and any expected partial packet byte and frame evidence.
+
+The partial-readable case models the production contract precisely. A strict container cannot open
+when it is already missing declared bytes, so the checked-in WAVE seed is complete. The
+`superi-media-io` fixture contract copies that seed to a temporary path, opens it through
+`PcmContainerSource`, truncates it to the cataloged length after open, and then proves the aligned
+usable packet plus the exact `CorruptionReport`. The same contract opens the other three canonical
+payloads through the production parser and proves their `corrupt_data`, `unsupported`,
+`user_correctable`, and `degraded` classifications.
+
+Reproduce the version into a new absent directory from `open/`:
+
+```text
+cargo run -p superi-fixture-tool -- generate-media-errors <OUTPUT_DIRECTORY>
+```
+
+The generator refuses to overwrite any existing output path. Compare the manifest, catalog, and
+all four media payloads byte for byte with the canonical version. Do not regenerate into the
+checked-in `v1` directory.
+
 ## Canonical editorial slice source
 
 `slice/video-cfr/v1` contains the immutable `input.webm` source for
