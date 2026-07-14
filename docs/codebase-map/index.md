@@ -34,6 +34,7 @@ against raw source before changing code.
 | `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Native editorial project state, typed video, audio, caption, and data tracks, rational links, validated direct edits, and staged OTIO and graph compilation | Foundational model, exact track clocks, audio routing and linked sample reshaping are test-backed; interchange, advanced edits, compilation, persistence, and runtime integration absent |
 | `tool-superi-dependency-check` | [module map](modules/tool-superi-dependency-check.md) | `open/tools/superi-dependency-check` | Offline executable policy for the open runtime dependency graph | Implemented exact runtime, build, dev, and new-crate checks |
 | `tool-superi-boundary-tool` | [module map](modules/tool-superi-boundary-tool.md) | `open/tools/superi-boundary-tool` | Offline scanner for network-client and open-to-closed policy | Implemented library, CLI, workspace gate, and hosted-build command |
+| `tool-superi-bench` | [module map](modules/tool-superi-bench.md) | `open/tools/superi-bench` | Stable benchmark harnesses and reproducible stage reporting | Implemented seven-stage runner with real graph evaluation and explicit gaps |
 | `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline validator and deterministic video, audio, timing, color, media-error, and OTIO fixture generator | Implemented validation library, six generators, seven-command CLI, and focused contracts |
 | `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: hosted slice baseline, portable expected contract, and canonical source delivered; runtime slice absent |
 
@@ -51,7 +52,8 @@ outside the generated workspace inventory and hash. It must be read separately f
 when all maps validate. `.worktreeinclude` copies it into Codex-managed worktrees.
 
 The open runtime and tool workspace lives under `open/`. Current Cargo membership is 19 runtime
-crates plus `superi-fixture-tool`, `superi-dependency-check`, and `superi-boundary-tool`. All three
+crates plus `superi-fixture-tool`, `superi-dependency-check`, `superi-boundary-tool`, and
+`superi-bench`. All four
 tools are built with the workspace but remain outside the runtime dependency graph. The root
 `closed/README.md` is only a boundary notice for the separately maintained proprietary tier. Open
 Superi must never import, link, or depend on closed code. Closed
@@ -95,6 +97,8 @@ superi-codecs-rs, superi-codecs-platform, superi-codecs-vendor
 
 superi-media-io -> superi-image -> superi-core
 superi-gpu -> superi-core
+
+superi-bench -> superi-graph -> superi-core
 ```
 
 `superi-core` is the tier-zero semantic contract and has no Superi dependency. Higher modules must

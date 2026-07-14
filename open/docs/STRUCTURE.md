@@ -86,6 +86,23 @@ new internal edges fail closed until this document and the checker policy are up
 the architecture review that introduces them. Because the checker is a wildcard workspace member,
 its live-workspace contract also runs under the ordinary workspace test gate.
 
+`superi-bench` provides the stable Cargo benchmark boundary for decode, graph evaluation, upload,
+playback, cache, render, and project save/load. Run it with `cargo bench -p superi-bench`; use
+`SUPERI_BENCH_WARMUP`, `SUPERI_BENCH_SAMPLES`, and comma-separated `SUPERI_BENCH_STAGES` values to
+bound or filter a run, and set `SUPERI_BENCH_REPORT` to retain its JSON report. Performance evidence
+must also set the `SUPERI_BENCH_BUILD`, `SUPERI_BENCH_CPU`, `SUPERI_BENCH_MEMORY_MIB`,
+`SUPERI_BENCH_GPU_BACKEND`, `SUPERI_BENCH_GPU_DRIVER`, `SUPERI_BENCH_CACHE_STATE`,
+`SUPERI_BENCH_HARDWARE_TIER`, `SUPERI_BENCH_FIXTURE_REVISION`, and
+`SUPERI_BENCH_PROJECT_REVISION` context fields.
+
+Subsystem owners register a workload only when it executes that subsystem's real consumer path and
+names its exact versioned fixture. Until then, the permanent stage is emitted as a `gap`. A gap is
+successful harness execution but never a passing performance result, and a report with
+`context_complete: false` is diagnostic output rather than accepted performance evidence.
+The shipped graph stage pulls a deterministic three-node DAG through
+`superi_graph::eval::LazyEvaluator`; decode, upload, playback, cache, render, and save/load retain
+explicit gaps until their owners provide a bounded consumer workload and versioned fixture.
+
 ## Deferred (not in this scaffold)
 
 Network-isolated offline CI test · the vertical slice (`import → trim → effect → export`) · the

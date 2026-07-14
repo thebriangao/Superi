@@ -1,0 +1,18 @@
+[package]
+name = "superi-bench"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+superi-core = { path = "../../crates/superi-core" }
+superi-graph = { path = "../../crates/superi-graph" }
+
+[[bench]]
+name = "engine"
+harness = false

@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 60ba2c9ca27e6a43659254e693f0050c72ec229a68f34e6720c5f02b45fbfe25
-source_files: 100
+source_hash: 8ddb87212ca8a7766a06da58621df2143b203365512faffb97386836ccc305e1
+source_files: 101
 mapped_at_commit: working-tree
 ---
 
@@ -22,7 +22,7 @@ completion protocol, requires safe synchronization with `origin/main`, and makes
 full selected raw-file reads a prerequisite for implementation. It routes a single checkpoint
 through mapping, planning, and execution, and routes multiple checkpoints into separate
 Codex-managed worktree tasks. It is ignored by Git and copied into managed worktrees through
-`.worktreeinclude`, so the mapping script does not include it in this module's 98-file inventory or
+`.worktreeinclude`, so the mapping script does not include it in this module's 101-file inventory or
 source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
@@ -160,6 +160,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P1.W07.C009.md`: Durable implementation evidence for the network-isolated core
   workflow, namespace and offline contracts, focused verification, hosted proof requirement,
   delivery context, and intentionally unimplemented editorial slice.
+- `docs/checkpoints/P1.W07.C011.md`: Durable implementation evidence for the seven-stage benchmark
+  harness, real graph evaluator workload, reproducible context, explicit gap policy, verification,
+  delivery, and intentionally unregistered consumer paths.
 - `docs/checkpoints/P1.W07.C017.md`: Durable implementation evidence for the canonical headless
   runner. It records exact editorial state, API and CLI integration, honest stub publication,
   red-to-green contracts, fixture dependency, verification boundaries, and delivery context.
@@ -256,7 +259,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 
 ### Cargo workspace and repository configuration
 
-- `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 22 local
+- `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 23 local
   workspace packages, registry dependencies, target-support dependency trees, scenario digest
   and process-instrumentation dependency edges, graph document serialization and integrity edges,
   and the exact `oxideav-mp3` Git revision. It is generated resolution evidence and is not
@@ -266,7 +269,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   metadata, deny-by-default unsafe lints, and shared dependencies for error handling, serialization,
   images, GPU, codecs, hashes, process instrumentation, platform APIs, and native build support.
 - `open/README.md`: Compact open-tree orientation and build commands. It records the 19 runtime
-  crates plus three repository tools, the exact canonical runner command, contract-only status, and
+  crates plus repository tools, the exact canonical runner command, contract-only status, and
   the remaining production integration boundary.
 - `open/ci/network-isolated-contract.sh`: Executable contract binding the dedicated workflow to
   immutable checkout, least privilege, locked artifact preparation, namespace isolation, fixture
