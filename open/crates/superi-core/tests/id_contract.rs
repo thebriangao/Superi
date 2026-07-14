@@ -5,8 +5,8 @@ use std::hash::Hash;
 use std::str::FromStr;
 
 use superi_core::ids::{
-    CacheId, ClipId, DeviceId, IdentifierKind, JobId, MediaId, NodeId, ParameterId,
-    ParseIdentifierError, ProjectId, TrackId, TypedId,
+    CacheId, ClipId, DeviceId, EdgeId, GraphId, IdentifierKind, JobId, MediaId, NodeId,
+    ParameterId, ParseIdentifierError, PortId, ProjectId, ResourceId, TrackId, TypedId,
 };
 
 const RAW: u128 = 0x0011_2233_4455_6677_8899_aabb_ccdd_eeff;
@@ -44,10 +44,17 @@ fn concrete_types_are_distinct_and_share_one_contract() {
     assert_common_traits::<JobId>();
     assert_common_traits::<CacheId>();
     assert_common_traits::<DeviceId>();
+    assert_common_traits::<GraphId>();
+    assert_common_traits::<PortId>();
+    assert_common_traits::<EdgeId>();
+    assert_common_traits::<ResourceId>();
 
     assert_eq!(std::mem::size_of::<ProjectId>(), 16);
     assert_ne!(type_name::<ProjectId>(), type_name::<MediaId>());
     assert_ne!(type_name::<NodeId>(), type_name::<ParameterId>());
+    assert_ne!(type_name::<GraphId>(), type_name::<NodeId>());
+    assert_ne!(type_name::<PortId>(), type_name::<EdgeId>());
+    assert_ne!(type_name::<ResourceId>(), type_name::<MediaId>());
 
     assert_contract::<ProjectId>(IdentifierKind::Project, "ProjectId");
     assert_contract::<MediaId>(IdentifierKind::Media, "MediaId");
@@ -58,6 +65,10 @@ fn concrete_types_are_distinct_and_share_one_contract() {
     assert_contract::<JobId>(IdentifierKind::Job, "JobId");
     assert_contract::<CacheId>(IdentifierKind::Cache, "CacheId");
     assert_contract::<DeviceId>(IdentifierKind::Device, "DeviceId");
+    assert_contract::<GraphId>(IdentifierKind::Graph, "GraphId");
+    assert_contract::<PortId>(IdentifierKind::Port, "PortId");
+    assert_contract::<EdgeId>(IdentifierKind::Edge, "EdgeId");
+    assert_contract::<ResourceId>(IdentifierKind::Resource, "ResourceId");
 }
 
 #[test]
@@ -72,6 +83,10 @@ fn kind_codes_are_stable_and_discoverable() {
         "job",
         "cache",
         "device",
+        "graph",
+        "port",
+        "edge",
+        "resource",
     ];
     let actual: Vec<_> = IdentifierKind::ALL.iter().map(|kind| kind.code()).collect();
     assert_eq!(actual, expected);

@@ -27,7 +27,7 @@ against raw source before changing code.
 | `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Reserved effect-node catalog, animation, mask, transition, text, tracking, and OFX boundary | Skeleton: public module names only |
 | `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: canonical command state, registry, capability introspection, and CPU-frame GPU upload implemented |
 | `superi-gpu` | [module map](modules/superi-gpu.md) | `open/crates/superi-gpu` | wgpu device, resource, upload, conversion, pass, submission, presentation, and recovery substrate | Implemented substrate with explicit application-level integration gaps |
-| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Reserved node-neutral DAG, mutation, evaluation, ROI, expression, and serialization boundary | Skeleton: no graph type or evaluator |
+| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral typed identifier seam and reserved DAG, mutation, evaluation, ROI, expression, and serialization boundary | Partial: official graph-facing IDs implemented; no graph state or evaluator |
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; production source registration and muxing absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
@@ -103,8 +103,9 @@ stable serialization meanings into competing local types without an explicit bou
 
 The generic graph direction is deliberately one way. Graph may depend on representation and
 execution substrates, while color, effects, cache, timeline, AI, project, and engine may depend on
-graph. Graph must not depend upward on a domain catalog. This relationship currently exists mainly
-in manifests because graph and most of its consumers remain skeletons.
+graph. Graph must not depend upward on a domain catalog. Graph now uses core-owned identifiers, but
+the wider relationship still exists mainly in manifests because graph state and most consumers
+remain placeholders.
 
 Codec implementations depend down on the codec-neutral `superi-media-io` interface. Media I/O does
 not depend on a concrete codec, engine, or registry assembler. The engine owns the current assembly
@@ -409,7 +410,7 @@ The following constraints cross multiple modules and should be preserved togethe
 ## Test and verification strategy
 
 Implemented modules primarily use public integration contract files rather than broad end-to-end
-application tests. `superi-core`, `superi-image`, `superi-media-io`, `superi-codecs-rs`,
+application tests. `superi-core`, `superi-graph`, `superi-image`, `superi-media-io`, `superi-codecs-rs`,
 `superi-codecs-vendor`, `superi-color`, `superi-concurrency`, `superi-gpu`, and the implemented
 engine and API slices all have focused contracts around their public values and lifecycles.
 Container-to-codec tests and engine capability tests provide selected cross-crate composition.
@@ -542,8 +543,8 @@ encodes and muxes output, persists a project, and drives the flow through the pu
 ## Placeholders and incomplete integration
 
 Entire crate skeletons are `superi-ai`, `superi-audio`, `superi-cache`, `superi-effects`,
-`superi-graph`, `superi-project`, and `superi-timeline`. Their manifests establish intended
-dependency direction, but their public modules expose no substantive types or operations.
+`superi-project`, and `superi-timeline`. Their manifests establish intended dependency direction,
+but their public modules expose no substantive types or operations.
 
 Partial modules contain these explicit placeholder areas:
 
@@ -554,6 +555,8 @@ Partial modules contain these explicit placeholder areas:
 - `superi-concurrency`: GPU submission coordination module and all production engine composition.
 - `superi-engine`: ten orchestration modules covering A/V sync, errors, export, lifecycle, nodes,
   playback, plugins, render, resources, and validation.
+- `superi-graph`: graph storage, validation, node schemas, typed edges, mutation, evaluation, ROI,
+  expressions, serialization, and headless execution beyond the implemented identifier seam.
 
 Substantive modules also have intentionally incomplete boundaries. Media I/O has no muxer or
 production registry owner for its source backends. GPU has no cross-adapter transfer or external
@@ -590,6 +593,8 @@ For common concerns, begin at these owners:
 - Color interpretation and transforms: `superi-color`.
 - GPU resources, residency, conversion, submission, and recovery: `superi-gpu`.
 - Jobs, domains, clocks, handoffs, lifecycle, and liveness: `superi-concurrency`.
+- Graph-facing identifiers and future graph state: `superi-graph`, with value identity owned by
+  `superi-core`.
 - Current assembly and public capability flow: `superi-engine` then `superi-api`.
 - Product law, open and closed boundaries, CI, fixtures, and maintenance workflow: `workspace`.
 - Canonical first editorial slice, typed scenario state, replacement stages, and proof: `workspace`.

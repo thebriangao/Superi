@@ -44,6 +44,14 @@ pub enum IdentifierKind {
     Cache,
     /// A processing or presentation device.
     Device,
+    /// An editable processing graph.
+    Graph,
+    /// A typed input or output endpoint on a graph node.
+    Port,
+    /// A directed connection between graph ports.
+    Edge,
+    /// A graph-addressable processing resource.
+    Resource,
 }
 
 impl IdentifierKind {
@@ -58,6 +66,10 @@ impl IdentifierKind {
         Self::Job,
         Self::Cache,
         Self::Device,
+        Self::Graph,
+        Self::Port,
+        Self::Edge,
+        Self::Resource,
     ];
 
     /// Returns the permanent lowercase code for this domain.
@@ -73,6 +85,10 @@ impl IdentifierKind {
             Self::Job => "job",
             Self::Cache => "cache",
             Self::Device => "device",
+            Self::Graph => "graph",
+            Self::Port => "port",
+            Self::Edge => "edge",
+            Self::Resource => "resource",
         }
     }
 
@@ -89,6 +105,10 @@ impl IdentifierKind {
             "job" => Some(Self::Job),
             "cache" => Some(Self::Cache),
             "device" => Some(Self::Device),
+            "graph" => Some(Self::Graph),
+            "port" => Some(Self::Port),
+            "edge" => Some(Self::Edge),
+            "resource" => Some(Self::Resource),
             _ => None,
         }
     }
@@ -315,4 +335,12 @@ define_identifier!(
     DeviceId,
     Device,
     "A strongly typed processing device identifier."
+);
+define_identifier!(GraphId, Graph, "A strongly typed graph identifier.");
+define_identifier!(PortId, Port, "A strongly typed graph port identifier.");
+define_identifier!(EdgeId, Edge, "A strongly typed graph edge identifier.");
+define_identifier!(
+    ResourceId,
+    Resource,
+    "A strongly typed graph resource identifier."
 );

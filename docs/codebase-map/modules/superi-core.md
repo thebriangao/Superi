@@ -2,9 +2,9 @@
 module_id: superi-core
 source_paths:
   - open/crates/superi-core
-source_hash: 07956e5e83a0d6476e7d99164ee964dfbbd56fca44985a171c17fbc296749869
+source_hash: 3a14dcd7407eb233142430b431be6b8bb46020cce5a1f9f32c2bf0844077cf2d
 source_files: 23
-mapped_at_commit: 217e9d48703bcfd4736d949aea510c94505071bc
+mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
@@ -48,9 +48,9 @@ The module owns 23 text files under one crate path:
 - `open/crates/superi-core/src/geometry.rs` defines finite points, vectors, homogeneous 3 by 3
   transforms, half-open continuous rectangles, reduced positive aspect ratios, and signed
   half-open pixel bounds with checked arithmetic.
-- `open/crates/superi-core/src/ids.rs` defines nine opaque 128-bit typed identifiers, their sealed
+- `open/crates/superi-core/src/ids.rs` defines thirteen opaque 128-bit typed identifiers, their sealed
   common trait, permanent domain prefixes, big-endian byte form, and strict lowercase hexadecimal
-  parsing.
+  parsing. The graph-facing additions are graph, port, edge, and resource domains.
 - `open/crates/superi-core/src/pixel.rs` defines pixel storage tags, alpha interpretation, audio
   sample storage tags, semantic channel positions, and immutable ordered channel layouts.
 - `open/crates/superi-core/src/prelude.rs` is an intentionally reviewed allowlist of broadly shared
@@ -115,7 +115,8 @@ The major surfaces are:
   `PerformanceCounter`. `FailureDiagnostic` is public on its module path but intentionally omitted
   from the prelude because it may contain sensitive raw data.
 - Identifiers: `ProjectId`, `MediaId`, `TrackId`, `ClipId`, `NodeId`, `ParameterId`, `JobId`,
-  `CacheId`, `DeviceId`, `IdentifierKind`, sealed `TypedId`, and `ParseIdentifierError`.
+  `CacheId`, `DeviceId`, `GraphId`, `PortId`, `EdgeId`, `ResourceId`, `IdentifierKind`, sealed
+  `TypedId`, and `ParseIdentifierError`.
 - Time: `Timebase`, `FrameRate`, `TimeRounding`, `RationalTime`, `SampleTime`, `Duration`, and
   `TimeRange`. Common exact frame-rate constants include integer rates and 24000/1001,
   30000/1001, and 60000/1001.
@@ -245,7 +246,7 @@ Eighteen workspace crates declare a direct path dependency on `superi-core`:
 `superi-concurrency`, `superi-effects`, `superi-engine`, `superi-gpu`, `superi-graph`,
 `superi-image`, `superi-media-io`, `superi-project`, and `superi-timeline`.
 
-Repository source search shows active direct Rust imports in ten of them:
+Repository source search shows active direct Rust imports in eleven of them:
 
 - `superi-api` uses shared errors and semantic versions for API behavior and version reporting.
 - `superi-codecs-platform`, `superi-codecs-rs`, and `superi-codecs-vendor` use shared errors,
@@ -259,14 +260,16 @@ Repository source search shows active direct Rust imports in ten of them:
   introspection, and CPU-frame upload boundaries.
 - `superi-gpu` uses errors and diagnostics throughout resource and submission paths, plus color,
   pixel, and geometry values for conversion and upload contracts.
+- `superi-graph` re-exports the official graph, node, port, edge, parameter, and resource identifier
+  types so every graph-facing contract retains the same core-owned identity.
 - `superi-image` uses color, geometry, identifiers, pixel and sample tags, time, timecode, and
   shared errors across image values, metadata, operations, previews, sequences, and I/O.
 - `superi-media-io` is the broadest timing consumer. It uses identifiers, errors, color, pixel and
   sample tags, rational clocks, durations, ranges, rounding, and timecode across probe, demux,
   decode, container, VFR, image-sequence, PCM, selection, and metadata paths.
 
-The other eight declared consumers, `superi-ai`, `superi-audio`, `superi-cache`, `superi-cli`,
-`superi-effects`, `superi-graph`, `superi-project`, and `superi-timeline`, currently have no direct
+The other seven declared consumers, `superi-ai`, `superi-audio`, `superi-cache`, `superi-cli`,
+`superi-effects`, `superi-project`, and `superi-timeline`, currently have no direct
 `superi_core::` reference in Rust source. Their manifest dependencies express intended layering or
 scaffold readiness rather than an exercised code relationship.
 
@@ -335,7 +338,7 @@ There are no unit tests embedded in `src`; public integration contracts are the 
 Fresh verification at mapping time ran:
 
 ```text
-cargo test --manifest-path open/Cargo.toml -p superi-core
+cargo test --manifest-path open/Cargo.toml -p superi-core --locked
 ```
 
 All 89 integration tests and all 7 doc tests passed, with no failures or ignored tests. The suite

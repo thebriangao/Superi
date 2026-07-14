@@ -27,8 +27,8 @@ use crate::diagnostics::{
 use crate::error::{ErrorCategory, ErrorContext, Recoverability};
 use crate::geometry::{AspectRatio, Matrix3, PixelBounds, Point2, Rect, Vector2};
 use crate::ids::{
-    CacheId, ClipId, DeviceId, IdentifierKind, JobId, MediaId, NodeId, ParameterId, ProjectId,
-    TrackId,
+    CacheId, ClipId, DeviceId, EdgeId, GraphId, IdentifierKind, JobId, MediaId, NodeId,
+    ParameterId, PortId, ProjectId, ResourceId, TrackId,
 };
 use crate::pixel::{
     AlphaMode, ChannelLayout, ChannelPosition, ChromaSubsampling, PixelFormat, PixelModel,
@@ -193,6 +193,10 @@ impl_string_enum!(
         IdentifierKind::Job => "job",
         IdentifierKind::Cache => "cache",
         IdentifierKind::Device => "device",
+        IdentifierKind::Graph => "graph",
+        IdentifierKind::Port => "port",
+        IdentifierKind::Edge => "edge",
+        IdentifierKind::Resource => "resource",
     }
 );
 
@@ -428,6 +432,10 @@ impl_typed_id!(
     JobId,
     CacheId,
     DeviceId,
+    GraphId,
+    PortId,
+    EdgeId,
+    ResourceId,
 );
 
 macro_rules! impl_canonical_text {

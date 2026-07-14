@@ -14,8 +14,8 @@ use superi_core::diagnostics::{
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability};
 use superi_core::geometry::{AspectRatio, Matrix3, PixelBounds, Point2, Rect, Vector2};
 use superi_core::ids::{
-    CacheId, ClipId, DeviceId, IdentifierKind, JobId, MediaId, NodeId, ParameterId, ProjectId,
-    TrackId,
+    CacheId, ClipId, DeviceId, EdgeId, GraphId, IdentifierKind, JobId, MediaId, NodeId,
+    ParameterId, PortId, ProjectId, ResourceId, TrackId,
 };
 use superi_core::pixel::{
     AlphaMode, ChannelLayout, ChannelPosition, ChromaSubsampling, PixelFormat, PixelModel,
@@ -71,6 +71,10 @@ fn stable_public_types_implement_serde() {
     assert_stable_wire_type::<JobId>();
     assert_stable_wire_type::<CacheId>();
     assert_stable_wire_type::<DeviceId>();
+    assert_stable_wire_type::<GraphId>();
+    assert_stable_wire_type::<PortId>();
+    assert_stable_wire_type::<EdgeId>();
+    assert_stable_wire_type::<ResourceId>();
     assert_stable_wire_type::<Timebase>();
     assert_stable_wire_type::<FrameRate>();
     assert_stable_wire_type::<TimeRounding>();
@@ -205,6 +209,10 @@ fn permanent_codes_and_identifier_text_are_the_wire_identity() {
     assert_id!(JobId, "job");
     assert_id!(CacheId, "cache");
     assert_id!(DeviceId, "device");
+    assert_id!(GraphId, "graph");
+    assert_id!(PortId, "port");
+    assert_id!(EdgeId, "edge");
+    assert_id!(ResourceId, "resource");
 }
 
 #[test]

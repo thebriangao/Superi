@@ -4,15 +4,16 @@ use serde::{Deserialize, Serialize};
 use superi_core::prelude::{
     AlphaMode, AspectRatio, CacheId, CapabilityId, CapabilitySet, ChannelLayout, ChannelPosition,
     ChromaSubsampling, ClipId, ColorPrimaries, ColorRange, ColorSpace, ComponentId,
-    CounterSnapshot, CounterUnit, DeviceId, DiagnosticEvent, DiagnosticSeverity, Duration, Error,
-    ErrorCategory, ErrorContext, FeatureAvailability, FeatureDescriptor, FeatureDiscovery,
-    FeatureId, FieldVisibility, FiniteF64, FrameRate, IdentifierKind, JobId, Matrix3,
+    CounterSnapshot, CounterUnit, DeviceId, DiagnosticEvent, DiagnosticSeverity, Duration, EdgeId,
+    Error, ErrorCategory, ErrorContext, FeatureAvailability, FeatureDescriptor, FeatureDiscovery,
+    FeatureId, FieldVisibility, FiniteF64, FrameRate, GraphId, IdentifierKind, JobId, Matrix3,
     MatrixCoefficients, MediaId, NodeId, ParameterId, PerformanceCounter, PixelBounds, PixelFormat,
-    PixelModel, PixelNumeric, PixelPacking, Point2, ProjectId, RationalTime, Recoverability, Rect,
-    Result, ResultExt, SampleFormat, SampleNumeric, SampleTime, SemanticVersion, SettingKey,
-    SettingValue, SettingValueKind, SettingsSnapshot, TimeRange, TimeRounding, Timebase, Timecode,
-    TimecodeFormat, TimecodeMode, TraceField, TraceValue, TrackId, TransferFunction, TypedId,
-    UserSafeError, Vector2, VersionIdentifier, STABLE_PRIMITIVE_SCHEMA_REVISION,
+    PixelModel, PixelNumeric, PixelPacking, Point2, PortId, ProjectId, RationalTime,
+    Recoverability, Rect, ResourceId, Result, ResultExt, SampleFormat, SampleNumeric, SampleTime,
+    SemanticVersion, SettingKey, SettingValue, SettingValueKind, SettingsSnapshot, TimeRange,
+    TimeRounding, Timebase, Timecode, TimecodeFormat, TimecodeMode, TraceField, TraceValue,
+    TrackId, TransferFunction, TypedId, UserSafeError, Vector2, VersionIdentifier,
+    STABLE_PRIMITIVE_SCHEMA_REVISION,
 };
 
 fn assert_stable_wire_type<T>()
@@ -44,6 +45,10 @@ fn prelude_exposes_the_complete_curated_contract() {
     assert_stable_wire_type::<JobId>();
     assert_stable_wire_type::<CacheId>();
     assert_stable_wire_type::<DeviceId>();
+    assert_stable_wire_type::<GraphId>();
+    assert_stable_wire_type::<PortId>();
+    assert_stable_wire_type::<EdgeId>();
+    assert_stable_wire_type::<ResourceId>();
     assert_stable_wire_type::<Timebase>();
     assert_stable_wire_type::<FrameRate>();
     assert_stable_wire_type::<TimeRounding>();

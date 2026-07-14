@@ -56,8 +56,8 @@ pub use crate::diagnostics::{
 pub use crate::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result, ResultExt};
 pub use crate::geometry::{AspectRatio, Matrix3, PixelBounds, Point2, Rect, Vector2};
 pub use crate::ids::{
-    CacheId, ClipId, DeviceId, IdentifierKind, JobId, MediaId, NodeId, ParameterId, ProjectId,
-    TrackId, TypedId,
+    CacheId, ClipId, DeviceId, EdgeId, GraphId, IdentifierKind, JobId, MediaId, NodeId,
+    ParameterId, PortId, ProjectId, ResourceId, TrackId, TypedId,
 };
 pub use crate::pixel::{
     AlphaMode, ChannelLayout, ChannelPosition, ChromaSubsampling, PixelFormat, PixelModel,
