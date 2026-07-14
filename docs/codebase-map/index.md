@@ -27,7 +27,7 @@ against raw source before changing code.
 | `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Reserved effect-node catalog, animation, mask, transition, text, tracking, and OFX boundary | Skeleton: public module names only |
 | `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: canonical command state, registry, capability introspection, and CPU-frame GPU upload implemented |
 | `superi-gpu` | [module map](modules/superi-gpu.md) | `open/crates/superi-gpu` | wgpu device, resource, upload, conversion, pass, submission, presentation, and recovery substrate | Implemented substrate with explicit application-level integration gaps |
-| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral typed identifier seam and reserved DAG, mutation, evaluation, ROI, expression, and serialization boundary | Partial: official graph-facing IDs implemented; no graph state or evaluator |
+| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Official graph identifier seam and node-neutral schema registry plus reserved DAG, mutation, evaluation, ROI, expression, and serialization boundary | Partial: graph-facing IDs, versioned node registration, and immutable schema discovery implemented; graph and evaluator absent |
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; production source registration and muxing absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
@@ -103,9 +103,9 @@ stable serialization meanings into competing local types without an explicit bou
 
 The generic graph direction is deliberately one way. Graph may depend on representation and
 execution substrates, while color, effects, cache, timeline, AI, project, and engine may depend on
-graph. Graph must not depend upward on a domain catalog. Graph now uses core-owned identifiers, but
-the wider relationship still exists mainly in manifests because graph state and most consumers
-remain placeholders.
+graph. Graph must not depend upward on a domain catalog. Its implemented surface uses core-owned
+object identifiers and core semantic contracts for schema definitions. Catalog relationships still
+exist only in manifests because downstream consumers remain skeletons or have no graph call site.
 
 Codec implementations depend down on the codec-neutral `superi-media-io` interface. Media I/O does
 not depend on a concrete codec, engine, or registry assembler. The engine owns the current assembly
@@ -280,9 +280,11 @@ texture extent remains distinct from aligned physical allocation extent. Pooled 
 all command dependencies must remain retained until the matching fence retires.
 
 No implemented engine path sends `UploadedVideoFrame` into graph evaluation, color processing,
-cache, playback, display, or encode. The graph is a skeleton. Color input, output, LUT, and rule
-transforms are CPU implementations and have no graph-visible node catalog. Output transforms do
-not evaluate validated ICC profile state or provide a GPU viewport or
+cache, playback, display, or encode. Official graph identifiers, schema registration, and immutable
+discovery exist, but graph storage and evaluation remain skeletons and no catalog registers a
+production schema. Color input, output, LUT, and rule transforms are CPU implementations and have no
+graph-visible node catalog. Output transforms do not evaluate validated ICC profile state or provide
+a GPU viewport or
 export consumer. `MonitorAwareViewport` prevents stale-profile presentation but does not
 color-convert a frame.
 
@@ -555,8 +557,9 @@ Partial modules contain these explicit placeholder areas:
 - `superi-concurrency`: GPU submission coordination module and all production engine composition.
 - `superi-engine`: ten orchestration modules covering A/V sync, errors, export, lifecycle, nodes,
   playback, plugins, render, resources, and validation.
-- `superi-graph`: graph storage, validation, node schemas, typed edges, mutation, evaluation, ROI,
-  expressions, serialization, and headless execution beyond the implemented identifier seam.
+- `superi-graph`: graph instances, typed edge validation, mutation, evaluation, ROI execution,
+  expressions, serialization, and headless rendering beyond its implemented identifier and
+  node-schema surfaces.
 
 Substantive modules also have intentionally incomplete boundaries. Media I/O has no muxer or
 production registry owner for its source backends. GPU has no cross-adapter transfer or external
