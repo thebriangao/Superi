@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "fixture_id": "slice/video-cfr",
+  "fixture_version": 1,
+  "description": "Canonical 96 by 54, 24 fps, 96-frame AV1 WebM source for the first editorial slice.",
+  "provenance": {
+    "kind": "generated",
+    "source": "Authored and generated in the Superi repository from the deterministic FFmpeg testsrc2 source.",
+    "author": "Superi contributors",
+    "created_on": "2026-07-14",
+    "license": "CC0-1.0",
+    "rights": "Original synthetic image sequence approved for unrestricted redistribution.",
+    "generator": {
+      "name": "ffmpeg",
+      "version": "8.1.1 with SVT-AV1 4.1.0",
+      "command": "ffmpeg -f lavfi -i testsrc2=size=96x54:rate=24:duration=4 -frames:v 96 -c:v libsvtav1 -preset 12 -crf 35 -threads 1 -pix_fmt yuv420p -color_range tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -an -map_metadata -1 -fflags +bitexact -flags:v +bitexact -f webm input.webm",
+      "seed": "testsrc2-default"
+    },
+    "parents": []
+  },
+  "files": [
+    {
+      "path": "input.webm",
+      "media_type": "video/webm",
+      "bytes": 28178,
+      "sha256": "117f5cebcaaf788d1891e84aec57066c73e33d4af308368f640f28a8419f4bbc"
+    }
+  ]
+}

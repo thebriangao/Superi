@@ -2,113 +2,153 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 696b763dba983a76b0b11015eb374a38ca4140acbc4356076989a54c4e4eae46
-source_files: 22
-mapped_at_commit: a11cecdbf19ae1de90d94324abe844db49ed0c85
+source_hash: 162a8cd2b83b2e43d9ae83e3ddbe2b270a7f212b5e9d88fd2bfa28502e40ddf0
+source_files: 23
+mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
-`superi-engine` is the orchestration layer intended to bind the open subsystems into playback, rendering, export, transaction, resource, lifecycle, plugin, validation, and public-introspection flows. Three paths are currently implemented: media backend registry assembly, declaration-based capability introspection, and upload of CPU-decoded video planes into GPU-resident allocations. The other orchestration modules are explicit placeholders.
+`superi-engine` is the open orchestration layer. Four paths are currently substantive: canonical
+editorial command state, media backend registry assembly, declaration-based capability
+introspection, and CPU-decoded frame upload into GPU allocations. Playback, render, export, broad
+transactions, lifecycle, resources, plugins, nodes, A/V sync, and validation remain incomplete.
+
+The command path is a bounded reference owner for contract conformance. It does not claim to replace
+the production project, timeline, graph, media, color, render, or muxing owners.
 
 ## Source inventory
 
-- `open/crates/superi-engine/Cargo.toml`: Declares the full subsystem dependency set, optional `os-codecs` and `vendor-codecs` features, and the test-only `pollster` dependency.
-- `open/crates/superi-engine/src/av_sync.rs`: Placeholder for audio and video synchronization coordination.
-- `open/crates/superi-engine/src/command.rs`: Placeholder for engine-wide commands, transactions, undo, persistence, and API routing.
-- `open/crates/superi-engine/src/error.rs`: Placeholder for cross-subsystem error propagation and recovery.
-- `open/crates/superi-engine/src/export_queue.rs`: Placeholder for render and export queue orchestration.
-- `open/crates/superi-engine/src/frame_upload.rs`: Implements the media-I/O-to-GPU upload boundary for CPU-addressable decoded video frames.
-- `open/crates/superi-engine/src/introspection.rs`: Implements deterministic, API-neutral media backend and codec capability snapshots from registry declarations.
-- `open/crates/superi-engine/src/lib.rs`: Publicly exposes all fourteen engine modules and distinguishes integrated media and upload paths from remaining work.
-- `open/crates/superi-engine/src/lifecycle.rs`: Placeholder for subsystem lifecycle and shared state.
-- `open/crates/superi-engine/src/media.rs`: Builds the default media backend registry and feature-gated platform or explicitly configured vendor variants.
-- `open/crates/superi-engine/src/nodes.rs`: Placeholder for source and output nodes connecting media I/O to the graph.
-- `open/crates/superi-engine/src/playback.rs`: Placeholder for decoder, graph, cache, audio, and clock playback orchestration.
-- `open/crates/superi-engine/src/plugins.rs`: Placeholder for plugin and extension loading and sandboxing.
-- `open/crates/superi-engine/src/render.rs`: Placeholder for decode, graph, color, and encode orchestration.
-- `open/crates/superi-engine/src/resources.rs`: Placeholder for cross-subsystem resource arbitration.
-- `open/crates/superi-engine/src/validation.rs`: Placeholder for real-condition integration validation.
-- `open/crates/superi-engine/tests/av1_capability_contract.rs`: Verifies default AV1 decode and encode selection through engine introspection.
-- `open/crates/superi-engine/tests/frame_upload_contract.rs`: Verifies semantic preservation, GPU allocation lifetime, unsupported storage fallback, and shared GPU memory-budget errors.
-- `open/crates/superi-engine/tests/opus_capability_contract.rs`: Verifies default Opus decode and encode selection.
-- `open/crates/superi-engine/tests/os_codec_registry_contract.rs`: Feature-gated host checks for default and discovered operating-system backends and their hardware declarations.
-- `open/crates/superi-engine/tests/vendor_codec_registry_contract.rs`: Feature-gated proof that default registries exclude vendor RAW and explicit worker configuration reaches introspection.
-- `open/crates/superi-engine/tests/vorbis_capability_contract.rs`: Verifies default Vorbis decode and encode selection.
+- `open/crates/superi-engine/Cargo.toml`: Declares subsystem dependencies, optional codec features,
+  production `sha2`, and test-only `pollster`.
+- `open/crates/superi-engine/src/av_sync.rs`: Placeholder for A/V synchronization.
+- `open/crates/superi-engine/src/command.rs`: Implements canonical fixture identity, named timeline
+  and trim state, complete mirror graph control state, typed operation evidence, bounded source
+  validation, monotonic revisions, and full-state undo plus redo.
+- `open/crates/superi-engine/src/error.rs`: Placeholder for cross-subsystem recovery.
+- `open/crates/superi-engine/src/export_queue.rs`: Placeholder for render and export queues.
+- `open/crates/superi-engine/src/frame_upload.rs`: Implements the media-I/O-to-GPU upload boundary
+  for CPU-addressable decoded video.
+- `open/crates/superi-engine/src/introspection.rs`: Implements deterministic API-neutral backend and
+  codec capability snapshots.
+- `open/crates/superi-engine/src/lib.rs`: Exposes fourteen engine modules.
+- `open/crates/superi-engine/src/lifecycle.rs`: Placeholder for subsystem lifecycle.
+- `open/crates/superi-engine/src/media.rs`: Builds default and feature-gated media registries.
+- `open/crates/superi-engine/src/nodes.rs`: Placeholder for media and graph nodes.
+- `open/crates/superi-engine/src/playback.rs`: Placeholder for playback orchestration.
+- `open/crates/superi-engine/src/plugins.rs`: Placeholder for plugins and extensions.
+- `open/crates/superi-engine/src/render.rs`: Placeholder for render orchestration.
+- `open/crates/superi-engine/src/resources.rs`: Placeholder for resource arbitration.
+- `open/crates/superi-engine/src/validation.rs`: Placeholder for real-condition validation.
+- `open/crates/superi-engine/tests/av1_capability_contract.rs`: Default AV1 selection proof.
+- `open/crates/superi-engine/tests/frame_upload_contract.rs`: Upload, ownership, storage, and budget
+  proof.
+- `open/crates/superi-engine/tests/opus_capability_contract.rs`: Default Opus selection proof.
+- `open/crates/superi-engine/tests/os_codec_registry_contract.rs`: Feature-gated host registry proof.
+- `open/crates/superi-engine/tests/scenario_contract.rs`: Exact canonical state, atomicity, bounds,
+  operation log, and reversal proof.
+- `open/crates/superi-engine/tests/vendor_codec_registry_contract.rs`: Explicit vendor registry
+  proof.
+- `open/crates/superi-engine/tests/vorbis_capability_contract.rs`: Default Vorbis selection proof.
 
 ## Public surface
 
-The library exposes the modules `av_sync`, `command`, `error`, `export_queue`, `frame_upload`, `introspection`, `lifecycle`, `media`, `nodes`, `playback`, `plugins`, `render`, `resources`, and `validation`. Only `frame_upload`, `introspection`, and `media` contain public items.
+`command` exposes the fixed canonical values, `ScenarioEngine`, `ScenarioAction`,
+`ScenarioSnapshot`, phases, fixture state, timeline state, graph nodes and edges, mirror parameters,
+implementation identity, typed operation arguments, and operation records. Supported mutations are
+import, insert, trim, and horizontal mirror. Undo and redo are history actions. Export is
+intentionally absent from engine mutations.
 
-`frame_upload` exposes:
+`frame_upload` exposes `UploadedVideoFrame` and `VideoFrameUploader` with explicit configuration and
+shared pool construction. `introspection` exposes engine-owned media backend, operation, codec,
+constraint, and hardware records through `MediaCapabilities::from_registry`. `media` exposes the
+default registry and the feature-gated explicitly configured vendor constructor.
 
-- `UploadedVideoFrame<'device>`, a cloneable owner of `VideoFormat`, timestamp, duration, cloned media metadata, and an `UploadedFrame<'device>`, with read-only getters.
-- `VideoFrameUploader<'device>`, constructed with defaults, an explicit `UploadConfig`, or an explicit config plus shared `GpuMemoryPool`.
-- `VideoFrameUploader::upload`, which accepts a `VideoFrame` and returns a GPU-resident frame or a classified error.
-
-`introspection` exposes engine-owned mirrors of media declarations: `MediaBackendTier`, `MediaCapabilityConstraint<T>`, `MediaChromaSampling`, `MediaHardwareAcceleration`, `MediaOperation`, `MediaCodecCapability`, `MediaBackendCapabilities`, `MediaOperationSupport`, and `MediaCapabilities`. Record fields remain private and are available through getters. `MediaCapabilities::from_registry` is the construction path, and `is_empty` reports whether any operation is declared.
-
-`media` exposes `media_backend_registry` in every build. With `vendor-codecs`, it also exposes `media_backend_registry_with_vendor_plugins`, which requires caller-supplied `VendorPluginConfig` values and an `OperationContext`.
+The other public modules currently contain documentation only.
 
 ## Architecture and data flow
 
-### Media registry and introspection
+### Canonical editorial command state
 
-`media_backend_registry` starts with an empty `superi-media-io` registry and asks `superi-codecs-rs` to atomically register the implemented permissive PCM, AV1, MP3, FLAC, Vorbis, Opus, and VP9 backends. With `os-codecs`, it then asks `superi-codecs-platform` to discover and register operations available on the current host. Platform registration may add VideoToolbox on macOS, Media Foundation on Windows, VA-API on Linux, or nothing when the host exposes no supported operation.
+The scenario engine begins with stable project identity and empty state. Import requires exact
+`slice/video-cfr` version 1 metadata, lowercase manifest and payload digests, 24 fps, 96 frames, and
+96 by 54 extent. It reads at most 64 MiB and independently verifies the payload digest. Placement
+accepts only timeline frame zero. Trim accepts only source `[24, 72)`. The mirror action constructs
+the exact source, transform, and output graph, two image edges, binary64 matrix, nearest sampling,
+transparent black edges, and derived timeline identity.
 
-The default constructor never includes vendor workers. With `vendor-codecs`, `media_backend_registry_with_vendor_plugins` first builds the ordinary registry and then passes only the caller-selected worker configurations to `superi-codecs-vendor`. That adapter starts and handshakes explicit external processes before their registrations become visible; this engine crate neither discovers nor downloads them.
+Every successful mutation stores a complete before and after content snapshot plus one stable typed
+operation record. The active log uses `slice.op.import`, `slice.op.insert`, `slice.op.trim`, and
+`slice.op.effect` with original resulting revisions. Undo and redo restore complete content without
+filesystem side effects or reimport and advance the global revision monotonically. Rejected actions
+leave state and both history stacks unchanged.
 
-`MediaCapabilities::from_registry` reads immutable backend descriptors and capability declarations without opening a source or creating a decoder or encoder. Backend records are sorted by stable identifier. Declared source, decode, and encode operations are deduplicated through a `BTreeSet`. For each operation, the engine asks the registry for primary and fallback registrations in actual selection order: descending priority, then ascending backend identifier. Detailed codec tuples are converted and sorted; a declared decode or encode operation without a detailed row receives an `Unreported` row for each dimension.
+### Registry, introspection, and upload
 
-Unsupported future variants from non-exhaustive media I/O enums become `Unsupported` and `Degraded` errors with `superi-engine.introspection/build_media_capabilities` context instead of being silently discarded. `superi-api` converts this engine-owned snapshot into the stable serialized public schema.
+Default registry construction atomically registers permissive Rust codecs. `os-codecs` may add
+host-discovered operations, and `vendor-codecs` requires explicit worker configuration.
+Introspection reads declarations only, orders stable records, separates primary and fallback tiers,
+and never constructs a source or codec.
 
-### Decoded-frame upload
-
-`VideoFrameUploader::upload` accepts only a buffer reporting `FrameStorageKind::Cpu` and downcasts it to `CpuVideoBuffer`. It borrows every source plane with its exact byte slice, stride, and row count, then builds `superi_gpu::upload::DecodedFrameUpload` using the frame width, height, and unchanged pixel format. The GPU uploader validates plane layout, acquires pooled textures under the configured memory policy, directly stages compatible rows or repacks incompatible strides, and returns retained GPU allocations.
-
-The engine wrapper preserves the source `VideoFormat`, rational timestamp, duration, and cloned `MediaMetadata` beside the GPU frame. It does not retain the CPU pixel allocation. GPU and external decoder storage return an `Unsupported` and `Degraded` error so a higher decode-selection layer can choose CPU output; there is no implicit download or external-texture import. Validation and upload errors receive frame context with storage kind, dimensions, and pixel-format code.
-
-No implemented path connects the resulting `UploadedVideoFrame` to graph nodes, playback, color processing, rendering, cache, display, or encode.
+`VideoFrameUploader` accepts CPU storage, validates and borrows exact planes, asks the GPU uploader
+for pooled textures, and preserves format, time, duration, metadata, and allocation lifetime. It
+rejects GPU and external storage with a classified degraded error. No production path connects the
+uploaded frame to graph, playback, color, cache, display, or encode.
 
 ## Dependencies and consumers
 
-- Implemented source directly uses `superi-core` for errors and time, `superi-media-io` for frames, metadata, registries, and declarations, `superi-gpu` for device-bound upload and memory pools, and `superi-codecs-rs` for default backend registration.
-- `superi-codecs-platform` is used only under `os-codecs`. `superi-codecs-vendor` is used only under `vendor-codecs`.
-- `superi-image`, `superi-concurrency`, `superi-graph`, `superi-cache`, `superi-color`, `superi-effects`, `superi-timeline`, `superi-audio`, `superi-ai`, and `superi-project` are declared dependencies but are not referenced by implemented engine source. Most exist for the planned orchestration layer.
-- `superi-api` consumes `introspection` types and the default registry constructor for its public capability snapshot and integration contracts.
-- Engine integration tests are the only consumers of `frame_upload` in repository Rust code. No playback or render path invokes it.
-- `superi-cli` reaches the engine only as a transitive dependency through `superi-api` and does not initialize it.
-- `pollster` is used only by frame-upload tests to synchronously create a wgpu device.
+- `superi-core` supplies errors, identifiers, and exact time used directly by canonical commands,
+  introspection, and upload.
+- `sha2` supplies bounded fixture payload identity.
+- `superi-media-io`, `superi-gpu`, and `superi-codecs-rs` support registry, declaration, and upload
+  paths.
+- Platform and vendor codec crates are feature-gated.
+- Image, concurrency, graph, cache, color, effects, timeline, audio, AI, and project remain declared
+  dependencies without production command integration.
+- `superi-api` consumes command snapshots and capability snapshots, preserving the public seam.
+- `superi-cli` reaches this module only through `superi-api`.
 
 ## Invariants and operational boundaries
 
-- Default registry construction is vendor-free. Vendor workers require both the feature and an explicit caller-provided list.
-- Operating-system codecs require `os-codecs` and are limited to operations discovered on the current host.
-- Introspection is declaration-only and never calls source, decoder, or encoder factories.
-- Backend presentation is stable by identifier. Operation presentation follows enum and codec ordering, while candidate lists preserve registry selection order and keep primary and fallback tiers separate.
-- Unknown media declaration variants fail with a classified degraded error rather than disappearing from the snapshot.
-- Decoded upload preserves source format, timing, metadata, plane structure, and pixel representation. It supports CPU-addressable buffers only.
-- Uploaded allocations are tied to the borrowed GPU device lifetime, are cloneable through the underlying shared frame owner, and return textures to the originating pool after the final clone is dropped.
-- A caller-provided `GpuMemoryPool` participates in allocation admission. Budget exhaustion is retryable and resource-classified.
-- The crate does not yet enforce whole-engine transactions, A/V sync, render determinism, cache coordination, lifecycle, plugin containment, or cross-subsystem resource policy because those modules are placeholders.
+- Canonical arguments are exact; the reference engine is not a general editor model.
+- Source validation is bounded, digest checked, and atomic.
+- Four mutations have stable typed IDs and complete internal prior state.
+- Export is not a project mutation and is not represented in engine history.
+- Undo and redo restore complete semantic state without reimport or filesystem effects.
+- Default registry construction is vendor free; host and vendor behavior remains opt-in.
+- Introspection is declaration-only and has deterministic ordering.
+- Upload preserves source representation and supports CPU-addressable buffers only.
+- GPU ownership and pool lifetime remain tied to the originating device.
+- Placeholder modules do not imply whole-engine transaction, render, or lifecycle behavior.
 
 ## Tests and verification
 
-Eight integration tests cover the implemented engine paths:
+Canonical scenario contracts prove the exact fixture metadata, names, half-open ranges, complete
+graph topology and ports, mirror matrix, four operation IDs and original revisions, two undo plus
+two redo recovery at revision 8, rejected-action atomicity, payload digest failure, and the 64 MiB
+bound.
 
-- Three default-codec contracts verify that AV1, Opus, and Vorbis each expose one primary Rust backend for decode and encode and no fallback backend.
-- Three frame-upload contracts verify GPU residency and cloned allocation ownership while preserving format, time, duration, and metadata; degraded rejection of external storage with engine context; and propagation of retryable shared-memory budget exhaustion.
-- The `os-codecs` feature contract verifies the Rust AV1 backend plus platform-specific host declarations and hardware modes when available.
-- The `vendor-codecs` contract verifies that ordinary construction contains no ARRIRAW, R3D, or BRAW support, then compiles a mock worker, explicitly registers it, and observes its declared RAW decode operations through introspection.
-
-Frame-upload tests skip successfully when no wgpu adapter can be created, so a passing suite on such a host does not prove the GPU copy path. The default codec tests exercise registry declarations and selection, not actual decode or encode. Placeholder orchestration modules have no tests.
+Codec contracts prove default AV1, Opus, and Vorbis declarations, optional host exposure, and
+explicit vendor registration. Upload contracts prove semantic preservation and cloned allocation
+ownership when an adapter is available, classified unsupported storage, and retryable shared budget
+failure. GPU tests may skip without an adapter; capability tests prove declarations, not codec
+execution.
 
 ## Current status and risks
 
-Registry assembly, capability introspection, and CPU-decoded frame upload are substantive and test-backed. The eleven files `av_sync.rs`, `command.rs`, `error.rs`, `export_queue.rs`, `lifecycle.rs`, `nodes.rs`, `playback.rs`, `plugins.rs`, `render.rs`, `resources.rs`, and `validation.rs` are explicit documentation-only placeholders.
+Canonical command state is substantive and test-backed, but it is a reference boundary whose
+implementation identity is disclosed as such. It validates fixture bytes without opening their
+container or decoding frames. Timeline and graph state are exact control models but do not use the
+skeleton production timeline or graph crates.
 
-The broad Cargo dependency list and public module tree therefore overstate system integration. There is no coherent engine lifecycle, transaction owner, source-to-output node flow, playback clock, audio path, cache use, render queue, export, plugin host, or real-condition integration validation. External and backend-GPU frame import are deliberately incomplete, and the current fallback comment depends on a higher decode-selection path that is not implemented here.
+Ten orchestration files remain documentation-only placeholders. There is no coherent source
+registry integration, playback clock, audio flow, cache coordination, render, color integration,
+encoder-to-mux path, project persistence, lifecycle, plugin host, or real-condition validator.
 
 ## Maintenance notes
 
-When adding an engine path, distinguish manifest-only dependencies from crates actually wired into runtime flow. Update registry and introspection maps together when backend declarations or ranking change, and update `superi-api` when the public projection changes. For upload changes, document supported storage kinds, ownership and device lifetimes, format conversions, memory accounting, fallback behavior, and a real consumer. Remove placeholder labels only when a module contains substantive behavior and proof.
+Keep fixed canonical state synchronized with `docs/vertical-slice.md`, the strict API projection,
+CLI runner, and operation contracts. A new production owner should replace the corresponding stub
+through its real crate rather than growing this reference model into a competing system. Registry
+or upload changes require updating their actual consumers and tests independently. Remove a
+placeholder label only after substantive behavior and consumer proof exist.

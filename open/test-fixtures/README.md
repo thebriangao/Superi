@@ -139,6 +139,24 @@ cargo run -p superi-fixture-tool -- generate-timing <OUTPUT_DIRECTORY>
 The generator refuses to overwrite any existing output path. Compare both generated artifacts byte
 for byte with the canonical version. Do not regenerate into the checked-in `v1` directory.
 
+## Canonical editorial slice source
+
+`slice/video-cfr/v1` contains the immutable `input.webm` source for
+`superi.slice.canonical.v1`. It is a 96 by 54 AV1 WebM with 96 frames at 24 fps, limited-range
+4:2:0 BT.709 video, and no audio. The manifest binds the exact 28,178-byte payload and records its
+CC0 provenance, deterministic synthetic source, FFmpeg 8.1.1 tool identity, SVT-AV1 4.1.0 encoder,
+and complete generation command.
+
+The CLI runner validates the strict manifest, exact fixture identity, regular-file ownership, byte
+count, and payload SHA-256 before creating editorial state. Its current media stage remains a
+disclosed stub, so the report labels the detailed decoded media traits as expected contract values
+until a production import owner opens and proves them. Fixture validation never substitutes for
+that later runtime proof.
+
+From an empty output directory, the manifest's recorded FFmpeg command reproduces the payload with
+the pinned tool versions. The delivery proof generated it twice and compared the complete bytes.
+Any future byte change requires `v2`; never rewrite this released `v1` fixture.
+
 ## Contributor workflow
 
 1. Prefer the smallest synthetic fixture that exposes the behavior. Use representative recorded or

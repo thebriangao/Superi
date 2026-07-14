@@ -2,51 +2,149 @@
 module_id: superi-cli
 source_paths:
   - open/crates/superi-cli
-source_hash: 1f7864f6dc7d4a2665f9e3d0ed070b41f9e3ff81936d60534ae7c0e889bd997a
-source_files: 3
-mapped_at_commit: a11cecdbf19ae1de90d94324abe844db49ed0c85
+source_hash: 2bee097f5eb392e46a8b4f9a2a034ab44e8a76286f317e62b8ebd06405d4a0ab
+source_files: 4
+mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
-`superi-cli` is the workspace's headless executable boundary and is intended to become the first consumer of `superi-api`. Its implemented behavior is limited to printing a scaffold version line.
+`superi-cli` is the workspace's headless public API consumer and owns the normalized process
+contract for `superi.slice.canonical.v1`. It validates the authoritative repository fixture,
+executes canonical editorial actions through `superi-api`, proves exact reversal, writes the strict
+eight-stage report, and publishes a clearly labeled non-playable contract artifact.
+
+The current runner satisfies contract conformance only. It does not open or decode media, evaluate
+pixels, apply production color, encode AV1, mux WebM, or claim a working editor export. Every absent
+production owner is explicit in stage diagnostics and the artifact name.
 
 ## Source inventory
 
-- `open/crates/superi-cli/Cargo.toml`: Declares the binary crate, its `superi-core` and `superi-api` dependencies, and an `os-codecs` feature that forwards to `superi-api/os-codecs`.
-- `open/crates/superi-cli/src/commands.rs`: Private documentation-only placeholder for future render and inspect commands routed through the public API.
-- `open/crates/superi-cli/src/main.rs`: Implements the executable entry point and prints `superi <package-version>: scaffold (no engine yet)`.
+- `open/crates/superi-cli/Cargo.toml`: Declares `serde`, `serde_json`, `sha2`, `superi-core`, and
+  `superi-api`, plus `os-codecs` forwarding to the API.
+- `open/crates/superi-cli/src/commands.rs`: Implements exact argument parsing, repository and
+  fixture resolution, bounded strict manifest validation, canonical API execution, stage and
+  digest reporting, undo plus redo proof, collision-safe publication, and structured exit errors.
+- `open/crates/superi-cli/src/main.rs`: Passes process arguments to the private command owner and
+  exits with its exact status.
+- `open/crates/superi-cli/tests/scenario_runner.rs`: Provides process contracts for two-run
+  reproducibility, exact state and report contents, honest stub evidence, collision preservation,
+  help, version, usage, and status 2 invalid input.
 
 ## Public surface
 
-This crate produces a binary, not a library. The observable surface is process startup and one stdout line containing the Cargo package version. It accepts no arguments, exposes no subcommands, returns no structured data, and does not initialize the API or engine. The private `commands` module exports nothing.
+This crate produces a binary, not a library. Its normalized scenario invocation is:
 
-The Cargo feature `os-codecs` forwards feature activation through `superi-api` to `superi-engine`, causing those dependency paths to compile, but it does not change CLI runtime behavior.
+```text
+superi-cli slice run --scenario superi.slice.canonical.v1 \
+  --artifact-dir <EMPTY_DIRECTORY> --report <REPORT_JSON>
+```
+
+The artifact directory may be absent or empty, must not be a symlink, and receives
+`canonical.webm.contract-stub`. The report path must not exist. Both files use create-only temporary
+publication followed by a hard link, so an existing destination is never replaced.
+
+No arguments and `--help` print usage and succeed. `--version` prints `superi 0.0.0`. Invalid input
+returns 2, unavailable required capability returns 3, and stage or verification failure returns 4.
+Errors are one strict stderr JSON object with category, recoverability, message, and stage ID when a
+stage owns the failure. Success prints one stdout JSON summary after both artifact and report exist.
 
 ## Architecture and data flow
 
-`main` reads the compile-time `CARGO_PKG_VERSION` value through `env!` and passes the fixed scaffold text to `println!`. No user input, file, media, engine state, command dispatch, or API response participates.
+The runner walks working-directory ancestors to locate the Superi repository. It records Git commit
+and dirty state plus Rust toolchain, build target, features, and profile. It then reads the strict
+schema 1 manifest for `slice/video-cfr` version 1 with a one MiB bound, rejects symlinks and unknown
+fields, validates required provenance, verifies the exact regular payload's 64 MiB bound, byte
+count, and SHA-256, and only then creates the artifact directory.
+
+Execution uses `ScenarioApi` exclusively:
+
+```text
+fixture.resolve
+  -> media.import
+  -> timeline.edit
+  -> timeline.compile
+  -> graph.evaluate
+  -> color.deliver
+  -> media.export
+  -> slice.verify
+```
+
+The API receives exact import, placement, trim, and mirror actions. Timeline compilation, pixel
+evaluation, color delivery, and media export remain contract stubs. The runner undoes effect and
+trim, redoes both, removes only the monotonic revision from comparison, and requires exact final
+semantic state recovery without reimport.
+
+The contract artifact is deterministic JSON with `playable: false`, six missing runtime owners,
+and the planned WebM, AV1, 96 by 54, 24 fps, 48-frame target. It is not named `canonical.webm`.
+The report retains repository and fixture identities, state digests, full public state, eight stage
+records, backend expectations, target metadata, artifact identity, 48 modeled timestamps,
+unavailable expected-output status, and all stub diagnostics. Contract success never becomes
+runtime success.
 
 ## Dependencies and consumers
 
-- `superi-core` and `superi-api` are declared dependencies, but neither is imported by the Rust source.
-- The executable is an intended API consumer only. There is no current call to `MediaCapabilitiesApi` or any other API item.
-- Workspace documentation invokes it with `cargo run -p superi-cli` and includes feature-build commands, but no Rust crate consumes this binary.
+- `superi-api` supplies the only editorial control boundary used by the runner.
+- `serde` and `serde_json` parse strict manifests and serialize state, stages, reports, artifacts,
+  summaries, and failures.
+- `sha2` computes manifest, payload, semantic state, timeline, graph, operation log, and artifact
+  identities.
+- `superi-core` remains a declared dependency from the original crate topology but is not directly
+  imported by current CLI source.
+- `open/ci/run-network-isolated.sh` invokes the exact canonical command with temporary output paths
+  after workspace tests and fixture validation inside the isolated namespace.
+- Root and open-tree READMEs document the command and contract-only result.
+
+No runtime crate consumes this binary. The process contracts, contributor workflow, and isolated CI
+harness are its current consumers.
 
 ## Invariants and operational boundaries
 
-- The executable is headless and deterministic for a fixed package version.
-- The process uses no network, media, GPU, or persistent state.
-- Feature forwarding preserves the codec feature boundary at build time. It does not expose codec discovery or operations at the command line.
+- The only accepted scenario ID is `superi.slice.canonical.v1` at revision 1.
+- Repository fixture bytes are input. The runner never downloads, modifies, regenerates, or accepts
+  an arbitrary source path.
+- Source and manifest reads are bounded. Fixture identity, inventory, path type, size, and digest
+  must pass before editorial state or output is created.
+- Output paths are create-only and collision safe. Existing content and symlinks are preserved and
+  rejected.
+- Export is outside engine mutation history. The four mutation records remain import, insert, trim,
+  and effect.
+- Contract stubs are never called runtime, and the non-playable artifact is never called WebM
+  output.
+- Stage order, implementation identity, input and output summaries, diagnostics, state, and artifact
+  bytes are deterministic. Durations and chosen output paths are run-specific evidence.
+- The runner initiates no network operation and executes with default features in the isolated CI
+  path.
 
 ## Tests and verification
 
-The crate owns no unit or integration tests. A build verifies feature wiring, and running it can verify the single scaffold line, but there is no command, API, rendering, inspection, or exit-status contract test.
+The process contract runs the complete command twice with separate output locations. It proves the
+strict report schema and scenario identity, authoritative fixture details, exact eight-stage order,
+stub and runtime classifications, canonical timeline, mirror matrix, four-operation log, undo plus
+redo recovery, unavailable expected output, non-playable artifact, target stream shape, 48 modeled
+timestamps, identical stub bytes, and report equality after removing durations and output path.
+
+Negative process contracts prove unknown scenario rejection, preservation of a nonempty artifact
+directory, preservation of an existing report, exact status 2, and help, version, and usage output.
+The focused test does not prove Linux namespace isolation, production media behavior, real output
+decoding, or expected pixel comparison. Those remain widening or future-owner evidence.
 
 ## Current status and risks
 
-`commands.rs` is an explicit placeholder. The binary is runnable but is not a vertical slice and is not yet an actual consumer of the public API despite its manifest dependency and crate documentation.
+The CLI is now a substantive API consumer and canonical contract runner. Its strongest limitation
+is intentional: six stages model typed boundaries without production execution. The fixture payload
+is digest-validated but its decoded traits are reported as expected contract values because the
+current media stage does not open it.
+
+There is no independent expected-output fixture, so the report records expectation status as
+unavailable. The runner uses local `git` and `rustc` commands for reproducibility identity and uses
+hard links for atomic create-only publication, which assumes a normal contributor filesystem with
+hard-link support inside each destination directory.
 
 ## Maintenance notes
 
-When commands are implemented, map argument parsing, command-to-API translation, output and error formats, cancellation, exit statuses, feature-specific behavior, and end-to-end tests. Keep the distinction between compiling an API dependency and exercising the API.
+Keep argument order, scenario identity, exit statuses, artifact name, report fields, stage IDs, and
+stub disclosure synchronized with `docs/vertical-slice.md`, process contracts, isolated CI, and
+public guidance. When a production owner replaces a stub, route through that real subsystem, add
+consumer proof, update implementation identity and diagnostics, and raise conformance only after all
+runtime gates pass. Never rename a contract stub to `canonical.webm` merely to satisfy a filename.

@@ -14,10 +14,10 @@ against raw source before changing code.
 | Module ID | Map | Owned path | Current role | Status |
 | --- | --- | --- | --- | --- |
 | `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
-| `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade, currently for media capability snapshots | Partial: capability query and change event implemented; general API and scripting absent |
+| `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade for capabilities and canonical editorial state | Partial: capability and canonical scenario controls implemented; transport, general API, and scripting absent |
 | `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Reserved audio graph, playback, mixing, resampling, metering, and plugin boundary | Skeleton: public module names only |
 | `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Reserved frame, proxy, render, prefetch, eviction, and disk cache boundary | Skeleton: public module names only |
-| `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless executable intended to consume the public API | Scaffold: prints one version line and does not call API or engine |
+| `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario consumer | Implemented contract runner: eight stages and honest stubs; runtime media flow absent |
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
 | `superi-codecs-rs` | [module map](modules/superi-codecs-rs.md) | `open/crates/superi-codecs-rs` | Default permissive software codec implementations | Implemented: AV1, FLAC, MP3, Opus, PCM, Vorbis, VP8, and VP9 decode and encode |
 | `superi-codecs-vendor` | [module map](modules/superi-codecs-vendor.md) | `open/crates/superi-codecs-vendor` | Explicit process adapter for separately installed vendor RAW workers | Implemented first revision: decode-only, CPU-only, JSON and hexadecimal IPC |
@@ -25,7 +25,7 @@ against raw source before changing code.
 | `superi-concurrency` | [module map](modules/superi-concurrency.md) | `open/crates/superi-concurrency` | Execution domains, jobs, clocks, handoffs, shared snapshots, lifecycle, and liveness | Substantial but not engine-integrated; GPU submission module is a placeholder |
 | `superi-core` | [module map](modules/superi-core.md) | `open/crates/superi-core` | Tier-zero values, validation, exact time, identifiers, errors, diagnostics, and stable serialization | Implemented and broadly consumed; crate-level skeleton wording is stale |
 | `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Reserved effect-node catalog, animation, mask, transition, text, tracking, and OFX boundary | Skeleton: public module names only |
-| `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: registry assembly, capability introspection, and CPU-frame GPU upload implemented |
+| `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: canonical command state, registry, capability introspection, and CPU-frame GPU upload implemented |
 | `superi-gpu` | [module map](modules/superi-gpu.md) | `open/crates/superi-gpu` | wgpu device, resource, upload, conversion, pass, submission, presentation, and recovery substrate | Implemented substrate with explicit application-level integration gaps |
 | `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Reserved node-neutral DAG, mutation, evaluation, ROI, expression, and serialization boundary | Skeleton: no graph type or evaluator |
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
@@ -35,7 +35,7 @@ against raw source before changing code.
 | `tool-superi-dependency-check` | [module map](modules/tool-superi-dependency-check.md) | `open/tools/superi-dependency-check` | Offline executable policy for the open runtime dependency graph | Implemented exact runtime, build, dev, and new-crate checks |
 | `tool-superi-boundary-tool` | [module map](modules/tool-superi-boundary-tool.md) | `open/tools/superi-boundary-tool` | Offline scanner for network-client and open-to-closed policy | Implemented library, CLI, workspace gate, and hosted-build command |
 | `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline validator and deterministic video, audio, and timing fixture generator | Implemented validation library, three generators, four-command CLI, and focused contracts |
-| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: canonical slice defined, runtime absent, other status drift remains |
+| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: canonical fixture and contract runner delivered, timing fixture coverage expanded, runtime slice absent |
 
 ## Ownership and repository boundaries
 
@@ -109,14 +109,14 @@ in manifests because graph and most of its consumers remain skeletons.
 Codec implementations depend down on the codec-neutral `superi-media-io` interface. Media I/O does
 not depend on a concrete codec, engine, or registry assembler. The engine owns the current assembly
 choice. The API depends on engine-owned projections rather than leaking media-I/O implementation
-types. The CLI is intended to depend only on the API, although its current source uses neither API
-nor engine.
+types. The CLI depends only on the API for editorial control and never imports engine scenario
+state directly.
 
 ## Public control flow
 
 ### Implemented today
 
-The only implemented public engine-to-API slice is media capability introspection:
+Media capability introspection is implemented as follows:
 
 1. `superi-engine::media` creates a `BackendRegistry` and registers the default Rust codecs.
 2. The `os-codecs` feature may append host-discovered platform codecs.
@@ -131,10 +131,20 @@ The API-local revision begins at zero and increments only on a changed snapshot.
 version is `2.0.0`; the permanent method and event names are
 `superi.media.capabilities.get` and `superi.media.capabilities.changed`.
 
-No transport, request envelope, dispatcher, event channel, subscription, public transaction,
-editor command, script runtime, or structured public error wire is implemented. The CLI does not
-construct `MediaCapabilitiesApi`; it prints a fixed scaffold line. There is no UI, shell, extension,
-automation, or closed-tier runtime consumer in this repository.
+Canonical editorial control is also implemented at a bounded reference boundary:
+
+1. `superi-engine::command::ScenarioEngine` validates fixed fixture identity and owns exact import,
+   insert, trim, mirror, operation-log, undo, and redo state.
+2. `superi-api::ScenarioApi` accepts one strict typed action command and projects complete public
+   timeline, graph, implementation, operation, and failure state.
+3. `superi-cli` resolves and digest-validates the repository fixture, executes the normalized fixed
+   scenario through the API, proves undo plus redo recovery, and emits eight stage records.
+4. Six missing production owners are reported as stubs, and the CLI publishes a non-playable
+   contract artifact instead of claiming `canonical.webm`.
+
+No transport, request envelope, dispatcher, event channel, subscription, broad public transaction,
+script runtime, or UI is implemented. There is no shell, extension, automation, or closed-tier
+runtime consumer in this repository.
 
 ### Documented target, incomplete
 
@@ -151,8 +161,8 @@ or export control flow exists.
 `superi.slice.canonical.v1`: one immutable WebM and AV1 fixture role, one 24 fps video track, a
 half-open middle trim, one typed horizontal-mirror transform node, explicit sRGB delivery, and eight
 ordered stage records. It permits disclosed stubs only for contract conformance. Runtime
-conformance requires every stage to use its production owner, so the document is not evidence that
-the flow executes today.
+conformance requires every stage to use its production owner. The CLI now executes the complete
+control sequence at contract conformance, with six stages explicitly reported as stubs.
 
 ## Media ingest and codec flow
 
@@ -287,17 +297,19 @@ that pattern into playback or render.
 
 ## Engine, API, CLI, and tool roles
 
-`superi-engine` is the intended integration owner. Its implemented responsibilities are limited to
-codec registry assembly, deterministic capability introspection, and CPU-decoded frame upload.
-Lifecycle, commands, transactions, undo, playback, A/V sync, render, export queues, resources,
-plugins, nodes, validation, and cross-subsystem error recovery remain explicit placeholders.
+`superi-engine` is the intended integration owner. It implements fixed canonical command state,
+full-state undo plus redo, codec registry assembly, deterministic capability introspection, and
+CPU-decoded frame upload. The command model is a reference boundary, not production project,
+timeline, or graph ownership. Lifecycle, playback, A/V sync, render, export queues, resources,
+plugins, nodes, validation, and cross-subsystem recovery remain explicit placeholders.
 
-`superi-api` is the stable public facade. Its capability slice keeps media implementation types
-private and exposes strict versioned records, a typed query, and a full-replacement event. It has no
-transport or broad editor command set.
+`superi-api` is the stable public facade. It keeps implementation types private and exposes strict
+versioned capability records plus the fixed canonical scenario action and complete state projection.
+It has no transport or broad editor command set.
 
-`superi-cli` is a binary boundary, not a library. It forwards codec feature flags at build time but
-does not initialize the engine or API and accepts no arguments.
+`superi-cli` is a binary boundary, not a library. It accepts only the normalized slice command plus
+help and version, validates repository fixture authority, drives `ScenarioApi`, writes the strict
+report, and publishes a non-playable contract artifact through collision-safe paths.
 
 `superi-fixture-tool` is a repository utility, not an engine component. It validates schema,
 identity, provenance, lineage, payload ownership, byte counts, hashes, path safety, and unmanaged
@@ -376,7 +388,7 @@ Platform codec proof must run on macOS, Windows, or Linux with the actual framew
 driver. A host-independent parser test does not prove native lifecycle, pixel fidelity, teardown,
 or hardware behavior.
 
-Repository-level CI now has three implemented workflow surfaces. The dependency-policy workflow
+Repository-level CI now has four implemented workflow surfaces. The dependency-policy workflow
 checks licenses and sources with cargo-deny on Ubuntu 24.04. The cross-platform workflow runs the
 locked Rust quality suite on GitHub-hosted macOS, Windows, and Ubuntu runners. Pull requests and
 pushes to `main` run five matrix lanes: blocking `ci-macos-26-arm64` on `macos-26`, blocking
@@ -418,8 +430,7 @@ tests, canonical fixture validation, and the headless CLI inside a distinct Linu
 with only loopback, no IPv4 route, a failed numeric outbound probe, and Cargo offline mode. Its
 pinned checkout, read-only permissions, disabled credentials, timeout, and cancellation policy
 match the repository CI boundary. This is an offline execution proof for current core commands
-after setup, not an offline dependency-acquisition proof or a replacement for the absent editorial
-slice.
+after setup, not an offline dependency-acquisition proof or a runtime import-to-export slice.
 
 The cross-platform Rust workflow does not run the `os-codecs` feature matrix, malformed-input
 suites, frontend or Tauri checks, golden comparisons, benchmarks, soak, or the vertical slice. The
@@ -445,12 +456,15 @@ real packet and presentation maps, unsegmented discontinuity rejection, and reve
 segments. These remain synthetic raw-frame, PCM-container, and timing-metadata proofs, not encoded
 codec, HDR, malformed media, hardware, playback, device, A/V synchronization, scheduling, or
 editorial-slice proof. Snapshot validation still does not prove Git-history immutability,
-provenance truth, legal clearance, or semantic quality beyond focused contracts.
+provenance truth, legal clearance, or semantic quality beyond focused contracts. The separate
+`slice/video-cfr` fixture provides one digest-bound 96-frame AV1 WebM for the canonical runner. Its
+decoded traits remain expected values because current contract import does not open it.
 
 The largest verification gap is the absence of a production import-to-export slice. Its canonical
-video-only contract is now defined, but its fixture, runner, expected-output record, project state,
-timeline compiler, graph evaluator, effect node, muxer, and complete public flow are not integrated.
-There is no current test or runtime that imports through the engine, selects and decodes media,
+contract, source fixture, reference project state, graph control state, public action flow, and
+contract runner now exist. Independent expected output, production timeline compilation, graph
+evaluation, effect execution, color delivery, encoder, and muxer are not integrated. There is no
+current test or runtime that imports through the engine, selects and decodes media,
 edits a timeline, evaluates a graph, applies input and output color, renders through the GPU,
 encodes and muxes output, persists a project, and drives the flow through the public API.
 
@@ -463,13 +477,12 @@ dependency direction, but their public modules expose no substantive types or op
 Partial modules contain these explicit placeholder areas:
 
 - `superi-api`: scripting and every general command, dispatcher, transport, subscription, and
-  transaction path beyond media capabilities.
-- `superi-cli`: private command module and all API or engine behavior.
+  transaction path beyond capabilities and the fixed canonical scenario.
 - `superi-color`: versioned configuration, ICC transform evaluation, tone mapping, GPU output
   conversion, and production viewport or export integration.
 - `superi-concurrency`: GPU submission coordination module and all production engine composition.
-- `superi-engine`: eleven orchestration modules covering A/V sync, commands, errors, export,
-  lifecycle, nodes, playback, plugins, render, resources, and validation.
+- `superi-engine`: ten orchestration modules covering A/V sync, errors, export, lifecycle, nodes,
+  playback, plugins, render, resources, and validation.
 
 Substantive modules also have intentionally incomplete boundaries. Media I/O has no muxer or
 production registry owner for its source backends. GPU has no cross-adapter transfer or external

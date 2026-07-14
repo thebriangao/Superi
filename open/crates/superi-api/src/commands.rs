@@ -3,7 +3,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::api::MediaCapabilitiesSnapshot;
-use crate::version::GET_MEDIA_CAPABILITIES_METHOD;
+use crate::scenario::{ScenarioActionResult, SliceAction};
+use crate::version::{EXECUTE_SCENARIO_ACTION_METHOD, GET_MEDIA_CAPABILITIES_METHOD};
 
 /// One typed public API command and its response contract.
 pub trait ApiCommand {
@@ -50,4 +51,35 @@ impl GetMediaCapabilitiesResult {
     pub const fn snapshot(&self) -> &MediaCapabilitiesSnapshot {
         &self.snapshot
     }
+}
+
+/// Typed request to execute one precise reference slice action.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExecuteScenarioAction {
+    action: SliceAction,
+}
+
+impl ExecuteScenarioAction {
+    /// Creates an action request.
+    #[must_use]
+    pub const fn new(action: SliceAction) -> Self {
+        Self { action }
+    }
+
+    /// Returns the requested action.
+    #[must_use]
+    pub const fn action(&self) -> &SliceAction {
+        &self.action
+    }
+
+    pub(crate) fn into_action(self) -> SliceAction {
+        self.action
+    }
+}
+
+impl ApiCommand for ExecuteScenarioAction {
+    type Response = ScenarioActionResult;
+
+    const METHOD: &'static str = EXECUTE_SCENARIO_ACTION_METHOD;
 }

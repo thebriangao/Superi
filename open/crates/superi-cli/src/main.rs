@@ -1,10 +1,7 @@
-//! `superi-cli`, headless harness; the public API's first consumer. § 7. Status: skeleton.
+//! `superi-cli`, the headless first consumer of the public Superi API.
 
 mod commands;
 
 fn main() {
-    println!(
-        "superi {}: scaffold (no engine yet)",
-        env!("CARGO_PKG_VERSION")
-    );
+    std::process::exit(commands::run(std::env::args_os().skip(1)));
 }

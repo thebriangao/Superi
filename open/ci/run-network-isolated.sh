@@ -37,4 +37,9 @@ CDPATH= cd -- "$(dirname "${BASH_SOURCE[0]}")/.."
 printf 'network namespace %s has no outbound interface or route\n' "$current_netns"
 cargo test --workspace --locked --offline
 cargo run --locked --offline -p superi-fixture-tool -- check test-fixtures
-cargo run --locked --offline -p superi-cli
+slice_root="$(mktemp -d)"
+trap 'rm -rf "$slice_root"' EXIT
+cargo run --locked --offline -p superi-cli -- slice run \
+    --scenario superi.slice.canonical.v1 \
+    --artifact-dir "$slice_root/artifacts" \
+    --report "$slice_root/report.json"

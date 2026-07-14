@@ -1,0 +1,214 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use serde_json::Value;
+
+const SCENARIO_ID: &str = "superi.slice.canonical.v1";
+
+#[test]
+fn runner_executes_the_normalized_slice_and_writes_reproducible_contract_reports() {
+    let first = test_directory("first");
+    let second = test_directory("second");
+    let first_artifacts = first.join("artifacts");
+    let second_artifacts = second.join("artifacts");
+    let first_report = first.join("report.json");
+    let second_report = second.join("report.json");
+
+    let first_output = run_slice(&first_artifacts, &first_report, SCENARIO_ID);
+    let second_output = run_slice(&second_artifacts, &second_report, SCENARIO_ID);
+    assert_success(&first_output);
+    assert_success(&second_output);
+    assert!(first_output.stderr.is_empty());
+    assert!(second_output.stderr.is_empty());
+
+    let first_value = read_json(&first_report);
+    let second_value = read_json(&second_report);
+    assert_eq!(first_value["schema_version"], "1.0.0");
+    assert_eq!(first_value["scenario_id"], SCENARIO_ID);
+    assert_eq!(first_value["scenario_revision"], 1);
+    assert_eq!(first_value["success"], true);
+    assert_eq!(first_value["conformance"], "contract");
+    assert_eq!(first_value["fixture"]["fixture_id"], "slice/video-cfr");
+    assert_eq!(first_value["fixture"]["fixture_version"], 1);
+    assert_eq!(first_value["fixture"]["payload"]["frame_count"], 96);
+    assert_eq!(first_value["fixture"]["payload"]["width"], 96);
+    assert_eq!(first_value["fixture"]["payload"]["height"], 54);
+
+    let stages = first_value["stages"].as_array().unwrap();
+    assert_eq!(stages.len(), 8);
+    assert_eq!(stages[0]["stage_id"], "fixture.resolve");
+    assert_eq!(stages[1]["stage_id"], "media.import");
+    assert_eq!(stages[2]["stage_id"], "timeline.edit");
+    assert_eq!(stages[3]["stage_id"], "timeline.compile");
+    assert_eq!(stages[4]["stage_id"], "graph.evaluate");
+    assert_eq!(stages[5]["stage_id"], "color.deliver");
+    assert_eq!(stages[6]["stage_id"], "media.export");
+    assert_eq!(stages[7]["stage_id"], "slice.verify");
+    assert_eq!(stages[0]["implementation"], "runtime");
+    assert_eq!(stages[1]["implementation"], "stub");
+    assert_eq!(stages[7]["implementation"], "runtime");
+    assert!(stages.iter().all(|stage| stage["success"] == true));
+
+    assert_eq!(
+        first_value["state"]["timeline"]["timeline_name"],
+        "canonical"
+    );
+    assert_eq!(first_value["state"]["timeline"]["source_start_frame"], 24);
+    assert_eq!(first_value["state"]["timeline"]["source_end_frame"], 72);
+    assert_eq!(first_value["state"]["graph"]["matrix"][0], -1.0);
+    assert_eq!(first_value["state"]["graph"]["matrix"][2], 95.0);
+    assert_eq!(
+        first_value["state"]["operation_log"]
+            .as_array()
+            .unwrap()
+            .len(),
+        4
+    );
+    assert_eq!(first_value["verification"]["undo_redo_recovered"], true);
+    assert_eq!(first_value["expectations"]["status"], "unavailable");
+
+    let export = &first_value["export"];
+    assert_eq!(export["artifact_kind"], "contract_stub");
+    assert_eq!(export["implementation"], "stub");
+    assert_eq!(export["playable"], false);
+    assert_eq!(export["target_stream"]["codec"], "av1");
+    assert_eq!(export["target_stream"]["container"], "webm");
+    assert_eq!(export["target_stream"]["frame_count"], 48);
+    assert_eq!(
+        export["target_stream"]["timestamps"]
+            .as_array()
+            .unwrap()
+            .len(),
+        48
+    );
+    assert!(export["bytes"].as_u64().unwrap() > 0);
+    assert_eq!(export["sha256"].as_str().unwrap().len(), 64);
+
+    let first_stub = fs::read(first_artifacts.join("canonical.webm.contract-stub")).unwrap();
+    let second_stub = fs::read(second_artifacts.join("canonical.webm.contract-stub")).unwrap();
+    assert_eq!(first_stub, second_stub);
+    let stub: Value = serde_json::from_slice(&first_stub).unwrap();
+    assert_eq!(stub["artifact_kind"], "contract_stub");
+    assert_eq!(stub["playable"], false);
+    assert_eq!(stub["missing_runtime_owners"].as_array().unwrap().len(), 6);
+
+    assert_eq!(
+        normalized_report(first_value),
+        normalized_report(second_value)
+    );
+}
+
+#[test]
+fn runner_rejects_unknown_scenarios_and_output_collisions_before_execution() {
+    let unknown = test_directory("unknown");
+    let output = run_slice(
+        &unknown.join("artifacts"),
+        &unknown.join("report.json"),
+        "guessed",
+    );
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(error_kind(&output), "invalid_input");
+
+    let nonempty = test_directory("nonempty");
+    let artifacts = nonempty.join("artifacts");
+    fs::create_dir(&artifacts).unwrap();
+    fs::write(artifacts.join("owned.txt"), b"preserve").unwrap();
+    let output = run_slice(&artifacts, &nonempty.join("report.json"), SCENARIO_ID);
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(error_kind(&output), "invalid_input");
+    assert_eq!(fs::read(artifacts.join("owned.txt")).unwrap(), b"preserve");
+
+    let collision = test_directory("collision");
+    let report = collision.join("report.json");
+    fs::write(&report, b"preserve").unwrap();
+    let output = run_slice(&collision.join("artifacts"), &report, SCENARIO_ID);
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(error_kind(&output), "invalid_input");
+    assert_eq!(fs::read(report).unwrap(), b"preserve");
+}
+
+#[test]
+fn runner_has_precise_help_version_and_usage_status() {
+    let help = run(&["--help"]);
+    assert_success(&help);
+    let help_text = String::from_utf8(help.stdout).unwrap();
+    assert!(help_text.contains("superi-cli slice run --scenario superi.slice.canonical.v1"));
+    assert!(help_text.contains("--artifact-dir <EMPTY_DIRECTORY> --report <REPORT_JSON>"));
+
+    let version = run(&["--version"]);
+    assert_success(&version);
+    assert_eq!(String::from_utf8(version.stdout).unwrap(), "superi 0.0.0\n");
+
+    let invalid = run(&["slice"]);
+    assert_eq!(invalid.status.code(), Some(2));
+    assert_eq!(error_kind(&invalid), "invalid_input");
+}
+
+fn run_slice(artifact_dir: &Path, report: &Path, scenario: &str) -> Output {
+    run(&[
+        "slice",
+        "run",
+        "--scenario",
+        scenario,
+        "--artifact-dir",
+        artifact_dir.to_str().unwrap(),
+        "--report",
+        report.to_str().unwrap(),
+    ])
+}
+
+fn run(arguments: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_superi-cli"))
+        .args(arguments)
+        .current_dir(repo_root())
+        .output()
+        .unwrap()
+}
+
+fn read_json(path: &Path) -> Value {
+    serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
+}
+
+fn normalized_report(mut value: Value) -> Value {
+    value["export"].as_object_mut().unwrap().remove("path");
+    for stage in value["stages"].as_array_mut().unwrap() {
+        stage.as_object_mut().unwrap().remove("duration_us");
+    }
+    value
+}
+
+fn error_kind(output: &Output) -> String {
+    let failure: Value = serde_json::from_slice(&output.stderr).unwrap();
+    failure["category"].as_str().unwrap().to_owned()
+}
+
+fn assert_success(output: &Output) {
+    assert!(
+        output.status.success(),
+        "process failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .unwrap()
+        .to_path_buf()
+}
+
+fn test_directory(label: &str) -> PathBuf {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!(
+        "superi-cli-p1-w07-c017-{label}-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&path).unwrap();
+    path
+}

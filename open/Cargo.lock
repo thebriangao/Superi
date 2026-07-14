@@ -2553,6 +2553,7 @@ version = "0.0.0"
 dependencies = [
  "serde",
  "serde_json",
+ "sha2",
  "superi-core",
  "superi-engine",
  "superi-media-io",
@@ -2584,6 +2585,9 @@ dependencies = [
 name = "superi-cli"
 version = "0.0.0"
 dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
  "superi-api",
  "superi-core",
 ]
@@ -2700,6 +2704,7 @@ name = "superi-engine"
 version = "0.0.0"
 dependencies = [
  "pollster",
+ "sha2",
  "superi-ai",
  "superi-audio",
  "superi-cache",

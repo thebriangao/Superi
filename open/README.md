@@ -4,16 +4,30 @@ The free, forkable, offline-complete professional editor. This cargo workspace i
 headless, scriptable, and fully functional with the network
 unplugged.
 
-> **Status: structural skeleton.** Crates compile and map the architecture; engine logic, CI rails,
-> the vertical slice, and the UI are later passes (see `docs/STRUCTURE.md` § "Deferred").
+> **Status: early implementation.** Lower-level runtime contracts and CI rails are substantive, and
+> the canonical CLI slice now executes at disclosed contract conformance. Production media import,
+> graph evaluation, color delivery, muxing, and the UI remain incomplete.
 
 ## Build
 
 ```bash
 cd open
 cargo build
-cargo run -p superi-cli      # prints the scaffold version line
+cargo run -p superi-cli -- --help
 ```
+
+Run the fixed canonical slice from `open/` with absent output paths:
+
+```bash
+cargo run -p superi-cli -- slice run \
+  --scenario superi.slice.canonical.v1 \
+  --artifact-dir /tmp/superi-slice-artifacts \
+  --report /tmp/superi-slice-report.json
+```
+
+Current success means `contract` conformance. The report names all six stub stages, and the
+published `canonical.webm.contract-stub` is deliberately non-playable. Runtime conformance and a
+real `canonical.webm` remain future integration work.
 
 Enable the opt-in OS codec backend (H.264/H.265/ProRes/AAC via the user's OS, see
 `../docs/codecs.md`):
@@ -24,9 +38,10 @@ cargo build -p superi-cli --features os-codecs
 
 ## Layout
 
-18 crates in `crates/`, one per `§5` subsystem, wired in strict downward-only dependency tiers so the
-architecture is compiler-enforced. Full crate map, dependency DAG, ownership, and the workspace guide are
-in **`docs/STRUCTURE.md`**.
+Nineteen runtime crates in `crates/` and three repository tools in `tools/` are wired in strict
+downward-only dependency tiers so the architecture is compiler-enforced. Full module maps,
+dependency DAG, ownership, and workspace guidance are in **`../docs/codebase-map/`** and
+**`docs/STRUCTURE.md`**.
 
 ## The rules that govern this tree
 

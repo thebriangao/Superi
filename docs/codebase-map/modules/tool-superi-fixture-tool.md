@@ -136,6 +136,8 @@ generation.
 
 The binary and seven integration-test files consume the library. `open/test-fixtures/README.md`
 documents all four commands. The canonical-root validator consumes the complete fixture store.
+That store now includes the separately generated encoded canonical slice source, which this tool
+validates as an ordinary strict manifest and opaque payload but does not reproduce.
 `superi-media-io` does not depend on this tool at runtime; separate integration tests consume the
 emitted canonical video, audio, and timing artifacts. The video test checks generator tables
 indirectly against live core definitions. The audio test opens every WAVE through the production PCM
@@ -181,7 +183,8 @@ sample-aligned timing, synchronized signal boundaries, distinct channel routing,
 sample identity, and bounded adjacent-sample continuity through `PcmContainerSource`. The canonical
 timing contract proves its strict schema, CFR and VFR maps, decode and presentation order,
 continuous drop-frame samples, unsegmented discontinuity rejection, and reversible segment
-normalization. The canonical validator reports four fixture versions and seven payloads.
+normalization. The canonical validator reports five fixture versions and eight payloads with the
+encoded slice source included.
 
 ## Current status and risks
 
@@ -189,7 +192,9 @@ Validation, deterministic video, audio, and timing generation, all four CLI comm
 artifacts, and real consumer proof are implemented. The video baseline is raw single-frame evidence,
 the audio baseline is PCM-container evidence, and the timing baseline is metadata evidence. Together
 they still do not prove encoded codecs, HDR, malformed media payloads, playback, physical devices,
-hardware clocks, A/V synchronization, scheduling, real-time behavior, or the editorial slice.
+hardware clocks, A/V synchronization, scheduling, real-time behavior, or the editorial slice. The
+encoded slice fixture participates in strict generic validation but has a separate documentary
+FFmpeg generator and is not reproduced by this tool.
 
 Validation still checks SPDX, media type, source, author, rights, and semantic quality only to the
 degree documented by schema rules. It validates a filesystem snapshot rather than history. Lineage

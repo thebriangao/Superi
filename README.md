@@ -4,9 +4,10 @@
 engine. Superi Max is an optional generation and agent layer constructed across a hard architectural
 boundary.**
 
-> **Project status:** Superi is currently an architectural scaffold. The repository establishes the
-> product boundaries, engine topology, crate dependency graph, codec isolation strategy, and build
-> sequence before substantive engine implementation begins. It is not yet a functioning video editor.
+> **Project status:** Superi is in early implementation. Several lower-level media, codec, image,
+> GPU, color, concurrency, and policy contracts are substantive, and the canonical CLI runner now
+> executes a disclosed contract-conformance slice. It is not yet a functioning video editor, and
+> the runner does not claim runtime import, rendering, or playable export.
 
 Superi begins from a simple observation: professional post-production software has historically
 separated editing, compositing, color, and audio into different applications, different internal
@@ -343,18 +344,20 @@ See [`docs/codecs.md`](docs/codecs.md) for the current policy and format matrix.
 
 ---
 
-## The current scaffold
+## The current implementation
 
-The `open/` directory is a Cargo workspace containing eighteen crates. The workspace is intentionally
-organized as one crate per major responsibility, with dependencies pointing downward through an
-acyclic hierarchy. The crate graph is meant to make architectural violations visible to the Rust
-compiler rather than leaving them entirely to documentation and code review.
+The `open/` directory is a Cargo workspace containing nineteen runtime crates and three repository
+tools. The workspace is intentionally organized as one crate per major responsibility, with
+dependencies pointing downward through an acyclic hierarchy. The crate graph is meant to make
+architectural violations visible to the Rust compiler rather than leaving them entirely to
+documentation and code review.
 
-At present these crates are primarily declarative. Their manifests establish package relationships,
-and their source files identify module ownership and intended responsibilities. Most modules contain
-documentation stubs rather than types, algorithms, or production behavior. The only executable
-behavior is a CLI scaffold that prints its version. No external workspace dependency has yet been
-activated by engine implementation.
+Implementation depth is uneven. Core values, media contracts and demuxers, codec backends, host
+images, GPU infrastructure, color transforms, concurrency primitives, fixture validation, and
+several policy gates are substantive. Project, timeline, graph, cache, effects, audio, AI, and most
+engine orchestration remain incomplete. The CLI exercises exact canonical editorial state through
+the public API, but discloses six replacement stages as stubs and publishes a non-playable contract
+artifact instead of pretending that a runtime export exists.
 
 That sparseness is deliberate, but it should not be mistaken for a completed foundation. The scaffold
 answers:
@@ -410,7 +413,7 @@ superi/
 │   ├── phases.md             Build sequence and subsystem inventory
 │   └── codecs.md             Codec policy and format matrix
 ├── open/
-│   ├── Cargo.toml            Eighteen-crate workspace definition
+│   ├── Cargo.toml            Runtime crate and repository tool workspace definition
 │   ├── Cargo.lock            Generated internal dependency graph
 │   ├── deny.toml             Permissive-license allowlist
 │   ├── rust-toolchain.toml   Stable Rust, rustfmt, and Clippy
@@ -426,7 +429,7 @@ Similarly, there is no application/UI tree yet.
 
 ---
 
-## Building the scaffold
+## Building the open workspace
 
 The open engine workspace requires stable Rust with rustfmt and Clippy. The pinned minimum Rust
 version in workspace metadata is 1.80.
@@ -438,17 +441,19 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-Run the current CLI scaffold:
+Run the canonical contract-conformance slice from the repository root or `open/` directory:
 
 ```bash
-cargo run -p superi-cli
+cargo run -p superi-cli -- slice run \
+  --scenario superi.slice.canonical.v1 \
+  --artifact-dir /tmp/superi-slice-artifacts \
+  --report /tmp/superi-slice-report.json
 ```
 
-It currently prints:
-
-```text
-superi 0.0.0: scaffold (no engine yet)
-```
+The artifact directory must be absent or empty, and the report path must not exist. A successful
+current run reports `contract` conformance, identifies every stub stage, and writes
+`canonical.webm.contract-stub`. It does not produce `canonical.webm` or claim runtime conformance.
+Use `cargo run -p superi-cli -- --help` for the exact process contract.
 
 Compile the opt-in platform codec path:
 
@@ -458,9 +463,9 @@ cargo test -p superi-cli --features os-codecs
 cargo clippy -p superi-cli --all-targets --features os-codecs -- -D warnings
 ```
 
-The existence of successful builds at this stage proves that the package topology and feature
-propagation are coherent. It does not prove codec functionality or any higher-level engine behavior,
-because those implementations do not yet exist.
+Successful builds and the contract runner prove only their exercised boundaries. They do not prove
+the missing production timeline compiler, graph evaluation, color delivery, muxing, playback, or
+interactive editor behavior.
 
 ---
 
@@ -588,18 +593,16 @@ appropriate expertise before the work they govern hardens.
 
 ## What is not in this repository yet
 
-The present scaffold does **not** contain:
+The present implementation does **not** contain:
 
-- working decode or encode implementations;
-- a GPU device, shader library, or frame-processing pipeline;
-- timeline data structures or editing operations;
-- a functional graph or evaluator;
-- color transforms or grading operations;
+- a production source-to-decode-to-render-to-mux flow;
+- a production timeline model, compiler, graph evaluator, or editable effect catalog;
+- a playable canonical slice export or runtime-conformance runner;
+- a complete GPU-resident frame-processing pipeline through graph and delivery;
 - playback or export orchestration;
 - project serialization;
 - audio processing;
 - local model inference;
-- the network-isolated CI rail;
 - the web application or native shell;
 - Superi Max services, generation integrations, accounts, credits, or agent; or
 - a public release.

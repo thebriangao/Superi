@@ -46,7 +46,13 @@ grep -Fq 'cargo test --workspace --locked --offline' "$harness" ||
     fail "harness must run locked offline workspace tests"
 grep -Fq 'superi-fixture-tool -- check test-fixtures' "$harness" ||
     fail "harness must validate canonical fixtures"
-grep -Fq 'cargo run --locked --offline -p superi-cli' "$harness" ||
-    fail "harness must run the headless public consumer"
+grep -Fq 'cargo run --locked --offline -p superi-cli -- slice run' "$harness" ||
+    fail "harness must run the canonical headless slice"
+grep -Fq -- '--scenario superi.slice.canonical.v1' "$harness" ||
+    fail "harness must select the canonical scenario"
+grep -Fq -- '--artifact-dir "$slice_root/artifacts"' "$harness" ||
+    fail "harness must isolate canonical slice artifacts"
+grep -Fq -- '--report "$slice_root/report.json"' "$harness" ||
+    fail "harness must retain the canonical report"
 
 printf 'network-isolated workflow contract passed\n'
