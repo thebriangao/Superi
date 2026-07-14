@@ -2,9 +2,9 @@
 module_id: superi-media-io
 source_paths:
   - open/crates/superi-media-io
-source_hash: c557f19be033dc269d1e83da37b7229f4d8e502cc213f6cfd99c1976fa412906
-source_files: 34
-mapped_at_commit: 217e9d48703bcfd4736d949aea510c94505071bc
+source_hash: 9ce26f942445dc76d5e2c4d8e849a9544110615d1240136f1a6747124cdf8ecd
+source_files: 35
+mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
@@ -50,6 +50,7 @@ This crate owns contracts and demuxing, not a complete editor media pipeline. It
 - `open/crates/superi-media-io/tests/timecode_contract.rs`: Exercises timestamp normalization and forward or reverse edit-list mapping across empty, repeated, dwell, non-unit-rate, mixed-timebase, and half-open cases.
 - `open/crates/superi-media-io/tests/timecode_metadata_contract.rs`: Exercises timecode descriptions, raw flags, 32-bit and 64-bit big-endian samples, drop-frame labels, counters, physical rates, source segments, 24-hour wrapping, and schema failures.
 - `open/crates/superi-media-io/tests/vfr_contract.rs`: Exercises decode-order input sorting, inferred presentation durations, half-open lookup, compatible timebase conversion, negative coordinates, validation failures, overflow, resource bounds, and cancellation.
+- `open/crates/superi-media-io/tests/video_fixture_contract.rs`: Consumes the canonical versioned raw-video fixture, proves the complete 23 pixel format by 9 standard rate matrix, verifies exact plane layout, offsets, hashes, and numeric representation, and constructs all 207 cases through the public CPU video-frame path.
 - `open/crates/superi-media-io/tests/waveform_preview_contract.rs`: Exercises packed and planar sample normalization, channel ordering, exact peak buckets, width capping, source preservation, continuity and format validation, and nonfinite audio rejection.
 
 ## Public surface
@@ -171,7 +172,7 @@ No production Rust source outside this crate constructs `MkvWebmBackend`, `Mp4Mo
 
 ## Tests and verification
 
-The thirteen integration-test files exercise each public concern with deterministic in-memory builders and temporary path fixtures:
+The fourteen integration-test files exercise each public concern with deterministic in-memory builders, temporary path fixtures, and the canonical shared video baseline:
 
 - Shared values and fake decode/encode composition: `contracts.rs`.
 - Image-sequence input/output: `image_sequence_contract.rs`.
@@ -181,13 +182,16 @@ The thirteen integration-test files exercise each public concern with determinis
 - Paired selection and packet routing: `selection_contract.rs`.
 - Timestamp/edit mapping and source timecode metadata: `timecode_contract.rs` and `timecode_metadata_contract.rs`.
 - VFR construction and lookup: `vfr_contract.rs`.
+- Canonical pixel-format and standard-frame-rate coverage: `video_fixture_contract.rs`.
 - Decoded-audio waveform generation: `waveform_preview_contract.rs`.
 
 Implementation-local unit tests add focused bounds and mapping proof: Matroska packet, copied-metadata, and duration limits; MP4 table bounds, VVC configuration, SHA-256, edit expansion, dwell seek, and VVC mapping; PCM ancillary count and aggregate budgets; and platform-independent parser helpers. The MXF parser and adapter have no embedded unit tests and rely on the MXF integration contract.
 
 The strongest end-to-end format proofs are synthetic: all Matroska lacing modes, classic and one-fragment MP4/MOV, one OP1a MXF graph, and detailed WAVE/RF64/AIFF schemas. MP4/MOV and MXF tests open every proper fixture prefix under panic containment and verify no prefix succeeds. Container and PCM tests verify memory/path parity and relink conflicts. MP4/MOV, MXF, and PCM verify non-advancing cancellation for read and seek; Matroska's contract proves cancelled probing but not the same complete runtime matrix.
 
-These fixtures prove implemented contracts, not broad real-world compatibility, native codec behavior, encrypted media, muxing, scheduling, export atomicity, or real-time performance. The fake decode/encode pipeline proves trait composition and lifecycle only. Waveform tests assert peak data but not complete raster pixels. Image-sequence tests use memory backends and do not prove filesystem naming or publication. Timeout behavior is tested at shared boundaries, not inside every format parser.
+The canonical raw-video contract constructs every current `PixelFormat::ALL` value at all nine standard `FrameRate` constants. It proves exact odd-dimension packed, planar, semiplanar, and chroma geometry; contiguous catalog ranges and hashes; finite floats; 10-bit bounds; P010 alignment; exact rational timing; and public `VideoPlane`, `CpuVideoBuffer`, `VideoFormat`, and `VideoFrame` integration. The data is one synthetic raw frame per case, so it does not prove encoded codecs, CFR or VFR sequences, HDR, malformed media, native hardware, scheduling, muxing, or real-time performance.
+
+The other fixtures prove implemented contracts, not broad real-world compatibility, native codec behavior, encrypted media, muxing, scheduling, export atomicity, or real-time performance. The fake decode/encode pipeline proves trait composition and lifecycle only. Waveform tests assert peak data but not complete raster pixels. Image-sequence tests use memory backends and do not prove filesystem naming or publication. Timeout behavior is tested at shared boundaries, not inside every format parser.
 
 ## Current status and risks
 

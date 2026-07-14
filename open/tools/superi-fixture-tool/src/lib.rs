@@ -13,6 +13,396 @@ const MANIFEST_NAME: &str = "fixture.json";
 const POLICY_NAME: &str = "README.md";
 const SUPPORTED_SCHEMA_VERSION: u32 = 1;
 
+pub const VIDEO_CATALOG_NAME: &str = "video-cases.csv";
+pub const VIDEO_PAYLOAD_NAME: &str = "video-frames.bin";
+pub const VIDEO_MANIFEST_NAME: &str = MANIFEST_NAME;
+
+const VIDEO_WIDTH: usize = 5;
+const VIDEO_HEIGHT: u32 = 3;
+const VIDEO_CATALOG_HEADER: &str = "case_id,pixel_format,frame_rate_numerator,frame_rate_denominator,width,height,plane_index,offset,bytes,stride,rows,sha256";
+const VIDEO_FRAME_RATES: [(u32, u32); 9] = [
+    (24, 1),
+    (25, 1),
+    (30, 1),
+    (48, 1),
+    (50, 1),
+    (60, 1),
+    (24_000, 1_001),
+    (30_000, 1_001),
+    (60_000, 1_001),
+];
+
+#[derive(Clone, Copy)]
+enum SampleKind {
+    U8,
+    U10,
+    U16,
+    P010,
+    F16,
+    F32,
+}
+
+impl SampleKind {
+    const fn bytes(self) -> usize {
+        match self {
+            Self::U8 => 1,
+            Self::U10 | Self::U16 | Self::P010 | Self::F16 => 2,
+            Self::F32 => 4,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Subsampling {
+    Cs420,
+    Cs422,
+    Cs444,
+}
+
+#[derive(Clone, Copy)]
+enum PixelLayout {
+    Packed { components: usize },
+    Planar { subsampling: Subsampling },
+    Semiplanar,
+}
+
+#[derive(Clone, Copy)]
+struct PixelSpec {
+    code: &'static str,
+    sample: SampleKind,
+    layout: PixelLayout,
+}
+
+const VIDEO_PIXEL_SPECS: [PixelSpec; 23] = [
+    PixelSpec {
+        code: "r8_unorm",
+        sample: SampleKind::U8,
+        layout: PixelLayout::Packed { components: 1 },
+    },
+    PixelSpec {
+        code: "r16_unorm",
+        sample: SampleKind::U16,
+        layout: PixelLayout::Packed { components: 1 },
+    },
+    PixelSpec {
+        code: "r16_float",
+        sample: SampleKind::F16,
+        layout: PixelLayout::Packed { components: 1 },
+    },
+    PixelSpec {
+        code: "r32_float",
+        sample: SampleKind::F32,
+        layout: PixelLayout::Packed { components: 1 },
+    },
+    PixelSpec {
+        code: "rg8_unorm",
+        sample: SampleKind::U8,
+        layout: PixelLayout::Packed { components: 2 },
+    },
+    PixelSpec {
+        code: "rg16_unorm",
+        sample: SampleKind::U16,
+        layout: PixelLayout::Packed { components: 2 },
+    },
+    PixelSpec {
+        code: "rg16_float",
+        sample: SampleKind::F16,
+        layout: PixelLayout::Packed { components: 2 },
+    },
+    PixelSpec {
+        code: "rg32_float",
+        sample: SampleKind::F32,
+        layout: PixelLayout::Packed { components: 2 },
+    },
+    PixelSpec {
+        code: "rgb8_unorm",
+        sample: SampleKind::U8,
+        layout: PixelLayout::Packed { components: 3 },
+    },
+    PixelSpec {
+        code: "bgr8_unorm",
+        sample: SampleKind::U8,
+        layout: PixelLayout::Packed { components: 3 },
+    },
+    PixelSpec {
+        code: "rgba8_unorm",
+        sample: SampleKind::U8,
+        layout: PixelLayout::Packed { components: 4 },
+    },
+    PixelSpec {
+        code: "bgra8_unorm",
+        sample: SampleKind::U8,
+        layout: PixelLayout::Packed { components: 4 },
+    },
+    PixelSpec {
+        code: "rgba16_unorm",
+        sample: SampleKind::U16,
+        layout: PixelLayout::Packed { components: 4 },
+    },
+    PixelSpec {
+        code: "rgba16_float",
+        sample: SampleKind::F16,
+        layout: PixelLayout::Packed { components: 4 },
+    },
+    PixelSpec {
+        code: "rgba32_float",
+        sample: SampleKind::F32,
+        layout: PixelLayout::Packed { components: 4 },
+    },
+    PixelSpec {
+        code: "yuv420p8",
+        sample: SampleKind::U8,
+        layout: PixelLayout::Planar {
+            subsampling: Subsampling::Cs420,
+        },
+    },
+    PixelSpec {
+        code: "yuv420p10",
+        sample: SampleKind::U10,
+        layout: PixelLayout::Planar {
+            subsampling: Subsampling::Cs420,
+        },
+    },
+    PixelSpec {
+        code: "yuv422p8",
+        sample: SampleKind::U8,
+        layout: PixelLayout::Planar {
+            subsampling: Subsampling::Cs422,
+        },
+    },
+    PixelSpec {
+        code: "yuv422p10",
+        sample: SampleKind::U10,
+        layout: PixelLayout::Planar {
+            subsampling: Subsampling::Cs422,
+        },
+    },
+    PixelSpec {
+        code: "yuv444p8",
+        sample: SampleKind::U8,
+        layout: PixelLayout::Planar {
+            subsampling: Subsampling::Cs444,
+        },
+    },
+    PixelSpec {
+        code: "yuv444p10",
+        sample: SampleKind::U10,
+        layout: PixelLayout::Planar {
+            subsampling: Subsampling::Cs444,
+        },
+    },
+    PixelSpec {
+        code: "nv12",
+        sample: SampleKind::U8,
+        layout: PixelLayout::Semiplanar,
+    },
+    PixelSpec {
+        code: "p010",
+        sample: SampleKind::P010,
+        layout: PixelLayout::Semiplanar,
+    },
+];
+
+pub const VIDEO_BASELINE_CASE_COUNT: usize = VIDEO_PIXEL_SPECS.len() * VIDEO_FRAME_RATES.len();
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VideoBaselineReport {
+    case_count: usize,
+    payload_bytes: usize,
+}
+
+impl VideoBaselineReport {
+    #[must_use]
+    pub const fn case_count(self) -> usize {
+        self.case_count
+    }
+
+    #[must_use]
+    pub const fn payload_bytes(self) -> usize {
+        self.payload_bytes
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PlaneSpec {
+    stride: usize,
+    rows: u32,
+}
+
+pub fn generate_video_baseline(output_directory: &Path) -> io::Result<VideoBaselineReport> {
+    match fs::symlink_metadata(output_directory) {
+        Ok(_) => {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "output directory already exists",
+            ));
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+
+    let mut catalog = String::from(VIDEO_CATALOG_HEADER);
+    catalog.push_str("\r\n");
+    let mut payload = Vec::new();
+    let mut case_count = 0;
+
+    for pixel in VIDEO_PIXEL_SPECS {
+        let plane_specs = video_plane_specs(pixel);
+        for (rate_numerator, rate_denominator) in VIDEO_FRAME_RATES {
+            let case_id = format!("{}-{rate_numerator}-{rate_denominator}", pixel.code);
+            for (plane_index, plane) in plane_specs.iter().enumerate() {
+                let offset = payload.len();
+                let sample_count = plane.stride * plane.rows as usize / pixel.sample.bytes();
+                for sample_index in 0..sample_count {
+                    append_sample(
+                        &mut payload,
+                        pixel.sample,
+                        case_count * 131 + plane_index * 17 + sample_index,
+                    );
+                }
+                let bytes = payload.len() - offset;
+                let digest = digest_bytes(&payload[offset..]);
+                catalog.push_str(&format!(
+                    "{case_id},{},{rate_numerator},{rate_denominator},{VIDEO_WIDTH},{VIDEO_HEIGHT},{plane_index},{offset},{bytes},{},{},{digest}\r\n",
+                    pixel.code, plane.stride, plane.rows
+                ));
+            }
+            case_count += 1;
+        }
+    }
+
+    debug_assert_eq!(case_count, VIDEO_BASELINE_CASE_COUNT);
+    let catalog_bytes = catalog.as_bytes();
+    let manifest = video_manifest(catalog_bytes, &payload);
+
+    if let Some(parent) = output_directory.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+    fs::create_dir(output_directory)?;
+    fs::write(output_directory.join(VIDEO_CATALOG_NAME), catalog_bytes)?;
+    fs::write(output_directory.join(VIDEO_PAYLOAD_NAME), &payload)?;
+    fs::write(output_directory.join(VIDEO_MANIFEST_NAME), manifest)?;
+
+    Ok(VideoBaselineReport {
+        case_count,
+        payload_bytes: payload.len(),
+    })
+}
+
+fn video_plane_specs(pixel: PixelSpec) -> Vec<PlaneSpec> {
+    let sample_bytes = pixel.sample.bytes();
+    match pixel.layout {
+        PixelLayout::Packed { components } => vec![PlaneSpec {
+            stride: VIDEO_WIDTH * components * sample_bytes,
+            rows: VIDEO_HEIGHT,
+        }],
+        PixelLayout::Planar { subsampling } => {
+            let (chroma_width, chroma_height) = match subsampling {
+                Subsampling::Cs420 => (VIDEO_WIDTH.div_ceil(2), VIDEO_HEIGHT.div_ceil(2)),
+                Subsampling::Cs422 => (VIDEO_WIDTH.div_ceil(2), VIDEO_HEIGHT),
+                Subsampling::Cs444 => (VIDEO_WIDTH, VIDEO_HEIGHT),
+            };
+            vec![
+                PlaneSpec {
+                    stride: VIDEO_WIDTH * sample_bytes,
+                    rows: VIDEO_HEIGHT,
+                },
+                PlaneSpec {
+                    stride: chroma_width * sample_bytes,
+                    rows: chroma_height,
+                },
+                PlaneSpec {
+                    stride: chroma_width * sample_bytes,
+                    rows: chroma_height,
+                },
+            ]
+        }
+        PixelLayout::Semiplanar => vec![
+            PlaneSpec {
+                stride: VIDEO_WIDTH * sample_bytes,
+                rows: VIDEO_HEIGHT,
+            },
+            PlaneSpec {
+                stride: VIDEO_WIDTH.div_ceil(2) * 2 * sample_bytes,
+                rows: VIDEO_HEIGHT.div_ceil(2),
+            },
+        ],
+    }
+}
+
+fn append_sample(bytes: &mut Vec<u8>, kind: SampleKind, seed: usize) {
+    match kind {
+        SampleKind::U8 => bytes.push((seed.wrapping_mul(37).wrapping_add(17) & 0xff) as u8),
+        SampleKind::U10 => {
+            let value = (seed.wrapping_mul(43).wrapping_add(29) & 0x03ff) as u16;
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        SampleKind::U16 => {
+            let value = (seed.wrapping_mul(977).wrapping_add(257) & 0xffff) as u16;
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        SampleKind::P010 => {
+            let value = ((seed.wrapping_mul(43).wrapping_add(29) & 0x03ff) as u16) << 6;
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        SampleKind::F16 => {
+            const FINITE_HALF_BITS: [u16; 6] = [0x0000, 0x3000, 0x3400, 0x3800, 0x3a00, 0x3c00];
+            bytes.extend_from_slice(&FINITE_HALF_BITS[seed % FINITE_HALF_BITS.len()].to_le_bytes());
+        }
+        SampleKind::F32 => {
+            let value = (seed % 17) as f32 / 16.0;
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+    }
+}
+
+fn video_manifest(catalog: &[u8], payload: &[u8]) -> String {
+    format!(
+        r#"{{
+  "schema_version": 1,
+  "fixture_id": "video/pixel-formats",
+  "fixture_version": 1,
+  "description": "Tiny deterministic raw frames for every supported pixel format and standard frame rate.",
+  "provenance": {{
+    "kind": "generated",
+    "source": "Authored and generated in the Superi repository from stable format and frame-rate tables.",
+    "author": "Superi contributors",
+    "created_on": "2026-07-14",
+    "license": "CC0-1.0",
+    "rights": "Original synthetic bytes approved for unrestricted redistribution.",
+    "generator": {{
+      "name": "superi-fixture-tool",
+      "version": "0.0.0",
+      "command": "cargo run -p superi-fixture-tool -- generate-video <OUTPUT_DIRECTORY>",
+      "seed": "superi-video-baseline-v1"
+    }},
+    "parents": []
+  }},
+  "files": [
+    {{
+      "path": "{VIDEO_CATALOG_NAME}",
+      "media_type": "text/csv; charset=utf-8",
+      "bytes": {},
+      "sha256": "{}"
+    }},
+    {{
+      "path": "{VIDEO_PAYLOAD_NAME}",
+      "media_type": "application/octet-stream",
+      "bytes": {},
+      "sha256": "{}"
+    }}
+  ]
+}}
+"#,
+        catalog.len(),
+        digest_bytes(catalog),
+        payload.len(),
+        digest_bytes(payload)
+    )
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ValidationReport {
     fixture_count: usize,

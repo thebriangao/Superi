@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "fixture_id": "video/pixel-formats",
+  "fixture_version": 1,
+  "description": "Tiny deterministic raw frames for every supported pixel format and standard frame rate.",
+  "provenance": {
+    "kind": "generated",
+    "source": "Authored and generated in the Superi repository from stable format and frame-rate tables.",
+    "author": "Superi contributors",
+    "created_on": "2026-07-14",
+    "license": "CC0-1.0",
+    "rights": "Original synthetic bytes approved for unrestricted redistribution.",
+    "generator": {
+      "name": "superi-fixture-tool",
+      "version": "0.0.0",
+      "command": "cargo run -p superi-fixture-tool -- generate-video <OUTPUT_DIRECTORY>",
+      "seed": "superi-video-baseline-v1"
+    },
+    "parents": []
+  },
+  "files": [
+    {
+      "path": "video-cases.csv",
+      "media_type": "text/csv; charset=utf-8",
+      "bytes": 39531,
+      "sha256": "655a675bf902f0e7812555150b97147ffa21679069c9073a645b0c2021f1ae9d"
+    },
+    {
+      "path": "video-frames.bin",
+      "media_type": "application/octet-stream",
+      "bytes": 13419,
+      "sha256": "652cfca416a590ae45e1e2745709de85469f46f1f4b0cd16ccc3c2049c468dc0"
+    }
+  ]
+}

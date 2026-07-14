@@ -67,6 +67,30 @@ copyright, nonredistributable samples, or content whose license conflicts with r
 Record transformations as new derived versions rather than obscuring origin. Large binaries require
 the same review and manifest; storage mechanism does not weaken this contract.
 
+## Deterministic video baseline
+
+`video/pixel-formats/v1` contains one 5 by 3 raw frame for every combination of the 23 pixel
+formats in `superi-core::PixelFormat::ALL` and the nine standard `FrameRate` constants. The odd
+dimensions exercise exact packed, planar, semiplanar, and chroma-subsampled geometry. Integer,
+10-bit, P010, half-float, and float payloads use stable little-endian sample patterns. The complete
+207-case binary payload remains below 64 KiB.
+
+`video-cases.csv` uses a fixed 12-field, CRLF-delimited catalog. Each record binds one plane to its
+case identity, exact rational frame rate, dimensions, plane index, payload offset, byte count,
+stride, row count, and SHA-256. `video-frames.bin` stores catalog planes contiguously with no gaps.
+The `superi-media-io` fixture contract proves the catalog is the complete Cartesian product of the
+live core definitions, verifies every plane digest and representation, and constructs every frame
+through the public media-I/O CPU buffer and timing path.
+
+Reproduce the version into a new absent directory from `open/`:
+
+```text
+cargo run -p superi-fixture-tool -- generate-video <OUTPUT_DIRECTORY>
+```
+
+The generator refuses to overwrite any existing output path. Compare all three generated artifacts
+byte for byte with the canonical version. Do not regenerate into the checked-in `v1` directory.
+
 ## Contributor workflow
 
 1. Prefer the smallest synthetic fixture that exposes the behavior. Use representative recorded or

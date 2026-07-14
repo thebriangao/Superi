@@ -34,7 +34,7 @@ against raw source before changing code.
 | `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Reserved editorial model, edits, OTIO, nesting, multicam, and graph compilation | Skeleton: no timeline model, OTIO path, or compiler |
 | `tool-superi-dependency-check` | [module map](modules/tool-superi-dependency-check.md) | `open/tools/superi-dependency-check` | Offline executable policy for the open runtime dependency graph | Implemented exact runtime, build, dev, and new-crate checks |
 | `tool-superi-boundary-tool` | [module map](modules/tool-superi-boundary-tool.md) | `open/tools/superi-boundary-tool` | Offline scanner for network-client and open-to-closed policy | Implemented library, CLI, workspace gate, and hosted-build command |
-| `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline validator for canonical repository fixtures | Implemented validation library and CLI; it does not generate fixtures |
+| `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline validator and deterministic video-fixture generator | Implemented validation library, video generator, two-command CLI, and focused contracts |
 | `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: canonical slice defined, runtime absent, other status drift remains |
 
 ## Ownership and repository boundaries
@@ -301,9 +301,11 @@ does not initialize the engine or API and accepts no arguments.
 
 `superi-fixture-tool` is a repository utility, not an engine component. It validates schema,
 identity, provenance, lineage, payload ownership, byte counts, hashes, path safety, and unmanaged
-files under `open/test-fixtures`. It is offline and read-only. It does not generate fixtures,
-execute recorded generator commands, prove repository-history immutability, or verify legal and
-semantic claims inside free-form provenance fields.
+files under `open/test-fixtures`. Validation is offline and read-only. Its separate deterministic
+video command creates an absent output directory containing all 207 current pixel-format and
+standard-frame-rate cases, a fixed catalog, raw payload, and exact manifest. It refuses overwrite
+and does not execute recorded commands, prove repository-history immutability, or verify legal and
+semantic claims inside arbitrary free-form provenance fields.
 
 `superi-dependency-check` is also a repository utility. It reads the locked workspace graph offline
 and fails when a runtime crate adds an unreviewed normal, build, or dev-only internal edge, or when a
@@ -427,8 +429,12 @@ behavior, device loss, presentation, and teardown still require their owning ope
 physical hardware.
 
 Shared fixtures are versioned, immutable by repository policy, and validated offline with
-`superi-fixture-tool`. The validator proves the current filesystem snapshot and manifest digests,
-not Git-history immutability, provenance truth, legal clearance, or semantic quality.
+`superi-fixture-tool`. The deterministic video baseline adds 207 one-frame cases across all 23
+current pixel formats and nine standard frame rates. The tool proves byte reproduction, while the
+`superi-media-io` consumer proves exact geometry, numeric representation, timing, hashes, and public
+frame construction. This is raw single-frame coverage, not encoded codec, cadence, HDR, malformed,
+hardware, audio, or editorial-slice proof. Snapshot validation still does not prove Git-history
+immutability, provenance truth, legal clearance, or semantic quality beyond focused contracts.
 
 The largest verification gap is the absence of a production import-to-export slice. Its canonical
 video-only contract is now defined, but its fixture, runner, expected-output record, project state,
