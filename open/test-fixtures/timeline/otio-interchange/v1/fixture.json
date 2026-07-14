@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "fixture_id": "timeline/otio-interchange",
+  "fixture_version": 1,
+  "description": "Canonical OTIO timelines for the first editorial slice and interchange coverage with explicit unsupported-construct expectations.",
+  "provenance": {
+    "kind": "generated",
+    "source": "Authored and generated in the Superi repository from fixed editorial cases validated against OpenTimelineIO 0.18.1 and OTIO_CORE:0.18.1.",
+    "author": "Superi contributors",
+    "created_on": "2026-07-14",
+    "license": "CC0-1.0",
+    "rights": "Original synthetic editorial data approved for unrestricted redistribution.",
+    "generator": {
+      "name": "superi-fixture-tool",
+      "version": "0.0.0",
+      "command": "cargo run -p superi-fixture-tool -- generate-otio <OUTPUT_DIRECTORY>",
+      "seed": "superi-otio-interchange-v1"
+    },
+    "parents": []
+  },
+  "files": [
+    {
+      "path": "canonical-slice.otio",
+      "media_type": "application/json; charset=utf-8",
+      "bytes": 3759,
+      "sha256": "4e0276d911ebc8d011b6be1e1c2e73599942fcc1e5f6332806bac872c6afe348"
+    },
+    {
+      "path": "interchange-coverage.otio",
+      "media_type": "application/json; charset=utf-8",
+      "bytes": 15687,
+      "sha256": "581fdaf801b2fe661e930c9e0aa0ef4b40b2fa8746b5316add3789d4cc132f67"
+    },
+    {
+      "path": "expectations.json",
+      "media_type": "application/json; charset=utf-8",
+      "bytes": 1471,
+      "sha256": "9350fb12b07ef45638a61bd547f02d9cf313a23f6ef38a639f80d55f545bf9cb"
+    }
+  ]
+}

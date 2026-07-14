@@ -68,6 +68,6 @@ fn invalid_generate_video_arguments_print_complete_usage() {
     assert_eq!(output.status.code(), Some(2));
     assert_eq!(
         String::from_utf8(output.stderr).expect("stderr must be UTF-8"),
-        "usage:\n  superi-fixture-tool check [FIXTURE_ROOT]\n  superi-fixture-tool generate-video <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-audio <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-timing <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-color <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-media-errors <OUTPUT_DIRECTORY>\n"
+        "usage:\n  superi-fixture-tool check [FIXTURE_ROOT]\n  superi-fixture-tool generate-video <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-audio <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-timing <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-color <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-media-errors <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-otio <OUTPUT_DIRECTORY>\n"
     );
 }

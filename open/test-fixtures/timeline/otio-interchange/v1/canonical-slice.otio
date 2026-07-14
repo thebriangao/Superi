@@ -1,0 +1,133 @@
+{
+  "OTIO_SCHEMA": "Timeline.1",
+  "global_start_time": {
+    "OTIO_SCHEMA": "RationalTime.1",
+    "rate": 24.0,
+    "value": 0.0
+  },
+  "metadata": {
+    "superi": {
+      "fixture_id": "timeline/otio-interchange",
+      "fixture_version": 1,
+      "id": "timeline.canonical",
+      "scenario_id": "superi.slice.canonical.v1",
+      "scenario_revision": 1
+    }
+  },
+  "name": "canonical",
+  "tracks": {
+    "OTIO_SCHEMA": "Stack.1",
+    "children": [
+      {
+        "OTIO_SCHEMA": "Track.1",
+        "children": [
+          {
+            "OTIO_SCHEMA": "Clip.2",
+            "active_media_reference_key": "DEFAULT_MEDIA",
+            "color": null,
+            "effects": [
+              {
+                "OTIO_SCHEMA": "Effect.1",
+                "effect_name": "superi.effect.transform",
+                "enabled": true,
+                "metadata": {
+                  "superi": {
+                    "edge_mode": "transparent_black",
+                    "id": "effect.canonical.transform",
+                    "matrix": [
+                      -1,
+                      0,
+                      95,
+                      0,
+                      1,
+                      0,
+                      0,
+                      0,
+                      1
+                    ],
+                    "sampling": "nearest"
+                  }
+                },
+                "name": "horizontal-mirror"
+              }
+            ],
+            "enabled": true,
+            "markers": [],
+            "media_references": {
+              "DEFAULT_MEDIA": {
+                "OTIO_SCHEMA": "ExternalReference.1",
+                "available_image_bounds": null,
+                "available_range": {
+                  "OTIO_SCHEMA": "TimeRange.1",
+                  "duration": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "rate": 24.0,
+                    "value": 96.0
+                  },
+                  "start_time": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "rate": 24.0,
+                    "value": 0.0
+                  }
+                },
+                "metadata": {
+                  "superi": {
+                    "fixture_id": "slice/video-cfr",
+                    "fixture_version": 1,
+                    "id": "media.slice.video-cfr.v1",
+                    "manifest_sha256": "fc76adeced535ff05e6adb36c2549939618cfd0f73de7de5fa9d7f7f4301dc08"
+                  }
+                },
+                "name": "media.slice.video-cfr.v1",
+                "target_url": "../../../slice/video-cfr/v1/input.webm"
+              }
+            },
+            "metadata": {
+              "superi": {
+                "id": "clip.canonical.1",
+                "media_id": "media.slice.video-cfr.v1"
+              }
+            },
+            "name": "clip-1",
+            "source_range": {
+              "OTIO_SCHEMA": "TimeRange.1",
+              "duration": {
+                "OTIO_SCHEMA": "RationalTime.1",
+                "rate": 24.0,
+                "value": 48.0
+              },
+              "start_time": {
+                "OTIO_SCHEMA": "RationalTime.1",
+                "rate": 24.0,
+                "value": 24.0
+              }
+            }
+          }
+        ],
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "kind": "Video",
+        "markers": [],
+        "metadata": {
+          "superi": {
+            "id": "track.canonical.v1"
+          }
+        },
+        "name": "V1",
+        "source_range": null
+      }
+    ],
+    "color": null,
+    "effects": [],
+    "enabled": true,
+    "markers": [],
+    "metadata": {
+      "superi": {
+        "id": "stack.canonical.root"
+      }
+    },
+    "name": "tracks",
+    "source_range": null
+  }
+}

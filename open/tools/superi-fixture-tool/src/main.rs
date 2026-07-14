@@ -3,10 +3,10 @@ use std::process::ExitCode;
 
 use superi_fixture_tool::{
     generate_audio_baseline, generate_color_baseline, generate_media_error_baseline,
-    generate_timing_baseline, generate_video_baseline, validate_root,
+    generate_otio_baseline, generate_timing_baseline, generate_video_baseline, validate_root,
 };
 
-const USAGE: &str = "usage:\n  superi-fixture-tool check [FIXTURE_ROOT]\n  superi-fixture-tool generate-video <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-audio <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-timing <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-color <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-media-errors <OUTPUT_DIRECTORY>";
+const USAGE: &str = "usage:\n  superi-fixture-tool check [FIXTURE_ROOT]\n  superi-fixture-tool generate-video <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-audio <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-timing <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-color <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-media-errors <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-otio <OUTPUT_DIRECTORY>";
 
 fn main() -> ExitCode {
     let mut arguments = std::env::args_os().skip(1);
@@ -64,6 +64,15 @@ fn main() -> ExitCode {
                 return usage();
             }
             generate_media_errors(output_directory)
+        }
+        Some(command) if command == std::ffi::OsStr::new("generate-otio") => {
+            let Some(output_directory) = arguments.next().map(PathBuf::from) else {
+                return usage();
+            };
+            if arguments.next().is_some() {
+                return usage();
+            }
+            generate_otio(output_directory)
         }
         _ => usage(),
     }
@@ -150,6 +159,19 @@ fn generate_media_errors(output_directory: PathBuf) -> ExitCode {
     match generate_media_error_baseline(&output_directory) {
         Ok(report) => {
             println!("generated {} media error cases", report.case_count());
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("failed to generate {}: {error}", output_directory.display());
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn generate_otio(output_directory: PathBuf) -> ExitCode {
+    match generate_otio_baseline(&output_directory) {
+        Ok(report) => {
+            println!("generated {} OTIO timelines", report.timeline_count());
             ExitCode::SUCCESS
         }
         Err(error) => {

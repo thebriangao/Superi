@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
-const USAGE: &str = "usage:\n  superi-fixture-tool check [FIXTURE_ROOT]\n  superi-fixture-tool generate-video <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-audio <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-timing <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-color <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-media-errors <OUTPUT_DIRECTORY>\n";
+const USAGE: &str = "usage:\n  superi-fixture-tool check [FIXTURE_ROOT]\n  superi-fixture-tool generate-video <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-audio <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-timing <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-color <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-media-errors <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-otio <OUTPUT_DIRECTORY>\n";
 
 struct TemporaryOutput(PathBuf);
 

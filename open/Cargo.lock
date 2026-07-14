@@ -2788,6 +2788,7 @@ dependencies = [
 name = "superi-timeline"
 version = "0.0.0"
 dependencies = [
+ "serde_json",
  "superi-core",
  "superi-graph",
 ]

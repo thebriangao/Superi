@@ -1,0 +1,488 @@
+{
+  "OTIO_SCHEMA": "Timeline.1",
+  "global_start_time": {
+    "OTIO_SCHEMA": "RationalTime.1",
+    "rate": 24.0,
+    "value": 0.0
+  },
+  "metadata": {
+    "superi": {
+      "fixture_id": "timeline/otio-interchange",
+      "fixture_version": 1,
+      "id": "timeline.coverage"
+    }
+  },
+  "name": "superi-interchange-coverage",
+  "tracks": {
+    "OTIO_SCHEMA": "Stack.1",
+    "children": [
+      {
+        "OTIO_SCHEMA": "Track.1",
+        "children": [
+          {
+            "OTIO_SCHEMA": "Clip.2",
+            "active_media_reference_key": "DEFAULT_MEDIA",
+            "color": null,
+            "effects": [],
+            "enabled": true,
+            "markers": [
+              {
+                "OTIO_SCHEMA": "Marker.2",
+                "color": "YELLOW",
+                "comment": "",
+                "marked_range": {
+                  "OTIO_SCHEMA": "TimeRange.1",
+                  "duration": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "rate": 24.0,
+                    "value": 1.0
+                  },
+                  "start_time": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "rate": 24.0,
+                    "value": 12.0
+                  }
+                },
+                "metadata": {
+                  "superi": {
+                    "id": "marker.clip-a.select"
+                  }
+                },
+                "name": "select"
+              }
+            ],
+            "media_references": {
+              "DEFAULT_MEDIA": {
+                "OTIO_SCHEMA": "ExternalReference.1",
+                "available_image_bounds": null,
+                "available_range": {
+                  "OTIO_SCHEMA": "TimeRange.1",
+                  "duration": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "rate": 24.0,
+                    "value": 240.0
+                  },
+                  "start_time": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "rate": 24.0,
+                    "value": 0.0
+                  }
+                },
+                "metadata": {
+                  "superi": {
+                    "id": "media.a"
+                  }
+                },
+                "name": "media.a",
+                "target_url": "urn:superi:fixture:media.a"
+              }
+            },
+            "metadata": {
+              "superi": {
+                "id": "clip.a",
+                "media_id": "media.a"
+              }
+            },
+            "name": "clip-a",
+            "source_range": {
+              "OTIO_SCHEMA": "TimeRange.1",
+              "duration": {
+                "OTIO_SCHEMA": "RationalTime.1",
+                "rate": 24.0,
+                "value": 48.0
+              },
+              "start_time": {
+                "OTIO_SCHEMA": "RationalTime.1",
+                "rate": 24.0,
+                "value": 24.0
+              }
+            }
+          },
+          {
+            "OTIO_SCHEMA": "Transition.1",
+            "enabled": true,
+            "in_offset": {
+              "OTIO_SCHEMA": "RationalTime.1",
+              "rate": 24.0,
+              "value": 6.0
+            },
+            "metadata": {
+              "superi": {
+                "from_clip_id": "clip.a",
+                "id": "transition.a-b",
+                "to_clip_id": "clip.b-fast"
+              }
+            },
+            "name": "dissolve-a-b",
+            "out_offset": {
+              "OTIO_SCHEMA": "RationalTime.1",
+              "rate": 24.0,
+              "value": 6.0
+            },
+            "transition_type": "SMPTE_Dissolve"
+          },
+          {
+            "OTIO_SCHEMA": "Clip.2",
+            "active_media_reference_key": "DEFAULT_MEDIA",
+            "color": null,
+            "effects": [
+              {
+                "OTIO_SCHEMA": "LinearTimeWarp.1",
+                "effect_name": "LinearTimeWarp",
+                "enabled": true,
+                "metadata": {
+                  "superi": {
+                    "id": "effect.double-speed"
+                  }
+                },
+                "name": "double-speed",
+                "time_scalar": 2.0
+              }
+            ],
+            "enabled": true,
+            "markers": [],
+            "media_references": {
+              "DEFAULT_MEDIA": {
+                "OTIO_SCHEMA": "ExternalReference.1",
+                "available_image_bounds": null,
+                "available_range": {
+                  "OTIO_SCHEMA": "TimeRange.1",
+                  "duration": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "rate": 24.0,
+                    "value": 240.0
+                  },
+                  "start_time": {
+                    "OTIO_SCHEMA": "RationalTime.1",
+                    "rate": 24.0,
+                    "value": 0.0
+                  }
+                },
+                "metadata": {
+                  "superi": {
+                    "id": "media.b"
+                  }
+                },
+                "name": "media.b",
+                "target_url": "urn:superi:fixture:media.b"
+              }
+            },
+            "metadata": {
+              "superi": {
+                "id": "clip.b-fast",
+                "media_id": "media.b"
+              }
+            },
+            "name": "clip-b-fast",
+            "source_range": {
+              "OTIO_SCHEMA": "TimeRange.1",
+              "duration": {
+                "OTIO_SCHEMA": "RationalTime.1",
+                "rate": 24.0,
+                "value": 36.0
+              },
+              "start_time": {
+                "OTIO_SCHEMA": "RationalTime.1",
+                "rate": 24.0,
+                "value": 48.0
+              }
+            }
+          },
+          {
+            "OTIO_SCHEMA": "Gap.1",
+            "color": null,
+            "effects": [],
+            "enabled": true,
+            "markers": [],
+            "metadata": {
+              "superi": {
+                "id": "gap.coverage.1"
+              }
+            },
+            "name": "gap-12",
+            "source_range": {
+              "OTIO_SCHEMA": "TimeRange.1",
+              "duration": {
+                "OTIO_SCHEMA": "RationalTime.1",
+                "rate": 24.0,
+                "value": 12.0
+              },
+              "start_time": {
+                "OTIO_SCHEMA": "RationalTime.1",
+                "rate": 24.0,
+                "value": 0.0
+              }
+            }
+          },
+          {
+            "OTIO_SCHEMA": "Stack.1",
+            "children": [
+              {
+                "OTIO_SCHEMA": "Track.1",
+                "children": [
+                  {
+                    "OTIO_SCHEMA": "Clip.2",
+                    "active_media_reference_key": "DEFAULT_MEDIA",
+                    "color": null,
+                    "effects": [
+                      {
+                        "OTIO_SCHEMA": "LinearTimeWarp.1",
+                        "effect_name": "LinearTimeWarp",
+                        "enabled": true,
+                        "metadata": {
+                          "superi": {
+                            "id": "effect.half-speed"
+                          }
+                        },
+                        "name": "half-speed",
+                        "time_scalar": 0.5
+                      }
+                    ],
+                    "enabled": true,
+                    "markers": [],
+                    "media_references": {
+                      "DEFAULT_MEDIA": {
+                        "OTIO_SCHEMA": "ExternalReference.1",
+                        "available_image_bounds": null,
+                        "available_range": {
+                          "OTIO_SCHEMA": "TimeRange.1",
+                          "duration": {
+                            "OTIO_SCHEMA": "RationalTime.1",
+                            "rate": 24.0,
+                            "value": 240.0
+                          },
+                          "start_time": {
+                            "OTIO_SCHEMA": "RationalTime.1",
+                            "rate": 24.0,
+                            "value": 0.0
+                          }
+                        },
+                        "metadata": {
+                          "superi": {
+                            "id": "media.c"
+                          }
+                        },
+                        "name": "media.c",
+                        "target_url": "urn:superi:fixture:media.c"
+                      }
+                    },
+                    "metadata": {
+                      "superi": {
+                        "id": "clip.c-slow",
+                        "media_id": "media.c"
+                      }
+                    },
+                    "name": "clip-c-slow",
+                    "source_range": {
+                      "OTIO_SCHEMA": "TimeRange.1",
+                      "duration": {
+                        "OTIO_SCHEMA": "RationalTime.1",
+                        "rate": 24.0,
+                        "value": 24.0
+                      },
+                      "start_time": {
+                        "OTIO_SCHEMA": "RationalTime.1",
+                        "rate": 24.0,
+                        "value": 72.0
+                      }
+                    }
+                  },
+                  {
+                    "OTIO_SCHEMA": "Gap.1",
+                    "color": null,
+                    "effects": [],
+                    "enabled": true,
+                    "markers": [],
+                    "metadata": {
+                      "superi": {
+                        "id": "gap.nested.1"
+                      }
+                    },
+                    "name": "nested-gap-6",
+                    "source_range": {
+                      "OTIO_SCHEMA": "TimeRange.1",
+                      "duration": {
+                        "OTIO_SCHEMA": "RationalTime.1",
+                        "rate": 24.0,
+                        "value": 6.0
+                      },
+                      "start_time": {
+                        "OTIO_SCHEMA": "RationalTime.1",
+                        "rate": 24.0,
+                        "value": 0.0
+                      }
+                    }
+                  },
+                  {
+                    "OTIO_SCHEMA": "Clip.2",
+                    "active_media_reference_key": "DEFAULT_MEDIA",
+                    "color": null,
+                    "effects": [
+                      {
+                        "OTIO_SCHEMA": "FreezeFrame.1",
+                        "effect_name": "FreezeFrame",
+                        "enabled": true,
+                        "metadata": {
+                          "superi": {
+                            "id": "effect.freeze-frame"
+                          }
+                        },
+                        "name": "freeze-first",
+                        "time_scalar": 0.0
+                      },
+                      {
+                        "OTIO_SCHEMA": "Effect.1",
+                        "effect_name": "urn:superi:test:unsupported:lens-warp",
+                        "enabled": true,
+                        "metadata": {
+                          "superi": {
+                            "id": "effect.lens-warp",
+                            "parameters": {
+                              "strength": 0.25
+                            }
+                          }
+                        },
+                        "name": "lens-warp"
+                      }
+                    ],
+                    "enabled": true,
+                    "markers": [],
+                    "media_references": {
+                      "DEFAULT_MEDIA": {
+                        "OTIO_SCHEMA": "ExternalReference.1",
+                        "available_image_bounds": null,
+                        "available_range": {
+                          "OTIO_SCHEMA": "TimeRange.1",
+                          "duration": {
+                            "OTIO_SCHEMA": "RationalTime.1",
+                            "rate": 24.0,
+                            "value": 240.0
+                          },
+                          "start_time": {
+                            "OTIO_SCHEMA": "RationalTime.1",
+                            "rate": 24.0,
+                            "value": 0.0
+                          }
+                        },
+                        "metadata": {
+                          "superi": {
+                            "id": "media.d"
+                          }
+                        },
+                        "name": "media.d",
+                        "target_url": "urn:superi:fixture:media.d"
+                      }
+                    },
+                    "metadata": {
+                      "superi": {
+                        "id": "clip.d-unsupported",
+                        "media_id": "media.d"
+                      }
+                    },
+                    "name": "clip-d-unsupported",
+                    "source_range": {
+                      "OTIO_SCHEMA": "TimeRange.1",
+                      "duration": {
+                        "OTIO_SCHEMA": "RationalTime.1",
+                        "rate": 24.0,
+                        "value": 18.0
+                      },
+                      "start_time": {
+                        "OTIO_SCHEMA": "RationalTime.1",
+                        "rate": 24.0,
+                        "value": 0.0
+                      }
+                    }
+                  }
+                ],
+                "color": null,
+                "effects": [],
+                "enabled": true,
+                "kind": "Video",
+                "markers": [],
+                "metadata": {
+                  "superi": {
+                    "id": "track.nested.v1"
+                  }
+                },
+                "name": "nested-v1",
+                "source_range": null
+              }
+            ],
+            "color": null,
+            "effects": [],
+            "enabled": true,
+            "markers": [],
+            "metadata": {
+              "superi": {
+                "id": "sequence.nested"
+              }
+            },
+            "name": "nested-sequence",
+            "source_range": {
+              "OTIO_SCHEMA": "TimeRange.1",
+              "duration": {
+                "OTIO_SCHEMA": "RationalTime.1",
+                "rate": 24.0,
+                "value": 24.0
+              },
+              "start_time": {
+                "OTIO_SCHEMA": "RationalTime.1",
+                "rate": 24.0,
+                "value": 0.0
+              }
+            }
+          }
+        ],
+        "color": null,
+        "effects": [],
+        "enabled": true,
+        "kind": "Video",
+        "markers": [
+          {
+            "OTIO_SCHEMA": "Marker.2",
+            "color": "GREEN",
+            "comment": "",
+            "marked_range": {
+              "OTIO_SCHEMA": "TimeRange.1",
+              "duration": {
+                "OTIO_SCHEMA": "RationalTime.1",
+                "rate": 24.0,
+                "value": 0.0
+              },
+              "start_time": {
+                "OTIO_SCHEMA": "RationalTime.1",
+                "rate": 24.0,
+                "value": 0.0
+              }
+            },
+            "metadata": {
+              "superi": {
+                "id": "marker.sequence-in"
+              }
+            },
+            "name": "sequence-in"
+          }
+        ],
+        "metadata": {
+          "superi": {
+            "id": "track.coverage.v1"
+          }
+        },
+        "name": "V1",
+        "source_range": null
+      }
+    ],
+    "color": null,
+    "effects": [],
+    "enabled": true,
+    "markers": [],
+    "metadata": {
+      "superi": {
+        "id": "stack.coverage.root"
+      }
+    },
+    "name": "tracks",
+    "source_range": null
+  }
+}

@@ -12,3 +12,6 @@ workspace = true
 [dependencies]
 superi-core = { path = "../superi-core" }
 superi-graph = { path = "../superi-graph" }
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -31,11 +31,11 @@ against raw source before changing code.
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; production source registration and muxing absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
-| `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Reserved editorial model, edits, OTIO, nesting, multicam, and graph compilation | Skeleton: no timeline model, OTIO path, or compiler |
+| `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Reserved editorial model, edits, OTIO, nesting, multicam, and graph compilation | Production skeleton with canonical OTIO 0.18.1 semantic fixture proof |
 | `tool-superi-dependency-check` | [module map](modules/tool-superi-dependency-check.md) | `open/tools/superi-dependency-check` | Offline executable policy for the open runtime dependency graph | Implemented exact runtime, build, dev, and new-crate checks |
 | `tool-superi-boundary-tool` | [module map](modules/tool-superi-boundary-tool.md) | `open/tools/superi-boundary-tool` | Offline scanner for network-client and open-to-closed policy | Implemented library, CLI, workspace gate, and hosted-build command |
-| `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline validator and deterministic video, audio, timing, color, and media-error fixture generator | Implemented validation library, five generators, six-command CLI, and focused contracts |
-| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: canonical fixture and contract runner delivered, color, timing, and media-error coverage expanded, runtime slice absent |
+| `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline validator and deterministic video, audio, timing, color, media-error, and OTIO fixture generator | Implemented validation library, six generators, seven-command CLI, and focused contracts |
+| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: canonical source, OTIO interchange, color, timing, media-error coverage, and contract runner delivered, runtime slice absent |
 
 ## Ownership and repository boundaries
 
@@ -329,8 +329,12 @@ samples and explicit continuity segments. Its color command emits eight determin
 wide-gamut, HDR, alpha, high-bit-depth, and sequence images with two strict catalogs and one 448-byte
 sample payload. Its media-error command emits four fixed PCM container
 cases for malformed, truncated, unsupported, and post-open partially readable behavior, with one
-strict outcome catalog. All generators refuse overwrite. The tool does not
-execute recorded commands, prove repository-history immutability, or verify legal and semantic
+strict outcome catalog. Its OTIO command creates two native JSON
+timelines and an expectation record from fixed Rust values, including the first slice projection,
+clips, gaps, transition relationships, owner-relative markers, nesting, two linear rate changes,
+stable metadata IDs, and preserve plus diagnose contracts for unsupported effects. All generators
+refuse overwrite. The tool does not execute recorded commands, prove repository-history
+immutability, or verify legal and semantic
 claims inside arbitrary free-form provenance fields.
 
 `superi-dependency-check` is also a repository utility. It reads the locked workspace graph offline
@@ -474,10 +478,18 @@ AIFC, and post-open partial-read coverage. Its production PCM consumer proves sh
 recovery classifications plus exact aligned packet and corruption evidence. These remain synthetic
 raw-frame, PCM-container, timing-metadata, color, and focused PCM-failure proofs, not encoded codec
 corruption, malformed Matroska, MP4, or MXF, hardware, playback, device, A/V synchronization,
-scheduling, or editorial-slice proof. Snapshot validation still does not prove Git-history immutability,
+scheduling, or editorial runtime proof. Snapshot validation still does not prove Git-history immutability,
 provenance truth, legal clearance, or semantic quality beyond focused contracts. The separate
 `slice/video-cfr` fixture provides one digest-bound 96-frame AV1 WebM for the canonical runner. Its
 decoded traits remain expected values because current contract import does not open it.
+
+The deterministic OTIO baseline adds a 48-frame native JSON projection of the canonical slice plus
+a 120-frame coverage timeline. The coverage payload includes clips, gap, transition adjacency,
+owner-relative markers, a trimmed nested Stack, 2.0 and 0.5 LinearTimeWarp effects, stable object
+identity, and explicit unsupported-effect pointers. `superi-timeline` proves those semantics and the
+preserve-opaque warning contract through a development-only JSON consumer, while official
+OpenTimelineIO 0.18.1 proves both files load and remain semantically equivalent through targeted
+write and read. This is trusted fixture evidence, not a production importer or exporter.
 
 The largest verification gap is the absence of a production import-to-export slice. Its canonical
 contract, source fixture, reference project state, graph control state, public action flow, and

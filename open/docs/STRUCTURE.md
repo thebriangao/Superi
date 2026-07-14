@@ -67,7 +67,9 @@ encumbered, proprietary, or copyleft ever links into the MIT core.
 Repository-only utilities live under `tools/` and are workspace members so normal build, test,
 Clippy, and minimum-Rust verification cover them. They do not participate in the runtime crate DAG.
 `superi-fixture-tool` enforces the immutable layout, provenance, lineage, inventory, and content
-integrity rules documented in `../test-fixtures/README.md` without network access.
+integrity rules documented in `../test-fixtures/README.md` without network access. Its deterministic
+generators include the versioned OTIO 0.18.1 interchange baseline consumed by timeline development
+contracts without creating a runtime dependency.
 
 ### Automated dependency-direction gate
 
@@ -87,5 +89,5 @@ its live-workspace contract also runs under the ordinary workspace test gate.
 ## Deferred (not in this scaffold)
 
 Network-isolated offline CI test · the vertical slice (`import → trim → effect → export`) · the
-`closed/` tree · the web UI · codec legal sign-off (open item #1) · the OTIO mechanism (open item
-#2).
+`closed/` tree · the web UI · codec legal sign-off (open item #1) · the production OTIO reader,
+writer, and timeline model (P2.W02).

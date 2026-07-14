@@ -2,8 +2,8 @@
 module_id: tool-superi-fixture-tool
 source_paths:
   - open/tools/superi-fixture-tool
-source_hash: a56671f463464b0cd618816cdaa4e83714f7c5696416667c4da2d09cdf845a84
-source_files: 14
+source_hash: 7b59f5a4f238843f4c737a8d95210171151c28b003b672dcc0769658a4ba8b1e
+source_files: 16
 mapped_at_commit: working-tree
 ---
 
@@ -11,14 +11,14 @@ mapped_at_commit: working-tree
 
 `superi-fixture-tool` owns offline validation for shared canonical fixtures and deterministic
 generation for the version 1 raw-video, synchronized multichannel audio, timing, color and
-image-sequence, and media-error baselines. It validates layout, manifest schema, provenance,
-lineage, payload inventory, byte counts, and SHA-256
-digests without fetching data or executing documentary generator commands. All five generators
+image-sequence, media-error, and OTIO interchange baselines. It validates layout, manifest schema,
+provenance, lineage, payload inventory, byte counts, and SHA-256
+digests without fetching data or executing documentary generator commands. All six generators
 create approved synthetic evidence directly and never replace an existing output path.
 
 The package is a repository utility, not a runtime crate. The canonical fixture store and policy
-remain under `open/test-fixtures`; this tool creates a requested new video, audio, timing, color, or
-media-error version directory and validates any fixture root, but it does not select
+remain under `open/test-fixtures`; this tool creates a requested new video, audio, timing, color,
+media-error, or OTIO version directory and validates any fixture root, but it does not select
 versions for consumers or mutate released data.
 
 ## Source inventory
@@ -26,7 +26,8 @@ versions for consumers or mutate released data.
 - `open/tools/superi-fixture-tool/Cargo.toml`: Declares the workspace library and binary package and
   opts into workspace `serde`, `serde_json`, and `sha2` dependencies.
 - `open/tools/superi-fixture-tool/src/lib.rs`: Implements strict fixture validation plus
-  dependency-free video, audio, timing, color, and media-error baseline generators. The video path owns stable format
+  dependency-free video, audio, timing, color, media-error, and OTIO baseline generators. The video
+  path owns stable format
   and rate tables, exact plane geometry, finite sample synthesis, CSV serialization, and manifest
   creation. The audio path owns WAVEFORMATEXTENSIBLE serialization, common sample rates, speaker
   masks, synchronized integer waveforms, and PCM interleaving. The timing path owns stable cadence,
@@ -34,10 +35,12 @@ versions for consumers or mutate released data.
   high-bit-depth, and image-sequence cases, exact little-endian samples, two catalogs, and sequence
   timing. The media-error path owns tiny PCM container serialization,
   controlled mutations and truncations, a fixed outcome catalog, and the exact partial-read recipe.
-  All five own exact manifests, reports, and no-overwrite guards.
+  The OTIO path owns fixed native JSON object construction, stable editorial identities, exact
+  rational timing, explicit unsupported expectations, and the first slice projection. All six own
+  exact manifests, reports, and no-overwrite guards.
 - `open/tools/superi-fixture-tool/src/main.rs`: Implements `check`, `generate-video`,
-  `generate-audio`, `generate-timing`, `generate-color`, and `generate-media-errors`, exact usage,
-  summaries, diagnostics, and process exit statuses.
+  `generate-audio`, `generate-timing`, `generate-color`, `generate-media-errors`, and
+  `generate-otio`, exact usage, summaries, diagnostics, and process exit statuses.
 - `open/tools/superi-fixture-tool/tests/audio_cli_contract.rs`: Proves process-level audio
   generation, exact summary, manifest creation, complete usage, and no-overwrite failure.
 - `open/tools/superi-fixture-tool/tests/audio_generator_contract.rs`: Compares every generated audio
@@ -59,6 +62,11 @@ versions for consumers or mutate released data.
 - `open/tools/superi-fixture-tool/tests/timing_generator_contract.rs`: Generates timing artifacts
   twice into temporary directories, compares both outputs byte for byte with the canonical version,
   checks report and size bounds, and proves preservation of an existing directory.
+- `open/tools/superi-fixture-tool/tests/otio_cli_contract.rs`: Proves process-level OTIO generation,
+  exact timeline summary, manifest creation, and no-overwrite failure.
+- `open/tools/superi-fixture-tool/tests/otio_generator_contract.rs`: Generates OTIO artifacts twice,
+  compares all timelines, expectations, and manifest bytes with the canonical version, checks the
+  two-timeline report and payload bound, and proves preservation of an existing directory.
 - `open/tools/superi-fixture-tool/tests/validator_contract.rs`: Exercises canonical and temporary
   fixture validation, drift, inventory, identity, provenance, path, and symlink failures.
 - `open/tools/superi-fixture-tool/tests/video_cli_contract.rs`: Proves process-level generation,
@@ -103,6 +111,12 @@ The color surface exports
 images, three sequence frames, and 448 payload bytes. It accepts only an absent output path and
 emits `image-cases.csv`, `sequence-cases.csv`, `image-samples.bin`, and `fixture.json`.
 
+The OTIO surface exports `generate_otio_baseline(&Path) -> io::Result<OtioBaselineReport>`, stable
+names for two `.otio` payloads, `expectations.json`, and the manifest, plus
+`OTIO_BASELINE_TIMELINE_COUNT`. Its report exposes two timelines and total payload bytes. It accepts
+only an absent output path and emits the final canonical slice, comprehensive interchange coverage,
+explicit preserve plus diagnose contracts, and exact `fixture.json`.
+
 The executable accepts exactly these forms:
 
 ```text
@@ -112,19 +126,21 @@ superi-fixture-tool generate-audio <OUTPUT_DIRECTORY>
 superi-fixture-tool generate-timing <OUTPUT_DIRECTORY>
 superi-fixture-tool generate-color <OUTPUT_DIRECTORY>
 superi-fixture-tool generate-media-errors <OUTPUT_DIRECTORY>
+superi-fixture-tool generate-otio <OUTPUT_DIRECTORY>
 ```
 
 Validation defaults to `test-fixtures`, prints fixture and payload counts on success, and exits 1
 for policy failure. Video generation prints `generated 207 video cases`; audio generation prints
 `generated 3 audio cases`; timing generation prints `generated 5 timing cases and 18 samples`;
 color generation prints `generated 8 color images and 3 sequence frames`, and media-error
-generation prints `generated 4 media error cases`.
-Every generator exits 1 for filesystem or overwrite failure. Invalid command shapes print the
-complete six-command usage and exit 2.
+generation prints `generated 4 media error cases`. OTIO generation prints
+`generated 2 OTIO timelines`. Every generator exits 1 for filesystem or overwrite failure. Invalid command shapes print the
+complete seven-command usage and exit 2.
 
 The accepted manifest format remains strict schema version 1. Its manifest, provenance, generator,
 parent, and payload objects reject unknown fields. Generator records remain documentary for general
-fixtures; the video, audio, timing, color, and media-error commands are separate executable implementations whose
+fixtures; the video, audio, timing, color, media-error, and OTIO commands are separate executable
+implementations whose
 canonical byte identities are proved by their integration tests.
 
 ## Architecture and data flow
@@ -177,6 +193,14 @@ each case to its production trigger, shared error and recovery codes, mutation o
 and partial packet evidence. The exact schema 1 manifest, CC0 provenance, sizes, and hashes are
 computed before the absent output directory is created.
 
+OTIO generation constructs two complete native JSON timelines at 24 fps. The canonical timeline
+binds the immutable AV1 WebM identity, exact 48-frame edit, and editable mirror effect. The coverage
+timeline adds adjacent clips and transition metadata, gaps, owner-relative markers, nested
+composition, 2.0 and 0.5 linear time warps, and stable object IDs. A separate expectation record
+pins OpenTimelineIO 0.18.1 and OTIO_CORE:0.18.1, records exact durations, and requires opaque
+preservation plus a stable warning for FreezeFrame and a named generic effect. All JSON and manifest
+bytes are computed before the absent output directory is created.
+
 ## Dependencies and consumers
 
 The standard library supplies filesystem, path, collection, formatting, byte, and process support.
@@ -184,19 +208,24 @@ The standard library supplies filesystem, path, collection, formatting, byte, an
 digests. No external media tool, platform encoder, network service, or random source participates in
 generation.
 
-The binary and nine integration-test files consume the library. `open/test-fixtures/README.md`
-documents all five commands. The canonical-root validator consumes the complete fixture store.
-That store includes the separately generated encoded canonical slice source, which this tool
+The binary and 13 integration-test files consume the library. `open/test-fixtures/README.md`
+documents all six generation commands. The canonical-root validator consumes the complete fixture
+store.
+That store now includes the separately generated encoded canonical slice source, which this tool
 validates as an ordinary strict manifest and opaque payload but does not reproduce.
 Runtime crates do not depend on this tool; separate integration tests consume the emitted canonical
-video, audio, timing, color, image-sequence, and media-error artifacts. The video test checks generator tables
+video, audio, timing, color, image-sequence, media-error, and OTIO artifacts. The video test checks
+generator tables
 indirectly against live core definitions. The audio test opens every WAVE through the production PCM
 source and checks exact sample clocks, masks, routing, synchronization, and continuity. The timing
 test exercises packet, presentation-map, timestamp, and source-timecode behavior. The color test
 uses public input and output transforms, while the image-sequence test uses public random-access and
 seek interfaces. The media-error
 test checks the catalog and mutations independently, then drives all four cases through production
-PCM open or packet-read behavior.
+PCM open or packet-read behavior. `superi-timeline` adds no runtime tool dependency; its
+development-only JSON contract consumes the
+two OTIO timelines and expectations to prove hierarchy, identity, timing, relationships, metadata,
+nesting, rate changes, canonical slice linkage, and unsupported handling.
 
 ## Invariants and operational boundaries
 
@@ -217,6 +246,9 @@ PCM open or packet-read behavior.
   little-endian byte order, color and timing fields, CRLF records, manifest text, and seed are fixed.
 - Media-error output is deterministic across supported hosts because container fields, sample bytes,
   mutations, truncation lengths, catalog rows, manifest text, and seed are fixed.
+- OTIO output is deterministic across supported hosts because object order, JSON serialization,
+  schema labels, rational values, identities, relationship metadata, expectations, manifest text,
+  and seed are fixed in Rust.
 - Odd dimensions use ceiling division for chroma. Ten-bit planar values stay in 10 bits, P010 values
   occupy the high 10 bits of 16-bit containers, and floating-point samples are finite.
 - The generator table is intentionally local to this repository tool. The media consumer contract
@@ -227,13 +259,14 @@ PCM open or packet-read behavior.
 ## Tests and verification
 
 Seven validator contracts cover the canonical root, success counts, content and inventory drift,
-identity, versions, provenance, unsafe paths, and Unix symlinks. Eight generator contracts prove the
-video, audio, timing, color, and media-error artifacts reproduce byte for byte, report exact case and
-sample counts, stay within their payload bounds, and leave existing directories unchanged. Five CLI
-contracts prove all five generation summaries, no-overwrite diagnostics, complete usage, manifest
-creation, and exit statuses.
+identity, versions, provenance, unsafe paths, and Unix symlinks. Six generator contract files prove
+video, audio, timing, color, media-error, and OTIO artifacts reproduce byte for byte, report exact
+case, sample, image, and timeline counts, stay within their payload bounds, and leave existing
+directories unchanged. Six CLI contract files prove all six generation summaries, no-overwrite
+diagnostics, complete usage,
+manifest creation, and exit statuses.
 
-Separate `superi-media-io` contracts validate all five canonical baselines through real consumers.
+Separate runtime contracts validate the generated media baselines through real consumers.
 The video contract proves the full 23 by 9 matrix, exact rates and geometry, contiguous offsets,
 per-plane hashes, numeric representation rules, and construction through public video frame types.
 The audio contract proves all three common rates, exact WAVE channel masks and canonical layouts,
@@ -245,18 +278,22 @@ normalization. The color contract proves transfer order, HDR meaning, alpha asso
 intent, and exact high-bit-depth sample bits. The image-sequence contract proves exact catalog
 references, timing, random access, seeking, and unmodified frame bytes. The media-error contract
 proves fixed mutations, strict parser classifications, and the exact aligned partial packet plus
-corruption evidence after a cataloged post-open truncation. The canonical validator reports seven
-fixture versions and sixteen payloads with the encoded slice source included.
+corruption evidence after a cataloged post-open truncation. The OTIO contracts add two timelines,
+exact schemas and timing, stable editorial relationships, opaque preservation
+expectations, and official OpenTimelineIO 0.18.1 semantic read plus write plus read equivalence.
+The combined canonical validator reports eight fixture versions and 19 payloads.
 
 ## Current status and risks
 
-Validation, deterministic video, audio, timing, color, and media-error generation, all six CLI commands, canonical
+Validation, deterministic video, audio, timing, color, media-error, and OTIO generation, all seven
+CLI commands, canonical
 artifacts, and real consumer proof are implemented. The video baseline is raw single-frame evidence,
 the audio baseline is PCM-container evidence, the timing baseline is metadata evidence, and the
 color baseline is raw color-transform and sequence evidence, and the media-error baseline is focused
 WAVE, AIFF, and AIFC failure evidence. Together they still do not
 prove encoded codec corruption, malformed Matroska, MP4, or MXF, HDR, playback, physical devices,
-hardware clocks, A/V synchronization, scheduling, real-time behavior, or the editorial slice. The
+hardware clocks, A/V synchronization, scheduling, real-time behavior, or a production editorial
+runtime. The OTIO baseline proves interchange data and expectations, not a reader or writer. The
 encoded slice fixture participates in strict generic validation but has a separate documentary
 FFmpeg generator and is not reproduced by this tool.
 
@@ -269,11 +306,12 @@ the caller to inspect and remove.
 ## Maintenance notes
 
 Keep all generator tables, WAVE and AIFF schemas, waveform math, mutations, truncation recipes, and
-color sample bits and serializations intentionally stable for
+color sample bits, OTIO objects, expectations, and serializations intentionally stable for
 version 1. Add a new fixture version when bytes or schema change. Any new core pixel format,
 standard video rate, canonical audio rate, channel layout, timing case, cadence, discontinuity,
-color case, or sequence representation must first make the corresponding consumer contract fail,
-then receive deliberate generator, fixture-version, documentation, and proof updates.
+color case, sequence representation, or OTIO target schema representation must first make the
+corresponding consumer contract fail, then receive
+deliberate generator, fixture-version, documentation, and proof updates.
 
 Keep this map, fixture policy, command usage, validator behavior, and tests synchronized. Extend
 red contracts before changing schema, generation layouts, overwrite rules, errors, or output. After

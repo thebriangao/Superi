@@ -1,0 +1,57 @@
+{
+  "fixture_id": "timeline/otio-interchange",
+  "fixture_version": 1,
+  "identity": {
+    "field": "/metadata/superi/id",
+    "unknown_fields": "preserve_opaque",
+    "unknown_schemas": "preserve_opaque"
+  },
+  "reference": {
+    "implementation": "OpenTimelineIO",
+    "license": "Apache-2.0",
+    "schema_family": "OTIO_CORE",
+    "schema_label": "0.18.1",
+    "version": "0.18.1"
+  },
+  "schema_version": 1,
+  "timelines": [
+    {
+      "expected_duration": {
+        "rate": 24,
+        "value": 48
+      },
+      "path": "canonical-slice.otio",
+      "timeline_id": "timeline.canonical"
+    },
+    {
+      "expected_duration": {
+        "rate": 24,
+        "value": 120
+      },
+      "path": "interchange-coverage.otio",
+      "timeline_id": "timeline.coverage"
+    }
+  ],
+  "unsupported_constructs": [
+    {
+      "diagnostic": {
+        "code": "timeline.otio.unsupported_construct",
+        "severity": "warning"
+      },
+      "handling": "preserve_opaque",
+      "json_pointer": "/tracks/children/0/children/4/children/0/children/2/effects/0",
+      "object_id": "effect.freeze-frame",
+      "otio_schema": "FreezeFrame.1"
+    },
+    {
+      "diagnostic": {
+        "code": "timeline.otio.unsupported_construct",
+        "severity": "warning"
+      },
+      "handling": "preserve_opaque",
+      "json_pointer": "/tracks/children/0/children/4/children/0/children/2/effects/1",
+      "object_id": "effect.lens-warp",
+      "otio_schema": "Effect.1"
+    }
+  ]
+}

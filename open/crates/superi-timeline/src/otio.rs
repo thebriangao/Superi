@@ -1,3 +1,4 @@
-//! OTIO-compatible serialization (mechanism TBD, open item #2).
+//! OTIO-compatible serialization boundary.
 //!
-//! TODO(§5.8): build this out. Skeleton only.
+//! The native reader, writer, and timeline model remain P2.W02 work. Canonical OTIO 0.18.1
+//! interchange fixtures and semantic contracts are available under the shared fixture root.

@@ -7,6 +7,7 @@ use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 
 use serde::Deserialize;
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 const MANIFEST_NAME: &str = "fixture.json";
@@ -32,6 +33,10 @@ pub const MEDIA_ERROR_TRUNCATED_AIFF_NAME: &str = "truncated.aiff";
 pub const MEDIA_ERROR_UNSUPPORTED_AIFC_NAME: &str = "unsupported.aifc";
 pub const MEDIA_ERROR_PARTIAL_WAVE_NAME: &str = "partial-readable.wav";
 pub const MEDIA_ERROR_MANIFEST_NAME: &str = MANIFEST_NAME;
+pub const OTIO_CANONICAL_SLICE_NAME: &str = "canonical-slice.otio";
+pub const OTIO_COVERAGE_NAME: &str = "interchange-coverage.otio";
+pub const OTIO_EXPECTATIONS_NAME: &str = "expectations.json";
+pub const OTIO_MANIFEST_NAME: &str = MANIFEST_NAME;
 
 const MEDIA_ERROR_CATALOG: &str = concat!(
     "case_id,payload,container,trigger,error_category,recoverability,corruption_kind,mutation_offset,truncate_to,data_offset,expected_bytes,actual_bytes,usable_bytes,usable_frames\r\n",
@@ -1325,6 +1330,568 @@ fn media_error_manifest(catalog: &[u8], artifacts: &[MediaErrorArtifact; 4]) -> 
         artifacts[3].media_type,
         artifacts[3].bytes.len(),
         digest_bytes(&artifacts[3].bytes),
+    )
+}
+
+pub const OTIO_BASELINE_TIMELINE_COUNT: usize = 2;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OtioBaselineReport {
+    timeline_count: usize,
+    payload_bytes: usize,
+}
+
+impl OtioBaselineReport {
+    #[must_use]
+    pub const fn timeline_count(self) -> usize {
+        self.timeline_count
+    }
+
+    #[must_use]
+    pub const fn payload_bytes(self) -> usize {
+        self.payload_bytes
+    }
+}
+
+pub fn generate_otio_baseline(output_directory: &Path) -> io::Result<OtioBaselineReport> {
+    match fs::symlink_metadata(output_directory) {
+        Ok(_) => {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "output directory already exists",
+            ));
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+
+    let canonical_slice = pretty_json(canonical_slice_otio());
+    let coverage = pretty_json(interchange_coverage_otio());
+    let expectations = pretty_json(otio_expectations());
+    let manifest = otio_manifest(&canonical_slice, &coverage, &expectations);
+    let payload_bytes = canonical_slice.len() + coverage.len() + expectations.len();
+
+    if let Some(parent) = output_directory.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+    fs::create_dir(output_directory)?;
+    fs::write(
+        output_directory.join(OTIO_CANONICAL_SLICE_NAME),
+        canonical_slice,
+    )?;
+    fs::write(output_directory.join(OTIO_COVERAGE_NAME), coverage)?;
+    fs::write(output_directory.join(OTIO_EXPECTATIONS_NAME), expectations)?;
+    fs::write(output_directory.join(OTIO_MANIFEST_NAME), manifest)?;
+
+    Ok(OtioBaselineReport {
+        timeline_count: OTIO_BASELINE_TIMELINE_COUNT,
+        payload_bytes,
+    })
+}
+
+fn pretty_json(value: Value) -> Vec<u8> {
+    let mut bytes =
+        serde_json::to_vec_pretty(&value).expect("fixed OTIO fixture data must serialize");
+    bytes.push(b'\n');
+    bytes
+}
+
+fn rational_time(value: f64, rate: f64) -> Value {
+    json!({
+        "OTIO_SCHEMA": "RationalTime.1",
+        "rate": rate,
+        "value": value
+    })
+}
+
+fn time_range(start: f64, duration: f64, rate: f64) -> Value {
+    json!({
+        "OTIO_SCHEMA": "TimeRange.1",
+        "duration": rational_time(duration, rate),
+        "start_time": rational_time(start, rate)
+    })
+}
+
+fn item(
+    schema: &str,
+    name: &str,
+    metadata: Value,
+    source_range: Value,
+    effects: Vec<Value>,
+    markers: Vec<Value>,
+) -> Value {
+    json!({
+        "OTIO_SCHEMA": schema,
+        "color": Value::Null,
+        "effects": effects,
+        "enabled": true,
+        "markers": markers,
+        "metadata": metadata,
+        "name": name,
+        "source_range": source_range
+    })
+}
+
+fn external_reference(
+    media_id: &str,
+    target_url: &str,
+    available_duration: f64,
+    metadata: Value,
+) -> Value {
+    json!({
+        "OTIO_SCHEMA": "ExternalReference.1",
+        "available_image_bounds": Value::Null,
+        "available_range": time_range(0.0, available_duration, 24.0),
+        "metadata": metadata,
+        "name": media_id,
+        "target_url": target_url
+    })
+}
+
+struct ClipSpec<'a> {
+    name: &'a str,
+    id: &'a str,
+    media_id: &'a str,
+    target_url: &'a str,
+    source_start: f64,
+    source_duration: f64,
+    available_duration: f64,
+    effects: Vec<Value>,
+    markers: Vec<Value>,
+}
+
+fn clip(spec: ClipSpec<'_>) -> Value {
+    let reference = external_reference(
+        spec.media_id,
+        spec.target_url,
+        spec.available_duration,
+        json!({"superi": {"id": spec.media_id}}),
+    );
+    let mut value = item(
+        "Clip.2",
+        spec.name,
+        json!({"superi": {"id": spec.id, "media_id": spec.media_id}}),
+        time_range(spec.source_start, spec.source_duration, 24.0),
+        spec.effects,
+        spec.markers,
+    );
+    let object = value
+        .as_object_mut()
+        .expect("fixed clip fixture must be an object");
+    object.insert(
+        "active_media_reference_key".to_owned(),
+        Value::String("DEFAULT_MEDIA".to_owned()),
+    );
+    object.insert(
+        "media_references".to_owned(),
+        json!({"DEFAULT_MEDIA": reference}),
+    );
+    value
+}
+
+fn effect(schema: &str, name: &str, effect_name: &str, metadata: Value) -> Value {
+    let mut value = json!({
+        "OTIO_SCHEMA": schema,
+        "effect_name": effect_name,
+        "enabled": true,
+        "metadata": metadata,
+        "name": name
+    });
+    if schema == "FreezeFrame.1" {
+        value
+            .as_object_mut()
+            .expect("fixed effect fixture must be an object")
+            .insert("time_scalar".to_owned(), json!(0.0));
+    }
+    value
+}
+
+fn linear_time_warp(name: &str, id: &str, scalar: f64) -> Value {
+    json!({
+        "OTIO_SCHEMA": "LinearTimeWarp.1",
+        "effect_name": "LinearTimeWarp",
+        "enabled": true,
+        "metadata": {"superi": {"id": id}},
+        "name": name,
+        "time_scalar": scalar
+    })
+}
+
+fn marker(name: &str, id: &str, start: f64, duration: f64, color: &str) -> Value {
+    json!({
+        "OTIO_SCHEMA": "Marker.2",
+        "color": color,
+        "comment": "",
+        "marked_range": time_range(start, duration, 24.0),
+        "metadata": {"superi": {"id": id}},
+        "name": name
+    })
+}
+
+fn track(name: &str, id: &str, children: Vec<Value>, markers: Vec<Value>) -> Value {
+    let mut value = item(
+        "Track.1",
+        name,
+        json!({"superi": {"id": id}}),
+        Value::Null,
+        Vec::new(),
+        markers,
+    );
+    let object = value
+        .as_object_mut()
+        .expect("fixed track fixture must be an object");
+    object.insert("children".to_owned(), Value::Array(children));
+    object.insert("kind".to_owned(), Value::String("Video".to_owned()));
+    value
+}
+
+fn stack(name: &str, id: &str, source_range: Value, children: Vec<Value>) -> Value {
+    let mut value = item(
+        "Stack.1",
+        name,
+        json!({"superi": {"id": id}}),
+        source_range,
+        Vec::new(),
+        Vec::new(),
+    );
+    value
+        .as_object_mut()
+        .expect("fixed stack fixture must be an object")
+        .insert("children".to_owned(), Value::Array(children));
+    value
+}
+
+fn timeline(name: &str, root_stack: Value, metadata: Value) -> Value {
+    json!({
+        "OTIO_SCHEMA": "Timeline.1",
+        "global_start_time": rational_time(0.0, 24.0),
+        "metadata": metadata,
+        "name": name,
+        "tracks": root_stack
+    })
+}
+
+fn canonical_slice_otio() -> Value {
+    let media = external_reference(
+        "media.slice.video-cfr.v1",
+        "../../../slice/video-cfr/v1/input.webm",
+        96.0,
+        json!({
+            "superi": {
+                "fixture_id": "slice/video-cfr",
+                "fixture_version": 1,
+                "id": "media.slice.video-cfr.v1",
+                "manifest_sha256": "fc76adeced535ff05e6adb36c2549939618cfd0f73de7de5fa9d7f7f4301dc08"
+            }
+        }),
+    );
+    let mut canonical_clip = item(
+        "Clip.2",
+        "clip-1",
+        json!({
+            "superi": {
+                "id": "clip.canonical.1",
+                "media_id": "media.slice.video-cfr.v1"
+            }
+        }),
+        time_range(24.0, 48.0, 24.0),
+        vec![effect(
+            "Effect.1",
+            "horizontal-mirror",
+            "superi.effect.transform",
+            json!({
+                "superi": {
+                    "edge_mode": "transparent_black",
+                    "id": "effect.canonical.transform",
+                    "matrix": [-1, 0, 95, 0, 1, 0, 0, 0, 1],
+                    "sampling": "nearest"
+                }
+            }),
+        )],
+        Vec::new(),
+    );
+    let clip_object = canonical_clip
+        .as_object_mut()
+        .expect("fixed canonical clip must be an object");
+    clip_object.insert(
+        "active_media_reference_key".to_owned(),
+        Value::String("DEFAULT_MEDIA".to_owned()),
+    );
+    clip_object.insert(
+        "media_references".to_owned(),
+        json!({"DEFAULT_MEDIA": media}),
+    );
+
+    let video_track = track("V1", "track.canonical.v1", vec![canonical_clip], Vec::new());
+    timeline(
+        "canonical",
+        stack(
+            "tracks",
+            "stack.canonical.root",
+            Value::Null,
+            vec![video_track],
+        ),
+        json!({
+            "superi": {
+                "fixture_id": "timeline/otio-interchange",
+                "fixture_version": 1,
+                "id": "timeline.canonical",
+                "scenario_id": "superi.slice.canonical.v1",
+                "scenario_revision": 1
+            }
+        }),
+    )
+}
+
+fn interchange_coverage_otio() -> Value {
+    let clip_a = clip(ClipSpec {
+        name: "clip-a",
+        id: "clip.a",
+        media_id: "media.a",
+        target_url: "urn:superi:fixture:media.a",
+        source_start: 24.0,
+        source_duration: 48.0,
+        available_duration: 240.0,
+        effects: Vec::new(),
+        markers: vec![marker(
+            "select",
+            "marker.clip-a.select",
+            12.0,
+            1.0,
+            "YELLOW",
+        )],
+    });
+    let clip_b = clip(ClipSpec {
+        name: "clip-b-fast",
+        id: "clip.b-fast",
+        media_id: "media.b",
+        target_url: "urn:superi:fixture:media.b",
+        source_start: 48.0,
+        source_duration: 36.0,
+        available_duration: 240.0,
+        effects: vec![linear_time_warp("double-speed", "effect.double-speed", 2.0)],
+        markers: Vec::new(),
+    });
+    let transition = json!({
+        "OTIO_SCHEMA": "Transition.1",
+        "enabled": true,
+        "in_offset": rational_time(6.0, 24.0),
+        "metadata": {
+            "superi": {
+                "from_clip_id": "clip.a",
+                "id": "transition.a-b",
+                "to_clip_id": "clip.b-fast"
+            }
+        },
+        "name": "dissolve-a-b",
+        "out_offset": rational_time(6.0, 24.0),
+        "transition_type": "SMPTE_Dissolve"
+    });
+    let gap = item(
+        "Gap.1",
+        "gap-12",
+        json!({"superi": {"id": "gap.coverage.1"}}),
+        time_range(0.0, 12.0, 24.0),
+        Vec::new(),
+        Vec::new(),
+    );
+
+    let nested_clip = clip(ClipSpec {
+        name: "clip-c-slow",
+        id: "clip.c-slow",
+        media_id: "media.c",
+        target_url: "urn:superi:fixture:media.c",
+        source_start: 72.0,
+        source_duration: 24.0,
+        available_duration: 240.0,
+        effects: vec![linear_time_warp("half-speed", "effect.half-speed", 0.5)],
+        markers: Vec::new(),
+    });
+    let nested_gap = item(
+        "Gap.1",
+        "nested-gap-6",
+        json!({"superi": {"id": "gap.nested.1"}}),
+        time_range(0.0, 6.0, 24.0),
+        Vec::new(),
+        Vec::new(),
+    );
+    let unsupported_clip = clip(ClipSpec {
+        name: "clip-d-unsupported",
+        id: "clip.d-unsupported",
+        media_id: "media.d",
+        target_url: "urn:superi:fixture:media.d",
+        source_start: 0.0,
+        source_duration: 18.0,
+        available_duration: 240.0,
+        effects: vec![
+            effect(
+                "FreezeFrame.1",
+                "freeze-first",
+                "FreezeFrame",
+                json!({"superi": {"id": "effect.freeze-frame"}}),
+            ),
+            effect(
+                "Effect.1",
+                "lens-warp",
+                "urn:superi:test:unsupported:lens-warp",
+                json!({
+                    "superi": {
+                        "id": "effect.lens-warp",
+                        "parameters": {"strength": 0.25}
+                    }
+                }),
+            ),
+        ],
+        markers: Vec::new(),
+    });
+    let nested_track = track(
+        "nested-v1",
+        "track.nested.v1",
+        vec![nested_clip, nested_gap, unsupported_clip],
+        Vec::new(),
+    );
+    let nested_stack = stack(
+        "nested-sequence",
+        "sequence.nested",
+        time_range(0.0, 24.0, 24.0),
+        vec![nested_track],
+    );
+    let video_track = track(
+        "V1",
+        "track.coverage.v1",
+        vec![clip_a, transition, clip_b, gap, nested_stack],
+        vec![marker(
+            "sequence-in",
+            "marker.sequence-in",
+            0.0,
+            0.0,
+            "GREEN",
+        )],
+    );
+    timeline(
+        "superi-interchange-coverage",
+        stack(
+            "tracks",
+            "stack.coverage.root",
+            Value::Null,
+            vec![video_track],
+        ),
+        json!({
+            "superi": {
+                "fixture_id": "timeline/otio-interchange",
+                "fixture_version": 1,
+                "id": "timeline.coverage"
+            }
+        }),
+    )
+}
+
+fn otio_expectations() -> Value {
+    json!({
+        "fixture_id": "timeline/otio-interchange",
+        "fixture_version": 1,
+        "identity": {
+            "field": "/metadata/superi/id",
+            "unknown_fields": "preserve_opaque",
+            "unknown_schemas": "preserve_opaque"
+        },
+        "reference": {
+            "implementation": "OpenTimelineIO",
+            "license": "Apache-2.0",
+            "schema_family": "OTIO_CORE",
+            "schema_label": "0.18.1",
+            "version": "0.18.1"
+        },
+        "schema_version": 1,
+        "timelines": [
+            {
+                "expected_duration": {"rate": 24, "value": 48},
+                "path": OTIO_CANONICAL_SLICE_NAME,
+                "timeline_id": "timeline.canonical"
+            },
+            {
+                "expected_duration": {"rate": 24, "value": 120},
+                "path": OTIO_COVERAGE_NAME,
+                "timeline_id": "timeline.coverage"
+            }
+        ],
+        "unsupported_constructs": [
+            {
+                "diagnostic": {
+                    "code": "timeline.otio.unsupported_construct",
+                    "severity": "warning"
+                },
+                "handling": "preserve_opaque",
+                "json_pointer": "/tracks/children/0/children/4/children/0/children/2/effects/0",
+                "object_id": "effect.freeze-frame",
+                "otio_schema": "FreezeFrame.1"
+            },
+            {
+                "diagnostic": {
+                    "code": "timeline.otio.unsupported_construct",
+                    "severity": "warning"
+                },
+                "handling": "preserve_opaque",
+                "json_pointer": "/tracks/children/0/children/4/children/0/children/2/effects/1",
+                "object_id": "effect.lens-warp",
+                "otio_schema": "Effect.1"
+            }
+        ]
+    })
+}
+
+fn otio_manifest(canonical_slice: &[u8], coverage: &[u8], expectations: &[u8]) -> String {
+    format!(
+        r#"{{
+  "schema_version": 1,
+  "fixture_id": "timeline/otio-interchange",
+  "fixture_version": 1,
+  "description": "Canonical OTIO timelines for the first editorial slice and interchange coverage with explicit unsupported-construct expectations.",
+  "provenance": {{
+    "kind": "generated",
+    "source": "Authored and generated in the Superi repository from fixed editorial cases validated against OpenTimelineIO 0.18.1 and OTIO_CORE:0.18.1.",
+    "author": "Superi contributors",
+    "created_on": "2026-07-14",
+    "license": "CC0-1.0",
+    "rights": "Original synthetic editorial data approved for unrestricted redistribution.",
+    "generator": {{
+      "name": "superi-fixture-tool",
+      "version": "0.0.0",
+      "command": "cargo run -p superi-fixture-tool -- generate-otio <OUTPUT_DIRECTORY>",
+      "seed": "superi-otio-interchange-v1"
+    }},
+    "parents": []
+  }},
+  "files": [
+    {{
+      "path": "{OTIO_CANONICAL_SLICE_NAME}",
+      "media_type": "application/json; charset=utf-8",
+      "bytes": {},
+      "sha256": "{}"
+    }},
+    {{
+      "path": "{OTIO_COVERAGE_NAME}",
+      "media_type": "application/json; charset=utf-8",
+      "bytes": {},
+      "sha256": "{}"
+    }},
+    {{
+      "path": "{OTIO_EXPECTATIONS_NAME}",
+      "media_type": "application/json; charset=utf-8",
+      "bytes": {},
+      "sha256": "{}"
+    }}
+  ]
+}}
+"#,
+        canonical_slice.len(),
+        digest_bytes(canonical_slice),
+        coverage.len(),
+        digest_bytes(coverage),
+        expectations.len(),
+        digest_bytes(expectations)
     )
 }
 

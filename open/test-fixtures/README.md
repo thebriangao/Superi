@@ -165,6 +165,42 @@ The generator refuses to overwrite any existing output path. Compare the manifes
 all four media payloads byte for byte with the canonical version. Do not regenerate into the
 checked-in `v1` directory.
 
+## Deterministic OTIO interchange baseline
+
+`timeline/otio-interchange/v1` contains two native OTIO JSON timelines and one explicit expectation
+record. `canonical-slice.otio` carries the exact final editorial state for
+`superi.slice.canonical.v1`: one 24 fps video track, the immutable slice media identity, source
+range `[24, 72)`, 48 timeline frames, and the horizontal mirror effect as editable metadata.
+`interchange-coverage.otio` adds stable IDs for clips, media, gaps, a transition and its adjacent
+clips, owner-relative markers, a trimmed nested Stack, and 2.0 and 0.5 linear time warps.
+
+`expectations.json` pins the external reference implementation to OpenTimelineIO 0.18.1 and
+`OTIO_CORE:0.18.1`. It records exact 48-frame and 120-frame timeline durations and identifies two
+constructs outside Superi's first supported subset: `FreezeFrame.1` and a generic named
+`Effect.1`. A future importer must preserve either construct as opaque versioned data and emit the
+stable `timeline.otio.unsupported_construct` warning. It must not silently discard the object,
+metadata, identity, or relationship. This expectation is an interchange contract, not a claim that
+the production reader and writer already exist.
+
+Reproduce the complete version into a new absent directory from `open/`:
+
+```text
+cargo run -p superi-fixture-tool -- generate-otio <OUTPUT_DIRECTORY>
+```
+
+The generator builds every OTIO object and the expectation record from fixed Rust data, computes
+the manifest sizes and SHA-256 values, and refuses overwrite. Its contract compares two independent
+generations and all four canonical artifacts byte for byte. The `superi-timeline` contract then
+checks the complete hierarchy, exact rational time, stable IDs, relationship metadata, nesting,
+rate scalars, opaque preservation expectations, and canonical slice linkage with no runtime OTIO
+dependency.
+
+The reference check uses the official Apache-2.0 `opentimelineio==0.18.1` package on Python 3.12.
+Both `.otio` payloads must load through `otio_json`, report durations of 48 at 24 fps and 120 at 24
+fps, and remain semantically equivalent after official write and read with the
+`OTIO_CORE:0.18.1` target map. This external reference check is release evidence only; default
+workspace builds and fixture validation stay locked, offline, and free of a Python dependency.
+
 ## Canonical editorial slice source
 
 `slice/video-cfr/v1` contains the immutable `input.webm` source for
