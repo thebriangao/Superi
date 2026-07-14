@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -10,6 +11,9 @@ use superi_graph::eval::{
     LazyEvaluator,
 };
 use superi_graph::ids::{EdgeId, GraphId, NodeId, PortId};
+use superi_graph::invalidation::{
+    propagate_dependency_invalidation, DirtyRegion, InvalidationSeed,
+};
 
 #[derive(Clone)]
 enum DependencyPlan {
@@ -270,6 +274,78 @@ fn frame_and_region_keys_reuse_only_physically_identical_work() {
             region_a
         ))
         .is_some());
+    assert_eq!(
+        BTreeSet::from([
+            EvaluationKey::new(endpoint(1, 101), one_second_24, region_a),
+            EvaluationKey::new(endpoint(1, 101), one_second_48, region_a),
+        ])
+        .len(),
+        1
+    );
+}
+
+#[test]
+fn scheduling_reuses_work_without_collapsing_distinct_input_edges() {
+    let source = ProbeNode::new(DependencyPlan::Default, OutputPlan::Value(5));
+    let output = ProbeNode::new(DependencyPlan::Default, OutputPlan::Sum);
+    let mut graph = DirectedAcyclicGraph::new(GraphId::from_raw(8));
+    graph
+        .insert_node(NodeId::from_raw(1), source.clone())
+        .unwrap();
+    graph.insert_node(NodeId::from_raw(2), output).unwrap();
+    graph.insert_edge(edge(10, (1, 101), (2, 201))).unwrap();
+    graph.insert_edge(edge(20, (1, 101), (2, 202))).unwrap();
+    let request = request(2, 203, frame(0, 24), region(0, 0, 8, 8));
+
+    let result = LazyEvaluator::evaluate(&graph, request).unwrap();
+
+    assert_eq!(*result.value(), 10);
+    assert_eq!(source.calls().len(), 1);
+    assert_eq!(result.schedule().len(), 2);
+    assert_eq!(
+        result
+            .schedule()
+            .prerequisites(request.key())
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn scheduling_preserves_exact_invalidated_requested_work() {
+    let source = ProbeNode::new(DependencyPlan::Default, OutputPlan::Value(3));
+    let output = ProbeNode::new(DependencyPlan::Default, OutputPlan::Sum);
+    let mut graph = DirectedAcyclicGraph::new(GraphId::from_raw(9));
+    graph.insert_node(NodeId::from_raw(1), source).unwrap();
+    graph.insert_node(NodeId::from_raw(2), output).unwrap();
+    graph.insert_edge(edge(10, (1, 101), (2, 201))).unwrap();
+    let invalidation = propagate_dependency_invalidation(
+        &graph,
+        [InvalidationSeed::from_region(
+            NodeId::from_raw(1),
+            DirtyRegion::Bounds(region(0, 0, 16, 16)),
+        )],
+    )
+    .unwrap();
+    let requested = invalidation.requested_work(NodeId::from_raw(2), region(8, 8, 24, 24));
+    assert_eq!(requested.regions(), &[region(8, 8, 16, 16)]);
+    let request = request(2, 202, frame(4, 24), requested.regions()[0]);
+
+    let result = LazyEvaluator::evaluate(&graph, request).unwrap();
+
+    assert_eq!(*result.value(), 3);
+    assert_eq!(result.schedule().len(), 2);
+    assert!(result
+        .evaluated_keys()
+        .all(|key| key.region() == region(8, 8, 16, 16)));
+    assert_eq!(
+        invalidation
+            .dirty_regions(NodeId::from_raw(2))
+            .unwrap()
+            .regions(),
+        &[region(0, 0, 16, 16)]
+    );
 }
 
 fn deterministic_graph(
@@ -335,9 +411,46 @@ fn dependency_order_and_results_are_insertion_independent() {
 }
 
 #[test]
+fn scheduling_publishes_stable_ready_batches() {
+    let first = deterministic_graph(&[3, 2, 1], &[20, 10]);
+    let second = deterministic_graph(&[1, 2, 3], &[10, 20]);
+    let request = request(3, 301, frame(3, 24), region(0, 0, 16, 16));
+
+    let first_schedule = LazyEvaluator::schedule::<_, i64>(&first, request).unwrap();
+    let second_schedule = LazyEvaluator::schedule::<_, i64>(&second, request).unwrap();
+
+    assert_eq!(first_schedule, second_schedule);
+    for node_id in [1, 2, 3].map(NodeId::from_raw) {
+        assert!(first.node(node_id).unwrap().calls().is_empty());
+        assert!(second.node(node_id).unwrap().calls().is_empty());
+    }
+    assert_eq!(first_schedule.batches().len(), 2);
+    assert_eq!(
+        first_schedule.batches()[0]
+            .keys()
+            .iter()
+            .map(|key| key.output().node_id())
+            .collect::<Vec<_>>(),
+        [1, 2].map(NodeId::from_raw)
+    );
+    assert_eq!(
+        first_schedule.batches()[1]
+            .keys()
+            .iter()
+            .map(|key| key.output().node_id())
+            .collect::<Vec<_>>(),
+        [NodeId::from_raw(3)]
+    );
+
+    let result = LazyEvaluator::evaluate(&first, request).unwrap();
+    assert_eq!(result.schedule(), &first_schedule);
+}
+
+#[test]
 fn every_caller_uses_the_same_graph_and_evaluator_result() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<EvaluationRequest>();
+    assert_send_sync::<superi_graph::eval::EvaluationSchedule>();
     assert_send_sync::<superi_graph::eval::EvaluationResult<i64>>();
 
     let graph = deterministic_graph(&[3, 1, 2], &[20, 10]);

@@ -2,10 +2,12 @@
 //!
 //! Evaluation is a request-scoped pull through the stored DAG. Node payloads declare the incoming
 //! edge, frame, and region work needed for one output, then receive only those resolved values.
-//! Identical request keys execute once within the pull. The evaluator retains no cross-request
-//! state, scheduler, dirty-region policy, or domain catalog knowledge.
+//! Identical request keys execute once within the pull. The evaluator publishes deterministic
+//! dependency-ready batches while retaining no cross-request state, outer job policy, dirty-region
+//! policy, or domain catalog knowledge.
 
 use std::cmp::Ordering;
+use std::collections::{BTreeMap, BTreeSet};
 
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result, ResultExt};
 use superi_core::geometry::PixelBounds;
@@ -26,6 +28,25 @@ pub struct EvaluationKey {
     output: GraphEndpoint,
     frame: RationalTime,
     region: PixelBounds,
+}
+
+impl Ord for EvaluationKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.output
+            .cmp(&other.output)
+            .then_with(|| {
+                self.frame
+                    .partial_cmp(&other.frame)
+                    .expect("rational time provides a total physical order")
+            })
+            .then_with(|| region_key(self.region).cmp(&region_key(other.region)))
+    }
+}
+
+impl PartialOrd for EvaluationKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl EvaluationKey {
@@ -229,6 +250,71 @@ pub trait EvaluateNode<V> {
     fn evaluate(&self, context: &EvaluationContext<'_, V>) -> Result<V>;
 }
 
+/// One deterministic batch of independent evaluator work.
+///
+/// Every prerequisite of every key in this batch appears in an earlier batch. Keys within a batch
+/// are independent and use the evaluator's stable work-key order, so a later render coordinator
+/// may dispatch them concurrently without changing dependency or result meaning.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EvaluationBatch {
+    keys: Vec<EvaluationKey>,
+}
+
+impl EvaluationBatch {
+    /// Returns ready work in deterministic key order.
+    #[must_use]
+    pub fn keys(&self) -> &[EvaluationKey] {
+        &self.keys
+    }
+}
+
+/// An immutable request-local evaluation schedule.
+///
+/// The schedule contains only work reached through node-declared stored edges. It owns no values,
+/// cache state, invalidation state, worker priority, cancellation, or caller mode.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EvaluationSchedule {
+    request: EvaluationRequest,
+    batches: Vec<EvaluationBatch>,
+    prerequisites: BTreeMap<EvaluationKey, Vec<EvaluationKey>>,
+}
+
+impl EvaluationSchedule {
+    /// Returns the top-level request that owns this schedule.
+    #[must_use]
+    pub const fn request(&self) -> EvaluationRequest {
+        self.request
+    }
+
+    /// Returns deterministic dependency-ready batches.
+    #[must_use]
+    pub fn batches(&self) -> &[EvaluationBatch] {
+        &self.batches
+    }
+
+    /// Returns the unique prerequisite work keys for one scheduled key.
+    ///
+    /// Keys are ordered independently of declaration and insertion history. Distinct input edges
+    /// that reuse one value remain distinct node inputs even though this dependency set contains
+    /// the source work only once.
+    #[must_use]
+    pub fn prerequisites(&self, key: EvaluationKey) -> Option<&[EvaluationKey]> {
+        self.prerequisites.get(&key).map(Vec::as_slice)
+    }
+
+    /// Returns the number of unique work keys in this schedule.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.prerequisites.len()
+    }
+
+    /// Returns whether no evaluator work is scheduled.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.prerequisites.is_empty()
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct EvaluatedValue<V> {
     key: EvaluationKey,
@@ -241,6 +327,7 @@ pub struct EvaluationResult<V> {
     request: EvaluationRequest,
     target_index: usize,
     evaluated: Vec<EvaluatedValue<V>>,
+    schedule: EvaluationSchedule,
 }
 
 impl<V> EvaluationResult<V> {
@@ -254,6 +341,12 @@ impl<V> EvaluationResult<V> {
     #[must_use]
     pub fn value(&self) -> &V {
         &self.evaluated[self.target_index].value
+    }
+
+    /// Returns the exact schedule used to produce this result.
+    #[must_use]
+    pub const fn schedule(&self) -> &EvaluationSchedule {
+        &self.schedule
     }
 
     /// Returns work keys in stable dependency-completion order.
@@ -275,6 +368,22 @@ impl<V> EvaluationResult<V> {
 pub struct LazyEvaluator;
 
 impl LazyEvaluator {
+    /// Builds an inspectable deterministic schedule without evaluating node values.
+    ///
+    /// Dependency declarations are read from the immutable graph for this call. The returned
+    /// schedule is diagnostic state, not a reusable cache. [`Self::evaluate`] always builds and
+    /// executes one private schedule so current editable payload state is observed atomically with
+    /// respect to the caller's graph borrow.
+    pub fn schedule<N, V>(
+        graph: &DirectedAcyclicGraph<N>,
+        request: EvaluationRequest,
+    ) -> Result<EvaluationSchedule>
+    where
+        N: EvaluateNode<V>,
+    {
+        PlanBuilder::build::<V>(graph, request).map(|plan| plan.schedule)
+    }
+
     /// Evaluates one output endpoint, frame, and region from an immutable graph.
     ///
     /// Every call owns a fresh request-local value set, so no prior graph state or result can be
@@ -283,6 +392,42 @@ impl LazyEvaluator {
         graph: &DirectedAcyclicGraph<N>,
         request: EvaluationRequest,
     ) -> Result<EvaluationResult<V>>
+    where
+        N: EvaluateNode<V>,
+    {
+        let plan = PlanBuilder::build::<V>(graph, request)?;
+        execute_plan(graph, plan)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PlannedDependency {
+    dependency: EvaluationDependency,
+    edge: GraphEdge,
+    source: EvaluationKey,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PlannedWork {
+    dependencies: Vec<PlannedDependency>,
+}
+
+struct EvaluationPlan {
+    schedule: EvaluationSchedule,
+    work: BTreeMap<EvaluationKey, PlannedWork>,
+}
+
+struct PlanBuilder<'a, N> {
+    graph: &'a DirectedAcyclicGraph<N>,
+    work: BTreeMap<EvaluationKey, PlannedWork>,
+    active: BTreeSet<EvaluationKey>,
+}
+
+impl<'a, N> PlanBuilder<'a, N> {
+    fn build<V>(
+        graph: &'a DirectedAcyclicGraph<N>,
+        request: EvaluationRequest,
+    ) -> Result<EvaluationPlan>
     where
         N: EvaluateNode<V>,
     {
@@ -298,39 +443,27 @@ impl LazyEvaluator {
             ));
         }
 
-        let mut resolver = Resolver::new(graph);
-        let target_index = resolver.resolve(request.key())?;
-        Ok(EvaluationResult {
-            request,
-            target_index,
-            evaluated: resolver.evaluated,
+        let mut builder = Self {
+            graph,
+            work: BTreeMap::new(),
+            active: BTreeSet::new(),
+        };
+        builder.discover::<V>(request.key())?;
+        let schedule = build_schedule(graph, request, &builder.work)?;
+        Ok(EvaluationPlan {
+            schedule,
+            work: builder.work,
         })
     }
-}
 
-struct Resolver<'a, N, V> {
-    graph: &'a DirectedAcyclicGraph<N>,
-    evaluated: Vec<EvaluatedValue<V>>,
-    active: Vec<EvaluationKey>,
-}
-
-impl<'a, N, V> Resolver<'a, N, V>
-where
-    N: EvaluateNode<V>,
-{
-    const fn new(graph: &'a DirectedAcyclicGraph<N>) -> Self {
-        Self {
-            graph,
-            evaluated: Vec::new(),
-            active: Vec::new(),
+    fn discover<V>(&mut self, key: EvaluationKey) -> Result<()>
+    where
+        N: EvaluateNode<V>,
+    {
+        if self.work.contains_key(&key) {
+            return Ok(());
         }
-    }
-
-    fn resolve(&mut self, key: EvaluationKey) -> Result<usize> {
-        if let Some(index) = self.evaluated.iter().position(|entry| entry.key == key) {
-            return Ok(index);
-        }
-        if self.active.contains(&key) {
+        if !self.active.insert(key) {
             return Err(request_error(
                 self.graph,
                 key,
@@ -341,6 +474,16 @@ where
                 "evaluation_cycle",
             ));
         }
+
+        let result = self.discover_uncached::<V>(key);
+        self.active.remove(&key);
+        result
+    }
+
+    fn discover_uncached<V>(&mut self, key: EvaluationKey) -> Result<()>
+    where
+        N: EvaluateNode<V>,
+    {
         if self.graph.node(key.output().node_id()).is_none() {
             return Err(request_error(
                 self.graph,
@@ -352,14 +495,6 @@ where
                 "missing_source_node",
             ));
         }
-
-        self.active.push(key);
-        let result = self.resolve_uncached(key);
-        self.active.pop();
-        result
-    }
-
-    fn resolve_uncached(&mut self, key: EvaluationKey) -> Result<usize> {
         let request = EvaluationRequest::from(key);
         let node_id = key.output().node_id();
         let incoming_ids = self
@@ -409,44 +544,166 @@ where
                     "node declared an evaluation edge that does not enter it",
                 ));
             }
-            resolved.push((
+            resolved.push(PlannedDependency {
                 dependency,
                 edge,
-                EvaluationKey::new(edge.source(), dependency.frame(), dependency.region()),
-            ));
+                source: EvaluationKey::new(edge.source(), dependency.frame(), dependency.region()),
+            });
         }
 
-        let mut input_indices = Vec::with_capacity(resolved.len());
-        for (_, _, source) in &resolved {
-            input_indices.push(self.resolve(*source)?);
+        for planned in &resolved {
+            self.discover::<V>(planned.source)?;
         }
 
-        let value = {
-            let inputs = resolved
-                .iter()
-                .zip(&input_indices)
-                .map(|((dependency, edge, source), index)| EvaluationInput {
-                    dependency: *dependency,
-                    edge: *edge,
-                    source: *source,
-                    value: &self.evaluated[*index].value,
-                })
-                .collect::<Vec<_>>();
-            let context = EvaluationContext {
-                request,
-                inputs: &inputs,
-            };
-            self.graph
-                .node(node_id)
-                .expect("evaluation node existence checked")
-                .evaluate(&context)
-                .with_error_context(request_context(self.graph, key, "evaluate_node"))?
-        };
-
-        let index = self.evaluated.len();
-        self.evaluated.push(EvaluatedValue { key, value });
-        Ok(index)
+        self.work.insert(
+            key,
+            PlannedWork {
+                dependencies: resolved,
+            },
+        );
+        Ok(())
     }
+}
+
+fn build_schedule<N>(
+    graph: &DirectedAcyclicGraph<N>,
+    request: EvaluationRequest,
+    work: &BTreeMap<EvaluationKey, PlannedWork>,
+) -> Result<EvaluationSchedule> {
+    let prerequisites = work
+        .iter()
+        .map(|(key, planned)| {
+            let sources = planned
+                .dependencies
+                .iter()
+                .map(|dependency| dependency.source)
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            (*key, sources)
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut remaining = prerequisites
+        .iter()
+        .map(|(key, sources)| (*key, sources.len()))
+        .collect::<BTreeMap<_, _>>();
+    let mut dependents: BTreeMap<EvaluationKey, BTreeSet<EvaluationKey>> = BTreeMap::new();
+    for (key, sources) in &prerequisites {
+        for source in sources {
+            dependents.entry(*source).or_default().insert(*key);
+        }
+    }
+
+    let mut ready = remaining
+        .iter()
+        .filter_map(|(key, count)| (*count == 0).then_some(*key))
+        .collect::<BTreeSet<_>>();
+    let mut batches = Vec::new();
+    let mut scheduled_count = 0;
+
+    while !ready.is_empty() {
+        let keys = ready.iter().copied().collect::<Vec<_>>();
+        scheduled_count += keys.len();
+        let mut next_ready = BTreeSet::new();
+        for key in &keys {
+            if let Some(consumers) = dependents.get(key) {
+                for consumer in consumers {
+                    let count = remaining
+                        .get_mut(consumer)
+                        .expect("planned consumer owns a prerequisite count");
+                    *count -= 1;
+                    if *count == 0 {
+                        next_ready.insert(*consumer);
+                    }
+                }
+            }
+        }
+        batches.push(EvaluationBatch { keys });
+        ready = next_ready;
+    }
+
+    if scheduled_count != work.len() {
+        return Err(request_error(
+            graph,
+            request.key(),
+            ErrorCategory::Internal,
+            Recoverability::Terminal,
+            "evaluation work graph could not produce a complete schedule",
+            "schedule",
+            "evaluation_schedule_cycle",
+        ));
+    }
+
+    Ok(EvaluationSchedule {
+        request,
+        batches,
+        prerequisites,
+    })
+}
+
+fn execute_plan<N, V>(
+    graph: &DirectedAcyclicGraph<N>,
+    plan: EvaluationPlan,
+) -> Result<EvaluationResult<V>>
+where
+    N: EvaluateNode<V>,
+{
+    let EvaluationPlan { schedule, work } = plan;
+    let mut evaluated: Vec<EvaluatedValue<V>> = Vec::with_capacity(schedule.len());
+    let mut completed = BTreeMap::new();
+
+    for batch in schedule.batches() {
+        for key in batch.keys() {
+            let planned = work
+                .get(key)
+                .expect("scheduled evaluator work remains planned");
+            let input_indices = planned
+                .dependencies
+                .iter()
+                .map(|dependency| {
+                    completed
+                        .get(&dependency.source)
+                        .copied()
+                        .expect("scheduled prerequisite completed in an earlier batch")
+                })
+                .collect::<Vec<usize>>();
+
+            let value = {
+                let inputs = planned
+                    .dependencies
+                    .iter()
+                    .zip(&input_indices)
+                    .map(|(dependency, index)| EvaluationInput {
+                        dependency: dependency.dependency,
+                        edge: dependency.edge,
+                        source: dependency.source,
+                        value: &evaluated[*index].value,
+                    })
+                    .collect::<Vec<_>>();
+                let context = EvaluationContext {
+                    request: EvaluationRequest::from(*key),
+                    inputs: &inputs,
+                };
+                graph
+                    .node(key.output().node_id())
+                    .expect("planned evaluation node remains present")
+                    .evaluate(&context)
+                    .with_error_context(request_context(graph, *key, "evaluate_node"))?
+            };
+
+            let index = evaluated.len();
+            evaluated.push(EvaluatedValue { key: *key, value });
+            completed.insert(*key, index);
+        }
+    }
+
+    let target_index = completed[&schedule.request().key()];
+    Ok(EvaluationResult {
+        request: schedule.request(),
+        target_index,
+        evaluated,
+        schedule,
+    })
 }
 
 fn canonicalize_dependencies(dependencies: &mut Vec<EvaluationDependency>) {

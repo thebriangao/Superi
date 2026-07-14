@@ -2,7 +2,7 @@
 module_id: superi-graph
 source_paths:
   - open/crates/superi-graph
-source_hash: 7ce0387e9421a4e80051a3440d58252a2897fc1ed20c5e9edbc4d995412580da
+source_hash: 7de954d38c197c24e42dae8a6a7e739715523ef32e62c2aee4b871a3026c78b7
 source_files: 21
 mapped_at_commit: working-tree
 ---
@@ -16,19 +16,19 @@ instance identifiers, node registration, schema discovery, graph membership, typ
 cycle prevention, stable inspection, topological ordering, typed input and output binding
 validation, schema-level connection compatibility, editable node instances, runtime parameter
 state, atomic revisioned mutation transactions, exact dirty-region algebra, deterministic
-dependency invalidation planning, lazy request-scoped evaluation, snapshot-bound
-region-of-interest propagation, and exact requested-versus-dirty work intersection are
-implemented.
+dependency invalidation planning, snapshot-bound region-of-interest propagation, exact
+requested-versus-dirty work intersection, lazy request-scoped evaluation, and deterministic work
+scheduling are implemented.
 
 The crate does not own identifier value representation. `superi-core` remains the single identity
 owner, while graph state owns payload and connection membership. Schema type identities and
 schema-local names are definition metadata, separate from the core object identifiers that address
 editable graph instances.
 
-Cache generation integration, editable-snapshot-to-evaluator binding, scheduling, expressions,
-serialization, and explicit headless integration remain absent or placeholders. The implemented
-storage, schema, validation, mutation, invalidation, generic evaluator, and ROI planning surfaces
-must not be interpreted as a working production render path.
+Cache generation integration, editable-snapshot and ROI-plan evaluator binding, outer job dispatch,
+expressions, serialization, and explicit headless integration remain absent or placeholders. The
+implemented storage, schema, validation, mutation, invalidation, ROI planning, scheduling, and
+generic evaluator surfaces must not be interpreted as a working production render path.
 
 ## Source inventory
 
@@ -42,7 +42,8 @@ The module owns 21 text files:
   deterministic topological order, and atomic cycle prevention.
 - `open/crates/superi-graph/src/eval.rs`: Implements exact endpoint, rational-frame, and pixel-region
   requests, node-declared incoming dependencies, request-local reuse, canonical dependency pulls,
-  one shared stateless evaluator, and structured failure context.
+  inspectable deterministic ready batches, scheduled evaluation, one shared stateless evaluator,
+  and structured failure context.
 - `open/crates/superi-graph/src/expr.rs`: Placeholder for expressions and parameter links.
 - `open/crates/superi-graph/src/headless.rs`: Placeholder for deterministic CLI and CI evaluation
   parity.
@@ -72,6 +73,7 @@ The module owns 21 text files:
   consistent removal.
 - `open/crates/superi-graph/tests/evaluation_contract.rs`: Proves demand-only pulls, physical-time
   and exact-region request identity, at-most-once request-local work, canonical dependency order,
+  deterministic ready batches, distinct-edge input meaning, exact invalidated request clipping,
   temporal requests, caller parity, and structured evaluator failures.
 - `open/crates/superi-graph/tests/identifier_contract.rs`: Proves the public six-type identifier
   surface, domain distinction, canonical text round trips, and exact type identity with core.
@@ -130,17 +132,25 @@ use a schema identity or a separate payload without coupling the DAG algorithm t
 
 - `EvaluationKey` and `EvaluationRequest` identify one stored output endpoint at an exact
   `RationalTime` and signed half-open `PixelBounds`. Physical-time equality makes equivalent
-  timebase representations the same request-local work.
+  timebase representations the same request-local work. `EvaluationKey` also provides a total order
+  consistent with that equality for deterministic planning and completion indexes.
 - `EvaluateNode<V>` declares only the incoming edge, frame, and region dependencies required for
   one output, then evaluates from immutable `EvaluationContext` inputs. Its default requests every
   stored incoming edge at the current frame and region.
 - `LazyEvaluator` validates each declared edge against the authoritative DAG, canonicalizes and
-  deduplicates declarations, recursively resolves source endpoints, and evaluates each identical
-  key at most once during one call.
-- `EvaluationResult<V>` owns only values reached by the pull and exposes the requested value,
-  stable dependency-completion keys, and request-local lookup without requiring `V: Clone`.
+  deduplicates declarations, discovers only reached source work, and builds one request-local work
+  graph before value evaluation.
+- `EvaluationSchedule` publishes stable `EvaluationBatch` readiness waves and unique prerequisite
+  keys. Equal-ready work uses the exact work-key order, while distinct input edges remain separate
+  `EvaluationInput` values even when they reuse one completed source key.
+- `LazyEvaluator::schedule` exposes the current diagnostic schedule without evaluating values.
+  `LazyEvaluator::evaluate` always builds and executes one private current schedule so a separately
+  inspected schedule cannot become hidden reusable state.
+- `EvaluationResult<V>` owns only values reached by the pull and exposes the requested value, the
+  exact executed schedule, stable semantic completion keys, and request-local lookup without
+  requiring `V: Clone`.
 - Every call starts with an empty value set. No persistent cache, graph revision, dirty-region
-  propagation, scheduler, catalog lookup, or caller mode participates.
+  propagation, outer job priority, worker pool, catalog lookup, or caller mode participates.
 
 `superi_graph::validation` exposes the node-neutral runtime boundary:
 
@@ -237,14 +247,22 @@ The lazy evaluation flow is:
 2. The target payload receives its incoming stored edges in stable `EdgeId` order and declares only
    the input work needed for that output. A declaration may select a branch or request another
    source frame or region, but it cannot name routing outside an incoming stored edge.
-3. The evaluator sorts declarations by edge, physical frame, region, and stable time
-   representation, removes equal requests, then recursively pulls each source endpoint.
-4. A request-local value list reuses equal endpoint, physical-frame, and exact-region keys. Resolved
-   inputs retain their declaration, stored edge, source key, and borrowed opaque value.
-5. The node evaluates once after all declared inputs complete. Errors retain their classification
-   and gain graph, endpoint, frame, region, operation, and route context.
-6. The returned result owns the requested value and every reached request-local value in stable
-   completion order. A later call starts empty, so it cannot reuse stale data after an edit.
+3. Discovery sorts declarations by edge, physical frame, region, and stable time representation,
+   removes equal declarations, validates every route, and recursively records only reached source
+   work. No node value is evaluated during this planning pass.
+4. Equal endpoint, physical-frame, and exact-region keys identify one planned work unit. A separate
+   canonical input list retains every distinct declared edge and source key, so two edges may reuse
+   one source value without losing their input meaning.
+5. The planner derives unique prerequisite sets and repeatedly publishes every currently ready key
+   as one ordered `EvaluationBatch`. Dependencies always occur in earlier batches, and equal-ready
+   work is ordered independently of insertion history or thread timing.
+6. Evaluation walks those published batches and uses a request-local completion index. Each node
+   evaluates once after all declared inputs complete. Errors retain their classification and gain
+   graph, endpoint, frame, region, operation, and route context.
+7. The returned result owns the requested value, exact schedule, and every reached request-local
+   value in stable semantic completion order. A later call starts empty, so it cannot reuse stale
+   data after an edit. Outer render coordinators may map readiness onto bounded workers under their
+   own policy without changing this schedule's dependency meaning.
 
 The schema discovery flow is:
 
@@ -278,8 +296,8 @@ The typed validation flow is:
    observe identical results and diagnostics without a second validation model.
 5. Graph construction can call the schema-level connection check before storing an edge. Instance
    existence, edge cardinality, and cycle prevention now belong to the mutation and DAG owners;
-   invalidation planning is derived after published changes, while schema integration and
-   scheduling remain future owners.
+   invalidation planning is derived after published changes, while schema-to-evaluator integration
+   and outer worker dispatch remain future owners.
 
 The mutation transaction flow is:
 
@@ -355,7 +373,9 @@ graph evaluation or runtime integration.
   semantic versions, canonical namespaced validation, and capability sets.
 - `superi-gpu`, `superi-image`, and `superi-concurrency` remain declared for later concrete
   evaluation integration and are not imported by current graph source. The implemented generic
-  evaluator uses only core values plus graph-owned storage and payload behavior.
+  evaluator and semantic scheduler use only core values plus graph-owned storage, ordered standard
+  collections, and payload behavior. Outer job priority and bounded worker dispatch remain with
+  render coordinators and `superi-concurrency`.
 - Direct manifest consumers are `superi-ai`, `superi-cache`, `superi-color`, `superi-effects`,
   `superi-timeline`, `superi-project`, and `superi-engine`.
 - None of those consumers currently imports a `superi_graph` Rust item. The eight public
@@ -423,9 +443,17 @@ graph evaluation or runtime integration.
 - Evaluation resolves only node-declared incoming routes and never scans the whole DAG by default.
   Declarations are canonicalized before work, equal request keys execute once per call, and the
   immutable graph borrow is the evaluation snapshot boundary.
+- Evaluation-key ordering is consistent with physical-time equality. Equivalent timebase
+  representations are one planned and completed work key, while distinct endpoint, physical frame,
+  or exact region values remain distinct.
+- Scheduling separates unique prerequisite work from full canonical node inputs. Equal source work
+  is counted once for readiness, but every distinct declared edge remains an input with its exact
+  dependency and stored route.
+- Every scheduled prerequisite occurs in an earlier readiness batch. Equal-ready work uses stable
+  key order, and the result's completion order exactly follows the published schedule.
 - Request-local reuse is not persistent caching and does not consume an invalidation plan
-  automatically. A new call starts empty and no dirty region, graph revision, timing record,
-  scheduler decision, or caller-specific path is hidden in evaluator state.
+  automatically. A new call starts empty and no dirty region, graph revision, timing record, outer
+  job policy, or caller-specific path is hidden in evaluator state.
 - ROI validates all authored requests before custom mapping, walks nodes and edges deterministically,
   and records only nonempty connected work. Unrelated graph branches cannot enter the plan.
 - Full-frame ROI resolves each connected source's declared output domain. Input-bound and expanded
@@ -436,13 +464,13 @@ graph evaluation or runtime integration.
 - Every ROI plan retains its source graph ID and editable revision, contains no mutable graph,
   invalidation, cache, scheduler, or payload state, and is identical across reader roles for equal
   snapshots, domains, requests, and deterministic custom mapping.
-- The crate has no persistence format, locking owner, scheduler connection, editable-snapshot
+- The crate has no persistence format, locking owner, outer scheduler connection, editable-snapshot
   evaluator binding, GPU resource ownership, plugin loading, undo history, cache generation owner,
   or engine transaction coordinator yet.
 
 ## Tests and verification
 
-The graph crate owns 47 integration tests across eight files. The two identifier tests prove all six
+The graph crate owns 50 integration tests across eight files. The two identifier tests prove all six
 public domains are distinct, each canonical text value parses back exactly, and every graph export
 has the same Rust `TypeId` as its official core owner.
 
@@ -476,12 +504,13 @@ stopping, unknown-node and mapper diagnostics, and identical editor-script-headl
 different node and edge insertion histories. The integration proof derives those plans from the
 same immutable editable graph snapshot published by the mutation owner.
 
-Eight evaluation tests prove default incoming pulls, fresh observation after an editable payload
+Eleven evaluation tests prove default incoming pulls, fresh observation after an editable payload
 change, lazy branch selection, skipped failure branches, exact frame and region keys, reuse across
 physically equal timebase representations, distinct temporal and spatial work, stable declaration
-normalization, insertion-independent values and traces, editor-script-headless caller parity through
-one evaluator, missing targets, invalid node-declared routes, and preserved node failure
-classification with request context.
+normalization, insertion-independent values and traces, deterministic readiness batches, planning
+without value execution, distinct input edges that reuse one source work unit, exact invalidated
+request clipping, editor-script-headless caller parity through one evaluator, missing targets,
+invalid node-declared routes, and preserved node failure classification with request context.
 
 Eight ROI tests prove pass-through dependency pruning, exact repeated region union, per-source
 full-frame domains, checked expansion and clipping, coordinate-overflow rejection, custom per-input
@@ -504,11 +533,13 @@ are implemented and test-backed beside exact dirty-region sets, deterministic de
 invalidation planning, and snapshot-bound ROI propagation. Registered definitions can be
 instantiated, topology and visual order can be edited, exact state can be shared across reader
 roles, and callers can derive both dirty and requested work from the same published DAG snapshot.
-Lazy request-scoped evaluation is also implemented and test-backed, so caller-owned evaluator
-payloads can resolve stored topology. No production binding makes `EditableNode<T>` an evaluator
-node or connects ROI and invalidation plans to evaluator requests yet. The crate cannot serialize,
-persistently cache, schedule, or render production values, and no downstream production catalog
-consumes the mutation, invalidation, ROI, or evaluation owner.
+Lazy request-scoped evaluation and deterministic semantic scheduling are also implemented and
+test-backed, so caller-owned evaluator payloads can resolve stored topology through inspectable
+readiness batches and stable completion order. No production binding makes `EditableNode<T>` an
+evaluator node or connects ROI and invalidation plans to evaluator requests yet. The crate cannot
+serialize, persistently cache, dispatch work through an outer job system, or render production
+values, and no downstream production catalog consumes the mutation, invalidation, ROI, scheduling,
+or evaluation owner.
 
 The latest-version rule deterministically selects the lexically highest build-metadata variant when
 SemVer precedence ties. Consumers that require one deployment-specific build must request its exact
@@ -522,21 +553,22 @@ storage and mutation boundary, neutral registry, pure validator, and shared eval
 creating competing topology, identity, schema, validation, revision, or caller-specific execution
 systems.
 
-Request-local value lookup is linear to preserve physical-time equality without inventing a second
-time key. It is deterministic and bounded by reached work, but must be measured before large graph
-or temporal-window optimization. Persistent cache keys and cache generation integration belong to
-later owners.
+Public request-local value lookup remains linear and bounded by reached work. Planning and execution
+indexes use `BTreeMap` keys whose total order matches endpoint, physical-time, and exact-region
+equality. The complete request-local planner remains deterministic but must be measured before
+large graph or temporal-window optimization. Persistent cache keys and cache generation integration
+belong to later owners.
 
 Other integration risks are attaching nondeterministic allocation policy to value types, claiming a
 type tag proves its concrete payload representation, treating mutable editor order as evaluation
 order, or treating validated editable state as sufficient evaluation proof. Invalidation-specific
 risks are using identity mapping across a transform, providing a nondeterministic edge mapper, or
 treating a derived plan as cache generation state.
-Evaluation-specific risks are treating node-declared regions as completed ROI propagation or
-treating generic evaluation as production graph, GPU, headless, or render proof.
-ROI-specific risks are supplying stale regions
-of definition, implementing nondeterministic custom mapping, or reusing a plan after its stamped
-graph revision has changed.
+Evaluation-specific risks are treating node-declared regions as completed ROI propagation, treating
+semantic readiness batches as a worker-pool or GPU-submission guarantee, or treating generic
+evaluation as production graph, GPU, headless, or render proof.
+ROI-specific risks are supplying stale regions of definition, implementing nondeterministic custom
+mapping, or reusing a plan after its stamped graph revision has changed.
 
 ## Maintenance notes
 
@@ -557,8 +589,9 @@ Do not move node-specific ROI policy into the generic DAG or treat full frame as
 extent.
 
 Keep dependency declaration and execution in the same shared evaluator for every caller. Add
-persistent reuse only with revisioned cache keys and invalidation proof, and add scheduling without
-changing the semantic completion order.
+persistent reuse only with revisioned cache keys and invalidation proof, and map ready batches onto
+bounded workers only through the outer render coordinator. Preserve work-key equality, unique
+prerequisite counting, full distinct-edge inputs, batch order, and result completion order together.
 
 Keep ROI pure over one immutable editable snapshot. Preserve per-output regions of definition,
 exact region-set union, checked expansion, strict custom input validation, dependency-only reverse
@@ -566,6 +599,6 @@ traversal, forward topological result order, and graph revision stamping. Do not
 editor-specific, script-specific, or headless-specific propagation path.
 
 Update this map when mutation, invalidation, ROI, and evaluation integrate, cache generations,
-scheduling, serialization, expressions, missing-node handling, undo ownership, engine coordination,
-or a downstream catalog becomes real. Recheck direct consumer maps whenever they begin importing
-any public graph contract.
+ROI-to-evaluator binding, outer job dispatch, serialization, expressions, missing-node handling,
+undo ownership, engine coordination, or a downstream catalog becomes real. Recheck direct consumer
+maps whenever they begin importing any public graph contract.

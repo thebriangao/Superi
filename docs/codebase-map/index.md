@@ -27,7 +27,7 @@ against raw source before changing code.
 | `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Reserved effect-node catalog, animation, mask, transition, text, tracking, and OFX boundary | Skeleton: public module names only |
 | `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: canonical command state, registry, capability introspection, and CPU-frame GPU upload implemented |
 | `superi-gpu` | [module map](modules/superi-gpu.md) | `open/crates/superi-gpu` | wgpu device, resource, upload, conversion, pass, submission, presentation, and recovery substrate | Implemented substrate with explicit application-level integration gaps |
-| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, dependency invalidation, lazy request-scoped evaluation, and region-of-interest propagation plus reserved expression and serialization boundaries | Partial: graph-facing IDs, node schemas, immutable discovery, typed DAG storage and bindings, cycle prevention, schema connection compatibility, schema-bound instances, snapshots, atomic mutations, exact dirty regions, stable dependency invalidation, generic demand-only evaluation, and snapshot-bound ROI planning implemented; production integration absent |
+| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, dependency invalidation, region-of-interest propagation, and deterministic request-scoped scheduling and evaluation plus reserved expression and serialization boundaries | Partial: graph-facing IDs, node schemas, immutable discovery, typed DAG storage and bindings, cycle prevention, schema connection compatibility, schema-bound instances, snapshots, atomic mutations, exact dirty regions, stable dependency invalidation, snapshot-bound ROI planning, and generic demand-only scheduling and evaluation implemented; production integration absent |
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; production source registration and muxing absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
@@ -105,8 +105,8 @@ The generic graph direction is deliberately one way. Graph may depend on represe
 execution substrates, while color, effects, cache, timeline, AI, project, and engine may depend on
 graph. Graph must not depend upward on a domain catalog. Its implemented surface uses core-owned
 object identifiers and core semantic contracts for schema definitions, and it owns generic
-deterministic DAG storage, opaque typed bindings, lazy request-scoped evaluation, and structured
-validation errors. Catalog
+deterministic DAG storage, opaque typed bindings, deterministic request-scoped scheduling and
+evaluation, and structured validation errors. Catalog
 relationships still exist only in manifests because downstream consumers remain skeletons or have
 no graph call site.
 
@@ -203,19 +203,27 @@ evaluator:
 5. The public integration test is the real consumer. Engine, API, CLI, timeline, project, and
    product runtime paths do not yet import the transaction owner, so no runtime stage label changes.
 
-Lazy graph evaluation is implemented over caller-owned DAG payloads without a production catalog:
+Deterministic graph scheduling and lazy evaluation are implemented over caller-owned DAG payloads
+without a production catalog:
 
 1. One request names a stored output endpoint, exact rational frame, and signed half-open pixel
    region. A node payload declares only the incoming stored edge requests needed for that output.
-2. The evaluator validates those routes, canonicalizes their order, recursively resolves source
-   endpoint, physical-frame, and exact-region keys, and evaluates identical work once per call.
-3. Resolved opaque values and stable completion keys remain in the returned request-local result.
-   Every later call starts empty, so no stale cross-edit value can be reused.
-4. Editor, script, and headless-style integration tests call the same stateless evaluator and
-   observe equal results. No production catalog, engine, API, CLI, GPU, cache, or render stage calls
-   it yet, so the canonical `graph.evaluate` stage remains a disclosed stub.
-5. Invalidation-to-evaluator integration, schema-driven ROI request mapping, scheduling, cache
-   keys, timing, and explicit headless wiring remain separate later checkpoints.
+2. Discovery validates those routes, canonicalizes their order, and records only reached source
+   endpoint, physical-frame, and exact-region keys. Equivalent physical times are one work key,
+   while each distinct declared edge remains a semantic node input.
+3. The planner publishes unique prerequisites and deterministic readiness batches. Dependencies
+   occur in earlier batches, and equal-ready keys are ordered independently of graph insertion
+   history or thread timing.
+4. Evaluation walks that exact schedule, evaluates identical work once per call, and returns opaque
+   values, the schedule, and stable semantic completion keys. Every later call starts empty, so no
+   stale cross-edit value can be reused.
+5. Editor, script, and headless-style integration tests call the same stateless evaluator and
+   observe equal schedules and results. Exact invalidation clipping remains unchanged when its
+   requested region enters evaluation. No production catalog, engine, API, CLI, GPU, cache, or
+   render stage calls this path yet, so the canonical `graph.evaluate` stage remains a disclosed
+   stub.
+6. Invalidation-to-evaluator orchestration, ROI-plan-to-evaluator binding, outer job dispatch,
+   cache keys, timing, and explicit headless wiring remain separate later checkpoints.
 
 No transport, request envelope, dispatcher, event channel, subscription, broad public transaction,
 script runtime, or UI is implemented. There is no shell, extension, automation, or closed-tier
@@ -630,11 +638,12 @@ Partial modules contain these explicit placeholder areas:
 - `superi-concurrency`: GPU submission coordination module and all production engine composition.
 - `superi-engine`: ten orchestration modules covering A/V sync, errors, export, lifecycle, nodes,
   playback, plugins, render, resources, and validation.
-- `superi-graph`: mutation, invalidation, ROI, and generic evaluation integration, scheduling,
-  expressions, serialization, undo ownership, engine coordination, cache generations, and explicit
-  headless integration beyond its implemented identifier, node-schema, typed DAG storage and
-  validation, schema-bound instances, immutable snapshots, atomic editable transactions, exact
-  dirty regions, dependency invalidation, request-scoped lazy evaluation, and ROI planning surfaces.
+- `superi-graph`: mutation, invalidation, ROI, and generic evaluation integration, outer job
+  dispatch, expressions, serialization, undo ownership, engine coordination, cache generations,
+  and explicit headless integration beyond its implemented identifier, node-schema, typed DAG
+  storage and validation, schema-bound instances, immutable snapshots, atomic editable
+  transactions, exact dirty regions, dependency invalidation, snapshot-bound ROI planning, and
+  deterministic request-scoped scheduling and evaluation surfaces.
 
 Substantive modules also have intentionally incomplete boundaries. Media I/O has no muxer or
 production registry owner for its source backends. GPU has no cross-adapter transfer or external
@@ -673,8 +682,8 @@ For common concerns, begin at these owners:
 - Jobs, domains, clocks, handoffs, lifecycle, and liveness: `superi-concurrency`.
 - Graph-facing identifiers, node schemas, deterministic DAG state, typed binding validation,
   schema-bound instances, editable transactions, exact dirty regions, dependency invalidation, and
-  lazy request-scoped evaluation, and snapshot-bound ROI propagation: `superi-graph`, with value
-  identity, rational time, and pixel bounds owned by `superi-core`.
+  snapshot-bound ROI propagation plus deterministic request-scoped scheduling and evaluation:
+  `superi-graph`, with value identity, rational time, and pixel bounds owned by `superi-core`.
 - Current assembly and public capability flow: `superi-engine` then `superi-api`.
 - Product law, open and closed boundaries, CI, fixtures, and maintenance workflow: `workspace`.
 - Canonical first editorial slice, typed scenario state, replacement stages, and proof: `workspace`.
