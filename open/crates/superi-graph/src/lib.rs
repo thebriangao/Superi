@@ -4,9 +4,10 @@
 //! superi-image, superi-concurrency. Status: typed identifiers, node schema registration, schema
 //! discovery, deterministic DAG storage, typed port validation, atomic editable graph transactions,
 //! exact dependency invalidation, region-of-interest propagation, deterministic request-scoped
-//! scheduling and evaluation, typed parameter links and bounded pure expressions, and versioned
-//! integrity-checked graph documents with migration are
-//! implemented; persistent caching and production runtime integration remain pending.
+//! scheduling and evaluation, typed parameter links and bounded pure expressions, shared
+//! interactive and headless evaluation snapshots, and versioned integrity-checked graph documents
+//! with migration are implemented; persistent caching and production node-catalog and render
+//! integration remain pending.
 
 pub mod dag;
 pub mod eval;

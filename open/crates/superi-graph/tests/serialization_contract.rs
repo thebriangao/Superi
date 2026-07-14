@@ -9,8 +9,9 @@ use superi_core::geometry::PixelBounds;
 use superi_core::serialization::STABLE_PRIMITIVE_SCHEMA_REVISION;
 use superi_core::settings::{CapabilityId, CapabilitySet, SemanticVersion};
 use superi_core::time::{RationalTime, Timebase};
-use superi_graph::dag::{DirectedAcyclicGraph, GraphEdge, GraphEndpoint};
-use superi_graph::eval::{EvaluateNode, EvaluationContext, EvaluationRequest, LazyEvaluator};
+use superi_graph::dag::{GraphEdge, GraphEndpoint};
+use superi_graph::eval::{EvaluateNode, EvaluationContext, EvaluationRequest};
+use superi_graph::headless::GraphEvaluationSnapshot;
 use superi_graph::ids::{EdgeId, GraphId, NodeId, ParameterId, PortId};
 use superi_graph::mutate::{
     EditableGraph, EditableNode, EditableParameter, GraphMutation, GraphSnapshot, GraphTransaction,
@@ -397,35 +398,33 @@ impl EvaluateNode<i64> for ExecutableNode {
     }
 }
 
-fn compile(snapshot: &GraphSnapshot<String>) -> DirectedAcyclicGraph<ExecutableNode> {
-    let mut executable = DirectedAcyclicGraph::new(snapshot.graph_id());
-    for (node_id, node) in snapshot.dag().nodes() {
-        let implementation = match node.schema().id().node_type().as_str() {
-            "superi.source.value" => ExecutableNode::Constant(
-                node.parameter(ParameterId::from_raw(110))
-                    .unwrap()
-                    .value()
-                    .payload()
-                    .parse()
-                    .unwrap(),
-            ),
-            "superi.effect.multiply" => ExecutableNode::Multiply(
-                node.parameter(ParameterId::from_raw(210))
-                    .unwrap()
-                    .value()
-                    .payload()
-                    .parse()
-                    .unwrap(),
-            ),
-            "superi.output.value" => ExecutableNode::Output,
-            unexpected => panic!("unexpected schema {unexpected}"),
-        };
-        executable.insert_node(*node_id, implementation).unwrap();
-    }
-    for edge in snapshot.dag().edges().values() {
-        executable.insert_edge(*edge).unwrap();
-    }
-    executable
+fn compile(snapshot: GraphSnapshot<String>) -> GraphEvaluationSnapshot<String, ExecutableNode> {
+    GraphEvaluationSnapshot::compile(
+        snapshot,
+        |_snapshot: &GraphSnapshot<String>, _node_id, node: &EditableNode<String>| {
+            Ok(match node.schema().id().node_type().as_str() {
+                "superi.source.value" => ExecutableNode::Constant(
+                    node.parameter(ParameterId::from_raw(110))
+                        .unwrap()
+                        .value()
+                        .payload()
+                        .parse()
+                        .unwrap(),
+                ),
+                "superi.effect.multiply" => ExecutableNode::Multiply(
+                    node.parameter(ParameterId::from_raw(210))
+                        .unwrap()
+                        .value()
+                        .payload()
+                        .parse()
+                        .unwrap(),
+                ),
+                "superi.output.value" => ExecutableNode::Output,
+                unexpected => panic!("unexpected schema {unexpected}"),
+            })
+        },
+    )
+    .unwrap()
 }
 
 #[test]
@@ -434,17 +433,16 @@ fn editor_script_and_headless_load_the_same_state_and_evaluation_result() {
     let observations = ["editor", "script", "headless"].map(|_| {
         let loaded = deserialize_graph::<String>(&bytes).unwrap();
         let snapshot = loaded.graph().snapshot();
-        let executable = compile(&snapshot);
-        let result = LazyEvaluator::evaluate(
-            &executable,
-            EvaluationRequest::new(
+        let expected_snapshot = snapshot.clone();
+        let executable = compile(snapshot);
+        let result = executable
+            .evaluate(EvaluationRequest::new(
                 GraphEndpoint::new(NodeId::from_raw(3), PortId::from_raw(302)),
                 RationalTime::new(7, Timebase::integer(24).unwrap()),
                 PixelBounds::new(0, 0, 1920, 1080).unwrap(),
-            ),
-        )
-        .unwrap();
-        (snapshot, *result.value())
+            ))
+            .unwrap();
+        (expected_snapshot, *result.value())
     });
 
     assert_eq!(observations[0], observations[1]);

@@ -2,8 +2,8 @@
 module_id: superi-graph
 source_paths:
   - open/crates/superi-graph
-source_hash: 3d8cf3b2e36b5dcc8aebbd983b3fbf1d285d4b39a5c1101fe8583edd8b792760
-source_files: 23
+source_hash: 16620bf0a12ff8af0d861c207f34994f7e2e7f4e8000c06d48ad31b024ff429e
+source_files: 24
 mapped_at_commit: working-tree
 ---
 
@@ -19,25 +19,29 @@ state, atomic revisioned mutation transactions, exact dirty-region algebra, dete
 dependency invalidation planning, snapshot-bound region-of-interest propagation, exact
 requested-versus-dirty work intersection, lazy request-scoped evaluation, deterministic work
 scheduling, typed parameter links, bounded pure expressions, parameter dependency-cycle
-protection, and deterministic parameter evaluation are implemented. Versioned deterministic graph
-documents preserve exact schemas, typed editable nodes, literal parameters, parameter drivers,
-presentation order, edges, graph identity, and optimistic revision across strict serialization,
-checked deserialization, integrity validation, and explicit legacy migration.
+protection, and deterministic parameter evaluation are implemented. One immutable role-neutral
+evaluation snapshot retains the exact editable graph revision, compiles caller-owned runtime node
+payloads without changing topology, and delegates both interactive and headless work to the shared
+stateless evaluator. Versioned deterministic graph documents preserve exact schemas, typed editable
+nodes, literal parameters, parameter drivers, presentation order, edges, graph identity, and
+optimistic revision across strict serialization, checked deserialization, integrity validation, and
+explicit legacy migration.
 
 The crate does not own identifier value representation. `superi-core` remains the single identity
 owner, while graph state owns payload and connection membership. Schema type identities and
 schema-local names are definition metadata, separate from the core object identifiers that address
 editable graph instances.
 
-Cache generation integration, editable-snapshot and ROI-plan evaluator binding, outer job dispatch,
-project storage, and explicit headless integration remain absent or placeholders. The implemented
-storage, schema, validation, mutation, invalidation, ROI planning, scheduling, document, and generic
-image and parameter evaluator surfaces must not be interpreted as a working production render path
-or an atomic project save system.
+Cache generation integration, ROI-plan evaluator orchestration, outer job dispatch, project
+storage, and a production runtime node catalog remain absent or placeholders. The
+implemented storage, schema, validation, mutation, invalidation, ROI planning, scheduling,
+document, parameter evaluator, compiler seam, and shared interactive and headless evaluator
+surfaces must not be interpreted as a working production render path or an atomic project save
+system.
 
 ## Source inventory
 
-The module owns 23 text files:
+The module owns 24 text files:
 
 - `open/crates/superi-graph/Cargo.toml`: Declares dependencies on `superi-core`, `superi-gpu`,
   `superi-image`, `superi-concurrency`, Serde, JSON, and SHA-256 hashing.
@@ -53,8 +57,11 @@ The module owns 23 text files:
   references, direct and expression drivers, bounded ASCII expression compilation, editable source
   plus checked postfix instructions, finite deterministic arithmetic, and the domain-owned payload
   conversion seam.
-- `open/crates/superi-graph/src/headless.rs`: Placeholder for deterministic CLI and CI evaluation
-  parity.
+- `open/crates/superi-graph/src/headless.rs`: Owns the caller-supplied runtime node compiler seam
+  and immutable `GraphEvaluationSnapshot<T, N>`. Compilation retains the exact editable snapshot,
+  exposes that full snapshot to every node compilation so authored parameter drivers remain
+  visible, preserves checked node and edge identity, adds exact revision and schema failure context,
+  and delegates schedule and evaluate operations to the shared lazy evaluator.
 - `open/crates/superi-graph/src/ids.rs`: Re-exports the six official graph-facing core identifier
   types and documents graph ownership of future allocation and derivation policy.
 - `open/crates/superi-graph/src/invalidation.rs`: Owns exact normalized dirty-region sets,
@@ -91,6 +98,11 @@ The module owns 23 text files:
   expressions, deterministic transitive results, driver replacement and clearing, immutable
   snapshots, cycle and dependency rejection, explicit node-removal cleanup, transaction rollback,
   and editor-script-headless parameter parity.
+- `open/crates/superi-graph/tests/headless_contract.rs`: Proves one `Send + Sync` role-neutral
+  evaluation snapshot, snapshot-owned linked parameter compilation, exact invalidated lazy work,
+  skipped unused failure branches, equal editor, script, and headless schedules and results,
+  immutable old revision behavior, fresh results after editable mutation, and classified compiler
+  errors with exact graph, revision, node, and schema context.
 - `open/crates/superi-graph/tests/identifier_contract.rs`: Proves the public six-type identifier
   surface, domain distinction, canonical text round trips, and exact type identity with core.
 - `open/crates/superi-graph/tests/invalidation_contract.rs`: Proves exact dirty-region unions and
@@ -112,7 +124,8 @@ The module owns 23 text files:
 - `open/crates/superi-graph/tests/serialization_contract.rs`: Proves deterministic current-format
   round trips, canonical normalization, lossless legacy migration, integrity and compatibility
   rejection, checked semantic reconstruction, interrupted-document rejection, and equal editor,
-  script, and headless evaluation from independently loaded graph documents.
+  script, and headless evaluation from independently loaded graph documents through the public
+  graph evaluation snapshot rather than a private executable DAG bridge.
 
 ## Public surface
 
@@ -171,6 +184,25 @@ use a schema identity or a separate payload without coupling the DAG algorithm t
   requiring `V: Clone`.
 - Every call starts with an empty value set. No persistent cache, graph revision, dirty-region
   propagation, outer job priority, worker pool, catalog lookup, or caller mode participates.
+
+`superi_graph::headless` exposes the shared editable-to-executable evaluation boundary:
+
+- `NodeCompiler<T, N>` receives the complete immutable `GraphSnapshot<T>`, one stable `NodeId`, and
+  its `EditableNode<T>`. Higher-tier catalogs use the snapshot to resolve authored parameter drivers
+  and produce caller-owned runtime payloads without adding any catalog dependency to graph.
+- Closures with the same signature implement the compiler trait directly. Compilation failures
+  retain their classification and gain graph ID, editable revision, node ID, and exact schema ID
+  context.
+- `GraphEvaluationSnapshot<T, N>` owns the exact source `GraphSnapshot<T>` beside a runtime
+  `DirectedAcyclicGraph<N>`. Compilation visits nodes and edges in stable identity order and
+  replaces only node payloads, so topology and dependency meaning cannot diverge.
+- `editable_snapshot`, `graph_id`, and `graph_revision` keep authored state inspectable.
+  `schedule` and `evaluate` delegate directly to `LazyEvaluator`, giving editor, script,
+  interactive, playback, and headless roles one request-scoped path rather than caller-specific
+  execution algorithms.
+- A later edit requires a newly compiled snapshot. Older evaluation snapshots retain their exact
+  immutable revision, and each pull begins with no reusable value state. The compiler seam does not
+  itself provide a production catalog, persistent cache, worker dispatch, or rendered value.
 
 `superi_graph::validation` exposes the node-neutral runtime boundary:
 
@@ -239,8 +271,8 @@ use a schema identity or a separate payload without coupling the DAG algorithm t
   revisions, malformed checksums, truncated bytes, and noncanonical identities fail explicitly.
 - The payload preserves the graph identity and optimistic revision, every complete `NodeSchema`,
   typed node, instance port and parameter binding, opaque JSON parameter payload, presentation
-  order, and typed edge. Semantically ordered collections are canonicalized independently of input
-  insertion and JSON object-key order.
+  order, typed edge, and authored parameter driver. Semantically ordered collections are
+  canonicalized independently of input insertion and JSON object-key order.
 - `deserialize_graph` verifies the envelope before reconstructing all schemas and editable nodes
   through their checked constructors. It publishes nodes and edges through one `GraphTransaction`,
   then restores the persisted revision only after the complete state validates.
@@ -283,8 +315,6 @@ use a schema identity or a separate payload without coupling the DAG algorithm t
 - Missing nodes, wrong-direction requests, absent domains, overflow, missing custom mapping, and
   invalid custom output use shared actionable diagnostics without mutating graph state.
 
-The crate also exports the placeholder `headless` module. It exposes no explicit headless API.
-
 ## Architecture and data flow
 
 The instance identity and storage flow is:
@@ -325,6 +355,27 @@ The lazy evaluation flow is:
    value in stable semantic completion order. A later call starts empty, so it cannot reuse stale
    data after an edit. Outer render coordinators may map readiness onto bounded workers under their
    own policy without changing this schedule's dependency meaning.
+
+The shared interactive and headless evaluation flow is:
+
+1. An editor, script, playback owner, or headless owner captures one immutable
+   `GraphSnapshot<T>` from the editable graph transaction boundary.
+2. A higher-tier `NodeCompiler<T, N>` receives the complete immutable graph snapshot beside every
+   schema-bound editable node in stable identity order and produces its runtime `EvaluateNode<V>`
+   payload. This keeps snapshot-owned parameter drivers visible during compilation. A failure
+   discards the local projection and gains exact source revision and schema context.
+3. `GraphEvaluationSnapshot<T, N>` retains the source snapshot and inserts compiled payloads under
+   the same node IDs, then copies the already checked edges in stable order. No alternate routing,
+   presentation state, or revision is invented.
+4. Every caller inspects the same editable snapshot and invokes `schedule` or `evaluate` on this
+   role-neutral value. Both methods call `LazyEvaluator` directly, so dependency discovery, work
+   identity, readiness, completion order, and request-local reuse are identical across roles.
+5. ROI and invalidation remain derived from the retained editable snapshot. Their exact requested
+   regions can enter evaluation unchanged. A new edit compiles a new evaluation snapshot, while
+   old readers retain the old immutable result boundary and cannot observe partial mutation.
+6. No current effects, color, engine, API, CLI, GPU, or cache owner implements the compiler in
+   production. The canonical `graph.evaluate` stage therefore remains an honest stub even though
+   the generic interactive and headless graph boundary is now explicit and test-backed.
 
 The schema discovery flow is:
 
@@ -409,9 +460,9 @@ The graph document flow is:
 
 1. A caller snapshots one checked `EditableGraph<T>` and serializes its complete definition and
    instance state into the current `superi.graph` envelope.
-2. The encoder canonicalizes schemas, fields, capabilities, nodes, bindings, parameters, edges,
-   presentation order, and JSON object keys, then hashes the canonical payload and emits canonical
-   envelope bytes.
+2. The encoder canonicalizes schemas, fields, capabilities, nodes, bindings, parameters, parameter
+   drivers, edges, presentation order, and JSON object keys, then hashes the canonical payload and
+   emits canonical envelope bytes.
 3. The decoder rejects malformed, truncated, unknown, future, or integrity-mismatched documents
    before graph publication. A supported legacy envelope is migrated explicitly in memory.
 4. Schema and instance constructors recheck names, versions, fields, cardinality, and parameter
@@ -464,11 +515,12 @@ stored `PortId` endpoints to `PortName`, exact schemas, and `ValueTypeId` compat
 adding catalog knowledge to topology. The invalidation planner derives work directly from the same
 checked DAG exposed by each immutable `GraphSnapshot`. The ROI planner consumes the same snapshot,
 schema behavior, typed edges, and exact region algebra to derive upstream work. Parameter
-evaluation consumes the same snapshot's opaque literals and authored drivers. The generic
-evaluator resolves caller-owned DAG payloads but has no production binding from `EditableNode<T>`.
-The document codec preserves and reconstructs that same checked snapshot without assuming a project
-container. Production evaluation integration, project persistence, cache generations, undo history,
-and engine transaction coordination remain separate later owners.
+evaluation consumes the same snapshot's opaque literals and authored drivers. The generic evaluator
+resolves caller-owned DAG payloads, while the evaluation snapshot binds one complete
+`GraphSnapshot<T>` to those payloads through a caller-owned compiler without adding catalog
+knowledge. The document codec preserves and reconstructs that same checked snapshot without
+assuming a project container. A production catalog implementation, project persistence, cache
+generations, undo history, and engine transaction coordination remain separate later owners.
 
 The disclosed canonical reference graph in `superi-engine` uses core `NodeId` but is not a consumer
 of this store and retains string ports and edges. It remains reference behavior, not production
@@ -486,9 +538,9 @@ graph evaluation or runtime integration.
   render coordinators and `superi-concurrency`.
 - Direct manifest consumers are `superi-ai`, `superi-cache`, `superi-color`, `superi-effects`,
   `superi-timeline`, `superi-project`, and `superi-engine`.
-- None of those consumers currently imports a `superi_graph` Rust item. The ten public integration
+- None of those consumers currently imports a `superi_graph` Rust item. The eleven public integration
   test targets are the real consumers of identifier, schema-discovery, DAG, validation, mutation,
-  invalidation, ROI, serialization, evaluation, and expression APIs.
+  invalidation, ROI, serialization, evaluation, expression, and shared evaluation-snapshot APIs.
 
 ## Invariants and operational boundaries
 
@@ -584,6 +636,15 @@ graph evaluation or runtime integration.
 - Request-local reuse is not persistent caching and does not consume an invalidation plan
   automatically. A new call starts empty and no dirty region, graph revision, timing record, outer
   job policy, or caller-specific path is hidden in evaluator state.
+- Runtime compilation changes only node payloads. Graph ID, node IDs, exact edge routes, and checked
+  acyclicity come from the retained editable snapshot, and every compiler failure discards the
+  unpublished projection while preserving its classification and naming exact source state.
+- `GraphEvaluationSnapshot<T, N>` is role-neutral. Editor, script, interactive, playback, and
+  headless callers inspect one immutable authored revision and delegate schedule and evaluation to
+  the same `LazyEvaluator`; no caller mode can alter dependency discovery or completion order.
+- Evaluation snapshots do not observe later mutations and do not imply cross-revision cache reuse.
+  A higher-tier catalog must faithfully compile every evaluation-affecting editable value for each
+  newly published graph revision.
 - ROI validates all authored requests before custom mapping, walks nodes and edges deterministically,
   and records only nonempty connected work. Unrelated graph branches cannot enter the plan.
 - Full-frame ROI resolves each connected source's declared output domain. Input-bound and expanded
@@ -595,12 +656,12 @@ graph evaluation or runtime integration.
   invalidation, cache, scheduler, or payload state, and is identical across reader roles for equal
   snapshots, domains, requests, and deterministic custom mapping.
 - The crate has no project container, atomic file replacement, locking owner, autosave, recovery
-  journal, outer scheduler connection, editable-snapshot evaluator binding, GPU resource ownership,
+  journal, outer scheduler connection, production runtime node catalog, GPU resource ownership,
   plugin loading, undo history, cache generation owner, or engine transaction coordinator yet.
 
 ## Tests and verification
 
-The graph crate owns 63 integration tests across ten files. The two identifier tests prove all six
+The graph crate owns 66 integration tests across eleven files. The two identifier tests prove all six
 public domains are distinct, each canonical text value parses back exactly, and every graph export
 has the same Rust `TypeId` as its official core owner.
 
@@ -649,6 +710,14 @@ without value execution, distinct input edges that reuse one source work unit, e
 request clipping, editor-script-headless caller parity through one evaluator, missing targets,
 invalid node-declared routes, and preserved node failure classification with request context.
 
+Three headless integration tests prove the public compiler consumes complete immutable editable
+state, resolves a snapshot-owned linked parameter during runtime-node compilation, retains graph ID
+and revision beside executable state, preserves exact invalidated request regions, schedules only
+the selected branch, and produces equal editor, script, and headless results through one
+`Send + Sync` evaluation snapshot. They also prove old snapshots remain stable, new revisions
+observe edited driver sources without stale reuse, and compiler failures keep their classification
+while naming exact graph, revision, node, and schema state.
+
 Eight ROI tests prove pass-through dependency pruning, exact repeated region union, per-source
 full-frame domains, checked expansion and clipping, coordinate-overflow rejection, custom per-input
 mapping, invalid mapper diagnostics, wrong-direction request rejection, invalidation intersection,
@@ -661,7 +730,7 @@ upgraded bytes, integrity and future-revision rejection, unknown-field and inter
 duplicate-order, mistyped-parameter, and cycle rejection through checked contracts, and equal
 editor, script, and headless evaluation after independent loads.
 
-Focused verification runs all ten integration targets through the crate's public API. Crate-wide
+Focused verification runs all eleven integration targets through the crate's public API. Crate-wide
 tests, strict Clippy, and rustdoc cover the library and integration targets. The complete workspace
 suite exercises downstream compatibility. The repository map validator checks the source inventory
 and hash, while dependency and boundary tools enforce the one-way open architecture. No test yet
@@ -680,8 +749,11 @@ edited, exact state can be shared across reader roles, and callers can derive bo
 requested work plus deterministic parameter results from the same published DAG snapshot.
 Lazy request-scoped evaluation and deterministic semantic scheduling are also implemented and
 test-backed, so caller-owned evaluator payloads can resolve stored topology through inspectable
-readiness batches and stable completion order. No production binding makes `EditableNode<T>` an
-evaluator node or connects ROI and invalidation plans to evaluator requests yet.
+readiness batches and stable completion order. The role-neutral evaluation snapshot now compiles
+one exact editable revision into caller-owned evaluator payloads, retains the source state for every
+reader, and delegates scheduling and execution to that same evaluator. No production catalog
+implements that compiler or connects complete ROI and invalidation plans to render orchestration
+yet.
 The versioned graph document codec now preserves and validates that complete editable state,
 migrates the supported legacy envelope, returns canonical upgraded bytes, and retains typed links
 and editable expression source through save and load. The crate cannot
@@ -720,8 +792,9 @@ order, or treating validated editable state as sufficient evaluation proof. Inva
 risks are using identity mapping across a transform, providing a nondeterministic edge mapper, or
 treating a derived plan as cache generation state.
 Evaluation-specific risks are treating node-declared regions as completed ROI propagation, treating
-semantic readiness batches as a worker-pool or GPU-submission guarantee, or treating generic
-evaluation as production graph, GPU, headless, or render proof.
+semantic readiness batches as a worker-pool or GPU-submission guarantee, implementing a compiler
+that omits evaluation-affecting editable state, or treating the generic shared headless boundary as
+production catalog, GPU, CLI, or rendered artifact proof.
 Expression-specific risks are adding implicit variables, type coercion, platform math functions,
 unbounded evaluation, host script escape, or a caller-specific formula store. Reusing a parameter
 result across graph revisions without a revisioned cache key is also invalid.
@@ -759,6 +832,11 @@ target and dependency types, explicit named variables, bounded pure compilation,
 address order, mutation-time cycle rejection, and request-local evaluation together. Do not add
 implicit catalog lookup, host scripting, caller-specific formulas, or cached results without graph
 revision ownership and invalidation proof.
+
+Keep interactive and headless evaluation on `GraphEvaluationSnapshot<T, N>`. Higher-tier catalogs
+must compile every runtime node from the complete retained editable state, preserve compiler failure
+classification, and create a new evaluation snapshot for each new editable revision. Do not expose
+the private runtime projection as a competing topology or add catalog knowledge to graph.
 
 Keep ROI pure over one immutable editable snapshot. Preserve per-output regions of definition,
 exact region-set union, checked expansion, strict custom input validation, dependency-only reverse
