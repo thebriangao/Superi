@@ -2,8 +2,8 @@
 module_id: superi-media-io
 source_paths:
   - open/crates/superi-media-io
-source_hash: 7e791b86e56c78c7d90607ed3865045b377e7b37284bc995a3612cf19f1917b1
-source_files: 36
+source_hash: 2090db2ab7b2c615a4029f86600e5fdd5a9af625103b97769d32a58c711d7575
+source_files: 37
 mapped_at_commit: working-tree
 ---
 
@@ -50,6 +50,10 @@ This crate owns contracts and demuxing, not a complete editor media pipeline. It
 - `open/crates/superi-media-io/tests/selection_contract.rs`: Exercises explicit and unambiguous stream pairing, descriptor-preserving decoder configs, lossless packet classification, relink rebinding, structured failures, and thread safety.
 - `open/crates/superi-media-io/tests/timecode_contract.rs`: Exercises timestamp normalization and forward or reverse edit-list mapping across empty, repeated, dwell, non-unit-rate, mixed-timebase, and half-open cases.
 - `open/crates/superi-media-io/tests/timecode_metadata_contract.rs`: Exercises timecode descriptions, raw flags, 32-bit and 64-bit big-endian samples, drop-frame labels, counters, physical rates, source segments, 24-hour wrapping, and schema failures.
+- `open/crates/superi-media-io/tests/timing_fixture_contract.rs`: Consumes the canonical versioned
+  timing fixture, enforces its exact 11-field schema and five-case inventory, and exercises CFR,
+  decode-order VFR, drop-frame, gap, reset, and per-segment normalization behavior through public
+  packet, presentation-map, timestamp, and source-timecode interfaces.
 - `open/crates/superi-media-io/tests/vfr_contract.rs`: Exercises decode-order input sorting, inferred presentation durations, half-open lookup, compatible timebase conversion, negative coordinates, validation failures, overflow, resource bounds, and cancellation.
 - `open/crates/superi-media-io/tests/video_fixture_contract.rs`: Consumes the canonical versioned raw-video fixture, proves the complete 23 pixel format by 9 standard rate matrix, verifies exact plane layout, offsets, hashes, and numeric representation, and constructs all 207 cases through the public CPU video-frame path.
 - `open/crates/superi-media-io/tests/waveform_preview_contract.rs`: Exercises packed and planar sample normalization, channel ordering, exact peak buckets, width capping, source preservation, continuity and format validation, and nonfinite audio rejection.
@@ -174,7 +178,7 @@ No production Rust source outside this crate constructs `MkvWebmBackend`, `Mp4Mo
 
 ## Tests and verification
 
-The fifteen integration-test files exercise each public concern with deterministic in-memory builders, temporary path fixtures, and canonical shared video and audio baselines:
+The sixteen integration-test files exercise each public concern with deterministic in-memory builders, temporary path fixtures, and the canonical shared video, audio, and timing baselines:
 
 - Shared values and fake decode/encode composition: `contracts.rs`.
 - Canonical synchronized multichannel PCM coverage: `audio_fixture_contract.rs`.
@@ -184,6 +188,8 @@ The fifteen integration-test files exercise each public concern with determinist
 - Container adaptation: `mkv_webm_contract.rs`, `mp4_mov_contract.rs`, `mxf_contract.rs`, and `pcm_containers.rs`.
 - Paired selection and packet routing: `selection_contract.rs`.
 - Timestamp/edit mapping and source timecode metadata: `timecode_contract.rs` and `timecode_metadata_contract.rs`.
+- Canonical cadence, decode-order, drop-frame, and discontinuity coverage:
+  `timing_fixture_contract.rs`.
 - VFR construction and lookup: `vfr_contract.rs`.
 - Canonical pixel-format and standard-frame-rate coverage: `video_fixture_contract.rs`.
 - Decoded-audio waveform generation: `waveform_preview_contract.rs`.
@@ -195,6 +201,12 @@ The strongest end-to-end format proofs are synthetic: all Matroska lacing modes,
 The canonical raw-video contract constructs every current `PixelFormat::ALL` value at all nine standard `FrameRate` constants. It proves exact odd-dimension packed, planar, semiplanar, and chroma geometry; contiguous catalog ranges and hashes; finite floats; 10-bit bounds; P010 alignment; exact rational timing; and public `VideoPlane`, `CpuVideoBuffer`, `VideoFormat`, and `VideoFrame` integration. The data is one synthetic raw frame per case, so it does not prove encoded codecs, CFR or VFR sequences, HDR, malformed media, native hardware, scheduling, muxing, or real-time performance.
 
 The canonical audio contract opens three WAVEFORMATEXTENSIBLE PCM16 files through `PcmContainerSource`. It proves exact sample-rate timebases and 100 ms frame counts, stereo, 5.1, and 7.1 mask projection into canonical routing order, complete interleaved sample identity, synchronized ten millisecond onset and 90 ms tail boundaries, channel-specific gains, and a maximum adjacent-sample delta of 600. It does not decode, resample, play audio, route a device, measure a physical clock, prove A/V synchronization, or claim real-time performance.
+
+The canonical timing contract reads five cases and 18 samples from one fixed CRLF catalog. It proves
+24 fps CFR continuity, decode-order VFR sorting and duration classification, continuous physical
+29.97 frames across skipped drop-frame labels, rejection of unsegmented timestamp gaps and resets,
+and reversible normalization for every declared continuity segment. This is public timing-contract
+proof over synthetic metadata, not container parsing, codec output, scheduler behavior, or hardware.
 
 The other fixtures prove implemented contracts, not broad real-world compatibility, native codec behavior, encrypted media, muxing, scheduling, export atomicity, or real-time performance. The fake decode/encode pipeline proves trait composition and lifecycle only. Waveform tests assert peak data but not complete raster pixels. Image-sequence tests use memory backends and do not prove filesystem naming or publication. Timeout behavior is tested at shared boundaries, not inside every format parser.
 

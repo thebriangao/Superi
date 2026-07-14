@@ -20,6 +20,33 @@ pub const AUDIO_STEREO_44100_NAME: &str = "stereo-44100.wav";
 pub const AUDIO_SURROUND_5_1_48000_NAME: &str = "surround-5-1-48000.wav";
 pub const AUDIO_SURROUND_7_1_96000_NAME: &str = "surround-7-1-96000.wav";
 pub const AUDIO_MANIFEST_NAME: &str = MANIFEST_NAME;
+pub const TIMING_CATALOG_NAME: &str = "timing-cases.csv";
+pub const TIMING_MANIFEST_NAME: &str = MANIFEST_NAME;
+
+const TIMING_CATALOG: &str = concat!(
+    "case_id,kind,segment,decode_index,presentation_index,rate_numerator,rate_denominator,presentation_timestamp,decode_timestamp,duration,timecode_label\r\n",
+    "cfr-24,cfr,0,0,0,24,1,0,0,1,\r\n",
+    "cfr-24,cfr,0,1,1,24,1,1,1,1,\r\n",
+    "cfr-24,cfr,0,2,2,24,1,2,2,1,\r\n",
+    "cfr-24,cfr,0,3,3,24,1,3,3,1,\r\n",
+    "vfr-milliseconds,vfr,0,0,2,1000,1,80,0,80,\r\n",
+    "vfr-milliseconds,vfr,0,1,0,1000,1,0,40,40,\r\n",
+    "vfr-milliseconds,vfr,0,2,1,1000,1,40,80,40,\r\n",
+    "drop-frame-29.97,drop-frame,0,0,0,2997,100,1799,1799,1,00:00:59;29\r\n",
+    "drop-frame-29.97,drop-frame,0,1,1,2997,100,1800,1800,1,00:01:00;02\r\n",
+    "drop-frame-29.97,drop-frame,0,2,2,2997,100,1801,1801,1,00:01:00;03\r\n",
+    "timestamp-gap,discontinuous,0,0,0,1000,1,0,0,40,\r\n",
+    "timestamp-gap,discontinuous,0,1,1,1000,1,40,40,40,\r\n",
+    "timestamp-gap,discontinuous,1,2,0,1000,1,200,200,40,\r\n",
+    "timestamp-gap,discontinuous,1,3,1,1000,1,240,240,40,\r\n",
+    "timestamp-reset,discontinuous,0,0,0,1000,1,9000,9000,40,\r\n",
+    "timestamp-reset,discontinuous,0,1,1,1000,1,9040,9040,40,\r\n",
+    "timestamp-reset,discontinuous,1,2,0,1000,1,50,50,40,\r\n",
+    "timestamp-reset,discontinuous,1,3,1,1000,1,90,90,40,\r\n",
+);
+
+pub const TIMING_BASELINE_CASE_COUNT: usize = 5;
+pub const TIMING_BASELINE_SAMPLE_COUNT: usize = 18;
 
 const VIDEO_WIDTH: usize = 5;
 const VIDEO_HEIGHT: u32 = 3;
@@ -621,6 +648,98 @@ fn audio_manifest(artifacts: &[AudioArtifact]) -> String {
         artifacts[2].spec.name,
         artifacts[2].bytes.len(),
         digest_bytes(&artifacts[2].bytes),
+    )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TimingBaselineReport {
+    case_count: usize,
+    sample_count: usize,
+    catalog_bytes: usize,
+}
+
+impl TimingBaselineReport {
+    #[must_use]
+    pub const fn case_count(self) -> usize {
+        self.case_count
+    }
+
+    #[must_use]
+    pub const fn sample_count(self) -> usize {
+        self.sample_count
+    }
+
+    #[must_use]
+    pub const fn catalog_bytes(self) -> usize {
+        self.catalog_bytes
+    }
+}
+
+pub fn generate_timing_baseline(output_directory: &Path) -> io::Result<TimingBaselineReport> {
+    match fs::symlink_metadata(output_directory) {
+        Ok(_) => {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "output directory already exists",
+            ));
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+
+    let catalog = TIMING_CATALOG.as_bytes();
+    let manifest = timing_manifest(catalog);
+
+    if let Some(parent) = output_directory.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+    fs::create_dir(output_directory)?;
+    fs::write(output_directory.join(TIMING_CATALOG_NAME), catalog)?;
+    fs::write(output_directory.join(TIMING_MANIFEST_NAME), manifest)?;
+
+    Ok(TimingBaselineReport {
+        case_count: TIMING_BASELINE_CASE_COUNT,
+        sample_count: TIMING_BASELINE_SAMPLE_COUNT,
+        catalog_bytes: catalog.len(),
+    })
+}
+
+fn timing_manifest(catalog: &[u8]) -> String {
+    format!(
+        r#"{{
+  "schema_version": 1,
+  "fixture_id": "timing/cadences",
+  "fixture_version": 1,
+  "description": "Deterministic CFR, VFR, drop-frame, timestamp-gap, and timestamp-reset samples with explicit continuity segments.",
+  "provenance": {{
+    "kind": "generated",
+    "source": "Authored and generated in the Superi repository from fixed timing cases aligned with public media-I/O contracts.",
+    "author": "Superi contributors",
+    "created_on": "2026-07-14",
+    "license": "CC0-1.0",
+    "rights": "Original synthetic timing metadata approved for unrestricted redistribution.",
+    "generator": {{
+      "name": "superi-fixture-tool",
+      "version": "0.0.0",
+      "command": "cargo run -p superi-fixture-tool -- generate-timing <OUTPUT_DIRECTORY>",
+      "seed": "superi-timing-baseline-v1"
+    }},
+    "parents": []
+  }},
+  "files": [
+    {{
+      "path": "{TIMING_CATALOG_NAME}",
+      "media_type": "text/csv; charset=utf-8",
+      "bytes": {},
+      "sha256": "{}"
+    }}
+  ]
+}}
+"#,
+        catalog.len(),
+        digest_bytes(catalog)
     )
 }
 

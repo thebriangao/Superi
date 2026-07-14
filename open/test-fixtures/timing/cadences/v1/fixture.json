@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "fixture_id": "timing/cadences",
+  "fixture_version": 1,
+  "description": "Deterministic CFR, VFR, drop-frame, timestamp-gap, and timestamp-reset samples with explicit continuity segments.",
+  "provenance": {
+    "kind": "generated",
+    "source": "Authored and generated in the Superi repository from fixed timing cases aligned with public media-I/O contracts.",
+    "author": "Superi contributors",
+    "created_on": "2026-07-14",
+    "license": "CC0-1.0",
+    "rights": "Original synthetic timing metadata approved for unrestricted redistribution.",
+    "generator": {
+      "name": "superi-fixture-tool",
+      "version": "0.0.0",
+      "command": "cargo run -p superi-fixture-tool -- generate-timing <OUTPUT_DIRECTORY>",
+      "seed": "superi-timing-baseline-v1"
+    },
+    "parents": []
+  },
+  "files": [
+    {
+      "path": "timing-cases.csv",
+      "media_type": "text/csv; charset=utf-8",
+      "bytes": 1041,
+      "sha256": "b3e0f3450353c6d23516be9f2c3182f9373a62c319b3cfca286bcdef1e996ee6"
+    }
+  ]
+}

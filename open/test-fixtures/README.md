@@ -115,6 +115,30 @@ The generator refuses to overwrite any existing output path. Compare the manifes
 WAVE files byte for byte with the canonical version. Do not regenerate into the checked-in `v1`
 directory.
 
+## Deterministic timing baseline
+
+`timing/cadences/v1` contains five compact timing cases and 18 samples: constant 24 fps, a
+millisecond VFR sequence stored in decode order, a 29.97 drop-frame minute boundary, a forward
+timestamp gap, and a timestamp reset. The two discontinuous cases declare two continuity segments
+each. Segment boundaries preserve the source discontinuity instead of silently flattening it.
+
+`timing-cases.csv` uses a fixed 11-field, CRLF-delimited schema. Every record carries its case and
+timing kind, continuity segment, decode and presentation indexes, exact rational rate, presentation
+and decode timestamps, duration, and optional timecode label. The drop-frame samples keep physical
+frame numbers 1799, 1800, and 1801 continuous while their labels cross from `00:00:59;29` to
+`00:01:00;02`. The media-I/O fixture contract constructs real `PacketTiming` values, proves CFR and
+VFR presentation maps, rejects each unsegmented discontinuity, reversibly normalizes each declared
+segment, and interprets the source labels through `TimecodeDescription`.
+
+Reproduce the version into a new absent directory from `open/`:
+
+```text
+cargo run -p superi-fixture-tool -- generate-timing <OUTPUT_DIRECTORY>
+```
+
+The generator refuses to overwrite any existing output path. Compare both generated artifacts byte
+for byte with the canonical version. Do not regenerate into the checked-in `v1` directory.
+
 ## Contributor workflow
 
 1. Prefer the smallest synthetic fixture that exposes the behavior. Use representative recorded or
