@@ -66,11 +66,9 @@ jobs:
       - name: Install declared Rust toolchain
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
 
-      - name: Install Linux media build dependencies
+      - name: Provision Linux media build dependencies
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes libva-dev nasm
+        run: ../.github/scripts/provision-linux-libva.sh
 
       - name: Install macOS media build dependencies
         if: runner.os == 'macOS'
@@ -177,11 +175,9 @@ jobs:
       - name: Install declared Rust toolchain
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
 
-      - name: Install Linux media build dependencies
+      - name: Provision Linux media build dependencies
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes libva-dev nasm
+        run: ../.github/scripts/provision-linux-libva.sh
 
       - name: Install macOS media build dependencies
         if: runner.os == 'macOS'

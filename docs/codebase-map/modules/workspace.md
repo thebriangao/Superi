@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: c0f4c16cb3e25b85e63a94fc14811da856370cbc7bcec6ea538c5528b21994b5
-source_files: 95
+source_hash: 24fb0c1597befaca7025282c568f093b83b6acb40ce10c0a222b4af18ebe42e9
+source_files: 96
 mapped_at_commit: working-tree
 ---
 
@@ -22,7 +22,7 @@ completion protocol, requires safe synchronization with `origin/main`, and makes
 full selected raw-file reads a prerequisite for implementation. It routes a single checkpoint
 through mapping, planning, and execution, and routes multiple checkpoints into separate
 Codex-managed worktree tasks. It is ignored by Git and copied into managed worktrees through
-`.worktreeinclude`, so the mapping script does not include it in this module's 95-file inventory or
+`.worktreeinclude`, so the mapping script does not include it in this module's 96-file inventory or
 source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
@@ -60,6 +60,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   policy workflow. It requires exact workflow name, permissions, checker invocation, cargo-deny
   action inputs, unknown-Git denial, revision-pinned Git policy, and the approved OxideAV source;
   any missing required line fails before cargo-deny runs.
+- `.github/scripts/provision-linux-libva.sh`: Shared Linux media provisioner for both Rust workflows.
+  It installs exact source-build tools, verifies the official libva 2.22.0 archive against a pinned
+  SHA-256, builds a private prefix, verifies the VVC header and API version, and publishes header,
+  pkg-config, and runtime library paths to subsequent hosted steps.
 - `.github/workflows/ci.yml`: Defines cross-platform locked-workspace quality jobs. Pull requests and
   pushes to `main` run five macOS, Windows, and Ubuntu lanes, with Ubuntu 26.04 marked experimental;
   a separate Ubuntu 22.04 job runs weekly or by manual dispatch. Both jobs install stable Rust with
@@ -68,11 +72,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   locked documentation tests, the supported `os-codecs` CLI build and tests, canonical fixture
   validation, and the normalized eight-stage slice contract from `open/`. Hosted macOS excludes
   only three named native codec lifecycle tests that require the physical hardware lane. Linux jobs
-  install `libva-dev` and
-  `nasm` so the locked media dependency graph can discover `libva.pc` and the approved runtime can
-  retain its optimized x86 code. Intel macOS jobs install `nasm` with Homebrew. Linux and macOS jobs
-  build the approved libvpx 1.16.0 archive after verifying its pinned checksum and expose that exact
-  shared runtime to capability and codec tests.
+  run the shared provisioner to build checksum-pinned libva 2.22.0 and install `nasm`, so the locked
+  media dependency graph sees the required VVC API and the approved runtime retains optimized x86
+  code. Intel macOS jobs install `nasm` with Homebrew. Linux and macOS jobs build the approved
+  libvpx 1.16.0 archive after verifying its pinned checksum and expose that exact shared runtime to
+  capability and codec tests.
 - `.github/workflows/dependency-policy.yml`: Defines the current GitHub Actions dependency-policy
   workflow. Pushes, pull requests, and manual dispatch run a read-only Ubuntu 24.04 job. After
   `actions/checkout@v4`, the job runs the repository contract checker, then uses
@@ -83,7 +87,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   only npm's cache, runs `npm ci`, strict TypeScript checking, a Vite production build, and the
   generated-bundle contract tests from `ci/frontend-smoke/`.
 - `.github/workflows/network-isolated.yml`: Defines a blocking Ubuntu 24.04 job that prepares locked
-  Rust dependencies, libva headers, nasm, checksum-pinned libvpx 1.16, and test artifacts online,
+  Rust dependencies, checksum-pinned libva 2.22 and libvpx 1.16, nasm, and test artifacts online,
   then enters a distinct Linux network namespace and runs workspace tests, fixture validation, and
   the CLI consumer with Cargo forced offline.
 - `.gitignore`: Excludes Rust and JavaScript build output, editor and macOS files, local agent law,
@@ -361,7 +365,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and OTIO_CORE:0.18.1, exact timeline durations, identity and opaque data policy, JSON pointers,
   and preserve plus diagnose behavior for unsupported constructs.
 
-The mapping inventory contains 82 UTF-8 text artifacts and twelve binary payloads. Binary media is
+The mapping inventory contains 84 UTF-8 text artifacts and twelve binary payloads. Binary media is
 intentionally read through metadata, producers, provenance, manifests, and consumers rather than
 interpreted as prose.
 
@@ -523,14 +527,14 @@ and independent gates without creating a second application architecture or clai
 editorial behavior, native viewport integration, or product UI coverage.
 
 The network-isolated path begins on pull requests, pushes to `main`, or manual dispatch. It pins
-checkout, disables persisted credentials, installs stable Rust, libva headers, and nasm, builds the
-checksum-pinned approved libvpx 1.16 runtime, fetches locked dependencies, and builds the workspace
-and test executables while online. It records the host namespace and uses privileged `unshare
---net` to enter a new namespace, carrying only the required Rust environment and approved libvpx
-path. The harness rejects the host namespace, any non-loopback interface, any IPv4 route, or a
-successful numeric outbound connection before forcing Cargo offline and running workspace tests,
-fixture validation, and the CLI. This proves current core commands operate without outbound access
-after setup, not that dependency or media-runtime acquisition is offline.
+checkout, disables persisted credentials, installs stable Rust, runs the shared checksum-pinned
+libva 2.22 provisioner, builds the approved libvpx 1.16 runtime, fetches locked dependencies, and
+builds the workspace and test executables while online. It records the host namespace and uses
+privileged `unshare --net` to enter a new namespace, carrying only the required Rust environment and
+approved libva and libvpx paths. The harness rejects the host namespace, any non-loopback interface,
+any IPv4 route, or a successful numeric outbound connection before forcing Cargo offline and
+running workspace tests, fixture validation, and the CLI. This proves current core commands operate
+without outbound access after setup, not that dependency or media-runtime acquisition is offline.
 
 The intended media path is source and container handling through `superi-media-io`, explicit backend
 selection for permissive, platform, or vendor codecs, validated image and audio representations,
@@ -696,10 +700,11 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   no-emit checking, immutable actions, read-only credentials, every independent gate, and a hashed
   JavaScript entry in the generated production bundle.
 - `.github/workflows/network-isolated.yml` prepares locked inputs and test executables on Ubuntu
-  24.04 after installing libva headers and nasm and building checksum-pinned libvpx 1.16, then uses
-  a distinct empty network namespace and Cargo offline mode for workspace tests, canonical fixture
-  validation, and the CLI consumer. The delivered hosted run is the authoritative namespace proof
-  because the local macOS host cannot execute Linux `unshare --net`.
+  24.04 after building checksum-pinned libva 2.22 and libvpx 1.16 and installing nasm, then uses a
+  distinct empty network namespace and Cargo offline mode for workspace tests, canonical fixture
+  validation, and the CLI consumer. Hosted run `29308007012` stopped before isolation because the
+  former distribution libva API 1.20 could not satisfy the H.266 API 1.22 boundary. The final
+  delivered run is authoritative because the local macOS host cannot execute Linux `unshare --net`.
 - `docs/checkpoints/P1.W07.C004.md` records a fresh clean npm installation, typecheck, production
   build, three passing contract tests, zero reported vulnerabilities, negative TypeScript and
   missing-bundle controls, YAML parsing, and a complete locked Rust test run. These are delivery
@@ -847,6 +852,9 @@ The largest current risk is cross-document drift:
   Clippy, and documentation-test suite. Default workspace tests therefore include the focused PCM
   media-error contract, while optional-feature coverage and broader malformed-input matrices remain
   intentionally separate.
+- The first C009 hosted run after nasm provisioning, `29308007012`, failed before namespace entry
+  because Ubuntu 24.04's libva API 1.20 was below the unchanged H.266 API 1.22 requirement. Both Rust
+  workflows now use one checksum-pinned libva 2.22 source helper; hosted reruns remain required.
 - Hosted macOS omits only three native VideoToolbox or AudioConverter lifecycle tests because the
   documented physical codec lane owns that evidence. The workflow keeps their names and rationale
   explicit; it does not weaken or remove their source contracts.
@@ -869,8 +877,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`fcd7f599415b3c6a73f14d7b6912996c13dd71f8` when the map was refreshed. Its hash describes the exact
-95 discovered source files, including twelve generated binary payloads, layered on that revision.
+`776f9721d676bbf337692a5e5702ad7228bf4103` when the map was refreshed. Its hash describes the exact
+96 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 

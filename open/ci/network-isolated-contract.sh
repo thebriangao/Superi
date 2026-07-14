@@ -4,6 +4,8 @@ set -euo pipefail
 
 workspace_root="$(CDPATH= cd -- "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 workflow="$workspace_root/.github/workflows/network-isolated.yml"
+cross_platform_workflow="$workspace_root/.github/workflows/ci.yml"
+provisioner="$workspace_root/.github/scripts/provision-linux-libva.sh"
 harness="$workspace_root/open/ci/run-network-isolated.sh"
 
 fail() {
@@ -13,8 +15,10 @@ fail() {
 
 [[ -f "$workflow" ]] || fail "missing GitHub Actions workflow"
 [[ -x "$harness" ]] || fail "missing executable isolation harness"
+[[ -x "$provisioner" ]] || fail "missing executable Linux libva provisioner"
 
 bash -n "$harness"
+bash -n "$provisioner"
 
 grep -Fq 'runs-on: ubuntu-24.04' "$workflow" || fail "workflow must use Ubuntu 24.04"
 grep -Fq 'permissions:' "$workflow" || fail "workflow must declare permissions"
@@ -25,8 +29,22 @@ grep -Fq 'persist-credentials: false' "$workflow" ||
     fail "workflow must disable persisted checkout credentials"
 grep -Fq 'rustup toolchain install stable --profile minimal' "$workflow" ||
     fail "workflow must install the declared Rust toolchain"
-grep -Fq 'sudo apt-get install --yes libva-dev nasm' "$workflow" ||
-    fail "workflow must install the approved Linux media build dependencies"
+grep -Fq '.github/scripts/provision-linux-libva.sh' "$workflow" ||
+    fail "workflow must use the shared Linux libva provisioner"
+[[ "$(grep -Fc '../.github/scripts/provision-linux-libva.sh' "$cross_platform_workflow")" -eq 2 ]] ||
+    fail "both cross-platform Linux jobs must use the shared libva provisioner"
+grep -Fq 'libva_version="2.22.0"' "$provisioner" ||
+    fail "provisioner must pin libva 2.22.0"
+grep -Fq 'libva_sha256="e3da2250654c8d52b3f59f8cb3f3d8e7fb1a2ee64378dbc400fbc5663de7edb8"' "$provisioner" ||
+    fail "provisioner must pin the reviewed libva source digest"
+grep -Fq 'sudo apt-get install --yes libdrm-dev meson nasm ninja-build pkg-config' "$provisioner" ||
+    fail "provisioner must install exact source-build prerequisites"
+grep -Fq 'va/va_dec_vvc.h' "$provisioner" ||
+    fail "provisioner must verify the required VVC header"
+grep -Fq 'pkg-config --atleast-version=2.22.0 libva' "$provisioner" ||
+    fail "provisioner must verify the required libva API version"
+grep -Fq 'CROS_LIBVA_H_PATH=' "$provisioner" ||
+    fail "provisioner must publish the reviewed header path"
 grep -Fq 'LIBVPX_VERSION: "1.16.0"' "$workflow" ||
     fail "workflow must pin the approved libvpx version"
 grep -Fq 'LIBVPX_SOURCE_SHA256:' "$workflow" ||

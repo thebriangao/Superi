@@ -435,11 +435,11 @@ and no persisted credentials. It installs the current stable toolchain with rust
 records Rust, Cargo, toolchain, and commit identity, then runs the locked open-tree boundary command,
 formatting, a locked workspace build, locked workspace tests, strict all-target Clippy, and locked
 documentation tests from `open/`.
-Linux lanes first install `libva-dev` and `nasm`, which supply the `libva.pc` metadata required to
-compile the locked media dependency graph and the assembler required by the approved runtime build.
-Intel macOS lanes install `nasm` with Homebrew. Linux and macOS lanes build the approved libvpx
-1.16.0 source after verifying its pinned archive checksum, then expose the exact shared runtime to
-capability and codec tests.
+Linux lanes use one repository-owned helper to install exact build tools, verify and build the
+official libva 2.22.0 source at a pinned SHA-256, and publish its header, pkg-config, and runtime
+paths. The helper also installs `nasm`, while Intel macOS lanes install `nasm` with Homebrew. Linux
+and macOS lanes build the approved libvpx 1.16.0 source after verifying its pinned archive checksum,
+then expose the exact shared runtime to capability and codec tests.
 Hosted macOS skips only three named VideoToolbox or AudioConverter lifecycle tests whose physical
 codec evidence belongs to the documented hardware lane; Linux and Windows run the exact full
 workspace test command. Matrix fail-fast is disabled, superseded branch runs are cancelled, and
@@ -457,13 +457,14 @@ runs strict no-emit TypeScript 5.9.3 checking, creates a Vite 7.3.6 production b
 the workflow contract plus generated hashed JavaScript entry. Its `ci/frontend-smoke/` consumer is
 an isolated toolchain contract, not the deferred React application or Tauri desktop shell.
 
-The dedicated network-isolated workflow prepares locked Cargo artifacts, libva headers, nasm, and
-a checksum-pinned approved libvpx 1.16 runtime on Ubuntu 24.04 while online, then runs workspace
-tests, canonical fixture validation, and the headless CLI inside a distinct Linux network namespace
-with only loopback, no IPv4 route, a failed numeric outbound probe, and Cargo offline mode. Its
-pinned checkout, read-only permissions, disabled credentials, timeout, and cancellation policy
-match the repository CI boundary. This is an offline execution proof for current core commands
-after setup, not an offline dependency-acquisition proof or a runtime import-to-export slice.
+The dedicated network-isolated workflow prepares locked Cargo artifacts, checksum-pinned libva 2.22
+and libvpx 1.16 runtimes, and nasm on Ubuntu 24.04 while online, then runs workspace tests, canonical
+fixture validation, and the canonical headless slice inside a distinct Linux network namespace with only
+loopback, no IPv4 route, a failed numeric outbound probe, and Cargo offline mode. Hosted run
+`29308007012` stopped before namespace entry because distribution libva API 1.20 could not satisfy
+the unchanged H.266 API 1.22 requirement; both Rust workflows now use the shared source provisioner.
+The final hosted run remains the offline execution proof, not an offline acquisition proof or a
+runtime import-to-export slice.
 
 The cross-platform Rust workflow does not run the `os-codecs` feature matrix, an all-container
 malformed-input matrix beyond default workspace contracts, frontend or Tauri checks, golden

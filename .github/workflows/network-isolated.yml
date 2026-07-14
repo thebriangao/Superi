@@ -34,10 +34,8 @@ jobs:
       - name: Install declared Rust toolchain
         run: rustup toolchain install stable --profile minimal
 
-      - name: Install Linux media build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes libva-dev nasm
+      - name: Provision Linux media build dependencies
+        run: .github/scripts/provision-linux-libva.sh
 
       - name: Build approved libvpx runtime
         run: |
