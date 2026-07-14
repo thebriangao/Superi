@@ -1,0 +1,109 @@
+name: Cross-platform CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  platform-build:
+    name: ${{ matrix.lane }}
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.experimental }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: ci-macos-26-arm64
+            runner: macos-26
+            experimental: false
+          - lane: ci-macos-15-x64
+            runner: macos-15-intel
+            experimental: false
+          - lane: ci-windows-2025-x64
+            runner: windows-2025
+            experimental: false
+          - lane: ci-ubuntu-26-x64
+            runner: ubuntu-26.04
+            experimental: true
+          - lane: ci-ubuntu-24-x64
+            runner: ubuntu-24.04
+            experimental: false
+
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: "1"
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: open
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install declared Rust toolchain
+        run: rustup toolchain install stable --profile minimal
+
+      - name: Record build identity
+        run: |
+          rustc --version --verbose
+          cargo --version --verbose
+          rustup show active-toolchain
+          git rev-parse HEAD
+
+      - name: Build open workspace
+        run: cargo build --workspace --locked
+
+  extended-linux-build:
+    name: ci-ubuntu-22-x64
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: "1"
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: open
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install declared Rust toolchain
+        run: rustup toolchain install stable --profile minimal
+
+      - name: Record build identity
+        run: |
+          rustc --version --verbose
+          cargo --version --verbose
+          rustup show active-toolchain
+          git rev-parse HEAD
+
+      - name: Build open workspace
+        run: cargo build --workspace --locked
