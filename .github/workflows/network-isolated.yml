@@ -1,0 +1,99 @@
+name: Network-isolated open tree
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  LIBVPX_VERSION: "1.16.0"
+  LIBVPX_SOURCE_SHA256: "7a479a3c66b9f5d5542a4c6a1b7d3768a983b1e5c14c60a9396edc9b649e015c"
+
+concurrency:
+  group: network-isolated-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  network-isolated-core:
+    name: ci-ubuntu-24-x64 / network-isolated core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the open tree
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install declared Rust toolchain
+        run: rustup toolchain install stable --profile minimal
+
+      - name: Install Linux media build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libva-dev
+
+      - name: Build approved libvpx runtime
+        run: |
+          archive="$RUNNER_TEMP/libvpx-$LIBVPX_VERSION.tar.gz"
+          source="$RUNNER_TEMP/libvpx-$LIBVPX_VERSION"
+          prefix="$RUNNER_TEMP/libvpx"
+          curl --fail --location --silent --show-error \
+            "https://github.com/webmproject/libvpx/archive/refs/tags/v$LIBVPX_VERSION.tar.gz" \
+            --output "$archive"
+          echo "$LIBVPX_SOURCE_SHA256  $archive" | shasum --algorithm 256 --check
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP"
+          pushd "$source"
+          ./configure \
+            --prefix="$prefix" \
+            --disable-docs \
+            --disable-examples \
+            --disable-tools \
+            --disable-unit-tests \
+            --enable-shared \
+            --enable-vp9-highbitdepth
+          make --jobs 2
+          make install
+          popd
+          echo "SUPERI_LIBVPX_PATH=$prefix/lib/libvpx.so.12" >> "$GITHUB_ENV"
+
+      - name: Resolve the repository toolchain
+        working-directory: open
+        run: rustup show active-toolchain
+
+      - name: Cache locked dependencies
+        working-directory: open
+        run: cargo fetch --locked
+
+      - name: Prepare core workflow artifacts
+        working-directory: open
+        run: |
+          cargo build --workspace --locked
+          cargo test --workspace --locked --no-run
+
+      - name: Verify the isolation contract
+        run: open/ci/network-isolated-contract.sh
+
+      - name: Run core workflows without outbound access
+        working-directory: open
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: |
+          export SUPERI_HOST_NETNS="$(readlink /proc/self/ns/net)"
+          sudo env \
+            "PATH=$PATH" \
+            "HOME=$HOME" \
+            "CARGO_HOME=${CARGO_HOME:-$HOME/.cargo}" \
+            "RUSTUP_HOME=${RUSTUP_HOME:-$HOME/.rustup}" \
+            "CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/open/target}" \
+            "GITHUB_WORKSPACE=$GITHUB_WORKSPACE" \
+            "CARGO_NET_OFFLINE=$CARGO_NET_OFFLINE" \
+            "SUPERI_LIBVPX_PATH=$SUPERI_LIBVPX_PATH" \
+            "SUPERI_HOST_NETNS=$SUPERI_HOST_NETNS" \
+            unshare --net -- ./ci/run-network-isolated.sh

@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 04ba079bb12c1140b9b9185bf815f1dacf4e4afbd926ab1a8d43fd9ab42f1f73
-source_files: 48
+source_hash: 97b54e84ac5a0c8a272870294fbb29974db084833c17ddec3813910569b367ef
+source_files: 52
 mapped_at_commit: working-tree
 ---
 
@@ -79,6 +79,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   A read-only Ubuntu 24.04 job installs Node.js 24.13.0 from the repository declaration, restores
   only npm's cache, runs `npm ci`, strict TypeScript checking, a Vite production build, and the
   generated-bundle contract tests from `ci/frontend-smoke/`.
+- `.github/workflows/network-isolated.yml`: Defines a blocking Ubuntu 24.04 job that prepares locked
+  Rust dependencies, libva headers, checksum-pinned libvpx 1.16, and test artifacts online, then
+  enters a distinct Linux network namespace and runs workspace tests, fixture validation, and the
+  CLI consumer with Cargo forced offline.
 - `.gitignore`: Excludes Rust and JavaScript build output, editor and macOS files, local agent law,
   checkpoint plans, Python bytecode and cache directories, browser artifacts, and the frontend CI
   contract's generated `dist/`. In particular, `AGENTS.md`, `BASE_INSTRUCTIONS.md`, and `/plans/`
@@ -126,6 +130,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   scanner. It records the dependency-free tool, canonical and malformed-tree contracts, locked
   workflow integration, isolated Rust verification, delivery context, and remaining static-policy
   limitations.
+- `docs/checkpoints/P1.W07.C009.md`: Durable implementation evidence for the network-isolated core
+  workflow, namespace and offline contracts, focused verification, hosted proof requirement,
+  delivery context, and intentionally unimplemented editorial slice.
 - `docs/checkpoints/P1.W07.C006.md`: Durable implementation evidence for the dependency-policy
   checkpoint. It records the outcome, integration boundary, red-to-green process, local checks,
   initial successful GitHub Actions run `29302533491`, delivery commits, and remaining limitations.
@@ -189,6 +196,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `open/README.md`: Compact open-tree orientation and build commands. It describes an offline engine,
   codec features, downward dependency tiers, and an architectural skeleton, but its 18-crate and
   implementation-status claims lag the current 19 crate packages plus two repository tools.
+- `open/ci/network-isolated-contract.sh`: Executable contract binding the dedicated workflow to
+  immutable checkout, least privilege, locked artifact preparation, namespace isolation, fixture
+  validation, and the headless CLI consumer.
+- `open/ci/run-network-isolated.sh`: Linux harness that verifies a distinct namespace,
+  loopback-only interfaces, no IPv4 route, and a failed numeric outbound connection before running
+  the current core commands with locked offline Cargo.
 - `open/deny.toml`: Cargo-deny policy allowing a bounded permissive license set, warning on duplicate
   versions and yanked advisories, rejecting unknown Git sources, requiring pinned Git revisions, and
   permitting only the pinned OxideAV MP3 repository as a Git source.
@@ -210,7 +223,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `open/test-fixtures/policy/utf8/v1/hello.txt`: The six-byte UTF-8 payload `hello` followed by a
   newline. It is the fixture validator's deterministic self-test input.
 
-All 48 assigned artifacts are valid UTF-8 text. The mapping inventory reports no binary artifact
+All 52 assigned artifacts are valid UTF-8 text. The mapping inventory reports no binary artifact
 for this module, so no binary metadata or producer-consumer relationship needs separate treatment.
 
 ## Public surface
@@ -249,10 +262,13 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
 - `.github/workflows/frontend.yml` and `ci/frontend-smoke/` form a third CI surface for locked npm
   installation, strict TypeScript checking, Vite production bundling, and bundle-contract proof.
   This surface is intentionally not the absent React application or Tauri desktop shell.
+- `.github/workflows/network-isolated.yml` and `open/ci/` form a fourth CI surface. It prepares
+  artifacts before isolation, then proves current workspace tests, fixture validation, and the CLI
+  consumer run with no non-loopback interface, no IPv4 route, and Cargo offline mode.
 
-Together the three workflows enforce the open-tree boundary, locked hosted Rust builds, dependency
-policy, and a locked frontend toolchain contract. They do not yet implement the complete documented test, feature,
-offline, fixture, malformed-input, GPU, audio, shell, UI, or slice suites.
+Together the four workflows enforce the open-tree boundary, locked hosted Rust builds, dependency
+policy, a locked frontend toolchain contract, and one network-isolated core path. They do not yet
+implement the complete documented feature, malformed-input, GPU, audio, shell, UI, or slice suites.
 
 The stable public automation protocol described by Phase 0 is owned in `superi-api`, not here.
 Likewise, codec, graph, image, engine, project, timeline, and CLI Rust interfaces live in their crate
@@ -328,6 +344,16 @@ runs strict no-emit TypeScript checking, builds the minimal browser entry with V
 tests both workflow wiring and the generated hashed bundle. It proves the locked frontend toolchain
 and independent gates without creating a second application architecture or claiming React, Tauri,
 editorial behavior, native viewport integration, or product UI coverage.
+
+The network-isolated path begins on pull requests, pushes to `main`, or manual dispatch. It pins
+checkout, disables persisted credentials, installs stable Rust and libva headers, builds the
+checksum-pinned approved libvpx 1.16 runtime, fetches locked dependencies, and builds the workspace
+and test executables while online. It records the host namespace and uses privileged `unshare
+--net` to enter a new namespace, carrying only the required Rust environment and approved libvpx
+path. The harness rejects the host namespace, any non-loopback interface, any IPv4 route, or a
+successful numeric outbound connection before forcing Cargo offline and running workspace tests,
+fixture validation, and the CLI. This proves current core commands operate without outbound access
+after setup, not that dependency or media-runtime acquisition is offline.
 
 The intended media path is source and container handling through `superi-media-io`, explicit backend
 selection for permissive, platform, or vendor codecs, validated image and audio representations,
@@ -416,10 +442,10 @@ of open runtime behavior.
 
 ## Tests and verification
 
-The workspace documents define several proof layers. Three implemented workflows now cover the
-open-tree boundary, hosted locked-workspace builds, dependency policy, and a locked frontend
-toolchain contract; every broader suite or physical matrix remains a contract until a current
-workflow or fresh result demonstrates execution.
+The workspace documents define several proof layers. Four implemented workflows now cover the
+open-tree boundary, hosted locked-workspace builds, dependency policy, a locked frontend toolchain
+contract, and network-isolated execution of current core commands; every broader suite or physical
+matrix remains a contract until a current workflow or fresh result demonstrates execution.
 
 - `.github/workflows/dependency-policy.yml` runs on pushes, pull requests, and manual dispatch. Its
   Ubuntu 24.04 job first runs `.github/scripts/check-dependency-policy.sh`, then checks approved
@@ -456,6 +482,11 @@ workflow or fresh result demonstrates execution.
   `npm test` under exact Node.js, TypeScript, and Vite versions. The contract tests require strict
   no-emit checking, immutable actions, read-only credentials, every independent gate, and a hashed
   JavaScript entry in the generated production bundle.
+- `.github/workflows/network-isolated.yml` prepares locked inputs and test executables on Ubuntu
+  24.04 after installing libva headers and building checksum-pinned libvpx 1.16, then uses a distinct
+  empty network namespace and Cargo offline mode for workspace tests, canonical fixture validation,
+  and the CLI consumer. The delivered hosted run is the authoritative namespace proof because the
+  local macOS host cannot execute Linux `unshare --net`.
 - `docs/checkpoints/P1.W07.C004.md` records a fresh clean npm installation, typecheck, production
   build, three passing contract tests, zero reported vulnerabilities, negative TypeScript and
   missing-bundle controls, YAML parsing, and a complete locked Rust test run. These are delivery
@@ -509,10 +540,10 @@ The largest current risk is cross-document drift:
   been activated. Those statements conflict with the current 22-member Cargo graph, resolved
   external dependencies, shared fixture tool, and detailed implementation contracts.
 - `open/docs/STRUCTURE.md` also says 18 crates and still labels offline CI and the vertical slice as
-  deferred. The three workflows now cover dependency policy, locked hosted compilation with the
-  open-tree boundary scan, and the frontend toolchain contract, but the documented full test matrix
-  must not be mistaken for product
-  behavior, offline, feature, fixture, malformed-input, UI, shell, or physical-platform enforcement.
+  deferred. The four workflows now cover dependency policy, locked hosted compilation with the
+  open-tree boundary scan, the frontend toolchain contract, and one network-isolated core path, but
+  that path prepares dependencies online and must not be mistaken for product behavior, a complete
+  offline build, feature, malformed-input, UI, shell, slice, or physical-platform enforcement.
 - `docs/codecs.md` still says cargo-deny will be wired into CI in a later pass even though
   `.github/workflows/dependency-policy.yml` and `open/deny.toml` now define that enforcement. The
   codec policy's status sentence is stale, although its narrower claim that offline CI is required
@@ -567,8 +598,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the local mapping commit rebased onto `origin/main` plus this uncommitted map
 refresh, so `mapped_at_commit` is `working-tree`. The remote base was
-`572d8ca78b0684cc7bf988ed6c8b777f1b103ceb` when the map was refreshed. Its hash describes the exact
-48 discovered source files layered on that revision, not the remote commit alone.
+`b8f947f7187d6be15c45ef324d5cf99cee3d6a6e` when the map was refreshed. Its hash describes the exact
+52 discovered source files layered on that revision, not the remote commit alone.
 
 ## Maintenance notes
 
