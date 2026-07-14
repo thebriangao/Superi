@@ -6,8 +6,10 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
 
+use crate::instrumentation::{
+    InstrumentationSummary, ProcessMemorySampler, StageInstrumentation, StageProbe,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -89,7 +91,8 @@ struct StageRecord {
     implementation_revision: String,
     input: Value,
     output: Value,
-    duration_us: u64,
+    #[serde(flatten)]
+    instrumentation: StageInstrumentation,
     success: bool,
     diagnostics: Vec<String>,
 }
@@ -233,7 +236,14 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
         )
     })?;
 
-    let fixture_started = Instant::now();
+    let mut memory_sampler = ProcessMemorySampler::new().map_err(|message| {
+        CliFailure::unavailable(
+            "fixture.resolve",
+            format!("memory instrumentation unavailable: {message}"),
+        )
+    })?;
+
+    let fixture_probe = begin_stage(&mut memory_sampler, "fixture.resolve")?;
     let fixture = resolve_fixture(&repository_root)?;
     let mut stages = vec![StageRecord {
         stage_id: "fixture.resolve",
@@ -252,7 +262,7 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
             "payload_path": "open/test-fixtures/slice/video-cfr/v1/input.webm",
             "validation": "manifest_identity_and_payload_digest"
         }),
-        duration_us: elapsed_us(fixture_started),
+        instrumentation: finish_stage(fixture_probe, &mut memory_sampler, "fixture.resolve")?,
         success: true,
         diagnostics: Vec::new(),
     }];
@@ -260,7 +270,7 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
     create_artifact_directory(artifact_dir)?;
     let mut api = ScenarioApi::new();
 
-    let import_started = Instant::now();
+    let import_probe = begin_stage(&mut memory_sampler, "media.import")?;
     execute_action(
         &mut api,
         "media.import",
@@ -293,14 +303,14 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
             "frame_count": 96,
             "extent": {"width": 96, "height": 54}
         }),
-        duration_us: elapsed_us(import_started),
+        instrumentation: finish_stage(import_probe, &mut memory_sampler, "media.import")?,
         success: true,
         diagnostics: vec![
             "Typed import state is modeled without opening or decoding the payload.".to_owned(),
         ],
     });
 
-    let edit_started = Instant::now();
+    let edit_probe = begin_stage(&mut memory_sampler, "timeline.edit")?;
     execute_action(
         &mut api,
         "timeline.edit",
@@ -329,7 +339,7 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
             "trimmed_source_range": [24, 72]
         }),
         output: serde_json::to_value(api.snapshot().timeline()).expect("timeline is serializable"),
-        duration_us: elapsed_us(edit_started),
+        instrumentation: finish_stage(edit_probe, &mut memory_sampler, "timeline.edit")?,
         success: true,
         diagnostics: vec![
             "The command engine owns reversible typed state while the production timeline owner is absent."
@@ -337,7 +347,7 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
         ],
     });
 
-    let compile_started = Instant::now();
+    let compile_probe = begin_stage(&mut memory_sampler, "timeline.compile")?;
     let timeline_value =
         serde_json::to_value(api.snapshot().timeline()).expect("timeline state is serializable");
     let timeline_sha256 = digest_json(&timeline_value);
@@ -352,7 +362,7 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
             "timeline_sha256": timeline_sha256,
             "frame_count": 48
         }),
-        duration_us: elapsed_us(compile_started),
+        instrumentation: finish_stage(compile_probe, &mut memory_sampler, "timeline.compile")?,
         success: true,
         diagnostics: vec![
             "Compilation records the exact public timeline contract without a production compiler."
@@ -360,7 +370,7 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
         ],
     });
 
-    let graph_started = Instant::now();
+    let graph_probe = begin_stage(&mut memory_sampler, "graph.evaluate")?;
     let effected = execute_action(
         &mut api,
         "graph.evaluate",
@@ -383,14 +393,14 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
             "edge_mode": "transparent_black"
         }),
         output: graph_value.clone(),
-        duration_us: elapsed_us(graph_started),
+        instrumentation: finish_stage(graph_probe, &mut memory_sampler, "graph.evaluate")?,
         success: true,
         diagnostics: vec![
             "Graph topology and parameters are complete, but no pixels are evaluated.".to_owned(),
         ],
     });
 
-    let color_started = Instant::now();
+    let color_probe = begin_stage(&mut memory_sampler, "color.deliver")?;
     stages.push(StageRecord {
         stage_id: "color.deliver",
         implementation: "stub",
@@ -401,7 +411,7 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
             "graph_output": {"width": 96, "height": 54}
         }),
         output: json!({"delivery_color_space": "srgb", "alpha": "opaque"}),
-        duration_us: elapsed_us(color_started),
+        instrumentation: finish_stage(color_probe, &mut memory_sampler, "color.deliver")?,
         success: true,
         diagnostics: vec![
             "The sRGB delivery boundary is declared without a production color transform."
@@ -409,7 +419,7 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
         ],
     });
 
-    let export_started = Instant::now();
+    let export_probe = begin_stage(&mut memory_sampler, "media.export")?;
     let artifact_path = artifact_dir.join(STUB_ARTIFACT_NAME);
     let artifact_bytes = contract_stub_bytes();
     publish_create_only(&artifact_path, &artifact_bytes).map_err(|error| {
@@ -439,7 +449,7 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
             "bytes": artifact_bytes.len(),
             "sha256": artifact_sha256
         }),
-        duration_us: elapsed_us(export_started),
+        instrumentation: finish_stage(export_probe, &mut memory_sampler, "media.export")?,
         success: true,
         diagnostics: vec![
             "The published artifact is a non-playable contract stub, not canonical.webm."
@@ -447,7 +457,7 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
         ],
     });
 
-    let verify_started = Instant::now();
+    let verify_probe = begin_stage(&mut memory_sampler, "slice.verify")?;
     execute_action(&mut api, "slice.verify", SliceAction::Undo {})?;
     execute_action(&mut api, "slice.verify", SliceAction::Undo {})?;
     execute_action(&mut api, "slice.verify", SliceAction::Redo {})?;
@@ -485,7 +495,7 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
             "project_state_sha256": project_state_sha256,
             "expectations_status": "unavailable"
         }),
-        duration_us: elapsed_us(verify_started),
+        instrumentation: finish_stage(verify_probe, &mut memory_sampler, "slice.verify")?,
         success: true,
         diagnostics: vec![
             "No independent expected-output fixture is declared, so pixel comparison is unavailable."
@@ -498,8 +508,14 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
         .filter(|stage| stage.implementation == "stub")
         .map(|stage| stage.stage_id)
         .collect::<Vec<_>>();
+    let observed_resident_bytes_max = stages
+        .iter()
+        .map(|stage| stage.instrumentation.memory.observed_resident_bytes_max())
+        .max()
+        .expect("the canonical slice contains stages");
+    let instrumentation = InstrumentationSummary::new(stages.len(), observed_resident_bytes_max);
     let report = json!({
-        "schema_version": "1.0.0",
+        "schema_version": "1.1.0",
         "scenario_id": SCENARIO_ID,
         "scenario_revision": SCENARIO_REVISION,
         "success": true,
@@ -538,6 +554,7 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
             "operation_log_sha256": operation_log_sha256
         },
         "state": replayed_state,
+        "instrumentation": instrumentation,
         "stages": stages,
         "backends": {
             "selected_container_backend": "mkv-webm",
@@ -1107,8 +1124,29 @@ fn remove_owned_file(path: &Path, expected_sha256: &str) -> std::io::Result<()> 
     fs::remove_file(path)
 }
 
-fn elapsed_us(started: Instant) -> u64 {
-    u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX)
+fn begin_stage(
+    sampler: &mut ProcessMemorySampler,
+    stage_id: &'static str,
+) -> Result<StageProbe, CliFailure> {
+    sampler.begin_stage().map_err(|message| {
+        CliFailure::unavailable(
+            stage_id,
+            format!("memory instrumentation unavailable: {message}"),
+        )
+    })
+}
+
+fn finish_stage(
+    probe: StageProbe,
+    sampler: &mut ProcessMemorySampler,
+    stage_id: &'static str,
+) -> Result<StageInstrumentation, CliFailure> {
+    probe.finish(sampler).map_err(|message| {
+        CliFailure::unavailable(
+            stage_id,
+            format!("memory instrumentation unavailable: {message}"),
+        )
+    })
 }
 
 fn emit_failure(failure: CliFailure) -> i32 {

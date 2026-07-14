@@ -2,8 +2,8 @@
 module_id: superi-cli
 source_paths:
   - open/crates/superi-cli
-source_hash: 2bee097f5eb392e46a8b4f9a2a034ab44e8a76286f317e62b8ebd06405d4a0ab
-source_files: 4
+source_hash: 8a3d3c8c4a70a7e4a7f178efaa2135055b3530a2920a4a66d840be6689959f29
+source_files: 5
 mapped_at_commit: working-tree
 ---
 
@@ -12,7 +12,8 @@ mapped_at_commit: working-tree
 `superi-cli` is the workspace's headless public API consumer and owns the normalized process
 contract for `superi.slice.canonical.v1`. It validates the authoritative repository fixture,
 executes canonical editorial actions through `superi-api`, proves exact reversal, writes the strict
-eight-stage report, and publishes a clearly labeled non-playable contract artifact.
+eight-stage report, records bounded timing and process resident-memory evidence, and publishes a
+clearly labeled non-playable contract artifact.
 
 The current runner satisfies contract conformance only. It does not open or decode media, evaluate
 pixels, apply production color, encode AV1, mux WebM, or claim a working editor export. Every absent
@@ -20,16 +21,20 @@ production owner is explicit in stage diagnostics and the artifact name.
 
 ## Source inventory
 
-- `open/crates/superi-cli/Cargo.toml`: Declares `serde`, `serde_json`, `sha2`, `superi-core`, and
-  `superi-api`, plus `os-codecs` forwarding to the API.
+- `open/crates/superi-cli/Cargo.toml`: Declares `serde`, `serde_json`, `sha2`, `sysinfo`,
+  `superi-core`, and `superi-api`, plus `os-codecs` forwarding to the API.
 - `open/crates/superi-cli/src/commands.rs`: Implements exact argument parsing, repository and
   fixture resolution, bounded strict manifest validation, canonical API execution, stage and
-  digest reporting, undo plus redo proof, collision-safe publication, and structured exit errors.
+  digest reporting, instrumentation integration, undo plus redo proof, collision-safe publication,
+  and structured exit errors.
+- `open/crates/superi-cli/src/instrumentation.rs`: Implements one reusable current-process sampler,
+  monotonic stage probes, resident-set boundary records, and the report instrumentation summary.
 - `open/crates/superi-cli/src/main.rs`: Passes process arguments to the private command owner and
   exits with its exact status.
 - `open/crates/superi-cli/tests/scenario_runner.rs`: Provides process contracts for two-run
-  reproducibility, exact state and report contents, honest stub evidence, collision preservation,
-  help, version, usage, and status 2 invalid input.
+  reproducibility, exact state and schema 1.1.0 report contents, all-stage timing and nonzero
+  resident-memory evidence, honest stub evidence, collision preservation, help, version, usage,
+  and status 2 invalid input.
 
 ## Public surface
 
@@ -75,12 +80,20 @@ evaluation, color delivery, and media export remain contract stubs. The runner u
 trim, redoes both, removes only the monotonic revision from comparison, and requires exact final
 semantic state recovery without reimport.
 
+One `ProcessMemorySampler` resolves the CLI process ID once and refreshes only that process with
+memory enabled and task enumeration disabled. Each stage takes one resident-set sample immediately
+before its work and one immediately after, for 16 bounded refreshes in a complete run. The same
+probe measures monotonic elapsed microseconds. An unavailable or zero resident-memory sample is an
+explicit stage failure, not a fabricated value or omitted field.
+
 The contract artifact is deterministic JSON with `playable: false`, six missing runtime owners,
 and the planned WebM, AV1, 96 by 54, 24 fps, 48-frame target. It is not named `canonical.webm`.
-The report retains repository and fixture identities, state digests, full public state, eight stage
-records, backend expectations, target metadata, artifact identity, 48 modeled timestamps,
-unavailable expected-output status, and all stub diagnostics. Contract success never becomes
-runtime success.
+Report schema 1.1.0 retains repository and fixture identities, state digests, full public state,
+eight stage records, backend expectations, target metadata, artifact identity, 48 modeled
+timestamps, unavailable expected-output status, and all stub diagnostics. Every stage retains its
+existing `duration_us` and adds resident bytes before and after. The report summary declares the
+clock, units, memory metric, boundary sampling, stage count, and maximum resident value observed
+across those boundaries. Contract success never becomes runtime success.
 
 ## Dependencies and consumers
 
@@ -89,6 +102,8 @@ runtime success.
   summaries, and failures.
 - `sha2` computes manifest, payload, semantic state, timeline, graph, operation log, and artifact
   identities.
+- `sysinfo` 0.36.1 uses only its `system` feature to refresh resident memory for the current
+  process. Default component, disk, network, and user collectors are disabled.
 - `superi-core` remains a declared dependency from the original crate topology but is not directly
   imported by current CLI source.
 - `open/ci/run-network-isolated.sh` invokes the exact canonical command with temporary output paths
@@ -112,7 +127,11 @@ harness are its current consumers.
 - Contract stubs are never called runtime, and the non-playable artifact is never called WebM
   output.
 - Stage order, implementation identity, input and output summaries, diagnostics, state, and artifact
-  bytes are deterministic. Durations and chosen output paths are run-specific evidence.
+  bytes are deterministic. Durations, resident-memory samples, the observed boundary maximum, and
+  chosen output paths are run-specific evidence.
+- Instrumentation performs exactly two current-process memory refreshes per stage. It does not scan
+  unrelated processes, spawn a sampling thread, retain an unbounded trace, or claim an intra-stage
+  memory peak.
 - The runner initiates no network operation and executes with default features in the isolated CI
   path.
 
@@ -122,7 +141,9 @@ The process contract runs the complete command twice with separate output locati
 strict report schema and scenario identity, authoritative fixture details, exact eight-stage order,
 stub and runtime classifications, canonical timeline, mirror matrix, four-operation log, undo plus
 redo recovery, unavailable expected output, non-playable artifact, target stream shape, 48 modeled
-timestamps, identical stub bytes, and report equality after removing durations and output path.
+timestamps, identical stub bytes, schema 1.1.0 instrumentation metadata, all-stage duration values,
+two nonzero resident samples per stage, and an exact summary maximum. It requires report equality
+after removing only durations, resident values, the observed boundary maximum, and output paths.
 
 Negative process contracts prove unknown scenario rejection, preservation of a nonempty artifact
 directory, preservation of an existing report, exact status 2, and help, version, and usage output.
@@ -136,6 +157,10 @@ is intentional: six stages model typed boundaries without production execution. 
 is digest-validated but its decoded traits are reported as expected contract values because the
 current media stage does not open it.
 
+Boundary samples do not continuously observe allocations inside a stage and are not a peak-memory,
+constrained-device, or long-session soak result. They provide a portable stage-local signal for the
+continuously working slice while those wider performance suites remain separate owners.
+
 There is no independent expected-output fixture, so the report records expectation status as
 unavailable. The runner uses local `git` and `rustc` commands for reproducibility identity and uses
 hard links for atomic create-only publication, which assumes a normal contributor filesystem with
@@ -145,6 +170,8 @@ hard-link support inside each destination directory.
 
 Keep argument order, scenario identity, exit statuses, artifact name, report fields, stage IDs, and
 stub disclosure synchronized with `docs/vertical-slice.md`, process contracts, isolated CI, and
-public guidance. When a production owner replaces a stub, route through that real subsystem, add
-consumer proof, update implementation identity and diagnostics, and raise conformance only after all
-runtime gates pass. Never rename a contract stub to `canonical.webm` merely to satisfy a filename.
+public guidance. Keep stage probes around each stage when its stub is replaced so the fixed
+instrumentation contract is inherited by the production owner. When a production owner replaces a
+stub, route through that real subsystem, add consumer proof, update implementation identity and
+diagnostics, and raise conformance only after all runtime gates pass. Never rename a contract stub
+to `canonical.webm` merely to satisfy a filename.

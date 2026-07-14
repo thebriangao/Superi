@@ -154,9 +154,11 @@ The scenario always reports these stages in this order:
 | `slice.verify` | Scenario verifier | State, stage, fixture, export, and expectation evidence |
 
 Every stage record includes `stage_id`, `implementation` (`stub` or `runtime`), owning component,
-implementation revision, typed input summary, typed output summary, duration, and diagnostics. A
-stub may model only its own typed boundary. It may not claim a production backend ran, hide an
-existing real failure, bypass fixture validation, or mark the run as runtime conformant.
+implementation revision, typed input summary, typed output summary, `duration_us`, process
+resident-memory samples before and after the stage, and diagnostics. Duration uses a monotonic
+clock. Memory values are resident-set bytes sampled only at stage boundaries. A stub may model only
+its own typed boundary. It may not claim a production backend ran, hide an existing real failure,
+bypass fixture validation, or mark the run as runtime conformant.
 
 Subsystem work replaces the corresponding stub without changing the scenario ID, editorial
 meaning, state ownership, stage order, or report contract. A scenario revision is required for an
@@ -176,13 +178,16 @@ unavailable and resolves all input from the repository. It writes no source fixt
 or expected-output record. The artifact directory must be empty or absent at start, and publication
 of the export and report must be collision-safe.
 
-`report.json` is a strict versioned record with at least these fields:
+`report.json` schema 1.1.0 is a strict versioned record with at least these fields:
 
 - report schema version, scenario ID, and scenario revision;
 - repository commit and dirty-state flag;
 - fixture ID, fixture version, manifest digest, and payload digests;
 - deterministic project, timeline, graph, and operation-log state digests;
 - all eight ordered stage records and their implementation kinds;
+- instrumentation metadata naming the monotonic clock, microsecond duration unit, process
+  resident-set metric, byte memory unit, stage-boundary sampling, instrumented stage count, and
+  maximum resident value observed at those boundaries;
 - selected backend identities, feature set, target, toolchain, and build profile;
 - export path, byte count, digest, stream description, frame count, and timestamp summary;
 - expectation-record identity and every exact or tolerance-based comparison result;
@@ -193,6 +198,13 @@ expectations pass. Contract-only success must say `contract`, list at least one 
 `runtime`. Invalid input exits 2. An unavailable or unsupported required capability exits 3. A
 stage, export, or verification failure exits 4. Diagnostics must identify the failed stage and
 retain the repository error category and recoverability when available.
+
+Instrumentation is deliberately bounded. One sampler is reused for the run and refreshes only the
+current process, exactly once before and once after each of the eight stages. A missing current
+process or unavailable nonzero resident-memory value fails the affected stage explicitly. No
+sampling thread, process-wide scan, unbounded trace, or network dependency participates. The
+observed boundary maximum is not an intra-stage peak and does not prove sustained or long-session
+memory behavior.
 
 ## 8. Reproducibility and proof
 
@@ -206,8 +218,9 @@ The minimum proof for every revision is:
 1. Validate all fixture manifests and payload digests offline.
 2. Build the workspace with the lockfile and default features.
 3. Run the scenario twice into different empty artifact directories.
-4. Compare state digests, stage order and identities, timing, frame count, diagnostics, and
-   expectation results.
+4. Compare state digests, stage order and identities, instrumentation contract, frame count,
+   diagnostics, and expectation results. Normalize per-run duration, resident-memory values, the
+   observed boundary maximum, and output paths before exact report comparison.
 5. Inspect the serialized timeline and graph and confirm the one track, one clip, exact trim, one
    effect, typed matrix, three nodes, and two edges.
 6. Replay the inverse effect and trim mutations, then replay the forward mutations and recover the

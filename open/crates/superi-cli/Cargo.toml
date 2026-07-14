@@ -17,5 +17,6 @@ os-codecs = ["superi-api/os-codecs"]
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+sysinfo = { workspace = true }
 superi-core = { path = "../superi-core" }
 superi-api = { path = "../superi-api" }

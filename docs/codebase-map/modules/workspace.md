@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 123d280a66815095e2fe1c18636b79a684b9c2a6a0928d5a590cfd0f5a361021
-source_files: 85
+source_hash: 11667357b99199a64f8f7ca98ce2d3b8e0e85a4974611af47bcf4c215df48d94
+source_files: 86
 mapped_at_commit: working-tree
 ---
 
@@ -22,7 +22,7 @@ completion protocol, requires safe synchronization with `origin/main`, and makes
 full selected raw-file reads a prerequisite for implementation. It routes a single checkpoint
 through mapping, planning, and execution, and routes multiple checkpoints into separate
 Codex-managed worktree tasks. It is ignored by Git and copied into managed worktrees through
-`.worktreeinclude`, so the mapping script does not include it in this module's 73-file inventory or
+`.worktreeinclude`, so the mapping script does not include it in this module's 86-file inventory or
 source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
@@ -166,6 +166,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   interchange baseline. It records two generated timelines, stable editorial and media identity,
   official reference semantics, unsupported preservation expectations, red-to-green proof, and the
   explicitly deferred production timeline model and reader and writer.
+- `docs/checkpoints/P1.W07.C025.md`: Durable implementation evidence for bounded timing and process
+  resident-memory instrumentation across all eight canonical slice stages. It records the private
+  sampler boundary, schema 1.1.0 report contract, dependency decision, red-to-green proof,
+  delivery context, and limits of stage-boundary sampling.
 - `docs/codecs.md`: Version 0.6 of the codec and licensing policy. It separates permissive in-tree
   codecs, opt-in operating-system codecs, vendor RAW workers, still-image handling, containers,
   capability introspection, platform backend contracts, and currently documented MP3, VPx, Opus,
@@ -192,8 +196,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   boundary plus required source scans, Clippy runs, and focused tests.
 - `docs/vertical-slice.md`: Defines revision 1 of `superi.slice.canonical.v1`. It pins the immutable
   video fixture role, exact one-track edit and trim, one typed horizontal-mirror graph effect,
-  explicit delivery, eight stable replacement stages, runner report, conformance levels,
-  reproducibility proof, and the boundaries owned by P1.W07.C017 through P1.W07.C026.
+  explicit delivery, eight stable replacement stages, schema 1.1.0 runner report, bounded stage
+  timing and resident-memory records, conformance levels, reproducibility proof, and the boundaries
+  owned by P1.W07.C017 through P1.W07.C026.
 
 ### Frontend CI contract
 
@@ -218,12 +223,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 
 - `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 22 local
   workspace packages, registry dependencies, target-support dependency trees, scenario digest
-  dependency edges, and the exact `oxideav-mp3` Git revision. It is generated resolution evidence
-  and is not hand-edited policy.
+  and process-instrumentation dependency edges, and the exact `oxideav-mp3` Git revision. It is
+  generated resolution evidence and is not hand-edited policy.
 - `open/Cargo.toml`: Root Cargo workspace manifest using resolver 2 and glob members under
   `crates/*` and `tools/*`. It centralizes version `0.0.0`, Rust 2021, MIT, Rust 1.80, repository
   metadata, deny-by-default unsafe lints, and shared dependencies for error handling, serialization,
-  images, GPU, codecs, hashes, platform APIs, and native build support.
+  images, GPU, codecs, hashes, process instrumentation, platform APIs, and native build support.
 - `open/README.md`: Compact open-tree orientation and build commands. It records the 19 runtime
   crates plus three repository tools, the exact canonical runner command, contract-only status, and
   the remaining production integration boundary.
@@ -322,7 +327,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and OTIO_CORE:0.18.1, exact timeline durations, identity and opaque data policy, JSON pointers,
   and preserve plus diagnose behavior for unsupported constructs.
 
-The mapping inventory contains 75 UTF-8 text artifacts and ten binary payloads. Binary media is
+The mapping inventory contains 76 UTF-8 text artifacts and ten binary payloads. Binary media is
 intentionally read through metadata, producers, provenance, manifests, and consumers rather than
 interpreted as prose.
 
@@ -336,8 +341,9 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
   commitments.
 - `docs/vertical-slice.md` is the normative integration contract for the first editorial thread.
   It distinguishes disclosed-stub contract conformance from all-runtime conformance and reserves
-  expectation, instrumentation, and replacement work for their owning checkpoints. The concrete
-  source fixture and contract-conformance runner now exist under C017 ownership.
+  expectation and replacement work for their owning checkpoints. The concrete source fixture,
+  contract-conformance runner, and bounded stage instrumentation now exist under C017 and C025
+  ownership.
 - `open/Cargo.toml` exports inherited workspace package metadata, lints, and dependency declarations
   to every member manifest. The current glob expansion is 19 crate packages plus
   `superi-fixture-tool`, `superi-dependency-check`, and `superi-boundary-tool`, for 22 members total.
@@ -497,7 +503,9 @@ WebM and AV1 fixture role, exact 24 fps half-open trim, one video track, one typ
 an independent sRGB deliverable, and eight ordered stage records. A stage reports `stub` until its
 production owner replaces it, and any reported stub prevents runtime conformance. The current CLI
 executes the complete control sequence at contract conformance, proves exact reversal, and publishes
-a non-playable stub artifact. Six stages remain stubs, so no runtime slice exists.
+a non-playable stub artifact. Report schema 1.1.0 records monotonic elapsed microseconds and process
+resident bytes before and after every stage, using exactly 16 current-process boundary samples per
+run. Six stages remain stubs, so no runtime slice exists.
 
 Shared fixture data flows from a versioned directory to `fixture.json`, whose byte counts and hashes
 bind every payload. `superi-fixture-tool` validates path safety, schema, provenance, lineage,
@@ -539,7 +547,9 @@ central dependency declarations. Cargo, CI, developers, and audit tooling consum
 toolchain, formatter, ignore rules, and deny policy. Crate tests and end-to-end workflows consume the
 shared fixture contract and fixture versions. Contributors, planners, reviewers, UI and engine
 teams, and release operators consume the architecture and verification documents. The current slice
-runner and each future production subsystem consume the stable scenario state, stages, and report boundary.
+runner and each future production subsystem consume the stable scenario state, stages, report
+boundary, and stage instrumentation contract. `superi-cli` consumes the pinned, system-only
+`sysinfo` dependency for portable current-process resident-memory samples.
 
 The documents deliberately point into other modules:
 
@@ -683,7 +693,8 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   write and read equivalence.
   The encoded slice fixture is a digest-bound 28,178-byte AV1 WebM. Focused engine, API, and CLI
   contracts prove exact canonical state, strict public projection, eight-stage reports, collision
-  safety, two-run reproducibility, and honest stub disclosure.
+  safety, two-run reproducibility, honest stub disclosure, all-stage timing and resident-memory
+  records, and an exact observed-boundary maximum.
 - Phase 0 completion additionally requires written codec counsel, a Tauri, React, and native wgpu
   viewport demonstration on all three operating systems, an API command and ordered event round
   trip, reference-validated OTIO interchange, color reference proof, and named subsystem owners.
@@ -704,8 +715,8 @@ updated consistently. Fresh Cargo metadata expands the member globs to 22 packag
 lockfile includes a substantial
 GPU, image, codec, serialization, platform, and native-build dependency graph, and current codec,
 image, platform, and unsafe documents describe implemented contracts rather than empty placeholders.
-The synchronized remote revision before this checkpoint ends at
-`218e110c9cecc2ab9fa1304fceeb116a52ff93f3`.
+The synchronized remote revision before this checkpoint is
+`6e0d1d36ec30ee04de81d4ad01b8a7748785619b`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
 root README, deny policy, and structure guide with license-audit CI. Commit
 `e0b3af9f099f527a8544d1b0317896640969903b` added the executable dependency-policy contract and its
@@ -733,9 +744,11 @@ implement the later production model, reader, writer, or graph compiler.
 The largest current risk is cross-document drift:
 
 - The canonical fixture, reference project and graph state, strict API projection, and contract
-  runner now exist. Independent expected output, production timeline and graph owners, color and
-  render integration, muxing, playable output, and all-runtime execution remain future work. The
-  current contract-conformant run must not be reported as product or runtime conformance.
+  runner now exist, and every stage reports bounded timing and resident-memory boundary evidence.
+  Independent expected output, production timeline and graph owners, color and render integration,
+  muxing, playable output, and all-runtime execution remain future work. The current
+  contract-conformant run must not be reported as product or runtime conformance. Boundary samples
+  are not continuous intra-stage peaks, constrained-device thresholds, or long-session soak proof.
 
 - `open/docs/STRUCTURE.md` also says 18 crates and still labels offline CI and the vertical slice as
   deferred. The four workflows now cover dependency policy, locked hosted compilation with the

@@ -17,7 +17,7 @@ against raw source before changing code.
 | `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade for capabilities and canonical editorial state | Partial: capability and canonical scenario controls implemented; transport, general API, and scripting absent |
 | `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Reserved audio graph, playback, mixing, resampling, metering, and plugin boundary | Skeleton: public module names only |
 | `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Reserved frame, proxy, render, prefetch, eviction, and disk cache boundary | Skeleton: public module names only |
-| `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario consumer | Implemented contract runner: eight stages and honest stubs; runtime media flow absent |
+| `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario consumer | Implemented contract runner: eight instrumented stages and honest stubs; runtime media flow absent |
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
 | `superi-codecs-rs` | [module map](modules/superi-codecs-rs.md) | `open/crates/superi-codecs-rs` | Default permissive software codec implementations | Implemented: AV1, FLAC, MP3, Opus, PCM, Vorbis, VP8, and VP9 decode and encode |
 | `superi-codecs-vendor` | [module map](modules/superi-codecs-vendor.md) | `open/crates/superi-codecs-vendor` | Explicit process adapter for separately installed vendor RAW workers | Implemented first revision: decode-only, CPU-only, JSON and hexadecimal IPC |
@@ -138,7 +138,8 @@ Canonical editorial control is also implemented at a bounded reference boundary:
 2. `superi-api::ScenarioApi` accepts one strict typed action command and projects complete public
    timeline, graph, implementation, operation, and failure state.
 3. `superi-cli` resolves and digest-validates the repository fixture, executes the normalized fixed
-   scenario through the API, proves undo plus redo recovery, and emits eight stage records.
+   scenario through the API, proves undo plus redo recovery, and emits eight stage records with
+   bounded monotonic timing and current-process resident-memory boundary samples.
 4. Six missing production owners are reported as stubs, and the CLI publishes a non-playable
    contract artifact instead of claiming `canonical.webm`.
 
@@ -162,7 +163,9 @@ or export control flow exists.
 half-open middle trim, one typed horizontal-mirror transform node, explicit sRGB delivery, and eight
 ordered stage records. It permits disclosed stubs only for contract conformance. Runtime
 conformance requires every stage to use its production owner. The CLI now executes the complete
-control sequence at contract conformance, with six stages explicitly reported as stubs.
+control sequence at contract conformance, with six stages explicitly reported as stubs. Report
+schema 1.1.0 names timing and memory units, records before and after resident bytes for every stage,
+and reports the largest resident value observed at those boundaries.
 
 ## Media ingest and codec flow
 
@@ -315,7 +318,8 @@ It has no transport or broad editor command set.
 
 `superi-cli` is a binary boundary, not a library. It accepts only the normalized slice command plus
 help and version, validates repository fixture authority, drives `ScenarioApi`, writes the strict
-report, and publishes a non-playable contract artifact through collision-safe paths.
+schema 1.1.0 report with all-stage timing and resident-memory evidence, and publishes a non-playable
+contract artifact through collision-safe paths.
 
 `superi-fixture-tool` is a repository utility, not an engine component. It validates schema,
 identity, provenance, lineage, payload ownership, byte counts, hashes, path safety, and unmanaged
@@ -372,6 +376,8 @@ The following constraints cross multiple modules and should be preserved togethe
   resources cannot be mixed. Submission retention must outlive fence retirement.
 - Bounded allocation, queue capacity, pressure, cancellation, and backpressure are explicit at each
   implemented boundary. A local bound must not be generalized into a global process-memory claim.
+- Canonical slice instrumentation refreshes only the current process exactly twice per stage. Its
+  largest observed boundary value is not a continuously sampled intra-stage peak or soak result.
 - Cancellation and deadlines are cooperative. A single blocking foreign call remains a latency
   boundary even when surrounding loops poll correctly.
 - Alpha is not silently discarded. Codec and conversion paths reject unsupported alpha, and image
@@ -493,8 +499,10 @@ write and read. This is trusted fixture evidence, not a production importer or e
 
 The largest verification gap is the absence of a production import-to-export slice. Its canonical
 contract, source fixture, reference project state, graph control state, public action flow, and
-contract runner now exist. Independent expected output, production timeline compilation, graph
-evaluation, effect execution, color delivery, encoder, and muxer are not integrated. There is no
+contract runner now exist. Process contracts run the CLI twice and prove all eight timing and
+resident-memory records, the observed-boundary maximum, and deterministic content after normalizing
+run-specific measurements and paths. Independent expected output, production timeline compilation,
+graph evaluation, effect execution, color delivery, encoder, and muxer are not integrated. There is no
 current test or runtime that imports through the engine, selects and decodes media,
 edits a timeline, evaluates a graph, applies input and output color, renders through the GPU,
 encodes and muxes output, persists a project, and drives the flow through the public API.

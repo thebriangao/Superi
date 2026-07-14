@@ -25,7 +25,7 @@ fn runner_executes_the_normalized_slice_and_writes_reproducible_contract_reports
 
     let first_value = read_json(&first_report);
     let second_value = read_json(&second_report);
-    assert_eq!(first_value["schema_version"], "1.0.0");
+    assert_eq!(first_value["schema_version"], "1.1.0");
     assert_eq!(first_value["scenario_id"], SCENARIO_ID);
     assert_eq!(first_value["scenario_revision"], 1);
     assert_eq!(first_value["success"], true);
@@ -50,6 +50,8 @@ fn runner_executes_the_normalized_slice_and_writes_reproducible_contract_reports
     assert_eq!(stages[1]["implementation"], "stub");
     assert_eq!(stages[7]["implementation"], "runtime");
     assert!(stages.iter().all(|stage| stage["success"] == true));
+    assert_instrumentation(&first_value);
+    assert_instrumentation(&second_value);
 
     assert_eq!(
         first_value["state"]["timeline"]["timeline_name"],
@@ -173,10 +175,41 @@ fn read_json(path: &Path) -> Value {
 
 fn normalized_report(mut value: Value) -> Value {
     value["export"].as_object_mut().unwrap().remove("path");
+    value["instrumentation"]
+        .as_object_mut()
+        .unwrap()
+        .remove("observed_resident_bytes_max");
     for stage in value["stages"].as_array_mut().unwrap() {
         stage.as_object_mut().unwrap().remove("duration_us");
+        stage.as_object_mut().unwrap().remove("memory");
     }
     value
+}
+
+fn assert_instrumentation(report: &Value) {
+    let stages = report["stages"].as_array().unwrap();
+    let instrumentation = &report["instrumentation"];
+    assert_eq!(instrumentation["clock"], "monotonic");
+    assert_eq!(instrumentation["duration_unit"], "microseconds");
+    assert_eq!(instrumentation["memory_metric"], "process_resident_set");
+    assert_eq!(instrumentation["memory_unit"], "bytes");
+    assert_eq!(instrumentation["sampling"], "stage_boundaries");
+    assert_eq!(instrumentation["stage_count"], 8);
+
+    let mut observed_resident_bytes_max = 0;
+    for stage in stages {
+        assert!(stage["duration_us"].as_u64().is_some());
+        let before = stage["memory"]["resident_bytes_before"].as_u64().unwrap();
+        let after = stage["memory"]["resident_bytes_after"].as_u64().unwrap();
+        assert!(before > 0);
+        assert!(after > 0);
+        observed_resident_bytes_max = observed_resident_bytes_max.max(before).max(after);
+    }
+
+    assert_eq!(
+        instrumentation["observed_resident_bytes_max"],
+        observed_resident_bytes_max
+    );
 }
 
 fn error_kind(output: &Output) -> String {
