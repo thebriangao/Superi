@@ -138,6 +138,15 @@ impl<N> DirectedAcyclicGraph<N> {
         self.nodes.get(&id)
     }
 
+    /// Returns one mutable node payload by identity.
+    ///
+    /// The payload cannot change node identity, edge membership, or adjacency,
+    /// so topology continues to pass only through the checked graph methods.
+    #[must_use]
+    pub fn node_mut(&mut self, id: NodeId) -> Option<&mut N> {
+        self.nodes.get_mut(&id)
+    }
+
     /// Returns all edges in stable identity order.
     #[must_use]
     pub const fn edges(&self) -> &BTreeMap<EdgeId, GraphEdge> {

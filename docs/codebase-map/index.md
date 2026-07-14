@@ -27,7 +27,7 @@ against raw source before changing code.
 | `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Reserved effect-node catalog, animation, mask, transition, text, tracking, and OFX boundary | Skeleton: public module names only |
 | `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: canonical command state, registry, capability introspection, and CPU-frame GPU upload implemented |
 | `superi-gpu` | [module map](modules/superi-gpu.md) | `open/crates/superi-gpu` | wgpu device, resource, upload, conversion, pass, submission, presentation, and recovery substrate | Implemented substrate with explicit application-level integration gaps |
-| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers, versioned schema discovery, deterministic DAG storage, and typed port validation plus reserved mutation, evaluation, ROI, expression, and serialization boundaries | Partial: graph-facing IDs, node schemas, immutable discovery, typed DAG storage, cycle prevention, typed bindings, and schema connection compatibility implemented; evaluator absent |
+| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers, versioned schema discovery, deterministic DAG storage, typed port validation, and editable mutation transactions plus reserved evaluation, ROI, expression, and serialization boundaries | Partial: graph-facing IDs, node schemas, immutable discovery, typed DAG storage and bindings, cycle prevention, schema connection compatibility, schema-bound instances, snapshots, and atomic mutations implemented; evaluator absent |
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; production source registration and muxing absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
@@ -173,8 +173,22 @@ Typed port validation is implemented beside storage without creating an evaluato
 3. A schema-level connection check accepts only an existing output to an existing input with exact
    type identity. Input and connection failures are user-correctable, while node implementation
    output violations are internal terminal failures.
-4. No public instance contract yet maps stored `PortId` endpoints to named schema ports, so the DAG
-   and validator remain adjacent independent contracts rather than claiming runtime integration.
+4. The validation API remains evaluator-neutral and never inspects or coerces an opaque payload.
+
+Editable graph transactions now integrate those neutral contracts without creating an evaluator:
+
+1. `EditableNode<T>` binds stable port and parameter instance IDs to every declaration in one exact
+   immutable schema. Initial and replacement parameter payloads retain exact `ValueTypeId` tags.
+2. `GraphTransaction<T>` carries one expected revision plus ordered add, remove, connect,
+   disconnect, presentation reorder, and parameter replacement mutations.
+3. `EditableGraph<T>` applies the batch to a cloned candidate. Connect resolves `PortId` to
+   `PortName`, reuses schema compatibility, enforces target cardinality, and then uses checked DAG
+   insertion. Remove requires explicit prior disconnection.
+4. Any failure discards the candidate and preserves the revision. A successful nonempty batch
+   publishes one immutable `Arc` snapshot and advances once; editor, script, and headless readers
+   can share the exact same typed state and deterministic orders.
+5. The public integration test is the real consumer. Engine, API, CLI, timeline, project, and
+   product runtime paths do not yet import the transaction owner, so no runtime stage label changes.
 
 No transport, request envelope, dispatcher, event channel, subscription, broad public transaction,
 script runtime, or UI is implemented. There is no shell, extension, automation, or closed-tier
@@ -306,10 +320,10 @@ all command dependencies must remain retained until the matching fence retires.
 No implemented engine path sends `UploadedVideoFrame` into graph evaluation, color processing,
 cache, playback, display, or encode. Official graph identifiers, schema registration, immutable
 discovery, generic graph topology storage, typed input and output bindings, and schema-level
-connection compatibility exist, but no evaluator consumes them and no catalog registers a
-production schema. Color input, output, LUT, and rule transforms are CPU implementations and have
-no graph-visible node catalog. Output transforms do not evaluate validated ICC profile state or
-provide a GPU viewport or
+connection compatibility now feed a schema-bound editable graph and atomic mutation owner, but no
+evaluator consumes that state and no catalog registers a production schema. Color input, output,
+LUT, and rule transforms are CPU implementations and have no graph-visible node catalog. Output
+transforms do not evaluate validated ICC profile state or provide a GPU viewport or
 export consumer. `MonitorAwareViewport` prevents stale-profile presentation but does not
 color-convert a frame.
 
@@ -408,6 +422,10 @@ The following constraints cross multiple modules and should be preserved togethe
   relinking, while metadata and source timing remain attached to the artifact that produced them.
 - Deterministic ordering is explicit. Stable backend IDs break selection ties; ordered maps and
   sets stabilize public snapshots, fixtures, diagnostics, and validator output.
+- Editable graph state has one optimistic revision and immutable shared snapshots. A nonempty
+  transaction publishes exactly once only after every ordered mutation passes, while stale or
+  failed batches preserve the prior state and revision. Presentation order never replaces DAG
+  processing order.
 - Capability declarations are metadata, not proof that a factory or every declared format can run.
   Introspection must not instantiate codecs or sources.
 - Backend fallback is explicit. The registry, platform adapters, and vendor workers do not silently
@@ -582,9 +600,10 @@ Partial modules contain these explicit placeholder areas:
 - `superi-concurrency`: GPU submission coordination module and all production engine composition.
 - `superi-engine`: ten orchestration modules covering A/V sync, errors, export, lifecycle, nodes,
   playback, plugins, render, resources, and validation.
-- `superi-graph`: instance-to-schema port binding, stored edge cardinality validation, mutation,
-  evaluation, ROI execution, expressions, serialization, and headless rendering beyond its
-  implemented identifier, node-schema, typed DAG storage, and pure typed-port validation surfaces.
+- `superi-graph`: evaluation, invalidation, ROI execution, expressions, serialization, undo
+  ownership, engine coordination, and headless rendering beyond its implemented identifier,
+  node-schema, typed DAG storage and validation, schema-bound instances, immutable snapshots, and
+  atomic editable transaction surfaces.
 
 Substantive modules also have intentionally incomplete boundaries. Media I/O has no muxer or
 production registry owner for its source backends. GPU has no cross-adapter transfer or external
@@ -621,8 +640,9 @@ For common concerns, begin at these owners:
 - Color interpretation and transforms: `superi-color`.
 - GPU resources, residency, conversion, submission, and recovery: `superi-gpu`.
 - Jobs, domains, clocks, handoffs, lifecycle, and liveness: `superi-concurrency`.
-- Graph-facing identifiers, node schemas, deterministic DAG state, and typed binding validation:
-  `superi-graph`, with value identity owned by `superi-core`.
+- Graph-facing identifiers, node schemas, deterministic DAG state, typed binding validation,
+  schema-bound instances, and editable transactions: `superi-graph`, with value identity owned by
+  `superi-core`.
 - Current assembly and public capability flow: `superi-engine` then `superi-api`.
 - Product law, open and closed boundaries, CI, fixtures, and maintenance workflow: `workspace`.
 - Canonical first editorial slice, typed scenario state, replacement stages, and proof: `workspace`.

@@ -2,8 +2,8 @@
 module_id: superi-graph
 source_paths:
   - open/crates/superi-graph
-source_hash: eb39d4dc25f901aa823f2cb96c4e609d5d2261d827477b0a7d6d7f7bbb0a3b47
-source_files: 16
+source_hash: c480c21200a39a7bfb4c0a3d7e5973531c60c959547d27e8cbfc147995a1f45a
+source_files: 17
 mapped_at_commit: working-tree
 ---
 
@@ -14,27 +14,28 @@ versioned node schemas, deterministic DAG storage, typed connections, lazy evalu
 serialization, ROI propagation, expressions, and deterministic headless execution. Official
 instance identifiers, node registration, schema discovery, graph membership, typed port endpoints,
 cycle prevention, stable inspection, topological ordering, typed input and output binding
-validation, and schema-level connection compatibility are implemented.
+validation, schema-level connection compatibility, editable node instances, runtime parameter
+state, and atomic revisioned mutation transactions are implemented.
 
 The crate does not own identifier value representation. `superi-core` remains the single identity
 owner, while graph state owns payload and connection membership. Schema type identities and
 schema-local names are definition metadata, separate from the core object identifiers that address
 editable graph instances.
 
-Mutation transactions, evaluation, ROI execution, expressions, serialization, and headless
-rendering remain placeholders. The implemented storage, schema, and validation surfaces must not be
-interpreted as a working render path.
+Evaluation, ROI execution, expressions, serialization, and headless rendering remain placeholders.
+The implemented storage, schema, validation, and mutation surfaces must not be interpreted as a
+working render path.
 
 ## Source inventory
 
-The module owns 16 text files:
+The module owns 17 text files:
 
 - `open/crates/superi-graph/Cargo.toml`: Declares dependencies on `superi-core`, `superi-gpu`,
   `superi-image`, and `superi-concurrency`.
 - `open/crates/superi-graph/src/dag.rs`: Owns `GraphEndpoint`, `GraphEdge`, and generic
   `DirectedAcyclicGraph<N>` storage. Ordered primary and adjacency collections support checked node
-  and edge insertion and removal, stable inspection, deterministic topological order, and atomic
-  cycle prevention.
+  and edge insertion and removal, stable immutable inspection, narrow payload mutation,
+  deterministic topological order, and atomic cycle prevention.
 - `open/crates/superi-graph/src/eval.rs`: Placeholder for lazy per-frame and per-region evaluation.
 - `open/crates/superi-graph/src/expr.rs`: Placeholder for expressions and parameter links.
 - `open/crates/superi-graph/src/headless.rs`: Placeholder for deterministic CLI and CI evaluation
@@ -42,9 +43,10 @@ The module owns 16 text files:
 - `open/crates/superi-graph/src/ids.rs`: Re-exports the six official graph-facing core identifier
   types and documents graph ownership of future allocation and derivation policy.
 - `open/crates/superi-graph/src/lib.rs`: Documents the partial implementation and exports the
-  identifier, node-schema, DAG, and validation surfaces beside the remaining module tree.
-- `open/crates/superi-graph/src/mutate.rs`: Placeholder for mutations compiled from timeline and UI
-  operations.
+  identifier, node-schema, DAG, validation, and mutation surfaces beside the remaining module tree.
+- `open/crates/superi-graph/src/mutate.rs`: Implements complete schema-bound editable node
+  instances, opaque typed parameters, immutable graph snapshots, optimistic revisions, and ordered
+  atomic add, remove, connect, disconnect, reorder, and parameter transactions.
 - `open/crates/superi-graph/src/node.rs`: Implements typed versioned schemas, complete node behavior
   declarations, atomic registration, and immutable deterministic discovery snapshots.
 - `open/crates/superi-graph/src/roi.rs`: Placeholder for region-of-interest and dirty-region
@@ -59,6 +61,9 @@ The module owns 16 text files:
   consistent removal.
 - `open/crates/superi-graph/tests/identifier_contract.rs`: Proves the public six-type identifier
   surface, domain distinction, canonical text round trips, and exact type identity with core.
+- `open/crates/superi-graph/tests/mutation_contract.rs`: Proves all six mutation forms, exact
+  instance binding, typed parameters and connections, input cardinality, immutable snapshots,
+  deterministic state, revision conflicts, explicit removal, cycle safety, and full rollback.
 - `open/crates/superi-graph/tests/node_registry_contract.rs`: Exercises the public node-schema and
   registry contract, including reader parity and failure atomicity.
 - `open/crates/superi-graph/tests/port_validation_contract.rs`: Exercises successful binding
@@ -95,9 +100,9 @@ official graph identity with caller-owned node payloads, typed edges, ordered in
 edge indexes, checked insertion and removal, direct lookup, stable whole-state inspection, and
 deterministic topological ordering.
 
-The generic payload type deliberately leaves node instance representation to the later mutation and
-serialization contracts. A caller can store a schema identity, an immutable schema reference, or a
-richer editable node record without coupling the topology algorithm to a catalog.
+The generic payload type keeps topology independent of node representation. The mutation owner now
+stores its complete `EditableNode<T>` payload through this interface, while other callers may still
+use a schema identity or a separate payload without coupling the DAG algorithm to a catalog.
 
 `superi_graph::validation` exposes the node-neutral runtime boundary:
 
@@ -113,8 +118,29 @@ richer editable node record without coupling the topology algorithm to a catalog
   `ValueTypeId` equality. DAG storage remains responsible for instance endpoints, connection
   counts, edge ordering, and cycle prevention.
 
-The crate also exports placeholder `eval`, `expr`, `headless`, `mutate`, `roi`, and `serialize`
-modules. They expose no evaluator, transaction, expression, ROI, serialization, or headless API.
+`superi_graph::mutate` exposes the editable state boundary:
+
+- `InstancePort` binds one stable `PortId` to one exact input or output `PortName`.
+  `EditableParameter<T>` binds `ParameterId` and `ParameterName` to one
+  `TypedParameterValue<T>`. `EditableNode<T>` requires a complete one-to-one binding against an
+  immutable `NodeSchema` and rejects unknown, missing, duplicate, cross-direction, or mistyped
+  state before graph insertion.
+- `GraphMutation<T>` represents add, remove, connect, disconnect, presentation reorder, and typed
+  parameter replacement. `GraphTransaction<T>` retains ordered mutations and the exact revision
+  they expect.
+- `EditableGraph<T>` applies nonempty transactions to a cloned candidate, publishes one new
+  revision only after every mutation succeeds, and rejects stale revisions. Empty current-revision
+  transactions are idempotent.
+- `GraphSnapshot<T>` shares one immutable `Arc` state containing the checked DAG and explicit node
+  presentation order. Processing order remains the DAG's deterministic topological order.
+- Connect resolves stored instance ports to schema names, reuses `validate_connection`, enforces
+  target `Single` and `Optional` cardinality, and then enters the checked DAG boundary. Remove stays
+  explicit: incident edges must be disconnected earlier in the same transaction or a prior one.
+- Mutation failures preserve their original shared error classification and add stable graph,
+  expected revision, mutation index, and mutation code context.
+
+The crate also exports placeholder `eval`, `expr`, `headless`, `roi`, and `serialize` modules. They
+expose no evaluator, expression, ROI execution, serialization, or headless render API.
 
 ## Architecture and data flow
 
@@ -164,14 +190,32 @@ The typed validation flow is:
 4. Editor, script, preview, and headless callers can use the same `Send + Sync` value contract and
    observe identical results and diagnostics without a second validation model.
 5. Graph construction can call the schema-level connection check before storing an edge. Instance
-   existence, edge cardinality, cycle prevention, invalidation, and scheduling remain with the DAG
-   and future evaluator owners.
+   existence, edge cardinality, and cycle prevention now belong to the mutation and DAG owners;
+   invalidation and scheduling remain with future evaluator checkpoints.
 
-The DAG, registry, and validator are adjacent independent contracts. Storage retains typed `PortId`
-endpoints and arbitrary node payloads, while schema compatibility uses `PortName` and exact
-`ValueTypeId` metadata. No public instance model yet binds a stored `PortId` endpoint to a named
-schema port, so the storage insertion boundary cannot call schema validation without inventing that
-future ownership contract.
+The mutation transaction flow is:
+
+1. A caller constructs each `EditableNode<T>` against one immutable exact schema. Complete ordered
+   maps bind instance port and parameter IDs to schema-local names, and initial parameters retain
+   opaque payloads behind exact `ValueTypeId` tags.
+2. The caller captures the latest immutable graph snapshot and sends one ordered transaction with
+   that expected revision. Add and reorder use explicit presentation positions; processing order
+   continues to come from topology.
+3. `EditableGraph::apply` rejects a stale revision, checks revision capacity, and clones the shared
+   state into a private candidate. Every mutation then sees prior mutations from the same batch.
+4. Connect resolves source and target instance ports, calls the pure schema validator, checks the
+   candidate target connection count, and calls checked DAG insertion. Parameter replacement uses a
+   narrow mutable payload lookup on the candidate DAG and rechecks its schema type.
+5. Any failure adds the ordered mutation index and code, then discards the candidate. A successful
+   nonempty batch publishes one new `Arc` state and advances exactly one revision, while every older
+   snapshot keeps its exact state.
+6. Editor, script, and headless callers clone the same `GraphSnapshot<T>` and observe identical
+   typed nodes, parameters, edges, visual order, and topological order without a second model.
+
+The mutation layer is the integration contract across the independent DAG, registry, and validator.
+It binds stored `PortId` endpoints to `PortName`, exact schemas, and `ValueTypeId` compatibility
+without adding catalog knowledge to the topology algorithm. Evaluation, invalidation, persistence,
+undo history, and engine transaction coordination remain separate later owners.
 
 The disclosed canonical reference graph in `superi-engine` uses core `NodeId` but is not a consumer
 of this store and retains string ports and edges. It remains reference behavior, not production
@@ -185,8 +229,9 @@ graph evaluation or runtime integration.
   are not imported by current graph source.
 - Direct manifest consumers are `superi-ai`, `superi-cache`, `superi-color`, `superi-effects`,
   `superi-timeline`, `superi-project`, and `superi-engine`.
-- None of those consumers currently imports a `superi_graph` Rust item. The four public integration
-  test targets are the real consumers of identifier, schema-discovery, DAG, and validation APIs.
+- None of those consumers currently imports a `superi_graph` Rust item. The five public integration
+  test targets are the real consumers of identifier, schema-discovery, DAG, validation, and
+  mutation APIs.
 
 ## Invariants and operational boundaries
 
@@ -195,8 +240,8 @@ graph evaluation or runtime integration.
 - Identifier values are opaque. Callers own allocation, deterministic derivation, uniqueness scope,
   and any meaning assigned to zero; each graph enforces node and edge uniqueness within itself.
 - Graph remains below color, effects, timeline, cache, AI, project, and engine catalogs. The neutral
-  identifier, schema, DAG, and validation APIs import no domain catalog and introduce no new
-  dependency edge.
+  identifier, schema, DAG, validation, and mutation APIs import no domain catalog and introduce no
+  new dependency edge.
 - Node type and value type definition identities are strict namespaced values. Port and parameter
   schema names are distinct types and are never normalized. Exact schema identity includes full
   SemVer build metadata.
@@ -213,11 +258,21 @@ graph evaluation or runtime integration.
   destination already reaches its source, and performs all fallible checks before mutation.
 - Node and edge maps plus adjacency sets are `BTreeMap` and `BTreeSet` values. Stable topological
   order uses the smallest ready node identity as its tie break.
-- Port identity is retained by storage, but its mapping to schema-local names is not yet represented.
-  Schema-level direction and exact type compatibility are implemented independently and await the
-  instance binding contract.
-- Connected nodes cannot be removed implicitly. Explicit edge removal prevents hidden graph edits
-  before transaction and undo ownership exists.
+- Every editable node binds all schema inputs, outputs, and parameters exactly once. Input and output
+  IDs cannot overlap within one node, and every initial or replacement parameter retains the exact
+  declared `ValueTypeId` without exposing its payload representation.
+- Stored connections resolve source outputs and target inputs through those exact bindings. Single
+  and optional inputs accept at most one stored edge; variadic inputs retain stable edge identity
+  order through the DAG adjacency set.
+- Connected nodes cannot be removed implicitly. A transaction must disconnect incident edges before
+  remove, which keeps the full ordered edit explicit without claiming undo ownership.
+- Every transaction compares one expected graph revision. Empty current-revision batches are
+  idempotent, successful nonempty batches advance once, stale or exhausted revisions publish
+  nothing, and any mutation failure discards all earlier candidate edits.
+- Presentation order is explicit and independent of deterministic topological processing order.
+  Equivalent explicit transactions produce equal snapshots regardless of insertion history.
+- Graph snapshots are immutable `Arc` views. A later transaction cannot change a prior reader's
+  nodes, parameters, edges, presentation order, topology, or revision.
 - Input validation never merges duplicate binding groups. Each declared port appears exactly once
   after validation, variadic value order is preserved, and absent optional or variadic ports do not
   become evaluator work.
@@ -225,12 +280,12 @@ graph evaluation or runtime integration.
   failures so invalid values cannot enter caches or downstream nodes.
 - Graph-level type validation compares exact `ValueTypeId` values and never inspects, coerces, or
   copies the opaque payload. The evaluator value owner remains responsible for truthful type tags.
-- The crate has no persistence format, revision model, locking model, scheduler connection,
-  evaluator, GPU resource ownership, plugin loading, or runtime parameter state yet.
+- The crate has no persistence format, locking owner, scheduler connection, evaluator, GPU resource
+  ownership, plugin loading, undo history, or engine transaction coordinator yet.
 
 ## Tests and verification
 
-The graph crate owns 16 integration tests across four files. The two identifier tests prove all six
+The graph crate owns 22 integration tests across five files. The two identifier tests prove all six
 public domains are distinct, each canonical text value parses back exactly, and every graph export
 has the same Rust `TypeId` as its official core owner.
 
@@ -251,7 +306,13 @@ cardinality, and type error diagnostics, caller-correctable input classification
 implementation-output classification, exact connection type compatibility, `Send + Sync` validated
 snapshots, and identical editor-script-headless results.
 
-Focused verification runs all four integration targets through the crate's public API. Crate-wide
+Six mutation tests prove complete schema instance bindings, all six ordered operations, typed
+parameters and connections, target cardinality, explicit disconnect plus remove, presentation and
+topological order separation, stale revision handling, immutable old snapshots, identical editor,
+script, and headless sharing, equivalent deterministic state, cycle safety, and full rollback after
+failures in the middle of a candidate batch.
+
+Focused verification runs all five integration targets through the crate's public API. Crate-wide
 tests, strict Clippy, and rustdoc cover the library and integration targets. The complete workspace
 suite exercises downstream compatibility. The repository map validator checks the source inventory
 and hash, while dependency and boundary tools enforce the one-way open architecture. No test
@@ -260,37 +321,41 @@ exercises graph evaluation because that behavior does not exist.
 ## Current status and risks
 
 Official graph-facing identifiers, node registration, schema discovery, deterministic DAG storage,
-typed binding validation, and schema-level output-to-input compatibility are implemented and
-test-backed. Registered definitions can be selected and topology can be edited and inspected, but
-no public instance model currently binds a schema or named schema port to graph payloads and typed
-`PortId` endpoints. The crate cannot serialize, evaluate, cache, or render its state, and no
-downstream production catalog registers a schema or consumes the DAG.
+typed binding validation, schema-level output-to-input compatibility, complete schema-bound node
+instances, editable parameters, immutable snapshots, and revisioned atomic mutation transactions
+are implemented and test-backed. Registered definitions can be instantiated, topology and visual
+order can be edited, and exact state can be shared across reader roles. The crate cannot serialize,
+evaluate, invalidate, cache, or render that state, and no downstream production catalog registers a
+schema or consumes the mutation owner.
 
 The latest-version rule deterministically selects the lexically highest build-metadata variant when
 SemVer precedence ties. Consumers that require one deployment-specific build must request its exact
 `NodeSchemaId` rather than treating build metadata as environment selection.
 
 Linear reachability and topological ordering are chosen for auditable correctness and may need
-measured optimization for very large interactive graphs. Subsequent checkpoints must extend the
-single checked storage boundary, neutral registry, and pure validator rather than creating
-competing topology, identity, schema, or validation systems.
+measured optimization for very large interactive graphs. Transactions currently clone the editable
+state before applying a batch, which favors atomic auditability over large-graph edit throughput and
+must be benchmarked before replacement. Subsequent checkpoints must extend the single checked
+storage and mutation boundary, neutral registry, and pure validator rather than creating competing
+topology, identity, schema, validation, or revision systems.
 
 Other integration risks are attaching nondeterministic allocation policy to value types, claiming a
-type tag proves its concrete payload representation, or treating validated bindings and registered
-metadata as sufficient evaluation proof.
+type tag proves its concrete payload representation, treating mutable editor order as evaluation
+order, or treating validated editable state as sufficient evaluation proof.
 
 ## Maintenance notes
 
-Preserve the single checked mutation boundary for node and edge membership. New validation must run
-before collection changes or provide an explicit transaction rollback proof. Keep schema and catalog
-knowledge out of the DAG algorithm, retain deterministic collection and tie-break behavior, and
-benchmark before replacing the linear reachability check.
+Preserve the transaction as the public editable-state boundary and the DAG as its checked topology
+owner. New validation must run on the private candidate before publication, every error must retain
+its ordered mutation context, and failed batches must leave both state and revision unchanged. Keep
+schema and catalog knowledge out of the DAG algorithm, retain deterministic collections and tie
+breaks, and benchmark before replacing reachability checks or full-state candidate cloning.
 
 Keep schema identity separate from graph-instance identifiers and runtime state. New object ID
 domains must be added through core and proved at both the core wire boundary and graph-facing
 surface. Extend schema types only when a later checkpoint has a real consumer and proof; do not
 attach evaluator factories or domain catalog behavior to the neutral registry by convenience.
 
-Update this map when the instance-to-schema port binding, edge-cardinality validation, mutation,
-evaluation, ROI, serialization, missing-node handling, or a downstream catalog becomes real.
-Recheck direct consumer maps whenever they begin importing any public graph contract.
+Update this map when evaluation, invalidation, ROI, serialization, expressions, missing-node
+handling, undo ownership, engine coordination, or a downstream catalog becomes real. Recheck direct
+consumer maps whenever they begin importing any public graph contract.
