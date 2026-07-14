@@ -34,6 +34,16 @@ pub enum IdentifierKind {
     Track,
     /// An editorial clip.
     Clip,
+    /// An editable timeline or nested sequence.
+    Timeline,
+    /// An explicit empty interval in a track.
+    Gap,
+    /// An editable transition between adjacent track items.
+    Transition,
+    /// An editable generated-media item.
+    Generator,
+    /// An editable timed caption item.
+    Caption,
     /// A processing graph node.
     Node,
     /// An editable node or operation parameter.
@@ -61,6 +71,11 @@ impl IdentifierKind {
         Self::Media,
         Self::Track,
         Self::Clip,
+        Self::Timeline,
+        Self::Gap,
+        Self::Transition,
+        Self::Generator,
+        Self::Caption,
         Self::Node,
         Self::Parameter,
         Self::Job,
@@ -80,6 +95,11 @@ impl IdentifierKind {
             Self::Media => "media",
             Self::Track => "track",
             Self::Clip => "clip",
+            Self::Timeline => "timeline",
+            Self::Gap => "gap",
+            Self::Transition => "transition",
+            Self::Generator => "generator",
+            Self::Caption => "caption",
             Self::Node => "node",
             Self::Parameter => "parameter",
             Self::Job => "job",
@@ -100,6 +120,11 @@ impl IdentifierKind {
             "media" => Some(Self::Media),
             "track" => Some(Self::Track),
             "clip" => Some(Self::Clip),
+            "timeline" => Some(Self::Timeline),
+            "gap" => Some(Self::Gap),
+            "transition" => Some(Self::Transition),
+            "generator" => Some(Self::Generator),
+            "caption" => Some(Self::Caption),
             "node" => Some(Self::Node),
             "parameter" => Some(Self::Parameter),
             "job" => Some(Self::Job),
@@ -323,6 +348,27 @@ define_identifier!(
     "A strongly typed editorial track identifier."
 );
 define_identifier!(ClipId, Clip, "A strongly typed editorial clip identifier.");
+define_identifier!(
+    TimelineId,
+    Timeline,
+    "A strongly typed timeline identifier."
+);
+define_identifier!(GapId, Gap, "A strongly typed timeline gap identifier.");
+define_identifier!(
+    TransitionId,
+    Transition,
+    "A strongly typed timeline transition identifier."
+);
+define_identifier!(
+    GeneratorId,
+    Generator,
+    "A strongly typed timeline generator identifier."
+);
+define_identifier!(
+    CaptionId,
+    Caption,
+    "A strongly typed timeline caption identifier."
+);
 define_identifier!(NodeId, Node, "A strongly typed processing node identifier.");
 define_identifier!(
     ParameterId,

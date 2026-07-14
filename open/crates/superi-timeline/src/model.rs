@@ -5,8 +5,12 @@
 //! objects. The semantic values here are designed to be embedded by those
 //! objects without creating another identity or time model.
 
+use std::collections::{BTreeMap, BTreeSet};
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
-use superi_core::ids::{ClipId, TrackId};
+
+use superi_core::ids::{
+    CaptionId, ClipId, GapId, GeneratorId, MediaId, ProjectId, TimelineId, TrackId, TransitionId,
+};
 use superi_core::pixel::{ChannelLayout, ChannelPosition};
 use superi_core::time::{
     Duration, FrameRate, RationalTime, SampleTime, TimeRange, TimeRounding, Timebase,
@@ -980,4 +984,1347 @@ fn invalid_model(operation: &'static str, message: &'static str) -> Error {
         message,
     )
     .with_context(ErrorContext::new("superi-timeline.model", operation))
+}
+
+/// The stable identity of any item that can appear in an editorial track.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[non_exhaustive]
+pub enum EditorialObjectId {
+    /// A source-bearing clip.
+    Clip(ClipId),
+    /// An explicit empty interval.
+    Gap(GapId),
+    /// A transition between adjacent items.
+    Transition(TransitionId),
+    /// A generated-media item.
+    Generator(GeneratorId),
+    /// A timed caption item.
+    Caption(CaptionId),
+}
+
+impl std::fmt::Display for EditorialObjectId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Clip(id) => id.fmt(formatter),
+            Self::Gap(id) => id.fmt(formatter),
+            Self::Transition(id) => id.fmt(formatter),
+            Self::Generator(id) => id.fmt(formatter),
+            Self::Caption(id) => id.fmt(formatter),
+        }
+    }
+}
+
+/// A media resource linked into an editorial project.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LinkedMediaReference {
+    id: MediaId,
+    name: String,
+    target: String,
+    available_range: Option<TimeRange>,
+}
+
+impl LinkedMediaReference {
+    /// Creates a linked media reference.
+    pub fn new(
+        id: MediaId,
+        name: impl Into<String>,
+        target: impl Into<String>,
+        available_range: Option<TimeRange>,
+    ) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            target: target.into(),
+            available_range,
+        }
+    }
+
+    /// Returns the stable media identity.
+    #[must_use]
+    pub const fn id(&self) -> MediaId {
+        self.id
+    }
+
+    /// Returns the editor-facing media name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the opaque media locator retained by the project.
+    #[must_use]
+    pub fn target(&self) -> &str {
+        &self.target
+    }
+
+    /// Returns the known source availability, when discovery supplied one.
+    #[must_use]
+    pub const fn available_range(&self) -> Option<TimeRange> {
+        self.available_range
+    }
+
+    /// Replaces the editor-facing name inside an unpublished draft.
+    pub fn set_name(&mut self, name: impl Into<String>) {
+        self.name = name.into();
+    }
+
+    /// Replaces the media locator inside an unpublished draft.
+    pub fn set_target(&mut self, target: impl Into<String>) {
+        self.target = target.into();
+    }
+
+    /// Replaces the known available range inside an unpublished draft.
+    pub fn set_available_range(&mut self, available_range: Option<TimeRange>) {
+        self.available_range = available_range;
+    }
+}
+
+/// The source relationship retained by a clip.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum ClipSource {
+    /// Source media linked by the project.
+    Media(MediaId),
+    /// A nested editable timeline in the same project.
+    Timeline(TimelineId),
+}
+
+/// A source-bearing clip instance with explicit source and record mappings.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Clip {
+    id: ClipId,
+    name: String,
+    source: ClipSource,
+    source_range: TimeRange,
+    record_range: TimeRange,
+}
+
+impl Clip {
+    /// Creates a clip instance.
+    pub fn new(
+        id: ClipId,
+        name: impl Into<String>,
+        source: ClipSource,
+        source_range: TimeRange,
+        record_range: TimeRange,
+    ) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            source,
+            source_range,
+            record_range,
+        }
+    }
+
+    /// Returns the clip identity.
+    #[must_use]
+    pub const fn id(&self) -> ClipId {
+        self.id
+    }
+
+    /// Returns the editor-facing name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the media or nested-timeline relationship.
+    #[must_use]
+    pub const fn source(&self) -> ClipSource {
+        self.source
+    }
+
+    /// Returns the selected interval in source coordinates.
+    #[must_use]
+    pub const fn source_range(&self) -> TimeRange {
+        self.source_range
+    }
+
+    /// Returns the placement interval in timeline coordinates.
+    #[must_use]
+    pub const fn record_range(&self) -> TimeRange {
+        self.record_range
+    }
+
+    /// Replaces the source relationship inside an unpublished draft.
+    pub fn set_source(&mut self, source: ClipSource) {
+        self.source = source;
+    }
+
+    /// Replaces the editor-facing name inside an unpublished draft.
+    pub fn set_name(&mut self, name: impl Into<String>) {
+        self.name = name.into();
+    }
+
+    /// Replaces the selected source interval inside an unpublished draft.
+    pub fn set_source_range(&mut self, source_range: TimeRange) {
+        self.source_range = source_range;
+    }
+
+    /// Replaces the timeline placement inside an unpublished draft.
+    pub fn set_record_range(&mut self, record_range: TimeRange) {
+        self.record_range = record_range;
+    }
+}
+
+/// An explicit empty interval on a track.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Gap {
+    id: GapId,
+    name: String,
+    record_range: TimeRange,
+}
+
+impl Gap {
+    /// Creates an explicit track gap.
+    pub fn new(id: GapId, name: impl Into<String>, record_range: TimeRange) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            record_range,
+        }
+    }
+
+    /// Returns the gap identity.
+    #[must_use]
+    pub const fn id(&self) -> GapId {
+        self.id
+    }
+
+    /// Returns the editor-facing name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the empty interval in timeline coordinates.
+    #[must_use]
+    pub const fn record_range(&self) -> TimeRange {
+        self.record_range
+    }
+
+    /// Replaces the gap placement inside an unpublished draft.
+    pub fn set_record_range(&mut self, record_range: TimeRange) {
+        self.record_range = record_range;
+    }
+
+    /// Replaces the editor-facing name inside an unpublished draft.
+    pub fn set_name(&mut self, name: impl Into<String>) {
+        self.name = name.into();
+    }
+}
+
+/// An editable generated-media item.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Generator {
+    id: GeneratorId,
+    name: String,
+    kind: String,
+    parameters: BTreeMap<String, String>,
+    record_range: TimeRange,
+}
+
+impl Generator {
+    /// Creates a generated-media item with deterministically ordered parameters.
+    pub fn new(
+        id: GeneratorId,
+        name: impl Into<String>,
+        kind: impl Into<String>,
+        parameters: BTreeMap<String, String>,
+        record_range: TimeRange,
+    ) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            kind: kind.into(),
+            parameters,
+            record_range,
+        }
+    }
+
+    /// Returns the generator identity.
+    #[must_use]
+    pub const fn id(&self) -> GeneratorId {
+        self.id
+    }
+
+    /// Returns the editor-facing name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the stable generator kind.
+    #[must_use]
+    pub fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    /// Returns parameters in deterministic key order.
+    #[must_use]
+    pub const fn parameters(&self) -> &BTreeMap<String, String> {
+        &self.parameters
+    }
+
+    /// Returns the generator placement in timeline coordinates.
+    #[must_use]
+    pub const fn record_range(&self) -> TimeRange {
+        self.record_range
+    }
+
+    /// Replaces one parameter inside an unpublished draft.
+    pub fn set_parameter(&mut self, key: impl Into<String>, value: impl Into<String>) {
+        self.parameters.insert(key.into(), value.into());
+    }
+
+    /// Replaces the editor-facing name inside an unpublished draft.
+    pub fn set_name(&mut self, name: impl Into<String>) {
+        self.name = name.into();
+    }
+
+    /// Replaces the stable generator kind inside an unpublished draft.
+    pub fn set_kind(&mut self, kind: impl Into<String>) {
+        self.kind = kind.into();
+    }
+
+    /// Replaces the generator placement inside an unpublished draft.
+    pub fn set_record_range(&mut self, record_range: TimeRange) {
+        self.record_range = record_range;
+    }
+}
+
+/// An editable timed caption.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Caption {
+    id: CaptionId,
+    name: String,
+    text: String,
+    language: Option<String>,
+    record_range: TimeRange,
+}
+
+impl Caption {
+    /// Creates a caption item.
+    pub fn new(
+        id: CaptionId,
+        name: impl Into<String>,
+        text: impl Into<String>,
+        language: Option<String>,
+        record_range: TimeRange,
+    ) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            text: text.into(),
+            language,
+            record_range,
+        }
+    }
+
+    /// Returns the caption identity.
+    #[must_use]
+    pub const fn id(&self) -> CaptionId {
+        self.id
+    }
+
+    /// Returns the editor-facing name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the caption text.
+    #[must_use]
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// Returns the optional language tag.
+    #[must_use]
+    pub fn language(&self) -> Option<&str> {
+        self.language.as_deref()
+    }
+
+    /// Returns the caption placement in timeline coordinates.
+    #[must_use]
+    pub const fn record_range(&self) -> TimeRange {
+        self.record_range
+    }
+
+    /// Replaces the caption text inside an unpublished draft.
+    pub fn set_text(&mut self, text: impl Into<String>) {
+        self.text = text.into();
+    }
+
+    /// Replaces the editor-facing name inside an unpublished draft.
+    pub fn set_name(&mut self, name: impl Into<String>) {
+        self.name = name.into();
+    }
+
+    /// Replaces the optional language tag inside an unpublished draft.
+    pub fn set_language(&mut self, language: Option<String>) {
+        self.language = language;
+    }
+
+    /// Replaces the caption placement inside an unpublished draft.
+    pub fn set_record_range(&mut self, record_range: TimeRange) {
+        self.record_range = record_range;
+    }
+}
+
+/// A transition between two adjacent non-transition track items.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Transition {
+    id: TransitionId,
+    name: String,
+    from: EditorialObjectId,
+    to: EditorialObjectId,
+    from_offset: Duration,
+    to_offset: Duration,
+}
+
+impl Transition {
+    /// Creates a transition relationship.
+    pub fn new(
+        id: TransitionId,
+        name: impl Into<String>,
+        from: EditorialObjectId,
+        to: EditorialObjectId,
+        from_offset: Duration,
+        to_offset: Duration,
+    ) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            from,
+            to,
+            from_offset,
+            to_offset,
+        }
+    }
+
+    /// Returns the transition identity.
+    #[must_use]
+    pub const fn id(&self) -> TransitionId {
+        self.id
+    }
+
+    /// Returns the editor-facing name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the preceding endpoint.
+    #[must_use]
+    pub const fn from(&self) -> EditorialObjectId {
+        self.from
+    }
+
+    /// Returns the following endpoint.
+    #[must_use]
+    pub const fn to(&self) -> EditorialObjectId {
+        self.to
+    }
+
+    /// Returns the amount consumed from the preceding item.
+    #[must_use]
+    pub const fn from_offset(&self) -> Duration {
+        self.from_offset
+    }
+
+    /// Returns the amount consumed from the following item.
+    #[must_use]
+    pub const fn to_offset(&self) -> Duration {
+        self.to_offset
+    }
+
+    /// Replaces the editor-facing name inside an unpublished draft.
+    pub fn set_name(&mut self, name: impl Into<String>) {
+        self.name = name.into();
+    }
+
+    /// Replaces both adjacency endpoints inside an unpublished draft.
+    pub fn set_endpoints(&mut self, from: EditorialObjectId, to: EditorialObjectId) {
+        self.from = from;
+        self.to = to;
+    }
+
+    /// Replaces both overlap offsets inside an unpublished draft.
+    pub fn set_offsets(&mut self, from_offset: Duration, to_offset: Duration) {
+        self.from_offset = from_offset;
+        self.to_offset = to_offset;
+    }
+}
+
+/// One ordered item in an editorial track.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum TrackItem {
+    /// A source-bearing clip.
+    Clip(Clip),
+    /// An explicit gap.
+    Gap(Gap),
+    /// A transition between adjacent items.
+    Transition(Transition),
+    /// A generated-media item.
+    Generator(Generator),
+    /// A timed caption.
+    Caption(Caption),
+}
+
+impl TrackItem {
+    /// Returns the stable object identity.
+    #[must_use]
+    pub const fn id(&self) -> EditorialObjectId {
+        match self {
+            Self::Clip(value) => EditorialObjectId::Clip(value.id()),
+            Self::Gap(value) => EditorialObjectId::Gap(value.id()),
+            Self::Transition(value) => EditorialObjectId::Transition(value.id()),
+            Self::Generator(value) => EditorialObjectId::Generator(value.id()),
+            Self::Caption(value) => EditorialObjectId::Caption(value.id()),
+        }
+    }
+
+    /// Returns the record range, or `None` for a transition.
+    #[must_use]
+    pub const fn record_range(&self) -> Option<TimeRange> {
+        match self {
+            Self::Clip(value) => Some(value.record_range()),
+            Self::Gap(value) => Some(value.record_range()),
+            Self::Transition(_) => None,
+            Self::Generator(value) => Some(value.record_range()),
+            Self::Caption(value) => Some(value.record_range()),
+        }
+    }
+
+    /// Views this item as a clip.
+    #[must_use]
+    pub const fn as_clip(&self) -> Option<&Clip> {
+        match self {
+            Self::Clip(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    /// Mutably views this item as a clip inside an unpublished draft.
+    pub fn as_clip_mut(&mut self) -> Option<&mut Clip> {
+        match self {
+            Self::Clip(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    /// Views this item as a caption.
+    #[must_use]
+    pub const fn as_caption(&self) -> Option<&Caption> {
+        match self {
+            Self::Caption(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    /// Mutably views this item as a caption inside an unpublished draft.
+    pub fn as_caption_mut(&mut self) -> Option<&mut Caption> {
+        match self {
+            Self::Caption(value) => Some(value),
+            _ => None,
+        }
+    }
+}
+
+/// One ordered editorial track.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Track {
+    id: TrackId,
+    name: String,
+    semantics: TrackSemantics,
+    items: Vec<TrackItem>,
+}
+
+impl Track {
+    /// Creates a track with its explicit item order.
+    pub fn new(
+        id: TrackId,
+        name: impl Into<String>,
+        semantics: TrackSemantics,
+        items: Vec<TrackItem>,
+    ) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            semantics,
+            items,
+        }
+    }
+
+    /// Returns the track identity.
+    #[must_use]
+    pub const fn id(&self) -> TrackId {
+        self.id
+    }
+
+    /// Returns the editor-facing track name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the broad media role.
+    #[must_use]
+    pub const fn kind(&self) -> TrackKind {
+        self.semantics.kind()
+    }
+
+    /// Returns the complete editable track semantics.
+    #[must_use]
+    pub const fn semantics(&self) -> &TrackSemantics {
+        &self.semantics
+    }
+
+    /// Returns all items in editorial order.
+    #[must_use]
+    pub fn items(&self) -> &[TrackItem] {
+        &self.items
+    }
+
+    /// Looks up an item by its stable typed identity.
+    #[must_use]
+    pub fn item(&self, id: EditorialObjectId) -> Option<&TrackItem> {
+        self.items.iter().find(|item| item.id() == id)
+    }
+
+    /// Mutably looks up an item inside an unpublished draft.
+    pub fn item_mut(&mut self, id: EditorialObjectId) -> Result<&mut TrackItem> {
+        self.items
+            .iter_mut()
+            .find(|item| item.id() == id)
+            .ok_or_else(|| not_found("find_item", "editorial item was not found", "item", id))
+    }
+
+    /// Replaces the complete item order inside an unpublished draft.
+    pub fn replace_items(&mut self, items: Vec<TrackItem>) {
+        self.items = items;
+    }
+
+    /// Replaces the editor-facing track name inside an unpublished draft.
+    pub fn set_name(&mut self, name: impl Into<String>) {
+        self.name = name.into();
+    }
+
+    /// Replaces the complete track semantics inside an unpublished draft.
+    pub fn set_semantics(&mut self, semantics: TrackSemantics) {
+        self.semantics = semantics;
+    }
+
+    fn end_time(&self) -> Result<RationalTime> {
+        self.items
+            .iter()
+            .rev()
+            .find_map(TrackItem::record_range)
+            .map(TimeRange::end_exclusive)
+            .transpose()?
+            .map_or_else(|| Ok(RationalTime::zero(self.semantics.timebase())), Ok)
+    }
+}
+
+/// One editable sequence with an exact record clock.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Timeline {
+    id: TimelineId,
+    name: String,
+    edit_rate: Timebase,
+    global_start: RationalTime,
+    tracks: Vec<Track>,
+}
+
+impl Timeline {
+    /// Creates a timeline.
+    pub fn new(
+        id: TimelineId,
+        name: impl Into<String>,
+        edit_rate: Timebase,
+        global_start: RationalTime,
+        tracks: Vec<Track>,
+    ) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            edit_rate,
+            global_start,
+            tracks,
+        }
+    }
+
+    /// Returns the timeline identity.
+    #[must_use]
+    pub const fn id(&self) -> TimelineId {
+        self.id
+    }
+
+    /// Returns the editor-facing timeline name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the exact record clock.
+    #[must_use]
+    pub const fn edit_rate(&self) -> Timebase {
+        self.edit_rate
+    }
+
+    /// Returns the external start coordinate.
+    #[must_use]
+    pub const fn global_start(&self) -> RationalTime {
+        self.global_start
+    }
+
+    /// Returns tracks in bottom-to-top project order.
+    #[must_use]
+    pub fn tracks(&self) -> &[Track] {
+        &self.tracks
+    }
+
+    /// Looks up a track by stable identity.
+    #[must_use]
+    pub fn track(&self, id: TrackId) -> Option<&Track> {
+        self.tracks.iter().find(|track| track.id() == id)
+    }
+
+    /// Mutably looks up a track inside an unpublished draft.
+    pub fn track_mut(&mut self, id: TrackId) -> Result<&mut Track> {
+        self.tracks
+            .iter_mut()
+            .find(|track| track.id() == id)
+            .ok_or_else(|| not_found("find_track", "editorial track was not found", "track", id))
+    }
+
+    /// Replaces the editor-facing timeline name inside an unpublished draft.
+    pub fn set_name(&mut self, name: impl Into<String>) {
+        self.name = name.into();
+    }
+
+    /// Replaces the external start coordinate inside an unpublished draft.
+    pub fn set_global_start(&mut self, global_start: RationalTime) {
+        self.global_start = global_start;
+    }
+
+    /// Replaces the complete bottom-to-top track order inside an unpublished draft.
+    pub fn replace_tracks(&mut self, tracks: Vec<Track>) {
+        self.tracks = tracks;
+    }
+
+    /// Returns the longest track duration.
+    pub fn duration(&self) -> Result<Duration> {
+        let longest = self
+            .tracks
+            .iter()
+            .map(Track::end_time)
+            .try_fold(RationalTime::zero(self.edit_rate), |longest, end| {
+                end.map(|end| if end > longest { end } else { longest })
+            })?;
+        let longest = longest.checked_rescale(self.edit_rate, TimeRounding::Exact)?;
+        let value = u64::try_from(longest.value()).map_err(|_| {
+            invalid(
+                "timeline_duration",
+                "timeline duration must not end before timeline zero",
+            )
+        })?;
+        Duration::new(value, self.edit_rate)
+    }
+}
+
+/// A complete validated editorial snapshot.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EditorialProject {
+    id: ProjectId,
+    name: String,
+    revision: u64,
+    media_references: BTreeMap<MediaId, LinkedMediaReference>,
+    timelines: BTreeMap<TimelineId, Timeline>,
+}
+
+impl EditorialProject {
+    /// Creates and validates an initial revision-zero editorial project.
+    pub fn new<M, T>(
+        id: ProjectId,
+        name: impl Into<String>,
+        media_references: M,
+        timelines: T,
+    ) -> Result<Self>
+    where
+        M: IntoIterator<Item = LinkedMediaReference>,
+        T: IntoIterator<Item = Timeline>,
+    {
+        let mut media_by_id = BTreeMap::new();
+        for media in media_references {
+            let media_id = media.id();
+            if media_by_id.insert(media_id, media).is_some() {
+                return Err(conflict(
+                    "create_project",
+                    "duplicate linked media identity",
+                    "media",
+                    media_id,
+                ));
+            }
+        }
+        let mut timelines_by_id = BTreeMap::new();
+        for timeline in timelines {
+            let timeline_id = timeline.id();
+            if timelines_by_id.insert(timeline_id, timeline).is_some() {
+                return Err(conflict(
+                    "create_project",
+                    "duplicate timeline identity",
+                    "timeline",
+                    timeline_id,
+                ));
+            }
+        }
+        let project = Self {
+            id,
+            name: name.into(),
+            revision: 0,
+            media_references: media_by_id,
+            timelines: timelines_by_id,
+        };
+        project.validate()?;
+        Ok(project)
+    }
+
+    /// Returns the project identity.
+    #[must_use]
+    pub const fn id(&self) -> ProjectId {
+        self.id
+    }
+
+    /// Returns the editor-facing project name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the monotonic published revision.
+    #[must_use]
+    pub const fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    /// Looks up linked media by stable identity.
+    #[must_use]
+    pub fn media_reference(&self, id: MediaId) -> Option<&LinkedMediaReference> {
+        self.media_references.get(&id)
+    }
+
+    /// Iterates linked media in stable identity order.
+    pub fn media_references(&self) -> impl ExactSizeIterator<Item = &LinkedMediaReference> {
+        self.media_references.values()
+    }
+
+    /// Looks up a timeline by stable identity.
+    #[must_use]
+    pub fn timeline(&self, id: TimelineId) -> Option<&Timeline> {
+        self.timelines.get(&id)
+    }
+
+    /// Iterates timelines in stable identity order.
+    pub fn timelines(&self) -> impl ExactSizeIterator<Item = &Timeline> {
+        self.timelines.values()
+    }
+
+    /// Applies one atomic edit against an expected project revision.
+    ///
+    /// The closure mutates only a private clone. The complete candidate is
+    /// validated before publication, so an error leaves this snapshot unchanged.
+    pub fn edit<F>(&mut self, expected_revision: u64, edit: F) -> Result<()>
+    where
+        F: FnOnce(&mut ProjectDraft) -> Result<()>,
+    {
+        if expected_revision != self.revision {
+            return Err(conflict(
+                "begin_edit",
+                "editorial project revision is stale",
+                "expected_revision",
+                expected_revision,
+            )
+            .with_context(
+                ErrorContext::new("superi-timeline.model", "begin_edit")
+                    .with_field("actual_revision", self.revision.to_string()),
+            ));
+        }
+        let mut draft = ProjectDraft {
+            name: self.name.clone(),
+            media_references: self.media_references.clone(),
+            timelines: self.timelines.clone(),
+        };
+        edit(&mut draft)?;
+        let revision = self.revision.checked_add(1).ok_or_else(|| {
+            conflict(
+                "commit_edit",
+                "editorial project revision is exhausted",
+                "revision",
+                self.revision,
+            )
+        })?;
+        let candidate = Self {
+            id: self.id,
+            name: draft.name,
+            revision,
+            media_references: draft.media_references,
+            timelines: draft.timelines,
+        };
+        candidate.validate()?;
+        *self = candidate;
+        Ok(())
+    }
+
+    fn validate(&self) -> Result<()> {
+        require_text("validate_project", "project name", &self.name)?;
+        for media in self.media_references.values() {
+            require_text("validate_media", "media name", media.name())?;
+            require_text("validate_media", "media target", media.target())?;
+        }
+
+        let mut track_ids = BTreeSet::new();
+        let mut object_ids = BTreeSet::new();
+        for timeline in self.timelines.values() {
+            require_text("validate_timeline", "timeline name", timeline.name())?;
+            if timeline.global_start().timebase() != timeline.edit_rate() {
+                return Err(invalid(
+                    "validate_timeline",
+                    "timeline global start must use its edit rate",
+                ));
+            }
+            for track in timeline.tracks() {
+                if !track_ids.insert(track.id()) {
+                    return Err(conflict(
+                        "validate_timeline",
+                        "duplicate track identity",
+                        "track",
+                        track.id(),
+                    ));
+                }
+                validate_track(track, &mut object_ids)?;
+            }
+        }
+        self.validate_source_links()?;
+        self.validate_nesting_cycles()?;
+        self.validate_nested_ranges()?;
+        Ok(())
+    }
+
+    fn validate_source_links(&self) -> Result<()> {
+        for timeline in self.timelines.values() {
+            for track in timeline.tracks() {
+                for item in track.items() {
+                    let Some(clip) = item.as_clip() else {
+                        continue;
+                    };
+                    match clip.source() {
+                        ClipSource::Media(id) if !self.media_references.contains_key(&id) => {
+                            return Err(not_found(
+                                "validate_clip_source",
+                                "clip references missing linked media",
+                                "media",
+                                id,
+                            ));
+                        }
+                        ClipSource::Timeline(id) if !self.timelines.contains_key(&id) => {
+                            return Err(not_found(
+                                "validate_clip_source",
+                                "clip references missing nested timeline",
+                                "timeline",
+                                id,
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_nesting_cycles(&self) -> Result<()> {
+        let mut visiting = BTreeSet::new();
+        let mut visited = BTreeSet::new();
+        for id in self.timelines.keys().copied() {
+            self.visit_timeline(id, &mut visiting, &mut visited)?;
+        }
+        Ok(())
+    }
+
+    fn visit_timeline(
+        &self,
+        id: TimelineId,
+        visiting: &mut BTreeSet<TimelineId>,
+        visited: &mut BTreeSet<TimelineId>,
+    ) -> Result<()> {
+        if visited.contains(&id) {
+            return Ok(());
+        }
+        if !visiting.insert(id) {
+            return Err(conflict(
+                "validate_nesting",
+                "timeline nesting contains a cycle",
+                "timeline",
+                id,
+            ));
+        }
+        let timeline = self.timelines.get(&id).expect("source links validated");
+        for track in timeline.tracks() {
+            for item in track.items() {
+                if let Some(Clip {
+                    source: ClipSource::Timeline(child),
+                    ..
+                }) = item.as_clip()
+                {
+                    self.visit_timeline(*child, visiting, visited)?;
+                }
+            }
+        }
+        visiting.remove(&id);
+        visited.insert(id);
+        Ok(())
+    }
+
+    fn validate_nested_ranges(&self) -> Result<()> {
+        for timeline in self.timelines.values() {
+            for track in timeline.tracks() {
+                for item in track.items() {
+                    let Some(Clip {
+                        source: ClipSource::Timeline(source_timeline),
+                        source_range,
+                        ..
+                    }) = item.as_clip()
+                    else {
+                        continue;
+                    };
+                    let nested = self
+                        .timelines
+                        .get(source_timeline)
+                        .expect("source links validated");
+                    if source_range.timebase() != nested.edit_rate() {
+                        return Err(invalid(
+                            "validate_nested_range",
+                            "nested source range must use the nested timeline edit rate",
+                        ));
+                    }
+                    if source_range.start().is_negative() {
+                        return Err(invalid(
+                            "validate_nested_range",
+                            "nested source range must not start before timeline zero",
+                        ));
+                    }
+                    let end = source_range.end_exclusive()?;
+                    if end.value() > i64::try_from(nested.duration()?.value()).unwrap_or(i64::MAX) {
+                        return Err(invalid(
+                            "validate_nested_range",
+                            "nested source range exceeds the nested timeline duration",
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Mutable state exposed only while one project edit is unpublished.
+pub struct ProjectDraft {
+    name: String,
+    media_references: BTreeMap<MediaId, LinkedMediaReference>,
+    timelines: BTreeMap<TimelineId, Timeline>,
+}
+
+impl ProjectDraft {
+    /// Replaces the project name.
+    pub fn set_name(&mut self, name: impl Into<String>) {
+        self.name = name.into();
+    }
+
+    /// Mutably looks up linked media.
+    pub fn media_reference_mut(&mut self, id: MediaId) -> Result<&mut LinkedMediaReference> {
+        self.media_references.get_mut(&id).ok_or_else(|| {
+            not_found(
+                "find_media_reference",
+                "linked media was not found",
+                "media",
+                id,
+            )
+        })
+    }
+
+    /// Inserts or replaces linked media by stable identity.
+    pub fn upsert_media_reference(
+        &mut self,
+        media: LinkedMediaReference,
+    ) -> Option<LinkedMediaReference> {
+        self.media_references.insert(media.id(), media)
+    }
+
+    /// Removes linked media. Commit fails if a clip still references it.
+    pub fn remove_media_reference(&mut self, id: MediaId) -> Option<LinkedMediaReference> {
+        self.media_references.remove(&id)
+    }
+
+    /// Mutably looks up a timeline.
+    pub fn timeline_mut(&mut self, id: TimelineId) -> Result<&mut Timeline> {
+        self.timelines.get_mut(&id).ok_or_else(|| {
+            not_found(
+                "find_timeline",
+                "editorial timeline was not found",
+                "timeline",
+                id,
+            )
+        })
+    }
+
+    /// Inserts or replaces a timeline by stable identity.
+    pub fn upsert_timeline(&mut self, timeline: Timeline) -> Option<Timeline> {
+        self.timelines.insert(timeline.id(), timeline)
+    }
+
+    /// Removes a timeline. Commit fails if a nested clip still references it.
+    pub fn remove_timeline(&mut self, id: TimelineId) -> Option<Timeline> {
+        self.timelines.remove(&id)
+    }
+}
+
+fn validate_track(track: &Track, object_ids: &mut BTreeSet<EditorialObjectId>) -> Result<()> {
+    require_text("validate_track", "track name", track.name())?;
+    let edit_rate = track.semantics().timebase();
+    let mut prior_end = RationalTime::zero(edit_rate);
+    for (index, item) in track.items().iter().enumerate() {
+        if !object_ids.insert(item.id()) {
+            return Err(conflict(
+                "validate_track",
+                "duplicate editorial object identity",
+                "item",
+                item.id(),
+            ));
+        }
+        match item {
+            TrackItem::Transition(transition) => {
+                validate_transition(track, index, transition, edit_rate)?;
+            }
+            TrackItem::Clip(clip) => {
+                require_text("validate_clip", "clip name", clip.name())?;
+                validate_record_range(clip.record_range(), edit_rate, false)?;
+                if clip.source_range().duration().rational_time()
+                    != clip.record_range().duration().rational_time()
+                {
+                    return Err(invalid(
+                        "validate_clip",
+                        "clip source and record durations must represent equal rational time",
+                    ));
+                }
+                require_contiguous(item, &mut prior_end)?;
+            }
+            TrackItem::Gap(gap) => {
+                require_text("validate_gap", "gap name", gap.name())?;
+                validate_record_range(gap.record_range(), edit_rate, true)?;
+                require_contiguous(item, &mut prior_end)?;
+            }
+            TrackItem::Generator(generator) => {
+                require_text("validate_generator", "generator name", generator.name())?;
+                require_text("validate_generator", "generator kind", generator.kind())?;
+                for key in generator.parameters().keys() {
+                    require_text("validate_generator", "generator parameter key", key)?;
+                }
+                validate_record_range(generator.record_range(), edit_rate, false)?;
+                require_contiguous(item, &mut prior_end)?;
+            }
+            TrackItem::Caption(caption) => {
+                require_text("validate_caption", "caption name", caption.name())?;
+                require_text("validate_caption", "caption text", caption.text())?;
+                if let Some(language) = caption.language() {
+                    require_text("validate_caption", "caption language", language)?;
+                }
+                validate_record_range(caption.record_range(), edit_rate, false)?;
+                require_contiguous(item, &mut prior_end)?;
+            }
+        }
+    }
+    validate_transition_overlap(track)?;
+    Ok(())
+}
+
+fn validate_record_range(range: TimeRange, edit_rate: Timebase, allow_empty: bool) -> Result<()> {
+    if range.timebase() != edit_rate {
+        return Err(invalid(
+            "validate_record_range",
+            "record range must use the track edit clock",
+        ));
+    }
+    if range.start().is_negative() {
+        return Err(invalid(
+            "validate_record_range",
+            "record range must not start before timeline zero",
+        ));
+    }
+    if !allow_empty && range.is_empty() {
+        return Err(invalid(
+            "validate_record_range",
+            "editorial item must have a nonzero record duration",
+        ));
+    }
+    Ok(())
+}
+
+fn require_contiguous(item: &TrackItem, prior_end: &mut RationalTime) -> Result<()> {
+    let range = item.record_range().expect("called only for timed items");
+    if range.start() != *prior_end {
+        return Err(invalid(
+            "validate_track_timing",
+            "track items must be contiguous; use an explicit gap for empty time",
+        ));
+    }
+    *prior_end = range.end_exclusive()?;
+    Ok(())
+}
+
+fn validate_transition(
+    track: &Track,
+    index: usize,
+    transition: &Transition,
+    edit_rate: Timebase,
+) -> Result<()> {
+    require_text("validate_transition", "transition name", transition.name())?;
+    if transition.from_offset().timebase() != edit_rate
+        || transition.to_offset().timebase() != edit_rate
+    {
+        return Err(invalid(
+            "validate_transition",
+            "transition offsets must use the track edit clock",
+        ));
+    }
+    if transition.from_offset().is_zero() && transition.to_offset().is_zero() {
+        return Err(invalid(
+            "validate_transition",
+            "transition must consume time from at least one endpoint",
+        ));
+    }
+    let Some(previous) = index
+        .checked_sub(1)
+        .and_then(|value| track.items().get(value))
+    else {
+        return Err(invalid(
+            "validate_transition",
+            "transition must follow a timed track item",
+        ));
+    };
+    let Some(next) = track.items().get(index + 1) else {
+        return Err(invalid(
+            "validate_transition",
+            "transition must precede a timed track item",
+        ));
+    };
+    let (Some(previous_range), Some(next_range)) = (previous.record_range(), next.record_range())
+    else {
+        return Err(invalid(
+            "validate_transition",
+            "adjacent transitions are not valid",
+        ));
+    };
+    if transition.from() != previous.id() || transition.to() != next.id() {
+        return Err(invalid(
+            "validate_transition",
+            "transition endpoints must match its adjacent track items",
+        ));
+    }
+    if transition.from_offset().value() > previous_range.duration().value()
+        || transition.to_offset().value() > next_range.duration().value()
+    {
+        return Err(invalid(
+            "validate_transition",
+            "transition offsets must fit within adjacent item durations",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_transition_overlap(track: &Track) -> Result<()> {
+    for (index, item) in track.items().iter().enumerate() {
+        let Some(range) = item.record_range() else {
+            continue;
+        };
+        let incoming = index
+            .checked_sub(1)
+            .and_then(|value| track.items().get(value))
+            .and_then(|item| match item {
+                TrackItem::Transition(transition) => Some(transition.to_offset().value()),
+                _ => None,
+            })
+            .unwrap_or(0);
+        let outgoing = track
+            .items()
+            .get(index + 1)
+            .and_then(|item| match item {
+                TrackItem::Transition(transition) => Some(transition.from_offset().value()),
+                _ => None,
+            })
+            .unwrap_or(0);
+        let consumed = incoming.checked_add(outgoing).ok_or_else(|| {
+            invalid(
+                "validate_transition",
+                "combined transition offsets exceed supported duration",
+            )
+        })?;
+        if consumed > range.duration().value() {
+            return Err(invalid(
+                "validate_transition",
+                "transitions at both ends of an item must not overlap",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn require_text(operation: &'static str, label: &'static str, value: &str) -> Result<()> {
+    if value.trim().is_empty() {
+        return Err(invalid(operation, format!("{label} must not be blank")));
+    }
+    Ok(())
+}
+
+fn invalid(operation: &'static str, message: impl Into<String>) -> Error {
+    Error::new(
+        ErrorCategory::InvalidInput,
+        Recoverability::UserCorrectable,
+        message,
+    )
+    .with_context(ErrorContext::new("superi-timeline.model", operation))
+}
+fn not_found(
+    operation: &'static str,
+    message: impl Into<String>,
+    field: &'static str,
+    value: impl ToString,
+) -> Error {
+    Error::new(
+        ErrorCategory::NotFound,
+        Recoverability::UserCorrectable,
+        message,
+    )
+    .with_context(
+        ErrorContext::new("superi-timeline.model", operation).with_field(field, value.to_string()),
+    )
+}
+
+fn conflict(
+    operation: &'static str,
+    message: impl Into<String>,
+    field: &'static str,
+    value: impl ToString,
+) -> Error {
+    Error::new(
+        ErrorCategory::Conflict,
+        Recoverability::UserCorrectable,
+        message,
+    )
+    .with_context(
+        ErrorContext::new("superi-timeline.model", operation).with_field(field, value.to_string()),
+    )
 }

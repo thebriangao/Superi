@@ -2,17 +2,18 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 use superi_core::prelude::{
-    AlphaMode, AspectRatio, CacheId, CapabilityId, CapabilitySet, ChannelLayout, ChannelPosition,
-    ChromaSubsampling, ClipId, ColorPrimaries, ColorRange, ColorSpace, ComponentId,
-    CounterSnapshot, CounterUnit, DeviceId, DiagnosticEvent, DiagnosticSeverity, Duration, EdgeId,
-    Error, ErrorCategory, ErrorContext, FeatureAvailability, FeatureDescriptor, FeatureDiscovery,
-    FeatureId, FieldVisibility, FiniteF64, FrameRate, GraphId, IdentifierKind, JobId, Matrix3,
-    MatrixCoefficients, MediaId, NodeId, ParameterId, PerformanceCounter, PixelBounds, PixelFormat,
-    PixelModel, PixelNumeric, PixelPacking, Point2, PortId, ProjectId, RationalTime,
-    Recoverability, Rect, ResourceId, Result, ResultExt, SampleFormat, SampleNumeric, SampleTime,
-    SemanticVersion, SettingKey, SettingValue, SettingValueKind, SettingsSnapshot, TimeRange,
-    TimeRounding, Timebase, Timecode, TimecodeFormat, TimecodeMode, TraceField, TraceValue,
-    TrackId, TransferFunction, TypedId, UserSafeError, Vector2, VersionIdentifier,
+    AlphaMode, AspectRatio, CacheId, CapabilityId, CapabilitySet, CaptionId, ChannelLayout,
+    ChannelPosition, ChromaSubsampling, ClipId, ColorPrimaries, ColorRange, ColorSpace,
+    ComponentId, CounterSnapshot, CounterUnit, DeviceId, DiagnosticEvent, DiagnosticSeverity,
+    Duration, EdgeId, Error, ErrorCategory, ErrorContext, FeatureAvailability, FeatureDescriptor,
+    FeatureDiscovery, FeatureId, FieldVisibility, FiniteF64, FrameRate, GapId, GeneratorId,
+    GraphId, IdentifierKind, JobId, Matrix3, MatrixCoefficients, MediaId, NodeId, ParameterId,
+    PerformanceCounter, PixelBounds, PixelFormat, PixelModel, PixelNumeric, PixelPacking, Point2,
+    PortId, ProjectId, RationalTime, Recoverability, Rect, ResourceId, Result, ResultExt,
+    SampleFormat, SampleNumeric, SampleTime, SemanticVersion, SettingKey, SettingValue,
+    SettingValueKind, SettingsSnapshot, TimeRange, TimeRounding, Timebase, Timecode,
+    TimecodeFormat, TimecodeMode, TimelineId, TraceField, TraceValue, TrackId, TransferFunction,
+    TransitionId, TypedId, UserSafeError, Vector2, VersionIdentifier,
     STABLE_PRIMITIVE_SCHEMA_REVISION,
 };
 
@@ -40,6 +41,11 @@ fn prelude_exposes_the_complete_curated_contract() {
     assert_stable_wire_type::<MediaId>();
     assert_stable_wire_type::<TrackId>();
     assert_stable_wire_type::<ClipId>();
+    assert_stable_wire_type::<TimelineId>();
+    assert_stable_wire_type::<GapId>();
+    assert_stable_wire_type::<TransitionId>();
+    assert_stable_wire_type::<GeneratorId>();
+    assert_stable_wire_type::<CaptionId>();
     assert_stable_wire_type::<NodeId>();
     assert_stable_wire_type::<ParameterId>();
     assert_stable_wire_type::<JobId>();

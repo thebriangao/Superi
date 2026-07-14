@@ -1,11 +1,12 @@
-//! `superi-timeline`, Rust-native timeline + OTIO-compat serde + edit-ops + compile-to-graph.
+//! `superi-timeline`, Rust-native editorial state and staged interchange surfaces.
 //!
-//! Section 5.8 in `docs/architecture.md`. Depends on: superi-core, superi-graph.
-//! Status: typed track semantics and canonical interchange fixtures are implemented;
-//! editorial containers, native OTIO serde, edit operations, and compilation remain pending.
+//! Section 5.8 in `docs/architecture.md`. Foundational project and timeline objects, typed track
+//! semantics, and atomic validated edits are implemented. OTIO interchange, advanced edit
+//! operations, and compile-to-graph remain staged.
 
 pub mod compile;
 pub mod edit_ops;
+pub mod ids;
 pub mod markers;
 pub mod model;
 pub mod multicam;

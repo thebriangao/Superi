@@ -27,8 +27,9 @@ use crate::diagnostics::{
 use crate::error::{ErrorCategory, ErrorContext, Recoverability};
 use crate::geometry::{AspectRatio, Matrix3, PixelBounds, Point2, Rect, Vector2};
 use crate::ids::{
-    CacheId, ClipId, DeviceId, EdgeId, GraphId, IdentifierKind, JobId, MediaId, NodeId,
-    ParameterId, PortId, ProjectId, ResourceId, TrackId,
+    CacheId, CaptionId, ClipId, DeviceId, EdgeId, GapId, GeneratorId, GraphId, IdentifierKind,
+    JobId, MediaId, NodeId, ParameterId, PortId, ProjectId, ResourceId, TimelineId, TrackId,
+    TransitionId,
 };
 use crate::pixel::{
     AlphaMode, ChannelLayout, ChannelPosition, ChromaSubsampling, PixelFormat, PixelModel,
@@ -188,6 +189,11 @@ impl_string_enum!(
         IdentifierKind::Media => "media",
         IdentifierKind::Track => "track",
         IdentifierKind::Clip => "clip",
+        IdentifierKind::Timeline => "timeline",
+        IdentifierKind::Gap => "gap",
+        IdentifierKind::Transition => "transition",
+        IdentifierKind::Generator => "generator",
+        IdentifierKind::Caption => "caption",
         IdentifierKind::Node => "node",
         IdentifierKind::Parameter => "parameter",
         IdentifierKind::Job => "job",
@@ -427,6 +433,11 @@ impl_typed_id!(
     MediaId,
     TrackId,
     ClipId,
+    TimelineId,
+    GapId,
+    TransitionId,
+    GeneratorId,
+    CaptionId,
     NodeId,
     ParameterId,
     JobId,
