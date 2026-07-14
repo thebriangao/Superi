@@ -211,7 +211,9 @@ memory behavior.
 A reproducible run requires the same repository commit, locked dependency graph, default feature
 set, fixture manifest digest, scenario revision, and expectation-record revision. Contributors use
 locked Cargo commands. CI records the complete identity tuple rather than relying on a branch name
-or the word latest.
+or the word latest. The project-state digest replaces the canonical source's absolute checkout path
+with `open/test-fixtures/slice/video-cfr/v1/input.webm`; reports retain the observed path, but clone
+and worktree locations are not semantic project inputs.
 
 The minimum proof for every revision is:
 
@@ -225,8 +227,9 @@ The minimum proof for every revision is:
    effect, typed matrix, three nodes, and two edges.
 6. Replay the inverse effect and trim mutations, then replay the forward mutations and recover the
    exact final state digest without reimporting the fixture.
-7. Decode the export through the selected default backend and compare it with the versioned
-   expectations.
+7. For contract conformance, verify every applicable expectation and retain `not_evaluated` for
+   rendered output that no production stage emits. Once export is runtime, decode it through the
+   selected default backend and compare it with the versioned expectations.
 
 Cross-platform results follow `docs/platform-testing.md`: deterministic contract and state values
 must match exactly, while media comparisons use only the explicit tolerances in the expectation
@@ -247,7 +250,9 @@ silently changing this baseline:
 - P1.W07.C023 adds OTIO fixtures.
 - P1.W07.C024 supplies versioned expected outputs, hashes, tolerances, and metadata.
 - P1.W07.C025 adds timing and memory instrumentation.
-- P1.W07.C026 replaces each disclosed stub with its production subsystem.
+- P1.W07.C026 makes fixture validation and the complete eight-stage contract a shared development
+  baseline, and requires each functional production subsystem to replace its matching stub in the
+  same change without a metadata-only runtime claim.
 
 Multitrack editing, transitions, playback, UI interaction, operating-system codecs, vendor codecs,
 network services, hosted fallback, and performance targets are outside this scenario revision.

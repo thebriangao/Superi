@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "fixture_id": "slice/expectations",
+  "fixture_version": 2,
+  "description": "Portable canonical frame, audio, timing, project-state, and export expectations for the first editorial slice.",
+  "provenance": {
+    "kind": "derived",
+    "source": "Corrected from version 1 in the Superi repository by normalizing the canonical source location to its stable repository-relative identity before hashing project state.",
+    "author": "Superi contributors",
+    "created_on": "2026-07-14",
+    "license": "CC0-1.0",
+    "rights": "Original expectation metadata and derived reference frames approved for unrestricted redistribution.",
+    "generator": {
+      "name": "FFmpeg and Superi expectation record",
+      "version": "FFmpeg 8.1.1, expectation schema 1",
+      "command": "ffmpeg -v error -threads 1 -i open/test-fixtures/slice/video-cfr/v1/input.webm -vf trim=start_frame=24:end_frame=72,hflip,setpts=PTS-STARTPTS,format=rgba -frames:v 48 -f rawvideo expected-frames.rgba",
+      "seed": "superi-slice-expectations-v2"
+    },
+    "parents": [
+      {
+        "fixture_id": "slice/video-cfr",
+        "fixture_version": 1,
+        "manifest_sha256": "fc76adeced535ff05e6adb36c2549939618cfd0f73de7de5fa9d7f7f4301dc08"
+      },
+      {
+        "fixture_id": "audio/synchronized-multichannel",
+        "fixture_version": 1,
+        "manifest_sha256": "487b8c598e9dcad89feef6bf10e66e31382bc9b2cc6e6eed5b28271db91b0c32"
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "expectations.json",
+      "media_type": "application/json",
+      "bytes": 8584,
+      "sha256": "63d6e86d9ede8cb09bd3a3e038bbbffd457b6c46a2dbfe636d7e7115796913d1"
+    },
+    {
+      "path": "expected-frames.rgba",
+      "media_type": "application/octet-stream",
+      "bytes": 995328,
+      "sha256": "4efa22df0d5a59cfbf0e582200fa0efe4ec01cf62b852ee65252d7bba30cdafd"
+    }
+  ]
+}

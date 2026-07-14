@@ -133,11 +133,23 @@ jobs:
             cargo test --workspace --locked
           fi
 
+      - name: Build optional platform codec configuration
+        run: cargo build --locked -p superi-cli --features os-codecs
+
+      - name: Test optional platform codec configuration
+        run: cargo test --locked -p superi-cli --features os-codecs
+
       - name: Lint open workspace
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Test open workspace documentation
         run: cargo test --workspace --doc --locked
+
+      - name: Validate canonical fixtures
+        run: cargo run --locked -p superi-fixture-tool -- check test-fixtures
+
+      - name: Run canonical editorial slice
+        run: cargo run --locked -p superi-cli -- slice run --scenario superi.slice.canonical.v1 --artifact-dir "$RUNNER_TEMP/superi-slice-artifacts" --report "$RUNNER_TEMP/superi-slice-report.json"
 
   extended-linux-build:
     name: ci-ubuntu-22-x64
@@ -223,8 +235,20 @@ jobs:
       - name: Test open workspace
         run: cargo test --workspace --locked
 
+      - name: Build optional platform codec configuration
+        run: cargo build --locked -p superi-cli --features os-codecs
+
+      - name: Test optional platform codec configuration
+        run: cargo test --locked -p superi-cli --features os-codecs
+
       - name: Lint open workspace
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Test open workspace documentation
         run: cargo test --workspace --doc --locked
+
+      - name: Validate canonical fixtures
+        run: cargo run --locked -p superi-fixture-tool -- check test-fixtures
+
+      - name: Run canonical editorial slice
+        run: cargo run --locked -p superi-cli -- slice run --scenario superi.slice.canonical.v1 --artifact-dir "$RUNNER_TEMP/superi-slice-artifacts" --report "$RUNNER_TEMP/superi-slice-report.json"

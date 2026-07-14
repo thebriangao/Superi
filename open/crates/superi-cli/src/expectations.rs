@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 const EXPECTATION_FIXTURE_ID: &str = "slice/expectations";
-const EXPECTATION_FIXTURE_VERSION: u32 = 1;
+const EXPECTATION_FIXTURE_VERSION: u32 = 2;
 const EXPECTATION_RECORD_NAME: &str = "expectations.json";
 const EXPECTED_FRAMES_NAME: &str = "expected-frames.rgba";
 const SOURCE_MANIFEST_PATH: &str = "open/test-fixtures/slice/video-cfr/v1/fixture.json";
@@ -268,7 +268,7 @@ pub(crate) fn resolve_expectations(
     repository_root: &Path,
     observations: &ContractObservations<'_>,
 ) -> Result<Value, ExpectationFailure> {
-    let version_directory = repository_root.join("open/test-fixtures/slice/expectations/v1");
+    let version_directory = repository_root.join("open/test-fixtures/slice/expectations/v2");
     let manifest_path = version_directory.join("fixture.json");
     let manifest_bytes = read_regular(&manifest_path, MAX_MANIFEST_BYTES)?;
     let manifest: FixtureManifest = serde_json::from_slice(&manifest_bytes).map_err(|error| {
@@ -304,7 +304,7 @@ pub(crate) fn resolve_expectations(
         },
         "status": "contract_passed",
         "reference_frames": {
-            "path": "open/test-fixtures/slice/expectations/v1/expected-frames.rgba",
+            "path": "open/test-fixtures/slice/expectations/v2/expected-frames.rgba",
             "pixel_format": record.frames.pixel_format,
             "color_space": record.frames.color_space,
             "width": record.frames.width,
@@ -775,18 +775,38 @@ fn validate_project_states(
     actual: &ContractObservations<'_>,
 ) -> Result<(), ExpectationFailure> {
     let digests = [
-        (&expected.project_state_sha256, actual.project_state_sha256),
-        (&expected.timeline_sha256, actual.timeline_sha256),
-        (&expected.graph_sha256, actual.graph_sha256),
-        (&expected.operation_log_sha256, actual.operation_log_sha256),
+        (
+            "project_state_sha256",
+            &expected.project_state_sha256,
+            actual.project_state_sha256,
+        ),
+        (
+            "timeline_sha256",
+            &expected.timeline_sha256,
+            actual.timeline_sha256,
+        ),
+        ("graph_sha256", &expected.graph_sha256, actual.graph_sha256),
+        (
+            "operation_log_sha256",
+            &expected.operation_log_sha256,
+            actual.operation_log_sha256,
+        ),
     ];
-    if digests
-        .iter()
-        .any(|(expected, actual)| !is_lower_sha256(expected) || expected.as_str() != *actual)
-        || expected.undo_redo_recovered != actual.undo_redo_recovered
-    {
+    for (name, expected, actual) in digests {
+        if !is_lower_sha256(expected) {
+            return Err(ExpectationFailure::corrupt(format!(
+                "canonical project state digest {name} is invalid"
+            )));
+        }
+        if expected != actual {
+            return Err(ExpectationFailure::mismatch(format!(
+                "canonical project state digest {name} differs: expected {expected}, observed {actual}"
+            )));
+        }
+    }
+    if expected.undo_redo_recovered != actual.undo_redo_recovered {
         return Err(ExpectationFailure::mismatch(
-            "canonical project state does not match the expectation record",
+            "canonical project undo and redo state does not match the expectation record",
         ));
     }
     Ok(())
@@ -909,7 +929,7 @@ mod tests {
             ));
             let _ = fs::remove_dir_all(&root);
             for relative in [
-                "open/test-fixtures/slice/expectations/v1",
+                "open/test-fixtures/slice/expectations/v2",
                 "open/test-fixtures/slice/video-cfr/v1",
                 "open/test-fixtures/audio/synchronized-multichannel/v1",
             ] {
@@ -948,7 +968,7 @@ mod tests {
         let root = TemporaryRepository::copy_from(&repository_root());
         let path = root
             .path()
-            .join("open/test-fixtures/slice/expectations/v1/expected-frames.rgba");
+            .join("open/test-fixtures/slice/expectations/v2/expected-frames.rgba");
         let mut bytes = fs::read(&path).unwrap();
         bytes[0] ^= 1;
         fs::write(path, bytes).unwrap();
@@ -994,7 +1014,7 @@ mod tests {
             source_payload_sha256:
                 "117f5cebcaaf788d1891e84aec57066c73e33d4af308368f640f28a8419f4bbc",
             project_state_sha256:
-                "912a3c99f4e4dbf6539fe64dba2959fcadd9f5881717a387caa132adbb3bce27",
+                "15628621f9e49cdab04ff1623474f7cc4ea6f175a38d7b6ab95722b84403a63b",
             timeline_sha256: "0b55ecf025fea4b20f09fe3ffdd3ab8a3ec5d2e1b85833f1b89db1c9ee04269f",
             graph_sha256: "f1f10d90cc7418f8cd7476a49340a461384c92c036a57258f3097450e538de65",
             operation_log_sha256:

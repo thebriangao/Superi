@@ -221,14 +221,20 @@ Any future byte change requires `v2`; never rewrite this released `v1` fixture.
 
 ## Canonical editorial slice expectations
 
-`slice/expectations/v1` is the immutable expected contract for
+`slice/expectations/v2` is the current immutable expected contract for
 `superi.slice.canonical.v1`. Its `expectations.json` record binds the exact source identity,
 48 output timestamps at a 1/24 time base, four project-state digests, the undo and redo outcome,
 and complete WebM AV1 delivery metadata. It also declares the normalized absolute pixel tolerance
 of 0.001 and exact PCM16 sample tolerance of zero.
 
-`expected-frames.rgba` contains 48 tightly packed 96 by 54 RGBA8 sRGB reference frames. The record
-binds the whole payload and every frame with SHA-256. The manifest derives those bytes from
+Version 2 replaces version 1 for current consumers because the version 1 project-state digest
+included its authoring checkout's absolute fixture path. Version 2 normalizes only that canonical
+source location to `open/test-fixtures/slice/video-cfr/v1/input.webm` before hashing, so identical
+state has one digest in ordinary clones and isolated worktrees. Version 1 remains unchanged for
+historical compatibility.
+
+`expected-frames.rgba` contains the same 48 tightly packed 96 by 54 RGBA8 sRGB reference frames.
+The record binds the whole payload and every frame with SHA-256. The manifest derives those bytes from
 `slice/video-cfr/v1` by trimming source frames 24 through 71, applying the canonical horizontal
 mirror, resetting timestamps, and decoding to RGBA with the recorded FFmpeg 8.1.1 command.
 

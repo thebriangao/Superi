@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 3054ef06fcb3bfce30383aeba61ed884a547fb6880ed67fafa5141632f0c3b89
-source_files: 90
+source_hash: 6135c788638b79ff5d23970bd3e6c2723596c4b5dbd4403c7206163613e68186
+source_files: 94
 mapped_at_commit: working-tree
 ---
 
@@ -65,8 +65,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   a separate Ubuntu 22.04 job runs weekly or by manual dispatch. Both jobs install stable Rust with
   rustfmt and Clippy, record build identity, enforce the open-tree boundary with the locked
   repository scanner, and run formatting, locked build and test commands, strict all-target Clippy,
-  and locked documentation tests from `open/`. Hosted macOS excludes only three named native codec
-  lifecycle tests that require the physical hardware lane. Linux jobs install `libva-dev` and
+  locked documentation tests, the supported `os-codecs` CLI build and tests, canonical fixture
+  validation, and the normalized eight-stage slice contract from `open/`. Hosted macOS excludes
+  only three named native codec lifecycle tests that require the physical hardware lane. Linux jobs
+  install `libva-dev` and
   `nasm` so the locked media dependency graph can discover `libva.pc` and the approved runtime can
   retain its optimized x86 code. Intel macOS jobs install `nasm` with Homebrew. Linux and macOS jobs
   build the approved libvpx 1.16.0 archive after verifying its pinned checksum and expose that exact
@@ -98,7 +100,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `README.md`: Gives the public project orientation, product split, graph and GPU model, subsystem
   hierarchy, build commands, vertical slice, phases, invariants, open questions, and claimed current
   status. It now distinguishes the canonical contract runner from missing production behavior and
-  gives the normalized invocation, while broader architecture remains aspirational.
+  gives the normalized invocation, locked fixture and slice contributor baseline, same-change stub
+  replacement rule, and physical hardware proof boundary, while broader architecture remains
+  aspirational.
 - `closed/README.md`: Defines `closed/` as a notice for the separately maintained proprietary
   Superi Max tier and states the one-way dependency rule: Max may consume open Superi, while open
   Superi must never import, link, or depend on Max.
@@ -174,6 +178,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   expectation fixture. It records reference-frame derivation, strict CLI consumption, audio
   timing and routing preservation, red-to-green proof, delivery context, and disclosed runtime
   limits.
+- `docs/checkpoints/P1.W07.C026.md`: Durable implementation evidence for the hosted fixture and
+  slice baseline plus portable expectation version 2. It records both red-to-green failures,
+  checkout-independent state identity, workflow and platform integration, contributor replacement
+  rules, verification, delivery context, and honest hardware and runtime limits.
 - `docs/codecs.md`: Version 0.6 of the codec and licensing policy. It separates permissive in-tree
   codecs, opt-in operating-system codecs, vendor RAW workers, still-image handling, containers,
   capability introspection, platform backend contracts, and currently documented MP3, VPx, Opus,
@@ -190,10 +198,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/phases.md`: Defines the canonical build sequence from decisions through engine parts,
   orchestration, UI, hardening, and launch. It repeatedly requires a real import, timeline, trim,
   effect, and export vertical slice to pull subsystem design and public API integration forward.
-- `docs/platform-testing.md`: Defines revision 1 of required automated and physical test lanes for
+- `docs/platform-testing.md`: Defines revision 2 of required automated and physical test lanes for
   macOS, Windows, and Ubuntu, stable suite identifiers, cadence and blocking rules, deterministic
-  cross-platform expectations, capability-based codec testing, and the structured evidence every
-  result must retain.
+  cross-platform expectations, the portable `slice-contract` versus physical all-runtime `slice`
+  distinction, capability-based codec testing, and the structured evidence every result must retain.
 - `docs/unsafe-ffi.md`: Defines the deny-by-default unsafe policy and inventories audited macOS
   CoreGraphics, AV1, Opus, VPx, VideoToolbox, AudioConverter, Windows Media Foundation, and Linux
   VVC VA-API boundaries. It records ownership, buffer, thread, failure, and target proof for each
@@ -201,8 +209,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/vertical-slice.md`: Defines revision 1 of `superi.slice.canonical.v1`. It pins the immutable
   video fixture role, exact one-track edit and trim, one typed horizontal-mirror graph effect,
   explicit delivery, eight stable replacement stages, schema 1.1.0 runner report, bounded stage
-  timing and resident-memory records, conformance levels, reproducibility proof, and the boundaries
-  owned by P1.W07.C017 through P1.W07.C026.
+  timing and resident-memory records, conformance levels, portable project-state proof, shared
+  hosted baseline, same-change production replacement rule, and the boundaries owned by
+  P1.W07.C017 through P1.W07.C026.
 
 ### Frontend CI contract
 
@@ -260,7 +269,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   manifest, file inventory, provenance and parent-lineage rules, redistribution restrictions,
   contributor workflow, offline validation command, hard-failure conditions, the deterministic
   video, synchronized multichannel audio, timing, color and image-sequence, media-error, and OTIO
-  baselines plus the encoded canonical slice source and its derived expectation contract.
+  baselines plus the encoded canonical slice source and immutable expectation versions 1 and 2.
 - `open/test-fixtures/policy/utf8/v1/fixture.json`: Schema 1 manifest for fixture identity
   `policy/utf8`, version 1. It declares a synthetic CC0 payload generated by POSIX `printf`, records
   no parents, and inventories `hello.txt` as 6 bytes with its SHA-256 digest.
@@ -281,6 +290,14 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `open/test-fixtures/slice/expectations/v1/expected-frames.rgba`: A 995,328-byte payload containing
   48 tightly packed 96 by 54 RGBA8 mirrored reference frames. Its whole-payload and per-frame
   SHA-256 identities are consumed by the private CLI verifier.
+- `open/test-fixtures/slice/expectations/v2/fixture.json`: Strict schema 1 manifest for current
+  `slice/expectations` version 2. It retains the exact source and synchronized-audio parents and
+  binds the portable JSON record plus unchanged RGBA reference payload.
+- `open/test-fixtures/slice/expectations/v2/expectations.json`: Current canonical record with the
+  checkout-independent project-state digest and the unchanged frame, audio, timing, tolerance,
+  and export contracts.
+- `open/test-fixtures/slice/expectations/v2/expected-frames.rgba`: The same 995,328-byte 48-frame
+  RGBA8 reference payload retained under immutable version 2 for complete version-local identity.
 - `open/test-fixtures/video/pixel-formats/v1/fixture.json`: Schema 1 CC0 provenance and exact
   inventory for the generated catalog and raw-frame payload.
 - `open/test-fixtures/video/pixel-formats/v1/video-cases.csv`: Fixed CRLF catalog with one record per
@@ -340,7 +357,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and OTIO_CORE:0.18.1, exact timeline durations, identity and opaque data policy, JSON pointers,
   and preserve plus diagnose behavior for unsupported constructs.
 
-The mapping inventory contains 79 UTF-8 text artifacts and eleven binary payloads. Binary media is
+The mapping inventory contains 82 UTF-8 text artifacts and twelve binary payloads. Binary media is
 intentionally read through metadata, producers, provenance, manifests, and consumers rather than
 interpreted as prose.
 
@@ -386,10 +403,12 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
 - The separate `slice/video-cfr` version 1 fixture is the canonical encoded source for the fixed
   editorial scenario. The CLI validates its manifest and payload identity before modeling import;
   current decoded traits remain expected contract values until the media stub is replaced.
-- The derived `slice/expectations` version 1 fixture is the canonical expected contract for that
-  scenario. The generic fixture tool validates its lineage and payload identity, while the CLI
-  verifies frame hashes, tolerances, audio timing and routing, timestamps, modeled state, and export
-  metadata without treating absent rendered pixels as a pass.
+- The derived `slice/expectations` version 1 fixture is immutable historical data whose project
+  digest captured its authoring checkout path. Current version 2 normalizes that one source
+  location to its stable repository-relative identity. The generic fixture tool validates both
+  versions, while the CLI consumes version 2 and verifies frame hashes, tolerances, audio timing and
+  routing, timestamps, modeled state, and export metadata without treating absent rendered pixels
+  as a pass.
 - The version 1 color fixture is the current deterministic SDR, wide-gamut, HDR, alpha,
   high-bit-depth, and image-sequence baseline. Its catalogs and raw samples are generated by
   `superi-fixture-tool` and consumed by `superi-color` transforms and `superi-media-io` sequence
@@ -407,7 +426,9 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
 - `.github/workflows/ci.yml` is the cross-platform hosted build surface. Its stable lane identifiers
   map the platform contract to GitHub runner labels, while immutable checkout, disabled credential
   persistence, per-branch concurrency, independent matrix reporting, and timeouts define the job
-  boundary.
+  boundary. Both build jobs directly validate all fixtures and execute the normalized
+  `slice-contract` command after the complete Rust quality suite, and compile and test the supported
+  `os-codecs` CLI configuration.
 - `.github/workflows/dependency-policy.yml` is the separate dependency license and source policy
   surface.
 - `.github/workflows/frontend.yml` and `ci/frontend-smoke/` form a third CI surface for locked npm
@@ -647,7 +668,9 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   map refresh.
 - `.github/workflows/ci.yml` enforces the locked open-tree boundary, then formats, builds, tests,
   strictly lints, and documentation-tests the workspace on five pull-request and `main` lanes, plus
-  Ubuntu 22.04 on weekly or manual runs. YAML parsing and all six lane-ID presence checks, preview
+  Ubuntu 22.04 on weekly or manual runs. Each job also builds and tests the supported `os-codecs`
+  CLI configuration, validates canonical fixtures, and runs the normalized eight-stage slice
+  contract into fresh runner paths. YAML parsing and all six lane-ID presence checks, preview
   policy, disabled credentials, one locked boundary command per job, complete two-job command
   coverage, exact Linux `libva-dev` and cross-platform x86 `nasm` provisioning, checksum-pinned
   libvpx 1.16.0 provisioning, and the hosted macOS native-test condition passed during this refresh.
@@ -680,9 +703,9 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
 - Root and open-tree guidance call for workspace build, test, strict Clippy, documentation tests,
   default and optional codec feature coverage, and the real CLI or vertical-slice consumer.
 - `docs/platform-testing.md` defines stable `toolchain`, `features`, `fixtures`, `malformed`, `gpu`,
-  `codecs`, `audio`, `slice`, `performance`, and `soak` suites. Hosted lanes prove source and CPU
-  portability, while named physical lanes are required for real GPU, display, audio, hardware
-  codec, performance, and long-session evidence.
+  `codecs`, `audio`, `slice-contract`, `slice`, `performance`, and `soak` suites. Hosted lanes prove
+  source, CPU, fixture, and contract-slice portability, while named physical lanes are required for
+  real GPU, display, audio, hardware codec, all-runtime slice, performance, and long-session evidence.
 - `docs/unsafe-ffi.md` requires a repository unsafe scan, all-feature strict Clippy, Windows-target
   Clippy for Media Foundation, codec tests, and all-feature engine tests after native-boundary
   changes. Real lifecycle tests still run on the owning operating system.
@@ -702,7 +725,7 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   fixture and edit, one effect, eight stages, conformance levels, default offline boundary,
   adjacent checkpoint ownership, and root README discovery. These checks validate the contract and
   existing repository policy, not a runtime slice.
-- Fresh fixture validation reports nine valid fixture versions and 21 payloads. The video fixture
+- Fresh fixture validation reports ten valid fixture versions and 23 payloads. The video fixture
   contains 207 cases in a 13,419-byte binary. The audio fixture contains three 100 ms PCM16 WAVE
   cases. The timing fixture contains five cases and 18 samples in a 1,041-byte catalog. The color
   fixture contains eight images, three sequence frames, and 448 raw sample bytes. All six generated
@@ -712,12 +735,12 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   OTIO fixture adds two timelines with exact 48-frame and 120-frame durations plus explicit
   unsupported-object expectations, and official OpenTimelineIO 0.18.1 proves semantic read and
   write and read equivalence.
-  The encoded slice fixture is a digest-bound 28,178-byte AV1 WebM. Its derived expectation version
-  contains a 995,328-byte 48-frame RGBA8 reference payload plus exact audio, timing, state, and export
-  records. Focused engine, API, and CLI contracts prove exact canonical state, strict public
-  projection, eight-stage reports, expectation evidence, collision safety, two-run reproducibility,
-  honest stub disclosure, all-stage timing and resident-memory records, and an exact
-  observed-boundary maximum.
+  The encoded slice fixture is a digest-bound 28,178-byte AV1 WebM. Current expectation version 2
+  contains a 995,328-byte 48-frame RGBA8 reference payload plus exact audio, timing, portable state,
+  and export records. Focused engine, API, and CLI contracts prove exact canonical state, strict
+  public projection, checkout-independent project identity, eight-stage reports, expectation
+  evidence, collision safety, two-run reproducibility, hosted command coverage, honest stub
+  disclosure, all-stage timing and resident-memory records, and an exact observed-boundary maximum.
 - Phase 0 completion additionally requires written codec counsel, a Tauri, React, and native wgpu
   viewport demonstration on all three operating systems, an API command and ordered event round
   trip, reference-validated OTIO interchange, color reference proof, and named subsystem owners.
@@ -739,7 +762,7 @@ lockfile includes a substantial
 GPU, image, codec, serialization, platform, and native-build dependency graph, and current codec,
 image, platform, and unsafe documents describe implemented contracts rather than empty placeholders.
 The synchronized remote revision before this checkpoint is
-`892ecfeba17e8bd12a1fe746d9e7b271d6e5cfae`.
+`5649d9075b29eef79b181caa880a650a59786ae1`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
 root README, deny policy, and structure guide with license-audit CI. Commit
 `e0b3af9f099f527a8544d1b0317896640969903b` added the executable dependency-policy contract and its
@@ -766,12 +789,16 @@ implement the later production model, reader, writer, or graph compiler.
 Commit `892ecfeba17e8bd12a1fe746d9e7b271d6e5cfae` added bounded stage timing and resident-memory
 instrumentation, schema 1.1.0 report evidence, focused process proof, and its durable checkpoint
 record.
+Commit `5649d9075b29eef79b181caa880a650a59786ae1` added the independent canonical expectation fixture,
+strict CLI consumption, reference frames, audio and timing proof, and its durable checkpoint record.
 
 The largest current risk is cross-document drift:
 
 - The canonical fixture, independent expected contract, reference project and graph state, strict
   API projection, and contract runner now exist, and every stage reports bounded timing and
-  resident-memory boundary evidence. Production timeline and graph owners, rendered comparison,
+  resident-memory boundary evidence. The hosted workflow directly runs fixture validation and the
+  portable eight-stage contract, and expectation version 2 removes checkout location from project
+  identity. Production timeline and graph owners, rendered comparison,
   color and render integration, muxing, playable output, and all-runtime execution remain future
   work. The current contract-conformant run must not be reported as product or runtime conformance.
   Boundary samples are not continuous intra-stage peaks, constrained-device thresholds, or
@@ -838,8 +865,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`892ecfeba17e8bd12a1fe746d9e7b271d6e5cfae` when the map was refreshed. Its hash describes the exact
-90 discovered source files, including eleven generated binary payloads, layered on that revision.
+`5649d9075b29eef79b181caa880a650a59786ae1` when the map was refreshed. Its hash describes the exact
+94 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 

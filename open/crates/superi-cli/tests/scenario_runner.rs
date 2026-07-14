@@ -35,6 +35,16 @@ fn runner_executes_the_normalized_slice_and_writes_reproducible_contract_reports
     assert_eq!(first_value["fixture"]["payload"]["frame_count"], 96);
     assert_eq!(first_value["fixture"]["payload"]["width"], 96);
     assert_eq!(first_value["fixture"]["payload"]["height"], 54);
+    #[cfg(feature = "os-codecs")]
+    assert_eq!(
+        first_value["backends"]["features"],
+        serde_json::json!(["default", "os-codecs"])
+    );
+    #[cfg(not(feature = "os-codecs"))]
+    assert_eq!(
+        first_value["backends"]["features"],
+        serde_json::json!(["default"])
+    );
 
     let stages = first_value["stages"].as_array().unwrap();
     assert_eq!(stages.len(), 8);
@@ -72,14 +82,14 @@ fn runner_executes_the_normalized_slice_and_writes_reproducible_contract_reports
     let expectations = &first_value["expectations"];
     assert_eq!(expectations["status"], "contract_passed");
     assert_eq!(expectations["identity"]["fixture_id"], "slice/expectations");
-    assert_eq!(expectations["identity"]["fixture_version"], 1);
+    assert_eq!(expectations["identity"]["fixture_version"], 2);
     assert_eq!(
         expectations["identity"]["manifest_sha256"],
-        "2566fae77cff603adb686bf9939e6b09bf48d332603e967a0d2794b5c1482652"
+        "7dd5fac3dd0ef04536e94ce291528012ed6f8b37cf28993d59e3742ee33582eb"
     );
     assert_eq!(
         expectations["identity"]["record_sha256"],
-        "6d82626024a5b58b9bd91f8763bc05cc568bba71a123c8ff526eab59382a8646"
+        "63d6e86d9ede8cb09bd3a3e038bbbffd457b6c46a2dbfe636d7e7115796913d1"
     );
     assert_eq!(expectations["reference_frames"]["frame_count"], 48);
     assert_eq!(expectations["reference_frames"]["pixel_format"], "rgba8");
@@ -182,6 +192,60 @@ fn runner_has_precise_help_version_and_usage_status() {
     let invalid = run(&["slice"]);
     assert_eq!(invalid.status.code(), Some(2));
     assert_eq!(error_kind(&invalid), "invalid_input");
+}
+
+#[test]
+fn cross_platform_ci_runs_fixture_and_slice_contracts_in_every_build_job() {
+    let workflow = fs::read_to_string(repo_root().join(".github/workflows/ci.yml")).unwrap();
+    let build_command = "        run: cargo build --workspace --locked";
+    let fixture_command =
+        "        run: cargo run --locked -p superi-fixture-tool -- check test-fixtures";
+    let feature_build_command =
+        "        run: cargo build --locked -p superi-cli --features os-codecs";
+    let feature_test_command =
+        "        run: cargo test --locked -p superi-cli --features os-codecs";
+    let slice_command = "        run: cargo run --locked -p superi-cli -- slice run --scenario superi.slice.canonical.v1 --artifact-dir \"$RUNNER_TEMP/superi-slice-artifacts\" --report \"$RUNNER_TEMP/superi-slice-report.json\"";
+    let build_jobs = workflow
+        .lines()
+        .filter(|line| *line == build_command)
+        .count();
+
+    assert_eq!(
+        build_jobs, 2,
+        "every declared build job must remain visible"
+    );
+    assert_eq!(
+        workflow
+            .lines()
+            .filter(|line| *line == fixture_command)
+            .count(),
+        build_jobs,
+        "every build job must validate canonical fixtures"
+    );
+    assert_eq!(
+        workflow
+            .lines()
+            .filter(|line| *line == feature_build_command)
+            .count(),
+        build_jobs,
+        "every build job must compile the supported platform codec configuration"
+    );
+    assert_eq!(
+        workflow
+            .lines()
+            .filter(|line| *line == feature_test_command)
+            .count(),
+        build_jobs,
+        "every build job must test the supported platform codec configuration"
+    );
+    assert_eq!(
+        workflow
+            .lines()
+            .filter(|line| *line == slice_command)
+            .count(),
+        build_jobs,
+        "every build job must execute the canonical slice contract"
+    );
 }
 
 fn run_slice(artifact_dir: &Path, report: &Path, scenario: &str) -> Output {

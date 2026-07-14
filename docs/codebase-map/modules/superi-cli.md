@@ -2,7 +2,7 @@
 module_id: superi-cli
 source_paths:
   - open/crates/superi-cli
-source_hash: 33b32022f374dd4af4f58259c336c9ece4577d896766e09d2f7b15dc78ec6d5c
+source_hash: 739f5b60c36c21fba846c48ea576985ce9d4ec21431bb80110294acae61f5397
 source_files: 6
 mapped_at_commit: working-tree
 ---
@@ -14,6 +14,8 @@ contract for `superi.slice.canonical.v1`. It validates the authoritative reposit
 executes canonical editorial actions through `superi-api`, proves exact reversal, writes the strict
 eight-stage report, verifies the revisioned expectation fixture, records bounded timing and process
 resident-memory evidence, and publishes a clearly labeled non-playable contract artifact.
+Its portable project-state observation removes checkout location from the canonical digest without
+weakening the exact undo and redo comparison or changing the path reported to clients.
 
 The current runner satisfies contract conformance only. It does not open or decode media, evaluate
 pixels, apply production color, encode AV1, mux WebM, or claim a working editor export. Every absent
@@ -26,8 +28,8 @@ production owner is explicit in stage diagnostics and the artifact name.
 - `open/crates/superi-cli/src/commands.rs`: Implements exact argument parsing, repository and
   fixture resolution, bounded strict manifest validation, canonical API execution, stage and
   digest reporting, instrumentation integration, undo plus redo proof, expectation observation
-  wiring, collision-safe
-  publication, and structured exit errors.
+  wiring, active-feature reporting, checkout-independent project-state normalization,
+  collision-safe publication, structured exit errors, and a focused portable-digest contract.
 - `open/crates/superi-cli/src/expectations.rs`: Strictly resolves the derived slice expectation
   fixture, validates both parent identities, reference frames, synchronized PCM samples,
   timestamps, project states, and export metadata, then returns stable contract evidence. Focused
@@ -39,7 +41,8 @@ production owner is explicit in stage diagnostics and the artifact name.
 - `open/crates/superi-cli/tests/scenario_runner.rs`: Provides process contracts for two-run
   reproducibility, exact state and schema 1.1.0 report contents, all-stage timing and nonzero
   resident-memory evidence, exact expectation evidence, honest stub evidence, collision
-  preservation, help, version, usage, and status 2 invalid input.
+  preservation, hosted workflow baseline command coverage, help, version, usage, and status 2
+  invalid input.
 
 ## Public surface
 
@@ -66,7 +69,7 @@ and dirty state plus Rust toolchain, build target, features, and profile. It the
 schema 1 manifest for `slice/video-cfr` version 1 with a one MiB bound, rejects symlinks and unknown
 fields, validates required provenance, verifies the exact regular payload's 64 MiB bound, byte
 count, and SHA-256, and only then creates the artifact directory. During final verification it reads
-the strict `slice/expectations` version 1 fixture with separate bounds for manifests, JSON, RGBA,
+the strict `slice/expectations` version 2 fixture with separate bounds for manifests, JSON, RGBA,
 and WAVE payloads. It verifies source and audio parent-manifest hashes before consuming expectations.
 
 Execution uses `ScenarioApi` exclusively:
@@ -91,6 +94,12 @@ RGBA8 reference-frame hashes and all three WAVEFORMATEXTENSIBLE payloads, includ
 channel masks, ordered channel labels, probes, silence boundaries, routing signatures, and the
 adjacent-sample continuity bound.
 
+Undo and redo compare complete state with only the monotonic revision removed, so a changed media
+path still fails reversal proof. The separate expectation observation replaces the one canonical
+absolute fixture path with `open/test-fixtures/slice/video-cfr/v1/input.webm` before hashing. This
+makes expectation identity portable across clones and worktrees while the report retains the
+observed absolute path.
+
 One `ProcessMemorySampler` resolves the CLI process ID once and refreshes only that process with
 memory enabled and task enumeration disabled. Each stage takes one resident-set sample immediately
 before its work and one immediately after, for 16 bounded refreshes in a complete run. The same
@@ -102,7 +111,8 @@ and the planned WebM, AV1, 96 by 54, 24 fps, 48-frame target. It is not named `c
 Report schema 1.1.0 retains repository and fixture identities, state digests, full public state,
 eight stage records, backend expectations, target metadata, artifact identity, 48 modeled
 timestamps, versioned expectation identity, applicable expectation results, and all stub
-diagnostics. Rendered
+diagnostics. Default builds report `default`, while `os-codecs` builds report both `default` and
+`os-codecs` without claiming an unused backend ran. Rendered
 pixel comparison remains `not_evaluated` because the graph, color, and export stages are stubs.
 Rendered audio is `not_applicable` because the fixed slice and its target contain zero audio
 streams. Every stage retains its existing `duration_us` and adds resident bytes before and after.
@@ -123,6 +133,8 @@ success.
   imported by current CLI source.
 - `open/ci/run-network-isolated.sh` invokes the exact canonical command with temporary output paths
   after workspace tests and fixture validation inside the isolated namespace.
+- `.github/workflows/ci.yml` invokes locked fixture validation and the same normalized command as
+  first-class steps in both declared Rust build jobs.
 - Root and open-tree READMEs document the command and contract-only result.
 
 No runtime crate consumes this binary. The process contracts, contributor workflow, and isolated CI
@@ -140,6 +152,9 @@ harness are its current consumers.
   and export drift all fail `slice.verify`.
 - Pixel tolerance is normalized absolute 0.001 and PCM16 tolerance is exact zero. These values are
   evidence metadata until a real rendered pixel or audio output exists to compare.
+- Expectation version 1 remains immutable historical data. Current version 2 normalizes only the
+  canonical source location before project-state hashing; every other state, frame, audio, timing,
+  and export expectation remains strict.
 - Output paths are create-only and collision safe. Existing content and symlinks are preserved and
   rejected.
 - Export is outside engine mutation history. The four mutation records remain import, insert, trim,
@@ -169,8 +184,11 @@ paths.
 
 Focused unit contracts prove all applicable canonical observations pass, one changed RGBA payload
 is rejected as corruption before comparison, and one changed project-state digest is classified as
-a terminal contract mismatch rather than fixture corruption. The tests do not claim runtime media
-decoding, pixel evaluation, audio rendering, or playable export.
+a terminal contract mismatch rather than fixture corruption. A command unit contract proves two
+checkout roots produce the same portable project digest. The process suite also requires locked
+default and `os-codecs` configuration commands, one exact fixture validator, and one exact slice
+command for every declared hosted Rust build job, and verifies active feature identity. The tests do
+not claim runtime media decoding, pixel evaluation, audio rendering, or playable export.
 
 Negative process contracts prove unknown scenario rejection, preservation of a nonempty artifact
 directory, preservation of an existing report, exact status 2, and help, version, and usage output.
@@ -200,7 +218,8 @@ inside each destination directory.
 
 Keep argument order, scenario identity, exit statuses, artifact name, report fields, stage IDs, and
 stub disclosure synchronized with `docs/vertical-slice.md`, process contracts, isolated CI, and
-public guidance. Keep stage probes around each stage when its stub is replaced so the fixed
+public guidance. Keep both hosted build jobs synchronized with the locked fixture and normalized
+slice commands. Keep stage probes around each stage when its stub is replaced so the fixed
 instrumentation contract is inherited by the production owner. When a production owner replaces a
 stub, route through that real subsystem, add consumer proof, update implementation identity and
 diagnostics, and raise conformance only after all runtime gates pass. Never rename a contract stub

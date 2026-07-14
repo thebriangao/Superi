@@ -22,6 +22,7 @@ const SCENARIO_ID: &str = "superi.slice.canonical.v1";
 const SCENARIO_REVISION: u32 = 1;
 const FIXTURE_ID: &str = "slice/video-cfr";
 const FIXTURE_VERSION: u32 = 1;
+const PORTABLE_FIXTURE_PATH: &str = "open/test-fixtures/slice/video-cfr/v1/input.webm";
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 const MAX_PAYLOAD_BYTES: u64 = 64 * 1024 * 1024;
 const EXIT_INVALID_INPUT: i32 = 2;
@@ -475,7 +476,8 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
             "undo and redo did not recover the exact final semantic state",
         ));
     }
-    let project_state_sha256 = digest_json(&replayed_semantic);
+    let portable_project_state = portable_project_state(replayed_semantic.clone())?;
+    let project_state_sha256 = digest_json(&portable_project_state);
     let operation_log_sha256 = digest_json(&replayed_state["operation_log"]);
     let export_expectation = json!({
         "container": "webm",
@@ -606,7 +608,7 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
             "selected_container_backend": "mkv-webm",
             "selected_codec_backend": "rust-av1",
             "active_runtime_backends": [],
-            "features": ["default"],
+            "features": active_features(),
             "target": format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS),
             "toolchain": toolchain,
             "profile": if cfg!(debug_assertions) { "debug" } else { "release" }
@@ -1105,11 +1107,34 @@ fn canonical_timestamps() -> Vec<Value> {
         .collect()
 }
 
+fn active_features() -> Vec<&'static str> {
+    let mut features = vec!["default"];
+    if cfg!(feature = "os-codecs") {
+        features.push("os-codecs");
+    }
+    features
+}
+
 fn semantic_state(mut value: Value) -> Value {
     if let Some(object) = value.as_object_mut() {
         object.remove("revision");
     }
     value
+}
+
+fn portable_project_state(mut value: Value) -> Result<Value, CliFailure> {
+    match value.pointer_mut("/media/path") {
+        Some(Value::String(path)) if !path.is_empty() => {
+            *path = PORTABLE_FIXTURE_PATH.to_owned();
+            Ok(value)
+        }
+        _ => Err(CliFailure::stage(
+            "slice.verify",
+            "internal",
+            "terminal",
+            "canonical project state lacks its imported fixture path",
+        )),
+    }
 }
 
 fn digest_json(value: &Value) -> String {
@@ -1208,4 +1233,29 @@ fn emit_failure(failure: CliFailure) -> i32 {
         serde_json::to_string(&value).expect("failure is serializable")
     );
     failure.exit
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::{digest_json, portable_project_state, PORTABLE_FIXTURE_PATH};
+
+    #[test]
+    fn portable_project_digest_does_not_depend_on_the_checkout_path() {
+        let first = portable_project_state(json!({
+            "media": {"path": "/checkout/one/open/test-fixtures/slice/video-cfr/v1/input.webm"},
+            "phase": "effected"
+        }))
+        .unwrap_or_else(|_| panic!("first canonical state must normalize"));
+        let second = portable_project_state(json!({
+            "media": {"path": "/checkout/two/open/test-fixtures/slice/video-cfr/v1/input.webm"},
+            "phase": "effected"
+        }))
+        .unwrap_or_else(|_| panic!("second canonical state must normalize"));
+
+        assert_eq!(first["media"]["path"], PORTABLE_FIXTURE_PATH);
+        assert_eq!(first, second);
+        assert_eq!(digest_json(&first), digest_json(&second));
+    }
 }

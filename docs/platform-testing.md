@@ -1,7 +1,7 @@
 # Hardware and operating-system test matrix
 
 **Status:** Required development and release evidence
-**Matrix revision:** 1
+**Matrix revision:** 2
 **Platform snapshot:** 2026-07-13
 
 This document defines the operating-system and hardware coverage required to call a Superi change
@@ -64,6 +64,7 @@ and fixture revisions in addition to the identifiers.
 | `gpu` | Adapter selection, shader compilation, upload, graph evaluation, readback tolerance, device loss, and native surface smoke tests run on a real adapter |
 | `codecs` | Software codecs and the host codec backend probe, decode, seek, flush, and encode only capabilities actually advertised by that machine |
 | `audio` | Real device discovery, channel layout, sample clock, underrun reporting, and A/V synchronization run against a physical audio device |
+| `slice-contract` | All eight canonical stages run through the public API consumer with strict fixture, expectation, state, instrumentation, and honest stub evidence |
 | `slice` | Import, single-track placement, trim, one graph effect, and export run through the public API and real engine path |
 | `performance` | The locked reference workloads record latency, dropped frames, render time, memory, cache state, and hardware tier |
 | `soak` | Repeated device loss, interruption recovery, eight-hour interactive operation, and twenty-four-hour headless render run at the required release cadence |
@@ -71,18 +72,19 @@ and fixture revisions in addition to the identifiers.
 ## Automated operating-system lanes
 
 These lanes prove source portability, deterministic CPU behavior, malformed-input handling, and
-feature coherence on every pull request. They do not claim real GPU, display, audio, or hardware
-codec coverage. Runner image migrations must update the lane ID and matrix revision in the same
-change.
+feature coherence on every pull request. Each lane also runs the canonical fixture validator and
+the normalized eight-stage `slice-contract` command directly. They do not claim real GPU, display,
+audio, hardware codec, rendered-pixel, or playable-export coverage. Runner image migrations must
+update the lane ID and matrix revision in the same change.
 
 | Lane | Host image or client system | Architecture | Suites | Cadence | Blocking |
 | --- | --- | --- | --- | --- | --- |
-| `ci-macos-26-arm64` | macOS 26 hosted image | arm64 | `toolchain`, `features`, `fixtures`, `malformed` | pull request | yes |
-| `ci-macos-15-x64` | macOS 15 Intel hosted image | x86_64 | `toolchain`, `features`, `fixtures`, `malformed` | pull request | yes |
-| `ci-windows-2025-x64` | Windows Server 2025 hosted image | x86_64 | `toolchain`, `features`, `fixtures`, `malformed` | pull request | yes |
-| `ci-ubuntu-26-x64` | Ubuntu 26.04 hosted image | x86_64 | `toolchain`, `features`, `fixtures`, `malformed` | pull request after preview graduation | yes after graduation |
-| `ci-ubuntu-24-x64` | Ubuntu 24.04 hosted image | x86_64 | `toolchain`, `features`, `fixtures`, `malformed` | pull request | yes |
-| `ci-ubuntu-22-x64` | Ubuntu 22.04 hosted image | x86_64 | `toolchain`, `features`, `fixtures`, `malformed` | weekly and release | yes for release |
+| `ci-macos-26-arm64` | macOS 26 hosted image | arm64 | `toolchain`, `features`, `fixtures`, `malformed`, `slice-contract` | pull request | yes |
+| `ci-macos-15-x64` | macOS 15 Intel hosted image | x86_64 | `toolchain`, `features`, `fixtures`, `malformed`, `slice-contract` | pull request | yes |
+| `ci-windows-2025-x64` | Windows Server 2025 hosted image | x86_64 | `toolchain`, `features`, `fixtures`, `malformed`, `slice-contract` | pull request | yes |
+| `ci-ubuntu-26-x64` | Ubuntu 26.04 hosted image | x86_64 | `toolchain`, `features`, `fixtures`, `malformed`, `slice-contract` | pull request after preview graduation | yes after graduation |
+| `ci-ubuntu-24-x64` | Ubuntu 24.04 hosted image | x86_64 | `toolchain`, `features`, `fixtures`, `malformed`, `slice-contract` | pull request | yes |
+| `ci-ubuntu-22-x64` | Ubuntu 22.04 hosted image | x86_64 | `toolchain`, `features`, `fixtures`, `malformed`, `slice-contract` | weekly and release | yes for release |
 
 Until the Ubuntu 26.04 hosted image leaves preview, that lane runs informationally and Ubuntu 24.04
 is the blocking Linux pull-request lane. Windows Server compilation never replaces a Windows 11
@@ -118,9 +120,9 @@ and passes the same capability probes.
 1. Every pull request must pass all currently blocking automated lanes before merge.
 2. Changes to GPU, codec, audio, surface, platform FFI, or concurrency code must run the affected
    physical lane before release. A maintainer may require it before merge when the risk is direct.
-3. The `fixtures`, `malformed`, and `slice` suites use one fixture revision across lanes. A platform
-   exception must be encoded as an explicit tolerance or capability expectation, never a different
-   semantic fixture.
+3. The `fixtures`, `malformed`, `slice-contract`, and `slice` suites use one fixture revision across
+   lanes. A platform exception must be encoded as an explicit tolerance or capability expectation,
+   never a different semantic fixture.
 4. Same-build, same-backend output must be deterministic. Cross-backend golden comparisons use the
    documented node tolerance and the general normalized absolute-error ceiling from the Phase 0
    contract.
@@ -156,5 +158,6 @@ skip without a declared capability reason is a gap.
 
 Review this matrix at least quarterly and whenever a vendor ends support, a runner label changes, a
 new CPU architecture becomes supported, wgpu changes a backend contract, or a platform codec path is
-added. Changes to required systems or hardware classes increment the matrix revision. Historical
-reports retain the revision they used so results remain interpretable after the matrix changes.
+added. Changes to required systems, suites, or hardware classes increment the matrix revision.
+Historical reports retain the revision they used so results remain interpretable after the matrix
+changes.

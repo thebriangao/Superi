@@ -455,12 +455,37 @@ current run reports `contract` conformance, identifies every stub stage, and wri
 `canonical.webm.contract-stub`. It does not produce `canonical.webm` or claim runtime conformance.
 Use `cargo run -p superi-cli -- --help` for the exact process contract.
 
+Every contributor change must preserve the shared fixture and slice contract baseline. From
+`open/`, validate the complete immutable fixture root and run the normalized slice into fresh
+paths:
+
+```bash
+cargo run --locked -p superi-fixture-tool -- check test-fixtures
+slice_root="$(mktemp -d)"
+cargo run --locked -p superi-cli -- slice run \
+  --scenario superi.slice.canonical.v1 \
+  --artifact-dir "$slice_root/artifacts" \
+  --report "$slice_root/report.json"
+```
+
+Cross-platform CI runs both commands as first-class steps in every hosted Rust build job. Those
+lanes prove the portable `slice-contract` suite and do not replace the physical GPU, display,
+audio, hardware codec, performance, soak, or all-runtime `slice` lanes in
+[`docs/platform-testing.md`](docs/platform-testing.md).
+
+When a production subsystem becomes functional for one canonical stage, the same change must route
+that stage through the real subsystem, retain the stable stage ID and instrumentation probes,
+replace the stub implementation and diagnostics, and add consumer proof against the canonical
+expectations. Compilation, a capability label, or a metadata-only readiness flag cannot make a
+stage runtime. Overall conformance remains `contract` until every stage executes through its
+production owner and the complete runtime gates pass.
+
 Compile the opt-in platform codec path:
 
 ```bash
-cargo build -p superi-cli --features os-codecs
-cargo test -p superi-cli --features os-codecs
-cargo clippy -p superi-cli --all-targets --features os-codecs -- -D warnings
+cargo build --locked -p superi-cli --features os-codecs
+cargo test --locked -p superi-cli --features os-codecs
+cargo clippy --locked -p superi-cli --all-targets --features os-codecs -- -D warnings
 ```
 
 Successful builds and the contract runner prove only their exercised boundaries. They do not prove
