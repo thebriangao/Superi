@@ -219,6 +219,38 @@ From an empty output directory, the manifest's recorded FFmpeg command reproduce
 the pinned tool versions. The delivery proof generated it twice and compared the complete bytes.
 Any future byte change requires `v2`; never rewrite this released `v1` fixture.
 
+## Canonical editorial slice expectations
+
+`slice/expectations/v1` is the immutable expected contract for
+`superi.slice.canonical.v1`. Its `expectations.json` record binds the exact source identity,
+48 output timestamps at a 1/24 time base, four project-state digests, the undo and redo outcome,
+and complete WebM AV1 delivery metadata. It also declares the normalized absolute pixel tolerance
+of 0.001 and exact PCM16 sample tolerance of zero.
+
+`expected-frames.rgba` contains 48 tightly packed 96 by 54 RGBA8 sRGB reference frames. The record
+binds the whole payload and every frame with SHA-256. The manifest derives those bytes from
+`slice/video-cfr/v1` by trimming source frames 24 through 71, applying the canonical horizontal
+mirror, resetting timestamps, and decoding to RGBA with the recorded FFmpeg 8.1.1 command.
+
+The expectation record also binds `audio/synchronized-multichannel/v1`. It records all three exact
+payload digests, sample clocks, channel masks, ordered channel meaning, active sample boundaries,
+routing probes, and a maximum adjacent PCM16 delta of 600. The canonical slice itself is
+video-only, so its target stream requires zero audio streams and the CLI reports rendered audio as
+not applicable. The synchronized fixture independently protects the audio timing, routing, and
+audible-continuity contract that later audio-bearing slices must preserve.
+
+The CLI verifier reads both parent manifests and all expectation payloads as bounded non-symlink
+regular files. It rejects unknown record fields, identity or lineage drift, payload corruption,
+per-frame hash drift, WAVE metadata or sample drift, timestamp drift, state drift, and export
+metadata drift. A successful contract report means every currently applicable expected value was
+proven; it does not claim a rendered pixel comparison while graph, color, and export execution
+remain disclosed stubs.
+
+To reproduce the reference bytes into a new path from the repository root, use the command stored
+in the manifest and compare the result byte for byte. Never write regenerated output into the
+checked-in `v1` directory. Any intentional expectation change requires a new version, an explicit
+consumer update, and review of both the semantic change and its new identities.
+
 ## Deterministic color and image-sequence baseline
 
 `color/image-sequences/v1` contains eight 2 by 2 RGBA images covering premultiplied sRGB SDR,

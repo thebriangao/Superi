@@ -69,7 +69,43 @@ fn runner_executes_the_normalized_slice_and_writes_reproducible_contract_reports
         4
     );
     assert_eq!(first_value["verification"]["undo_redo_recovered"], true);
-    assert_eq!(first_value["expectations"]["status"], "unavailable");
+    let expectations = &first_value["expectations"];
+    assert_eq!(expectations["status"], "contract_passed");
+    assert_eq!(expectations["identity"]["fixture_id"], "slice/expectations");
+    assert_eq!(expectations["identity"]["fixture_version"], 1);
+    assert_eq!(
+        expectations["identity"]["manifest_sha256"],
+        "2566fae77cff603adb686bf9939e6b09bf48d332603e967a0d2794b5c1482652"
+    );
+    assert_eq!(
+        expectations["identity"]["record_sha256"],
+        "6d82626024a5b58b9bd91f8763bc05cc568bba71a123c8ff526eab59382a8646"
+    );
+    assert_eq!(expectations["reference_frames"]["frame_count"], 48);
+    assert_eq!(expectations["reference_frames"]["pixel_format"], "rgba8");
+    assert_eq!(
+        expectations["tolerances"]["pixel"]["maximum_absolute_error"],
+        0.001
+    );
+    assert_eq!(
+        expectations["tolerances"]["audio"]["maximum_absolute_error_pcm16"],
+        0
+    );
+    assert_eq!(expectations["audio_samples"]["case_count"], 3);
+    assert_eq!(
+        expectations["audio_samples"]["maximum_adjacent_delta_pcm16"],
+        600
+    );
+    let expectation_results = expectations["results"].as_array().unwrap();
+    assert_eq!(expectation_results.len(), 8);
+    assert_result(expectation_results, "record_integrity", "passed");
+    assert_result(expectation_results, "reference_frames", "passed");
+    assert_result(expectation_results, "audio_samples", "passed");
+    assert_result(expectation_results, "timestamps", "passed");
+    assert_result(expectation_results, "project_state", "passed");
+    assert_result(expectation_results, "export_metadata", "passed");
+    assert_result(expectation_results, "rendered_pixels", "not_evaluated");
+    assert_result(expectation_results, "rendered_audio", "not_applicable");
 
     let export = &first_value["export"];
     assert_eq!(export["artifact_kind"], "contract_stub");
@@ -223,6 +259,14 @@ fn assert_success(output: &Output) {
         "process failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+fn assert_result(results: &[Value], expectation: &str, status: &str) {
+    let result = results
+        .iter()
+        .find(|result| result["expectation"] == expectation)
+        .unwrap_or_else(|| panic!("missing expectation result {expectation}"));
+    assert_eq!(result["status"], status);
 }
 
 fn repo_root() -> PathBuf {

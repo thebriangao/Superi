@@ -1,6 +1,7 @@
 //! `superi-cli`, the headless first consumer of the public Superi API.
 
 mod commands;
+mod expectations;
 mod instrumentation;
 
 fn main() {

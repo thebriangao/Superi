@@ -213,6 +213,9 @@ documents all six generation commands. The canonical-root validator consumes the
 store.
 That store now includes the separately generated encoded canonical slice source, which this tool
 validates as an ordinary strict manifest and opaque payload but does not reproduce.
+It also includes the derived canonical slice expectation version with exact source and audio parent
+references, one strict JSON record, and one RGBA payload. The generic validator proves its lineage,
+inventory, sizes, and hashes, while `superi-cli` owns its semantic consumption.
 Runtime crates do not depend on this tool; separate integration tests consume the emitted canonical
 video, audio, timing, color, image-sequence, media-error, and OTIO artifacts. The video test checks
 generator tables
@@ -281,7 +284,8 @@ proves fixed mutations, strict parser classifications, and the exact aligned par
 corruption evidence after a cataloged post-open truncation. The OTIO contracts add two timelines,
 exact schemas and timing, stable editorial relationships, opaque preservation
 expectations, and official OpenTimelineIO 0.18.1 semantic read plus write plus read equivalence.
-The combined canonical validator reports eight fixture versions and 19 payloads.
+The combined canonical validator reports nine fixture versions and 21 payloads, including the
+encoded slice source, derived slice expectations, and OTIO interchange baseline.
 
 ## Current status and risks
 
@@ -295,7 +299,9 @@ prove encoded codec corruption, malformed Matroska, MP4, or MXF, HDR, playback, 
 hardware clocks, A/V synchronization, scheduling, real-time behavior, or a production editorial
 runtime. The OTIO baseline proves interchange data and expectations, not a reader or writer. The
 encoded slice fixture participates in strict generic validation but has a separate documentary
-FFmpeg generator and is not reproduced by this tool.
+FFmpeg generator and is not reproduced by this tool. Its derived expectation fixture also
+participates in generic validation, while strict frame, audio, timestamp, state, and export meaning
+is verified by the CLI consumer rather than this repository utility.
 
 Validation still checks SPDX, media type, source, author, rights, and semantic quality only to the
 degree documented by schema rules. It validates a filesystem snapshot rather than history. Lineage

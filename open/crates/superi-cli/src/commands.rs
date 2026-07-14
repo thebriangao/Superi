@@ -16,6 +16,8 @@ use sha2::{Digest, Sha256};
 use superi_api::commands::ExecuteScenarioAction;
 use superi_api::scenario::{ExactFrameRate, ScenarioApi, SliceAction, SliceGraphEffect};
 
+use crate::expectations::{resolve_expectations, ContractObservations, ExpectationFailureKind};
+
 const SCENARIO_ID: &str = "superi.slice.canonical.v1";
 const SCENARIO_REVISION: u32 = 1;
 const FIXTURE_ID: &str = "slice/video-cfr";
@@ -475,6 +477,50 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
     }
     let project_state_sha256 = digest_json(&replayed_semantic);
     let operation_log_sha256 = digest_json(&replayed_state["operation_log"]);
+    let export_expectation = json!({
+        "container": "webm",
+        "codec": "av1",
+        "encoder": "rust-av1",
+        "pixel_format": "yuv420p8",
+        "color_space": "srgb",
+        "range": "limited",
+        "matrix": "bt709",
+        "alpha": "opaque",
+        "frame_rate": {"numerator": 24, "denominator": 1},
+        "time_base": {"numerator": 1, "denominator": 24},
+        "width": 96,
+        "height": 54,
+        "frame_count": 48,
+        "audio_streams": 0
+    });
+    let expectation_evidence = resolve_expectations(
+        &repository_root,
+        &ContractObservations {
+            source_manifest_sha256: &fixture.manifest_sha256,
+            source_payload_sha256: &fixture.payload_sha256,
+            project_state_sha256: &project_state_sha256,
+            timeline_sha256: &timeline_sha256,
+            graph_sha256: &graph_sha256,
+            operation_log_sha256: &operation_log_sha256,
+            undo_redo_recovered: true,
+            timestamps: &timestamps,
+            export: &export_expectation,
+        },
+    )
+    .map_err(|failure| match failure.kind() {
+        ExpectationFailureKind::Unavailable => {
+            CliFailure::unavailable("slice.verify", failure.message())
+        }
+        ExpectationFailureKind::Corrupt => CliFailure::stage(
+            "slice.verify",
+            "corrupt_data",
+            "user_correctable",
+            failure.message(),
+        ),
+        ExpectationFailureKind::Mismatch => {
+            CliFailure::stage("slice.verify", "internal", "terminal", failure.message())
+        }
+    })?;
     stages.push(StageRecord {
         stage_id: "slice.verify",
         implementation: "runtime",
@@ -493,12 +539,12 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
         output: json!({
             "undo_redo_recovered": true,
             "project_state_sha256": project_state_sha256,
-            "expectations_status": "unavailable"
+            "expectations_status": "contract_passed"
         }),
         instrumentation: finish_stage(verify_probe, &mut memory_sampler, "slice.verify")?,
         success: true,
         diagnostics: vec![
-            "No independent expected-output fixture is declared, so pixel comparison is unavailable."
+            "All applicable canonical expectations passed; rendered pixel comparison remains not evaluated while graph, color, and export stages are stubs."
                 .to_owned(),
         ],
     });
@@ -578,28 +624,26 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
                 "encoder": "rust-av1",
                 "pixel_format": "yuv420p8",
                 "color_space": "srgb",
+                "range": "limited",
+                "matrix": "bt709",
+                "alpha": "opaque",
                 "frame_rate": {"numerator": 24, "denominator": 1},
                 "time_base": {"numerator": 1, "denominator": 24},
                 "width": 96,
                 "height": 54,
                 "frame_count": 48,
+                "audio_streams": 0,
                 "timestamps": timestamps
             }
         },
-        "expectations": {
-            "identity": null,
-            "status": "unavailable",
-            "results": [],
-            "diagnostics": [
-                "No independent expected-output fixture is present for contract conformance."
-            ]
-        },
+        "expectations": expectation_evidence,
         "verification": {
             "undo_redo_recovered": true,
             "reproducibility_scope": [
                 "deterministic_state",
                 "stage_identity",
-                "artifact_bytes"
+                "artifact_bytes",
+                "expectation_evidence"
             ]
         },
         "stub_stages": stub_stages,

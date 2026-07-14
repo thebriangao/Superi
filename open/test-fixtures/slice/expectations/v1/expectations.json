@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "scenario_id": "superi.slice.canonical.v1",
+  "scenario_revision": 1,
+  "source": {
+    "fixture_id": "slice/video-cfr",
+    "fixture_version": 1,
+    "manifest_sha256": "fc76adeced535ff05e6adb36c2549939618cfd0f73de7de5fa9d7f7f4301dc08",
+    "payload_sha256": "117f5cebcaaf788d1891e84aec57066c73e33d4af308368f640f28a8419f4bbc",
+    "source_start_frame": 24,
+    "source_end_frame": 72,
+    "effect": "horizontal_mirror"
+  },
+  "frames": {
+    "path": "expected-frames.rgba",
+    "pixel_format": "rgba8",
+    "color_space": "srgb",
+    "width": 96,
+    "height": 54,
+    "frame_count": 48,
+    "bytes_per_frame": 20736,
+    "sha256": "4efa22df0d5a59cfbf0e582200fa0efe4ec01cf62b852ee65252d7bba30cdafd",
+    "hash_algorithm": "sha256",
+    "frame_hashes": [
+      "4fb50562a86b7da2fb998c2fac207208bb1e2c1354833af0e97445d632d289d4",
+      "01d5652d0b878748aaf8e5793bad8a0022d7d2475de7afefcf2458ab4f244962",
+      "b933a2ca01513eb6942485e1f0ab407ab375ff743fae59b914f1b9b15fb338f2",
+      "53f7a7673bfc304c6c6c5564c38ef5f90bf9064ef2a22cf887637e6a71f456e4",
+      "7c92ed0fc0cce32af7426e753648c0cc0cda41422fd1e91d60c1de761d9becd1",
+      "4f6448fbacf0bf5bfd6c79ca29e82d7f5bab28fbaa931a05ada66bd922f8db40",
+      "75f83d2fc2528f3de14dca61f43ac6690266390643e89ad0359ee18534f99372",
+      "942d95602896599cbae1d3e1267bf97397eb1d686e1028f9a5b2a069707e4897",
+      "2b74a604bb884101beecbb4521d8e5179276636032e64facb875923493666ffc",
+      "75de142e548b9fc27258ef90dac8359250b24be394a0b59f4390ca46a7e0255f",
+      "90367b59bc030ec2287bf467de50fdbc13d38bd8bf065e37c110e4d937fb7a18",
+      "49d66e20d13396e4ed9b8c6c0bfb6bca7775eb47904a48f703365c522bceba1b",
+      "a8018b3d33dc81f97514795bd13a35ebc1c9b891bb87cd54bdc504201b7892d7",
+      "0c527b37a9d9f2d1ed47852fbc5d5c35b017ed09118b3fc74147dbc8a2db5bb9",
+      "0742d4e21ecd6421fae6775890dc4dc8d30674b22f2512c662ca7f3f609bc5fb",
+      "bb1cdad0cfce25c1a5a95685b7eef26b6b63fb1f2a2ef6b2eb946656070a3b43",
+      "7d2586d86dadcba417fa7f0db41bdddd46e2a9913d727b2a8ba2f07607bc638a",
+      "7e891a6a58f44ad930f0d59271db3c9505a42321e23cd566207dd7692ae2856f",
+      "f886c2e88228fb538ef6f0c470f399e515c51c381e80248b4537a852d192f93e",
+      "c0eff96e3684c44ce24f67dd80ad60a56f4f8bb21dfd2b08e82ce1d725b63175",
+      "2f8d0b2378f0a4ebf7c773fe612d4c9362d7afcbe23868b2c983cd4d67ad9859",
+      "c426ebddf9a823fe3a585d8be1428e858222346257b7b472b14bbe12467fc2f2",
+      "73587be5e2915184c15af06a22532124609313d3c791dcb58517e1b5db3cd911",
+      "98d44964fc8e4c1d7c32ba2f89c90df0c33a04116631a0c2f47d60e58552cf2f",
+      "199f608b8a7a827a435d8d9532a111cee79b29c18b4e33d02a2b95b7cb9b561e",
+      "c8beaf934e09b6206099506034b16222255902b2069cf833214c6f8c6c98c3a1",
+      "9deaf0fd98c6e602ad966eb31351605897a2cfb2ee7a99cb84b395ca2847ffd9",
+      "922ac326a08c872a014136f313d11e0af0a4c7262426c59ee01976fb5498237f",
+      "911c2678cba960b40b207a17c1ad46f38648c08f7ffe6c1295f7ab2a4d55518c",
+      "96405dc7e1d9de89f1ccd813690eac8394ee65d948b19c69efe6987fdc2b7689",
+      "fcc68d5994f26295f0978964417054de01c63e19f464bc354bca0ba83b16db30",
+      "31aefcee42597340e2ffdc457c7a92df4b129e2c09dfa5a0f9907440440c4217",
+      "2c156271921677b276a3d337b0a29b816c2326777d3d3d999600dffcc6d4e6bb",
+      "9dc711677e7a0f2b76e38c20ec0b93299129084e31fc0395248690e6dc57e1c8",
+      "9776d923e9be2a6691d4103f9a2fd338b69c51ec89a95e75a3646b8338fc7998",
+      "003cac7347e9dce4a5f2e687d09d55063f88a00f860f2e4f89880af483359ebe",
+      "327b952d85df93290aef44746d55ca021705b51a5ddcc04e4d35220384bebdd1",
+      "8b5be99926ec6ac29c645584bb2ccbd6c189d6b0325fe489b7e08d623c63eb25",
+      "4808cb91fd007cb9c7664a1ac0b7da29839914d34ad8dd134d50d2840459a53d",
+      "05d9a020aca4b0eee40a2b719167d8f1f49dfd07a4d05088e60350795549061b",
+      "7afc1695c5618c56f1fc1abd3c0cdce757f7ae6c17edcb8bc66d1fb768bac0d3",
+      "c1487f9981ace241020270896866f77902698806e37caf28f3fa409c859ffd2c",
+      "10511b8a23d19b95f40a019f35890130e747a5edacfce50516cd11d946391234",
+      "322205b7366501fc28e0f1f31d4c5222ee46bac22ee67f5ba24ead61a1b4ef07",
+      "93ba01dace1112d9aa04b0c052c42f1400429eea07a9ef332f46f07eb85de6b1",
+      "d4aced10daf124138ce7612ce93bf566222244fe220015605d1a93320d52f09c",
+      "ec0d1510d4cbd6a60c157b6a9fb8c3df56941b3163bfa6b818e0116d215b98a6",
+      "6be0334b8212e51e014d2ccfa0f46db180711c571612faea88117b6a8c0a231b"
+    ],
+    "timestamps": {
+      "time_base": {
+        "numerator": 1,
+        "denominator": 24
+      },
+      "values": [
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+        12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+        24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
+        36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47
+      ]
+    },
+    "tolerance": {
+      "mode": "normalized_absolute",
+      "maximum_absolute_error": 0.001
+    }
+  },
+  "audio": {
+    "slice_stream_count": 0,
+    "fixture_id": "audio/synchronized-multichannel",
+    "fixture_version": 1,
+    "manifest_sha256": "487b8c598e9dcad89feef6bf10e66e31382bc9b2cc6e6eed5b28271db91b0c32",
+    "tolerance": {
+      "mode": "pcm16_absolute",
+      "maximum_absolute_error_pcm16": 0
+    },
+    "maximum_adjacent_delta_pcm16": 600,
+    "cases": [
+      {
+        "path": "stereo-44100.wav",
+        "sha256": "9f1b9e939facb310531f050bd44c2cb0fb3986e31f3efc551e0708da37a70c23",
+        "sample_rate": 44100,
+        "channel_mask": 3,
+        "channel_labels": ["front_left", "front_right"],
+        "frame_count": 4410,
+        "active_start_frame": 441,
+        "active_end_frame": 3969,
+        "routing_probe_frame": 452,
+        "probes": [
+          {"frame": 0, "samples": [0, 0]},
+          {"frame": 441, "samples": [0, 0]},
+          {"frame": 442, "samples": [69, 139]},
+          {"frame": 452, "samples": [766, 1532]},
+          {"frame": 3968, "samples": [-69, -139]},
+          {"frame": 3969, "samples": [0, 0]}
+        ]
+      },
+      {
+        "path": "surround-5-1-48000.wav",
+        "sha256": "4006a263e5c2d53bdde8fb8617ad5c68d6d258c2ab0e95078a8c8cf3aebe154f",
+        "sample_rate": 48000,
+        "channel_mask": 63,
+        "channel_labels": [
+          "front_left", "front_right", "front_center", "low_frequency",
+          "back_left", "back_right"
+        ],
+        "frame_count": 4800,
+        "active_start_frame": 480,
+        "active_end_frame": 4320,
+        "routing_probe_frame": 492,
+        "probes": [
+          {"frame": 0, "samples": [0, 0, 0, 0, 0, 0]},
+          {"frame": 480, "samples": [0, 0, 0, 0, 0, 0]},
+          {"frame": 481, "samples": [64, 128, 192, 256, 320, 384]},
+          {"frame": 492, "samples": [768, 1536, 2304, 3072, 3840, 4608]},
+          {"frame": 4319, "samples": [-64, -128, -192, -256, -320, -384]},
+          {"frame": 4320, "samples": [0, 0, 0, 0, 0, 0]}
+        ]
+      },
+      {
+        "path": "surround-7-1-96000.wav",
+        "sha256": "d38ba36f5511512eff02a6bb3957b771d86db90ff6b6844593c72f8d14110d3a",
+        "sample_rate": 96000,
+        "channel_mask": 1599,
+        "channel_labels": [
+          "front_left", "front_right", "front_center", "low_frequency",
+          "back_left", "back_right", "side_left", "side_right"
+        ],
+        "frame_count": 9600,
+        "active_start_frame": 960,
+        "active_end_frame": 8640,
+        "routing_probe_frame": 984,
+        "probes": [
+          {"frame": 0, "samples": [0, 0, 0, 0, 0, 0, 0, 0]},
+          {"frame": 960, "samples": [0, 0, 0, 0, 0, 0, 0, 0]},
+          {"frame": 961, "samples": [32, 64, 96, 128, 160, 192, 224, 256]},
+          {"frame": 984, "samples": [768, 1536, 2304, 3072, 3840, 4608, 5376, 6144]},
+          {"frame": 8639, "samples": [-32, -64, -96, -128, -160, -192, -224, -256]},
+          {"frame": 8640, "samples": [0, 0, 0, 0, 0, 0, 0, 0]}
+        ]
+      }
+    ]
+  },
+  "project_states": {
+    "project_state_sha256": "912a3c99f4e4dbf6539fe64dba2959fcadd9f5881717a387caa132adbb3bce27",
+    "timeline_sha256": "0b55ecf025fea4b20f09fe3ffdd3ab8a3ec5d2e1b85833f1b89db1c9ee04269f",
+    "graph_sha256": "f1f10d90cc7418f8cd7476a49340a461384c92c036a57258f3097450e538de65",
+    "operation_log_sha256": "cac8f7891e1d5e7609a440b65cdf50714e75fee4c85ab8d40527d6f08436b899",
+    "undo_redo_recovered": true
+  },
+  "export": {
+    "container": "webm",
+    "codec": "av1",
+    "encoder": "rust-av1",
+    "pixel_format": "yuv420p8",
+    "color_space": "srgb",
+    "range": "limited",
+    "matrix": "bt709",
+    "alpha": "opaque",
+    "frame_rate": {"numerator": 24, "denominator": 1},
+    "time_base": {"numerator": 1, "denominator": 24},
+    "width": 96,
+    "height": 54,
+    "frame_count": 48,
+    "audio_streams": 0
+  }
+}

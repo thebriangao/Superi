@@ -2,8 +2,8 @@
 module_id: superi-cli
 source_paths:
   - open/crates/superi-cli
-source_hash: 8a3d3c8c4a70a7e4a7f178efaa2135055b3530a2920a4a66d840be6689959f29
-source_files: 5
+source_hash: 33b32022f374dd4af4f58259c336c9ece4577d896766e09d2f7b15dc78ec6d5c
+source_files: 6
 mapped_at_commit: working-tree
 ---
 
@@ -12,8 +12,8 @@ mapped_at_commit: working-tree
 `superi-cli` is the workspace's headless public API consumer and owns the normalized process
 contract for `superi.slice.canonical.v1`. It validates the authoritative repository fixture,
 executes canonical editorial actions through `superi-api`, proves exact reversal, writes the strict
-eight-stage report, records bounded timing and process resident-memory evidence, and publishes a
-clearly labeled non-playable contract artifact.
+eight-stage report, verifies the revisioned expectation fixture, records bounded timing and process
+resident-memory evidence, and publishes a clearly labeled non-playable contract artifact.
 
 The current runner satisfies contract conformance only. It does not open or decode media, evaluate
 pixels, apply production color, encode AV1, mux WebM, or claim a working editor export. Every absent
@@ -25,16 +25,21 @@ production owner is explicit in stage diagnostics and the artifact name.
   `superi-core`, and `superi-api`, plus `os-codecs` forwarding to the API.
 - `open/crates/superi-cli/src/commands.rs`: Implements exact argument parsing, repository and
   fixture resolution, bounded strict manifest validation, canonical API execution, stage and
-  digest reporting, instrumentation integration, undo plus redo proof, collision-safe publication,
-  and structured exit errors.
+  digest reporting, instrumentation integration, undo plus redo proof, expectation observation
+  wiring, collision-safe
+  publication, and structured exit errors.
+- `open/crates/superi-cli/src/expectations.rs`: Strictly resolves the derived slice expectation
+  fixture, validates both parent identities, reference frames, synchronized PCM samples,
+  timestamps, project states, and export metadata, then returns stable contract evidence. Focused
+  tests prove canonical success, fixture corruption rejection, and modeled-state mismatch handling.
 - `open/crates/superi-cli/src/instrumentation.rs`: Implements one reusable current-process sampler,
   monotonic stage probes, resident-set boundary records, and the report instrumentation summary.
 - `open/crates/superi-cli/src/main.rs`: Passes process arguments to the private command owner and
   exits with its exact status.
 - `open/crates/superi-cli/tests/scenario_runner.rs`: Provides process contracts for two-run
   reproducibility, exact state and schema 1.1.0 report contents, all-stage timing and nonzero
-  resident-memory evidence, honest stub evidence, collision preservation, help, version, usage,
-  and status 2 invalid input.
+  resident-memory evidence, exact expectation evidence, honest stub evidence, collision
+  preservation, help, version, usage, and status 2 invalid input.
 
 ## Public surface
 
@@ -60,7 +65,9 @@ The runner walks working-directory ancestors to locate the Superi repository. It
 and dirty state plus Rust toolchain, build target, features, and profile. It then reads the strict
 schema 1 manifest for `slice/video-cfr` version 1 with a one MiB bound, rejects symlinks and unknown
 fields, validates required provenance, verifies the exact regular payload's 64 MiB bound, byte
-count, and SHA-256, and only then creates the artifact directory.
+count, and SHA-256, and only then creates the artifact directory. During final verification it reads
+the strict `slice/expectations` version 1 fixture with separate bounds for manifests, JSON, RGBA,
+and WAVE payloads. It verifies source and audio parent-manifest hashes before consuming expectations.
 
 Execution uses `ScenarioApi` exclusively:
 
@@ -78,7 +85,11 @@ fixture.resolve
 The API receives exact import, placement, trim, and mirror actions. Timeline compilation, pixel
 evaluation, color delivery, and media export remain contract stubs. The runner undoes effect and
 trim, redoes both, removes only the monotonic revision from comparison, and requires exact final
-semantic state recovery without reimport.
+semantic state recovery without reimport. It then compares the real state digests, 48 modeled
+timestamps, and exact target metadata with the expectation record. It independently validates 48
+RGBA8 reference-frame hashes and all three WAVEFORMATEXTENSIBLE payloads, including clocks,
+channel masks, ordered channel labels, probes, silence boundaries, routing signatures, and the
+adjacent-sample continuity bound.
 
 One `ProcessMemorySampler` resolves the CLI process ID once and refreshes only that process with
 memory enabled and task enumeration disabled. Each stage takes one resident-set sample immediately
@@ -90,10 +101,14 @@ The contract artifact is deterministic JSON with `playable: false`, six missing 
 and the planned WebM, AV1, 96 by 54, 24 fps, 48-frame target. It is not named `canonical.webm`.
 Report schema 1.1.0 retains repository and fixture identities, state digests, full public state,
 eight stage records, backend expectations, target metadata, artifact identity, 48 modeled
-timestamps, unavailable expected-output status, and all stub diagnostics. Every stage retains its
-existing `duration_us` and adds resident bytes before and after. The report summary declares the
-clock, units, memory metric, boundary sampling, stage count, and maximum resident value observed
-across those boundaries. Contract success never becomes runtime success.
+timestamps, versioned expectation identity, applicable expectation results, and all stub
+diagnostics. Rendered
+pixel comparison remains `not_evaluated` because the graph, color, and export stages are stubs.
+Rendered audio is `not_applicable` because the fixed slice and its target contain zero audio
+streams. Every stage retains its existing `duration_us` and adds resident bytes before and after.
+The report summary declares the clock, units, memory metric, boundary sampling, stage count, and
+maximum resident value observed across those boundaries. Contract success never becomes runtime
+success.
 
 ## Dependencies and consumers
 
@@ -120,6 +135,11 @@ harness are its current consumers.
   an arbitrary source path.
 - Source and manifest reads are bounded. Fixture identity, inventory, path type, size, and digest
   must pass before editorial state or output is created.
+- Expected records and payloads are repository-owned, bounded, strict, non-symlink inputs. Unknown
+  fields, parent drift, per-frame drift, PCM metadata or sample drift, timestamp drift, state drift,
+  and export drift all fail `slice.verify`.
+- Pixel tolerance is normalized absolute 0.001 and PCM16 tolerance is exact zero. These values are
+  evidence metadata until a real rendered pixel or audio output exists to compare.
 - Output paths are create-only and collision safe. Existing content and symlinks are preserved and
   rejected.
 - Export is outside engine mutation history. The four mutation records remain import, insert, trim,
@@ -140,10 +160,17 @@ harness are its current consumers.
 The process contract runs the complete command twice with separate output locations. It proves the
 strict report schema and scenario identity, authoritative fixture details, exact eight-stage order,
 stub and runtime classifications, canonical timeline, mirror matrix, four-operation log, undo plus
-redo recovery, unavailable expected output, non-playable artifact, target stream shape, 48 modeled
-timestamps, identical stub bytes, schema 1.1.0 instrumentation metadata, all-stage duration values,
-two nonzero resident samples per stage, and an exact summary maximum. It requires report equality
-after removing only durations, resident values, the observed boundary maximum, and output paths.
+redo recovery, versioned expectation identity, 48 reference frames, explicit tolerances, three
+audio cases, eight expectation classifications, non-playable artifact, target stream shape, 48
+modeled timestamps, identical stub bytes, schema 1.1.0 instrumentation metadata, all-stage duration
+values, two nonzero resident samples per stage, and an exact summary maximum. It requires report
+equality after removing only durations, resident values, the observed boundary maximum, and output
+paths.
+
+Focused unit contracts prove all applicable canonical observations pass, one changed RGBA payload
+is rejected as corruption before comparison, and one changed project-state digest is classified as
+a terminal contract mismatch rather than fixture corruption. The tests do not claim runtime media
+decoding, pixel evaluation, audio rendering, or playable export.
 
 Negative process contracts prove unknown scenario rejection, preservation of a nonempty artifact
 directory, preservation of an existing report, exact status 2, and help, version, and usage output.
@@ -161,10 +188,13 @@ Boundary samples do not continuously observe allocations inside a stage and are 
 constrained-device, or long-session soak result. They provide a portable stage-local signal for the
 continuously working slice while those wider performance suites remain separate owners.
 
-There is no independent expected-output fixture, so the report records expectation status as
-unavailable. The runner uses local `git` and `rustc` commands for reproducibility identity and uses
-hard links for atomic create-only publication, which assumes a normal contributor filesystem with
-hard-link support inside each destination directory.
+The independent expected fixture now makes source-derived frame identities, tolerances, audio
+semantics, timestamps, state, and delivery intent reviewable and reproducible. It cannot compare
+runtime pixels because no current stage produces them, so the report must preserve the
+`not_evaluated` distinction until production graph, color, and export owners integrate. The runner
+uses local `git` and `rustc` commands for reproducibility identity and uses hard links for atomic
+create-only publication, which assumes a normal contributor filesystem with hard-link support
+inside each destination directory.
 
 ## Maintenance notes
 

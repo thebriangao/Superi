@@ -17,7 +17,7 @@ against raw source before changing code.
 | `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade for capabilities and canonical editorial state | Partial: capability and canonical scenario controls implemented; transport, general API, and scripting absent |
 | `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Reserved audio graph, playback, mixing, resampling, metering, and plugin boundary | Skeleton: public module names only |
 | `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Reserved frame, proxy, render, prefetch, eviction, and disk cache boundary | Skeleton: public module names only |
-| `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario consumer | Implemented contract runner: eight instrumented stages and honest stubs; runtime media flow absent |
+| `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario consumer | Implemented expectation verifier and eight instrumented contract stages; rendered media flow absent |
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
 | `superi-codecs-rs` | [module map](modules/superi-codecs-rs.md) | `open/crates/superi-codecs-rs` | Default permissive software codec implementations | Implemented: AV1, FLAC, MP3, Opus, PCM, Vorbis, VP8, and VP9 decode and encode |
 | `superi-codecs-vendor` | [module map](modules/superi-codecs-vendor.md) | `open/crates/superi-codecs-vendor` | Explicit process adapter for separately installed vendor RAW workers | Implemented first revision: decode-only, CPU-only, JSON and hexadecimal IPC |
@@ -35,7 +35,7 @@ against raw source before changing code.
 | `tool-superi-dependency-check` | [module map](modules/tool-superi-dependency-check.md) | `open/tools/superi-dependency-check` | Offline executable policy for the open runtime dependency graph | Implemented exact runtime, build, dev, and new-crate checks |
 | `tool-superi-boundary-tool` | [module map](modules/tool-superi-boundary-tool.md) | `open/tools/superi-boundary-tool` | Offline scanner for network-client and open-to-closed policy | Implemented library, CLI, workspace gate, and hosted-build command |
 | `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline validator and deterministic video, audio, timing, color, media-error, and OTIO fixture generator | Implemented validation library, six generators, seven-command CLI, and focused contracts |
-| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: canonical source, OTIO interchange, color, timing, media-error coverage, and contract runner delivered, runtime slice absent |
+| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: canonical source, expected contract, OTIO interchange, and runner delivered; runtime slice absent |
 
 ## Ownership and repository boundaries
 
@@ -137,10 +137,14 @@ Canonical editorial control is also implemented at a bounded reference boundary:
    insert, trim, mirror, operation-log, undo, and redo state.
 2. `superi-api::ScenarioApi` accepts one strict typed action command and projects complete public
    timeline, graph, implementation, operation, and failure state.
-3. `superi-cli` resolves and digest-validates the repository fixture, executes the normalized fixed
-   scenario through the API, proves undo plus redo recovery, and emits eight stage records with
-   bounded monotonic timing and current-process resident-memory boundary samples.
-4. Six missing production owners are reported as stubs, and the CLI publishes a non-playable
+3. `superi-cli` resolves and digest-validates the repository source and derived expectation
+   fixtures, executes the normalized fixed scenario through the API, proves undo plus redo recovery,
+   and emits eight stage records with bounded monotonic timing and current-process resident-memory
+   boundary samples.
+4. The CLI verifies 48 frame identities, exact synchronized PCM evidence, timestamps, state digests,
+   and target metadata. It distinguishes applicable expectation success from rendered pixels that
+   are not evaluated and rendered audio that is not applicable to the video-only slice.
+5. Six missing production owners are reported as stubs, and the CLI publishes a non-playable
    contract artifact instead of claiming `canonical.webm`.
 
 No transport, request envelope, dispatcher, event channel, subscription, broad public transaction,
@@ -318,8 +322,8 @@ It has no transport or broad editor command set.
 
 `superi-cli` is a binary boundary, not a library. It accepts only the normalized slice command plus
 help and version, validates repository fixture authority, drives `ScenarioApi`, writes the strict
-schema 1.1.0 report with all-stage timing and resident-memory evidence, and publishes a non-playable
-contract artifact through collision-safe paths.
+schema 1.1.0 report with all-stage timing, resident-memory, and versioned expectation evidence, and
+publishes a non-playable contract artifact through collision-safe paths.
 
 `superi-fixture-tool` is a repository utility, not an engine component. It validates schema,
 identity, provenance, lineage, payload ownership, byte counts, hashes, path safety, and unmanaged
@@ -487,7 +491,11 @@ corruption, malformed Matroska, MP4, or MXF, hardware, playback, device, A/V syn
 scheduling, or editorial runtime proof. Snapshot validation still does not prove Git-history immutability,
 provenance truth, legal clearance, or semantic quality beyond focused contracts. The separate
 `slice/video-cfr` fixture provides one digest-bound 96-frame AV1 WebM for the canonical runner. Its
-decoded traits remain expected values because current contract import does not open it.
+decoded traits remain expected values because current contract import does not open it. The derived
+`slice/expectations` fixture adds 48 mirrored RGBA8 frame identities, explicit pixel and PCM
+tolerances, synchronized audio probes, timestamps, project-state digests, and target export
+metadata. The CLI validates those applicable values but cannot compare rendered pixels that no
+current stage produces.
 
 The deterministic OTIO baseline adds a 48-frame native JSON projection of the canonical slice plus
 a 120-frame coverage timeline. The coverage payload includes clips, gap, transition adjacency,
@@ -501,8 +509,9 @@ The largest verification gap is the absence of a production import-to-export sli
 contract, source fixture, reference project state, graph control state, public action flow, and
 contract runner now exist. Process contracts run the CLI twice and prove all eight timing and
 resident-memory records, the observed-boundary maximum, and deterministic content after normalizing
-run-specific measurements and paths. Independent expected output, production timeline compilation,
-graph evaluation, effect execution, color delivery, encoder, and muxer are not integrated. There is no
+run-specific measurements and paths. Independent expected data now exists, but production timeline
+compilation, graph evaluation, effect execution, rendered comparison, color delivery, encoder, and
+muxer are not integrated. There is no
 current test or runtime that imports through the engine, selects and decodes media,
 edits a timeline, evaluates a graph, applies input and output color, renders through the GPU,
 encodes and muxes output, persists a project, and drives the flow through the public API.
