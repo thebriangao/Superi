@@ -27,7 +27,7 @@ against raw source before changing code.
 | `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Reserved effect-node catalog, animation, mask, transition, text, tracking, and OFX boundary | Skeleton: public module names only |
 | `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: canonical command state, registry, capability introspection, and CPU-frame GPU upload implemented |
 | `superi-gpu` | [module map](modules/superi-gpu.md) | `open/crates/superi-gpu` | wgpu device, resource, upload, conversion, pass, submission, presentation, and recovery substrate | Implemented substrate with explicit application-level integration gaps |
-| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, dependency invalidation, and lazy request-scoped evaluation plus reserved ROI, expression, and serialization boundaries | Partial: graph-facing IDs, node schemas, immutable discovery, typed DAG storage and bindings, cycle prevention, schema connection compatibility, schema-bound instances, snapshots, atomic mutations, exact dirty regions, stable dependency invalidation, and generic demand-only evaluation implemented; production integration absent |
+| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, dependency invalidation, lazy request-scoped evaluation, and region-of-interest propagation plus reserved expression and serialization boundaries | Partial: graph-facing IDs, node schemas, immutable discovery, typed DAG storage and bindings, cycle prevention, schema connection compatibility, schema-bound instances, snapshots, atomic mutations, exact dirty regions, stable dependency invalidation, generic demand-only evaluation, and snapshot-bound ROI planning implemented; production integration absent |
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; production source registration and muxing absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
@@ -165,9 +165,16 @@ Generic graph storage is implemented independently of that reference path:
 4. Exact dirty-region sets preserve half-open coverage without bounding-box over-invalidation. A
    pure planner validates changed nodes, walks stable topological and edge order, maps dependency
    regions through a caller-owned edge seam, merges converging work, and excludes clean nodes.
-5. Public integration tests consume the store and invalidation plan directly. Engine, API, CLI,
-   timeline, project, editor, script, and headless paths do not yet consume it, so no runtime stage
-   label changes.
+5. ROI requests are validated against one immutable editable snapshot, clipped to per-output
+   regions of definition, and propagated only through connected ancestors in reverse stable
+   topological order. Built-in full-frame, pass-through, and checked expansion behavior shares one
+   path with validated custom per-input mappings.
+6. ROI plans stamp graph identity and revision, return required nodes in dependency-first order,
+   preserve exact irregular region sets, and intersect with invalidation plans without scheduling
+   clean work.
+7. Public integration tests consume the store, invalidation plan, and ROI plan directly. Engine,
+   API, CLI, timeline, project, editor, script, and headless paths do not yet consume them, so no
+   runtime stage label changes.
 
 Typed port validation is implemented beside storage and reused by editable graph transactions:
 
@@ -446,6 +453,9 @@ The following constraints cross multiple modules and should be preserved togethe
   transaction publishes exactly once only after every ordered mutation passes, while stale or
   failed batches preserve the prior state and revision. Presentation order never replaces DAG
   processing order.
+- Graph ROI derives exact connected work from one immutable snapshot, current per-output domains,
+  schema behavior, and stable typed edges. Plans retain graph identity and revision, never mutate
+  state, and cannot be treated as cache-generation ownership.
 - Capability declarations are metadata, not proof that a factory or every declared format can run.
   Introspection must not instantiate codecs or sources.
 - Backend fallback is explicit. The registry, platform adapters, and vendor workers do not silently
@@ -620,12 +630,11 @@ Partial modules contain these explicit placeholder areas:
 - `superi-concurrency`: GPU submission coordination module and all production engine composition.
 - `superi-engine`: ten orchestration modules covering A/V sync, errors, export, lifecycle, nodes,
   playback, plugins, render, resources, and validation.
-- `superi-graph`: mutation, invalidation, and evaluation integration, ROI request mapping,
-  scheduling, expressions, serialization, undo ownership, engine coordination, cache generations,
-  and explicit headless integration beyond its implemented identifier, node-schema, typed DAG
-  storage and validation, schema-bound instances, immutable snapshots, atomic editable
-  transactions, exact dirty regions, dependency invalidation, and request-scoped lazy evaluation
-  surfaces.
+- `superi-graph`: mutation, invalidation, ROI, and generic evaluation integration, scheduling,
+  expressions, serialization, undo ownership, engine coordination, cache generations, and explicit
+  headless integration beyond its implemented identifier, node-schema, typed DAG storage and
+  validation, schema-bound instances, immutable snapshots, atomic editable transactions, exact
+  dirty regions, dependency invalidation, request-scoped lazy evaluation, and ROI planning surfaces.
 
 Substantive modules also have intentionally incomplete boundaries. Media I/O has no muxer or
 production registry owner for its source backends. GPU has no cross-adapter transfer or external
@@ -664,8 +673,8 @@ For common concerns, begin at these owners:
 - Jobs, domains, clocks, handoffs, lifecycle, and liveness: `superi-concurrency`.
 - Graph-facing identifiers, node schemas, deterministic DAG state, typed binding validation,
   schema-bound instances, editable transactions, exact dirty regions, dependency invalidation, and
-  lazy request-scoped evaluation: `superi-graph`, with value identity, rational time, and pixel
-  bounds owned by `superi-core`.
+  lazy request-scoped evaluation, and snapshot-bound ROI propagation: `superi-graph`, with value
+  identity, rational time, and pixel bounds owned by `superi-core`.
 - Current assembly and public capability flow: `superi-engine` then `superi-api`.
 - Product law, open and closed boundaries, CI, fixtures, and maintenance workflow: `workspace`.
 - Canonical first editorial slice, typed scenario state, replacement stages, and proof: `workspace`.
