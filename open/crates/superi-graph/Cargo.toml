@@ -14,3 +14,6 @@ superi-core = { path = "../superi-core" }
 superi-gpu = { path = "../superi-gpu" }
 superi-image = { path = "../superi-image" }
 superi-concurrency = { path = "../superi-concurrency" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true

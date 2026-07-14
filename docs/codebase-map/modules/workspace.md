@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 7a8a2d33ec397704c1aed6e91c6aca3d36fb88dff7b6b946c67ac993ac6feec5
+source_hash: d882bab9903425ffbaca9db864302f9c224f4a7c402058e3b0f4fbff39f9105d
 source_files: 99
 mapped_at_commit: working-tree
 ---
@@ -255,8 +255,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 
 - `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 22 local
   workspace packages, registry dependencies, target-support dependency trees, scenario digest
-  and process-instrumentation dependency edges, and the exact `oxideav-mp3` Git revision. It is
-  generated resolution evidence and is not hand-edited policy.
+  and process-instrumentation dependency edges, graph document serialization and integrity edges,
+  and the exact `oxideav-mp3` Git revision. It is generated resolution evidence and is not
+  hand-edited policy.
 - `open/Cargo.toml`: Root Cargo workspace manifest using resolver 2 and glob members under
   `crates/*` and `tools/*`. It centralizes version `0.0.0`, Rust 2021, MIT, Rust 1.80, repository
   metadata, deny-by-default unsafe lints, and shared dependencies for error handling, serialization,

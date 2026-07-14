@@ -436,6 +436,23 @@ impl<T> EditableGraph<T> {
             state: Arc::clone(&self.state),
         }
     }
+
+    pub(crate) fn restore_document_revision(&mut self, revision: u64) -> Result<()> {
+        if revision == 0 && self.state.dag.node_count() != 0 {
+            return Err(Error::new(
+                ErrorCategory::CorruptData,
+                Recoverability::UserCorrectable,
+                "graph document revision zero cannot contain editable nodes",
+            )
+            .with_context(
+                ErrorContext::new(COMPONENT, "restore_document_revision")
+                    .with_field("graph_id", self.state.dag.id().to_string())
+                    .with_field("node_count", self.state.dag.node_count().to_string()),
+            ));
+        }
+        self.revision = revision;
+        Ok(())
+    }
 }
 
 impl<T: Clone> EditableGraph<T> {

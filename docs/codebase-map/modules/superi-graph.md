@@ -2,8 +2,8 @@
 module_id: superi-graph
 source_paths:
   - open/crates/superi-graph
-source_hash: 7de954d38c197c24e42dae8a6a7e739715523ef32e62c2aee4b871a3026c78b7
-source_files: 21
+source_hash: 285b401fc8037e69f612cde1f8e05b4d22e92968c8f63d89ce0cea75cba7e930
+source_files: 22
 mapped_at_commit: working-tree
 ---
 
@@ -19,6 +19,9 @@ state, atomic revisioned mutation transactions, exact dirty-region algebra, dete
 dependency invalidation planning, snapshot-bound region-of-interest propagation, exact
 requested-versus-dirty work intersection, lazy request-scoped evaluation, and deterministic work
 scheduling are implemented.
+Versioned deterministic graph documents now preserve exact schemas, typed editable nodes,
+parameters, presentation order, edges, graph identity, and optimistic revision across strict
+serialization, checked deserialization, integrity validation, and explicit legacy migration.
 
 The crate does not own identifier value representation. `superi-core` remains the single identity
 owner, while graph state owns payload and connection membership. Schema type identities and
@@ -26,16 +29,17 @@ schema-local names are definition metadata, separate from the core object identi
 editable graph instances.
 
 Cache generation integration, editable-snapshot and ROI-plan evaluator binding, outer job dispatch,
-expressions, serialization, and explicit headless integration remain absent or placeholders. The
-implemented storage, schema, validation, mutation, invalidation, ROI planning, scheduling, and
-generic evaluator surfaces must not be interpreted as a working production render path.
+expressions, project storage, and explicit headless integration remain absent or placeholders. The
+implemented storage, schema, validation, mutation, invalidation, ROI planning, scheduling,
+document, and generic evaluator surfaces must not be interpreted as a working production render
+path or an atomic project save system.
 
 ## Source inventory
 
-The module owns 21 text files:
+The module owns 22 text files:
 
 - `open/crates/superi-graph/Cargo.toml`: Declares dependencies on `superi-core`, `superi-gpu`,
-  `superi-image`, and `superi-concurrency`.
+  `superi-image`, `superi-concurrency`, Serde, JSON, and SHA-256 hashing.
 - `open/crates/superi-graph/src/dag.rs`: Owns `GraphEndpoint`, `GraphEdge`, and generic
   `DirectedAcyclicGraph<N>` storage. Ordered primary and adjacency collections support checked node
   and edge insertion and removal, stable immutable inspection, narrow payload mutation,
@@ -53,8 +57,8 @@ The module owns 21 text files:
   requested-work clipping, immutable invalidation seeds and plans, stable topological dependency
   propagation, identity-region convenience, edge-aware mapping, and structured failure context.
 - `open/crates/superi-graph/src/lib.rs`: Documents the partial implementation and exports the
-  identifier, node-schema, DAG, validation, mutation, invalidation, evaluator, and ROI surfaces
-  beside the remaining module tree.
+  identifier, node-schema, DAG, validation, mutation, invalidation, evaluator, ROI, and graph
+  document surfaces beside the remaining module tree.
 - `open/crates/superi-graph/src/mutate.rs`: Implements complete schema-bound editable node
   instances, opaque typed parameters, immutable graph snapshots, optimistic revisions, and ordered
   atomic add, remove, connect, disconnect, reorder, and parameter transactions.
@@ -63,8 +67,9 @@ The module owns 21 text files:
 - `open/crates/superi-graph/src/roi.rs`: Owns exact requested output regions, per-output regions of
   definition, built-in and custom node mapping, dependency-only upstream propagation, immutable
   snapshot stamping, stable evaluation order, and invalidation intersection.
-- `open/crates/superi-graph/src/serialize.rs`: Placeholder for graph serialization and
-  deserialization.
+- `open/crates/superi-graph/src/serialize.rs`: Owns the strict versioned graph document envelope,
+  canonical JSON encoding, SHA-256 payload integrity, complete schema and editable-state records,
+  checked reconstruction, explicit legacy migration, and canonical upgraded bytes.
 - `open/crates/superi-graph/src/validation.rs`: Implements pure typed input and output binding
   validation, canonical binding snapshots, structured diagnostics, and exact output-to-input schema
   compatibility without inspecting evaluator-owned payloads.
@@ -93,6 +98,10 @@ The module owns 21 text files:
   region union, per-source full-frame domains, checked expansion and clipping, custom per-input
   mapping, structured failures, invalidation intersection, immutable snapshot stamping, stable
   dependency order, and editor-script-headless parity across insertion histories.
+- `open/crates/superi-graph/tests/serialization_contract.rs`: Proves deterministic current-format
+  round trips, canonical normalization, lossless legacy migration, integrity and compatibility
+  rejection, checked semantic reconstruction, interrupted-document rejection, and equal editor,
+  script, and headless evaluation from independently loaded graph documents.
 
 ## Public surface
 
@@ -187,6 +196,27 @@ use a schema identity or a separate payload without coupling the DAG algorithm t
 - Mutation failures preserve their original shared error classification and add stable graph,
   expected revision, mutation index, and mutation code context.
 
+`superi_graph::serialize` exposes the editable graph document boundary:
+
+- `GRAPH_DOCUMENT_FORMAT_REVISION` identifies the current strict envelope revision.
+  `serialize_graph` accepts one immutable `GraphSnapshot<T>` and emits deterministic canonical JSON
+  when `T` is serializable.
+- The envelope identifies `superi.graph`, records its format and core primitive schema revisions,
+  and includes a SHA-256 digest of the canonical payload. Unknown fields, unsupported future
+  revisions, malformed checksums, truncated bytes, and noncanonical identities fail explicitly.
+- The payload preserves the graph identity and optimistic revision, every complete `NodeSchema`,
+  typed node, instance port and parameter binding, opaque JSON parameter payload, presentation
+  order, and typed edge. Semantically ordered collections are canonicalized independently of input
+  insertion and JSON object-key order.
+- `deserialize_graph` verifies the envelope before reconstructing all schemas and editable nodes
+  through their checked constructors. It publishes nodes and edges through one `GraphTransaction`,
+  then restores the persisted revision only after the complete state validates.
+- `GraphLoad<T>` returns the checked graph, source revision, migration state, and canonical current
+  document. Revision zero has one explicit legacy envelope and migrates losslessly to revision one;
+  unknown revisions are never guessed.
+- The codec owns editable graph meaning, not files, SQLite, locking, autosave, backup selection, or
+  crash-safe project replacement. Those durability mechanisms remain `superi-project` concerns.
+
 `superi_graph::invalidation` exposes the derived invalidation boundary:
 
 - `DirtyRegion` identifies full-frame or exact half-open `PixelBounds` work. `DirtyRegionSet`
@@ -220,8 +250,8 @@ use a schema identity or a separate payload without coupling the DAG algorithm t
 - Missing nodes, wrong-direction requests, absent domains, overflow, missing custom mapping, and
   invalid custom output use shared actionable diagnostics without mutating graph state.
 
-The crate also exports placeholder `expr`, `headless`, and `serialize` modules. They expose no
-expression, serialization, or explicit headless API.
+The crate also exports placeholder `expr` and `headless` modules. They expose no expression or
+explicit headless API.
 
 ## Architecture and data flow
 
@@ -318,6 +348,23 @@ The mutation transaction flow is:
 6. Editor, script, and headless callers clone the same `GraphSnapshot<T>` and observe identical
    typed nodes, parameters, edges, visual order, and topological order without a second model.
 
+The graph document flow is:
+
+1. A caller snapshots one checked `EditableGraph<T>` and serializes its complete definition and
+   instance state into the current `superi.graph` envelope.
+2. The encoder canonicalizes schemas, fields, capabilities, nodes, bindings, parameters, edges,
+   presentation order, and JSON object keys, then hashes the canonical payload and emits canonical
+   envelope bytes.
+3. The decoder rejects malformed, truncated, unknown, future, or integrity-mismatched documents
+   before graph publication. A supported legacy envelope is migrated explicitly in memory.
+4. Schema and instance constructors recheck names, versions, fields, cardinality, and parameter
+   types. One transaction rechecks node identity, edge endpoints, connection compatibility,
+   cardinality, and acyclicity before the persisted revision becomes visible.
+5. The returned `GraphLoad<T>` supplies the exact checked graph and canonical current document, so
+   an editor, script, or headless caller can save an upgrade without maintaining a second model.
+6. Project persistence may place those bytes in a crash-safe container later. The graph codec does
+   not claim filesystem interruption handling beyond rejecting incomplete document bytes.
+
 The dependency invalidation flow is:
 
 1. A caller supplies one or more `InvalidationSeed` values against one immutable
@@ -360,8 +407,9 @@ adding catalog knowledge to topology. The invalidation planner derives work dire
 checked DAG exposed by each immutable `GraphSnapshot`. The ROI planner consumes the same snapshot,
 schema behavior, typed edges, and exact region algebra to derive upstream work. The generic
 evaluator resolves caller-owned DAG payloads but has no production binding from `EditableNode<T>`.
-Production evaluation integration, persistence, cache generations, undo history, and engine
-transaction coordination remain separate later owners.
+The document codec preserves and reconstructs that same checked snapshot without assuming a project
+container. Production evaluation integration, project persistence, cache generations, undo history,
+and engine transaction coordination remain separate later owners.
 
 The disclosed canonical reference graph in `superi-engine` uses core `NodeId` but is not a consumer
 of this store and retains string ports and edges. It remains reference behavior, not production
@@ -370,7 +418,8 @@ graph evaluation or runtime integration.
 ## Dependencies and consumers
 
 - Implemented source uses `superi-core` for official object IDs, color-space tags, shared errors,
-  semantic versions, canonical namespaced validation, and capability sets.
+  semantic versions, canonical namespaced validation, and capability sets. The document codec uses
+  Serde and JSON for generic strict records plus SHA-256 for canonical payload integrity.
 - `superi-gpu`, `superi-image`, and `superi-concurrency` remain declared for later concrete
   evaluation integration and are not imported by current graph source. The implemented generic
   evaluator and semantic scheduler use only core values plus graph-owned storage, ordered standard
@@ -378,9 +427,9 @@ graph evaluation or runtime integration.
   render coordinators and `superi-concurrency`.
 - Direct manifest consumers are `superi-ai`, `superi-cache`, `superi-color`, `superi-effects`,
   `superi-timeline`, `superi-project`, and `superi-engine`.
-- None of those consumers currently imports a `superi_graph` Rust item. The eight public
-  integration test targets are the real consumers of identifier, schema-discovery, DAG,
-  validation, mutation, invalidation, evaluation, and ROI APIs.
+- None of those consumers currently imports a `superi_graph` Rust item. The nine public integration
+  test targets are the real consumers of identifier, schema-discovery, DAG, validation, mutation,
+  invalidation, ROI, serialization, and evaluation APIs.
 
 ## Invariants and operational boundaries
 
@@ -422,6 +471,15 @@ graph evaluation or runtime integration.
   Equivalent explicit transactions produce equal snapshots regardless of insertion history.
 - Graph snapshots are immutable `Arc` views. A later transaction cannot change a prior reader's
   nodes, parameters, edges, presentation order, topology, or revision.
+- Current graph documents are deterministic for equal editable meaning. Canonical collection and
+  JSON object order, exact identifier text, explicit format and primitive revisions, and payload
+  integrity cannot depend on insertion history, caller role, locale, platform, or hash iteration.
+- Deserialization never bypasses schema, node, transaction, connection, cardinality, or cycle
+  validation. The persisted graph revision becomes visible only after one complete candidate state
+  is accepted, and a nonempty graph may not claim revision zero.
+- Legacy migration is explicit and bounded to known source revisions. Unknown future format or
+  primitive revisions, unknown fields, corrupt digests, duplicate presentation entries, invalid
+  typed parameters, cycles, and interrupted documents fail instead of being repaired or guessed.
 - Input validation never merges duplicate binding groups. Each declared port appears exactly once
   after validation, variadic value order is preserved, and absent optional or variadic ports do not
   become evaluator work.
@@ -464,13 +522,13 @@ graph evaluation or runtime integration.
 - Every ROI plan retains its source graph ID and editable revision, contains no mutable graph,
   invalidation, cache, scheduler, or payload state, and is identical across reader roles for equal
   snapshots, domains, requests, and deterministic custom mapping.
-- The crate has no persistence format, locking owner, outer scheduler connection, editable-snapshot
-  evaluator binding, GPU resource ownership, plugin loading, undo history, cache generation owner,
-  or engine transaction coordinator yet.
+- The crate has no project container, atomic file replacement, locking owner, autosave, recovery
+  journal, outer scheduler connection, editable-snapshot evaluator binding, GPU resource ownership,
+  plugin loading, undo history, cache generation owner, or engine transaction coordinator yet.
 
 ## Tests and verification
 
-The graph crate owns 50 integration tests across eight files. The two identifier tests prove all six
+The graph crate owns 55 integration tests across nine files. The two identifier tests prove all six
 public domains are distinct, each canonical text value parses back exactly, and every graph export
 has the same Rust `TypeId` as its official core owner.
 
@@ -518,7 +576,13 @@ mapping, invalid mapper diagnostics, wrong-direction request rejection, invalida
 snapshot revision stamping, stable dependency order, and identical editor-script-headless plans
 across different insertion histories.
 
-Focused verification runs all eight integration targets through the crate's public API. Crate-wide
+Five serialization tests prove deterministic canonical current bytes, complete snapshot round
+trips, semantic normalization, stable reserialization, lossless revision-zero migration, canonical
+upgraded bytes, integrity and future-revision rejection, unknown-field and interruption rejection,
+duplicate-order, mistyped-parameter, and cycle rejection through checked contracts, and equal
+editor, script, and headless evaluation after independent loads.
+
+Focused verification runs all nine integration targets through the crate's public API. Crate-wide
 tests, strict Clippy, and rustdoc cover the library and integration targets. The complete workspace
 suite exercises downstream compatibility. The repository map validator checks the source inventory
 and hash, while dependency and boundary tools enforce the one-way open architecture. No test yet
@@ -536,10 +600,12 @@ roles, and callers can derive both dirty and requested work from the same publis
 Lazy request-scoped evaluation and deterministic semantic scheduling are also implemented and
 test-backed, so caller-owned evaluator payloads can resolve stored topology through inspectable
 readiness batches and stable completion order. No production binding makes `EditableNode<T>` an
-evaluator node or connects ROI and invalidation plans to evaluator requests yet. The crate cannot
-serialize, persistently cache, dispatch work through an outer job system, or render production
-values, and no downstream production catalog consumes the mutation, invalidation, ROI, scheduling,
-or evaluation owner.
+evaluator node or connects ROI and invalidation plans to evaluator requests yet.
+The versioned graph document codec now preserves and validates that complete editable state,
+migrates the supported legacy envelope, and returns canonical upgraded bytes. The crate cannot
+store a project atomically, persistently cache, dispatch work through an outer job system, or render
+production values, and no downstream production catalog consumes the mutation, invalidation, ROI,
+serialization, scheduling, or evaluation owner.
 
 The latest-version rule deterministically selects the lexically highest build-metadata variant when
 SemVer precedence ties. Consumers that require one deployment-specific build must request its exact
@@ -569,6 +635,9 @@ semantic readiness batches as a worker-pool or GPU-submission guarantee, or trea
 evaluation as production graph, GPU, headless, or render proof.
 ROI-specific risks are supplying stale regions of definition, implementing nondeterministic custom
 mapping, or reusing a plan after its stamped graph revision has changed.
+Serialization-specific risks are extending the wire format without a migration, accepting partial
+state outside checked constructors, mistaking a payload digest for durable file replacement, or
+letting a caller-specific wrapper become a competing editable graph model.
 
 ## Maintenance notes
 
@@ -598,7 +667,12 @@ exact region-set union, checked expansion, strict custom input validation, depen
 traversal, forward topological result order, and graph revision stamping. Do not create an
 editor-specific, script-specific, or headless-specific propagation path.
 
-Update this map when mutation, invalidation, ROI, and evaluation integrate, cache generations,
-ROI-to-evaluator binding, outer job dispatch, serialization, expressions, missing-node handling,
-undo ownership, engine coordination, or a downstream catalog becomes real. Recheck direct consumer
-maps whenever they begin importing any public graph contract.
+Keep graph documents strict, versioned, canonical, and reconstructed through the existing checked
+state owners. Add every new field through an explicit format revision and migration, preserve
+unknown-future rejection, and leave atomic project storage, recovery selection, and locking in
+`superi-project`.
+
+Update this map when mutation, invalidation, ROI, serialization, and evaluation integrate, cache
+generations, ROI-to-evaluator binding, outer job dispatch, expressions, missing-node handling,
+project storage, undo ownership, engine coordination, or a downstream catalog becomes real. Recheck
+direct consumer maps whenever they begin importing any public graph contract.
