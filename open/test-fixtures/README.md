@@ -91,6 +91,30 @@ cargo run -p superi-fixture-tool -- generate-video <OUTPUT_DIRECTORY>
 The generator refuses to overwrite any existing output path. Compare all three generated artifacts
 byte for byte with the canonical version. Do not regenerate into the checked-in `v1` directory.
 
+## Deterministic synchronized audio baseline
+
+`audio/synchronized-multichannel/v1` contains three 100 ms WAVEFORMATEXTENSIBLE PCM16 files: 44,100
+Hz stereo, 48,000 Hz 5.1, and 96,000 Hz 7.1. Their channel masks use canonical speaker order, and
+their interleaved samples use distinct per-channel gains so a routing swap is observable. Every file
+has a ten millisecond silent lead-in, an integer-only 1 kHz triangle signal through 90 ms, and a ten
+millisecond silent tail. The shared onset and tail are exact sample boundaries at every rate, and the
+zero-valued boundaries keep adjacent-sample changes bounded.
+
+The `superi-media-io` fixture contract opens all three files through `PcmContainerSource`. It proves
+their exact sample clocks, frame counts, WAVE channel masks, canonical channel layouts, complete
+sample sequences, synchronized signal boundaries, channel-specific routing signatures, and audible
+continuity bound.
+
+Reproduce the version into a new absent directory from `open/`:
+
+```text
+cargo run -p superi-fixture-tool -- generate-audio <OUTPUT_DIRECTORY>
+```
+
+The generator refuses to overwrite any existing output path. Compare the manifest and all three
+WAVE files byte for byte with the canonical version. Do not regenerate into the checked-in `v1`
+directory.
+
 ## Contributor workflow
 
 1. Prefer the smallest synthetic fixture that exposes the behavior. Use representative recorded or

@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "fixture_id": "audio/synchronized-multichannel",
+  "fixture_version": 1,
+  "description": "Deterministic synchronized PCM16 WAVE fixtures at common sample rates and canonical speaker layouts.",
+  "provenance": {
+    "kind": "generated",
+    "source": "Authored and generated in the Superi repository from stable sample-rate, channel-mask, timing, and integer-waveform rules.",
+    "author": "Superi contributors",
+    "created_on": "2026-07-14",
+    "license": "CC0-1.0",
+    "rights": "Original synthetic audio approved for unrestricted redistribution.",
+    "generator": {
+      "name": "superi-fixture-tool",
+      "version": "0.0.0",
+      "command": "cargo run -p superi-fixture-tool -- generate-audio <OUTPUT_DIRECTORY>",
+      "seed": "superi-audio-baseline-v1"
+    },
+    "parents": []
+  },
+  "files": [
+    {
+      "path": "stereo-44100.wav",
+      "media_type": "audio/wav",
+      "bytes": 17708,
+      "sha256": "9f1b9e939facb310531f050bd44c2cb0fb3986e31f3efc551e0708da37a70c23"
+    },
+    {
+      "path": "surround-5-1-48000.wav",
+      "media_type": "audio/wav",
+      "bytes": 57668,
+      "sha256": "4006a263e5c2d53bdde8fb8617ad5c68d6d258c2ab0e95078a8c8cf3aebe154f"
+    },
+    {
+      "path": "surround-7-1-96000.wav",
+      "media_type": "audio/wav",
+      "bytes": 153668,
+      "sha256": "d38ba36f5511512eff02a6bb3957b771d86db90ff6b6844593c72f8d14110d3a"
+    }
+  ]
+}

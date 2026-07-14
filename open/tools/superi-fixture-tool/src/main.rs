@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use superi_fixture_tool::{generate_video_baseline, validate_root};
+use superi_fixture_tool::{generate_audio_baseline, generate_video_baseline, validate_root};
 
-const USAGE: &str = "usage:\n  superi-fixture-tool check [FIXTURE_ROOT]\n  superi-fixture-tool generate-video <OUTPUT_DIRECTORY>";
+const USAGE: &str = "usage:\n  superi-fixture-tool check [FIXTURE_ROOT]\n  superi-fixture-tool generate-video <OUTPUT_DIRECTORY>\n  superi-fixture-tool generate-audio <OUTPUT_DIRECTORY>";
 
 fn main() -> ExitCode {
     let mut arguments = std::env::args_os().skip(1);
@@ -25,6 +25,15 @@ fn main() -> ExitCode {
                 return usage();
             }
             generate_video(output_directory)
+        }
+        Some(command) if command == std::ffi::OsStr::new("generate-audio") => {
+            let Some(output_directory) = arguments.next().map(PathBuf::from) else {
+                return usage();
+            };
+            if arguments.next().is_some() {
+                return usage();
+            }
+            generate_audio(output_directory)
         }
         _ => usage(),
     }
@@ -51,6 +60,19 @@ fn generate_video(output_directory: PathBuf) -> ExitCode {
     match generate_video_baseline(&output_directory) {
         Ok(report) => {
             println!("generated {} video cases", report.case_count());
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("failed to generate {}: {error}", output_directory.display());
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn generate_audio(output_directory: PathBuf) -> ExitCode {
+    match generate_audio_baseline(&output_directory) {
+        Ok(report) => {
+            println!("generated {} audio cases", report.case_count());
             ExitCode::SUCCESS
         }
         Err(error) => {

@@ -16,6 +16,10 @@ const SUPPORTED_SCHEMA_VERSION: u32 = 1;
 pub const VIDEO_CATALOG_NAME: &str = "video-cases.csv";
 pub const VIDEO_PAYLOAD_NAME: &str = "video-frames.bin";
 pub const VIDEO_MANIFEST_NAME: &str = MANIFEST_NAME;
+pub const AUDIO_STEREO_44100_NAME: &str = "stereo-44100.wav";
+pub const AUDIO_SURROUND_5_1_48000_NAME: &str = "surround-5-1-48000.wav";
+pub const AUDIO_SURROUND_7_1_96000_NAME: &str = "surround-7-1-96000.wav";
+pub const AUDIO_MANIFEST_NAME: &str = MANIFEST_NAME;
 
 const VIDEO_WIDTH: usize = 5;
 const VIDEO_HEIGHT: u32 = 3;
@@ -400,6 +404,223 @@ fn video_manifest(catalog: &[u8], payload: &[u8]) -> String {
         digest_bytes(catalog),
         payload.len(),
         digest_bytes(payload)
+    )
+}
+
+#[derive(Clone, Copy)]
+struct AudioSpec {
+    name: &'static str,
+    sample_rate: u32,
+    channels: u16,
+    channel_mask: u32,
+}
+
+const AUDIO_SPECS: [AudioSpec; 3] = [
+    AudioSpec {
+        name: AUDIO_STEREO_44100_NAME,
+        sample_rate: 44_100,
+        channels: 2,
+        channel_mask: 0x0003,
+    },
+    AudioSpec {
+        name: AUDIO_SURROUND_5_1_48000_NAME,
+        sample_rate: 48_000,
+        channels: 6,
+        channel_mask: 0x003f,
+    },
+    AudioSpec {
+        name: AUDIO_SURROUND_7_1_96000_NAME,
+        sample_rate: 96_000,
+        channels: 8,
+        channel_mask: 0x063f,
+    },
+];
+
+pub const AUDIO_BASELINE_CASE_COUNT: usize = AUDIO_SPECS.len();
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AudioBaselineReport {
+    case_count: usize,
+    payload_bytes: usize,
+}
+
+impl AudioBaselineReport {
+    #[must_use]
+    pub const fn case_count(self) -> usize {
+        self.case_count
+    }
+
+    #[must_use]
+    pub const fn payload_bytes(self) -> usize {
+        self.payload_bytes
+    }
+}
+
+struct AudioArtifact {
+    spec: AudioSpec,
+    bytes: Vec<u8>,
+}
+
+/// Creates the deterministic synchronized multichannel WAVE fixture baseline.
+pub fn generate_audio_baseline(output_directory: &Path) -> io::Result<AudioBaselineReport> {
+    match fs::symlink_metadata(output_directory) {
+        Ok(_) => {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "output directory already exists",
+            ));
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+
+    let artifacts = AUDIO_SPECS
+        .into_iter()
+        .map(|spec| AudioArtifact {
+            spec,
+            bytes: audio_wave(spec),
+        })
+        .collect::<Vec<_>>();
+    let payload_bytes = artifacts.iter().map(|artifact| artifact.bytes.len()).sum();
+    let manifest = audio_manifest(&artifacts);
+
+    if let Some(parent) = output_directory.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+    fs::create_dir(output_directory)?;
+    for artifact in &artifacts {
+        fs::write(output_directory.join(artifact.spec.name), &artifact.bytes)?;
+    }
+    fs::write(output_directory.join(AUDIO_MANIFEST_NAME), manifest)?;
+
+    Ok(AudioBaselineReport {
+        case_count: artifacts.len(),
+        payload_bytes,
+    })
+}
+
+fn audio_wave(spec: AudioSpec) -> Vec<u8> {
+    const BITS_PER_SAMPLE: u16 = 16;
+    const PCM_SUBFORMAT_GUID: [u8; 16] = [
+        0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b,
+        0x71,
+    ];
+
+    let frame_count = spec.sample_rate / 10;
+    let block_align = spec.channels * (BITS_PER_SAMPLE / 8);
+    let mut samples = Vec::with_capacity(frame_count as usize * usize::from(block_align));
+    for frame in 0..frame_count {
+        for channel in 0..usize::from(spec.channels) {
+            samples
+                .extend_from_slice(&audio_sample(frame, spec.sample_rate, channel).to_le_bytes());
+        }
+    }
+
+    let riff_size = 60_u32 + u32::try_from(samples.len()).expect("audio fixture remains tiny");
+    let mut bytes = Vec::with_capacity(68 + samples.len());
+    bytes.extend_from_slice(b"RIFF");
+    bytes.extend_from_slice(&riff_size.to_le_bytes());
+    bytes.extend_from_slice(b"WAVE");
+    bytes.extend_from_slice(b"fmt ");
+    bytes.extend_from_slice(&40_u32.to_le_bytes());
+    bytes.extend_from_slice(&0xfffe_u16.to_le_bytes());
+    bytes.extend_from_slice(&spec.channels.to_le_bytes());
+    bytes.extend_from_slice(&spec.sample_rate.to_le_bytes());
+    bytes.extend_from_slice(&(spec.sample_rate * u32::from(block_align)).to_le_bytes());
+    bytes.extend_from_slice(&block_align.to_le_bytes());
+    bytes.extend_from_slice(&BITS_PER_SAMPLE.to_le_bytes());
+    bytes.extend_from_slice(&22_u16.to_le_bytes());
+    bytes.extend_from_slice(&BITS_PER_SAMPLE.to_le_bytes());
+    bytes.extend_from_slice(&spec.channel_mask.to_le_bytes());
+    bytes.extend_from_slice(&PCM_SUBFORMAT_GUID);
+    bytes.extend_from_slice(b"data");
+    bytes.extend_from_slice(
+        &u32::try_from(samples.len())
+            .expect("audio fixture remains tiny")
+            .to_le_bytes(),
+    );
+    bytes.extend_from_slice(&samples);
+    bytes
+}
+
+fn audio_sample(frame: u32, sample_rate: u32, channel: usize) -> i16 {
+    let onset = sample_rate / 100;
+    let tail = sample_rate * 9 / 100;
+    if frame < onset || frame >= tail {
+        return 0;
+    }
+
+    let elapsed = frame - onset;
+    let phase = i64::from((u64::from(elapsed) * 1_000 % u64::from(sample_rate)) as u32);
+    let rate = i64::from(sample_rate);
+    let four_phase = phase * 4;
+    let triangle = if four_phase < rate {
+        four_phase
+    } else if four_phase < rate * 3 {
+        rate * 2 - four_phase
+    } else {
+        four_phase - rate * 4
+    };
+    let gain = 768 * i64::try_from(channel + 1).expect("audio fixture channel index must fit");
+    i16::try_from(triangle * gain / rate).expect("audio fixture sample must fit PCM16")
+}
+
+fn audio_manifest(artifacts: &[AudioArtifact]) -> String {
+    debug_assert_eq!(artifacts.len(), AUDIO_BASELINE_CASE_COUNT);
+    format!(
+        r#"{{
+  "schema_version": 1,
+  "fixture_id": "audio/synchronized-multichannel",
+  "fixture_version": 1,
+  "description": "Deterministic synchronized PCM16 WAVE fixtures at common sample rates and canonical speaker layouts.",
+  "provenance": {{
+    "kind": "generated",
+    "source": "Authored and generated in the Superi repository from stable sample-rate, channel-mask, timing, and integer-waveform rules.",
+    "author": "Superi contributors",
+    "created_on": "2026-07-14",
+    "license": "CC0-1.0",
+    "rights": "Original synthetic audio approved for unrestricted redistribution.",
+    "generator": {{
+      "name": "superi-fixture-tool",
+      "version": "0.0.0",
+      "command": "cargo run -p superi-fixture-tool -- generate-audio <OUTPUT_DIRECTORY>",
+      "seed": "superi-audio-baseline-v1"
+    }},
+    "parents": []
+  }},
+  "files": [
+    {{
+      "path": "{}",
+      "media_type": "audio/wav",
+      "bytes": {},
+      "sha256": "{}"
+    }},
+    {{
+      "path": "{}",
+      "media_type": "audio/wav",
+      "bytes": {},
+      "sha256": "{}"
+    }},
+    {{
+      "path": "{}",
+      "media_type": "audio/wav",
+      "bytes": {},
+      "sha256": "{}"
+    }}
+  ]
+}}
+"#,
+        artifacts[0].spec.name,
+        artifacts[0].bytes.len(),
+        digest_bytes(&artifacts[0].bytes),
+        artifacts[1].spec.name,
+        artifacts[1].bytes.len(),
+        digest_bytes(&artifacts[1].bytes),
+        artifacts[2].spec.name,
+        artifacts[2].bytes.len(),
+        digest_bytes(&artifacts[2].bytes),
     )
 }
 
