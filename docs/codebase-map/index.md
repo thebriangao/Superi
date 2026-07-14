@@ -35,7 +35,7 @@ against raw source before changing code.
 | `tool-superi-dependency-check` | [module map](modules/tool-superi-dependency-check.md) | `open/tools/superi-dependency-check` | Offline executable policy for the open runtime dependency graph | Implemented exact runtime, build, dev, and new-crate checks |
 | `tool-superi-boundary-tool` | [module map](modules/tool-superi-boundary-tool.md) | `open/tools/superi-boundary-tool` | Offline scanner for network-client and open-to-closed policy | Implemented library, CLI, workspace gate, and hosted-build command |
 | `tool-superi-bench` | [module map](modules/tool-superi-bench.md) | `open/tools/superi-bench` | Stable benchmark harnesses and reproducible stage reporting | Implemented seven-stage runner with real graph evaluation and explicit gaps |
-| `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline validator and deterministic video, audio, timing, color, media-error, and OTIO fixture generator | Implemented validation library, six generators, seven-command CLI, and focused contracts |
+| `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline fixture validation, generation, and typed golden verification | Implemented validation library, six generators, seven-command CLI, four golden harnesses, and focused contracts |
 | `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: hosted slice baseline, portable expected contract, and canonical source delivered; runtime slice absent |
 
 ## Ownership and repository boundaries
@@ -497,6 +497,12 @@ refuse overwrite. The tool does not execute recorded commands, prove repository-
 immutability, or verify legal and semantic
 claims inside arbitrary free-form provenance fields.
 
+The same utility exposes schema-versioned, read-only golden verification for frame, audio, timeline,
+and project outputs. Frame and audio envelopes compare exact payload bytes together with layout and
+meaning metadata, while timeline and project envelopes canonicalize object-key order without
+changing array order or scalar values. Verification reports expected and actual SHA-256 evidence,
+never writes expected files, and provides no automatic update or bless path.
+
 `superi-dependency-check` is also a repository utility. It reads the locked workspace graph offline
 and fails when a runtime crate adds an unreviewed normal, build, or dev-only internal edge, or when a
 new runtime crate has no explicit policy. The structure guide and executable policy are reviewed as
@@ -666,6 +672,9 @@ raw-frame, PCM-container, timing-metadata, color, and focused PCM-failure proofs
 corruption, malformed Matroska, MP4, or MXF, hardware, playback, device, A/V synchronization,
 scheduling, or editorial runtime proof. Snapshot validation still does not prove Git-history immutability,
 provenance truth, legal clearance, or semantic quality beyond focused contracts. The separate
+golden harness baseline commits exact typed examples for frame, audio, timeline, and project
+comparison. It proves the reusable verifier and canonical format, while real renderer, mixer,
+timeline-engine, and project-runtime outputs remain consumer-owned future cases. The separate
 `slice/video-cfr` fixture provides one digest-bound 96-frame AV1 WebM for the canonical runner. Its
 decoded traits remain expected values because current contract import does not open it. The derived
 `slice/expectations` version 1 remains immutable historical data. Current version 2 adds a portable

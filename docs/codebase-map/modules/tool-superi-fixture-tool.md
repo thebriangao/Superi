@@ -2,8 +2,8 @@
 module_id: tool-superi-fixture-tool
 source_paths:
   - open/tools/superi-fixture-tool
-source_hash: 7b59f5a4f238843f4c737a8d95210171151c28b003b672dcc0769658a4ba8b1e
-source_files: 16
+source_hash: 89b0d0144ec87a807b566fd5f5bbc66ffee0fd424dd205df9ecb2a332ff76602
+source_files: 18
 mapped_at_commit: working-tree
 ---
 
@@ -11,7 +11,8 @@ mapped_at_commit: working-tree
 
 `superi-fixture-tool` owns offline validation for shared canonical fixtures and deterministic
 generation for the version 1 raw-video, synchronized multichannel audio, timing, color and
-image-sequence, media-error, and OTIO interchange baselines. It validates layout, manifest schema,
+image-sequence, media-error, and OTIO interchange baselines. It also owns read-only typed golden
+verification for frame, audio, timeline, and project outputs. It validates layout, manifest schema,
 provenance, lineage, payload inventory, byte counts, and SHA-256
 digests without fetching data or executing documentary generator commands. All six generators
 create approved synthetic evidence directly and never replace an existing output path.
@@ -38,6 +39,10 @@ versions for consumers or mutate released data.
   The OTIO path owns fixed native JSON object construction, stable editorial identities, exact
   rational timing, explicit unsupported expectations, and the first slice projection. All six own
   exact manifests, reports, and no-overwrite guards.
+- `open/tools/superi-fixture-tool/src/golden.rs`: Implements schema-versioned frame and audio
+  envelopes, canonical timeline and project JSON envelopes, structural validation, deterministic
+  serialization, read-only expected-file comparison, stable error codes, first-difference byte
+  diagnostics, and expected plus actual SHA-256 evidence.
 - `open/tools/superi-fixture-tool/src/main.rs`: Implements `check`, `generate-video`,
   `generate-audio`, `generate-timing`, `generate-color`, `generate-media-errors`, and
   `generate-otio`, exact usage, summaries, diagnostics, and process exit statuses.
@@ -51,6 +56,10 @@ versions for consumers or mutate released data.
 - `open/tools/superi-fixture-tool/tests/color_generator_contract.rs`: Generates all color artifacts
   twice, compares them byte for byte with the canonical version, checks report and payload bounds,
   and proves preservation of an existing directory.
+- `open/tools/superi-fixture-tool/tests/golden_contract.rs`: Proves exact frame bytes and layout,
+  exact audio sample timing and channel meaning, recursive timeline and project JSON
+  canonicalization, immutable expected files, mismatch diagnostics, and all four committed golden
+  baselines.
 - `open/tools/superi-fixture-tool/tests/media_error_cli_contract.rs`: Proves process-level
   media-error generation, exact four-case summary, manifest creation, complete usage, and
   no-overwrite failure.
@@ -80,6 +89,13 @@ versions for consumers or mutate released data.
 The library exports `validate_root(&Path) -> Result<ValidationReport, ValidationErrors>`.
 `ValidationReport` exposes fixture and payload counts. `ValidationErrors` exposes stable structured
 entries and deterministic display output with code, path, and message.
+
+The `golden` module exports `FrameGolden`, `AudioGolden`, `TimelineGolden`, and `ProjectGolden`
+constructors plus domain-specific `verify_frame`, `verify_audio`, `verify_timeline`, and
+`verify_project` functions. Frame and audio constructors reject incomplete or inconsistent payload
+metadata before comparison. Timeline and project constructors require object documents and sort
+every nested object deterministically while preserving array and scalar meaning. `GoldenError`
+exposes a stable code, optional path, message, and optional expected and actual SHA-256 digests.
 
 The library also exports `generate_video_baseline(&Path) -> io::Result<VideoBaselineReport>`, the
 stable artifact names, and `VIDEO_BASELINE_CASE_COUNT`. A successful report exposes the case count
@@ -150,6 +166,14 @@ identity and version, validates provenance rules, verifies every payload size an
 resolves local parent manifests, rejects unlisted files, sorts errors, and returns counts only for a
 complete successful pass.
 
+Golden verification validates and canonically serializes the actual typed envelope, reads and
+strictly parses an existing expected JSON file, applies the same validation and canonicalization,
+then compares exact canonical bytes. Frame metadata binds geometry, row stride, packed pixel format,
+semantic channel order, color space, alpha mode, and payload bytes. Audio metadata binds sample
+rate, signed sample origin, frame count, semantic channel order, little-endian sample format,
+interleaving, and payload bytes. A mismatch reports the first differing byte and both digests;
+missing, invalid, or mismatched expected files are never created or rewritten.
+
 Video generation uses 23 stable pixel-format codes and nine exact rational frame rates for 207
 format-and-rate cases. Each case contains one 5 by 3 frame. Packed, planar, semiplanar, 4:2:0,
 4:2:2, and 4:4:4 layouts use exact little-endian geometry, including ceiling chroma dimensions.
@@ -208,7 +232,7 @@ The standard library supplies filesystem, path, collection, formatting, byte, an
 digests. No external media tool, platform encoder, network service, or random source participates in
 generation.
 
-The binary and 13 integration-test files consume the library. `open/test-fixtures/README.md`
+The binary and 14 integration-test files consume the library. `open/test-fixtures/README.md`
 documents all six generation commands. The canonical-root validator consumes the complete fixture
 store.
 That store now includes the separately generated encoded canonical slice source, which this tool
@@ -229,11 +253,15 @@ PCM open or packet-read behavior. `superi-timeline` adds no runtime tool depende
 development-only JSON contract consumes the
 two OTIO timelines and expectations to prove hierarchy, identity, timing, relationships, metadata,
 nesting, rate changes, canonical slice linkage, and unsupported handling.
+The golden contract additionally consumes `test-fixtures/golden/harness/v1`, whose four canonical
+JSON outputs are ordinary validated fixture payloads with one strict provenance manifest.
 
 ## Invariants and operational boundaries
 
 - Validation is offline and read-only. Generation is offline and writes only a newly created output
   directory.
+- Golden verification is offline and read-only. It has no bless, update, overwrite, network, clock,
+  random, or environment-controlled acceptance path.
 - Fixture identity, version, provenance, paths, inventory, byte counts, and digests remain strict
   schema 1 contracts with deterministic error order.
 - Released versions remain immutable by repository policy. The tool refuses overwrite but does not
@@ -284,14 +312,17 @@ proves fixed mutations, strict parser classifications, and the exact aligned par
 corruption evidence after a cataloged post-open truncation. The OTIO contracts add two timelines,
 exact schemas and timing, stable editorial relationships, opaque preservation
 expectations, and official OpenTimelineIO 0.18.1 semantic read plus write plus read equivalence.
-The combined canonical validator reports nine fixture versions and 21 payloads, including the
-encoded slice source, derived slice expectations, and OTIO interchange baseline.
+The golden contract proves exact frame bytes and layout, exact audio sample representation and
+timing, timeline event identity, project state, canonical serialization, immutable expected files,
+and SHA-256 mismatch evidence through all four typed verification paths. The combined canonical
+validator reports 11 fixture versions and 27 payloads, including the encoded slice source, derived
+slice expectations, OTIO interchange baseline, and golden harness baseline.
 
 ## Current status and risks
 
 Validation, deterministic video, audio, timing, color, media-error, and OTIO generation, all seven
-CLI commands, canonical
-artifacts, and real consumer proof are implemented. The video baseline is raw single-frame evidence,
+CLI commands, typed golden verification, canonical artifacts, and real consumer proof are
+implemented. The video baseline is raw single-frame evidence,
 the audio baseline is PCM-container evidence, the timing baseline is metadata evidence, and the
 color baseline is raw color-transform and sequence evidence, and the media-error baseline is focused
 WAVE, AIFF, and AIFC failure evidence. Together they still do not
@@ -302,6 +333,10 @@ encoded slice fixture participates in strict generic validation but has a separa
 FFmpeg generator and is not reproduced by this tool. Its derived expectation fixture also
 participates in generic validation, while strict frame, audio, timestamp, state, and export meaning
 is verified by the CLI consumer rather than this repository utility.
+
+The golden frame and audio envelopes intentionally require exact format and layout metadata rather
+than perceptual tolerances. Their committed harness cases prove the reusable contract but do not
+stand in for future renderer, mixer, timeline-engine, or project-runtime consumer cases.
 
 Validation still checks SPDX, media type, source, author, rights, and semantic quality only to the
 degree documented by schema rules. It validates a filesystem snapshot rather than history. Lineage
@@ -318,6 +353,10 @@ standard video rate, canonical audio rate, channel layout, timing case, cadence,
 color case, sequence representation, or OTIO target schema representation must first make the
 corresponding consumer contract fail, then receive
 deliberate generator, fixture-version, documentation, and proof updates.
+
+Keep golden envelopes schema-versioned and expected files immutable. Add consumer-owned golden
+cases only after the real output path exists, and require an explicit reviewed fixture change rather
+than adding an acceptance or update path to verification.
 
 Keep this map, fixture policy, command usage, validator behavior, and tests synchronized. Extend
 red contracts before changing schema, generation layouts, overwrite rules, errors, or output. After

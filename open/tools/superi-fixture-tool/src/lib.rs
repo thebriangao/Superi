@@ -1,5 +1,7 @@
 //! Offline validation for Superi's canonical test fixtures.
 
+pub mod golden;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs::{self, File};

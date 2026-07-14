@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "fixture_id": "golden/harness",
+  "fixture_version": 1,
+  "description": "Canonical deterministic outputs for frame, audio, timeline, and project golden harness contracts.",
+  "provenance": {
+    "kind": "generated",
+    "source": "Generated from the typed constructors in superi-fixture-tool golden_contract.rs.",
+    "author": "Superi contributors",
+    "created_on": "2026-07-13",
+    "license": "CC0-1.0",
+    "rights": "Original synthetic metadata and payload bytes approved for unrestricted redistribution.",
+    "generator": {
+      "name": "superi-fixture-tool golden harness",
+      "version": "0.0.0",
+      "command": "cargo test -p superi-fixture-tool --test golden_contract canonical_workspace_goldens_exercise_all_four_harnesses",
+      "seed": "not-applicable"
+    },
+    "parents": []
+  },
+  "files": [
+    {
+      "path": "audio.json",
+      "media_type": "application/json",
+      "bytes": 346,
+      "sha256": "eebe16d9bf1aa02a2e516b7ce80e184457cc11b2e35aea6bda11abeaf7fd32ac"
+    },
+    {
+      "path": "frame.json",
+      "media_type": "application/json",
+      "bytes": 398,
+      "sha256": "f0c4f9714a272b1affdb329d784265bb7b5e844747584cc27da9468bea807c69"
+    },
+    {
+      "path": "project.json",
+      "media_type": "application/json",
+      "bytes": 203,
+      "sha256": "898270ba272bdb23599f7e5c542050b924a20af03ddb1eb633c09605c3dfdc8c"
+    },
+    {
+      "path": "timeline.json",
+      "media_type": "application/json",
+      "bytes": 266,
+      "sha256": "7553920d5e78f91777cee07946fbe9c1ab61873abf890a074b57a4d138716001"
+    }
+  ]
+}

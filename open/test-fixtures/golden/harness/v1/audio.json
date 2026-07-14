@@ -1,0 +1,31 @@
+{
+  "channel_names": [
+    "L",
+    "R"
+  ],
+  "frame_count": 2,
+  "interleaved": true,
+  "kind": "audio",
+  "payload": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    128,
+    63,
+    0,
+    0,
+    128,
+    191
+  ],
+  "sample_format": "f32-le",
+  "sample_rate": 48000,
+  "schema_version": 1,
+  "start_sample": -960
+}

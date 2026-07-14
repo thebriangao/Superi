@@ -1,0 +1,13 @@
+{
+  "document": {
+    "settings": {
+      "audio_rate": 48000
+    },
+    "timeline": {
+      "id": "main"
+    }
+  },
+  "document_schema": "superi-project.1",
+  "kind": "project",
+  "schema_version": 1
+}

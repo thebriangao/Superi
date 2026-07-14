@@ -307,3 +307,18 @@ byte for byte with the canonical version. Do not regenerate into the checked-in 
 CI and local verification run entirely offline. A missing fixture, unsupported manifest schema,
 unmanaged file, incomplete provenance, unsafe path, lineage mismatch, size drift, or digest drift is
 a hard failure.
+
+## Golden-test harnesses
+
+`superi_fixture_tool::golden` provides read-only frame, audio, timeline, and project verification.
+Frame goldens bind exact payload bytes to dimensions, row stride, pixel format, semantic channel
+order, color space, and alpha mode. Audio goldens bind exact sample bytes to sample rate, signed
+sample origin, frame count, semantic channel order, sample format, and planar or interleaved layout.
+Timeline and project goldens recursively sort JSON object keys before comparison while preserving
+array order and exact scalar values. All four formats use an explicit golden schema version and
+report the expected and actual SHA-256 digests on mismatch.
+
+Tests must point to one exact fixture identity and version, construct the corresponding typed output,
+and call the domain-specific `verify_*` function. Verification never creates, replaces, or updates a
+golden file. Produce an intentional new fixture version through the contributor workflow above when
+a reviewed semantic change requires a new expected result.

@@ -1,0 +1,20 @@
+{
+  "document": {
+    "rate": [
+      24000,
+      1001
+    ],
+    "tracks": [
+      {
+        "clips": [
+          "a",
+          "b"
+        ],
+        "kind": "video"
+      }
+    ]
+  },
+  "document_schema": "otio.1",
+  "kind": "timeline",
+  "schema_version": 1
+}
