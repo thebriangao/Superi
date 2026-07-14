@@ -1,0 +1,812 @@
+//! Offline validation for Superi's canonical test fixtures.
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
+use std::fs::{self, File};
+use std::io::{self, Read};
+use std::path::{Component, Path, PathBuf};
+
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+
+const MANIFEST_NAME: &str = "fixture.json";
+const POLICY_NAME: &str = "README.md";
+const SUPPORTED_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ValidationReport {
+    fixture_count: usize,
+    payload_count: usize,
+}
+
+impl ValidationReport {
+    #[must_use]
+    pub const fn fixture_count(self) -> usize {
+        self.fixture_count
+    }
+
+    #[must_use]
+    pub const fn payload_count(self) -> usize {
+        self.payload_count
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidationError {
+    code: &'static str,
+    path: PathBuf,
+    message: String,
+}
+
+impl ValidationError {
+    #[must_use]
+    pub const fn code(&self) -> &'static str {
+        self.code
+    }
+
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    #[must_use]
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidationErrors(Vec<ValidationError>);
+
+impl ValidationErrors {
+    pub fn iter(&self) -> impl Iterator<Item = &ValidationError> {
+        self.0.iter()
+    }
+}
+
+impl fmt::Display for ValidationErrors {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for error in &self.0 {
+            writeln!(
+                formatter,
+                "{}: {}: {}",
+                error.code,
+                error.path.display(),
+                error.message
+            )?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for ValidationErrors {}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Manifest {
+    schema_version: u32,
+    fixture_id: String,
+    fixture_version: u32,
+    description: String,
+    provenance: Provenance,
+    files: Vec<Payload>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Provenance {
+    kind: ProvenanceKind,
+    source: String,
+    author: String,
+    created_on: String,
+    license: String,
+    rights: String,
+    generator: Option<Generator>,
+    parents: Vec<Parent>,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum ProvenanceKind {
+    Synthetic,
+    Generated,
+    Recorded,
+    ThirdParty,
+    Derived,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Generator {
+    name: String,
+    version: String,
+    command: String,
+    seed: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Parent {
+    fixture_id: String,
+    fixture_version: u32,
+    manifest_sha256: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Payload {
+    path: String,
+    media_type: String,
+    bytes: u64,
+    sha256: String,
+}
+
+struct ParsedFixture {
+    manifest_path: PathBuf,
+    manifest_sha256: String,
+    version_dir: PathBuf,
+    manifest: Manifest,
+}
+
+/// Validates every fixture below `root` without fetching or executing anything.
+pub fn validate_root(root: &Path) -> Result<ValidationReport, ValidationErrors> {
+    let mut errors = Vec::new();
+    if !root.is_dir() {
+        push_error(
+            &mut errors,
+            "root.missing",
+            root,
+            "fixture root is not a directory",
+        );
+        return Err(ValidationErrors(errors));
+    }
+
+    let mut discovered_files = Vec::new();
+    let mut manifests = Vec::new();
+    walk(root, &mut discovered_files, &mut manifests, &mut errors);
+    manifests.sort();
+
+    let mut parsed = Vec::new();
+    for manifest_path in manifests {
+        if let Some(fixture) = parse_manifest(root, &manifest_path, &mut errors) {
+            parsed.push(fixture);
+        }
+    }
+
+    if parsed.is_empty() {
+        push_error(
+            &mut errors,
+            "fixture.empty",
+            root,
+            "fixture root contains no fixture.json manifests",
+        );
+    }
+
+    let mut handled = BTreeSet::new();
+    let mut payload_count = 0;
+    let mut identities = BTreeMap::new();
+    for fixture in &parsed {
+        handled.insert(fixture.manifest_path.clone());
+        let key = (
+            fixture.manifest.fixture_id.clone(),
+            fixture.manifest.fixture_version,
+        );
+        if identities.insert(key, fixture).is_some() {
+            push_error(
+                &mut errors,
+                "fixture.duplicate",
+                &fixture.manifest_path,
+                "fixture identity and version must be unique",
+            );
+        }
+        validate_fixture(fixture, &mut handled, &mut payload_count, &mut errors);
+    }
+
+    validate_lineage(&parsed, &identities, &mut errors);
+    validate_unmanaged(root, &discovered_files, &handled, &parsed, &mut errors);
+
+    errors.sort_by(|left, right| {
+        left.path
+            .cmp(&right.path)
+            .then_with(|| left.code.cmp(right.code))
+            .then_with(|| left.message.cmp(&right.message))
+    });
+    if errors.is_empty() {
+        Ok(ValidationReport {
+            fixture_count: parsed.len(),
+            payload_count,
+        })
+    } else {
+        Err(ValidationErrors(errors))
+    }
+}
+
+fn walk(
+    directory: &Path,
+    files: &mut Vec<PathBuf>,
+    manifests: &mut Vec<PathBuf>,
+    errors: &mut Vec<ValidationError>,
+) {
+    let entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) => {
+            push_io(errors, "path.read", directory, &error);
+            return;
+        }
+    };
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                push_io(errors, "path.read", directory, &error);
+                continue;
+            }
+        };
+        let path = entry.path();
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                push_io(errors, "path.metadata", &path, &error);
+                continue;
+            }
+        };
+        if metadata.file_type().is_symlink() {
+            files.push(path);
+        } else if metadata.is_dir() {
+            walk(&path, files, manifests, errors);
+        } else if metadata.is_file() {
+            if path.file_name().is_some_and(|name| name == MANIFEST_NAME) {
+                manifests.push(path.clone());
+            }
+            files.push(path);
+        } else {
+            push_error(
+                errors,
+                "path.type",
+                &path,
+                "only directories and regular files are allowed",
+            );
+        }
+    }
+}
+
+fn parse_manifest(
+    root: &Path,
+    manifest_path: &Path,
+    errors: &mut Vec<ValidationError>,
+) -> Option<ParsedFixture> {
+    let metadata = match fs::symlink_metadata(manifest_path) {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            push_io(errors, "manifest.metadata", manifest_path, &error);
+            return None;
+        }
+    };
+    if metadata.file_type().is_symlink() {
+        push_error(
+            errors,
+            "manifest.symlink",
+            manifest_path,
+            "manifests must be regular files",
+        );
+        return None;
+    }
+    let bytes = match fs::read(manifest_path) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            push_io(errors, "manifest.read", manifest_path, &error);
+            return None;
+        }
+    };
+    let manifest = match serde_json::from_slice::<Manifest>(&bytes) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            push_error(
+                errors,
+                "manifest.json",
+                manifest_path,
+                format!("invalid manifest: {error}"),
+            );
+            return None;
+        }
+    };
+    let version_dir = match manifest_path.parent() {
+        Some(parent) => parent.to_path_buf(),
+        None => {
+            push_error(
+                errors,
+                "manifest.path",
+                manifest_path,
+                "manifest must have a version directory",
+            );
+            return None;
+        }
+    };
+
+    validate_manifest_identity(root, &version_dir, &manifest, manifest_path, errors);
+    validate_text_fields(&manifest, manifest_path, errors);
+    validate_provenance(&manifest.provenance, manifest_path, errors);
+
+    Some(ParsedFixture {
+        manifest_path: manifest_path.to_path_buf(),
+        manifest_sha256: digest_bytes(&bytes),
+        version_dir,
+        manifest,
+    })
+}
+
+fn validate_manifest_identity(
+    root: &Path,
+    version_dir: &Path,
+    manifest: &Manifest,
+    manifest_path: &Path,
+    errors: &mut Vec<ValidationError>,
+) {
+    if manifest.schema_version != SUPPORTED_SCHEMA_VERSION {
+        push_error(
+            errors,
+            "manifest.schema",
+            manifest_path,
+            format!(
+                "schema_version must be {SUPPORTED_SCHEMA_VERSION}, got {}",
+                manifest.schema_version
+            ),
+        );
+    }
+    let Some(version_name) = version_dir.file_name().and_then(|name| name.to_str()) else {
+        push_error(
+            errors,
+            "fixture.version",
+            manifest_path,
+            "version directory must be valid UTF-8",
+        );
+        return;
+    };
+    let expected_version_name = format!("v{}", manifest.fixture_version);
+    if manifest.fixture_version == 0 || version_name != expected_version_name {
+        push_error(
+            errors,
+            "fixture.version",
+            manifest_path,
+            format!(
+                "fixture_version {} must match directory {version_name}",
+                manifest.fixture_version
+            ),
+        );
+    }
+
+    let expected_id = version_dir
+        .parent()
+        .and_then(|parent| parent.strip_prefix(root).ok())
+        .map(path_as_fixture_id);
+    if expected_id.as_deref() != Some(manifest.fixture_id.as_str())
+        || !valid_fixture_id(&manifest.fixture_id)
+    {
+        push_error(
+            errors,
+            "fixture.id",
+            manifest_path,
+            format!(
+                "fixture_id {:?} must match its lowercase repository path {:?}",
+                manifest.fixture_id, expected_id
+            ),
+        );
+    }
+}
+
+fn validate_text_fields(
+    manifest: &Manifest,
+    manifest_path: &Path,
+    errors: &mut Vec<ValidationError>,
+) {
+    require_text(
+        errors,
+        "fixture.description",
+        manifest_path,
+        "description",
+        &manifest.description,
+    );
+    if manifest.files.is_empty() {
+        push_error(
+            errors,
+            "payload.empty",
+            manifest_path,
+            "a fixture must inventory at least one payload",
+        );
+    }
+}
+
+fn validate_provenance(
+    provenance: &Provenance,
+    manifest_path: &Path,
+    errors: &mut Vec<ValidationError>,
+) {
+    require_text(
+        errors,
+        "provenance.source",
+        manifest_path,
+        "source",
+        &provenance.source,
+    );
+    require_text(
+        errors,
+        "provenance.author",
+        manifest_path,
+        "author",
+        &provenance.author,
+    );
+    require_text(
+        errors,
+        "provenance.license",
+        manifest_path,
+        "license",
+        &provenance.license,
+    );
+    require_text(
+        errors,
+        "provenance.rights",
+        manifest_path,
+        "rights",
+        &provenance.rights,
+    );
+    if !valid_date(&provenance.created_on) {
+        push_error(
+            errors,
+            "provenance.date",
+            manifest_path,
+            "created_on must be a real YYYY-MM-DD date",
+        );
+    }
+
+    let needs_generator = matches!(
+        provenance.kind,
+        ProvenanceKind::Synthetic | ProvenanceKind::Generated | ProvenanceKind::Derived
+    );
+    if needs_generator && provenance.generator.is_none() {
+        push_error(
+            errors,
+            "provenance.generator",
+            manifest_path,
+            "synthetic, generated, and derived fixtures require generator details",
+        );
+    }
+    if let Some(generator) = &provenance.generator {
+        for (field, value) in [
+            ("name", generator.name.as_str()),
+            ("version", generator.version.as_str()),
+            ("command", generator.command.as_str()),
+            ("seed", generator.seed.as_str()),
+        ] {
+            require_text(errors, "provenance.generator", manifest_path, field, value);
+        }
+    }
+    if provenance.kind == ProvenanceKind::Derived && provenance.parents.is_empty() {
+        push_error(
+            errors,
+            "provenance.parents",
+            manifest_path,
+            "derived fixtures require at least one parent manifest",
+        );
+    }
+    if provenance.kind != ProvenanceKind::Derived && !provenance.parents.is_empty() {
+        push_error(
+            errors,
+            "provenance.parents",
+            manifest_path,
+            "only derived fixtures may declare parents",
+        );
+    }
+}
+
+fn validate_fixture(
+    fixture: &ParsedFixture,
+    handled: &mut BTreeSet<PathBuf>,
+    payload_count: &mut usize,
+    errors: &mut Vec<ValidationError>,
+) {
+    let mut listed = BTreeSet::new();
+    for payload in &fixture.manifest.files {
+        if !valid_relative_path(&payload.path) || payload.path == MANIFEST_NAME {
+            push_error(
+                errors,
+                "payload.path",
+                &fixture.manifest_path,
+                format!(
+                    "payload path {:?} is not a safe normalized relative path",
+                    payload.path
+                ),
+            );
+            continue;
+        }
+        if !listed.insert(payload.path.clone()) {
+            push_error(
+                errors,
+                "payload.duplicate",
+                &fixture.manifest_path,
+                format!("payload path {:?} is listed more than once", payload.path),
+            );
+            continue;
+        }
+        if payload.media_type.trim().is_empty() {
+            push_error(
+                errors,
+                "payload.media_type",
+                &fixture.manifest_path,
+                format!("payload {:?} requires a media_type", payload.path),
+            );
+        }
+        if !valid_sha256(&payload.sha256) {
+            push_error(
+                errors,
+                "payload.sha256",
+                &fixture.manifest_path,
+                format!(
+                    "payload {:?} requires a lowercase SHA-256 digest",
+                    payload.path
+                ),
+            );
+        }
+
+        let path = fixture.version_dir.join(&payload.path);
+        handled.insert(path.clone());
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                push_io(errors, "payload.missing", &path, &error);
+                continue;
+            }
+        };
+        if metadata.file_type().is_symlink() {
+            push_error(
+                errors,
+                "payload.symlink",
+                &path,
+                "fixture payloads must be regular files, not symlinks",
+            );
+            continue;
+        }
+        if !metadata.is_file() {
+            push_error(
+                errors,
+                "payload.type",
+                &path,
+                "fixture payload must be a regular file",
+            );
+            continue;
+        }
+        *payload_count += 1;
+        if metadata.len() != payload.bytes {
+            push_error(
+                errors,
+                "payload.size",
+                &path,
+                format!("expected {} bytes, found {}", payload.bytes, metadata.len()),
+            );
+        }
+        match digest_file(&path) {
+            Ok(actual) if actual == payload.sha256 => {}
+            Ok(actual) => push_error(
+                errors,
+                "payload.sha256",
+                &path,
+                format!("expected {}, found {actual}", payload.sha256),
+            ),
+            Err(error) => push_io(errors, "payload.read", &path, &error),
+        }
+    }
+}
+
+fn validate_lineage(
+    fixtures: &[ParsedFixture],
+    identities: &BTreeMap<(String, u32), &ParsedFixture>,
+    errors: &mut Vec<ValidationError>,
+) {
+    for fixture in fixtures {
+        for parent in &fixture.manifest.provenance.parents {
+            if !valid_fixture_id(&parent.fixture_id)
+                || parent.fixture_version == 0
+                || !valid_sha256(&parent.manifest_sha256)
+            {
+                push_error(
+                    errors,
+                    "provenance.parent",
+                    &fixture.manifest_path,
+                    "parent identity, version, and manifest_sha256 must be valid",
+                );
+                continue;
+            }
+            match identities.get(&(parent.fixture_id.clone(), parent.fixture_version)) {
+                Some(referenced) if referenced.manifest_sha256 == parent.manifest_sha256 => {}
+                Some(referenced) => push_error(
+                    errors,
+                    "provenance.parent_hash",
+                    &fixture.manifest_path,
+                    format!(
+                        "parent {}/v{} manifest hash is {}, expected {}",
+                        parent.fixture_id,
+                        parent.fixture_version,
+                        referenced.manifest_sha256,
+                        parent.manifest_sha256
+                    ),
+                ),
+                None => push_error(
+                    errors,
+                    "provenance.parent_missing",
+                    &fixture.manifest_path,
+                    format!(
+                        "parent {}/v{} is not present in the fixture root",
+                        parent.fixture_id, parent.fixture_version
+                    ),
+                ),
+            }
+        }
+    }
+}
+
+fn validate_unmanaged(
+    root: &Path,
+    discovered: &[PathBuf],
+    handled: &BTreeSet<PathBuf>,
+    fixtures: &[ParsedFixture],
+    errors: &mut Vec<ValidationError>,
+) {
+    let policy = root.join(POLICY_NAME);
+    for path in discovered {
+        if path == &policy || handled.contains(path) {
+            continue;
+        }
+        let inside_version = fixtures
+            .iter()
+            .any(|fixture| path.starts_with(&fixture.version_dir));
+        push_error(
+            errors,
+            if inside_version {
+                "payload.unlisted"
+            } else {
+                "fixture.unmanaged"
+            },
+            path,
+            if inside_version {
+                "payload is not inventoried by fixture.json"
+            } else {
+                "files below the fixture root must belong to a versioned fixture"
+            },
+        );
+    }
+}
+
+fn require_text(
+    errors: &mut Vec<ValidationError>,
+    code: &'static str,
+    path: &Path,
+    field: &str,
+    value: &str,
+) {
+    if value.trim().is_empty() {
+        push_error(errors, code, path, format!("{field} must not be empty"));
+    }
+}
+
+fn valid_relative_path(value: &str) -> bool {
+    if value.is_empty() || value.contains('\\') {
+        return false;
+    }
+    let path = Path::new(value);
+    if path.is_absolute()
+        || !path
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
+    {
+        return false;
+    }
+    path.components()
+        .filter_map(|component| match component {
+            Component::Normal(value) => value.to_str(),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+        == value
+}
+
+fn valid_fixture_id(value: &str) -> bool {
+    let mut component_count = 0;
+    for component in value.split('/') {
+        component_count += 1;
+        let bytes = component.as_bytes();
+        if bytes.is_empty()
+            || !bytes[0].is_ascii_lowercase() && !bytes[0].is_ascii_digit()
+            || !bytes[bytes.len() - 1].is_ascii_lowercase()
+                && !bytes[bytes.len() - 1].is_ascii_digit()
+            || !bytes.iter().all(|byte| {
+                byte.is_ascii_lowercase()
+                    || byte.is_ascii_digit()
+                    || matches!(byte, b'.' | b'_' | b'-')
+            })
+        {
+            return false;
+        }
+    }
+    component_count >= 2
+}
+
+fn path_as_fixture_id(path: &Path) -> String {
+    path.components()
+        .filter_map(|component| match component {
+            Component::Normal(value) => value.to_str(),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn valid_date(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.len() != 10
+        || bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || !bytes
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| matches!(index, 4 | 7) || byte.is_ascii_digit())
+    {
+        return false;
+    }
+    let year = value[0..4].parse::<u32>().ok();
+    let month = value[5..7].parse::<u32>().ok();
+    let day = value[8..10].parse::<u32>().ok();
+    let (Some(year), Some(month), Some(day)) = (year, month, day) else {
+        return false;
+    };
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let maximum = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => return false,
+    };
+    (1..=maximum).contains(&day)
+}
+
+fn valid_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn digest_file(path: &Path) -> io::Result<String> {
+    let mut file = File::open(path)?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        digest.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", digest.finalize()))
+}
+
+fn digest_bytes(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+fn push_io(errors: &mut Vec<ValidationError>, code: &'static str, path: &Path, error: &io::Error) {
+    push_error(errors, code, path, error.to_string());
+}
+
+fn push_error(
+    errors: &mut Vec<ValidationError>,
+    code: &'static str,
+    path: &Path,
+    message: impl Into<String>,
+) {
+    errors.push(ValidationError {
+        code,
+        path: path.to_path_buf(),
+        message: message.into(),
+    });
+}

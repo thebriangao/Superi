@@ -1,0 +1,87 @@
+# Superi test fixture contract
+
+This directory is the canonical home for fixtures shared across crates, golden tests, fuzzing,
+benchmarks, and end-to-end workflows. The contract makes a test input independently identifiable,
+reviewable, reproducible, and safe to redistribute. Crate-private executable helpers may remain
+under a crate's `tests/fixtures` directory, but shared media or data must use this root.
+
+## Immutable layout
+
+Every fixture version has this layout:
+
+```text
+test-fixtures/<suite>/<fixture-id>/v<positive-integer>/
+  fixture.json
+  <payload files>
+```
+
+`fixture_id` is the path between `test-fixtures/` and the version directory, joined with `/`. It has
+at least two lowercase components and uses only ASCII letters, digits, `.`, `_`, and `-`. The
+manifest's `fixture_version` must match the `vN` directory.
+
+A fixture version merged to the canonical branch is immutable. Do not replace a payload, rewrite
+its manifest, or reuse its version. Correct or regenerate it in `vN+1`, update consumers explicitly,
+and retain the old version while any compatibility or regression test needs it. Removing a version
+requires proof that no code, historical compatibility test, benchmark baseline, fuzz seed, or
+published report still references it.
+
+## Manifest schema version 1
+
+Each `fixture.json` contains exactly these top-level fields:
+
+- `schema_version`: currently `1`.
+- `fixture_id`: stable path-derived identity.
+- `fixture_version`: positive content revision.
+- `description`: what behavior and edge case the fixture represents.
+- `provenance`: the origin, rights, reproduction, and lineage record described below.
+- `files`: a complete payload inventory. Every entry records a normalized relative `path`, IANA
+  `media_type`, byte count in `bytes`, and lowercase `sha256` digest.
+
+Unknown fields are rejected. Payload paths cannot be absolute, contain `..`, use a backslash, name
+the manifest, or resolve through a symlink. Every regular file in a version directory must appear
+exactly once in `files`; listed files must exist and match both size and digest.
+
+## Provenance
+
+`provenance` contains exactly these fields:
+
+- `kind`: `synthetic`, `generated`, `recorded`, `third_party`, or `derived`.
+- `source`: a durable origin description. For third-party material, include the canonical source
+  URL or publication identifier and acquisition context. Validation never fetches it.
+- `author`: the person, organization, device, dataset, or generator responsible for the source.
+- `created_on`: a real `YYYY-MM-DD` date for creation or acquisition.
+- `license`: the SPDX identifier or expression governing redistribution and test use.
+- `rights`: concrete evidence or rationale that Superi may store, modify, and redistribute it.
+- `generator`: either `null` or an object with nonempty `name`, `version`, `command`, and `seed`.
+- `parents`: an array of exact in-repository parent fixture references. Each reference contains
+  `fixture_id`, `fixture_version`, and the parent's `manifest_sha256`.
+
+Synthetic, generated, and derived fixtures require a generator record. Use an explicit value such
+as `not-applicable` when a deterministic process has no random seed. The command is documentary and
+must be sufficient to reproduce the payload from approved local inputs; the validator never runs
+it. Derived fixtures require at least one parent, and each parent manifest digest must match a
+fixture present in this root. Other provenance kinds cannot declare parents.
+
+Do not commit credentials, personal data, user project data, undisclosed training data, unclear
+copyright, nonredistributable samples, or content whose license conflicts with repository policy.
+Record transformations as new derived versions rather than obscuring origin. Large binaries require
+the same review and manifest; storage mechanism does not weaken this contract.
+
+## Contributor workflow
+
+1. Prefer the smallest synthetic fixture that exposes the behavior. Use representative recorded or
+   third-party material only when synthetic data cannot exercise the path.
+2. Create a new stable fixture identity or the next version. Never modify a released version.
+3. Generate or copy payloads with the network disconnected. Pin tool versions and record the exact
+   command, seed, source, lineage, license, and rights evidence.
+4. Inventory every payload with byte count and SHA-256. Keep expected outputs separate from inputs
+   when their version lifecycles differ.
+5. Point tests at the exact identity and version. Tests must not select `latest`, download missing
+   data, overwrite fixtures, or accept regenerated output automatically.
+6. Run `cargo run -p superi-fixture-tool -- check test-fixtures` from `open/`. Review manifest and
+   payload changes as product code. A golden change needs an explanation of the intentional semantic
+   change, not only updated hashes.
+
+CI and local verification run entirely offline. A missing fixture, unsupported manifest schema,
+unmanaged file, incomplete provenance, unsafe path, lineage mismatch, size drift, or digest drift is
+a hard failure.

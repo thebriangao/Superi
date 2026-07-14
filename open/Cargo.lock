@@ -2707,6 +2707,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "superi-fixture-tool"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "superi-gpu"
 version = "0.0.0"
 dependencies = [

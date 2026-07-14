@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "fixture_id": "policy/utf8",
+  "fixture_version": 1,
+  "description": "Deterministic UTF-8 payload used to exercise the fixture validator itself.",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Authored directly in the Superi repository.",
+    "author": "Superi contributors",
+    "created_on": "2026-07-13",
+    "license": "CC0-1.0",
+    "rights": "Original synthetic content approved for unrestricted redistribution.",
+    "generator": {
+      "name": "POSIX printf",
+      "version": "IEEE Std 1003.1-2024",
+      "command": "printf 'hello\\n' > hello.txt",
+      "seed": "not-applicable"
+    },
+    "parents": []
+  },
+  "files": [
+    {
+      "path": "hello.txt",
+      "media_type": "text/plain; charset=utf-8",
+      "bytes": 6,
+      "sha256": "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03"
+    }
+  ]
+}

@@ -64,6 +64,11 @@ encumbered, proprietary, or copyleft ever links into the MIT core.
 - The **offline law** and the **codec/license boundary** are sacred (`../../docs/architecture.md`,
   `../../docs/codecs.md`).
 
+Repository-only utilities live under `tools/` and are workspace members so normal build, test,
+Clippy, and minimum-Rust verification cover them. They do not participate in the runtime crate DAG.
+`superi-fixture-tool` enforces the immutable layout, provenance, lineage, inventory, and content
+integrity rules documented in `../test-fixtures/README.md` without network access.
+
 ## Deferred (not in this scaffold)
 
 Network-isolated offline CI test · license-audit CI (`deny.toml` is present, unwired) · the vertical
