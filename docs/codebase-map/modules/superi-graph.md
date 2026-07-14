@@ -2,8 +2,8 @@
 module_id: superi-graph
 source_paths:
   - open/crates/superi-graph
-source_hash: c480c21200a39a7bfb4c0a3d7e5973531c60c959547d27e8cbfc147995a1f45a
-source_files: 17
+source_hash: 3b291888a56a2ab08266d7f3aef703ed7ec2d46eb8e6f28b2a8acbfd36236b7d
+source_files: 19
 mapped_at_commit: working-tree
 ---
 
@@ -15,20 +15,21 @@ serialization, ROI propagation, expressions, and deterministic headless executio
 instance identifiers, node registration, schema discovery, graph membership, typed port endpoints,
 cycle prevention, stable inspection, topological ordering, typed input and output binding
 validation, schema-level connection compatibility, editable node instances, runtime parameter
-state, and atomic revisioned mutation transactions are implemented.
+state, atomic revisioned mutation transactions, exact dirty-region algebra, and deterministic
+dependency invalidation planning are implemented.
 
 The crate does not own identifier value representation. `superi-core` remains the single identity
 owner, while graph state owns payload and connection membership. Schema type identities and
 schema-local names are definition metadata, separate from the core object identifiers that address
 editable graph instances.
 
-Evaluation, ROI execution, expressions, serialization, and headless rendering remain placeholders.
-The implemented storage, schema, validation, and mutation surfaces must not be interpreted as a
-working render path.
+Evaluation, ROI request mapping, expressions, serialization, and headless rendering remain
+placeholders. The implemented storage, schema, validation, mutation, and invalidation surfaces must
+not be interpreted as a working render path.
 
 ## Source inventory
 
-The module owns 17 text files:
+The module owns 19 text files:
 
 - `open/crates/superi-graph/Cargo.toml`: Declares dependencies on `superi-core`, `superi-gpu`,
   `superi-image`, and `superi-concurrency`.
@@ -42,15 +43,19 @@ The module owns 17 text files:
   parity.
 - `open/crates/superi-graph/src/ids.rs`: Re-exports the six official graph-facing core identifier
   types and documents graph ownership of future allocation and derivation policy.
+- `open/crates/superi-graph/src/invalidation.rs`: Owns exact normalized dirty-region sets,
+  requested-work clipping, immutable invalidation seeds and plans, stable topological dependency
+  propagation, identity-region convenience, edge-aware mapping, and structured failure context.
 - `open/crates/superi-graph/src/lib.rs`: Documents the partial implementation and exports the
-  identifier, node-schema, DAG, validation, and mutation surfaces beside the remaining module tree.
+  identifier, node-schema, DAG, validation, mutation, and invalidation surfaces beside the
+  remaining module tree.
 - `open/crates/superi-graph/src/mutate.rs`: Implements complete schema-bound editable node
   instances, opaque typed parameters, immutable graph snapshots, optimistic revisions, and ordered
   atomic add, remove, connect, disconnect, reorder, and parameter transactions.
 - `open/crates/superi-graph/src/node.rs`: Implements typed versioned schemas, complete node behavior
   declarations, atomic registration, and immutable deterministic discovery snapshots.
-- `open/crates/superi-graph/src/roi.rs`: Placeholder for region-of-interest and dirty-region
-  propagation.
+- `open/crates/superi-graph/src/roi.rs`: Placeholder for evaluator-owned region-of-interest request
+  mapping, including node-specific and custom mappings.
 - `open/crates/superi-graph/src/serialize.rs`: Placeholder for graph serialization and
   deserialization.
 - `open/crates/superi-graph/src/validation.rs`: Implements pure typed input and output binding
@@ -61,6 +66,10 @@ The module owns 17 text files:
   consistent removal.
 - `open/crates/superi-graph/tests/identifier_contract.rs`: Proves the public six-type identifier
   surface, domain distinction, canonical text round trips, and exact type identity with core.
+- `open/crates/superi-graph/tests/invalidation_contract.rs`: Proves exact dirty-region unions and
+  clipping, stable dependency propagation, edge-specific mapping and branch stopping, actionable
+  errors, clean-node exclusion, mutation-snapshot integration, and editor-script-headless parity
+  across insertion histories.
 - `open/crates/superi-graph/tests/mutation_contract.rs`: Proves all six mutation forms, exact
   instance binding, typed parameters and connections, input cardinality, immutable snapshots,
   deterministic state, revision conflicts, explicit removal, cycle safety, and full rollback.
@@ -139,8 +148,24 @@ use a schema identity or a separate payload without coupling the DAG algorithm t
 - Mutation failures preserve their original shared error classification and add stable graph,
   expected revision, mutation index, and mutation code context.
 
+`superi_graph::invalidation` exposes the derived invalidation boundary:
+
+- `DirtyRegion` identifies full-frame or exact half-open `PixelBounds` work. `DirtyRegionSet`
+  stores a canonical exact union as deterministic, nonoverlapping finite rectangles, with full-frame
+  subsumption and clipping to requested output work.
+- `InvalidationSeed` identifies changed output on one stored node. `InvalidatedNode` and
+  `InvalidationPlan` expose only affected nodes, once each, in the DAG's stable topological order.
+- `propagate_dependency_invalidation` preserves finite region identity across dependencies that
+  share one coordinate space. `propagate_invalidation_with` supplies exact graph and edge identity
+  to a caller-owned deterministic mapper, so transformed or custom ROI behavior can map or stop a
+  branch without entering the neutral DAG algorithm.
+- Missing seed nodes fail before mapping with shared not-found diagnostics. Mapper failures retain
+  their category and recoverability while gaining graph, edge, source, and destination context.
+- Plans are immutable derived values over a borrowed graph snapshot. They own no project mutation,
+  cache state, evaluator state, or scheduler state.
+
 The crate also exports placeholder `eval`, `expr`, `headless`, `roi`, and `serialize` modules. They
-expose no evaluator, expression, ROI execution, serialization, or headless render API.
+expose no evaluator, expression, ROI request mapping, serialization, or headless render API.
 
 ## Architecture and data flow
 
@@ -191,7 +216,8 @@ The typed validation flow is:
    observe identical results and diagnostics without a second validation model.
 5. Graph construction can call the schema-level connection check before storing an edge. Instance
    existence, edge cardinality, and cycle prevention now belong to the mutation and DAG owners;
-   invalidation and scheduling remain with future evaluator checkpoints.
+   invalidation planning is derived after published changes; evaluation and scheduling remain
+   future owners.
 
 The mutation transaction flow is:
 
@@ -212,10 +238,29 @@ The mutation transaction flow is:
 6. Editor, script, and headless callers clone the same `GraphSnapshot<T>` and observe identical
    typed nodes, parameters, edges, visual order, and topological order without a second model.
 
-The mutation layer is the integration contract across the independent DAG, registry, and validator.
-It binds stored `PortId` endpoints to `PortName`, exact schemas, and `ValueTypeId` compatibility
-without adding catalog knowledge to the topology algorithm. Evaluation, invalidation, persistence,
-undo history, and engine transaction coordination remain separate later owners.
+The dependency invalidation flow is:
+
+1. A caller supplies one or more `InvalidationSeed` values against one immutable
+   `DirectedAcyclicGraph` snapshot. Every seed node is validated before edge mapping begins, and
+   empty regions become no work.
+2. Finite dirty rectangles are normalized by exact coordinate strips. Overlap is removed without
+   replacing irregular unions with bounding boxes, and full-frame dirtiness subsumes finite bounds.
+3. The planner walks the DAG's stable topological order. Each affected source is presented once to
+   its outgoing edges in stable `EdgeId` order, converging branches merge exactly, and clean or
+   disconnected nodes never enter the plan.
+4. The identity convenience copies dirty coverage only when dependencies share one coordinate
+   space. The edge-aware path gives the future ROI owner the immutable graph and typed edge so node
+   transforms can return exact mapped work or stop a branch.
+5. Evaluators can call `requested_work` to intersect a node's invalidated output with one requested
+   `PixelBounds`, preserving only required work. Editor, script, and headless callers receive the
+   same public plan for equal snapshots, seeds, and deterministic edge mapping.
+
+The mutation layer is the integration contract across the DAG, registry, and validator. It binds
+stored `PortId` endpoints to `PortName`, exact schemas, and `ValueTypeId` compatibility without
+adding catalog knowledge to topology. The invalidation planner derives work directly from the same
+checked DAG exposed by each immutable `GraphSnapshot`, while leaving node-specific ROI mapping to a
+caller-owned edge mapper. Evaluation, persistence, cache generations, undo history, and engine
+transaction coordination remain separate later owners.
 
 The disclosed canonical reference graph in `superi-engine` uses core `NodeId` but is not a consumer
 of this store and retains string ports and edges. It remains reference behavior, not production
@@ -229,9 +274,9 @@ graph evaluation or runtime integration.
   are not imported by current graph source.
 - Direct manifest consumers are `superi-ai`, `superi-cache`, `superi-color`, `superi-effects`,
   `superi-timeline`, `superi-project`, and `superi-engine`.
-- None of those consumers currently imports a `superi_graph` Rust item. The five public integration
-  test targets are the real consumers of identifier, schema-discovery, DAG, validation, and
-  mutation APIs.
+- None of those consumers currently imports a `superi_graph` Rust item. The six public integration
+  test targets are the real consumers of identifier, schema-discovery, DAG, validation, mutation,
+  and invalidation APIs.
 
 ## Invariants and operational boundaries
 
@@ -240,8 +285,8 @@ graph evaluation or runtime integration.
 - Identifier values are opaque. Callers own allocation, deterministic derivation, uniqueness scope,
   and any meaning assigned to zero; each graph enforces node and edge uniqueness within itself.
 - Graph remains below color, effects, timeline, cache, AI, project, and engine catalogs. The neutral
-  identifier, schema, DAG, validation, and mutation APIs import no domain catalog and introduce no
-  new dependency edge.
+  identifier, schema, DAG, validation, mutation, and invalidation APIs import no domain catalog and
+  introduce no new dependency edge.
 - Node type and value type definition identities are strict namespaced values. Port and parameter
   schema names are distinct types and are never normalized. Exact schema identity includes full
   SemVer build metadata.
@@ -280,12 +325,24 @@ graph evaluation or runtime integration.
   failures so invalid values cannot enter caches or downstream nodes.
 - Graph-level type validation compares exact `ValueTypeId` values and never inspects, coerces, or
   copies the opaque payload. The evaluator value owner remains responsible for truthful type tags.
-- The crate has no persistence format, locking owner, scheduler connection, evaluator, GPU resource
-  ownership, plugin loading, undo history, or engine transaction coordinator yet.
+- Dirty-region normalization never replaces an irregular union with a bounding rectangle. Finite
+  regions remain exact half-open `PixelBounds`, clean gaps remain clean, and full-frame state is
+  represented explicitly rather than guessed from finite coordinates.
+- Invalidation validates every seed before mapping, includes each affected node once in stable
+  topological order, maps outgoing dependencies in stable edge order, merges converging coverage
+  exactly, and excludes clean and disconnected nodes.
+- Identity-region propagation is valid only for dependencies in one coordinate space. Node-specific
+  transforms and custom ROI behavior must use the edge-aware mapping seam and a deterministic
+  mapper to retain editor, script, and headless parity.
+- An invalidation plan is derived from one immutable graph snapshot and contains no authoritative
+  editable state, cache generations, scheduler state, or hidden process state.
+- The crate has no persistence format, locking owner, scheduler connection, evaluator, ROI request
+  mapper, GPU resource ownership, plugin loading, undo history, cache generation owner, or engine
+  transaction coordinator yet.
 
 ## Tests and verification
 
-The graph crate owns 22 integration tests across five files. The two identifier tests prove all six
+The graph crate owns 31 integration tests across six files. The two identifier tests prove all six
 public domains are distinct, each canonical text value parses back exactly, and every graph export
 has the same Rust `TypeId` as its official core owner.
 
@@ -312,7 +369,14 @@ topological order separation, stale revision handling, immutable old snapshots, 
 script, and headless sharing, equivalent deterministic state, cycle safety, and full rollback after
 failures in the middle of a candidate batch.
 
-Focused verification runs all five integration targets through the crate's public API. Crate-wide
+Nine invalidation tests prove exact dirty-region union decomposition, clean-gap preservation,
+full-frame subsumption, empty-region handling, requested-work clipping, stable topological
+dependency order, clean-node exclusion, exact converging merges, edge-specific transforms, branch
+stopping, unknown-node and mapper diagnostics, and identical editor-script-headless plans across
+different node and edge insertion histories. The integration proof derives those plans from the
+same immutable editable graph snapshot published by the mutation owner.
+
+Focused verification runs all six integration targets through the crate's public API. Crate-wide
 tests, strict Clippy, and rustdoc cover the library and integration targets. The complete workspace
 suite exercises downstream compatibility. The repository map validator checks the source inventory
 and hash, while dependency and boundary tools enforce the one-way open architecture. No test
@@ -323,10 +387,11 @@ exercises graph evaluation because that behavior does not exist.
 Official graph-facing identifiers, node registration, schema discovery, deterministic DAG storage,
 typed binding validation, schema-level output-to-input compatibility, complete schema-bound node
 instances, editable parameters, immutable snapshots, and revisioned atomic mutation transactions
-are implemented and test-backed. Registered definitions can be instantiated, topology and visual
-order can be edited, and exact state can be shared across reader roles. The crate cannot serialize,
-evaluate, invalidate, cache, or render that state, and no downstream production catalog registers a
-schema or consumes the mutation owner.
+are implemented and test-backed beside exact dirty-region sets and deterministic dependency
+invalidation planning. Registered definitions can be instantiated, topology and visual order can
+be edited, exact state can be shared across reader roles, and callers can derive affected work from
+the same published DAG snapshot. The crate cannot serialize, evaluate, cache, or render that state,
+and no downstream production catalog registers a schema or consumes the mutation owner.
 
 The latest-version rule deterministically selects the lexically highest build-metadata variant when
 SemVer precedence ties. Consumers that require one deployment-specific build must request its exact
@@ -341,7 +406,9 @@ topology, identity, schema, validation, or revision systems.
 
 Other integration risks are attaching nondeterministic allocation policy to value types, claiming a
 type tag proves its concrete payload representation, treating mutable editor order as evaluation
-order, or treating validated editable state as sufficient evaluation proof.
+order, or treating validated editable state as sufficient evaluation proof. Invalidation-specific
+risks are using identity mapping across a transform, providing a nondeterministic edge mapper, or
+treating a derived plan as cache generation state.
 
 ## Maintenance notes
 
@@ -356,6 +423,11 @@ domains must be added through core and proved at both the core wire boundary and
 surface. Extend schema types only when a later checkpoint has a real consumer and proof; do not
 attach evaluator factories or domain catalog behavior to the neutral registry by convenience.
 
-Update this map when evaluation, invalidation, ROI, serialization, expressions, missing-node
-handling, undo ownership, engine coordination, or a downstream catalog becomes real. Recheck direct
-consumer maps whenever they begin importing any public graph contract.
+Keep invalidation pure over an immutable DAG snapshot. Preserve exact half-open dirty coverage,
+stable topological and edge ordering, preflight seed validation, and the caller-owned mapping seam.
+Do not move node-specific ROI policy into the generic DAG or treat full frame as an invented finite
+extent.
+
+Update this map when evaluation, ROI request mapping, serialization, expressions, missing-node
+handling, cache generations, undo ownership, engine coordination, or a downstream catalog becomes
+real. Recheck direct consumer maps whenever they begin importing any public graph contract.
