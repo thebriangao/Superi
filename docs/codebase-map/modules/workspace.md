@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 22ea72a828e9e879fcb9e189cb647c9440535c6a1ff0e2b028a4040f45983a4a
+source_hash: 04ba079bb12c1140b9b9185bf815f1dacf4e4afbd926ab1a8d43fd9ab42f1f73
 source_files: 48
 mapped_at_commit: working-tree
 ---
@@ -66,7 +66,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   rustfmt and Clippy, record build identity, enforce the open-tree boundary with the locked
   repository scanner, and run formatting, locked build and test commands, strict all-target Clippy,
   and locked documentation tests from `open/`. Hosted macOS excludes only three named native codec
-  lifecycle tests that require the physical hardware lane.
+  lifecycle tests that require the physical hardware lane. Linux jobs install `libva-dev` so the
+  locked media dependency graph can discover `libva.pc` before compilation. Linux and macOS jobs
+  build the approved libvpx 1.16.0 archive after verifying its pinned checksum and expose that exact
+  shared runtime to capability and codec tests.
 - `.github/workflows/dependency-policy.yml`: Defines the current GitHub Actions dependency-policy
   workflow. Pushes, pull requests, and manual dispatch run a read-only Ubuntu 24.04 job. After
   `actions/checkout@v4`, the job runs the repository contract checker, then uses
@@ -207,7 +210,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `open/test-fixtures/policy/utf8/v1/hello.txt`: The six-byte UTF-8 payload `hello` followed by a
   newline. It is the fixture validator's deterministic self-test input.
 
-All 47 assigned artifacts are valid UTF-8 text. The mapping inventory reports no binary artifact
+All 48 assigned artifacts are valid UTF-8 text. The mapping inventory reports no binary artifact
 for this module, so no binary metadata or producer-consumer relationship needs separate treatment.
 
 ## Public surface
@@ -312,7 +315,9 @@ is a separate weekly or manual job because matrix values are unavailable to a jo
 condition. Both jobs use read-only permissions, immutable `actions/checkout` with persisted
 credentials disabled, stable Rust with rustfmt and Clippy, recorded tool and commit identity,
 formatting, a locked full-workspace build, locked workspace tests, strict all-target Clippy, and
-locked documentation tests. Hosted macOS skips only the three named native VideoToolbox or
+locked documentation tests. Linux jobs provision `libva-dev` for the locked media dependency's
+pkg-config discovery. Linux and macOS jobs build checksum-pinned libvpx 1.16.0 and set its explicit
+runtime path. Hosted macOS skips only the three named native VideoToolbox or
 AudioConverter lifecycles whose physical evidence belongs to the documented hardware lane. Linux
 and Windows run the exact full workspace test command. Concurrency cancels superseded work for the
 same pull request or ref, while matrix fail-fast is disabled so platform results remain independent.
@@ -432,7 +437,8 @@ workflow or fresh result demonstrates execution.
   strictly lints, and documentation-tests the workspace on five pull-request and `main` lanes, plus
   Ubuntu 22.04 on weekly or manual runs. YAML parsing and all six lane-ID presence checks, preview
   policy, disabled credentials, one locked boundary command per job, complete two-job command
-  coverage, and the exact hosted macOS native-test condition passed during this refresh.
+  coverage, exact Linux `libva-dev` provisioning, checksum-pinned libvpx 1.16.0 provisioning, and
+  the hosted macOS native-test condition passed during this refresh.
 - `docs/checkpoints/P1.W07.C008.md` records fresh Rust 1.80 formatting, eight focused boundary
   contracts, the canonical scan of 304 files and 23 manifests, warnings-denied focused Clippy,
   workflow syntax, a locked full workspace build, and the complete workspace test and documentation
@@ -561,8 +567,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the local mapping commit rebased onto `origin/main` plus this uncommitted map
 refresh, so `mapped_at_commit` is `working-tree`. The remote base was
-`f328f2fd4bc18c7191e0df2e3316298f032af56e` when the map was refreshed. Its hash describes the exact
-47 discovered source files layered on that revision, not the remote commit alone.
+`572d8ca78b0684cc7bf988ed6c8b777f1b103ceb` when the map was refreshed. Its hash describes the exact
+48 discovered source files layered on that revision, not the remote commit alone.
 
 ## Maintenance notes
 

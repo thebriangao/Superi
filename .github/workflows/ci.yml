@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+env:
+  LIBVPX_VERSION: "1.16.0"
+  LIBVPX_SOURCE_SHA256: "7a479a3c66b9f5d5542a4c6a1b7d3768a983b1e5c14c60a9396edc9b649e015c"
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -61,6 +65,41 @@ jobs:
 
       - name: Install declared Rust toolchain
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+
+      - name: Install Linux media build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libva-dev
+
+      - name: Build approved libvpx runtime
+        if: runner.os != 'Windows'
+        run: |
+          archive="$RUNNER_TEMP/libvpx-$LIBVPX_VERSION.tar.gz"
+          source="$RUNNER_TEMP/libvpx-$LIBVPX_VERSION"
+          prefix="$RUNNER_TEMP/libvpx"
+          curl --fail --location --silent --show-error \
+            "https://github.com/webmproject/libvpx/archive/refs/tags/v$LIBVPX_VERSION.tar.gz" \
+            --output "$archive"
+          echo "$LIBVPX_SOURCE_SHA256  $archive" | shasum --algorithm 256 --check
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP"
+          pushd "$source"
+          ./configure \
+            --prefix="$prefix" \
+            --disable-docs \
+            --disable-examples \
+            --disable-tools \
+            --disable-unit-tests \
+            --enable-shared \
+            --enable-vp9-highbitdepth
+          make --jobs 2
+          make install
+          popd
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            echo "SUPERI_LIBVPX_PATH=$prefix/lib/libvpx.12.dylib" >> "$GITHUB_ENV"
+          else
+            echo "SUPERI_LIBVPX_PATH=$prefix/lib/libvpx.so.12" >> "$GITHUB_ENV"
+          fi
 
       - name: Record build identity
         run: |
@@ -121,6 +160,41 @@ jobs:
 
       - name: Install declared Rust toolchain
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+
+      - name: Install Linux media build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libva-dev
+
+      - name: Build approved libvpx runtime
+        if: runner.os != 'Windows'
+        run: |
+          archive="$RUNNER_TEMP/libvpx-$LIBVPX_VERSION.tar.gz"
+          source="$RUNNER_TEMP/libvpx-$LIBVPX_VERSION"
+          prefix="$RUNNER_TEMP/libvpx"
+          curl --fail --location --silent --show-error \
+            "https://github.com/webmproject/libvpx/archive/refs/tags/v$LIBVPX_VERSION.tar.gz" \
+            --output "$archive"
+          echo "$LIBVPX_SOURCE_SHA256  $archive" | shasum --algorithm 256 --check
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP"
+          pushd "$source"
+          ./configure \
+            --prefix="$prefix" \
+            --disable-docs \
+            --disable-examples \
+            --disable-tools \
+            --disable-unit-tests \
+            --enable-shared \
+            --enable-vp9-highbitdepth
+          make --jobs 2
+          make install
+          popd
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            echo "SUPERI_LIBVPX_PATH=$prefix/lib/libvpx.12.dylib" >> "$GITHUB_ENV"
+          else
+            echo "SUPERI_LIBVPX_PATH=$prefix/lib/libvpx.so.12" >> "$GITHUB_ENV"
+          fi
 
       - name: Record build identity
         run: |
