@@ -69,6 +69,9 @@ jobs:
           rustup show active-toolchain
           git rev-parse HEAD
 
+      - name: Enforce open product boundary
+        run: cargo run --locked -p superi-boundary-tool -- check .
+
       - name: Build open workspace
         run: cargo build --workspace --locked
 
@@ -104,6 +107,9 @@ jobs:
           cargo --version --verbose
           rustup show active-toolchain
           git rev-parse HEAD
+
+      - name: Enforce open product boundary
+        run: cargo run --locked -p superi-boundary-tool -- check .
 
       - name: Build open workspace
         run: cargo build --workspace --locked

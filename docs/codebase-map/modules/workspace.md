@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 8a17f658115726c0a38e258df548f7802f729fab98374c3c8b7fe99d0fbe5937
-source_files: 45
+source_hash: 4ad39385432b49504b1877895f530aadf095b7adc7c6839ecff7317eb06c66a2
+source_files: 46
 mapped_at_commit: working-tree
 ---
 
@@ -63,7 +63,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `.github/workflows/ci.yml`: Defines cross-platform locked-workspace build jobs. Pull requests and
   pushes to `main` run five macOS, Windows, and Ubuntu lanes, with Ubuntu 26.04 marked experimental;
   a separate Ubuntu 22.04 job runs weekly or by manual dispatch. Both jobs install stable Rust,
-  record build identity, and run `cargo build --workspace --locked` from `open/`.
+  record build identity, enforce the open-tree boundary with the locked repository scanner, and run
+  `cargo build --workspace --locked` from `open/`.
 - `.github/workflows/dependency-policy.yml`: Defines the current GitHub Actions dependency-policy
   workflow. Pushes, pull requests, and manual dispatch run a read-only Ubuntu 24.04 job. After
   `actions/checkout@v4`, the job runs the repository contract checker, then uses
@@ -108,6 +109,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   update, red-to-green and negative controls, clean locked npm verification, locked Rust tests,
   delivery
   context, and the explicit absence of the real React and Tauri application.
+- `docs/checkpoints/P1.W07.C008.md`: Durable implementation evidence for the open-tree boundary
+  scanner. It records the dependency-free tool, canonical and malformed-tree contracts, locked
+  workflow integration, isolated Rust verification, delivery context, and remaining static-policy
+  limitations.
 - `docs/checkpoints/P1.W07.C006.md`: Durable implementation evidence for the dependency-policy
   checkpoint. It records the outcome, integration boundary, red-to-green process, local checks,
   initial successful GitHub Actions run `29302533491`, delivery commits, and remaining limitations.
@@ -161,7 +166,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 
 ### Cargo workspace and repository configuration
 
-- `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 21 local
+- `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 22 local
   workspace packages, registry dependencies, target-support dependency trees, and the exact
   `oxideav-mp3` Git revision. It is generated resolution evidence and is not hand-edited policy.
 - `open/Cargo.toml`: Root Cargo workspace manifest using resolver 2 and glob members under
@@ -192,7 +197,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `open/test-fixtures/policy/utf8/v1/hello.txt`: The six-byte UTF-8 payload `hello` followed by a
   newline. It is the fixture validator's deterministic self-test input.
 
-All 45 assigned artifacts are valid UTF-8 text. The mapping inventory reports no binary artifact
+All 46 assigned artifacts are valid UTF-8 text. The mapping inventory reports no binary artifact
 for this module, so no binary metadata or producer-consumer relationship needs separate treatment.
 
 ## Public surface
@@ -205,7 +210,7 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
   commitments.
 - `open/Cargo.toml` exports inherited workspace package metadata, lints, and dependency declarations
   to every member manifest. The current glob expansion is 19 crate packages plus
-  `superi-fixture-tool` and `superi-dependency-check`, for 21 members total.
+  `superi-fixture-tool`, `superi-dependency-check`, and `superi-boundary-tool`, for 22 members total.
 - `open/Cargo.lock` is the reproducible dependency-resolution surface for builds and audit tools.
 - `open/deny.toml`, `open/rust-toolchain.toml`, and `open/rustfmt.toml` are entry points for license
   audit, toolchain installation, and formatting.
@@ -232,8 +237,8 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
   installation, strict TypeScript checking, Vite production bundling, and bundle-contract proof.
   This surface is intentionally not the absent React application or Tauri desktop shell.
 
-Together the three workflows enforce locked hosted Rust builds, dependency policy, and a locked
-frontend toolchain contract. They do not yet implement the complete documented test, feature,
+Together the three workflows enforce the open-tree boundary, locked hosted Rust builds, dependency
+policy, and a locked frontend toolchain contract. They do not yet implement the complete documented test, feature,
 offline, fixture, malformed-input, GPU, audio, shell, UI, or slice suites.
 
 The stable public automation protocol described by Phase 0 is owned in `superi-api`, not here.
@@ -274,8 +279,8 @@ shared package metadata and lint defaults, resolves member and external dependen
 dependency direction is downward through the crate tiers: core and representation types support
 GPU, concurrency, media, graph, and codecs; feature catalogs and timeline build on those; engine
 orchestration assembles them; the API is the stable facade; and CLI is a headless consumer. The
-fixture and dependency-check tools are workspace members for common build, test, Clippy, and MSRV
-coverage, but neither is part of the runtime DAG.
+fixture, dependency-check, and boundary tools are workspace members for common build, test, Clippy,
+and MSRV coverage, but none is part of the runtime DAG.
 
 The dependency-direction path is a separate local architecture gate. `superi-dependency-check`
 reads locked offline Cargo metadata, classifies all 19 runtime crates, and checks internal normal,
@@ -353,6 +358,7 @@ The documents deliberately point into other modules:
   seam, and `superi-cli` is the headless consumer.
 - `superi-fixture-tool` validates repository fixture policy but does not enter runtime engine flow.
 - `superi-dependency-check` validates the runtime Cargo graph but does not enter runtime engine flow.
+- `superi-boundary-tool` validates source boundaries but does not enter runtime engine flow.
 
 The closed tier is only a consumer of the open API. It is never a workspace dependency or a source
 of open runtime behavior.
@@ -392,10 +398,10 @@ of open runtime behavior.
 
 ## Tests and verification
 
-The workspace documents define several proof layers. Three implemented workflows now cover hosted
-locked-workspace builds, dependency policy, and a locked frontend toolchain contract; every broader
-suite or physical matrix remains a contract until a current workflow or fresh result demonstrates
-execution.
+The workspace documents define several proof layers. Three implemented workflows now cover the
+open-tree boundary, hosted locked-workspace builds, dependency policy, and a locked frontend
+toolchain contract; every broader suite or physical matrix remains a contract until a current
+workflow or fresh result demonstrates execution.
 
 - `.github/workflows/dependency-policy.yml` runs on pushes, pull requests, and manual dispatch. Its
   Ubuntu 24.04 job first runs `.github/scripts/check-dependency-policy.sh`, then checks approved
@@ -411,8 +417,13 @@ execution.
   map refresh.
 - `.github/workflows/ci.yml` builds all workspace members with the locked dependency graph on five
   pull-request and `main` lanes, plus Ubuntu 22.04 on weekly or manual runs. YAML parsing and all six
-  lane-ID presence checks, preview policy, disabled credentials, and locked-build checks passed
-  during this refresh.
+  lane-ID presence checks, preview policy, disabled credentials, one locked boundary command per
+  build job, and locked-build checks passed during this refresh.
+- `docs/checkpoints/P1.W07.C008.md` records fresh Rust 1.80 formatting, eight focused boundary
+  contracts, the canonical scan of 304 files and 23 manifests, warnings-denied focused Clippy,
+  workflow syntax, a locked full workspace build, and the complete workspace test and documentation
+  suite from the checkpoint-owned target. Full strict workspace Clippy reached only pre-existing
+  missing safety comments outside the boundary tool.
 - `docs/checkpoints/P1.W07.C001.md` records that the workflow's red-to-green contract, YAML parsing,
   immutable checkout, lane mappings, locked workspace build, diff hygiene, and prose-dash checks
   passed. It also records a local `cargo build --workspace --locked` on stable Rust 1.97.0 and all
@@ -453,12 +464,13 @@ lane, an unimplemented suite is a gap, and a retry retains its original failure 
 ## Current status and risks
 
 The workspace is beyond the original empty scaffold even though the public orientation has not been
-updated consistently. Fresh Cargo metadata expands the member globs to 21 packages: 19 crates under
-`open/crates/` plus the `superi-fixture-tool` and `superi-dependency-check` repository utilities. The
+updated consistently. Fresh Cargo metadata expands the member globs to 22 packages: 19 crates under
+`open/crates/` plus the `superi-fixture-tool`, `superi-dependency-check`, and
+`superi-boundary-tool` repository utilities. The
 lockfile includes a substantial
 GPU, image, codec, serialization, platform, and native-build dependency graph, and current codec,
 image, platform, and unsafe documents describe implemented contracts rather than empty placeholders.
-The synchronized remote revision now ends at `a5158a443b8243d8b47ebe82ecf8c4740bf74177`.
+The synchronized remote revision now ends at `8072bae033e7904a6f2ca0a18399faf2cfe93c6d`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
 root README, deny policy, and structure guide with license-audit CI. Commit
 `e0b3af9f099f527a8544d1b0317896640969903b` added the executable dependency-policy contract and its
@@ -472,11 +484,12 @@ The largest current risk is cross-document drift:
 
 - `README.md` and `open/README.md` say the tree is an architectural skeleton, count 18 crates, claim
   that only the CLI scaffold has executable behavior, and say no external workspace dependency has
-  been activated. Those statements conflict with the current 20-member Cargo graph, resolved
+  been activated. Those statements conflict with the current 22-member Cargo graph, resolved
   external dependencies, shared fixture tool, and detailed implementation contracts.
 - `open/docs/STRUCTURE.md` also says 18 crates and still labels offline CI and the vertical slice as
-  deferred. The three workflows now cover dependency policy, locked hosted compilation, and the
-  frontend toolchain contract, but the documented full test matrix must not be mistaken for product
+  deferred. The three workflows now cover dependency policy, locked hosted compilation with the
+  open-tree boundary scan, and the frontend toolchain contract, but the documented full test matrix
+  must not be mistaken for product
   behavior, offline, feature, fixture, malformed-input, UI, shell, or physical-platform enforcement.
 - `docs/codecs.md` still says cargo-deny will be wired into CI in a later pass even though
   `.github/workflows/dependency-policy.yml` and `open/deny.toml` now define that enforcement. The
@@ -530,7 +543,7 @@ The largest current risk is cross-document drift:
 
 This map is based on the local mapping commit rebased onto `origin/main` plus this uncommitted map
 refresh, so `mapped_at_commit` is `working-tree`. The remote base was
-`a5158a443b8243d8b47ebe82ecf8c4740bf74177` when the map was refreshed. Its hash describes the exact
+`8072bae033e7904a6f2ca0a18399faf2cfe93c6d` when the map was refreshed. Its hash describes the exact
 45 discovered source files layered on that revision, not the remote commit alone.
 
 ## Maintenance notes

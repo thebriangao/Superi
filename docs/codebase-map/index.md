@@ -33,6 +33,7 @@ against raw source before changing code.
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
 | `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Reserved editorial model, edits, OTIO, nesting, multicam, and graph compilation | Skeleton: no timeline model, OTIO path, or compiler |
 | `tool-superi-dependency-check` | [module map](modules/tool-superi-dependency-check.md) | `open/tools/superi-dependency-check` | Offline executable policy for the open runtime dependency graph | Implemented exact runtime, build, dev, and new-crate checks |
+| `tool-superi-boundary-tool` | [module map](modules/tool-superi-boundary-tool.md) | `open/tools/superi-boundary-tool` | Offline scanner for network-client and open-to-closed policy | Implemented library, CLI, workspace gate, and hosted-build command |
 | `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline validator for canonical repository fixtures | Implemented validation library and CLI; it does not generate fixtures |
 | `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active policy and build control layer with known cross-document status drift |
 
@@ -50,10 +51,10 @@ outside the generated workspace inventory and hash. It must be read separately f
 when all maps validate. `.worktreeinclude` copies it into Codex-managed worktrees.
 
 The open runtime and tool workspace lives under `open/`. Current Cargo membership is 19 runtime
-crates plus `superi-fixture-tool` and `superi-dependency-check`. Both tools are built with the
-workspace but are outside the runtime dependency graph. The root `closed/README.md` is only a
-boundary notice for the separately
-maintained proprietary tier. Open Superi must never import, link, or depend on closed code. Closed
+crates plus `superi-fixture-tool`, `superi-dependency-check`, and `superi-boundary-tool`. All three
+tools are built with the workspace but remain outside the runtime dependency graph. The root
+`closed/README.md` is only a boundary notice for the separately maintained proprietary tier. Open
+Superi must never import, link, or depend on closed code. Closed
 Superi may consume the same open public API as any other client and must produce ordinary editable
 artifacts through that public seam.
 
@@ -300,6 +301,11 @@ and fails when a runtime crate adds an unreviewed normal, build, or dev-only int
 new runtime crate has no explicit policy. The structure guide and executable policy are reviewed as
 one architecture contract.
 
+`superi-boundary-tool` is a dependency-free repository utility, not an engine component. It scans
+Cargo and Rust source deterministically, rejects forbidden network clients and direct socket APIs,
+rejects supported open-to-closed import routes and symlinks, and runs before each locked hosted
+workspace build as well as through the canonical workspace test gate.
+
 ## Shared invariants
 
 The following constraints cross multiple modules and should be preserved together:
@@ -366,15 +372,17 @@ those two triggers also add the blocking `ci-ubuntu-22-x64` job on `ubuntu-22.04
 
 Every hosted build lane checks out with read-only permissions, an immutable pinned checkout action,
 and no persisted credentials. It installs the current stable toolchain, records Rust, Cargo,
-toolchain, and commit identity, then runs exactly `cargo build --workspace --locked` from `open/`.
+toolchain, and commit identity, runs the locked open-tree boundary command, then runs
+`cargo build --workspace --locked` from `open/`.
 Matrix fail-fast is disabled so platform results report independently, superseded branch runs are
 cancelled, and each build has a 90-minute timeout. This proves that the default-feature source for
 every open workspace member can compile against the locked dependency graph on those hosted runner
 images. Ubuntu 26.04 remains experimental, so its failure does not fail the workflow.
 
-The durable checkpoint record also reports focused workflow-contract verification, one local locked
-workspace build with stable Rust 1.97.0, and successful offline fixture-tool policy tests. Those are
-delivery evidence for the checkpoint, not recurring steps in `.github/workflows/ci.yml`.
+The durable CI checkpoint record also reports focused workflow-contract verification, one local
+locked workspace build with stable Rust 1.97.0, and successful offline fixture-tool policy tests.
+The boundary scan is now a recurring workflow step; the other local verification remains delivery
+evidence rather than hosted workflow behavior.
 
 The frontend workflow runs on pull requests, pushes to `main`, and manual dispatch using a read-only
 Ubuntu 24.04 job. It installs exact Node.js 24.13.0, uses `npm ci` against the committed lockfile,
@@ -457,6 +465,8 @@ For common concerns, begin at these owners:
 - Jobs, domains, clocks, handoffs, lifecycle, and liveness: `superi-concurrency`.
 - Current assembly and public capability flow: `superi-engine` then `superi-api`.
 - Product law, open and closed boundaries, CI, fixtures, and maintenance workflow: `workspace`.
+- Reviewed internal runtime dependency direction: `tool-superi-dependency-check`.
+- Static network-client and open-to-closed enforcement: `tool-superi-boundary-tool`.
 
 ## Map maintenance
 
