@@ -6,6 +6,7 @@ use superi_core::geometry::PixelBounds;
 use superi_core::settings::{CapabilitySet, SemanticVersion};
 use superi_core::time::{RationalTime, Timebase};
 use superi_graph::dag::{GraphEdge, GraphEndpoint};
+use superi_graph::diagnostics::{IntrospectNode, NodeIntrospection, NodeStateFingerprint};
 use superi_graph::eval::{
     EvaluateNode, EvaluationContext, EvaluationDependency, EvaluationRequest,
 };
@@ -77,6 +78,24 @@ impl EvaluateNode<i64> for RuntimeNode {
                 "unused failure branch evaluated",
             )),
         }
+    }
+}
+
+impl IntrospectNode for RuntimeNode {
+    fn introspection(&self) -> NodeIntrospection {
+        let (node_type, state) = match self {
+            Self::Constant(value) => ("superi.test.constant", value.to_be_bytes().to_vec()),
+            Self::Select(edge_id) => ("superi.test.selector", edge_id.to_string().into_bytes()),
+            Self::Fail => ("superi.test.failure", Vec::new()),
+        };
+        NodeIntrospection::new(
+            NodeSchemaId::new(
+                NodeTypeId::new(node_type).unwrap(),
+                SemanticVersion::from_str("1.0.0").unwrap(),
+            ),
+            behavior(),
+            NodeStateFingerprint::from_canonical_bytes(state),
+        )
     }
 }
 
@@ -310,26 +329,39 @@ fn editor_script_and_headless_share_one_lazy_revisioned_evaluation_snapshot() {
 
     let schedule = evaluation.schedule::<i64>(request).unwrap();
     assert_eq!(schedule.len(), 2);
-    let observed = std::thread::scope(|scope| {
+    let inspection = evaluation.inspect::<i64>(request).unwrap();
+    assert_eq!(inspection.schedule(), &schedule);
+    let reports = std::thread::scope(|scope| {
         ["editor", "script", "headless"]
-            .map(|_| scope.spawn(|| evaluation.evaluate::<i64>(request).unwrap()))
+            .map(|_| {
+                scope.spawn(|| {
+                    evaluation
+                        .evaluate_with_diagnostics::<i64>(request)
+                        .unwrap()
+                })
+            })
             .into_iter()
             .map(|handle| handle.join().unwrap())
             .collect::<Vec<_>>()
     });
 
-    assert_eq!(observed[0], observed[1]);
-    assert_eq!(observed[1], observed[2]);
-    assert_eq!(*observed[0].value(), 19);
-    assert_eq!(observed[0].schedule(), &schedule);
+    assert_eq!(reports[0].result(), reports[1].result());
+    assert_eq!(reports[1].result(), reports[2].result());
+    assert_eq!(reports[0].diagnostics().inspection(), &inspection);
+    assert_eq!(reports[1].diagnostics().inspection(), &inspection);
+    assert_eq!(reports[2].diagnostics().inspection(), &inspection);
+    assert_eq!(*reports[0].result().value(), 19);
+    assert_eq!(reports[0].result().schedule(), &schedule);
     assert_eq!(
-        observed[0]
+        reports[0]
+            .result()
             .evaluated_keys()
             .map(|key| key.output().node_id())
             .collect::<Vec<_>>(),
         [NodeId::from_raw(1), NodeId::from_raw(3)]
     );
-    assert!(observed[0]
+    assert!(reports[0]
+        .result()
         .evaluated_keys()
         .all(|key| key.region() == PixelBounds::new(8, 8, 16, 16).unwrap()));
 }

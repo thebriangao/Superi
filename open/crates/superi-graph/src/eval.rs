@@ -8,13 +8,19 @@
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::Instant;
 
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result, ResultExt};
 use superi_core::geometry::PixelBounds;
 use superi_core::time::RationalTime;
 
 use crate::dag::{DirectedAcyclicGraph, GraphEdge, GraphEndpoint};
+use crate::diagnostics::{
+    derive_cache_status, CacheKeyStatus, EvaluationDiagnostics, EvaluationInspection,
+    EvaluationReport, IntrospectNode, NodeInspection, NodeTiming,
+};
 use crate::ids::EdgeId;
+use crate::node::{CachePolicy, Determinism};
 
 const COMPONENT: &str = "superi-graph.eval";
 
@@ -384,6 +390,21 @@ impl LazyEvaluator {
         PlanBuilder::build::<V>(graph, request).map(|plan| plan.schedule)
     }
 
+    /// Builds deterministic node introspection and cache-key decisions without evaluating values.
+    ///
+    /// The inspection is derived from the same private plan consumed by diagnostic evaluation. It
+    /// contains no timing, cache contents, cache hits, invalidation generations, or caller mode.
+    pub fn inspect<N, V>(
+        graph: &DirectedAcyclicGraph<N>,
+        request: EvaluationRequest,
+    ) -> Result<EvaluationInspection>
+    where
+        N: EvaluateNode<V> + IntrospectNode,
+    {
+        let plan = PlanBuilder::build::<V>(graph, request)?;
+        Ok(build_inspection(graph, &plan))
+    }
+
     /// Evaluates one output endpoint, frame, and region from an immutable graph.
     ///
     /// Every call owns a fresh request-local value set, so no prior graph state or result can be
@@ -396,7 +417,36 @@ impl LazyEvaluator {
         N: EvaluateNode<V>,
     {
         let plan = PlanBuilder::build::<V>(graph, request)?;
-        execute_plan(graph, plan)
+        execute_plan(graph, plan, None).map(|(result, _)| result)
+    }
+
+    /// Evaluates one private plan and returns its ordinary result beside graph diagnostics.
+    ///
+    /// Planning and node timings use a monotonic clock and are run-local observations. The
+    /// deterministic inspection is built before values execute, and the ordinary evaluator result
+    /// is produced by the same execution loop used by [`Self::evaluate`].
+    pub fn evaluate_with_diagnostics<N, V>(
+        graph: &DirectedAcyclicGraph<N>,
+        request: EvaluationRequest,
+    ) -> Result<EvaluationReport<V>>
+    where
+        N: EvaluateNode<V> + IntrospectNode,
+    {
+        let planning_started = Instant::now();
+        let plan = PlanBuilder::build::<V>(graph, request)?;
+        let inspection = build_inspection(graph, &plan);
+        let planning_elapsed = planning_started.elapsed();
+
+        let execution_started = Instant::now();
+        let (result, node_timings) = execute_plan(graph, plan, Some(&inspection))?;
+        let execution_elapsed = execution_started.elapsed();
+        let diagnostics = EvaluationDiagnostics::new(
+            inspection,
+            planning_elapsed,
+            execution_elapsed,
+            node_timings,
+        );
+        Ok(EvaluationReport::new(result, diagnostics))
     }
 }
 
@@ -641,16 +691,72 @@ fn build_schedule<N>(
     })
 }
 
+fn build_inspection<N>(
+    graph: &DirectedAcyclicGraph<N>,
+    plan: &EvaluationPlan,
+) -> EvaluationInspection
+where
+    N: IntrospectNode,
+{
+    let mut cache_statuses = BTreeMap::new();
+    let mut nodes = Vec::with_capacity(plan.schedule.len());
+
+    for batch in plan.schedule.batches() {
+        for key in batch.keys() {
+            let planned = plan
+                .work
+                .get(key)
+                .expect("scheduled evaluator work remains planned");
+            let introspection = graph
+                .node(key.output().node_id())
+                .expect("planned evaluation node remains present")
+                .introspection();
+            let behavior = introspection.behavior();
+
+            let cache_status = if behavior.cache_policy() == CachePolicy::Disabled {
+                CacheKeyStatus::DisabledByPolicy
+            } else if behavior.determinism() == Determinism::NonDeterministic {
+                CacheKeyStatus::NonDeterministic
+            } else {
+                let mut dependencies = Vec::with_capacity(planned.dependencies.len());
+                let mut blocking_edge = None;
+                for dependency in &planned.dependencies {
+                    let status = cache_statuses
+                        .get(&dependency.source)
+                        .expect("inspection prerequisite appears in an earlier batch");
+                    if let Some(cache_key) = CacheKeyStatus::key(*status) {
+                        dependencies.push((dependency.edge, cache_key));
+                    } else {
+                        blocking_edge = Some(dependency.edge.id());
+                        break;
+                    }
+                }
+                match blocking_edge {
+                    Some(edge_id) => CacheKeyStatus::BlockedByDependency { edge_id },
+                    None => derive_cache_status(graph.id(), *key, &introspection, &dependencies),
+                }
+            };
+
+            cache_statuses.insert(*key, cache_status);
+            nodes.push(NodeInspection::new(*key, introspection, cache_status));
+        }
+    }
+
+    EvaluationInspection::new(plan.schedule.clone(), nodes)
+}
+
 fn execute_plan<N, V>(
     graph: &DirectedAcyclicGraph<N>,
     plan: EvaluationPlan,
-) -> Result<EvaluationResult<V>>
+    inspection: Option<&EvaluationInspection>,
+) -> Result<(EvaluationResult<V>, Vec<NodeTiming>)>
 where
     N: EvaluateNode<V>,
 {
     let EvaluationPlan { schedule, work } = plan;
     let mut evaluated: Vec<EvaluatedValue<V>> = Vec::with_capacity(schedule.len());
     let mut completed = BTreeMap::new();
+    let mut node_timings = Vec::with_capacity(inspection.map_or(0, |_| schedule.len()));
 
     for batch in schedule.batches() {
         for key in batch.keys() {
@@ -684,11 +790,28 @@ where
                     request: EvaluationRequest::from(*key),
                     inputs: &inputs,
                 };
-                graph
+                let node = graph
                     .node(key.output().node_id())
-                    .expect("planned evaluation node remains present")
-                    .evaluate(&context)
-                    .with_error_context(request_context(graph, *key, "evaluate_node"))?
+                    .expect("planned evaluation node remains present");
+                let started = inspection.map(|_| Instant::now());
+                match node.evaluate(&context) {
+                    Ok(value) => {
+                        if let Some(started) = started {
+                            node_timings.push(NodeTiming::new(*key, started.elapsed()));
+                        }
+                        value
+                    }
+                    Err(mut error) => {
+                        error.push_context(request_context(graph, *key, "evaluate_node"));
+                        if let (Some(inspection), Some(started)) = (inspection, started) {
+                            let node = inspection
+                                .node(*key)
+                                .expect("diagnostic inspection contains every scheduled key");
+                            error.push_context(diagnostic_context(node, started.elapsed()));
+                        }
+                        return Err(error);
+                    }
+                }
             };
 
             let index = evaluated.len();
@@ -698,12 +821,33 @@ where
     }
 
     let target_index = completed[&schedule.request().key()];
-    Ok(EvaluationResult {
-        request: schedule.request(),
-        target_index,
-        evaluated,
-        schedule,
-    })
+    Ok((
+        EvaluationResult {
+            request: schedule.request(),
+            target_index,
+            evaluated,
+            schedule,
+        },
+        node_timings,
+    ))
+}
+
+fn diagnostic_context(node: &NodeInspection, elapsed: std::time::Duration) -> ErrorContext {
+    let mut context = ErrorContext::new(COMPONENT, "diagnose_node")
+        .with_field("schema_id", node.introspection().schema_id().to_string())
+        .with_field(
+            "state_fingerprint",
+            node.introspection().state_fingerprint().to_string(),
+        )
+        .with_field("cache_status", node.cache_status().code())
+        .with_field("elapsed_ns", elapsed.as_nanos().to_string());
+    if let Some(cache_key) = node.cache_status().key() {
+        context.insert_field("cache_key", cache_key.to_string());
+    }
+    if let Some(edge_id) = node.cache_status().blocking_edge() {
+        context.insert_field("blocking_edge_id", edge_id.to_string());
+    }
+    context
 }
 
 fn canonicalize_dependencies(dependencies: &mut Vec<EvaluationDependency>) {

@@ -10,6 +10,7 @@
 use superi_core::error::{ErrorContext, Result, ResultExt};
 
 use crate::dag::DirectedAcyclicGraph;
+use crate::diagnostics::{EvaluationInspection, EvaluationReport, IntrospectNode};
 use crate::eval::{
     EvaluateNode, EvaluationRequest, EvaluationResult, EvaluationSchedule, LazyEvaluator,
 };
@@ -133,6 +134,25 @@ impl<T, N> GraphEvaluationSnapshot<T, N> {
         N: EvaluateNode<V>,
     {
         LazyEvaluator::evaluate(&self.executable, request)
+    }
+
+    /// Inspects deterministic node identity and cache decisions through the shared evaluator.
+    pub fn inspect<V>(&self, request: EvaluationRequest) -> Result<EvaluationInspection>
+    where
+        N: EvaluateNode<V> + IntrospectNode,
+    {
+        LazyEvaluator::inspect(&self.executable, request)
+    }
+
+    /// Evaluates through the shared path and returns its unchanged result with run-local timing.
+    pub fn evaluate_with_diagnostics<V>(
+        &self,
+        request: EvaluationRequest,
+    ) -> Result<EvaluationReport<V>>
+    where
+        N: EvaluateNode<V> + IntrospectNode,
+    {
+        LazyEvaluator::evaluate_with_diagnostics(&self.executable, request)
     }
 }
 
