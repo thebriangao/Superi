@@ -18,6 +18,9 @@ superi-gpu = { path = "../superi-gpu" }
 superi-image = { path = "../superi-image" }
 superi-graph = { path = "../superi-graph" }
 
+[dev-dependencies]
+pollster = { workspace = true }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-core-foundation = { workspace = true, features = ["alloc", "CFData"] }
 objc2-core-graphics = { workspace = true, features = ["std", "libc", "CGColorSpace", "CGDirectDisplay", "CGDisplayConfiguration", "CGError"] }

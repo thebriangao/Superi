@@ -9,6 +9,7 @@
 
 pub mod config;
 pub mod gamut;
+pub mod gpu_transform;
 pub mod hdr;
 pub mod icc;
 pub mod lut;

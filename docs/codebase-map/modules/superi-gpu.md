@@ -359,6 +359,9 @@ which must be performed by `superi-color`.
 - `superi-color/src/working_space.rs` uses `GpuFrameDescriptor` to define canonical GPU working
   storage as one premultiplied `Rgba16Float` plane with explicit scene-linear wide-gamut metadata.
   It validates the descriptor but does not ask `superi-gpu` to change primaries or transfer.
+- `superi-color/src/gpu_transform.rs` uses managed textures, shader caching, explicit binding and
+  pipeline layouts, compute-pass batches, the exclusive submission queue, and fence-scoped retained
+  owners to execute wide-gamut color transforms without an ordinary CPU pixel path.
 - `superi-color/src/view.rs` wraps `NativeViewportSurface` with immutable monitor and ICC evidence.
   It delegates adapter filtering, configuration, acquisition, and submit-before-present to this
   crate, but rejects presentation if monitor/profile evidence changed after acquisition.

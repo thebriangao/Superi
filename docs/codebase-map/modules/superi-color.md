@@ -2,8 +2,8 @@
 module_id: superi-color
 source_paths:
   - open/crates/superi-color
-source_hash: adfcfaed9d543718cfd5078216f3d4bd85a538ceb086238866314e11069398c8
-source_files: 23
+source_hash: 38d1f77bb71994c848cef7875a8f5a300fa79d1531abf6787b052b7252361bc1
+source_files: 25
 mapped_at_commit: working-tree
 ---
 
@@ -20,7 +20,8 @@ CPU image artifacts from `superi-image`, and GPU frame and presentation ownershi
 Implemented ownership is narrower than the full color architecture described by
 `docs/phase-0-build-contracts.md`. Input and output transforms, transfer functions, primary
 conversion, working-space storage, LUTs, ICC validation and discovery, and stale-profile
-presentation checks are implemented. Executable ICC evaluation and production engine orchestration remain absent.
+presentation checks are implemented. A managed GPU wide-gamut transform is implemented for
+canonical `Rgba16Float` textures. Executable ICC evaluation and production engine orchestration remain absent.
 
 The crate owns color interpretation, transform policy, and explicit legal-range RGB normalization,
 but it does not own YUV matrix conversion, media decoding, image storage primitives, GPU device
@@ -39,6 +40,9 @@ selection, and invalidation only.
 - `open/crates/superi-color/src/gamut.rs`: CIE xy colorimetry, RGB-to-XYZ matrix derivation,
   Bradford adaptation, wide-gamut RGB conversion, explicit negative-gamut policies, and working
   image conversion.
+- `open/crates/superi-color/src/gpu_transform.rs`: managed compute-pipeline construction for
+  reference-derived wide-gamut transforms, canonical texture validation, GPU-resident output
+  allocation, pass encoding, submission, and fence-scoped ownership.
 - `open/crates/superi-color/src/hdr.rs`: validated relative-light, encoded-signal, normalized PQ,
   and nit value types; SDR, PQ, and HLG transfer functions; and complete reference HLG display
   rendering.
@@ -74,6 +78,9 @@ selection, and invalidation only.
 - `open/crates/superi-color/tests/gamut_contract.rs`: reference primaries and matrix checks,
   adaptation, round trips, gamut policies, premultiplied alpha, metadata retention, and failure
   classification.
+- `open/crates/superi-color/tests/gpu_transform_contract.rs`: constructor and validation contracts
+  plus native upload, compute, submission, fence, explicit export readback, and binary64 CPU parity
+  proof for canonical `Rgba16Float` frames.
 - `open/crates/superi-color/tests/icc_contract.rs`: ICC structure and tag validation, atomic
   discovery, monitor binding and viewport state, native provider behavior, macOS discovery, and
   unsafe-boundary inventory checks.
@@ -98,7 +105,7 @@ selection, and invalidation only.
 
 ## Public surface
 
-`open/crates/superi-color/src/lib.rs` exposes ten public modules: `config`, `gamut`, `hdr`, `icc`,
+`open/crates/superi-color/src/lib.rs` exposes eleven public modules: `config`, `gamut`, `gpu_transform`, `hdr`, `icc`,
 `lut`, `rules`, `transform_in`, `transform_out`, `view`, and `working_space`. It does not re-export their
 members at the crate root.
 
@@ -117,6 +124,13 @@ The gamut surface consists of `Chromaticity`, `RgbColorimetry`, `ChromaticAdapta
 destination definitions, selected policies, row-major binary64 matrix, destination CIE Y
 coefficients, scalar RGB application, premultiplied RGBA application, and binary16 or binary32
 working-image application.
+
+The GPU transform surface consists of `GpuWideGamutTransform`, its encoded and submitted result
+owners, and explicit encode and submit operations. Construction derives WGSL constants from the
+binary64 CPU reference transform. Encoding validates canonical source texture shape and format,
+allocates a canonical output texture, and returns an owned managed pass batch. Submission retains
+the source, output, bindings, pipeline, and pass resources through the returned fence without an
+ordinary CPU pixel path.
 
 The transfer surface consists of `RelativeLight`, `EncodedSignal`, `NormalizedSignal`, `Nits`, and
 `HlgDisplayParameters`, plus `decode_relative_transfer`, `encode_relative_transfer`,
@@ -342,6 +356,9 @@ The ten integration suites cover the implemented CPU and presentation-state cont
 - `open/crates/superi-color/tests/gamut_contract.rs` checks published primaries, the ACES AP0 to AP1
   reference matrix, Bradford behavior, negative and HDR round trips, gamut policy, and artifact
   retention.
+- `open/crates/superi-color/tests/gpu_transform_contract.rs` checks constructor metadata, fail-closed
+  source validation, native compute submission and fence ordering, explicit export readback, and
+  per-channel parity with the binary64 CPU reference after source half quantization.
 - `open/crates/superi-color/tests/input_transform_contract.rs` proves source-family distinctions,
   decode-before-primary-conversion order, explicit PQ reference white, canonical output, and
   binary16 overflow rejection.
@@ -369,9 +386,9 @@ contracts are implemented and extensively tested. The module is not yet a comple
 - Versioned named scene-linear spaces, aliases, roles, and project pinning are implemented. File
   rules, config-persisted looks, displays, views, context variables, and transform graphs do not
   exist in this configuration schema; runtime look and output rules remain separate typed APIs.
-- Output transforms and rule evaluation are CPU-only and emit RGBA binary32 artifacts. Executable
+- Output transforms and rule evaluation remain CPU implementations that emit RGBA binary32 artifacts. Executable
   ICC profile evaluation, project-configured rule persistence, concrete integer or YUV encoding,
-  GPU output transforms, and a production
+  complete display and delivery GPU output transforms, and a production
   export or viewport consumer remain absent.
 - ICC profiles are validated and bound to presentation, but their matrix/TRC or LUT payloads are
   not evaluated. `MonitorAwareViewport` prevents stale profile use but does not color-convert the
@@ -381,7 +398,8 @@ contracts are implemented and extensively tested. The module is not yet a comple
 - `superi-graph` is an unused manifest dependency. No color node catalog or graph-visible transform
   integration exists in this crate.
 - CPU input, gamut, and LUT application allocate replacement sample vectors and iterate pixels on
-  the CPU. There is no GPU color-transform implementation or compiled transform cache.
+  the CPU. The managed GPU path currently covers wide-gamut linear transforms only; it has no
+  engine or graph consumer and no cross-transform compiled cache.
 - `WorkingImageF32::quantize_f16` directly narrows samples and can encode finite values beyond the
   binary16 maximum as infinity. `InputColorTransform::apply` guards this, but direct callers of
   quantization must own that semantic choice. Canonical working construction also intentionally

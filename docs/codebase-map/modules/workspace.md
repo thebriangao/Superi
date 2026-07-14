@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: d882bab9903425ffbaca9db864302f9c224f4a7c402058e3b0f4fbff39f9105d
-source_files: 99
+source_hash: 60ba2c9ca27e6a43659254e693f0050c72ec229a68f34e6720c5f02b45fbfe25
+source_files: 100
 mapped_at_commit: working-tree
 ---
 
@@ -138,6 +138,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   tone mapping and the separate legal-range RGB storage encoder. It records stage ordering, public
   rule consumption, normative code anchors, alpha and artifact behavior, critical verification,
   delivery context, and the intentionally separate YUV, packed storage, ICC, GPU, and engine work.
+- `docs/checkpoints/P1.W05.C012.md`: Durable implementation evidence for managed GPU-resident
+  wide-gamut transforms, binary64 CPU reference parity, explicit pass and fence ownership, native
+  export-readback proof, delivery context, and intentionally separate engine integration.
 - `docs/checkpoints/P1.W07.C002.md`: Durable implementation evidence for the complete Rust CI quality
   suite. It records the low-risk configuration boundary, both-job command coverage, the explicit
   hosted macOS native codec exception, focused local proof, hosted proof requirement, delivery

@@ -21,7 +21,7 @@ against raw source before changing code.
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
 | `superi-codecs-rs` | [module map](modules/superi-codecs-rs.md) | `open/crates/superi-codecs-rs` | Default permissive software codec implementations | Implemented: AV1, FLAC, MP3, Opus, PCM, Vorbis, VP8, and VP9 decode and encode |
 | `superi-codecs-vendor` | [module map](modules/superi-codecs-vendor.md) | `open/crates/superi-codecs-vendor` | Explicit process adapter for separately installed vendor RAW workers | Implemented first revision: decode-only, CPU-only, JSON and hexadecimal IPC |
-| `superi-color` | [module map](modules/superi-color.md) | `open/crates/superi-color` | Versioned configuration, project working spaces, color math, input and output transforms, tone mapping, legal-range RGB encoding, LUTs, ICC discovery, and presentation profile guards | Substantial but partial: project-pinned configuration and CPU transforms are implemented; ICC evaluation remains absent |
+| `superi-color` | [module map](modules/superi-color.md) | `open/crates/superi-color` | Versioned configuration, project working spaces, color math, CPU input and output transforms, GPU wide-gamut transforms, tone mapping, legal-range RGB encoding, LUTs, ICC discovery, and presentation profile guards | Substantial but partial: project-pinned configuration, CPU transforms, and managed GPU wide-gamut transforms are implemented; ICC evaluation and engine integration remain absent |
 | `superi-concurrency` | [module map](modules/superi-concurrency.md) | `open/crates/superi-concurrency` | Execution domains, jobs, clocks, handoffs, shared snapshots, lifecycle, and liveness | Substantial but not engine-integrated; GPU submission module is a placeholder |
 | `superi-core` | [module map](modules/superi-core.md) | `open/crates/superi-core` | Tier-zero values, validation, exact time, identifiers, errors, diagnostics, and stable serialization | Implemented and broadly consumed; crate-level skeleton wording is stale |
 | `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Reserved effect-node catalog, animation, mask, transition, text, tracking, and OFX boundary | Skeleton: public module names only |
@@ -374,6 +374,12 @@ roles through the same `WorkingSpace` API. Serializable project settings pin one
 the config ID and normalized semantic SHA-256, rejecting semantic drift instead of silently changing
 scene meaning.
 
+The managed GPU wide-gamut path derives its WGSL matrix and gamut constants from the same binary64
+reference transform, validates a canonical single-plane `Rgba16Float` source, allocates a managed
+`Rgba16Float` destination, and returns an owned compute-pass batch or submitted fence. Source,
+destination, bindings, pipeline, and command dependencies remain retained through submission. CPU
+pixels are exposed only by an explicit readback owner used by export or reference verification.
+
 The versioned color baseline now exercises that public CPU transform path with eight compact SDR,
 Display P3, PQ, HLG, alpha, f16, and f32 images. It separately maps three ACEScg f32 payloads through
 the public media-I/O image-sequence source with noncontiguous file numbers and exact 24000/1001
@@ -408,9 +414,10 @@ connection compatibility, a schema-bound editable graph, atomic mutation, and a 
 evaluator plus snapshot-owned typed parameter links and bounded expressions exist. A role-neutral
 evaluation snapshot compiles editable instances into caller-owned evaluator payloads without
 changing topology, but no production catalog implements that seam or connects it to a production
-schema or GPU value. Color input, output, LUT, and rule transforms are CPU implementations and have
-no graph-visible node catalog. Output transforms do not evaluate validated ICC profile state or
-provide a GPU viewport or export consumer.
+schema or GPU value. Color input, output, LUT, and rule transforms remain CPU implementations and
+have no graph-visible node catalog. A GPU wide-gamut transform exists as a direct public surface,
+but no engine or graph consumer composes it with the complete display, delivery, ICC, viewport, or
+export pipeline.
 `MonitorAwareViewport` prevents stale-profile presentation but does not color-convert a frame.
 
 GPU readback is explicit and limited to export or thumbnail storage bytes. It performs no color
