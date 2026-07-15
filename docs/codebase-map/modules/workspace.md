@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 38958cc887352991b5b6568720b02f62407a76e87096c002efd6f9bb86d65771
+source_hash: c088031c93aa384d3f6f76c77354df9d09c97f1c4cefe09d761f97c00b0dda4f
 source_files: 124
 mapped_at_commit: working-tree
 ---
@@ -70,7 +70,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `.github/scripts/provision-windows-libvpx.sh`: Windows hosted runtime provisioner that pins the
   reviewed vcpkg registry baseline, builds libvpx 1.16.0 with VP9 high-bit-depth support through the
   supported static MSVC triplet without binary-cache reuse, relinks the archive into one DLL using
-  the reviewed exports, verifies the exports and runtime version, and publishes its native path.
+  the reviewed exports, verifies the exports with CRLF-safe exact symbol checks and actionable
+  diagnostics, verifies the runtime version, and publishes its native path.
 - `.github/scripts/check-ci-features.py`: Standard-library contract that binds supported matrix
   lanes to explicit default or `os-codecs` policy, the real CLI feature build, engine and API
   consumer tests, and a default-only Ubuntu 22.04 job.

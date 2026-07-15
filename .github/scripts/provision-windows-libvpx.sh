@@ -68,8 +68,12 @@ MSYS_NO_PATHCONV=1 powershell.exe -NoLogo -NoProfile -NonInteractive -Command \
      if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }"
 
 while read -r symbol; do
+    symbol="${symbol%$'\r'}"
     [[ -z "$symbol" || "$symbol" == LIBRARY* || "$symbol" == EXPORTS ]] && continue
-    grep -Fq "$symbol" "$exports_log"
+    grep -Fq "$symbol" "$exports_log" || {
+        printf 'required libvpx export missing: %s\n' "$symbol" >&2
+        exit 1
+    }
 done < "$script_root/libvpx-windows.def"
 
 SUPERI_LIBVPX_PATH="$runtime_windows" python3 - <<'PY'

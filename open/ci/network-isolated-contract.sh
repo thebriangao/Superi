@@ -74,6 +74,10 @@ grep -Fq 'MSYS_NO_PATHCONV=1 powershell.exe' "$windows_libvpx_provisioner" ||
     fail "Windows libvpx provisioning must preserve MSVC linker switches under Git Bash"
 grep -Fq 'dumpbin.exe /NOLOGO /EXPORTS' "$windows_libvpx_provisioner" ||
     fail "Windows libvpx provisioning must verify the produced exports"
+grep -Fq 'symbol="${symbol%$'"'"'\r'"'"'}"' "$windows_libvpx_provisioner" ||
+    fail "Windows libvpx export verification must accept the runner's CRLF checkout"
+grep -Fq 'required libvpx export missing:' "$windows_libvpx_provisioner" ||
+    fail "Windows libvpx export verification must report the exact missing symbol"
 grep -Fq '"features": ["highbitdepth"]' "$windows_libvpx_provisioner" ||
     fail "Windows libvpx provisioning must retain VP9 high-bit-depth support"
 grep -Fq 'SUPERI_LIBVPX_PATH=' "$windows_libvpx_provisioner" ||
