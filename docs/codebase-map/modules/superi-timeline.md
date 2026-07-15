@@ -2,8 +2,8 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: 01533bbc374dda81d25d3a6999f964234eab4fdefd83ff7de8ef47277fe4f6f4
-source_files: 18
+source_hash: 122397a10fe7148f30f909120f0c4991b2ac485b2122c783ac766542c16325cb
+source_files: 19
 mapped_at_commit: working-tree
 ---
 
@@ -20,16 +20,17 @@ availability without destroying overscan. Timeline, track, and object markers pr
 identity, explicit ownership, owner-relative exact ranges, visible labels, flags, notes, and nested
 deterministic metadata. Persistent snapping resolves exact timeline, playhead, item, and visible
 marker boundaries with stable filters, exclusions, and tie ordering. Foundational insert,
-overwrite, append, replace, lift, and extract commands reshape those objects while reporting every
-inserted, removed, modified, split, or invalidated relationship. Whole-project validation and
-revision-checked atomic batches keep linked objects, annotations, user intent, timing,
-synchronization, nesting, and direct edits valid at publication boundaries.
+overwrite, append, replace, lift, and extract commands join ripple, roll, slip, slide, razor, trim,
+extend, and exact three-point and four-point commands on one typed batch surface. Those commands
+report every inserted, removed, modified, split, synchronized, or invalidated relationship.
+Whole-project validation and revision-checked atomic batches keep linked objects, annotations, user
+intent, timing, synchronization, nesting, and direct edits valid at publication boundaries.
 
 The model also owns a narrow immutable color metadata seam that retains graph color state through
 the future compilation boundary without changing source meaning.
 
-The crate continues to reserve advanced trim operations, multicam behavior, OTIO-compatible
-interchange, and deterministic timeline-to-graph compilation. Those surfaces are not implemented.
+The crate continues to reserve retiming, multicam behavior, OTIO-compatible interchange,
+and deterministic timeline-to-graph compilation. Those surfaces are not implemented.
 The canonical OTIO 0.18.1 fixture remains executable evidence for future interchange work rather
 than a production reader or writer.
 
@@ -38,9 +39,10 @@ than a production reader or writer.
 - `open/crates/superi-timeline/Cargo.toml`: Declares runtime dependencies on `superi-core` and
   `superi-graph`, plus development-only `serde_json` for canonical OTIO fixture contracts.
 - `open/crates/superi-timeline/src/compile.rs`: Placeholder for timeline-to-graph compilation.
-- `open/crates/superi-timeline/src/edit_ops.rs`: Implements directly inspectable insert, overwrite,
-  append, replace, lift, and extract commands, exact source-aware splitting, deterministic fragment
-  identities, transition reconciliation, result reports, and atomic multi-track batches.
+- `open/crates/superi-timeline/src/edit_ops.rs`: Implements directly inspectable foundational and
+  advanced commands, exact source-aware trimming and splitting, deterministic fragment identities,
+  explicit sync-locked ripple plans, transition reconciliation, result reports, and atomic
+  multi-track batches.
 - `open/crates/superi-timeline/src/edit_state.rs`: Implements exact and relationship-expanded
   selection, per-track targeting and sync-lock intent, canonical clip links and groups, stable
   introspection, and structural reconciliation.
@@ -77,6 +79,11 @@ than a production reader or writer.
   track, and object ownership, visible semantics, nested metadata, direct mutation, owner-relative
   resolution, preserved overscan, structural-edit survival, dangling-owner cleanup, exact snapping,
   filters, exclusions, persistent disablement, stable ties, and atomic rollback.
+- `open/crates/superi-timeline/tests/advanced_edit_ops_contract.rs`: Proves ripple, roll, slip,
+  slide, razor, trim, extend, all four three-point forms, exact four-point placement, explicit
+  fit-to-fill rejection, sync-locked companion tracks, relationship inheritance, cross-rate
+  derivation, transition truth, annotation retention, typed object splits, caller parity, and atomic
+  rollback.
 - `open/crates/superi-timeline/tests/otio_fixture_contract.rs`: Proves canonical OTIO schema,
   hierarchy, identity, timing, relationships, opaque retention, and unsupported diagnostics.
 - `open/crates/superi-timeline/tests/range_contract.rs`: Proves exact cross-clock point and subrange
@@ -153,17 +160,23 @@ The annotation and snapping surface includes:
   snap queries over timeline zero, a caller playhead, item boundaries, and visible marker boundaries.
   Requests can include target classes and exclude moving objects or markers.
 
-The foundational operation surface includes:
+The editorial operation surface includes:
 
-- `EditOperation` and `EditKind` for insert, overwrite, append, replace, lift, and extract commands
-  targeted by stable timeline and track identity.
+- `EditOperation` and `EditKind` for insert, overwrite, append, replace, lift, extract, ripple,
+  roll, slip, slide, razor, trim, extend, three-point, and four-point commands targeted by stable
+  timeline and track identity.
+- `EditSide` for exact start or end control, `ExtendMode` for explicit ripple or roll delegation,
+  and `ThreePointPlacement` for the four forward and backtimed missing-boundary forms.
+- `RippleSyncAdjustment` for deterministic per-track gap and fragment identities. A ripple names
+  every other sync-locked track in canonical timeline order or fails before mutation.
 - Caller-supplied typed right-fragment identities whenever one existing timed object must survive on
   both sides of an edit boundary. The left fragment retains the original object identity.
 - `apply_edit_batch`, which applies one or more commands through one existing
   `EditorialProject::edit` publication and returns `EditBatchResult` at the new project revision.
 - `EditOutcome`, `EditFragment`, and `TrackDurationChange`, which expose affected ranges,
   inserted and removed objects, changed retained objects, created right fragments, removed
-  transitions, and exact duration effects without reconstructing a diff from the final track.
+  transitions, synchronized companion tracks, and exact duration effects without reconstructing a
+  diff from the final track.
 
 `compile`, `multicam`, `nested`, and `otio` remain public namespace reservations without production
 operations. `markers` and `edit_ops` are substantive public operation surfaces.
@@ -235,7 +248,7 @@ must match its tolerance clock. Persistent disablement returns no target, filter
 classes, exclusions prevent a moving object and its markers from snapping to themselves, and equal
 distances choose the smallest stable `SnapTarget` identity.
 
-Foundational operation flow extends that transaction without creating another state model:
+Editorial operation flow extends that transaction without creating another state model:
 
 1. `apply_edit_batch` resolves each target timeline and track inside the unpublished
    `ProjectDraft`, preserving command order across related tracks.
@@ -247,10 +260,22 @@ Foundational operation flow extends that transaction without creating another st
 4. Insert shifts later items right, overwrite changes an equal-duration interval in place, append
    uses the exact current end, replace preserves target placement and duration, lift creates an
    explicit caller-owned gap, and extract shifts later items left.
-5. Existing transitions are restored only when their original endpoints remain adjacent and their
+5. Ripple changes one exact edge and shifts downstream material. Every other sync-locked track must
+   have one explicit canonical adjustment, which inserts a caller-identified gap on extension or
+   extracts the same physical interval on contraction with exact cross-clock conversion.
+6. Roll moves one shared cut, slip changes only a clip source window, slide compensates both source
+   neighbors around an unchanged center source, and plain trim creates or consumes explicit gaps.
+   Extend delegates to the same ripple or roll implementation instead of defining new timing rules.
+7. Razor retains the original identity on the left and uses one caller identity on the right.
+   Clip fragments inherit direct selection plus link and group components before publication.
+   Object annotations remain attached to the original stable identity and reconcile atomically.
+8. Three-point placement derives exactly one missing source or record boundary. Four-point
+   placement accepts only equal physical durations; fit-to-fill fails as unsupported until explicit
+   P2.W02.C008 time remapping exists.
+9. Existing transitions are restored only when their original endpoints remain adjacent and their
    offsets still fit without overlap. Every invalidated transition is returned in the operation
    result rather than retargeted implicitly.
-6. The existing whole-project validator resolves media and nested timeline sources, global object
+10. The existing whole-project validator resolves media and nested timeline sources, global object
    identity, track continuity, synchronization, and nesting cycles before one new revision is
    published. A failure in any command or final invariant discards every command in the batch.
 
@@ -319,15 +344,16 @@ assertions. It does not enter the native model yet.
   clip source slices require exact rational conversion, never implicit rounding.
 - Splitting an object keeps the original identity on the left and requires a same-domain caller ID
   for the right. Missing, wrong-domain, or unused fragment identities reject the complete batch.
-- Insert and extract ripple only the addressed track per command. Related track changes remain
-  synchronized when callers submit them in one atomic batch at one expected project revision.
+- Insert and extract address only their named tracks. Advanced ripple refuses to leave another
+  sync-locked track unchanged and requires one deterministic companion adjustment per affected
+  track in stable timeline order.
 - Overwrite and replace preserve track duration. Lift makes empty time explicit with a named gap.
   Append and insert report exact extension, while extract reports exact shortening.
 - A transition is never silently redirected. It survives only with its original adjacent endpoints
   and valid nonoverlapping handles; otherwise its typed identity appears in the outcome.
-- Advanced retiming, ripple and roll trims, slip, slide, razor, three-point and four-point edits,
-  production OTIO preservation, deterministic graph compilation, undo-history ownership,
-  multicam, and higher-level editorial commands remain outside this state.
+- Speed changes, reverse playback, freeze frames, time remapping, fit-to-fill, production OTIO
+  preservation, deterministic graph compilation, undo-history ownership, multicam, and
+  higher-level editorial commands remain outside this state.
 - The timeline color seam preserves exact graph metadata and performs no transform, inference,
   normalization, or reordering.
 
@@ -372,6 +398,12 @@ projection, target filters, object and marker exclusions, playhead candidates, s
 persistent disablement, atomic invalid-clock rollback, survival through a real insert, and selective
 cleanup through a real extract.
 
+Nine advanced edit-operation tests prove inward and outward ripple and trim behavior, roll, slip,
+slide, clip and non-clip razor splits, extend delegation, all four three-point forms, exact
+four-point placement, explicit retime rejection, cross-rate derivation, transition invalidation,
+sync-locked two-track contraction, selection and relationship inheritance, stable track intent,
+object annotation retention, role-neutral deterministic results, and complete failed-batch rollback.
+
 Workspace tests, warnings-denied Clippy, formatting, dependency direction, the offline boundary
 scan, and codebase-map validation are required delivery gates.
 
@@ -379,17 +411,18 @@ scan, and codebase-map validation are required delivery gates.
 
 The foundational project model, rational range mapping, linked availability context, typed track
 semantics, authoritative timeline edit state, markers, deterministic metadata, exact snapping, and
-six primary editorial operations are substantive and test-backed. Production OTIO reading and
-writing, graph compilation, advanced trim transforms, undo ownership, multicam, persistence, and
-engine or API integration remain absent.
+six primary operations, and nine advanced edit families are substantive and test-backed.
+Production OTIO reading and writing, graph compilation, retiming, undo ownership, multicam,
+persistence, and engine or API integration remain absent.
 
 The model requires equal physical source and record duration for clips. Future time-warp support
 must introduce explicit retime state rather than weakening that invariant. Clip range setters
 validate before mutation, while callers use `EditorialProject::edit` or `apply_edit_batch` for
 atomic publication of broader project changes. Selection is authoritative command intent, not
-hover, focus, marquee geometry, or optimistic UI presentation state. Sync resolution identifies
-participating tracks but performs no transform on its own. Links and groups are timeline-local and
-have no independent durable ID. Edit material is currently one timed object per command;
+hover, focus, marquee geometry, or optimistic UI presentation state. Advanced ripple and
+ripple-mode extend consume sync resolution with explicit per-track identity material; the resolver
+alone remains a pure projection. Links and groups are timeline-local and have no independent
+durable ID. Edit material is currently one timed object per command;
 multi-object source sequences and link-group targeting belong to later command and orchestration
 layers. Audio continuity is structural evidence rather than signal analysis or playback. The model
 has no stable Serde schema, hostile-input collection bounds, or production consumer outside its
@@ -404,8 +437,8 @@ metadata ordering, source-link resolution,
 selection expansion, track intent, clip relationship partitions, reconciliation, transition
 adjacency, nesting acyclicity, and atomic publication as public contracts. Extend tests before
 changing them. Later higher-level operations must consume `tracks_affected_by_sync` and exact
-selection state instead of recreating those policies. Add advanced edit commands, interchange, and
-graph compilation only through their owning modules, and update project, engine, API, CLI,
+selection state instead of recreating those policies. Add retiming, interchange, and graph
+compilation only through their owning modules, and update project, engine, API, CLI,
 persistence, and fixture maps when those paths begin consuming native timeline state. Preserve the
 OTIO fixture's versioned semantics rather than inferring interchange behavior from the native model
 alone.
