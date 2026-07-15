@@ -2,7 +2,7 @@
 module_id: superi-codecs-rs
 source_paths:
   - open/crates/superi-codecs-rs
-source_hash: d7e33afc85a9108b5b843f4603aa25e1e43d0131025efc779d810d1fbaca58d2
+source_hash: 4f7cb542c0ae20961aa7f05b9c3c54d005ea5835f91176451aad02d1edeb6e16
 source_files: 36
 mapped_at_commit: working-tree
 ---
@@ -188,7 +188,9 @@ contract and emit `VideoFrame` or `AudioBlock`; encoders consume those canonical
 Decode validates one AV1 video stream, queues at most 64 temporal units, and owns one single-thread
 rav1d context. Each packet is copied into rav1d storage and assigned a monotonic sequence offset;
 Superi timing and metadata remain in a parallel queue. Decoded picture offsets, PTS, and duration
-must match the retained record. The wrapper validates dimensions, signed strides, plane geometry,
+must match the retained record. Sequence offsets are checked when narrowed to rav1d's target C ABI
+width, including the 32-bit offset field exposed on Windows MSVC, then widened losslessly for
+correlation with Superi state. The wrapper validates dimensions, signed strides, plane geometry,
 bit depth, and allocation arithmetic before copying visible rows into owned CPU planes. It emits
 8-bit monochrome or planar 4:2:0/4:2:2/4:4:4 and 10-bit planar 4:2:0/4:2:2/4:4:4 in little-endian
 16-bit storage. Ten-bit monochrome and 12-bit pictures are rejected because no exact public format
@@ -426,7 +428,8 @@ or `FIXME` in the implementation surface. Current limitations and contradictions
   alpha, 12-bit, RGB, or non-planar path.
 - AV1 decoder flush does not submit a distinct rav1d end marker; it reports EOS after immediate
   output and queued input are exhausted. Reordered-stream coverage must continue to guard delayed
-  picture behavior. AV1 encode is CPU-only.
+  picture behavior. The Windows offset range is finite and now fails explicitly before submission
+  rather than truncating sequence identity. AV1 encode is CPU-only.
 - FLAC encode buffers the complete interleaved stream and emits only at flush. Long recordings can
   consume unbounded memory. Headerless packet decode assumes independently decodable FLAC frames
   combined with retained configuration.

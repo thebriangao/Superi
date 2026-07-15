@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 8e1b49f86e6fee209218bd7cb9c47d588fc99e17b0a912c3fa9dc9686aaceffb
+source_hash: dca616d41bc16124db593e82c227f1dca4edef1e99a2c52bcc9bf425a03a0317
 source_files: 121
 mapped_at_commit: working-tree
 ---

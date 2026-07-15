@@ -238,10 +238,14 @@ impl Av1Decoder {
                 "AV1 decoder returned a negative frame duration",
             )
         })?;
+        #[cfg(target_os = "windows")]
+        let picture_sequence = i64::from(picture.m.offset);
+        #[cfg(not(target_os = "windows"))]
+        let picture_sequence = picture.m.offset;
         let pending_index = self
             .pending
             .iter()
-            .position(|pending| pending.sequence == picture.m.offset)
+            .position(|pending| pending.sequence == picture_sequence)
             .ok_or_else(|| {
                 internal(
                     "decode_av1_picture",
@@ -522,7 +526,16 @@ impl Rav1dHandle {
                 .value(),
         )
         .expect("validated AV1 packet duration range");
-        data.m.offset = sequence;
+        #[cfg(target_os = "windows")]
+        let rav1d_offset = sequence.try_into().map_err(|_| {
+            resource_exhausted(
+                "send_av1_packet",
+                "AV1 decoder packet sequence exceeds the rav1d offset range",
+            )
+        })?;
+        #[cfg(not(target_os = "windows"))]
+        let rav1d_offset = sequence;
+        data.m.offset = rav1d_offset;
         data.m.size = packet.data().len();
 
         let context = self
