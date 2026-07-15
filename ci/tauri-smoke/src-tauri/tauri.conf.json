@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Superi Tauri CI Smoke",
+  "version": "0.0.0",
+  "identifier": "com.superi.ci-smoke",
+  "build": {
+    "frontendDist": "../frontend"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Superi Tauri CI Smoke",
+        "width": 800,
+        "height": 600
+      }
+    ]
+  },
+  "bundle": {
+    "active": false,
+    "icon": []
+  }
+}

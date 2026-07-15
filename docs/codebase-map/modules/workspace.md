@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: c84662c06e28e31080a0af6425954a5407b915d93a661446acfb8c75703979b0
-source_files: 107
+source_hash: 20c68c44e0c074cd0a1ed37e9da1c099cfb4c6f9a17902b3891fb7643fa414cd
+source_files: 119
 mapped_at_commit: working-tree
 ---
 
@@ -95,9 +95,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   Rust dependencies, checksum-pinned libva 2.22 and libvpx 1.16, nasm, and test artifacts online,
   then enters a distinct Linux network namespace and runs workspace tests, fixture validation, and
   the CLI consumer with Cargo forced offline.
+- `.github/workflows/tauri.yml`: Defines the blocking native Tauri Rust matrix for macOS 26 arm64,
+  macOS 15 Intel, Windows 2025, and Ubuntu 24.04. It installs Linux WebKitGTK 4.1 prerequisites and
+  runs locked formatting, mock-runtime tests, strict all-target Clippy, and native wry compilation.
 - `.gitignore`: Excludes Rust and JavaScript build output, editor and macOS files, local agent law,
-  checkpoint plans, Python bytecode and cache directories, browser artifacts, and the frontend CI
-  contract's generated `dist/`. In particular, `AGENTS.md`, `BASE_INSTRUCTIONS.md`, and `/plans/`
+  checkpoint plans, Python bytecode and cache directories, browser artifacts, frontend `dist/`, and
+  Tauri-generated ACL schemas. In particular, `AGENTS.md`, `BASE_INSTRUCTIONS.md`, and `/plans/`
   remain local working inputs rather than normal tracked sources.
 - `.worktreeinclude`: Requests that the otherwise ignored `AGENTS.md` be copied into Codex-managed
   worktrees so repository law is present in isolated checkpoint tasks.
@@ -153,6 +156,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   update, red-to-green and negative controls, clean locked npm verification, locked Rust tests,
   delivery
   context, and the explicit absence of the real React and Tauri application.
+- `docs/checkpoints/P1.W07.C005.md`: Durable implementation evidence for native Tauri Rust CI. It
+  records the CI-only host boundary, pinned Tauri versions, red-to-green corrections, focused and
+  widening proof, delivery context, and the explicitly deferred Phase 3 application.
 - `docs/checkpoints/P1.W07.C008.md`: Durable implementation evidence for the open-tree boundary
   scanner. It records the dependency-free tool, canonical and malformed-tree contracts, locked
   workflow integration, isolated Rust verification, delivery context, and remaining static-policy
@@ -259,6 +265,24 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   the generated hashed JavaScript entry in the production bundle.
 - `ci/frontend-smoke/tsconfig.json`: Defines strict no-emit TypeScript checking for the browser entry
   with ES2022, DOM, bundler-resolution, isolated-module, and forced-module semantics.
+
+### Tauri Rust CI contract
+
+- `ci/tauri-smoke/README.md`: Defines the CI-only desktop-host boundary, mock and native runtime
+  proof split, exact local commands, and migration to the future Phase 3 application.
+- `ci/tauri-smoke/frontend/index.html`: Supplies the static asset consumed by Tauri build metadata.
+- `ci/tauri-smoke/src-tauri/Cargo.toml`: Declares exact Tauri 2.11.5 and Tauri Build 2.6.3 versions
+  with only the required `test` and `wry` features.
+- `ci/tauri-smoke/src-tauri/Cargo.lock`: Locks the standalone Tauri host dependency graph.
+- `ci/tauri-smoke/src-tauri/build.rs`: Runs the standard Tauri build integration.
+- `ci/tauri-smoke/src-tauri/rust-toolchain.toml`: Selects stable Rust with rustfmt and Clippy.
+- `ci/tauri-smoke/src-tauri/src/lib.rs`: Registers one command through a generic builder, exposes
+  the native wry builder, and tests the same configuration with Tauri's mock runtime.
+- `ci/tauri-smoke/src-tauri/src/main.rs`: Constructs the native builder without launching a window.
+- `ci/tauri-smoke/src-tauri/tauri.conf.json`: Declares bounded CI identity, assets, window metadata,
+  and disabled bundle generation.
+- `ci/tauri-smoke/tests/contract.test.mjs`: Verifies pins, builder surfaces, workflow security,
+  native runners, Linux prerequisites, and all four mandatory Rust gates.
 
 ### Cargo workspace and repository configuration
 
@@ -397,7 +421,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and OTIO_CORE:0.18.1, exact timeline durations, identity and opaque data policy, JSON pointers,
   and preserve plus diagnose behavior for unsupported constructs.
 
-The mapping inventory contains 87 UTF-8 text artifacts and twelve binary payloads. Binary media is
+The mapping inventory contains authored UTF-8 contracts plus twelve binary payloads. Binary media is
 intentionally read through metadata, producers, provenance, manifests, and consumers rather than
 interpreted as prose.
 
@@ -562,6 +586,13 @@ tests both workflow wiring and the generated hashed bundle. It proves the locked
 and independent gates without creating a second application architecture or claiming React, Tauri,
 editorial behavior, native viewport integration, or product UI coverage.
 
+The Tauri Rust CI path begins on pull requests, pushes to `main`, or manual dispatch. Its blocking
+matrix compiles the pinned CI-only host on macOS 26 arm64, macOS 15 Intel, Windows 2025, and Ubuntu
+24.04. Every lane checks formatting, runs the mock-runtime unit test, denies Clippy warnings, and
+compiles the real native wry binary from the lockfile. The binary constructs the command builder
+without launching a window, so the gate proves native SDK and linker compatibility without claiming
+the absent Phase 3 application.
+
 The network-isolated path begins on pull requests, pushes to `main`, or manual dispatch. It pins
 checkout, disables persisted credentials, installs stable Rust, runs the shared checksum-pinned
 libva 2.22 provisioner, builds the approved libvpx 1.16 runtime, fetches locked dependencies, and
@@ -624,7 +655,8 @@ and may produce normal editable artifacts, but no open crate may consume proprie
 The workspace module depends on Git for source discovery and revision identity, Python 3 for map
 generation, Cargo and stable Rust for the open workspace, Bash and `grep` for the executable policy
 contract, cargo-deny plus GitHub Actions for dependency policy, GitHub-hosted macOS, Windows, and
-Ubuntu runners for build portability, Node.js 24.13.0 with npm for the frontend contract, and the
+Ubuntu runners for build portability, Node.js 24.13.0 with npm for the frontend contract, Tauri 2
+with native desktop SDKs for the shell contract, and the
 Google Docs plus Codex environment described by repository law for checkpoint coordination. The
 mapping script invokes Git directly and uses only the Python standard library.
 
@@ -741,6 +773,9 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   `npm test` under exact Node.js, TypeScript, and Vite versions. The contract tests require strict
   no-emit checking, immutable actions, read-only credentials, every independent gate, and a hashed
   JavaScript entry in the generated production bundle.
+- `.github/workflows/tauri.yml` runs the four blocking Rust gates across two macOS architectures,
+  Windows, and Ubuntu. Fresh local proof passed both workflow contracts, formatting, the Tauri mock
+  runtime test, strict all-target Clippy, and native macOS wry compilation from the checkpoint target.
 - `.github/workflows/network-isolated.yml` prepares locked inputs and test executables on Ubuntu
   24.04 after building checksum-pinned libva 2.22 and libvpx 1.16 and installing nasm, then uses a
   distinct empty network namespace and Cargo offline mode for workspace tests, canonical fixture
@@ -921,8 +956,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`bb9111cfc98302547bc02d6513ea6ebf5131c0fa` when the map was refreshed. Its hash describes the exact
-99 discovered source files, including twelve generated binary payloads, layered on that revision.
+`62174d6e62d4d3e7158c350c50225147ef1c4392` when the map was refreshed. Its hash describes the exact
+119 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 

@@ -7,6 +7,7 @@
 /app/dist/
 /app/src-tauri/gen/
 /ci/frontend-smoke/dist/
+/ci/tauri-smoke/src-tauri/gen/
 
 # Python tool output
 **/__pycache__/

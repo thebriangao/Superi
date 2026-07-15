@@ -591,7 +591,7 @@ Platform codec proof must run on macOS, Windows, or Linux with the actual framew
 driver. A host-independent parser test does not prove native lifecycle, pixel fidelity, teardown,
 or hardware behavior.
 
-Repository-level CI now has four implemented workflow surfaces. The dependency-policy workflow
+Repository-level CI now has five implemented workflow surfaces. The dependency-policy workflow
 checks licenses and sources with cargo-deny on Ubuntu 24.04. The cross-platform workflow runs the
 locked Rust quality suite on GitHub-hosted macOS, Windows, and Ubuntu runners. Pull requests and
 pushes to `main` run five matrix lanes: blocking `ci-macos-26-arm64` on `macos-26`, blocking
@@ -633,6 +633,14 @@ Ubuntu 24.04 job. It installs exact Node.js 24.13.0, uses `npm ci` against the c
 runs strict no-emit TypeScript 5.9.3 checking, creates a Vite 7.3.6 production bundle, and verifies
 the workflow contract plus generated hashed JavaScript entry. Its `ci/frontend-smoke/` consumer is
 an isolated toolchain contract, not the deferred React application or Tauri desktop shell.
+
+The Tauri Rust workflow runs on pull requests, pushes to `main`, and manual dispatch across macOS 26
+arm64, macOS 15 Intel, Windows 2025, and Ubuntu 24.04. Its pinned CI-only Tauri 2 host uses one
+generic command configuration for a mock-runtime unit test and the real native wry builder. Every
+blocking lane checks formatting, locked tests, strict all-target Clippy, and locked native binary
+compilation; Linux installs WebKitGTK 4.1 and the documented desktop integration prerequisites.
+This proves the native host toolchain boundary, not the deferred Phase 3 application or hardware
+behavior.
 
 The dedicated network-isolated workflow prepares locked Cargo artifacts, checksum-pinned libva 2.22
 and libvpx 1.16 runtimes, and nasm on Ubuntu 24.04 while online, then runs workspace tests, canonical
