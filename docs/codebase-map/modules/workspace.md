@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 49b52190de50de9373feb2e88f1205dbb38b17bb63dbd72b99b730b18a5604da
-source_files: 126
+source_hash: 72d2e79a8290e73eb44e8216b8b68b6ef10e35cac382bf0b5413e5ffb9385384
+source_files: 127
 mapped_at_commit: working-tree
 ---
 
@@ -74,8 +74,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   policy workflow. It requires exact workflow name, permissions, checker invocation, cargo-deny
   action inputs, unknown-Git denial, revision-pinned Git policy, and the approved OxideAV source;
   any missing required line fails before cargo-deny runs.
-- `.github/scripts/provision-linux-libva.sh`: Shared Linux media provisioner for both Rust workflows.
-  It installs exact source-build tools, verifies the official libva 2.22.0 archive against a pinned
+- `.github/scripts/provision-linux-libva.sh`: Shared Linux media and audio provisioner for both Rust
+  workflows. It installs ALSA development headers and exact source-build tools, verifies the
+  official libva 2.22.0 archive against a pinned
   SHA-256, builds a private prefix, verifies the VVC header and API version, installs the GBM
   development link target, and publishes header, pkg-config, native-linker, and runtime library
   paths to subsequent hosted steps.
@@ -245,6 +246,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   processing graph. It records deterministic editable topology, separately prepared bounded block
   execution, exact sample and ordered-channel contracts, audio-domain integration, red-to-green
   proof, delivery context, and the intentionally separate mixing, device, sync, and hosting work.
+- `docs/checkpoints/P2.W04.C002.md`: Durable implementation evidence for output-device discovery and
+  bounded low-latency playback. It records stable backend identity, exact capability ranges,
+  lock-free whole-frame handoff, timed silence, sample-clock publication, dependency and Linux CI
+  integration, critical verification, delivery context, and physical-platform constraints.
 - `docs/checkpoints/P1.W07.C025.md`: Durable implementation evidence for bounded timing and process
   resident-memory instrumentation across all eight canonical slice stages. It records the private
   sampler boundary, schema 1.1.0 report contract, dependency decision, red-to-green proof,
@@ -333,12 +338,14 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   integrity edges, cache-key hashing, and the exact `oxideav-mp3` Git revision. Timeline state
   directly consumes the already-resolved `serde`, `serde_json`, and `sha2` packages, while
   `superi-cache` directly consumes the same pinned `sha2` package and now records its reviewed
-  internal dependency on `superi-concurrency` for bounded background rendering. These edges add no
-  new registry package. The lockfile is generated resolution evidence and is not hand-edited policy.
+  internal dependency on `superi-concurrency` for bounded background rendering. Audio output adds
+  exact CPAL 0.17.3 and ringbuf 0.4.8 plus their target-specific backend dependency trees. The
+  lockfile is generated resolution evidence and is not hand-edited policy.
 - `open/Cargo.toml`: Root Cargo workspace manifest using resolver 2 and glob members under
   `crates/*` and `tools/*`. It centralizes version `0.0.0`, Rust 2021, MIT, Rust 1.80, repository
   metadata, deny-by-default unsafe lints, and shared dependencies for error handling, serialization,
-  images, GPU, codecs, hashes, process instrumentation, platform APIs, and native build support.
+  images, GPU, codecs, hashes, process instrumentation, platform APIs, native build support, and
+  reviewed audio device and ring-buffer primitives.
 - `open/README.md`: Compact open-tree orientation and build commands. It records the 19 runtime
   crates plus repository tools, the exact canonical runner command, contract-only status, and
   the remaining production integration boundary.

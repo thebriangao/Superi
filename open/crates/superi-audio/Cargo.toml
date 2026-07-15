@@ -10,5 +10,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+cpal = { workspace = true }
+ringbuf = { workspace = true }
 superi-core = { path = "../superi-core" }
 superi-concurrency = { path = "../superi-concurrency" }

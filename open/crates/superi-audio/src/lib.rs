@@ -1,7 +1,8 @@
-//! `superi-audio`, independent audio processing, mixing, and sample-accurate sync.
+//! `superi-audio`, independent audio processing, device playback, mixing, and sample-accurate sync.
 //!
-//! The foundational editable and prepared processing graph is implemented in [`graph`]. Playback,
-//! mixing, synchronization, resampling, metering, and plugin hosting remain separate staged owners.
+//! The foundational editable and prepared processing graph is implemented in [`graph`]. Output
+//! device discovery and bounded realtime playback are implemented in [`playback`]. Mixing,
+//! synchronization, resampling, metering, and plugin hosting remain separate staged owners.
 
 pub mod graph;
 pub mod hosting;

@@ -13,7 +13,7 @@ build="$RUNNER_TEMP/libva-$libva_version-build"
 prefix="$RUNNER_TEMP/libva-$libva_version-install"
 
 sudo apt-get update
-sudo apt-get install --yes libdrm-dev libgbm-dev meson nasm ninja-build pkg-config
+sudo apt-get install --yes libasound2-dev libdrm-dev libgbm-dev meson nasm ninja-build pkg-config
 
 curl --fail --location --silent --show-error \
     "https://github.com/intel/libva/releases/download/$libva_version/libva-$libva_version.tar.bz2" \
