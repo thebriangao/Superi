@@ -7,10 +7,11 @@
 //! handoff, exact interactive transport, classified cross-subsystem failure propagation and
 //! recovery, shared finite-resource arbitration, capability and health introspection, coherent
 //! decode, graph, delivery color, audio, and elementary-stream export orchestration, bounded
-//! logical export jobs, deterministic subsystem lifecycle, bounded typed command dispatch,
-//! contained OpenFX bundle discovery and worker supervision, shared plugin availability for
-//! playback, rendering, and export, and atomic timeline plus clip-mix edits are integrated while
-//! the remaining orchestration modules advance through their focused checkpoints.
+//! logical export jobs, deterministic project and device lifecycle across sleep, wake, shutdown,
+//! and restart, bounded typed command dispatch, contained OpenFX bundle discovery and worker
+//! supervision, shared plugin availability for playback, rendering, and export, and atomic timeline
+//! plus clip-mix edits are integrated while the remaining orchestration modules advance through
+//! their focused checkpoints.
 
 pub mod audio_mix;
 pub mod av_sync;

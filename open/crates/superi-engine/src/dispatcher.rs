@@ -389,6 +389,10 @@ pub enum EngineCommand {
         /// Subsystem-supplied failure evidence from the recovery attempt.
         failure: EngineReportedFailure,
     },
+    /// Begin acknowledged project quiescence and volatile resource release for system sleep.
+    BeginSleep,
+    /// Begin acknowledged project and device revalidation after system wake.
+    BeginWake,
     /// Begin deterministic reverse shutdown.
     BeginShutdown,
     /// Begin orderly restart into a fresh engine lifetime.
@@ -418,6 +422,8 @@ impl EngineCommand {
                     | Self::BeginClassifiedRecovery { .. }
                     | Self::CompleteRecovery(_)
                     | Self::FailRecovery { .. }
+                    | Self::BeginSleep
+                    | Self::BeginWake
                     | Self::BeginShutdown
                     | Self::BeginRestart
                     | Self::ExecutePlayback(_)
@@ -1193,6 +1199,14 @@ impl EngineCommandDispatcher {
             EngineCommand::FailRecovery { action, failure } => {
                 let state = self.fail_classified_recovery(action, failure)?;
                 Ok(recovery_change(state))
+            }
+            EngineCommand::BeginSleep => {
+                let snapshot = self.lifecycle_mut()?.begin_sleep()?.value().clone();
+                Ok(lifecycle_change(snapshot))
+            }
+            EngineCommand::BeginWake => {
+                let snapshot = self.lifecycle_mut()?.begin_wake()?.value().clone();
+                Ok(lifecycle_change(snapshot))
             }
             EngineCommand::BeginShutdown => {
                 let snapshot = self.lifecycle_mut()?.begin_shutdown()?.value().clone();

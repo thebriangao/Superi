@@ -371,7 +371,7 @@ fn lifecycle_commands_keep_playback_rendering_and_export_coherent_through_recove
     ));
 
     let events = dispatcher.drain_events().unwrap();
-    assert_eq!(events.len(), 10);
+    assert_eq!(events.len(), 12);
     assert_eq!(events[0].command_sequence(), 2);
     assert!(events
         .windows(2)
@@ -381,14 +381,132 @@ fn lifecycle_commands_keep_playback_rendering_and_export_coherent_through_recove
             .iter()
             .map(|event| event.sequence())
             .collect::<Vec<_>>(),
-        (1_u64..=10).collect::<Vec<_>>()
+        (1_u64..=12).collect::<Vec<_>>()
     );
-    assert!(events[..4]
+    assert!(events[..6]
         .iter()
         .all(|event| matches!(event.event(), EngineEvent::LifecycleStateChanged(_))));
-    assert!(events[4..]
+    assert!(events[6..]
         .iter()
         .all(|event| matches!(event.event(), EngineEvent::RecoveryStateChanged(_))));
+}
+
+#[test]
+fn sleep_and_wake_commands_publish_coherent_lifecycle_events_and_invalidate_work() {
+    let _domain = ExecutionDomain::EngineControl
+        .enter_current()
+        .expect("test owns engine control");
+    let mut dispatcher = EngineCommandDispatcher::new().expect("dispatcher owns one lifecycle");
+
+    let mut lifecycle = lifecycle_result(
+        dispatch(
+            &mut dispatcher,
+            "inspect-power-startup",
+            EngineCommand::InspectLifecycle,
+        )
+        .unwrap()
+        .result(),
+    )
+    .clone();
+    while lifecycle.phase() == LifecyclePhase::Starting {
+        let action = lifecycle.pending_action().unwrap();
+        lifecycle = lifecycle_result(
+            dispatch(
+                &mut dispatcher,
+                &format!("power-initialize-{}", action.subsystem().code()),
+                EngineCommand::CompleteLifecycleAction(action),
+            )
+            .unwrap()
+            .result(),
+        )
+        .clone();
+    }
+    assert_eq!(lifecycle.phase(), LifecyclePhase::Running);
+    dispatcher.drain_events().unwrap();
+
+    let permit = granted_permit(admit(
+        &mut dispatcher,
+        "power-admit-export",
+        EngineWorkKind::Export,
+    ));
+    lifecycle = lifecycle_result(
+        dispatch(
+            &mut dispatcher,
+            "begin-system-sleep",
+            EngineCommand::BeginSleep,
+        )
+        .unwrap()
+        .result(),
+    )
+    .clone();
+    assert_eq!(lifecycle.phase(), LifecyclePhase::PreparingSleep);
+    assert_eq!(
+        lifecycle.pending_action().unwrap().kind(),
+        EngineLifecycleActionKind::PrepareSleep
+    );
+    assert!(!permit_current(
+        &mut dispatcher,
+        "power-stale-export-permit",
+        permit,
+    ));
+    while lifecycle.phase() == LifecyclePhase::PreparingSleep {
+        let action = lifecycle.pending_action().unwrap();
+        lifecycle = lifecycle_result(
+            dispatch(
+                &mut dispatcher,
+                &format!("prepare-sleep-{}", action.subsystem().code()),
+                EngineCommand::CompleteLifecycleAction(action),
+            )
+            .unwrap()
+            .result(),
+        )
+        .clone();
+    }
+    assert_eq!(lifecycle.phase(), LifecyclePhase::Sleeping);
+
+    lifecycle = lifecycle_result(
+        dispatch(
+            &mut dispatcher,
+            "begin-system-wake",
+            EngineCommand::BeginWake,
+        )
+        .unwrap()
+        .result(),
+    )
+    .clone();
+    assert_eq!(lifecycle.phase(), LifecyclePhase::Waking);
+    assert_eq!(
+        lifecycle.pending_action().unwrap().kind(),
+        EngineLifecycleActionKind::Wake
+    );
+    while lifecycle.phase() == LifecyclePhase::Waking {
+        let action = lifecycle.pending_action().unwrap();
+        lifecycle = lifecycle_result(
+            dispatch(
+                &mut dispatcher,
+                &format!("wake-{}", action.subsystem().code()),
+                EngineCommand::CompleteLifecycleAction(action),
+            )
+            .unwrap()
+            .result(),
+        )
+        .clone();
+    }
+    assert_eq!(lifecycle.phase(), LifecyclePhase::Running);
+    granted_permit(admit(
+        &mut dispatcher,
+        "power-readmit-export",
+        EngineWorkKind::Export,
+    ));
+
+    let events = dispatcher.drain_events().unwrap();
+    assert_eq!(events.len(), 12);
+    assert!(events
+        .iter()
+        .all(|event| matches!(event.event(), EngineEvent::LifecycleStateChanged(_))));
+    assert!(events
+        .windows(2)
+        .all(|pair| pair[0].sequence() < pair[1].sequence()));
 }
 
 #[test]
@@ -453,7 +571,22 @@ fn lifecycle_action_failure_restart_shutdown_and_inspection_all_route_through_co
         .result(),
     )
     .clone();
-    let playback_action = after_shared.pending_action().unwrap();
+    let mut after_dependencies = after_shared;
+    for subsystem in [EngineSubsystem::Projects, EngineSubsystem::Devices] {
+        let action = after_dependencies.pending_action().unwrap();
+        assert_eq!(action.subsystem(), subsystem);
+        after_dependencies = lifecycle_result(
+            dispatch(
+                &mut dispatcher,
+                &format!("complete-{}", subsystem.code()),
+                EngineCommand::CompleteLifecycleAction(action),
+            )
+            .unwrap()
+            .result(),
+        )
+        .clone();
+    }
+    let playback_action = after_dependencies.pending_action().unwrap();
     let failure = EngineReportedFailure::new(
         ErrorCategory::Unavailable,
         Recoverability::Retryable,
@@ -489,17 +622,29 @@ fn lifecycle_action_failure_restart_shutdown_and_inspection_all_route_through_co
             .field("device"),
         Some("default")
     );
-    let rollback = failed.pending_action().unwrap();
-    let rolled_back = lifecycle_result(
-        dispatch(
-            &mut dispatcher,
-            "complete-startup-rollback",
-            EngineCommand::CompleteLifecycleAction(rollback),
+    let mut rolled_back = failed;
+    let mut rollback_order = Vec::new();
+    while let Some(rollback) = rolled_back.pending_action() {
+        rollback_order.push(rollback.subsystem());
+        rolled_back = lifecycle_result(
+            dispatch(
+                &mut dispatcher,
+                &format!("complete-startup-rollback-{}", rollback.subsystem().code()),
+                EngineCommand::CompleteLifecycleAction(rollback),
+            )
+            .unwrap()
+            .result(),
         )
-        .unwrap()
-        .result(),
-    )
-    .clone();
+        .clone();
+    }
+    assert_eq!(
+        rollback_order,
+        [
+            EngineSubsystem::Devices,
+            EngineSubsystem::Projects,
+            EngineSubsystem::SharedState,
+        ]
+    );
     assert!(rolled_back.pending_action().is_none());
 
     let mut lifecycle = lifecycle_result(

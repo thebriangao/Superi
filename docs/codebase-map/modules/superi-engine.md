@@ -2,7 +2,7 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 0ee7e2f89235330ffe792354066d09879aeabc3add0d9a316b5c6b6ac7bf0291
+source_hash: 7ec14358cf5c5a13a8d7ae663bcbe3aa37f24b5be5fca57abcfa4cd26cc68d0c
 source_files: 51
 mapped_at_commit: working-tree
 ---
@@ -18,8 +18,8 @@ audio-master A/V coordination with bounded video correction and discontinuity re
 clock fallback, lossless viewport handoff, exact interactive transport control, coherent decode,
 graph, delivery-color, audio, and elementary-stream export execution, deterministic OpenFX bundle
 discovery and isolated-worker supervision, coherent plugin availability across playback, rendering,
-and export, deterministic subsystem
-lifecycle, bounded logical export job orchestration, classified cross-subsystem failure propagation
+and export, deterministic project, device, sleep, wake, shutdown, and restart lifecycle,
+bounded logical export job orchestration, classified cross-subsystem failure propagation
 and recovery, shared finite-resource arbitration across decode, GPU, cache, audio, AI, and export
 work, and atomic timeline plus clip-mix edits. An engine-wide typed command dispatcher
 coordinates canonical scenario transactions, lifecycle state changes, failure and recovery control,
@@ -54,7 +54,8 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   optimistic scenario transactions, successful-command and event sequencing, complete replacement
   scenario, lifecycle, classified recovery, playback, and logical export events with
   originating-command correlation, canonical error-coordinator ownership, exact recovery tokens,
-  lifecycle action routing, shutdown, restart, coherent work admission, plus a one-command
+  lifecycle action routing, acknowledged sleep and wake commands, shutdown, restart, coherent work
+  admission, plus a one-command
   nonblocking bridge from EngineControl to the playback owner. It also composes declaration-only
   media state, optional exact resource accounting, and dispatcher-owned lifecycle and recovery
   state into one read-only introspection snapshot without advancing a sequence or event.
@@ -85,8 +86,9 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   exposes twenty-two engine modules.
 - `open/crates/superi-engine/src/lifecycle.rs`: Implements the EngineControl-owned lifecycle state
   machine, canonical subsystem dependency plan, exact action tokens, immutable generated snapshots,
-  coherent playback/render/export admission, recoverable degradation, rollback, reverse teardown,
-  teardown retry, and fresh-lifetime restart.
+  explicit project and device coordination, reverse sleep preparation, forward wake revalidation,
+  coherent playback, rendering, and export admission, recoverable degradation, rollback, reverse
+  teardown, teardown retry, and fresh-lifetime restart.
 - `open/crates/superi-engine/src/media.rs`: Builds default and feature-gated media registries,
   including atomically preflighted primary registrations for all four in-tree container sources.
 - `open/crates/superi-engine/src/nodes.rs`: Placeholder for media and graph nodes.
@@ -153,7 +155,7 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 - `open/crates/superi-engine/tests/dispatcher_contract.rs`: Proves atomic multi-action commit and
   rollback, revision fences, one-unit undo, bounded ordered replacement events, EngineControl
   enforcement, coherent normal and degraded work admission, recovery, stale permits, retained
-  failure context, restart, shutdown, and inspection.
+  failure context, acknowledged sleep and wake event publication, restart, shutdown, and inspection.
 - `open/crates/superi-engine/tests/engine_introspection_contract.rs`: Proves EngineControl-owned
   read-only observation, unchanged scenario and event state, deterministic capability and resource
   projection, coherent normal admission, playback-only, rendering-plus-export, and export-only
@@ -162,8 +164,10 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 - `open/crates/superi-engine/tests/frame_upload_contract.rs`: Upload, ownership, storage, and budget
   proof.
 - `open/crates/superi-engine/tests/lifecycle_contract.rs`: Proves deterministic startup and reverse
-  teardown, generated shared snapshots, coherent workflow admission, isolated degradation and
-  recovery, initialization rollback, stale action rejection, terminal closure, dependency-safe
+  teardown, generated shared snapshots, coherent workflow admission, retained project state,
+  volatile device and workflow release, forward wake revalidation, critical wake, superseded power
+  transitions, recoverable and terminal wake failure, shutdown during power transitions, isolated
+  degradation and recovery, initialization rollback, stale action rejection, dependency-safe
   teardown retry, direct and stopped restart, and EngineControl ownership.
 - `open/crates/superi-engine/tests/media_resource_acquisition_contract.rs`: Proves complete source
   registration, real WebM and AV1 preparation, compiled graph retention, exact timing, precision,
@@ -332,13 +336,16 @@ rational arithmetic, and protects seek, scrub, step, resume, and loop-boundary f
 cloned states validate and publish.
 
 `lifecycle` exposes `EngineLifecycle` as the single EngineControl owner. Canonical
-`EngineSubsystem` values describe shared state, playback, rendering, and export. Generated
-`EngineLifecycleSnapshot` values expose lifecycle phase and revision, engine state revision,
+`EngineSubsystem` values describe shared state, projects, devices, playback, rendering, and export.
+`EngineLifecycleActionKind` names initialize, recover, prepare-sleep, wake, and teardown work.
+Generated `EngineLifecycleSnapshot` values expose lifecycle phase and revision, engine state revision,
 lifetime, health, ordered subsystem state, retained classified failure evidence, and one exact
 pending action. Subsystem owners complete or fail the full `EngineLifecycleAction` token after work
 on their legal domain. `EngineWorkKind` admission returns revision-scoped permits only when every
 required subsystem is ready in the same running lifetime. The retained `LifecycleSignal` is the
-lock-free observation path for latency-sensitive consumers.
+lock-free observation path for latency-sensitive consumers. `begin_sleep` and `begin_wake` publish
+acknowledged intent without doing subsystem work inline; `begin_shutdown` and `begin_restart`
+supersede pending power work through new exact action revisions.
 
 `error` exposes `EngineErrorCoordinator`, monotonic `EngineFailureSequence`, stable
 `EngineFailureDisposition` and `EngineRecoveryRequest` codes, immutable `EngineFailureRecord` and
@@ -447,18 +454,29 @@ binding, viewport presentation, and export readback remain absent.
 
 `EngineLifecycle` requires the EngineControl domain, validates the canonical dependency plan, and
 stores all authoritative mutable lifecycle state in `DomainOwned`. Its first generated action asks
-the shared-state owner to initialize. Exact action completion advances playback, rendering, and
-export one at a time in dependency order. After all four resources are owned, the engine participant
-acknowledges the shared `LifecycleCoordinator` startup revision and the common phase becomes
-`Running`.
+the shared-state owner to initialize. Exact action completion advances projects, devices, playback,
+rendering, and export one at a time in dependency order. Projects and devices depend on shared
+state; playback and rendering depend on projects plus devices; export depends on projects plus
+rendering. After all six resources are owned, the engine participant acknowledges the shared
+`LifecycleCoordinator` startup revision and the common phase becomes `Running`.
 
 Every committed state change publishes a new generation-tagged immutable snapshot through
-`SnapshotPublisher`. Playback requires shared state and playback; rendering requires shared state
-and rendering; export requires shared state, rendering, and export. One nonterminal subsystem
-failure therefore denies only its transitive work while unrelated work remains admitted. Recovery
-uses another exact action token. Successful recovery clears the subsystem blocker while the latest
-reported failure remains inspectable for the rest of that lifetime. A terminal failure advances the
-shared lifecycle phase to `Failed` and denies every workflow.
+`SnapshotPublisher`. Playback requires shared state, projects, devices, and playback; rendering
+requires shared state, projects, devices, and rendering; export requires shared state, projects,
+devices, rendering, and export. One nonterminal subsystem failure therefore denies only its
+transitive work while unrelated work remains admitted. Recovery uses another exact action token.
+Successful recovery clears the subsystem blocker while the latest reported failure remains
+inspectable for the rest of that lifetime. A terminal failure advances the shared lifecycle phase
+to `Failed` and denies every workflow.
+
+Sleep preparation stops admission immediately, then issues `PrepareSleep` actions in reverse
+dependency order for export, rendering, playback, devices, and projects. Shared publication and
+authoritative project resources remain owned while device and workflow resources are released.
+Wake issues `Wake` actions in forward order for projects, devices, playback, rendering, and export,
+including a critical wake received while already running. Repeated notifications are idempotent;
+an opposite notification cancels only its exact pending action and rejects any late completion.
+Nonterminal transition failure preserves conservative teardown ownership, completes to an explicit
+degraded stable phase, and remains recoverable. Terminal transition failure enters `Failed`.
 
 `EngineErrorCoordinator` borrows this lifecycle for each mutation instead of owning a second
 subsystem model. A ready subsystem failure receives a monotonic sequence and bounded operation
@@ -478,14 +496,16 @@ completion flows through `EngineLifecycle::fail_action`, receives a new sequence
 and remains active with the accumulated attempt count. History evicts the oldest event at its fixed
 capacity while one active record per subsystem remains separately queryable.
 
-Shutdown emits teardown actions only after every owned dependent has released its resource, which
-produces the exact inverse of initialization. Initialization failure enters the same reverse path
-for already owned dependencies. A failed teardown retains ownership and blocks its dependencies,
-while an independent branch may continue stopping. Retry must release the retained resource before
-the engine can acknowledge `Stopped`. Restart first completes this teardown, increments the engine
-lifetime, clears resolved failure state, and begins the canonical startup again. Action tokens and
-work permits carry lifetime and revision identity, so late completion and stale work are rejected.
-EngineControl never executes subsystem acquisition or teardown inline and therefore remains
+Shutdown cancels an exact initialization, recovery, sleep, or wake action, normalizes resources
+already released for sleep, and emits teardown actions only after every owned dependent has
+released its resource. This produces the exact inverse of initialization for all resources still
+owned. Initialization failure enters the same reverse path for already owned dependencies. A failed
+teardown retains ownership and blocks its dependencies, while an independent branch may continue
+stopping. Retry must release the retained resource before the engine can acknowledge `Stopped`.
+Restart first completes this teardown, increments the engine lifetime, clears resolved failure and
+transition state, and begins the canonical startup again. Action tokens and work permits carry
+lifetime and revision identity, so late completion and stale work are rejected. EngineControl never
+executes subsystem acquisition, quiescence, revalidation, or teardown inline and therefore remains
 nonblocking. When the logical export queue is attached, the dispatcher rejects completion of its
 export teardown action until all retained jobs are final. Stable all-job cancellation plus polling
 settles that state before the blocking-safe runtime handle joins workers.
@@ -760,8 +780,9 @@ audio mutation, so their user intent remains attached without synthesis.
   supplies the safe
   `IsolatedOfxAdapter` contract, typed requests, graph projection, and plugin lifecycle state that a
   future engine worker supervisor can consume, but engine implements no adapter, native discovery,
-  transport, or production command integration. AI and project remain declared dependencies without
-  production command integration.
+  transport, or production command integration. AI remains a declared dependency without
+  production command integration. Project remains a skeleton; engine names only its quiescence and
+  retained authoritative-state lifecycle boundary, not persistence or a project command model.
 - `superi-api` consumes dispatcher transactions and events plus command, media capability, and
   complete engine introspection snapshots, preserving public adaptation and scenario seams without
   exposing engine-private owners. The broader Rust
@@ -928,11 +949,18 @@ audio mutation, so their user intent remains attached without synthesis.
   scenario transaction does not make independent project, graph, cache, persistence, and output
   owners one atomic commit.
 - Lifecycle mutation and publication require EngineControl, while subsystem acquisition and
-  teardown occur outside the controller through exact immutable actions.
+  teardown occur outside the controller through exact immutable actions. Sleep quiescence and wake
+  revalidation follow the same rule.
 - An attached logical export queue must report every job final before the dispatcher accepts the
   exact export teardown completion token.
 - Startup is dependency-first and teardown is dependent-first. A retained failed resource blocks
   teardown of its dependencies but not independent branches.
+- Sleep preparation is dependent-first and wake is dependency-first. Shared state never receives a
+  power action, project resources remain owned while sleeping, and device plus workflow resources
+  must be reacquired before work admission resumes.
+- Repeated power notifications are idempotent. An opposite power notification or shutdown
+  invalidates only the exact pending transition token, and a late completion cannot advance the new
+  transition.
 - Action completion must match subsystem, kind, lifetime, and action revision exactly. Every
   committed state publishes a new immutable generation, and prior snapshots never mutate.
 - Playback, rendering, and export permits come from one snapshot and require their complete
@@ -959,11 +987,12 @@ graph topology and ports, mirror matrix, four operation IDs and original revisio
 two redo recovery at revision 8, rejected-action atomicity, payload digest failure, and the 64 MiB
 bound.
 
-Four dispatcher contracts prove atomic multi-action rollback and commit, one revision and one undo
+Five dispatcher contracts prove atomic multi-action rollback and commit, one revision and one undo
 unit, optimistic conflict rejection, matching complete replacement state events, sequence ordering,
 full-queue rejection before mutation, off-domain rejection before mutation, coherent playback,
 rendering, and export admission through healthy and degraded states, recovery, stale permit
-rejection, retained failure context, restart, shutdown, and both scenario and lifecycle inspection.
+rejection, retained failure context, sleep and wake command events, permit invalidation across power
+transitions, restart, shutdown, and both scenario and lifecycle inspection.
 
 Two engine-introspection contracts use the real registry, dispatcher, lifecycle, error coordinator,
 and resource arbiter. They prove read-only ownership, exact optional accounting, canonical ordering,
@@ -1066,13 +1095,16 @@ engine transaction. It proves exact source and record subdivision, retained and 
 group, link, and sync-lock inheritance, complete clip mix inheritance, and unchanged caller state
 when the mix revision conflicts.
 
-Four lifecycle contracts drive the public EngineControl owner through exact action tokens. They
-prove shared-state, playback, rendering, and export initialization order; healthy common admission;
-playback-only and rendering-plus-export degradation; recovery; immutable prior snapshots and stale
-permits; cross-thread immutable inspection; reverse teardown; direct and stopped restart with fresh
-lifetimes; initialization rollback; stale completion rejection; terminal engine failure;
-dependency-safe teardown failure and retry; and unchanged owner state after off-domain construction,
-inspection, and mutation rejection.
+Nine lifecycle contracts drive the public EngineControl owner through exact action tokens. They
+prove shared-state, project, device, playback, rendering, and export initialization order; healthy
+common admission; reverse sleep quiescence; retained project meaning; volatile device and workflow
+release; forward and critical wake revalidation; repeated notification idempotence; opposite
+notification supersession; recoverable wake degradation and recovery; terminal wake failure;
+shutdown during sleep or wake; playback-only and rendering-plus-export degradation; immutable prior
+snapshots and stale permits; cross-thread immutable inspection; reverse teardown; direct and stopped
+restart with fresh lifetimes; initialization rollback; stale completion rejection; dependency-safe
+teardown failure and retry; and unchanged owner state after off-domain construction, inspection, and
+mutation rejection.
 
 Four error-recovery contracts drive the coordinator beside that lifecycle. They prove all four
 recoverability dispositions and stable request codes, source-chain and ordered-context retention,
@@ -1105,9 +1137,10 @@ container or decoding frames. Timeline and graph state are exact control models 
 production timeline owner or the generic `superi-graph` DAG store.
 
 The typed dispatcher is the substantive engine-wide control seam for current scenario, lifecycle,
-classified failure and recovery, work admission, capability and health observation, interactive
-transport, and logical export operations. Its read-only introspection snapshot exposes one coherent
-adaptation view without making project or engine state editable through that surface. Playback crosses
+classified failure and recovery, sleep, wake, shutdown, restart, work admission, capability and
+health observation, interactive transport, and logical export operations. Its read-only
+introspection snapshot exposes one coherent adaptation view without making project or engine state
+editable through that surface. Playback crosses
 one bounded nonblocking bridge to its real domain owner. Logical export state remains in the
 canonical queue behind a type-erased dispatcher controller, while prepared executors receive fresh
 revision-scoped permits and render-export revalidates one before publication. The public JSON
@@ -1136,8 +1169,9 @@ crash-recoverable scheduler. Its generic executor preparation and typed results 
 runtime bindings, and no application or wire API path invokes them yet. The derived-media driver
 and resolver are synchronous and caller-owned, and no application or API path invokes them yet.
 Clip-mix reconciliation is substantive but currently entered by Rust callers rather than the public
-API or playback controller. Lifecycle is a production control-plane contract, but later native
-render submission, export publication, arbitration consumers, and subsystem owners still must
+API or playback controller. Lifecycle is a production control-plane contract that now names project
+and device boundaries across sleep and wake, but later platform callbacks, project mutation owners,
+native device owners, render submission, export publication, and arbitration consumers still must
 perform concrete actions before acknowledging it. The shared arbiter is a substantive opt-in
 engine contract, but current playback, render-export, cache, GPU, audio, and AI owners do not yet
 install their reclaimers or bind every live resource automatically.
@@ -1169,7 +1203,10 @@ cache identity. Keep transport frame and clock anchors separate, protect explici
 frames, make dropping scheduling-only, and keep audio discard callback-owned. Keep lifecycle actions
 nonblocking on EngineControl, add new canonical subsystems
 only in dependency order, preserve exact token checks, update every work requirement that consumes
-them, and never release a dependency while an owned dependent remains. Keep foreground playback
+them, and never release a dependency while an owned dependent remains. Preserve reverse sleep and
+forward wake ordering, retained project state, volatile device release, critical-wake revalidation,
+idempotent repeated notification behavior, and exact-token invalidation when power transitions or
+shutdown supersede one another. Keep foreground playback
 single-flight and nonblocking, retain exact sink payloads under backpressure, validate scene time,
 color, and alpha before retention, preserve immutable media timing through live corrections, cache
 one resolved presentation across viewport backpressure, require explicit readiness before dropping,

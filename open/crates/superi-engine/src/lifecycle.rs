@@ -1,10 +1,12 @@
 //! Subsystem lifecycle and shared-state management.
 //!
 //! The engine-control domain owns one explicit lifecycle state machine. It emits one immutable,
-//! revision-scoped action at a time so subsystem owners can acquire, recover, and release resources
-//! on their legal execution domains without blocking engine control. Playback, rendering, and
-//! export consume the same generated snapshot and cannot admit work unless every dependency they
-//! require is ready in the current engine lifetime.
+//! revision-scoped action at a time so subsystem owners can acquire, recover, quiesce, revalidate,
+//! and release resources on their legal execution domains without blocking engine control. Project
+//! state remains authoritative across sleep while volatile device and workflow resources are
+//! released in reverse dependency order and reacquired after wake. Playback, rendering, and export
+//! consume the same generated snapshot and cannot admit work unless every dependency they require
+//! is ready in the current engine lifetime.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -22,13 +24,26 @@ const PARTICIPANT: &str = "superi-engine";
 
 const NO_DEPENDENCIES: &[EngineSubsystem] = &[];
 const SHARED_STATE_DEPENDENCY: &[EngineSubsystem] = &[EngineSubsystem::SharedState];
-const RENDERING_DEPENDENCY: &[EngineSubsystem] = &[EngineSubsystem::Rendering];
-const PLAYBACK_REQUIREMENTS: &[EngineSubsystem] =
-    &[EngineSubsystem::SharedState, EngineSubsystem::Playback];
-const RENDERING_REQUIREMENTS: &[EngineSubsystem] =
-    &[EngineSubsystem::SharedState, EngineSubsystem::Rendering];
+const PROJECT_AND_DEVICE_DEPENDENCIES: &[EngineSubsystem] =
+    &[EngineSubsystem::Projects, EngineSubsystem::Devices];
+const EXPORT_DEPENDENCIES: &[EngineSubsystem] =
+    &[EngineSubsystem::Projects, EngineSubsystem::Rendering];
+const PLAYBACK_REQUIREMENTS: &[EngineSubsystem] = &[
+    EngineSubsystem::SharedState,
+    EngineSubsystem::Projects,
+    EngineSubsystem::Devices,
+    EngineSubsystem::Playback,
+];
+const RENDERING_REQUIREMENTS: &[EngineSubsystem] = &[
+    EngineSubsystem::SharedState,
+    EngineSubsystem::Projects,
+    EngineSubsystem::Devices,
+    EngineSubsystem::Rendering,
+];
 const EXPORT_REQUIREMENTS: &[EngineSubsystem] = &[
     EngineSubsystem::SharedState,
+    EngineSubsystem::Projects,
+    EngineSubsystem::Devices,
     EngineSubsystem::Rendering,
     EngineSubsystem::Export,
 ];
@@ -39,6 +54,10 @@ const EXPORT_REQUIREMENTS: &[EngineSubsystem] = &[
 pub enum EngineSubsystem {
     /// Authoritative engine state and immutable publication infrastructure.
     SharedState,
+    /// Project mutation, snapshot, and retained authoritative-state coordination.
+    Projects,
+    /// Volatile audio and graphics device coordination owned by their backend domains.
+    Devices,
     /// Interactive playback ownership and resources.
     Playback,
     /// Frame rendering ownership and resources.
@@ -49,8 +68,10 @@ pub enum EngineSubsystem {
 
 impl EngineSubsystem {
     /// Every subsystem in deterministic initialization order.
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 6] = [
         Self::SharedState,
+        Self::Projects,
+        Self::Devices,
         Self::Playback,
         Self::Rendering,
         Self::Export,
@@ -61,6 +82,8 @@ impl EngineSubsystem {
     pub const fn code(self) -> &'static str {
         match self {
             Self::SharedState => "shared_state",
+            Self::Projects => "projects",
+            Self::Devices => "devices",
             Self::Playback => "playback",
             Self::Rendering => "rendering",
             Self::Export => "export",
@@ -72,9 +95,25 @@ impl EngineSubsystem {
     pub const fn dependencies(self) -> &'static [Self] {
         match self {
             Self::SharedState => NO_DEPENDENCIES,
-            Self::Playback | Self::Rendering => SHARED_STATE_DEPENDENCY,
-            Self::Export => RENDERING_DEPENDENCY,
+            Self::Projects | Self::Devices => SHARED_STATE_DEPENDENCY,
+            Self::Playback | Self::Rendering => PROJECT_AND_DEVICE_DEPENDENCIES,
+            Self::Export => EXPORT_DEPENDENCIES,
         }
+    }
+
+    /// Returns whether the subsystem receives explicit sleep and wake actions.
+    #[must_use]
+    pub const fn participates_in_sleep(self) -> bool {
+        !matches!(self, Self::SharedState)
+    }
+
+    /// Returns whether the subsystem retains authoritative resources while the system sleeps.
+    ///
+    /// Shared publication infrastructure and project state remain owned. Device, playback,
+    /// rendering, and export resources are released and reacquired after wake.
+    #[must_use]
+    pub const fn retains_resources_during_sleep(self) -> bool {
+        matches!(self, Self::SharedState | Self::Projects)
     }
 }
 
@@ -98,6 +137,12 @@ pub enum EngineSubsystemState {
     Degraded,
     /// The subsystem owner is revalidating or reacquiring degraded resources.
     Recovering,
+    /// The subsystem owner is quiescing work and releasing volatile resources for sleep.
+    PreparingSleep,
+    /// The subsystem is quiescent for system sleep, with its declared retention policy applied.
+    Sleeping,
+    /// The subsystem owner is revalidating retained state or reacquiring volatile resources.
+    Waking,
     /// The subsystem owner is releasing resources.
     Stopping,
     /// The subsystem failed and retains explicit diagnostic state.
@@ -114,6 +159,9 @@ impl EngineSubsystemState {
             Self::Ready => "ready",
             Self::Degraded => "degraded",
             Self::Recovering => "recovering",
+            Self::PreparingSleep => "preparing_sleep",
+            Self::Sleeping => "sleeping",
+            Self::Waking => "waking",
             Self::Stopping => "stopping",
             Self::Failed => "failed",
         }
@@ -152,6 +200,10 @@ pub enum EngineLifecycleActionKind {
     Initialize,
     /// Revalidate or reacquire resources after a recoverable failure.
     Recover,
+    /// Quiesce project mutations and release volatile resources before system sleep.
+    PrepareSleep,
+    /// Revalidate retained project state and reacquire volatile resources after system wake.
+    Wake,
     /// Release every resource still owned by the subsystem.
     Teardown,
 }
@@ -163,6 +215,8 @@ impl EngineLifecycleActionKind {
         match self {
             Self::Initialize => "initialize",
             Self::Recover => "recover",
+            Self::PrepareSleep => "prepare_sleep",
+            Self::Wake => "wake",
             Self::Teardown => "teardown",
         }
     }
@@ -611,6 +665,16 @@ impl EngineLifecycle {
             .with_mut(|state| state.begin_recovery(subsystem))?
     }
 
+    /// Requests dependency-safe project quiescence and volatile resource release for system sleep.
+    pub fn begin_sleep(&mut self) -> Result<SharedSnapshot<EngineLifecycleSnapshot>> {
+        self.owned.with_mut(EngineOwnedState::begin_sleep)?
+    }
+
+    /// Requests project revalidation and volatile resource reacquisition after system wake.
+    pub fn begin_wake(&mut self) -> Result<SharedSnapshot<EngineLifecycleSnapshot>> {
+        self.owned.with_mut(EngineOwnedState::begin_wake)?
+    }
+
     /// Requests deterministic reverse teardown.
     pub fn begin_shutdown(&mut self) -> Result<SharedSnapshot<EngineLifecycleSnapshot>> {
         self.owned.with_mut(|state| state.begin_shutdown(false))?
@@ -636,6 +700,9 @@ enum EngineMode {
     Starting,
     Running,
     Recovering,
+    PreparingSleep,
+    Sleeping,
+    Waking,
     Stopping,
     RollingBack,
     Idle,
@@ -669,6 +736,8 @@ struct EngineOwnedState {
     state_revision: u64,
     action_revision: u64,
     current_action: Option<EngineLifecycleAction>,
+    sleep_pending: BTreeSet<EngineSubsystem>,
+    wake_pending: BTreeSet<EngineSubsystem>,
     teardown_attempted: BTreeSet<EngineSubsystem>,
     restart_after_stop: bool,
     last_failure: Option<EngineFailureSnapshot>,
@@ -693,6 +762,8 @@ impl EngineOwnedState {
             state_revision: 0,
             action_revision: 0,
             current_action: None,
+            sleep_pending: BTreeSet::new(),
+            wake_pending: BTreeSet::new(),
             teardown_attempted: BTreeSet::new(),
             restart_after_stop: false,
             last_failure: None,
@@ -903,8 +974,36 @@ impl EngineOwnedState {
                 }
                 let record = self.record_mut(action.subsystem);
                 record.state = EngineSubsystemState::Ready;
+                record.owns_resources = true;
                 record.failure = None;
                 self.mode = EngineMode::Running;
+            }
+            EngineLifecycleActionKind::PrepareSleep => {
+                if self.mode != EngineMode::PreparingSleep
+                    || self.record(action.subsystem).state != EngineSubsystemState::PreparingSleep
+                    || !self.sleep_pending.contains(&action.subsystem)
+                {
+                    return Err(invalid_state("complete_sleep_preparation"));
+                }
+                self.sleep_pending.remove(&action.subsystem);
+                let record = self.record_mut(action.subsystem);
+                record.state = EngineSubsystemState::Sleeping;
+                record.owns_resources = action.subsystem.retains_resources_during_sleep();
+                self.schedule_next_sleep_preparation()?;
+            }
+            EngineLifecycleActionKind::Wake => {
+                if self.mode != EngineMode::Waking
+                    || self.record(action.subsystem).state != EngineSubsystemState::Waking
+                    || !self.wake_pending.contains(&action.subsystem)
+                {
+                    return Err(invalid_state("complete_wake"));
+                }
+                self.wake_pending.remove(&action.subsystem);
+                let record = self.record_mut(action.subsystem);
+                record.state = EngineSubsystemState::Ready;
+                record.owns_resources = true;
+                record.failure = None;
+                self.schedule_next_wake()?;
             }
             EngineLifecycleActionKind::Teardown => {
                 if !matches!(self.mode, EngineMode::Stopping | EngineMode::RollingBack)
@@ -964,6 +1063,56 @@ impl EngineOwnedState {
                     self.mode = EngineMode::Idle;
                 } else {
                     self.mode = EngineMode::Running;
+                }
+            }
+            EngineLifecycleActionKind::PrepareSleep => {
+                if self.mode != EngineMode::PreparingSleep
+                    || self.record(action.subsystem).state != EngineSubsystemState::PreparingSleep
+                    || !self.sleep_pending.contains(&action.subsystem)
+                {
+                    return Err(invalid_state("fail_sleep_preparation"));
+                }
+                let terminal = error.recoverability() == Recoverability::Terminal;
+                self.sleep_pending.remove(&action.subsystem);
+                let record = self.record_mut(action.subsystem);
+                record.state = if terminal {
+                    EngineSubsystemState::Failed
+                } else {
+                    EngineSubsystemState::Degraded
+                };
+                record.owns_resources = true;
+                record.failure = Some(failure);
+                if terminal {
+                    self.sleep_pending.clear();
+                    self.participant.fail(error)?;
+                    self.mode = EngineMode::Idle;
+                } else {
+                    self.schedule_next_sleep_preparation()?;
+                }
+            }
+            EngineLifecycleActionKind::Wake => {
+                if self.mode != EngineMode::Waking
+                    || self.record(action.subsystem).state != EngineSubsystemState::Waking
+                    || !self.wake_pending.contains(&action.subsystem)
+                {
+                    return Err(invalid_state("fail_wake"));
+                }
+                let terminal = error.recoverability() == Recoverability::Terminal;
+                self.wake_pending.remove(&action.subsystem);
+                let record = self.record_mut(action.subsystem);
+                record.state = if terminal {
+                    EngineSubsystemState::Failed
+                } else {
+                    EngineSubsystemState::Degraded
+                };
+                record.owns_resources = true;
+                record.failure = Some(failure);
+                if terminal {
+                    self.wake_pending.clear();
+                    self.participant.fail(error)?;
+                    self.mode = EngineMode::Idle;
+                } else {
+                    self.schedule_next_wake()?;
                 }
             }
             EngineLifecycleActionKind::Teardown => {
@@ -1058,6 +1207,131 @@ impl EngineOwnedState {
         self.publish()
     }
 
+    fn begin_sleep(&mut self) -> Result<SharedSnapshot<EngineLifecycleSnapshot>> {
+        let phase = self.coordinator.snapshot().phase();
+        if matches!(
+            phase,
+            LifecyclePhase::PreparingSleep | LifecyclePhase::Sleeping
+        ) {
+            return Ok(self.latest());
+        }
+        match phase {
+            LifecyclePhase::Running if self.mode == EngineMode::Running => {
+                if self.current_action.is_some() {
+                    return Err(invalid_state("begin_sleep"));
+                }
+            }
+            LifecyclePhase::Waking if self.mode == EngineMode::Waking => {
+                self.cancel_transition_action(EngineLifecycleActionKind::Wake)?;
+            }
+            _ => return Err(invalid_state("begin_sleep")),
+        }
+
+        self.coordinator.request_sleep()?;
+        self.mode = EngineMode::PreparingSleep;
+        self.wake_pending.clear();
+        self.sleep_pending = EngineSubsystem::ALL
+            .into_iter()
+            .filter(|subsystem| {
+                subsystem.participates_in_sleep() && self.record(*subsystem).owns_resources
+            })
+            .collect();
+        self.schedule_next_sleep_preparation()?;
+        self.publish()
+    }
+
+    fn begin_wake(&mut self) -> Result<SharedSnapshot<EngineLifecycleSnapshot>> {
+        let phase = self.coordinator.snapshot().phase();
+        if phase == LifecyclePhase::Waking {
+            if self.mode != EngineMode::Waking {
+                return Err(invalid_state("begin_wake"));
+            }
+            return Ok(self.latest());
+        }
+        match phase {
+            LifecyclePhase::PreparingSleep if self.mode == EngineMode::PreparingSleep => {
+                self.cancel_transition_action(EngineLifecycleActionKind::PrepareSleep)?;
+            }
+            LifecyclePhase::Sleeping if self.mode == EngineMode::Sleeping => {}
+            LifecyclePhase::Running if self.mode == EngineMode::Running => {
+                if self.current_action.is_some() {
+                    return Err(invalid_state("begin_wake"));
+                }
+            }
+            _ => return Err(invalid_state("begin_wake")),
+        }
+
+        self.coordinator.request_wake()?;
+        self.mode = EngineMode::Waking;
+        self.sleep_pending.clear();
+        self.wake_pending = EngineSubsystem::ALL
+            .into_iter()
+            .filter(|subsystem| subsystem.participates_in_sleep())
+            .collect();
+        self.schedule_next_wake()?;
+        self.publish()
+    }
+
+    fn schedule_next_sleep_preparation(&mut self) -> Result<()> {
+        for subsystem in EngineSubsystem::ALL.into_iter().rev() {
+            if !self.sleep_pending.contains(&subsystem) {
+                continue;
+            }
+            self.record_mut(subsystem).state = EngineSubsystemState::PreparingSleep;
+            self.issue_action(subsystem, EngineLifecycleActionKind::PrepareSleep)?;
+            return Ok(());
+        }
+
+        let observed = self.participant.signal().load();
+        let completed = self.participant.acknowledge(observed)?;
+        if completed.phase() != LifecyclePhase::Sleeping {
+            return Err(engine_error(
+                ErrorCategory::Internal,
+                Recoverability::Terminal,
+                "engine sleep acknowledgement did not reach sleeping",
+                "complete_sleep_preparation",
+            ));
+        }
+        self.mode = EngineMode::Sleeping;
+        Ok(())
+    }
+
+    fn schedule_next_wake(&mut self) -> Result<()> {
+        for subsystem in EngineSubsystem::ALL {
+            if !self.wake_pending.contains(&subsystem) {
+                continue;
+            }
+            self.record_mut(subsystem).state = EngineSubsystemState::Waking;
+            self.issue_action(subsystem, EngineLifecycleActionKind::Wake)?;
+            return Ok(());
+        }
+
+        let observed = self.participant.signal().load();
+        let completed = self.participant.acknowledge(observed)?;
+        if completed.phase() != LifecyclePhase::Running {
+            return Err(engine_error(
+                ErrorCategory::Internal,
+                Recoverability::Terminal,
+                "engine wake acknowledgement did not reach running",
+                "complete_wake",
+            ));
+        }
+        self.mode = EngineMode::Running;
+        Ok(())
+    }
+
+    fn cancel_transition_action(&mut self, expected: EngineLifecycleActionKind) -> Result<()> {
+        let Some(action) = self.current_action.take() else {
+            return Ok(());
+        };
+        if action.kind != expected {
+            self.current_action = Some(action);
+            return Err(invalid_state("cancel_transition"));
+        }
+        restore_stable_state(self.record_mut(action.subsystem));
+        Ok(())
+    }
+
     fn begin_restart(&mut self) -> Result<SharedSnapshot<EngineLifecycleSnapshot>> {
         if self.coordinator.snapshot().phase() == LifecyclePhase::Stopped {
             self.restart_after_stop = false;
@@ -1089,6 +1363,21 @@ impl EngineOwnedState {
 
         self.restart_after_stop = restart_after_stop;
         self.cancel_pending_action();
+        self.sleep_pending.clear();
+        self.wake_pending.clear();
+        for record in self.records.values_mut() {
+            if !record.owns_resources
+                && matches!(
+                    record.state,
+                    EngineSubsystemState::PreparingSleep
+                        | EngineSubsystemState::Sleeping
+                        | EngineSubsystemState::Waking
+                )
+            {
+                record.state = EngineSubsystemState::Offline;
+                record.failure = None;
+            }
+        }
         self.coordinator.request_shutdown()?;
         self.mode = EngineMode::Stopping;
         self.teardown_attempted.clear();
@@ -1109,6 +1398,9 @@ impl EngineOwnedState {
             EngineLifecycleActionKind::Recover => {
                 record.state = EngineSubsystemState::Degraded;
                 record.owns_resources = true;
+            }
+            EngineLifecycleActionKind::PrepareSleep | EngineLifecycleActionKind::Wake => {
+                restore_stable_state(record);
             }
             EngineLifecycleActionKind::Teardown => {
                 record.state = if record.failure.is_some() {
@@ -1194,6 +1486,8 @@ impl EngineOwnedState {
         self.mode = EngineMode::Starting;
         self.current_action = None;
         self.teardown_attempted.clear();
+        self.sleep_pending.clear();
+        self.wake_pending.clear();
         self.last_failure = None;
         self.schedule_next_initialization()
     }
@@ -1227,6 +1521,17 @@ fn validate_dependency_plan() -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn restore_stable_state(record: &mut SubsystemRecord) {
+    record.state = match record.failure.as_ref() {
+        Some(failure) if failure.recoverability() == Recoverability::Terminal => {
+            EngineSubsystemState::Failed
+        }
+        Some(_) => EngineSubsystemState::Degraded,
+        None if record.owns_resources => EngineSubsystemState::Ready,
+        None => EngineSubsystemState::Sleeping,
+    };
 }
 
 fn invalid_state(operation: &'static str) -> Error {

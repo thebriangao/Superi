@@ -6,17 +6,35 @@ use superi_engine::lifecycle::{
     EngineSubsystem, EngineSubsystemState, EngineWorkAdmission, EngineWorkKind,
 };
 
-const START_ORDER: [EngineSubsystem; 4] = [
+const START_ORDER: [EngineSubsystem; 6] = [
     EngineSubsystem::SharedState,
+    EngineSubsystem::Projects,
+    EngineSubsystem::Devices,
     EngineSubsystem::Playback,
     EngineSubsystem::Rendering,
     EngineSubsystem::Export,
 ];
-const STOP_ORDER: [EngineSubsystem; 4] = [
+const STOP_ORDER: [EngineSubsystem; 6] = [
     EngineSubsystem::Export,
     EngineSubsystem::Rendering,
     EngineSubsystem::Playback,
+    EngineSubsystem::Devices,
+    EngineSubsystem::Projects,
     EngineSubsystem::SharedState,
+];
+const SLEEP_ORDER: [EngineSubsystem; 5] = [
+    EngineSubsystem::Export,
+    EngineSubsystem::Rendering,
+    EngineSubsystem::Playback,
+    EngineSubsystem::Devices,
+    EngineSubsystem::Projects,
+];
+const WAKE_ORDER: [EngineSubsystem; 5] = [
+    EngineSubsystem::Projects,
+    EngineSubsystem::Devices,
+    EngineSubsystem::Playback,
+    EngineSubsystem::Rendering,
+    EngineSubsystem::Export,
 ];
 
 fn current_action(engine: &EngineLifecycle) -> EngineLifecycleAction {
@@ -59,6 +77,27 @@ fn complete_stop(engine: &mut EngineLifecycle) -> Vec<EngineSubsystem> {
         engine
             .complete_action(action)
             .expect("the exact teardown action completes");
+    }
+    order
+}
+
+fn complete_transition(
+    engine: &mut EngineLifecycle,
+    kind: EngineLifecycleActionKind,
+) -> Vec<EngineSubsystem> {
+    let mut order = Vec::new();
+    loop {
+        let snapshot = engine
+            .snapshot()
+            .expect("engine-control owner can inspect lifecycle state");
+        let Some(action) = snapshot.pending_action() else {
+            break;
+        };
+        assert_eq!(action.kind(), kind);
+        order.push(action.subsystem());
+        engine
+            .complete_action(action)
+            .expect("the exact transition action completes");
     }
     order
 }
@@ -267,6 +306,388 @@ fn startup_degradation_recovery_shutdown_and_restart_share_one_coherent_state() 
 }
 
 #[test]
+fn sleep_and_wake_quiesce_projects_devices_and_every_engine_workflow() {
+    let _domain = ExecutionDomain::EngineControl
+        .enter_current()
+        .expect("test owns the engine-control domain");
+    let mut engine = EngineLifecycle::new().expect("canonical lifecycle plan is valid");
+    assert_eq!(complete_start(&mut engine), START_ORDER);
+
+    let running = engine.snapshot().expect("running snapshot is published");
+    let old_permit = running
+        .admit(EngineWorkKind::Export)
+        .permit()
+        .expect("running export receives a permit");
+    let preparing = engine
+        .begin_sleep()
+        .expect("system sleep preparation begins");
+    assert_eq!(preparing.phase(), LifecyclePhase::PreparingSleep);
+    assert_eq!(
+        engine.signal().load().phase(),
+        LifecyclePhase::PreparingSleep
+    );
+    assert_eq!(
+        preparing.pending_action().unwrap().subsystem(),
+        EngineSubsystem::Export
+    );
+    assert_eq!(
+        preparing.pending_action().unwrap().kind(),
+        EngineLifecycleActionKind::PrepareSleep
+    );
+    expect_denied(preparing.admit(EngineWorkKind::Playback), None);
+    expect_denied(preparing.admit(EngineWorkKind::Rendering), None);
+    expect_denied(preparing.admit(EngineWorkKind::Export), None);
+    assert!(!preparing.is_permit_current(old_permit));
+
+    let repeated_sleep = engine
+        .begin_sleep()
+        .expect("repeated sleep notification is idempotent");
+    assert_eq!(repeated_sleep.state_revision(), preparing.state_revision());
+    assert_eq!(
+        complete_transition(&mut engine, EngineLifecycleActionKind::PrepareSleep),
+        SLEEP_ORDER
+    );
+
+    let sleeping = engine.snapshot().expect("sleeping snapshot is published");
+    assert_eq!(sleeping.phase(), LifecyclePhase::Sleeping);
+    assert_eq!(engine.signal().load().phase(), LifecyclePhase::Sleeping);
+    let shared = sleeping.subsystem(EngineSubsystem::SharedState).unwrap();
+    assert_eq!(shared.state(), EngineSubsystemState::Ready);
+    assert!(shared.owns_resources());
+    let projects = sleeping.subsystem(EngineSubsystem::Projects).unwrap();
+    assert_eq!(projects.state(), EngineSubsystemState::Sleeping);
+    assert!(projects.owns_resources());
+    for subsystem in [
+        EngineSubsystem::Devices,
+        EngineSubsystem::Playback,
+        EngineSubsystem::Rendering,
+        EngineSubsystem::Export,
+    ] {
+        let state = sleeping.subsystem(subsystem).unwrap();
+        assert_eq!(state.state(), EngineSubsystemState::Sleeping);
+        assert!(!state.owns_resources());
+    }
+
+    let waking = engine
+        .begin_wake()
+        .expect("system wake revalidation begins");
+    assert_eq!(waking.phase(), LifecyclePhase::Waking);
+    assert_eq!(engine.signal().load().phase(), LifecyclePhase::Waking);
+    assert_eq!(
+        waking.pending_action().unwrap().subsystem(),
+        EngineSubsystem::Projects
+    );
+    assert_eq!(
+        waking.pending_action().unwrap().kind(),
+        EngineLifecycleActionKind::Wake
+    );
+    let repeated_wake = engine
+        .begin_wake()
+        .expect("repeated wake notification is idempotent");
+    assert_eq!(repeated_wake.state_revision(), waking.state_revision());
+    assert_eq!(
+        complete_transition(&mut engine, EngineLifecycleActionKind::Wake),
+        WAKE_ORDER
+    );
+
+    let recovered = engine.snapshot().expect("wake completes to running");
+    assert_eq!(recovered.phase(), LifecyclePhase::Running);
+    assert_eq!(recovered.health(), EngineHealth::Healthy);
+    for subsystem in EngineSubsystem::ALL {
+        let state = recovered.subsystem(subsystem).unwrap();
+        assert_eq!(state.state(), EngineSubsystemState::Ready);
+        assert!(state.owns_resources());
+    }
+    expect_granted(recovered.admit(EngineWorkKind::Playback));
+    expect_granted(recovered.admit(EngineWorkKind::Rendering));
+    expect_granted(recovered.admit(EngineWorkKind::Export));
+
+    let critical_wake = engine
+        .begin_wake()
+        .expect("wake without prior preparation still revalidates resources");
+    assert_eq!(critical_wake.phase(), LifecyclePhase::Waking);
+    assert_eq!(
+        complete_transition(&mut engine, EngineLifecycleActionKind::Wake),
+        WAKE_ORDER
+    );
+    assert_eq!(engine.snapshot().unwrap().phase(), LifecyclePhase::Running);
+}
+
+#[test]
+fn recoverable_wake_failure_degrades_all_device_dependent_work_until_recovery() {
+    let _domain = ExecutionDomain::EngineControl
+        .enter_current()
+        .expect("test owns the engine-control domain");
+    let mut engine = EngineLifecycle::new().expect("canonical lifecycle plan is valid");
+    assert_eq!(complete_start(&mut engine), START_ORDER);
+    engine.begin_sleep().expect("sleep preparation begins");
+    assert_eq!(
+        complete_transition(&mut engine, EngineLifecycleActionKind::PrepareSleep),
+        SLEEP_ORDER
+    );
+
+    engine.begin_wake().expect("wake revalidation begins");
+    let projects = current_action(&engine);
+    assert_eq!(projects.subsystem(), EngineSubsystem::Projects);
+    engine
+        .complete_action(projects)
+        .expect("project state revalidates");
+    let devices = current_action(&engine);
+    assert_eq!(devices.subsystem(), EngineSubsystem::Devices);
+    let degraded = engine
+        .fail_action(
+            devices,
+            Error::new(
+                ErrorCategory::Unavailable,
+                Recoverability::Retryable,
+                "device resources are not ready after wake",
+            ),
+        )
+        .expect("recoverable device wake failure stays explicit");
+    assert_eq!(degraded.phase(), LifecyclePhase::Waking);
+    assert_eq!(degraded.health(), EngineHealth::Degraded);
+    assert_eq!(
+        complete_transition(&mut engine, EngineLifecycleActionKind::Wake),
+        [
+            EngineSubsystem::Playback,
+            EngineSubsystem::Rendering,
+            EngineSubsystem::Export,
+        ]
+    );
+
+    let running_degraded = engine
+        .snapshot()
+        .expect("wake reaches a degraded running state");
+    assert_eq!(running_degraded.phase(), LifecyclePhase::Running);
+    assert_eq!(running_degraded.health(), EngineHealth::Degraded);
+    let devices = running_degraded
+        .subsystem(EngineSubsystem::Devices)
+        .unwrap();
+    assert_eq!(devices.state(), EngineSubsystemState::Degraded);
+    assert!(devices.owns_resources());
+    expect_denied(
+        running_degraded.admit(EngineWorkKind::Playback),
+        Some(EngineSubsystem::Devices),
+    );
+    expect_denied(
+        running_degraded.admit(EngineWorkKind::Rendering),
+        Some(EngineSubsystem::Devices),
+    );
+    expect_denied(
+        running_degraded.admit(EngineWorkKind::Export),
+        Some(EngineSubsystem::Devices),
+    );
+
+    let recovering = engine
+        .begin_recovery(EngineSubsystem::Devices)
+        .expect("degraded devices can be reacquired");
+    let action = recovering.pending_action().unwrap();
+    assert_eq!(action.kind(), EngineLifecycleActionKind::Recover);
+    let recovered = engine
+        .complete_action(action)
+        .expect("device recovery restores dependent work");
+    assert_eq!(recovered.health(), EngineHealth::Healthy);
+    expect_granted(recovered.admit(EngineWorkKind::Playback));
+    expect_granted(recovered.admit(EngineWorkKind::Rendering));
+    expect_granted(recovered.admit(EngineWorkKind::Export));
+}
+
+#[test]
+fn newer_power_notifications_supersede_only_the_exact_pending_transition() {
+    let _domain = ExecutionDomain::EngineControl
+        .enter_current()
+        .expect("test owns the engine-control domain");
+    let mut engine = EngineLifecycle::new().expect("canonical lifecycle plan is valid");
+    assert_eq!(complete_start(&mut engine), START_ORDER);
+
+    engine.begin_sleep().expect("sleep preparation begins");
+    let export_sleep = current_action(&engine);
+    engine
+        .complete_action(export_sleep)
+        .expect("export releases before sleep");
+    let stale_render_sleep = current_action(&engine);
+    assert_eq!(stale_render_sleep.subsystem(), EngineSubsystem::Rendering);
+
+    let waking = engine
+        .begin_wake()
+        .expect("wake supersedes incomplete sleep preparation");
+    assert_eq!(waking.phase(), LifecyclePhase::Waking);
+    assert_eq!(
+        waking.pending_action().unwrap().subsystem(),
+        EngineSubsystem::Projects
+    );
+    assert_eq!(
+        engine
+            .complete_action(stale_render_sleep)
+            .unwrap_err()
+            .category(),
+        ErrorCategory::Conflict
+    );
+    let project_wake = current_action(&engine);
+    engine
+        .complete_action(project_wake)
+        .expect("project state revalidates");
+    let stale_device_wake = current_action(&engine);
+    assert_eq!(stale_device_wake.subsystem(), EngineSubsystem::Devices);
+
+    let preparing_again = engine
+        .begin_sleep()
+        .expect("new sleep notification supersedes incomplete wake");
+    assert_eq!(preparing_again.phase(), LifecyclePhase::PreparingSleep);
+    assert_eq!(
+        preparing_again.pending_action().unwrap().subsystem(),
+        EngineSubsystem::Rendering
+    );
+    assert_eq!(
+        engine
+            .complete_action(stale_device_wake)
+            .unwrap_err()
+            .category(),
+        ErrorCategory::Conflict
+    );
+    assert_eq!(
+        complete_transition(&mut engine, EngineLifecycleActionKind::PrepareSleep),
+        [
+            EngineSubsystem::Rendering,
+            EngineSubsystem::Playback,
+            EngineSubsystem::Devices,
+            EngineSubsystem::Projects,
+        ]
+    );
+    assert_eq!(engine.snapshot().unwrap().phase(), LifecyclePhase::Sleeping);
+
+    engine.begin_wake().expect("final wake begins");
+    assert_eq!(
+        complete_transition(&mut engine, EngineLifecycleActionKind::Wake),
+        WAKE_ORDER
+    );
+    assert_eq!(engine.snapshot().unwrap().phase(), LifecyclePhase::Running);
+}
+
+#[test]
+fn terminal_wake_failure_enters_failed_lifecycle_and_requires_a_new_lifetime() {
+    let _domain = ExecutionDomain::EngineControl
+        .enter_current()
+        .expect("test owns the engine-control domain");
+    let mut engine = EngineLifecycle::new().expect("canonical lifecycle plan is valid");
+    assert_eq!(complete_start(&mut engine), START_ORDER);
+    engine.begin_sleep().expect("sleep preparation begins");
+    complete_transition(&mut engine, EngineLifecycleActionKind::PrepareSleep);
+    engine.begin_wake().expect("wake revalidation begins");
+
+    let project_wake = current_action(&engine);
+    let failed = engine
+        .fail_action(
+            project_wake,
+            Error::new(
+                ErrorCategory::CorruptData,
+                Recoverability::Terminal,
+                "retained project state failed wake validation",
+            ),
+        )
+        .expect("terminal wake failure enters failed lifecycle");
+    assert_eq!(failed.phase(), LifecyclePhase::Failed);
+    assert_eq!(failed.health(), EngineHealth::Failed);
+    assert!(failed.pending_action().is_none());
+    expect_denied(failed.admit(EngineWorkKind::Playback), None);
+    assert_eq!(
+        engine.begin_wake().unwrap_err().recoverability(),
+        Recoverability::UserCorrectable
+    );
+
+    let stopping = engine
+        .begin_shutdown()
+        .expect("failed wake can shut down retained resources");
+    assert_eq!(stopping.phase(), LifecyclePhase::Stopping);
+    assert_eq!(
+        complete_stop(&mut engine),
+        [EngineSubsystem::Projects, EngineSubsystem::SharedState]
+    );
+    let restarted = engine
+        .begin_restart()
+        .expect("stopped engine starts a new lifetime");
+    assert_eq!(restarted.phase(), LifecyclePhase::Starting);
+    assert_eq!(restarted.lifetime(), 2);
+    assert_eq!(complete_start(&mut engine), START_ORDER);
+    assert_eq!(engine.snapshot().unwrap().phase(), LifecyclePhase::Running);
+}
+
+#[test]
+fn shutdown_interrupts_sleep_and_wake_without_reviving_released_resources() {
+    let _domain = ExecutionDomain::EngineControl
+        .enter_current()
+        .expect("test owns the engine-control domain");
+    let mut engine = EngineLifecycle::new().expect("canonical lifecycle plan is valid");
+    assert_eq!(complete_start(&mut engine), START_ORDER);
+
+    engine.begin_sleep().expect("sleep preparation begins");
+    let export_sleep = current_action(&engine);
+    engine
+        .complete_action(export_sleep)
+        .expect("export releases before sleep");
+    let stale_sleep = current_action(&engine);
+    assert_eq!(stale_sleep.subsystem(), EngineSubsystem::Rendering);
+    let stopping = engine
+        .begin_shutdown()
+        .expect("application shutdown supersedes sleep preparation");
+    assert_eq!(stopping.phase(), LifecyclePhase::Stopping);
+    assert_eq!(
+        stopping.pending_action().unwrap().subsystem(),
+        EngineSubsystem::Rendering
+    );
+    assert_eq!(
+        complete_stop(&mut engine),
+        [
+            EngineSubsystem::Rendering,
+            EngineSubsystem::Playback,
+            EngineSubsystem::Devices,
+            EngineSubsystem::Projects,
+            EngineSubsystem::SharedState,
+        ]
+    );
+    assert_eq!(
+        engine.complete_action(stale_sleep).unwrap_err().category(),
+        ErrorCategory::Conflict
+    );
+    for subsystem in EngineSubsystem::ALL {
+        let state = engine
+            .snapshot()
+            .unwrap()
+            .subsystem(subsystem)
+            .unwrap()
+            .clone();
+        assert_eq!(state.state(), EngineSubsystemState::Offline);
+        assert!(!state.owns_resources());
+    }
+
+    engine.begin_restart().expect("stopped engine restarts");
+    assert_eq!(complete_start(&mut engine), START_ORDER);
+    engine
+        .begin_sleep()
+        .expect("second sleep preparation begins");
+    complete_transition(&mut engine, EngineLifecycleActionKind::PrepareSleep);
+    engine.begin_wake().expect("wake revalidation begins");
+    let projects_wake = current_action(&engine);
+    engine
+        .complete_action(projects_wake)
+        .expect("retained project state revalidates");
+    let stale_wake = current_action(&engine);
+    assert_eq!(stale_wake.subsystem(), EngineSubsystem::Devices);
+    engine
+        .begin_shutdown()
+        .expect("application shutdown supersedes wake revalidation");
+    assert_eq!(
+        complete_stop(&mut engine),
+        [EngineSubsystem::Projects, EngineSubsystem::SharedState]
+    );
+    assert_eq!(
+        engine.complete_action(stale_wake).unwrap_err().category(),
+        ErrorCategory::Conflict
+    );
+    assert_eq!(engine.snapshot().unwrap().phase(), LifecyclePhase::Stopped);
+}
+
+#[test]
 fn initialization_failure_rolls_back_owned_dependencies_and_rejects_stale_work() {
     let _domain = ExecutionDomain::EngineControl
         .enter_current()
@@ -277,6 +698,13 @@ fn initialization_failure_rolls_back_owned_dependencies_and_rejects_stale_work()
     engine
         .complete_action(shared_action)
         .expect("shared state initializes");
+    for subsystem in [EngineSubsystem::Projects, EngineSubsystem::Devices] {
+        let action = current_action(&engine);
+        assert_eq!(action.subsystem(), subsystem);
+        engine
+            .complete_action(action)
+            .expect("playback dependency initializes");
+    }
     let failed_action = current_action(&engine);
     assert_eq!(failed_action.subsystem(), EngineSubsystem::Playback);
     let failed = engine
@@ -297,15 +725,20 @@ fn initialization_failure_rolls_back_owned_dependencies_and_rejects_stale_work()
     );
     let rollback = failed.pending_action().unwrap();
     assert_eq!(rollback.kind(), EngineLifecycleActionKind::Teardown);
-    assert_eq!(rollback.subsystem(), EngineSubsystem::SharedState);
+    assert_eq!(rollback.subsystem(), EngineSubsystem::Devices);
 
     let stale = engine
         .complete_action(failed_action)
         .expect_err("late initialization cannot complete rollback state");
     assert_eq!(stale.category(), ErrorCategory::Conflict);
-    engine
-        .complete_action(rollback)
-        .expect("owned shared state rolls back");
+    assert_eq!(
+        complete_stop(&mut engine),
+        [
+            EngineSubsystem::Devices,
+            EngineSubsystem::Projects,
+            EngineSubsystem::SharedState,
+        ]
+    );
     let rolled_back = engine.snapshot().expect("rollback snapshot is published");
     assert_eq!(rolled_back.phase(), LifecyclePhase::Failed);
     assert!(rolled_back.pending_action().is_none());
@@ -390,7 +823,12 @@ fn terminal_failure_closes_all_work_and_teardown_failure_requires_a_retry() {
         .expect("successful retry releases the retained resource");
     assert_eq!(
         complete_stop(&mut engine),
-        [EngineSubsystem::Rendering, EngineSubsystem::SharedState,]
+        [
+            EngineSubsystem::Rendering,
+            EngineSubsystem::Devices,
+            EngineSubsystem::Projects,
+            EngineSubsystem::SharedState,
+        ]
     );
     assert_eq!(engine.snapshot().unwrap().phase(), LifecyclePhase::Stopped);
 }
