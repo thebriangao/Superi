@@ -2,7 +2,7 @@
 module_id: tool-superi-dependency-check
 source_paths:
   - open/tools/superi-dependency-check
-source_hash: bd884e561d1c04a1a670ad48f9c5d74025a1d152f79d767a03ee5fcf3706d78c
+source_hash: ea268e837acbfdab0802c2ed1d5bccadd488c4c6f11573236f5e73e5e89fd678
 source_files: 4
 mapped_at_commit: working-tree
 ---
@@ -19,12 +19,13 @@ the reviewed architecture documented in `open/docs/STRUCTURE.md`.
   shared lint policy, library target, and command target.
 - `open/tools/superi-dependency-check/src/lib.rs`: Runs locked offline Cargo metadata, parses the
   workspace package graph, applies exact runtime and dev policies including cache consumption of
-  concurrency, and reports deterministic errors.
+  concurrency plus the API contract's test-only EngineControl edge, and reports deterministic
+  errors.
 - `open/tools/superi-dependency-check/src/main.rs`: Runs the library against the containing workspace,
   prints a successful package and edge summary, and returns a failing process status on violations.
 - `open/tools/superi-dependency-check/tests/dependency_direction_contract.rs`: Covers the checked-in
-  workspace, forbidden runtime and build edges, separation of dev and production policy, and
-  fail-closed behavior for new runtime crates.
+  workspace, forbidden runtime and build edges, both reviewed API test edges, separation of dev and
+  production policy, and fail-closed behavior for new runtime crates.
 
 ## Public surface
 
@@ -43,6 +44,10 @@ allowlist unless Cargo marks them as dev-only. Dev dependencies use a separate a
 relationship cannot authorize the same production edge. Unknown runtime crates and every
 unapproved edge fail closed.
 
+The API dev policy reviews `superi-media-io` for registry contracts and `superi-concurrency` only
+for entering EngineControl around a real dispatcher introspection contract. Both crates remain
+unauthorized as direct production API dependencies.
+
 Violations are collected in a `BTreeSet`, making diagnostics stable for identical metadata. A clean
 graph returns counts, and the command prints the summary for contributor and CI use.
 
@@ -59,6 +64,8 @@ the direct command documented by `open/docs/STRUCTURE.md`.
 - Metadata collection is locked and offline and cannot update the dependency resolution.
 - Runtime crates require an explicit policy entry even when they currently have no internal edges.
 - Normal and build dependencies share the production policy; dev dependencies never widen it.
+- The reviewed API media and EngineControl dev edges remain separately rejected when synthetic
+  metadata presents either edge as normal or build scope.
 - Only internal path dependencies between workspace packages are checked. Registry dependency
   licensing and source policy remain owned by cargo-deny and its workflow.
 - Tools are outside the runtime crate DAG and are not treated as runtime policy subjects.
@@ -68,11 +75,11 @@ the direct command documented by `open/docs/STRUCTURE.md`.
 ## Tests and verification
 
 Four integration contracts exercise the current workspace and synthetic metadata failures. Fresh
-checkpoint proof passed the focused contracts, package tests, strict package and all-target workspace
-Clippy, workspace documentation tests, locked default and all-feature builds, the workspace test
-suite excluding the host codec package, and a Rust 1.80 package check. The direct command validated
-19 runtime crates and 65 internal edges, including the reviewed `superi-cache` to
-`superi-concurrency` production edge for bounded background rendering.
+checkpoint proof passed the focused package and documentation tests plus the direct locked command.
+The direct command validated 19 runtime crates and 66 internal edges, including the reviewed
+`superi-cache` to `superi-concurrency` production edge for bounded background rendering and the
+test-only API to concurrency EngineControl edge. Synthetic metadata proves both reviewed API dev
+edges remain forbidden in production.
 
 ## Current status and risks
 

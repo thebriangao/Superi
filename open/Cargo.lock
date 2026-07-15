@@ -2803,6 +2803,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "superi-concurrency",
  "superi-core",
  "superi-engine",
  "superi-media-io",

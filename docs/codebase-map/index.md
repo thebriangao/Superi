@@ -14,7 +14,7 @@ against raw source before changing code.
 | Module ID | Map | Owned path | Current role | Status |
 | --- | --- | --- | --- | --- |
 | `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
-| `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade for capabilities and canonical editorial state | Partial: capability queries plus revision-fenced scenario transactions and ordered replacement events implemented; wire transport, general API, and scripting absent |
+| `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade for media capabilities, complete engine health and readiness, and canonical editorial state | Partial: media and engine introspection queries plus revision-fenced scenario transactions and ordered replacement events implemented; wire transport, general mutation API, and scripting absent |
 | `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Independent prepared audio graph with explicit channel conversion, typed bus routing, transactional clip DSP, core effects, sample-accurate scheduling, bounded device playback, callback-owned discontinuity discard, dual-clock sample-rate conversion, and graph-native metering | Partial: graph processing, channel-layout conversion, bus routing, clip controls, equalization, compression, limiting, delay, saturation, callback scheduling, audio-master publication, device output and discard acknowledgement, band-limited resampling, and peak, RMS, true-peak, phase, spectrum, and loudness metering implemented; engine export invokes an explicit audio stage and proves exact PCM completion, while decoded-sample binding to the prepared graph, automation, variable-rate playback audio, hosting, and complete timeline composition remain absent |
 | `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, precise graph edit invalidation, versioned corruption-recovering disk persistence, replaceable derived-media publication, layered render reuse, bounded background population, bounded playback prediction, bounded edit and scrub warming, and deterministic lifecycle management | Complete identity feeds independent memory and disk tiers with exact admission, revision fencing, bounded envelopes, atomic publication, schema isolation, and corruption quarantine; memory, persistent, and derived owners expose inspection and exact clearing, persistent namespaces relocate through rename or synchronized staged copy, render jobs add cancellation-safe layered reuse, prediction supplies finite signed frame plans and an owned host adapter, and warming is deterministic and hard bounded; engine and scheduler own quality substitution and lifecycle policy remains caller-owned |
 | `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario consumer | Implemented revision-fenced transaction and event consumer, portable expectation verifier, and eight instrumented contract stages; rendered media flow absent |
@@ -25,7 +25,7 @@ against raw source before changing code.
 | `superi-concurrency` | [module map](modules/superi-concurrency.md) | `open/crates/superi-concurrency` | Execution domains, jobs, clocks, handoffs, shared snapshots, lifecycle, liveness, and derived-media selection | Substantial; audio enforces its domain, engine proxy resolution consumes selection, engine foreground playback and transport consume bounded workers, cancellation, anchor-based clocks, the A/V scheduler, and handoffs, engine lifecycle composes acknowledged phases, EngineControl ownership, immutable publication, and lock-free signals, engine error propagation keeps bounded bookkeeping in a separate EngineControl `DomainOwned`, render-export enforces lifecycle admission, and the engine export queue composes bounded workers, progress, dependency history, typed completion, and recovery attempts; broader liveness and GPU submission composition remain incomplete |
 | `superi-core` | [module map](modules/superi-core.md) | `open/crates/superi-core` | Tier-zero values, validation, exact time, identifiers, errors, diagnostics, and stable serialization | Implemented and broadly consumed; crate-level skeleton wording is stale |
 | `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Graph-native visual definitions, editable defaults and instances, reusable presets, animation, controls, composition, spatial, shape, mask, rotoscope, tracking, text, transitions, isolated OpenFX hosting, and bounded CPU reference evaluation | Substantive but partial: graph-native authoring, strict documents and migrations, missing-plugin recovery, visual contracts, isolated OFX adapter validation, boxed dynamic forwarding, permissions, lifecycle, recovery, quarantine, workflow parity, and real pixel proof are implemented; project persistence, native plugin binding, production GPU execution, concrete worker transport, UI, and complete timeline attachment remain absent |
-| `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: engine-wide typed command dispatch, coherent lifecycle and admission, classified recovery, bounded playback and export dispatch, source and codec preparation, playback and render-export orchestration, logical export jobs, shared finite-resource arbitration, deterministic OpenFX discovery and launcher coordination, exact permission narrowing, per-plugin containment, active graph-registry rebuilding, workflow-coherent plugin recovery, and atomic timeline plus clip-mix edits are implemented; automatic arbiter binding, decoded source and prepared-audio binding, native GPU presentation, muxing and publication, concrete platform plugin transport, native OFX ABI adapters, persistent job recovery, and production plugin factories remain absent |
+| `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: engine-wide typed command dispatch, coherent lifecycle and admission, classified recovery, read-only capability, resource, health, workflow, and recovery introspection, bounded playback and export dispatch, source and codec preparation, playback and render-export orchestration, logical export jobs, shared finite-resource arbitration, deterministic OpenFX discovery and launcher coordination, exact permission narrowing, per-plugin containment, active graph-registry rebuilding, workflow-coherent plugin recovery, and atomic timeline plus clip-mix edits are implemented; automatic arbiter binding, decoded source and prepared-audio binding, native GPU presentation, muxing and publication, concrete platform plugin transport, native OFX ABI adapters, persistent job recovery, and production plugin factories remain absent |
 | `superi-gpu` | [module map](modules/superi-gpu.md) | `open/crates/superi-gpu` | wgpu device, resource, upload, conversion, pass, submission, presentation, and recovery substrate | Implemented substrate with explicit application-level integration gaps |
 | `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers and shared typed values, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, reusable scalar expressions, typed parameter links and expressions, caller-projected literal evaluation, derived missing-node resolution, dependency and semantic edit invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, graph and revision cache lineage, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, exact neutral domain and processing values, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, shared bounded scalar programs, typed driver state, parameter-cycle protection, literal-only projected evaluation, fail-closed missing-node placeholders, exact region and edit invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic graph cache inspection, final and intermediate retained-work pruning, run-local timing, and role-neutral editable-to-runtime evaluation implemented; effects consumes broad authoring and reference evaluation, timeline compiles editable graphs, and engine consumes externally prepared snapshots for playback and render-export, while production engine catalog and plugin binding, project persistence, and complete application rendering remain absent |
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
@@ -178,6 +178,21 @@ Media registry construction and capability introspection are implemented as foll
 6. `superi-api::MediaCapabilitiesApi` projects those records into strict serializable API types.
 7. `GetMediaCapabilities` clones the current full snapshot. `synchronize` emits one full-replacement
    `MediaCapabilitiesChanged` event only when semantic capability state changes.
+
+Complete engine capability and health introspection is implemented as follows:
+
+1. An EngineControl caller asks `EngineCommandDispatcher::introspection_snapshot` for one read-only
+   observation, supplying immutable media declarations and optionally one exact resource-arbitration
+   snapshot.
+2. The dispatcher reads its canonical lifecycle and recovery state without dispatching a command,
+   advancing a sequence, publishing an event, or changing project meaning.
+3. Workflow readiness is derived through the same lifecycle admission checks used by playback,
+   rendering, and export. Active failures retain disposition and recovery progress but expose only
+   the core-reviewed `UserSafeError` projection.
+4. `superi-api::EngineIntrospectionApi` maps that state into strict public types. The enclosing
+   snapshot and nested media capability state have independent API-local revisions.
+5. `GetEngineIntrospection` returns complete replacement state, while semantic changes emit one
+   `EngineIntrospectionChanged` event and equal observations emit nothing.
 
 Timeline graph and media preparation are implemented at an engine-private shared-resource boundary:
 
@@ -1032,7 +1047,9 @@ engine owner wires that pattern into playback or render.
 `superi-engine` is the intended integration owner. It implements an engine-wide typed command
 dispatcher, atomic revision-fenced canonical scenario transactions, full-state undo plus redo,
 bounded ordered replacement events, dispatcher-owned logical export commands with revisioned full
-state and fresh recovery permits, codec registry assembly, deterministic capability introspection,
+state and fresh recovery permits, codec registry assembly, deterministic media capability
+introspection, complete read-only engine health, workflow, failure, recovery, and optional resource
+introspection,
 bounded cross-domain playback command execution, and CPU-decoded frame upload, plus codec-neutral
 proxy and optimized-media packet generation and
 transparent proxy or original-source resolution, playback-domain predictive cache population, and
@@ -1073,9 +1090,10 @@ Nodes and validation remain explicit placeholders. Plugin discovery and supervis
 substantive, while concrete platform transports and native OFX adapters remain absent.
 
 `superi-api` is the stable public facade. It keeps implementation types private and exposes strict
-versioned capability records plus the fixed canonical scenario action, optimistic ordered
-transaction, complete state projection, and matching full replacement event. It has no wire
-transport or broad editor command set.
+versioned media capability and complete engine introspection records plus the fixed canonical
+scenario action, optimistic ordered transaction, complete state projection, and matching full
+replacement event. Engine introspection preserves canonical workflow admission and only reviewed
+user-safe failure data. It has no wire transport or broad editor command set.
 
 `superi-cli` is a binary boundary, not a library. It accepts only the normalized slice command plus
 help and version, validates repository fixture authority, drives revision-fenced `ScenarioApi`
@@ -1114,7 +1132,9 @@ never writes expected files, and provides no automatic update or bless path.
 `superi-dependency-check` is also a repository utility. It reads the locked workspace graph offline
 and fails when a runtime crate adds an unreviewed normal, build, or dev-only internal edge, or when a
 new runtime crate has no explicit policy. The structure guide and executable policy are reviewed as
-one architecture contract.
+one architecture contract. Current reviewed API dev edges support media registry fixtures and the
+EngineControl ownership needed by the real introspection contract, while synthetic policy tests
+prove neither edge authorizes a production dependency.
 
 `superi-boundary-tool` is a dependency-free repository utility, not an engine component. It scans
 Cargo and Rust source deterministically, rejects forbidden network clients and direct socket APIs,
@@ -1141,6 +1161,9 @@ The following constraints cross multiple modules and should be preserved togethe
   candidates retain evidence without replacing the active target.
 - Deterministic ordering is explicit. Stable backend IDs break selection ties; ordered maps and
   sets stabilize public snapshots, fixtures, diagnostics, and validator output.
+- Engine capability and health introspection is read-only. Workflow availability comes from the
+  canonical lifecycle admission path, independent owner revisions remain visible, and raw failure
+  messages, sources, contexts, internal identities, and recovery tokens remain private.
 - Editable graph state has one optimistic revision and immutable shared snapshots. A nonempty
   transaction publishes exactly once only after every ordered mutation passes, while stale or
   failed batches preserve the prior state and revision. Presentation order never replaces DAG
@@ -1256,6 +1279,11 @@ RAII release, protected floors, fixed cooperative reclaim, classified callback f
 fallback for all six resource classes, class-ceiling recovery, hard limits under concurrent callers,
 recursive callback rejection, and impossible-request refusal without eviction. Lower subsystem
 integration remains an explicit caller action.
+The engine and API introspection contracts compose the real registry, dispatcher, lifecycle, error
+coordinator, and resource arbiter. They prove canonical normal admission, playback-only,
+rendering-plus-export, and export-only degradation, visible recovery progress, restored readiness,
+independent public revisions, strict replacement events, unchanged scenario and event state, and
+safe JSON that excludes raw diagnostic details.
 The cache warming contract maps deterministic edit and scrub targets through the real graph
 evaluator and bounded memory cache, then proves demand reuse, source-fingerprint freshness, and
 unchanged recomputation after pressure. It does not claim a production editor, playback, engine,
@@ -1530,7 +1558,8 @@ owner invokes warming.
 Partial modules contain these explicit placeholder areas:
 
 - `superi-api`: scripting, wire transport, subscription delivery, version negotiation, and every
-  general transaction path beyond capabilities and the fixed canonical scenario.
+  general mutation path beyond the fixed canonical scenario. Media and complete engine
+  introspection remain read-only surfaces.
 - `superi-audio`: binding decoded samples into the real prepared graph, plugin hosting, effect
   automation, and engine composition across schedule, conversion, clip and effects processing,
   graph routing, and device execution. Export currently owns only an explicit stage seam.
@@ -1665,7 +1694,7 @@ For common concerns, begin at these owners:
   multicam angle metadata, synchronization provenance, switching, audio intent, exact resolution,
   and deterministic typed editable graph compilation:
   `superi-timeline`.
-- Current assembly and public capability flow: `superi-engine` then `superi-api`.
+- Current assembly and public capability plus health flow: `superi-engine` then `superi-api`.
 - Shared finite-resource arbitration across decode, GPU, cache, audio, AI, and export workloads:
   `superi-engine`, followed by each lower subsystem owner for its authoritative local allocation and
   release behavior.

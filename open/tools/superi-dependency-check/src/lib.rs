@@ -215,7 +215,10 @@ fn policy_for(package: &str) -> Option<Policy> {
             ],
             &[],
         ),
-        "superi-api" => Policy::new(&["superi-core", "superi-engine"], &["superi-media-io"]),
+        "superi-api" => Policy::new(
+            &["superi-core", "superi-engine"],
+            &["superi-media-io", "superi-concurrency"],
+        ),
         "superi-cli" => Policy::new(&["superi-core", "superi-api"], &[]),
         _ => return None,
     };

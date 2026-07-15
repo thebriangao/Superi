@@ -2,9 +2,12 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::api::MediaCapabilitiesSnapshot;
+use crate::api::{EngineIntrospectionSnapshot, MediaCapabilitiesSnapshot};
 use crate::scenario::ScenarioStateSnapshot;
-use crate::version::{MEDIA_CAPABILITIES_CHANGED_EVENT, SCENARIO_STATE_CHANGED_EVENT};
+use crate::version::{
+    ENGINE_INTROSPECTION_CHANGED_EVENT, MEDIA_CAPABILITIES_CHANGED_EVENT,
+    SCENARIO_STATE_CHANGED_EVENT,
+};
 
 /// One typed event carried by the ordered public API event channel.
 pub trait ApiEvent {
@@ -33,6 +36,29 @@ impl MediaCapabilitiesChanged {
 
 impl ApiEvent for MediaCapabilitiesChanged {
     const NAME: &'static str = MEDIA_CAPABILITIES_CHANGED_EVENT;
+}
+
+/// Full replacement state emitted when engine capability or health state changes.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EngineIntrospectionChanged {
+    snapshot: EngineIntrospectionSnapshot,
+}
+
+impl EngineIntrospectionChanged {
+    pub(crate) const fn new(snapshot: EngineIntrospectionSnapshot) -> Self {
+        Self { snapshot }
+    }
+
+    /// Returns the new complete engine capability and health state.
+    #[must_use]
+    pub const fn snapshot(&self) -> &EngineIntrospectionSnapshot {
+        &self.snapshot
+    }
+}
+
+impl ApiEvent for EngineIntrospectionChanged {
+    const NAME: &'static str = ENGINE_INTROSPECTION_CHANGED_EVENT;
 }
 
 /// Full replacement scenario state emitted after one committed transaction.

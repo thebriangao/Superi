@@ -22,3 +22,4 @@ superi-engine = { path = "../superi-engine" }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 superi-media-io = { path = "../superi-media-io" }
+superi-concurrency = { path = "../superi-concurrency" }

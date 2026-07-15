@@ -2,11 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::api::MediaCapabilitiesSnapshot;
+use crate::api::{EngineIntrospectionSnapshot, MediaCapabilitiesSnapshot};
 use crate::scenario::{ScenarioActionResult, ScenarioTransactionResult, SliceAction};
 use crate::version::{
     EXECUTE_SCENARIO_ACTION_METHOD, EXECUTE_SCENARIO_TRANSACTION_METHOD,
-    GET_MEDIA_CAPABILITIES_METHOD,
+    GET_ENGINE_INTROSPECTION_METHOD, GET_MEDIA_CAPABILITIES_METHOD,
 };
 
 /// One typed public API command and its response contract.
@@ -52,6 +52,44 @@ impl GetMediaCapabilitiesResult {
     /// Returns the complete point-in-time capability state.
     #[must_use]
     pub const fn snapshot(&self) -> &MediaCapabilitiesSnapshot {
+        &self.snapshot
+    }
+}
+
+/// Structured parameters for a complete engine introspection query.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GetEngineIntrospection {}
+
+impl GetEngineIntrospection {
+    /// Creates an unfiltered engine introspection query.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {}
+    }
+}
+
+impl ApiCommand for GetEngineIntrospection {
+    type Response = GetEngineIntrospectionResult;
+
+    const METHOD: &'static str = GET_ENGINE_INTROSPECTION_METHOD;
+}
+
+/// Successful response to [`GetEngineIntrospection`].
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GetEngineIntrospectionResult {
+    snapshot: EngineIntrospectionSnapshot,
+}
+
+impl GetEngineIntrospectionResult {
+    pub(crate) const fn new(snapshot: EngineIntrospectionSnapshot) -> Self {
+        Self { snapshot }
+    }
+
+    /// Returns the complete point-in-time capability and health state.
+    #[must_use]
+    pub const fn snapshot(&self) -> &EngineIntrospectionSnapshot {
         &self.snapshot
     }
 }

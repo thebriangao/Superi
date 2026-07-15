@@ -2,8 +2,8 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 73b58abecb526b6a4985347cd7c30d4f13cdab743d891d6b387374079f2f2b54
-source_files: 50
+source_hash: 0ee7e2f89235330ffe792354066d09879aeabc3add0d9a316b5c6b6ac7bf0291
+source_files: 51
 mapped_at_commit: working-tree
 ---
 
@@ -11,7 +11,7 @@ mapped_at_commit: working-tree
 
 `superi-engine` is the open orchestration layer. Its substantive paths cover canonical editorial
 command state, complete media backend registry assembly, transactional timeline graph plus source
-and decoder preparation, capability introspection, CPU-decoded frame upload, exact viewport and
+and decoder preparation, capability and health introspection, CPU-decoded frame upload, exact viewport and
 export color metadata branching, derived-media generation, transparent proxy resolution,
 predictive cache population, foreground graph and display-color execution, bounded audio admission,
 audio-master A/V coordination with bounded video correction and discontinuity recovery, monotonic
@@ -24,7 +24,7 @@ and recovery, shared finite-resource arbitration across decode, GPU, cache, audi
 work, and atomic timeline plus clip-mix edits. An engine-wide typed command dispatcher
 coordinates canonical scenario transactions, lifecycle state changes, failure and recovery control,
 coherent work admission, bounded cross-domain playback control, canonical logical export-job
-control, and ordered replacement events.
+control, read-only whole-engine observations, and ordered replacement events.
 Native GPU presentation, timeline-owned decoded-audio rendering, export muxing and publication,
 general project transactions, plugins, nodes, and validation remain incomplete.
 
@@ -55,7 +55,9 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   scenario, lifecycle, classified recovery, playback, and logical export events with
   originating-command correlation, canonical error-coordinator ownership, exact recovery tokens,
   lifecycle action routing, shutdown, restart, coherent work admission, plus a one-command
-  nonblocking bridge from EngineControl to the playback owner.
+  nonblocking bridge from EngineControl to the playback owner. It also composes declaration-only
+  media state, optional exact resource accounting, and dispatcher-owned lifecycle and recovery
+  state into one read-only introspection snapshot without advancing a sequence or event.
 - `open/crates/superi-engine/src/error.rs`: Implements EngineControl-owned classified failure
   propagation, immutable actionable records, bounded diagnostic history, exact recovery-intent
   validation, failed-recovery reclassification, and coherent lifecycle routing without copying
@@ -76,7 +78,9 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 - `open/crates/superi-engine/src/frame_upload.rs`: Implements the media-I/O-to-GPU upload boundary
   for CPU-addressable decoded video and retains the frame's complete color pipeline beside the GPU owner.
 - `open/crates/superi-engine/src/introspection.rs`: Implements deterministic API-neutral backend and
-  codec capability snapshots.
+  codec capability records plus complete immutable engine snapshots containing optional exact
+  resource accounting, lifecycle and recovery revisions, health, canonical subsystem state,
+  coherent playback, rendering, and export readiness, and user-safe active failure projections.
 - `open/crates/superi-engine/src/lib.rs`: Documents the implemented orchestration boundaries and
   exposes twenty-two engine modules.
 - `open/crates/superi-engine/src/lifecycle.rs`: Implements the EngineControl-owned lifecycle state
@@ -150,6 +154,11 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   rollback, revision fences, one-unit undo, bounded ordered replacement events, EngineControl
   enforcement, coherent normal and degraded work admission, recovery, stale permits, retained
   failure context, restart, shutdown, and inspection.
+- `open/crates/superi-engine/tests/engine_introspection_contract.rs`: Proves EngineControl-owned
+  read-only observation, unchanged scenario and event state, deterministic capability and resource
+  projection, coherent normal admission, playback-only, rendering-plus-export, and export-only
+  degradation, visible recovery progress, restored readiness, and exclusion of private diagnostic
+  details.
 - `open/crates/superi-engine/tests/frame_upload_contract.rs`: Upload, ownership, storage, and budget
   proof.
 - `open/crates/superi-engine/tests/lifecycle_contract.rs`: Proves deterministic startup and reverse
@@ -215,7 +224,9 @@ non-exhaustive `EngineCommand` and `EngineCommandResult` vocabularies, classifie
 and lifecycle control behind EngineControl, `new_with_playback_bridge` adds a bounded nonblocking
 executor for the real playback owner, `attach_export_jobs` installs the canonical logical export
 queue behind a type-erased controller, and `scenario_only` is the explicit compatibility owner used
-by the narrow public reference API. Successful command and event sequences are independently
+by the narrow public reference API. `introspection_snapshot` composes current declaration-only
+media capabilities, optional exact shared-resource accounting, and dispatcher-owned lifecycle and
+recovery state without dispatching a command or publishing an event. Successful command and event sequences are independently
 monotonic, each event identifies its originating command sequence, and event draining returns
 complete ordered replacement state with scenario, lifecycle, playback, or export correlation.
 
@@ -231,8 +242,11 @@ joining remains explicit outside nonblocking EngineControl.
 `frame_upload` exposes `UploadedVideoFrame` and `VideoFrameUploader` with explicit configuration,
 shared pool construction, and exact color-pipeline access. `render` exposes `ViewportColorMetadata`
 and `ExportColorMetadata`, which clone cached scene metadata and append a correctly typed terminal
-stage without transforming pixels. `introspection` exposes engine-owned media backend, operation, codec,
-constraint, and hardware records through `MediaCapabilities::from_registry`. `media` exposes the
+stage without transforming pixels. `introspection` exposes engine-owned media backend, operation,
+codec, constraint, and hardware records through `MediaCapabilities::from_registry`. It also exposes
+`EngineIntrospectionSnapshot` with lifecycle phase and revisions, health, canonical subsystem
+state, workflow availability and first blocker, safe active failure and recovery state, and optional
+exact `EngineResourceStatus` accounting across all six resource classes. `media` exposes the
 default registry with four primary source adapters and the feature-gated explicitly configured
 vendor constructor.
 
@@ -411,7 +425,12 @@ Matroska or WebM, MP4 or MOV, MXF, and WAV or AIFF sources. Source implementatio
 are constructed and preflighted before source mutation. `os-codecs` may add host-discovered codec
 operations, and `vendor-codecs` requires explicit worker configuration.
 Introspection reads declarations only, orders stable records, separates primary and fallback tiers,
-and never constructs a source or codec.
+and never constructs a source or codec. The dispatcher then composes those immutable declarations
+with one optional resource-arbitration snapshot and its own recovery snapshot. Workflow readiness
+is derived through `EngineLifecycleSnapshot::admit`, so playback, rendering, and export report the
+same dependency decisions enforced for real work. Active diagnostics cross this seam only as the
+core-owned `UserSafeError`; raw messages, sources, contexts, operation labels, and failure sequence
+identity remain private. The read changes no scenario, lifecycle, recovery, command, or event state.
 
 `VideoFrameUploader` accepts CPU storage, validates and borrows exact planes, asks the GPU uploader
 for pooled textures, and preserves format, time, duration, metadata, complete color pipeline, and
@@ -743,8 +762,9 @@ audio mutation, so their user intent remains attached without synthesis.
   future engine worker supervisor can consume, but engine implements no adapter, native discovery,
   transport, or production command integration. AI and project remain declared dependencies without
   production command integration.
-- `superi-api` consumes dispatcher transactions and events plus command and capability snapshots,
-  preserving the public scenario seam without exposing engine-private owners. The broader Rust
+- `superi-api` consumes dispatcher transactions and events plus command, media capability, and
+  complete engine introspection snapshots, preserving public adaptation and scenario seams without
+  exposing engine-private owners. The broader Rust
   engine vocabulary includes playback and logical export dispatch, while their wire projection
   remains with the future unified protocol host.
 - Cache and GPU retain their own exact local budget enforcement, audio retains its preallocated
@@ -789,7 +809,13 @@ audio mutation, so their user intent remains attached without synthesis.
 - Default registry construction is vendor free; host and vendor behavior remains opt-in.
 - Default registry construction includes all four in-tree source backends as primary priority-100
   registrations, with stable identifiers preflighted before source registry mutation.
-- Introspection is declaration-only and has deterministic ordering.
+- Media introspection is declaration-only and has deterministic ordering.
+- Complete introspection requires EngineControl, reads the dispatcher-owned recovery snapshot, and
+  cannot advance command, event, scenario, lifecycle, or resource state. Optional resource state
+  retains its independent revision and exact class order.
+- Workflow readiness is derived from canonical lifecycle admission. Active failures expose only
+  reviewed subsystem, disposition, recovery intent, progress, and `UserSafeError` fields; raw
+  diagnostics and internal recovery tokens never cross the introspection boundary.
 - Timeline resource preparation requires the exact reachable media request set and at least one
   unique explicit decoder stream for each source-bearing media request.
 - Project fingerprints are bound when omitted and rejected when conflicting. Opened source media ID
@@ -939,6 +965,12 @@ full-queue rejection before mutation, off-domain rejection before mutation, cohe
 rendering, and export admission through healthy and degraded states, recovery, stale permit
 rejection, retained failure context, restart, shutdown, and both scenario and lifecycle inspection.
 
+Two engine-introspection contracts use the real registry, dispatcher, lifecycle, error coordinator,
+and resource arbiter. They prove read-only ownership, exact optional accounting, canonical ordering,
+healthy admission, playback-only, rendering-plus-export, and export-only degradation, active
+recovery visibility, restored readiness, and safe failure projection without private messages,
+contexts, or paths.
+
 Two error dispatcher contracts run the canonical coordinator through the full engine command owner.
 They prove retryable and degraded failure state, unrelated-work admission, independent recovery
 revision and event correlation, exact request validation, inspection without events, successful
@@ -1073,8 +1105,9 @@ container or decoding frames. Timeline and graph state are exact control models 
 production timeline owner or the generic `superi-graph` DAG store.
 
 The typed dispatcher is the substantive engine-wide control seam for current scenario, lifecycle,
-classified failure and recovery, work admission, interactive transport, and logical export
-operations. Playback crosses
+classified failure and recovery, work admission, capability and health observation, interactive
+transport, and logical export operations. Its read-only introspection snapshot exposes one coherent
+adaptation view without making project or engine state editable through that surface. Playback crosses
 one bounded nonblocking bridge to its real domain owner. Logical export state remains in the
 canonical queue behind a type-erased dispatcher controller, while prepared executors receive fresh
 revision-scoped permits and render-export revalidates one before publication. The public JSON

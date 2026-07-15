@@ -26,10 +26,12 @@ use crate::export_dispatch::{
     ErasedExportJobController,
 };
 use crate::export_jobs::ExportJobQueueConfig;
+use crate::introspection::{EngineIntrospectionSnapshot, MediaCapabilities};
 use crate::lifecycle::{
     EngineLifecycle, EngineLifecycleAction, EngineLifecycleActionKind, EngineLifecycleSnapshot,
     EngineSubsystem, EngineWorkAdmission, EngineWorkKind, EngineWorkPermit,
 };
+use crate::resource_arbitration::ResourceArbitrationSnapshot;
 use crate::transport::{PlaybackTransport, PlaybackTransportCommand, PlaybackTransportSnapshot};
 
 const COMPONENT: &str = "superi-engine.dispatcher";
@@ -824,6 +826,30 @@ impl EngineCommandDispatcher {
     pub fn scenario_snapshot(&self) -> Result<ScenarioSnapshot> {
         self.require_owner()?;
         Ok(self.scenario.snapshot())
+    }
+
+    /// Returns one read-only capability and health snapshot from existing engine owners.
+    ///
+    /// The caller supplies declaration-only media capabilities and may supply one exact resource
+    /// accounting snapshot. This method does not dispatch a command, advance a sequence, emit an
+    /// event, reserve resources, or mutate scenario or lifecycle state.
+    ///
+    /// # Errors
+    ///
+    /// Returns a conflict outside EngineControl or when this scenario-only dispatcher has no
+    /// lifecycle owner. Returns an internal error if an active failure lacks its required safe
+    /// diagnostic projection.
+    pub fn introspection_snapshot(
+        &self,
+        media_capabilities: &MediaCapabilities,
+        resources: Option<&ResourceArbitrationSnapshot>,
+    ) -> Result<EngineIntrospectionSnapshot> {
+        self.require_owner()?;
+        EngineIntrospectionSnapshot::from_state(
+            media_capabilities,
+            resources,
+            &self.recovery_snapshot()?,
+        )
     }
 
     /// Executes one command and publishes at most one state event.

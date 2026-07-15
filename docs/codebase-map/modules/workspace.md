@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 268d919e5b1fba18da73b9678198a57821e91f97aa1611b5c47fd804b6efe56a
+source_hash: 96ad935a0f20f5bf922a743b7e113f802492ea5a4eb426ea10009b8e768c519d
 source_files: 143
 mapped_at_commit: working-tree
 ---
@@ -406,7 +406,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   internal dependency on `superi-concurrency` for bounded background rendering. `superi-effects`
   directly consumes Serde for its strict authored wires and now directly consumes the existing
   `serde_json` and `sha2` resolutions at runtime for canonical integrity-protected effect preset
-  documents. Text layout adds exact Swash 0.2.9, Skrifa
+  documents. The `superi-api` package record also includes `superi-concurrency` because its
+  integration contract enters the real EngineControl domain; this is a test-only manifest edge and
+  does not change the runtime crate tiers. Text layout adds exact Swash 0.2.9, Skrifa
   0.31.1, Unicode Bidi 0.3.18, and Unicode Linebreak 0.1.5 runtime packages plus test-only Font Test
   Data 0.5.0. The locked Indexmap resolution is 2.11.4 so the declared Rust 1.80 compiler can parse
   and build the affected graph and GPU dependency path. Audio output adds exact CPAL
@@ -684,6 +686,11 @@ orchestration assembles them; the API is the stable facade; and CLI is a headles
 fixture, dependency-check, boundary, and structured-report tools are workspace members for common
 build, test, Clippy, and MSRV coverage, but none is part of the runtime DAG.
 
+Cargo records test-only member dependencies in the same package dependency arrays as runtime
+dependencies. The `superi-api` lock entry therefore names `superi-concurrency` so its public engine
+introspection contract can exercise real EngineControl ownership, while the production API manifest
+still depends only on lower stable facade inputs and preserves runtime direction.
+
 The timeline component document reuses workspace `serde`, `serde_json`, and `sha2` pins already
 present for core and graph contracts. This changes the direct package edges recorded for
 `superi-timeline` but does not change crate-tier direction, introduce a network path, or transfer
@@ -714,6 +721,11 @@ reads locked offline Cargo metadata, classifies all 19 runtime crates, and check
 build, and dev-only edges against explicit reviewed policies. Its live-workspace contract runs in
 ordinary workspace tests, while the direct command gives contributors a deterministic failure
 before review.
+
+The structure guide and executable policy now review the API's test-only concurrency edge alongside
+its existing media-I/O test edge. The former enters EngineControl to exercise the real dispatcher
+introspection seam, while synthetic policy contracts prove neither test relationship can become a
+normal or build dependency without a separate architecture change.
 
 The dependency-policy CI path begins on a push, pull request, or manual dispatch. The read-only job
 checks out the tree, runs `.github/scripts/check-dependency-policy.sh` to verify the expected
@@ -841,10 +853,15 @@ runner and each future production subsystem consume the stable scenario state, s
 boundary, and stage instrumentation contract. `superi-cli` consumes the pinned, system-only
 `sysinfo` dependency for portable current-process resident-memory samples.
 
-The effects preset codec is the current direct consumer added by this lockfile change. It uses only
+The effects preset codec remains a direct runtime consumer recorded by the lockfile. It uses only
 already-resolved permissive serialization and hashing packages, remains offline, preserves the
 effects-to-graph dependency direction, and does not move atomic project storage or plugin hosting
 into the workspace layer.
+
+The API engine-introspection integration test is the current test-only consumer added to the
+lockfile. It enters the concurrency-owned EngineControl domain to prove the real dispatcher seam;
+production API code does not import that crate, and no runtime ownership moves into the workspace
+layer.
 
 The documents deliberately point into other modules:
 
@@ -1096,6 +1113,8 @@ updated consistently. Fresh Cargo metadata expands the member globs to 24 packag
 lockfile includes a substantial
 GPU, image, codec, serialization, platform, and native-build dependency graph, and current codec,
 image, platform, and unsafe documents describe implemented contracts rather than empty placeholders.
+Its `superi-api` package record now includes one test-only concurrency edge for the real engine
+introspection ownership contract without changing the production runtime graph.
 The effects crate now owns a substantive graph-native authoring SDK, exact animation curves,
 complete reusable presets, explicit checked schema migration, and strict authored wires. Its preset
 lockfile change records direct runtime use of already-resolved JSON and SHA-256 packages for

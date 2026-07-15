@@ -66,17 +66,34 @@ fn reviewed_dev_edges_do_not_authorize_production_edges() {
     let dev = metadata(vec![
         package(
             "superi-api",
-            vec![dependency("superi-media-io", Some("dev"))],
+            vec![
+                dependency("superi-media-io", Some("dev")),
+                dependency("superi-concurrency", Some("dev")),
+            ],
         ),
         package("superi-media-io", vec![]),
+        package("superi-concurrency", vec![]),
     ]);
     let runtime = metadata(vec![
-        package("superi-api", vec![dependency("superi-media-io", None)]),
+        package(
+            "superi-api",
+            vec![
+                dependency("superi-media-io", None),
+                dependency("superi-concurrency", None),
+            ],
+        ),
         package("superi-media-io", vec![]),
+        package("superi-concurrency", vec![]),
     ]);
 
-    validate_metadata(&dev).expect("the reviewed API contract-test edge is valid");
-    assert!(validate_metadata(&runtime).is_err());
+    validate_metadata(&dev).expect("the reviewed API contract-test edges are valid");
+    let runtime_error = validate_metadata(&runtime).expect_err("dev edges must not widen runtime");
+    assert!(runtime_error
+        .to_string()
+        .contains("superi-api -> superi-media-io"));
+    assert!(runtime_error
+        .to_string()
+        .contains("superi-api -> superi-concurrency"));
 }
 
 #[test]

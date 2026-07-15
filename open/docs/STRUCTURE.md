@@ -85,8 +85,11 @@ The checker reads locked, offline Cargo metadata and validates every internal no
 dependency against the exact runtime edges above. Test-only dependencies use a separate reviewed
 allowlist, so a dev edge cannot silently authorize the same production edge. New runtime crates and
 new internal edges fail closed until this document and the checker policy are updated together in
-the architecture review that introduces them. Because the checker is a wildcard workspace member,
-its live-workspace contract also runs under the ordinary workspace test gate.
+the architecture review that introduces them. Current reviewed dev edges let concurrency test media
+values from `superi-media-io`, and let API contracts use `superi-media-io` registry fixtures plus the
+`superi-concurrency` EngineControl domain needed to exercise the real engine introspection seam.
+None of those test edges authorizes a production dependency. Because the checker is a wildcard
+workspace member, its live-workspace contract also runs under the ordinary workspace test gate.
 
 `superi-bench` provides the stable Cargo benchmark boundary for decode, graph evaluation, upload,
 playback, cache, render, and project save/load. Run it with `cargo bench -p superi-bench`; use
