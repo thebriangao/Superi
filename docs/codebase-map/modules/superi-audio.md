@@ -2,8 +2,8 @@
 module_id: superi-audio
 source_paths:
   - open/crates/superi-audio
-source_hash: dae3c9afe9985eea698e9bea70f65b85a5b60d6a17b8422a0972eb2adfae4c5f
-source_files: 18
+source_hash: 3a459fe36cacd66e1c6b7a9f2bb1ae651940f8c5f4c333827d95325a5d735472
+source_files: 20
 mapped_at_commit: working-tree
 ---
 
@@ -23,6 +23,9 @@ prepared sinc converter maps fixed device-output blocks to exact variable source
 retaining each independent sample clock and smoothly correcting bounded device-rate error.
 Common mono, stereo, quad, 5.1, and 7.1 layouts compose the core semantic order, and explicit
 prepared speaker or discrete conversion nodes adapt channels without implicit graph routing.
+Prepared core effects add cascaded biquad equalization, linked-channel compression and peak
+limiting, fixed channel-preserving delay, and normalized soft saturation through the existing
+single-input graph processor boundary.
 
 All three paths enforce the platform-owned audio execution domain, but their control-path owners
 remain separate. Graph editing and preparation allocate outside callbacks. Schedule construction and
@@ -38,6 +41,9 @@ concerns.
 - `open/crates/superi-audio/src/channels.rs`: Defines the common-layout catalog, explicit speaker
   and discrete interpretations, control-side conversion-matrix preparation, and allocation-free
   exact-layout processing with fail-closed validation.
+- `open/crates/superi-audio/src/effects.rs`: Implements validated prepared equalization,
+  linked-channel compression and limiting, channel-preserving fixed delay, and normalized soft
+  saturation with finite input and output enforcement.
 - `open/crates/superi-audio/src/graph.rs`: Implements typed audio graph, node, and edge identities;
   source, processor, submix, auxiliary, and master roles; direct, send, and return routes; one-master
   and deterministic cycle-safe topology; exact channel-layout validation; destination-scoped and
@@ -45,7 +51,8 @@ concerns.
   exact consecutive block processing on the audio domain.
 - `open/crates/superi-audio/src/hosting.rs`: Placeholder for additive VST3 and Audio Unit hosting.
 - `open/crates/superi-audio/src/lib.rs`: Documents the implemented graph, channel, routing,
-  scheduling, and playback boundaries and exports the nine audio concern modules.
+  scheduling, playback, conversion, and effects boundaries and exports the ten audio concern
+  modules.
 - `open/crates/superi-audio/src/metering.rs`: Placeholder for metering and audio analysis.
 - `open/crates/superi-audio/src/mixing.rs`: Implements validated clip controls, semantic channel
   matrices, revisioned identity mutations, immutable solo-aware snapshots, bounded clip
@@ -81,18 +88,27 @@ concerns.
 - `open/crates/superi-audio/tests/resample_contract.rs`: Proves channel-preserving conversion,
   anti-aliasing, exact source and device clocks, continuity, domain and input rejection, and signed
   device-clock correction.
+- `open/crates/superi-audio/tests/audio_effects_contract.rs`: Proves all public effects through the
+  real prepared graph, including adjacent-block state, channel linking, exact delay timing,
+  response and ceiling behavior, bounds, and non-finite rejection.
 
 ## Public surface
 
-The crate root exports `channels`, `graph`, `hosting`, `metering`, `mixing`, `playback`, `resample`,
-`routing`, and `sync`. `channels`, `graph`, `mixing`, `routing`, `sync`, `playback`, and `resample`
-contain substantive behavior.
+The crate root exports `channels`, `effects`, `graph`, `hosting`, `metering`, `mixing`, `playback`,
+`resample`, `routing`, and `sync`. Every module except the metering and hosting placeholders
+contains substantive behavior.
 
 `channels` exposes `CommonChannelLayout`, `ChannelInterpretation`, and `PreparedChannelMixer`.
 Canonical layouts preserve core speaker order. Speaker conversion implements documented mono,
 stereo, quad, and 5.1 matrices; exact 7.1 identity is supported while undefined 7.1 speaker
 conversion fails closed. Discrete conversion copies by stream index and explicitly drops or
 zero-fills unmatched channels.
+
+`effects` exposes immutable validated configurations and prepared processors for low-pass,
+high-pass, peaking, low-shelf, and high-shelf equalization; feed-forward compression;
+zero-lookahead peak limiting; fixed feedback delay; and normalized soft saturation. Equalizer,
+compressor, and limiter preparation bind one positive sample rate. Every processor binds one
+unchanged ordered layout and implements the graph's public single-input `AudioProcessor` contract.
 
 `graph` exposes ordered audio-owned `AudioGraphId`, `AudioNodeId`, and `AudioEdgeId` values.
 `AudioNode` declares a source, single-input processor, or typed multi-input bus with exact input and
@@ -194,6 +210,13 @@ the ramped ratio update, runs the preallocated sinc converter, reinterleaves the
 advances both exact clocks only after success. A positive observed device-rate error applies
 `1 / (1 + ppm / 1_000_000)` to the nominal output-to-input ratio.
 
+Effect preparation validates every finite bounded parameter, computes coefficients and time
+constants, and allocates per-channel or delay state before callback execution. Processing validates
+the exact input and output layout, buffer shape, sample rate where applicable, and all input samples
+before state mutation. Equalizer state is independent per band and channel; dynamics detection and
+gain are linked once per frame; the delay ring advances in interleaved channel order; and all state
+continues identically across arbitrary adjacent block partitions.
+
 ## Dependencies and consumers
 
 - `superi-core` supplies ordered `ChannelLayout`, exact `SampleTime`, and the shared classified
@@ -215,10 +238,11 @@ advances both exact clocks only after success. A positive observed device-rate e
   adapter inputs.
 - `superi-media-io` remains the decoded sample owner and is not a direct dependency. No production
   decoder currently feeds a prepared graph from scheduled slices.
-- The six public integration contracts are the current real consumers. They process exact adjacent
+- The seven public integration contracts are the current real consumers. They process exact adjacent
   blocks through clip DSP, dry, auxiliary, submix, and master paths, publish scheduled presentation
   through actual concurrency clocks, exercise bounded device output, and prove clip identity
-  inheritance while converting between independent source and device clocks.
+  inheritance while converting between independent source and device clocks and applying core
+  effects through the prepared graph.
 
 ## Invariants and operational boundaries
 
@@ -238,6 +262,12 @@ advances both exact clocks only after success. A positive observed device-rate e
   and exposes sinc latency separately from sample-coordinate advancement.
 - Converter rejection before DSP leaves both positions unchanged. Its successful path uses only
   preparation-owned buffers, takes no lock, and performs no heap allocation or free.
+- Effects require one exact connected layout and finite input. Equalizer state is per channel;
+  compression and limiting deliberately apply one linked gain across the frame; delay never crosses
+  channel positions; and successful processing allocates and locks nothing.
+- The limiter is zero-lookahead: it adds no latency and constrains the current frame immediately.
+  Compressor and limiter release state, equalizer history, and delay contents persist across exact
+  adjacent graph blocks.
 - Prepared execution includes only the chosen destination and its connected ancestors. Its order
   and buffers do not change during processing.
 - Every block has one exact integral sample clock and must follow the prior successful block
@@ -317,14 +347,19 @@ kHz, stop-band attenuation at 96 to 48 kHz, exact source and device reports acro
 domain, position, and drift inputs without position advance, and positive and negative clock-error
 consumption over sustained output.
 
+Four effects contracts prove three-band equalizer response and partition-independent state, linked
+compression, an exact peak ceiling, fixed stereo delay coordinates without cross-channel leakage,
+bounded odd saturation, finite output, rejected invalid parameters, and non-finite input failure
+without graph-clock advancement.
+
 ## Current status and risks
 
 The independent audio graph, channel conversion, bus routing, sample-accurate schedule, production
-device-output substrate, clip mix processor, and prepared sample-rate converter are substantive and
-publicly test-backed. Two sibling modules remain documentation-only placeholders. Engine consumes
-timeline edit outcomes for atomic clip identity reconciliation, but there is no decoded-audio fetch,
-scheduled-slice graph binding, metering, plugin host, platform channel-layout negotiation, engine
-playback composition, or end-to-end
+device-output substrate, clip mix processor, prepared sample-rate converter, and core effects are
+substantive and publicly test-backed. Two sibling modules remain documentation-only placeholders.
+Engine consumes timeline edit outcomes for atomic clip identity reconciliation, but there is no
+decoded-audio fetch, scheduled-slice graph binding, metering, plugin host, platform channel-layout
+negotiation, engine playback composition, or end-to-end
 source-playback-final-mix path.
 
 Multi-input routing is deliberately unity-only to avoid claiming later control semantics. Prepared
@@ -335,6 +370,8 @@ remain a trust boundary for real-time safety and error atomicity. Physical laten
 channel routing, hot-plug, constrained-device, and soak evidence remain
 owned by the platform audio and physical test lanes. Current gain is linear rather than
 decibel-addressed, fades are linear only, and pan is the canonical stereo equal-power model.
+Effects intentionally omit automation, lookahead, tempo sync, and convolution; those require
+separate prepared control and latency contracts.
 
 ## Maintenance notes
 
@@ -343,7 +380,8 @@ sample and channel meanings, fallible preallocation, whole-frame queue admission
 ceiling, timed-silence clock behavior, callback-only atomic telemetry, and failure-only diagnostic
 allocation. Preserve direct, send, return, and single-master role validation and stable edge-ordered
 summing. Preserve fixed converter lookahead, explicit filter delay, bounded ramped clock correction,
-and exact dual-clock reports. Any indexed extension must define ordering explicitly and prove
+exact dual-clock reports, effect configuration bounds, linked dynamics, channel-local filter and
+delay state, and adjacent-block continuity. Any indexed extension must define ordering explicitly and prove
 callback safety. Keep discovery and stream setup on control threads, and revalidate capabilities
 before stream creation.
 

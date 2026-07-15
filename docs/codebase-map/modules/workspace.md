@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: c9fb96842d8d3c1c0591794fe94890be3190a4751743d17cc90b9639a2380e32
-source_files: 133
+source_hash: fc5f84579e4caafd4708f7d1ab7a027b05d2b77be13030d1830dee0d3f565b38
+source_files: 134
 mapped_at_commit: working-tree
 ---
 
@@ -273,6 +273,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P2.W04.C007.md`: Durable implementation evidence for canonical common channel
   layouts and explicit speaker or discrete conversion. It records prepared callback-safe matrices,
   fail-closed undefined speaker conversions, graph timing proof, and physical device limitations.
+- `docs/checkpoints/P2.W04.C008.md`: Durable implementation evidence for prepared equalization,
+  linked compression and limiting, fixed delay, and saturation. It records graph integration,
+  exact timing and channel behavior, adjacent-block continuity, finite failure boundaries, focused
+  proof, delivery context, and later automation and engine composition ownership.
 - `docs/checkpoints/P1.W07.C025.md`: Durable implementation evidence for bounded timing and process
   resident-memory instrumentation across all eight canonical slice stages. It records the private
   sampler boundary, schema 1.1.0 report contract, dependency decision, red-to-green proof,
@@ -1118,8 +1122,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`ef6cc8fb9262f6ee6f8cd9ca1875210303120819` when the map was refreshed. Its hash describes the exact
-133 discovered source files, including twelve generated binary payloads, layered on that revision.
+`41ad83bf61b2cecb5690bd7df792b585d2f6f24c` when the map was refreshed. Its hash describes the exact
+134 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 
