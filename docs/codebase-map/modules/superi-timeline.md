@@ -2,8 +2,8 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: 3e118671d3a769c7f1c3d4db6ed0289bcbe54d529b521a3b78d84dc6e1dd314f
-source_files: 24
+source_hash: a78d2d121cb2e8de8aefc94be0bcad6bdc57134e356e789759f871e544e229b8
+source_files: 25
 mapped_at_commit: working-tree
 ---
 
@@ -41,11 +41,19 @@ its parent clip in the same project revision. They reuse foundational insert, ov
 and replace semantics, expose exact parent-to-child links and recursive nesting, and edit a shared
 child through any stable instance while reporting every current instance.
 
+Native multicam state keeps ordered camera-angle metadata and synchronization provenance on one
+ordinary source timeline while each ordinary nested target clip owns an independent gapless switch
+program and explicit audio policy. Exact resolution follows the target clip time map into source
+timeline coordinates, selects the active angle, resolves its synchronized source clip, and follows
+that clip's own time map to a directly inspectable media or nested-source coordinate. Fragment and
+replacement operations inherit target switch intent and source-angle membership through the same
+atomic edit path used by selection, links, groups, annotations, nesting, and retiming.
+
 The model also owns a narrow immutable color metadata seam that retains graph color state through
 the future compilation boundary without changing source meaning.
 
-The crate continues to reserve multicam behavior, OTIO-compatible interchange, and deterministic
-timeline-to-graph compilation. Those surfaces are not implemented.
+The crate continues to reserve OTIO-compatible interchange and deterministic timeline-to-graph
+compilation. Those surfaces are not implemented.
 The canonical OTIO 0.18.1 fixture remains executable evidence for future interchange work rather
 than a production reader or writer.
 
@@ -61,10 +69,11 @@ than a production reader or writer.
 - `open/crates/superi-timeline/src/edit_state.rs`: Implements exact and relationship-expanded
   selection, per-track targeting and sync-lock intent, canonical clip links and groups, stable
   introspection, and structural reconciliation.
-- `open/crates/superi-timeline/src/ids.rs`: Re-exports the canonical project and editorial object
-  identities owned by `superi-core`.
+- `open/crates/superi-timeline/src/ids.rs`: Re-exports the canonical project, editorial object, and
+  multicam angle identities owned by `superi-core`.
 - `open/crates/superi-timeline/src/lib.rs`: Exports the implemented identity, edit-state, edit
-  operation, model, and retime modules plus the staged editorial namespaces.
+  operation, model, multicam, nested, and retime modules plus staged interchange and compilation
+  namespaces.
 - `open/crates/superi-timeline/src/markers.rs`: Implements stable timeline, track, and object marker
   ownership, visible labels, flags, notes, recursively nested ordered metadata, owner-relative range
   resolution, dangling-owner reconciliation, persistent snapping state, exact candidate projection,
@@ -75,9 +84,12 @@ than a production reader or writer.
 - `open/crates/superi-timeline/src/model.rs`: Implements four track kinds, track-specific timing and
   media semantics, exact clip range maps, clip-owned time maps, linked range and playback
   availability context, every foundational editorial object, ordered tracks, timelines, annotation
-  integration, validated project snapshots, atomic revision-checked editing, and
+  integration, multicam source and clip ownership, project-wide multicam reconciliation and
+  validation, validated project snapshots, atomic revision-checked editing, and
   `TimelineColorMetadata`, which retains exact graph color metadata through compilation.
-- `open/crates/superi-timeline/src/multicam.rs`: Placeholder for a multicam data model.
+- `open/crates/superi-timeline/src/multicam.rs`: Implements synchronization provenance, ordered
+  angle metadata and source membership, clip-local gapless switching, explicit audio policies,
+  movable cuts, exact nested and retimed source resolution, and structured multicam errors.
 - `open/crates/superi-timeline/src/nested.rs`: Implements exact nested placement, atomic compound
   timeline creation, direct child editing by stable instance identity, shared-instance inspection,
   recursive nesting inspection, and typed outcomes over the foundational edit owner.
@@ -94,6 +106,10 @@ than a production reader or writer.
 - `open/crates/superi-timeline/tests/model_contract.rs`: Proves every foundational object,
   cross-rate and cross-track synchronization, linked media and nesting, direct edits, revision
   conflicts, atomic rollback, transition bounds, continuity, missing links, and nesting cycles.
+- `open/crates/superi-timeline/tests/multicam_contract.rs`: Proves ordered angle metadata,
+  synchronization provenance, exact retimed nested resolution, switch and cut edits, fixed and
+  all-angle audio policy, source and target fragment inheritance, replacement inheritance,
+  disabled-angle rejection, stale revisions, and atomic rollback.
 - `open/crates/superi-timeline/tests/nested_contract.rs`: Proves exact cross-clock nested placement,
   retained child object and command state, compound creation, shared instances, recursive nesting,
   direct child edits, stale revisions, and atomic range, identity, source, and cycle rejection.
@@ -127,8 +143,8 @@ than a production reader or writer.
 ## Public surface
 
 The `ids` module re-exports `ProjectId`, `MediaId`, `BinId`, `SmartCollectionId`, `TimelineId`,
-`TrackId`, `ClipId`, `GapId`, `TransitionId`, `GeneratorId`, `CaptionId`, and `MarkerId`. These are
-the same sealed core identifier types used by every other subsystem.
+`TrackId`, `ClipId`, `GapId`, `TransitionId`, `GeneratorId`, `CaptionId`, `MarkerId`, and
+`MulticamAngleId`. These are the same sealed core identifier types used by every other subsystem.
 
 The track semantics surface includes:
 
@@ -213,6 +229,21 @@ The retime surface includes:
 - `Clip::time_map`, `Clip::set_time_map`, and `Clip::source_time_at` for direct checked timing edits
   and absolute record-to-source transport queries without replacing clip identity.
 
+The multicam surface includes:
+
+- `MulticamSyncMethod` for explicit manual, timecode, in-point, out-point, named-marker, or audio
+  synchronization provenance.
+- `MulticamAngle` and `MulticamSource` for stable angle identity, editor name, camera label,
+  enabled state, deterministic metadata, ordered local source clips, and ordered source-level
+  inspection and mutation.
+- `MulticamSwitch` and `MulticamClip` for one ordinary nested clip's independent gapless source
+  partition, range switching, movable cut boundaries, and explicit `MulticamAudioPolicy`.
+- `Timeline` methods that attach, inspect, mutate, iterate, and remove source-level or clip-level
+  multicam state inside the existing unpublished project draft.
+- `resolve_multicam_frame` and `ResolvedMulticamFrame`, which expose the target timeline and clip,
+  synchronized source timeline coordinate, selected angle and source clip, direct source
+  relationship and time, and active audio angles.
+
 The editorial operation surface includes:
 
 - `EditOperation` and `EditKind` for insert, overwrite, append, replace, lift, extract, ripple,
@@ -245,8 +276,8 @@ The nested operation surface includes:
 - `NestedSequenceResult` and `NestedSequenceEditResult`, which expose the published revision,
   foundational placement outcome, edited child identity, and affected shared instances.
 
-`compile`, `multicam`, and `otio` remain public namespace reservations without production
-operations. `edit_ops`, `markers`, and `nested` are substantive public operation surfaces.
+`compile` and `otio` remain public namespace reservations without production operations.
+`edit_ops`, `markers`, `multicam`, and `nested` are substantive public operation surfaces.
 
 `TimelineColorMetadata::from_graph` retains exact graph-owned color state, `graph` exposes it, and
 `compile` returns an unchanged clone for a later graph compiler.
@@ -371,13 +402,37 @@ Nested operation flow composes those same owners:
 5. Instance and recursive-tree inspection walk the validated project in deterministic timeline,
    track, and item order and return every typed source and record relationship without flattening.
 
+Multicam flow composes ordinary timelines, clips, and edit transactions rather than defining a
+parallel editorial model:
+
+1. One source `Timeline` owns a `MulticamSource` with at least two ordered `MulticamAngle` values.
+   Angle metadata and the authored synchronization method supplement the source clips' exact record
+   placement without copying source timing into a second structure.
+2. One target `Timeline` attaches `MulticamClip` state to an existing local clip whose source is
+   `ClipSource::Timeline`. The switch program covers `[0, source timeline duration)` exactly in the
+   source edit clock, while the target clip retains ordinary source range, record range, nesting,
+   identity, and retime state.
+3. Project validation requires globally unique angle identities, local source membership, no
+   overlapping source clips within one angle, complete gapless switches, enabled referenced
+   angles, a valid fixed-audio angle, and exact source clock and duration agreement.
+4. Resolution maps absolute target record time through `Clip::source_time_at`, selects the active
+   switch in synchronized timeline coordinates, finds the angle member covering that time, and
+   maps through the selected source clip's `Clip::source_time_at`. No implicit rounding or flattened
+   source relationship enters the path.
+5. Fragment outcomes clone clip-local switch programs and insert source fragments beside their
+   original angle member. Replace outcomes transfer the same state to the caller-supplied identity;
+   reconciliation removes references to deleted local clips before the complete candidate validates.
+6. Audio policy either follows the video angle, fixes one explicit angle, or exposes all enabled
+   angles in source order for a later mixer. This crate stores intent and does not mix samples.
+
 The separate fixture path reads checked-in OTIO JSON through development-only `serde_json::Value`
 assertions. It does not enter the native model yet.
 
 ## Dependencies and consumers
 
 - `superi-core` supplies shared errors, exact rational and sample time, channel layouts, project and
-  media identity, and all typed editorial identities used by production source.
+  media identity, all typed editorial identities, and the stable `MulticamAngleId` used by
+  production source.
 - `superi-graph` supplies `GraphColorMetadata` to the narrow color propagation seam and remains the
   future compilation target for the substantive editorial model.
 - `serde_json` is development-only and reads checked-in canonical JSON. No OTIO library, Python
@@ -390,8 +445,8 @@ assertions. It does not enter the native model yet.
 ## Invariants and operational boundaries
 
 - Project, media, bin, smart collection, timeline, track, clip, gap, transition, generator,
-  caption, and marker identities are permanent typed domains. Track, editorial object, and marker
-  identities are unique across one project.
+  caption, marker, and multicam angle identities are permanent typed domains. Track, editorial
+  object, marker, and multicam angle identities are unique across one project.
 - Manual bin parents must exist and remain acyclic. One linked media identity may belong to at most
   one manual bin, and every member must resolve in the same project. Smart collection membership is
   never persisted and always follows current metadata and relink state in stable identity order.
@@ -446,6 +501,18 @@ assertions. It does not enter the native model yet.
   parent clip publish together or neither publishes.
 - A shared child edit validates every current instance before publication. Instance and recursive
   inspection preserve parent, track, clip, child, source-range, record-range, and depth identity.
+- Multicam source state belongs to an ordinary timeline. Every angle retains stable identity,
+  nonblank editor and camera labels, deterministic metadata, enabled state, and ordered local clip
+  membership. One source clip belongs to at most one angle, and members of one angle never overlap.
+- Multicam target state belongs to an ordinary local nested clip, not a competing clip type. Its
+  switch intervals are nonempty, gapless, half-open, source-clocked, and cover the complete source
+  timeline. Video and fixed-audio references select existing enabled angles.
+- Multicam resolution follows both the target and selected source clip time maps with
+  `TimeRounding::Exact`, preserving retime, nesting, and direct source identity. A synchronized gap
+  returns a typed missing-source error instead of silently choosing another angle or clip.
+- Structural fragments inherit source angle membership and target switch intent. Replacement
+  transfers those relationships to the new caller-owned clip identity, while deleted identities
+  reconcile before publication. Every change remains inside one revision-checked project draft.
 - A transition names the timed item immediately before and after it. Its offsets use the track edit
   clock, fit adjacent durations, do not overlap another transition on the same item, and do not add
   to track duration. Adjacent transitions are invalid.
@@ -466,9 +533,8 @@ assertions. It does not enter the native model yet.
   Append and insert report exact extension, while extract reports exact shortening.
 - A transition is never silently redirected. It survives only with its original adjacent endpoints
   and valid nonoverlapping handles; otherwise its typed identity appears in the outcome.
-- Fit-to-fill, production OTIO
-  preservation, deterministic graph compilation, undo-history ownership, multicam, and
-  higher-level editorial commands remain outside this state.
+- Fit-to-fill, production OTIO preservation, deterministic graph compilation, undo-history
+  ownership, and higher-level editorial commands remain outside this state.
 - The timeline color seam preserves exact graph metadata and performs no transform, inference,
   normalization, or reordering.
 
@@ -536,6 +602,12 @@ explicit missing and unverified state, content-mismatch evidence, accepted relin
 stable identity, and unchanged exact retime, link, group, synchronization, and nested sequence
 state through a subsequent real edit batch.
 
+Four multicam tests prove ordered angle identity, labels and deterministic metadata, timecode and
+audio synchronization provenance, exact resolution through a 2x target time map and a cross-rate
+source clip, range switching, movable cuts, fixed and all-angle audio intent, target and source
+fragment inheritance, target and source replacement inheritance, missing coverage and disabled
+angle rejection, stale revisions, and complete atomic rollback.
+
 Workspace tests, warnings-denied Clippy, formatting, dependency direction, the offline boundary
 scan, and codebase-map validation are required delivery gates.
 
@@ -545,9 +617,12 @@ The foundational project model, rational range mapping, linked availability cont
 organization, saved smart collections, explicit relink state, typed track semantics, authoritative
 timeline edit state, markers, deterministic metadata, exact snapping,
 exact clip retiming, six primary operations, nine advanced edit families, nested placement,
-compound creation, shared child editing, and recursive inspection are substantive and test-backed.
+compound creation, shared child editing, recursive inspection, and native multicam angle,
+synchronization, switching, audio-intent, structural inheritance, and exact resolution are
+substantive and test-backed.
 Production OTIO reading and writing, graph compilation, fit-to-fill, grouped-source compound
-synthesis, undo ownership, multicam, persistence, and engine or API integration remain absent.
+synthesis, undo ownership, multicam mixing and runtime playback, persistence, and engine or API
+integration remain absent.
 
 The model retains equal physical source and record duration for nominal clip ranges, while separate
 time maps may sample beyond that selection and report known unavailable points. Exact seam and slice
@@ -573,7 +648,9 @@ and retime-aware fragmentation, exact time-map seams, explicit transport resolut
 transition invalidation, result reporting, marker ownership, exact snapping, metadata ordering,
 source-link resolution, selection expansion, track intent, clip relationship partitions,
 reconciliation, transition adjacency, nesting acyclicity, exact nested placement, shared-instance
-reporting, and atomic publication as public contracts. Extend tests before changing them. Later
+reporting, multicam angle identity and metadata, source membership, switch coverage, exact
+resolution, audio intent, structural inheritance, and atomic publication as public contracts.
+Extend tests before changing them. Later
 higher-level and grouped-source compound operations must consume `tracks_affected_by_sync`, exact
 selection state, and clip-owned time maps instead of recreating those policies. Add higher-level
 edit commands, interchange, and graph compilation only through their owning modules, and update

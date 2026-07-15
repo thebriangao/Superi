@@ -68,6 +68,8 @@ pub enum IdentifierKind {
     Edge,
     /// A graph-addressable processing resource.
     Resource,
+    /// One stable camera angle in a synchronized multicam source.
+    MulticamAngle,
 }
 
 impl IdentifierKind {
@@ -94,6 +96,7 @@ impl IdentifierKind {
         Self::Port,
         Self::Edge,
         Self::Resource,
+        Self::MulticamAngle,
     ];
 
     /// Returns the permanent lowercase code for this domain.
@@ -121,6 +124,7 @@ impl IdentifierKind {
             Self::Port => "port",
             Self::Edge => "edge",
             Self::Resource => "resource",
+            Self::MulticamAngle => "multicam-angle",
         }
     }
 
@@ -149,6 +153,7 @@ impl IdentifierKind {
             "port" => Some(Self::Port),
             "edge" => Some(Self::Edge),
             "resource" => Some(Self::Resource),
+            "multicam-angle" => Some(Self::MulticamAngle),
             _ => None,
         }
     }
@@ -415,4 +420,9 @@ define_identifier!(
     ResourceId,
     Resource,
     "A strongly typed graph resource identifier."
+);
+define_identifier!(
+    MulticamAngleId,
+    MulticamAngle,
+    "A strongly typed multicam angle identifier."
 );

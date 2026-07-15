@@ -2,7 +2,7 @@
 module_id: superi-core
 source_paths:
   - open/crates/superi-core
-source_hash: e450937da0c900285262d70ca4f0f5829c2cb19fade22357e6532b5e7ea0c6fe
+source_hash: 4e084e9c67bddf2afba781a5f525904868d46c3611d90924a91167ed2ae99991
 source_files: 23
 mapped_at_commit: working-tree
 ---
@@ -48,11 +48,11 @@ The module owns 23 text files under one crate path:
 - `open/crates/superi-core/src/geometry.rs` defines finite points, vectors, homogeneous 3 by 3
   transforms, half-open continuous rectangles, reduced positive aspect ratios, and signed
   half-open pixel bounds with checked arithmetic.
-- `open/crates/superi-core/src/ids.rs` defines twenty-one opaque 128-bit typed identifiers, their
+- `open/crates/superi-core/src/ids.rs` defines twenty-two opaque 128-bit typed identifiers, their
   sealed common trait, permanent domain prefixes, big-endian byte form, and strict lowercase
   hexadecimal parsing. Timeline, gap, transition, generator, and caption are the editorial
-  additions, including editorial marker, media bin, and smart collection domains; graph, port,
-  edge, and resource are the graph-facing additions.
+  additions, including editorial marker, media bin, smart collection, and multicam-angle domains;
+  graph, port, edge, and resource are the graph-facing additions.
 - `open/crates/superi-core/src/pixel.rs` defines pixel storage tags, alpha interpretation, audio
   sample storage tags, semantic channel positions, and immutable ordered channel layouts.
 - `open/crates/superi-core/src/prelude.rs` is an intentionally reviewed allowlist of broadly shared
@@ -119,7 +119,8 @@ The major surfaces are:
 - Identifiers: `ProjectId`, `MediaId`, `BinId`, `SmartCollectionId`, `TrackId`, `ClipId`,
   `TimelineId`, `GapId`, `TransitionId`, `GeneratorId`, `CaptionId`, `MarkerId`, `NodeId`,
   `ParameterId`, `JobId`, `CacheId`, `DeviceId`, `GraphId`, `PortId`, `EdgeId`, `ResourceId`,
-  `IdentifierKind`, sealed `TypedId`, and `ParseIdentifierError`.
+  `MulticamAngleId`, `IdentifierKind`, sealed `TypedId`, and
+  `ParseIdentifierError`.
 - Time: `Timebase`, `FrameRate`, `TimeRounding`, `RationalTime`, `SampleTime`, `Duration`, and
   `TimeRange`. Common exact frame-rate constants include integer rates and 24000/1001,
   30000/1001, and 60000/1001.
@@ -271,8 +272,8 @@ Repository source search shows active direct Rust imports in twelve of them:
   sample tags, rational clocks, durations, ranges, rounding, and timecode across probe, demux,
   decode, container, VFR, image-sequence, PCM, selection, and metadata paths.
 - `superi-timeline` uses project, media, timeline, track, clip, gap, transition, generator,
-  caption, and marker identities with exact rational ranges to own validated editable project and
-  annotation state.
+  caption, marker, and multicam angle identities with exact rational ranges to own validated
+  editable project, annotation, synchronization, and switching state.
 
 The other six declared consumers, `superi-ai`, `superi-audio`, `superi-cache`, `superi-cli`,
 `superi-effects`, and `superi-project`, currently have no direct `superi_core::` reference in Rust
@@ -330,10 +331,11 @@ The crate has 89 integration tests across 10 files:
 - 7 shared-error tests in `open/crates/superi-core/tests/error_contract.rs`.
 - 15 geometry tests in `open/crates/superi-core/tests/geometry_contract.rs`.
 - 6 identifier tests in `open/crates/superi-core/tests/id_contract.rs`, including marker, media bin,
-  and smart collection domain identity, canonical text, parsing, and common traits.
+  smart collection, and multicam-angle domain identity, canonical text, parsing, and common traits.
 - 9 media and color tag tests in `open/crates/superi-core/tests/media_tag_contract.rs`.
 - 2 curated-prelude tests in `open/crates/superi-core/tests/prelude_contract.rs`.
-- 7 stable-wire tests in `open/crates/superi-core/tests/serialization_contract.rs`.
+- 7 stable-wire tests in `open/crates/superi-core/tests/serialization_contract.rs`, including the
+  permanent `multicam-angle` code and typed text.
 - 12 settings and discovery tests in `open/crates/superi-core/tests/settings_contract.rs`.
 - 17 exact-time tests in `open/crates/superi-core/tests/time_contract.rs`.
 - 7 timecode tests in `open/crates/superi-core/tests/timecode_contract.rs`.

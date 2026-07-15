@@ -1055,6 +1055,7 @@ pub(crate) fn apply_operation(
         }
     }?;
     inherit_fragment_intent(timeline, outcome.fragments())?;
+    inherit_replacement_intent(timeline, &outcome);
     Ok(outcome)
 }
 
@@ -1092,8 +1093,21 @@ fn inherit_fragment_intent(timeline: &mut Timeline, fragments: &[EditFragment]) 
             members.push(created);
             timeline.group_clips(members)?;
         }
+        timeline.inherit_multicam_fragment(original, created);
     }
     Ok(())
+}
+
+fn inherit_replacement_intent(timeline: &mut Timeline, outcome: &EditOutcome) {
+    if outcome.kind() != EditKind::Replace {
+        return;
+    }
+    let ([EditorialObjectId::Clip(removed)], [EditorialObjectId::Clip(inserted)]) =
+        (outcome.removed_ids(), outcome.inserted_ids())
+    else {
+        return;
+    };
+    timeline.transfer_multicam_clip(*removed, *inserted);
 }
 
 #[allow(clippy::too_many_arguments)]

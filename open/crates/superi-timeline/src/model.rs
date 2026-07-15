@@ -25,6 +25,7 @@ use crate::markers::{
 };
 pub use crate::media::LinkedMediaReference;
 use crate::media::MediaLibrary;
+use crate::multicam::{find_clip, MulticamClip, MulticamSource};
 use crate::retime::{ClipTimeMap, MappedSourceTime, RetimeMode, RetimeResolution};
 
 /// The semantic media class of an editorial track.
@@ -1961,6 +1962,8 @@ pub struct Timeline {
     tracks: Vec<Track>,
     edit_state: TimelineEditState,
     annotations: TimelineAnnotations,
+    multicam_source: Option<MulticamSource>,
+    multicam_clips: BTreeMap<ClipId, MulticamClip>,
 }
 
 impl Timeline {
@@ -1981,6 +1984,8 @@ impl Timeline {
             tracks,
             edit_state,
             annotations: TimelineAnnotations::default(),
+            multicam_source: None,
+            multicam_clips: BTreeMap::new(),
         }
     }
 
@@ -2018,6 +2023,86 @@ impl Timeline {
     #[must_use]
     pub const fn edit_state(&self) -> &TimelineEditState {
         &self.edit_state
+    }
+
+    /// Returns synchronized source angle state when this is a multicam source timeline.
+    #[must_use]
+    pub const fn multicam_source(&self) -> Option<&MulticamSource> {
+        self.multicam_source.as_ref()
+    }
+
+    /// Mutably returns synchronized source angle state inside an unpublished draft.
+    pub fn multicam_source_mut(&mut self) -> Result<&mut MulticamSource> {
+        self.multicam_source.as_mut().ok_or_else(|| {
+            not_found(
+                "find_multicam_source",
+                "timeline has no multicam source state",
+                "timeline",
+                self.id,
+            )
+        })
+    }
+
+    /// Replaces this timeline's complete synchronized source angle state.
+    pub fn set_multicam_source(
+        &mut self,
+        source: MulticamSource,
+    ) -> Result<Option<MulticamSource>> {
+        source.validate()?;
+        Ok(self.multicam_source.replace(source))
+    }
+
+    /// Removes synchronized source angle state.
+    pub fn remove_multicam_source(&mut self) -> Option<MulticamSource> {
+        self.multicam_source.take()
+    }
+
+    /// Looks up clip-local multicam switch intent.
+    #[must_use]
+    pub fn multicam_clip(&self, id: ClipId) -> Option<&MulticamClip> {
+        self.multicam_clips.get(&id)
+    }
+
+    /// Mutably looks up clip-local multicam switch intent inside an unpublished draft.
+    pub fn multicam_clip_mut(&mut self, id: ClipId) -> Result<&mut MulticamClip> {
+        self.multicam_clips.get_mut(&id).ok_or_else(|| {
+            not_found(
+                "find_multicam_clip",
+                "multicam clip state was not found",
+                "clip",
+                id,
+            )
+        })
+    }
+
+    /// Iterates clip-local multicam state in stable clip identity order.
+    pub fn multicam_clips(&self) -> impl ExactSizeIterator<Item = &MulticamClip> {
+        self.multicam_clips.values()
+    }
+
+    /// Inserts or replaces switch intent for one existing ordinary nested clip.
+    pub fn upsert_multicam_clip(&mut self, clip: MulticamClip) -> Result<Option<MulticamClip>> {
+        let id = clip.clip_id();
+        let target = find_clip(self, id).ok_or_else(|| {
+            not_found(
+                "upsert_multicam_clip",
+                "multicam target clip was not found on this timeline",
+                "clip",
+                id,
+            )
+        })?;
+        if !matches!(target.source(), ClipSource::Timeline(_)) {
+            return Err(invalid(
+                "upsert_multicam_clip",
+                "multicam target must be an ordinary nested timeline clip",
+            ));
+        }
+        Ok(self.multicam_clips.insert(id, clip))
+    }
+
+    /// Removes one target clip's multicam switch intent.
+    pub fn remove_multicam_clip(&mut self, id: ClipId) -> Option<MulticamClip> {
+        self.multicam_clips.remove(&id)
     }
 
     /// Returns whether exact snapping is enabled for this timeline.
@@ -2248,6 +2333,41 @@ impl Timeline {
         })?;
         Duration::new(value, self.edit_rate)
     }
+
+    pub(crate) fn inherit_multicam_fragment(&mut self, original: ClipId, created: ClipId) {
+        if let Some(state) = self.multicam_clips.get(&original).cloned() {
+            self.multicam_clips
+                .insert(created, state.clone_with_clip_id(created));
+        }
+        if let Some(source) = &mut self.multicam_source {
+            source.inherit_source_fragment(original, created);
+        }
+    }
+
+    pub(crate) fn transfer_multicam_clip(&mut self, removed: ClipId, inserted: ClipId) {
+        if let Some(state) = self.multicam_clips.remove(&removed) {
+            self.multicam_clips
+                .insert(inserted, state.clone_with_clip_id(inserted));
+        }
+        if let Some(source) = &mut self.multicam_source {
+            source.transfer_source_clip(removed, inserted);
+        }
+    }
+
+    fn reconcile_multicam_state(&mut self) {
+        let existing: BTreeSet<_> = self
+            .tracks
+            .iter()
+            .flat_map(Track::items)
+            .filter_map(TrackItem::as_clip)
+            .map(Clip::id)
+            .collect();
+        self.multicam_clips
+            .retain(|clip_id, _| existing.contains(clip_id));
+        if let Some(source) = &mut self.multicam_source {
+            source.reconcile(&existing);
+        }
+    }
 }
 
 /// A complete validated editorial snapshot.
@@ -2470,6 +2590,7 @@ impl EditorialProject {
         for timeline in self.timelines.values_mut() {
             timeline.edit_state.reconcile(&timeline.tracks);
             timeline.annotations.reconcile(&timeline.tracks);
+            timeline.reconcile_multicam_state();
         }
     }
 
@@ -2512,6 +2633,7 @@ impl EditorialProject {
         self.validate_source_links()?;
         self.validate_nesting_cycles()?;
         self.validate_nested_ranges()?;
+        self.validate_multicam()?;
         Ok(())
     }
 
@@ -2625,6 +2747,88 @@ impl EditorialProject {
                         ));
                     }
                 }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_multicam(&self) -> Result<()> {
+        let mut angle_ids = BTreeSet::new();
+        for timeline in self.timelines.values() {
+            let Some(source) = timeline.multicam_source() else {
+                continue;
+            };
+            source.validate()?;
+            for angle in source.angles() {
+                if !angle_ids.insert(angle.id()) {
+                    return Err(conflict(
+                        "validate_multicam",
+                        "duplicate multicam angle identity across project timelines",
+                        "angle",
+                        angle.id(),
+                    ));
+                }
+                let mut ranges = Vec::with_capacity(angle.source_clips().len());
+                for clip_id in angle.source_clips() {
+                    let clip = find_clip(timeline, *clip_id).ok_or_else(|| {
+                        not_found(
+                            "validate_multicam",
+                            "multicam angle references a missing local source clip",
+                            "clip",
+                            clip_id,
+                        )
+                    })?;
+                    if clip.record_range().timebase() != timeline.edit_rate() {
+                        return Err(invalid(
+                            "validate_multicam",
+                            "multicam source clip must use the synchronized timeline clock",
+                        ));
+                    }
+                    ranges.push(clip.record_range());
+                }
+                ranges.sort_by_key(|range| range.start().value());
+                for pair in ranges.windows(2) {
+                    if pair[0].end_exclusive()? > pair[1].start() {
+                        return Err(invalid(
+                            "validate_multicam",
+                            "source clips in one multicam angle must not overlap",
+                        ));
+                    }
+                }
+            }
+        }
+
+        for timeline in self.timelines.values() {
+            for state in timeline.multicam_clips() {
+                let clip = find_clip(timeline, state.clip_id()).ok_or_else(|| {
+                    not_found(
+                        "validate_multicam",
+                        "multicam target clip was not found on its owning timeline",
+                        "clip",
+                        state.clip_id(),
+                    )
+                })?;
+                let ClipSource::Timeline(source_timeline_id) = clip.source() else {
+                    return Err(invalid(
+                        "validate_multicam",
+                        "multicam target must retain an ordinary nested timeline source",
+                    ));
+                };
+                let source_timeline = self
+                    .timelines
+                    .get(&source_timeline_id)
+                    .expect("nested source links validated");
+                let source = source_timeline.multicam_source().ok_or_else(|| {
+                    invalid(
+                        "validate_multicam",
+                        "multicam target source timeline has no synchronized angle state",
+                    )
+                })?;
+                let complete_source_range = TimeRange::new(
+                    RationalTime::zero(source_timeline.edit_rate()),
+                    source_timeline.duration()?,
+                )?;
+                state.validate_against(source, complete_source_range)?;
             }
         }
         Ok(())

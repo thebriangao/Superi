@@ -4,6 +4,6 @@
 //! compilation, and persistence share one domain-distinct identity contract.
 
 pub use superi_core::ids::{
-    BinId, CaptionId, ClipId, GapId, GeneratorId, MarkerId, MediaId, ProjectId, SmartCollectionId,
-    TimelineId, TrackId, TransitionId,
+    BinId, CaptionId, ClipId, GapId, GeneratorId, MarkerId, MediaId, MulticamAngleId, ProjectId,
+    SmartCollectionId, TimelineId, TrackId, TransitionId,
 };

@@ -7,14 +7,14 @@ use superi_core::prelude::{
     ComponentId, CounterSnapshot, CounterUnit, DeviceId, DiagnosticEvent, DiagnosticSeverity,
     Duration, EdgeId, Error, ErrorCategory, ErrorContext, FeatureAvailability, FeatureDescriptor,
     FeatureDiscovery, FeatureId, FieldVisibility, FiniteF64, FrameRate, GapId, GeneratorId,
-    GraphId, IdentifierKind, JobId, MarkerId, Matrix3, MatrixCoefficients, MediaId, NodeId,
-    ParameterId, PerformanceCounter, PixelBounds, PixelFormat, PixelModel, PixelNumeric,
-    PixelPacking, Point2, PortId, ProjectId, RationalTime, Recoverability, Rect, ResourceId,
-    Result, ResultExt, SampleFormat, SampleNumeric, SampleTime, SemanticVersion, SettingKey,
-    SettingValue, SettingValueKind, SettingsSnapshot, SmartCollectionId, TimeRange, TimeRounding,
-    Timebase, Timecode, TimecodeFormat, TimecodeMode, TimelineId, TraceField, TraceValue, TrackId,
-    TransferFunction, TransitionId, TypedId, UserSafeError, Vector2, VersionIdentifier,
-    STABLE_PRIMITIVE_SCHEMA_REVISION,
+    GraphId, IdentifierKind, JobId, MarkerId, Matrix3, MatrixCoefficients, MediaId,
+    MulticamAngleId, NodeId, ParameterId, PerformanceCounter, PixelBounds, PixelFormat, PixelModel,
+    PixelNumeric, PixelPacking, Point2, PortId, ProjectId, RationalTime, Recoverability, Rect,
+    ResourceId, Result, ResultExt, SampleFormat, SampleNumeric, SampleTime, SemanticVersion,
+    SettingKey, SettingValue, SettingValueKind, SettingsSnapshot, SmartCollectionId, TimeRange,
+    TimeRounding, Timebase, Timecode, TimecodeFormat, TimecodeMode, TimelineId, TraceField,
+    TraceValue, TrackId, TransferFunction, TransitionId, TypedId, UserSafeError, Vector2,
+    VersionIdentifier, STABLE_PRIMITIVE_SCHEMA_REVISION,
 };
 
 fn assert_stable_wire_type<T>()
@@ -58,6 +58,7 @@ fn prelude_exposes_the_complete_curated_contract() {
     assert_stable_wire_type::<PortId>();
     assert_stable_wire_type::<EdgeId>();
     assert_stable_wire_type::<ResourceId>();
+    assert_stable_wire_type::<MulticamAngleId>();
     assert_stable_wire_type::<Timebase>();
     assert_stable_wire_type::<FrameRate>();
     assert_stable_wire_type::<TimeRounding>();

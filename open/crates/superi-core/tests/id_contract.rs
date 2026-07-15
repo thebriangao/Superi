@@ -6,8 +6,9 @@ use std::str::FromStr;
 
 use superi_core::ids::{
     BinId, CacheId, CaptionId, ClipId, DeviceId, EdgeId, GapId, GeneratorId, GraphId,
-    IdentifierKind, JobId, MarkerId, MediaId, NodeId, ParameterId, ParseIdentifierError, PortId,
-    ProjectId, ResourceId, SmartCollectionId, TimelineId, TrackId, TransitionId, TypedId,
+    IdentifierKind, JobId, MarkerId, MediaId, MulticamAngleId, NodeId, ParameterId,
+    ParseIdentifierError, PortId, ProjectId, ResourceId, SmartCollectionId, TimelineId, TrackId,
+    TransitionId, TypedId,
 };
 
 const RAW: u128 = 0x0011_2233_4455_6677_8899_aabb_ccdd_eeff;
@@ -57,6 +58,7 @@ fn concrete_types_are_distinct_and_share_one_contract() {
     assert_common_traits::<PortId>();
     assert_common_traits::<EdgeId>();
     assert_common_traits::<ResourceId>();
+    assert_common_traits::<MulticamAngleId>();
 
     assert_eq!(std::mem::size_of::<ProjectId>(), 16);
     assert_ne!(type_name::<ProjectId>(), type_name::<MediaId>());
@@ -90,6 +92,7 @@ fn concrete_types_are_distinct_and_share_one_contract() {
     assert_contract::<PortId>(IdentifierKind::Port, "PortId");
     assert_contract::<EdgeId>(IdentifierKind::Edge, "EdgeId");
     assert_contract::<ResourceId>(IdentifierKind::Resource, "ResourceId");
+    assert_contract::<MulticamAngleId>(IdentifierKind::MulticamAngle, "MulticamAngleId");
 }
 
 #[test]
@@ -116,6 +119,7 @@ fn kind_codes_are_stable_and_discoverable() {
         "port",
         "edge",
         "resource",
+        "multicam-angle",
     ];
     let actual: Vec<_> = IdentifierKind::ALL.iter().map(|kind| kind.code()).collect();
     assert_eq!(actual, expected);

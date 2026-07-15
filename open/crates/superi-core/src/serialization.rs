@@ -28,8 +28,8 @@ use crate::error::{ErrorCategory, ErrorContext, Recoverability};
 use crate::geometry::{AspectRatio, Matrix3, PixelBounds, Point2, Rect, Vector2};
 use crate::ids::{
     BinId, CacheId, CaptionId, ClipId, DeviceId, EdgeId, GapId, GeneratorId, GraphId,
-    IdentifierKind, JobId, MarkerId, MediaId, NodeId, ParameterId, PortId, ProjectId, ResourceId,
-    SmartCollectionId, TimelineId, TrackId, TransitionId,
+    IdentifierKind, JobId, MarkerId, MediaId, MulticamAngleId, NodeId, ParameterId, PortId,
+    ProjectId, ResourceId, SmartCollectionId, TimelineId, TrackId, TransitionId,
 };
 use crate::pixel::{
     AlphaMode, ChannelLayout, ChannelPosition, ChromaSubsampling, PixelFormat, PixelModel,
@@ -206,6 +206,7 @@ impl_string_enum!(
         IdentifierKind::Port => "port",
         IdentifierKind::Edge => "edge",
         IdentifierKind::Resource => "resource",
+        IdentifierKind::MulticamAngle => "multicam-angle",
     }
 );
 
@@ -453,6 +454,7 @@ impl_typed_id!(
     PortId,
     EdgeId,
     ResourceId,
+    MulticamAngleId,
 );
 
 macro_rules! impl_canonical_text {

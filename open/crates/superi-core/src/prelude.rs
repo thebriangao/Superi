@@ -57,8 +57,8 @@ pub use crate::error::{Error, ErrorCategory, ErrorContext, Recoverability, Resul
 pub use crate::geometry::{AspectRatio, Matrix3, PixelBounds, Point2, Rect, Vector2};
 pub use crate::ids::{
     BinId, CacheId, CaptionId, ClipId, DeviceId, EdgeId, GapId, GeneratorId, GraphId,
-    IdentifierKind, JobId, MarkerId, MediaId, NodeId, ParameterId, PortId, ProjectId, ResourceId,
-    SmartCollectionId, TimelineId, TrackId, TransitionId, TypedId,
+    IdentifierKind, JobId, MarkerId, MediaId, MulticamAngleId, NodeId, ParameterId, PortId,
+    ProjectId, ResourceId, SmartCollectionId, TimelineId, TrackId, TransitionId, TypedId,
 };
 pub use crate::pixel::{
     AlphaMode, ChannelLayout, ChannelPosition, ChromaSubsampling, PixelFormat, PixelModel,
