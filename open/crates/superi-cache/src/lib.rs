@@ -4,10 +4,10 @@
 //! and superi-concurrency.
 //! Status: composite result identity, budgeted final-frame and intermediate-node memory retention,
 //! exact global, project, device, and GPU accounting, deterministic priority-aware LRU eviction,
-//! precise graph edit invalidation, versioned corruption-recovering disk persistence, and
-//! media-neutral proxy or optimized-media generation identity and publication, layered render
-//! caching, and bounded background population are implemented; quality substitution and prefetch
-//! remain.
+//! precise graph edit invalidation, versioned corruption-recovering disk persistence, media-neutral
+//! proxy or optimized-media generation identity and publication, layered render caching, bounded
+//! background population, bounded playback prediction, and an owned asynchronous host-cache adapter
+//! are implemented; broader quality substitution integration remains.
 
 pub mod disk;
 pub mod eviction;

@@ -1,8 +1,9 @@
 //! `superi-engine`, orchestration, the binder that wires all subsystems into one coherent engine.
 //!
 //! Media backend construction, decoded-frame GPU upload, complete proxy or optimized-media packet
-//! generation, and transparent proxy or original-source resolution are integrated while the
-//! remaining orchestration modules advance through their focused checkpoints.
+//! generation, transparent proxy or original-source resolution, and playback-domain predictive
+//! cache population are integrated while the remaining orchestration modules advance through their
+//! focused checkpoints.
 
 pub mod av_sync;
 pub mod command;

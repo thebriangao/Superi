@@ -387,6 +387,72 @@ pub struct FrameMemoryCacheContext<'a> {
     render_settings: RenderSettingsFingerprint,
 }
 
+/// Owned host-memory adapter for evaluation that may outlive a borrowed orchestration scope.
+///
+/// The adapter retains every non-graph identity input and recreates the existing borrowed scope
+/// for each lookup or insertion. It deliberately represents host placement only. Device-resident
+/// values require a caller-owned GPU pool and pressure-cooperator lifetime and cannot be moved into
+/// this host adapter by implication.
+pub struct OwnedHostFrameMemoryCache<V> {
+    cache: Arc<FrameMemoryCache<V>>,
+    project_id: ProjectId,
+    media: Vec<MediaCacheIdentity>,
+    parameters: ParameterStateFingerprint,
+    color: ColorPipelineMetadata,
+    render_settings: RenderSettingsFingerprint,
+}
+
+impl<V> OwnedHostFrameMemoryCache<V> {
+    /// Captures one complete host cache identity for asynchronous evaluation.
+    #[must_use]
+    pub fn new(
+        cache: Arc<FrameMemoryCache<V>>,
+        project_id: ProjectId,
+        media: Vec<MediaCacheIdentity>,
+        parameters: ParameterStateFingerprint,
+        color: ColorPipelineMetadata,
+        render_settings: RenderSettingsFingerprint,
+    ) -> Self {
+        Self {
+            cache,
+            project_id,
+            media,
+            parameters,
+            color,
+            render_settings,
+        }
+    }
+
+    /// Returns the shared budgeted cache populated by this adapter.
+    #[must_use]
+    pub const fn cache(&self) -> &Arc<FrameMemoryCache<V>> {
+        &self.cache
+    }
+
+    fn context(&self) -> FrameMemoryCacheContext<'_> {
+        FrameMemoryCacheContext::new(
+            self.project_id,
+            CacheMemoryPlacement::Host,
+            &self.media,
+            self.parameters,
+            &self.color,
+            self.render_settings,
+        )
+    }
+}
+
+impl<V: Clone> EvaluationValueCache<V> for OwnedHostFrameMemoryCache<V> {
+    fn get(&self, kind: EvaluationCacheEntryKind, identity: EvaluationCacheIdentity) -> Option<V> {
+        self.cache.scope(self.context()).get(kind, identity)
+    }
+
+    fn insert(&self, kind: EvaluationCacheEntryKind, identity: EvaluationCacheIdentity, value: V) {
+        self.cache
+            .scope(self.context())
+            .insert(kind, identity, value);
+    }
+}
+
 impl<'a> FrameMemoryCacheContext<'a> {
     /// Creates the non-graph identity inputs for one cached evaluation scope.
     #[must_use]

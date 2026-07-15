@@ -2,18 +2,19 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: cb8df38849a04e43ff9eeddfd6f3983af9f613d33686c3dba1e0c66695c91398
-source_files: 28
+source_hash: edd75d9d722f2e0c02f734eee6e6df2f91775b4b383efb239d76f7a226b0a570
+source_files: 30
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
-`superi-engine` is the open orchestration layer. Seven paths are currently substantive: canonical
+`superi-engine` is the open orchestration layer. Eight paths are currently substantive: canonical
 editorial command state, media backend registry assembly, declaration-based capability
 introspection, CPU-decoded frame upload into GPU allocations, and exact viewport and export color
 metadata branching, plus codec-neutral proxy and optimized-media packet generation and transparent
-proxy or original-source resolution. Playback, rendered color execution, export muxing, broad
+proxy or original-source resolution and predictive playback cache population. Full transport,
+rendered color execution, export muxing, broad
 transactions, lifecycle, resources, plugins, nodes, A/V sync, and validation remain incomplete.
 
 The command path is a bounded reference owner for contract conformance. It does not claim to replace
@@ -42,7 +43,9 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 - `open/crates/superi-engine/src/lifecycle.rs`: Placeholder for subsystem lifecycle.
 - `open/crates/superi-engine/src/media.rs`: Builds default and feature-gated media registries.
 - `open/crates/superi-engine/src/nodes.rs`: Placeholder for media and graph nodes.
-- `open/crates/superi-engine/src/playback.rs`: Placeholder for playback orchestration.
+- `open/crates/superi-engine/src/playback.rs`: Defines playback-domain nonblocking prediction
+  submission and polling, cooperative generation supersession, structured degraded completion, a
+  weak worker-pool lifecycle boundary, and the shared-graph owned-host-cache evaluator.
 - `open/crates/superi-engine/src/plugins.rs`: Placeholder for plugins and extensions.
 - `open/crates/superi-engine/src/proxy_substitution.rs`: Validates exact proxy purpose, source
   fingerprint, source revision, packet integrity, and stream metadata; translates cache quality to
@@ -63,6 +66,12 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 - `open/crates/superi-engine/tests/proxy_substitution_contract.rs`: Proves real AV1 proxy
   substitution, exact and lower-quality choice, deterministic ties, replacement, seek preroll,
   strict freshness, lazy original fallback, identity mismatch rejection, and source-only delivery.
+- `open/crates/superi-engine/tests/playback_prefetch_contract.rs`: Proves playback ownership,
+  immediate nonblocking submission and polling, cooperative supersession, boundary-empty work,
+  structured degraded failure, and later recovery.
+- `open/crates/superi-engine/tests/playback_prefetch_graph_contract.rs`: Proves exact predicted
+  frames populate and reuse the real budgeted cache through one immutable graph snapshot without
+  changing foreground evaluator output.
 - `open/crates/superi-engine/tests/scenario_contract.rs`: Exact canonical state, atomicity, bounds,
   operation log, and reversal proof.
 - `open/crates/superi-engine/tests/vendor_codec_registry_contract.rs`: Explicit vendor registry
@@ -96,7 +105,14 @@ source revision, scheduler quality, and fallback policy. Resolution returns one 
 `MediaSource` plus explicit `DerivedMediaSelection` evidence, regardless of whether reads delegate
 to a generated packet adapter or the lazily opened original source.
 
-The other public modules currently contain documentation only.
+`playback` exposes the `PlaybackPrefetchEvaluator` seam, concrete
+`GraphPlaybackPrefetchEvaluator`, playback-owned `PlaybackPrefetcher`, and structured submission
+and completion reports. Submission accepts one caller-owned `JobId` and bounded cache prediction,
+cancels the previous generation, queues playback-priority cache work without waiting, and requires
+the playback execution domain. Polling is also playback-owned and never blocks. An empty clipped
+plan cancels older work and publishes immediate successful no-work completion.
+
+The remaining placeholder public modules currently contain documentation only.
 
 ## Architecture and data flow
 
@@ -172,16 +188,36 @@ unknown-quality, malformed, higher-only, and source-only cases therefore cannot 
 the original. The source-only policy is the explicit final-delivery boundary; valid proxies remain
 available without changing which bytes final delivery reads.
 
+### Predictive playback cache population
+
+The playback owner derives a finite exact-frame plan through `superi-cache`, then submits it to
+`PlaybackPrefetcher` with one stable job identity. Submission first verifies the playback domain,
+cancels the prior generation, and returns immediately after nonblocking worker-pool admission.
+Nearest critical requests execute before farther prediction and trailing work inside one
+playback-priority cache job. Each frame boundary checks cooperative cancellation and advances exact
+determinate progress only after successful evaluation.
+
+`GraphPlaybackPrefetchEvaluator` converts each predicted time into the caller-bound output and
+region request, evaluates the immutable `GraphEvaluationSnapshot` through
+`OwnedHostFrameMemoryCache`, and discards only the returned handle. Existing exact values therefore
+skip graph work; misses populate the same final and intermediate cache tiers used by foreground
+evaluation. Failure stops only replaceable prefetch, retains its classified error in the polled
+completion, and leaves transport, project meaning, source selection, and final-render output
+unchanged. The controller stores a weak pool reference, so playback-thread destruction cannot own a
+blocking worker shutdown.
+
 ## Dependencies and consumers
 
-- `superi-core` supplies errors, identifiers, and exact time used directly by canonical commands,
-  introspection, and upload.
+- `superi-core` supplies errors, identifiers, geometry, and exact time used directly by canonical
+  commands, introspection, upload, and playback prefetch.
 - `sha2` supplies bounded fixture payload identity and complete packet-content fingerprinting.
 - `superi-media-io`, `superi-gpu`, and `superi-codecs-rs` support registry, declaration, upload,
   codec-neutral derived generation, and the common proxy or original source interface.
 - Platform and vendor codec crates are feature-gated.
-- Cache now supplies both color metadata and media-neutral derived publication. Concurrency now
-  supplies the production quality and fallback selector consumed by proxy resolution. Image, graph,
+- Cache now supplies color metadata, media-neutral derived publication, bounded playback prediction,
+  and an owned host evaluator adapter. Graph supplies the immutable evaluation snapshot.
+  Concurrency supplies the production quality and fallback selector for proxy resolution plus
+  playback ownership, worker priority, cancellation, progress, and nonblocking completion. Image
   and timeline support the color metadata integration contract. Color execution, effects, audio,
   AI, and project remain declared dependencies without production command integration.
 - `superi-api` consumes command snapshots and capability snapshots, preserving the public seam.
@@ -218,6 +254,12 @@ available without changing which bytes final delivery reads.
 - A proxy-backed source retains the complete immutable artifact for its read lifetime and exposes
   the authoritative original identity. The original opener runs only after source selection, and
   any identity mismatch is rejected.
+- Prefetch submission and polling require the playback domain and never wait on worker completion.
+  Worker-pool lifecycle remains externally owned by a blocking-safe coordinator.
+- A newer prediction generation cooperatively cancels the prior generation. Cancellation and
+  evaluation failure are observed only as cache completion state and cannot alter transport.
+- Exact predicted frames use the shared graph snapshot and complete host cache identity. Reuse skips
+  evaluator work but cannot change graph meaning, foreground frame value, or final-render output.
 - GPU ownership and pool lifetime remain tied to the originating device.
 - Placeholder modules do not imply whole-engine transaction, render, or lifecycle behavior.
 
@@ -246,6 +288,13 @@ exact seek preroll, stale and mismatched rejection, missing and higher-only fall
 identity verification, and source-only final delivery. This is a real encoder and source-interface
 consumer but not a render, resize, mux, persistence, playback clock, or container-delivery proof.
 
+Four playback orchestration contracts prove playback-domain enforcement, immediate nonblocking
+submission and polling, exact nearest-first execution, cooperative supersession between frames,
+structured degraded failure, recovery on later work, and boundary-empty cancellation without a
+replacement job. The graph integration contract uses the real immutable snapshot and budgeted host
+cache to prove three exact predicted frames execute once, reuse without node calls, and return the
+same foreground evaluator value.
+
 ## Current status and risks
 
 Canonical command state is substantive and test-backed, but it is a reference boundary whose
@@ -253,9 +302,10 @@ implementation identity is disclosed as such. It validates fixture bytes without
 container or decoding frames. Timeline and graph state are exact control models but do not use the
 production timeline owner or the generic `superi-graph` DAG store.
 
-Nine orchestration files remain documentation-only placeholders. There is no coherent source
-registry integration, playback clock, audio flow, persistent cache owner, rendered color execution,
-encoder-to-mux path, project persistence, lifecycle, plugin host, or real-condition validator. The
+Eight orchestration files remain documentation-only placeholders. There is no coherent source
+registry integration, playback clock, audio flow, persistent cache lifecycle owner, rendered color
+execution, encoder-to-mux path, project persistence, lifecycle, plugin host, or real-condition
+validator. Playback prefetch is substantive but is not a full transport or proxy selector. The
 derived-media driver and resolver are synchronous and caller-owned, and no production playback,
 export queue, or API path invokes them yet.
 
@@ -267,5 +317,6 @@ through its real crate rather than growing this reference model into a competing
 or upload changes require updating their actual consumers and tests independently. Keep derived
 request canonicalization synchronized with every media format field that can change encoder output,
 and keep codec selection, cancellation, complete publication, proxy admission, scheduler-owned
-quality choice, lazy source opening, and full identity verification explicit. Remove a placeholder
-label only after substantive behavior and consumer proof exist.
+quality choice, lazy source opening, and full identity verification explicit. Keep playback prefetch
+domain-owned, nonblocking, cooperatively cancellable between exact frames, and bound to complete
+cache identity. Remove a placeholder label only after substantive behavior and consumer proof exist.

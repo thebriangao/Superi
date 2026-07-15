@@ -519,10 +519,11 @@ The shared interactive and headless evaluation flow is:
    values become ordinary misses and recompute through this same evaluator. Cache render
    orchestration now inspects target identity before bounded dispatch, drives this snapshot through
    layered memory and disk adapters, and stages background inserts until cooperative completion.
-   No current effects,
-   color, engine, API, CLI, or GPU owner implements the compiler in production, so the canonical
-   `graph.evaluate` stage remains an honest stub even though the generic interactive, headless, and
-   cache boundaries are explicit and test-backed.
+   No current effects, color, engine, API, CLI, or GPU owner implements a production node catalog,
+   so the canonical
+   `graph.evaluate` stage remains an honest stub even though the generic interactive, playback,
+   headless, and cache boundaries are explicit and test-backed. Engine playback now accepts an
+   externally prepared snapshot and runs exact predicted frames through this cached path.
 
 The schema discovery flow is:
 
@@ -729,8 +730,11 @@ graph evaluation or runtime integration.
   edit plans atomically to both tiers, and participates in precise revision fencing. Successful hits
   promote cache-local recency, and automatic or explicit cache-local victim removal does not change
   this graph contract. Cache render orchestration composes immutable evaluation snapshots with
-  layered reuse and bounded background jobs without moving worker policy into graph. The engine
-  color propagation contract exercises metadata. Timeline compilation consumes versioned
+  layered reuse and bounded background jobs without moving worker policy into graph.
+  `superi-engine::playback` consumes `GraphEvaluationSnapshot` and
+  `EvaluationRequest` to populate predicted frames through the cache-owned host adapter, without
+  adding mode-specific evaluation behavior. The engine color propagation contract exercises
+  metadata. Timeline compilation consumes versioned
   schemas, typed ports, complete editable nodes, atomic graph transactions, DAG validation, and
   immutable snapshots to publish generic processing intent from native editorial state. Other
   declared domain consumers still have no production graph call site.
@@ -1025,8 +1029,10 @@ insertions, and reclaims eligible LRU values under budget or GPU pressure. Disk 
 versioned envelopes, isolates invalid entries, and records classified failures. Reclamation,
 budget refusal, or persistence failure remains an ordinary miss or skipped insertion and cannot
 change the evaluator result. Cache can dispatch caller-compiled snapshots, but no production
-catalog implements that compiler or connects complete ROI and invalidation plans to rendered frame
-or engine orchestration yet.
+catalog implements that compiler or connects complete ROI and invalidation plans to a complete
+rendered-frame application flow yet. Engine playback is the first production role consumer of an
+externally prepared evaluation snapshot, and its contract proves exact cached prediction does not
+change foreground evaluation meaning.
 The versioned graph document codec now preserves and validates that complete editable state,
 migrates the supported legacy envelope, returns canonical upgraded bytes, and retains typed links
 and editable expression source through save and load. Missing-node resolution now derives exact

@@ -3,7 +3,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use superi_cache::eviction::{CacheBudgetLimit, CacheBudgetManager, CacheCost, CacheMemoryBudgets};
-use superi_cache::frame::{CacheMemoryPlacement, FrameMemoryCache, FrameMemoryCacheContext};
+use superi_cache::frame::{
+    CacheMemoryPlacement, FrameMemoryCache, FrameMemoryCacheContext, OwnedHostFrameMemoryCache,
+};
 use superi_cache::key::{ParameterStateFingerprint, RenderSettingsFingerprint};
 use superi_core::color_space::ColorSpace;
 use superi_core::error::Result;
@@ -141,6 +143,44 @@ fn concrete_final_frame_cache_reuses_the_exact_evaluator_value() {
     assert_eq!(cache.intermediate_node_len(), 0);
     assert_eq!(cache.final_frame_keys().len(), 1);
     assert!(cache.intermediate_node_keys().is_empty());
+}
+
+#[test]
+fn owned_host_adapter_is_send_sync_and_reuses_the_exact_evaluator_value() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<OwnedHostFrameMemoryCache<i64>>();
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut graph = DirectedAcyclicGraph::new(GraphId::from_raw(98));
+    graph
+        .insert_node(
+            NodeId::from_raw(1),
+            ValueNode {
+                node_type: "superi.test.owned-host-memory-cache",
+                value: 53,
+                policy: CachePolicy::PerRegion,
+                calls: calls.clone(),
+            },
+        )
+        .unwrap();
+    let retained = Arc::new(cache());
+    let adapter = OwnedHostFrameMemoryCache::new(
+        retained.clone(),
+        ProjectId::from_raw(1),
+        Vec::new(),
+        ParameterStateFingerprint::from_canonical_bytes(b"owned-host-cache-parameters-v1"),
+        color_pipeline(),
+        RenderSettingsFingerprint::from_canonical_bytes(b"owned-host-cache-render-v1"),
+    );
+
+    let first = LazyEvaluator::evaluate_with_cache(&graph, request(), &adapter).unwrap();
+    let second = LazyEvaluator::evaluate_with_cache(&graph, request(), &adapter).unwrap();
+
+    assert_eq!(*first.value(), 53);
+    assert_eq!(first.value(), second.value());
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(retained.final_frame_len(), 1);
+    assert!(Arc::ptr_eq(adapter.cache(), &retained));
 }
 
 #[test]
