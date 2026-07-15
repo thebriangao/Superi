@@ -16,7 +16,7 @@ against raw source before changing code.
 | `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
 | `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade for capabilities and canonical editorial state | Partial: capability and canonical scenario controls implemented; transport, general API, and scripting absent |
 | `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Independent editable audio graph plus stable output-device discovery and bounded sample-clocked playback | Partial: graph and production device output implemented; engine composition, mixing, sync, resampling, metering, and hosting absent |
-| `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, precise graph edit invalidation, versioned corruption-recovering disk persistence, replaceable derived-media publication, layered render reuse, bounded background population, and bounded playback prediction | Complete identity feeds independent memory and disk tiers with exact admission, revision fencing, bounded envelopes, atomic publication, schema isolation, and corruption quarantine; render jobs add memory-first persistent fallback, promotion, queue-local exact-frame single-flight, staged publication, cancellation, and deterministic active-work inspection, while prediction provides finite exact signed frame plans and an owned host adapter; engine and scheduler own quality substitution, while cache lifecycle remains |
+| `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, precise graph edit invalidation, versioned corruption-recovering disk persistence, replaceable derived-media publication, layered render reuse, bounded background population, bounded playback prediction, and bounded edit and scrub warming | Complete identity feeds independent memory and disk tiers with exact admission, revision fencing, bounded envelopes, atomic publication, schema isolation, and corruption quarantine; render jobs add persistent fallback, promotion, exact-frame single-flight, staged publication, and cancellation, prediction supplies finite signed frame plans and an owned host adapter, warming is deterministic and hard bounded, and cache lifecycle remains |
 | `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario consumer | Implemented portable expectation verifier and eight instrumented contract stages; rendered media flow absent |
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
 | `superi-codecs-rs` | [module map](modules/superi-codecs-rs.md) | `open/crates/superi-codecs-rs` | Default permissive software codec implementations | Implemented: AV1, FLAC, MP3, Opus, PCM, Vorbis, VP8, and VP9 decode and encode |
@@ -190,6 +190,25 @@ Transparent proxy substitution is implemented at the same private bulk-media bou
 
 The real default AV1 generation path feeds this substitution contract in engine integration proof.
 No production playback clock, export queue, project owner, or public API invokes the resolver yet.
+
+Bounded edit and scrub warming is implemented at a cache-owned planning boundary:
+
+1. A caller supplies one checked half-open timeline frame interval and one hard-limit policy.
+2. Edit planning canonicalizes exact editorial boundaries, then ranks nearest valid frames across
+   all boundaries independently of input order and duplicates.
+3. Scrub planning compares two exact observations, caps the observed stride, favors predicted
+   frames in the forward or backward direction, retains a smaller opposite tail, and alternates
+   nearest neighbors when the scrub is stationary.
+4. Every plan is clipped and hard bounded before work begins. Targets contain only exact timeline
+   frame, reason, and rank, so the caller must map them to its ordinary graph request and complete
+   cache scope.
+5. The real graph and memory-cache integration proof shows warmed demand hits without node
+   execution, changed media fingerprints recompute, and ordinary budget pressure preserves exact
+   fresh results.
+
+The planner owns no cache key, retained value, project mutation, source opening, proxy quality,
+fallback, job dispatch, cancellation, or hidden history. No production editor, engine, playback,
+API, or UI path consumes it yet.
 
 The API-local revision begins at zero and increments only on a changed snapshot. The public schema
 version is `2.0.0`; the permanent method and event names are
@@ -720,6 +739,10 @@ The following constraints cross multiple modules and should be preserved togethe
   encoder settings. Generation publishes only after end of stream and complete packet hashing;
   failure retains prior complete media or the original source fallback. It cannot change project,
   graph, source, or final-render meaning.
+- Cache warming ranks only exact in-bounds timeline frames under a hard policy limit. It does not
+  derive a cache key, store a value, choose source or proxy quality, or alter fallback. Each caller
+  must use the ordinary revisioned graph request and complete cache identity, so stale, evicted, or
+  skipped speculative work remains a transparent demand miss.
 - Pixel storage, alpha association, color interpretation, dimensions, timing, and buffer ownership
   are separate contracts. Constructing valid metadata does not prove a codec, color transform, GPU
   operation, or output supports it.
@@ -754,6 +777,10 @@ packet publication and deterministic reuse, then exercise exact or lower-quality
 substitution, replacement, generated packet reads, keyframe seek, strict freshness, and verified
 original or source-only fallback. They do not claim rendering, muxing, persistence, playback-clock
 integration, or container delivery.
+The cache warming contract maps deterministic edit and scrub targets through the real graph
+evaluator and bounded memory cache, then proves demand reuse, source-fingerprint freshness, and
+unchanged recomputation after pressure. It does not claim a production editor, playback, engine,
+API, UI, decoder, or proxy consumer.
 
 Repository checkpoint execution also has a deterministic local selector at
 `.agents/skills/superi-execution/scripts/verify_checkpoint.py`. Given a recorded base revision, it
@@ -966,12 +993,13 @@ substantive types or operations. `superi-audio` now has a substantive independen
 and production device output, while mixing, sync, resample, metering, and hosting remain placeholders.
 `superi-cache` now has substantive composite identity, budgeted memory retention, hierarchical
 memory policy, priority-aware LRU eviction, precise edit invalidation, persistent storage, color
-metadata, replaceable proxy or optimized-media publication,
-layered render reuse, bounded background population, bounded playback prediction, and owned
-asynchronous host retention, while lifecycle policy remains incomplete. Engine performs
-substitution using concurrency-owned selection, but no transport or export owner invokes it. The
-render queue still lacks a production engine node catalog, ROI and invalidation orchestration, and a
-rendered frame consumer.
+metadata, replaceable proxy or optimized-media publication, layered render reuse, bounded
+background population, bounded playback prediction, owned asynchronous host retention, and bounded
+edit and scrub warming, while lifecycle policy remains incomplete. Engine performs substitution
+using concurrency-owned selection and consumes predictive prefetch, but no transport or export
+owner invokes those cache paths. The render queue still lacks a production engine node catalog, ROI
+and invalidation orchestration, and a rendered frame consumer, and no production editor or playback
+owner invokes warming.
 
 Partial modules contain these explicit placeholder areas:
 
@@ -1048,9 +1076,10 @@ For common concerns, begin at these owners:
 - Complete reusable-result identity, budgeted final-frame and intermediate-node memory retention,
   exact total, project, and device admission, priority-aware LRU eviction, precise revision-safe
   graph edit invalidation, versioned bounded disk persistence with corruption recovery, cache color
-  identity, complete derived-media publication, layered render reuse, and bounded background
-  population: `superi-cache`, followed by `superi-engine` for codec generation and transparent
-  substitution and `superi-concurrency` for quality choice and background job execution.
+  identity, complete derived-media publication, layered render reuse, bounded background
+  population, and bounded exact-frame edit and scrub warming: `superi-cache`, followed by
+  `superi-engine` for codec generation and transparent substitution and `superi-concurrency` for
+  quality choice and background job execution.
 - Native editorial objects, typed track semantics, exact timing and clip retiming, selection, track
   targeting, sync locks, linked selection, clip grouping, markers, deterministic metadata, exact
   snapping, and foundational insert, overwrite, append, replace, lift, and extract operations plus

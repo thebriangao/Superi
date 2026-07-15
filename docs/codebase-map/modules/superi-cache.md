@@ -2,8 +2,8 @@
 module_id: superi-cache
 source_paths:
   - open/crates/superi-cache
-source_hash: 38d08631d90e2ad0fe3726969364fb454f46737e6663e43de0cbf64eba48dc13
-source_files: 18
+source_hash: 2397e34db7967c91e84c0a1edb429dd4b69aca53ddc414363620fa12c96bb9c9
+source_files: 20
 mapped_at_commit: working-tree
 ---
 
@@ -15,7 +15,8 @@ priority-aware least-recently-used eviction policy, precise graph edit invalidat
 persistent final-frame and intermediate-node value storage. It also owns the media-neutral identity
 and complete-only publication contract for replaceable proxy and optimized media, plus layered
 memory and persistent render reuse, bounded background population, and bounded exact-frame playback
-prediction. Lifecycle systems remain planned; cross-quality substitution is scheduler-owned and
+prediction plus deterministic target planning for likely edit boundaries and observed timeline
+scrubs. Lifecycle systems remain planned; cross-quality substitution is scheduler-owned and
 engine-integrated. Composite keys join identities
 owned by media, graph, parameter, image-color, time, and render-setting boundaries without taking
 ownership of those source models. One atomic memory state retains cloneable
@@ -54,7 +55,7 @@ settings while leaving codec execution and cross-quality selection in the engine
 - `open/crates/superi-cache/src/lib.rs`: Documents implemented composite identity, budgeted memory
   retention, hierarchical accounting, deterministic eviction, precise edit invalidation, versioned
   corruption-recovering disk persistence, media-neutral derived generation publication, bounded
-  playback prediction, and exports the seven owned modules.
+  playback prediction, bounded edit and scrub warming, and exports the eight owned modules.
 - `open/crates/superi-cache/src/prefetch.rs`: Defines validated finite prediction configuration,
   exact signed playback observations, nearest-first critical and predictive requests, trailing
   work, deterministic plans, half-open timeline clipping, and a hard 512-frame plan ceiling.
@@ -66,6 +67,10 @@ settings while leaving codec execution and cross-quality selection in the engine
   graph-derived frame keys, memory-first and persistent-fallback reuse, disk-hit promotion,
   cancellation-safe staged cache publication, bounded background jobs, exact-frame single-flight,
   deterministic active-work inspection, and explicit task, frame, queue, and shutdown controls.
+- `open/crates/superi-cache/src/warming.rs`: Defines checked half-open timeline frame bounds, hard
+  edit radius, scrub horizon, stride, and target limits, immutable exact-frame targets, canonical
+  nearest-first multi-edit plans, velocity-aware forward and backward scrub plans, stationary
+  nearest-neighbor plans, and caller-owned execution boundaries.
 - `open/crates/superi-cache/tests/cache_key_contract.rs`: Proves every required invalidation axis,
   canonical media sets and physical time, complete color meaning and order, proxy and precision
   separation, stable vectors, invalid media input, domain separation, and thread-safe key values.
@@ -97,10 +102,15 @@ settings while leaving codec execution and cross-quality selection in the engine
   quality and proxy identity separation, owned device accounting, bounded background population,
   exact foreground reuse, duplicate rejection, cooperative cancellation without new publication,
   deterministic active-key cleanup, and pre-queue rejection of noncacheable graph work.
+- `open/crates/superi-cache/tests/cache_warming_contract.rs`: Proves checked policy and frame bounds,
+  duplicate-independent bounded edit ordering, forward, backward, stationary, and clipped scrub
+  ranking, real graph-backed memory warming, exact demand reuse, source-fingerprint freshness, and
+  unchanged recomputation after ordinary budget pressure.
 
 ## Public surface
 
-The library publicly exports `disk`, `eviction`, `frame`, `key`, `prefetch`, `proxy`, and `render`.
+The library publicly exports `disk`, `eviction`, `frame`, `key`, `prefetch`, `proxy`, `render`, and
+`warming`.
 `eviction::MemoryCacheTier` selects final frames or intermediate nodes without importing graph-owned
 retention kinds into budget and management interfaces.
 The `key` module exposes `MediaCacheIdentity`, `ParameterStateFingerprint`,
@@ -165,6 +175,16 @@ into evaluation.
 `CacheBudgetStats`, `CacheBudgetManager`, and non-cloneable `CacheBudgetReservation`. Host admission
 charges total and project scopes. Device admission also charges one `DeviceId` and holds a real
 `superi_gpu::pool::MemoryReservation` in `MemoryClass::Cache` for the same managed bytes.
+
+`warming` exposes `CacheWarmBounds`, `CacheWarmPolicy`, `CacheWarmReason`, `CacheWarmTarget`,
+`CacheWarmPlan`, and `CacheWarmPlanner`. Bounds identify one nonempty half-open timeline frame
+interval. Policy owns exact edit radius, scrub-ahead and scrub-behind horizons, a capped observed
+scrub stride, and one nonzero hard target limit. Edit planning canonicalizes and bounds distinct
+input boundaries, then ranks the nearest valid frames across every boundary independently of input
+order or duplicates. Scrub planning infers forward, backward, or stationary intent from two exact
+in-bounds frame observations, ranks the current frame first, and clips predicted candidates to the
+available interval. Targets contain only frame, reason, and deterministic rank. Callers map them to
+their ordinary complete evaluation request and cache scope.
 
 ## Architecture and data flow
 
@@ -247,6 +267,17 @@ consumer passes each request through `GraphEvaluationSnapshot::evaluate_with_cac
 host adapter, so hits skip evaluator work while misses preserve the same graph result and composite
 identity.
 
+Warming planning is also separate from retained graph values and derived media. The planner keeps no
+history or cache contents. For edits, it validates every boundary against one half-open frame range,
+permits the exclusive end as an editorial boundary, canonicalizes duplicates, and walks distance
+rings across sorted boundaries until the hard target limit. For a moving scrub, it caps the observed
+frame delta, ranks predicted positions in that direction, and then ranks a smaller configured
+opposite-direction tail. For a stationary scrub, it alternates the nearest earlier and later frames.
+Arithmetic uses a wider checked domain before accepting only in-bounds `i64` frames. A caller warms
+each target by using the same graph evaluator, complete cache context, budget, and revision fence as
+ordinary demand. The planner never inserts a value, opens media, chooses quality, mutates a project,
+or changes original-source fallback.
+
 ## Dependencies and consumers
 
 - Declared internal dependencies are `superi-core`, `superi-gpu`, `superi-image`, `superi-graph`,
@@ -275,6 +306,9 @@ identity.
   exact frames through the role-neutral graph evaluator on bounded playback-priority worker jobs.
 - Engine generation and substitution are the cross-crate derived-media consumers, while playback
   prefetch is the first retained-value engine consumer.
+- The warming integration contract is the first concrete consumer of edit and scrub plans. It maps
+  exact target frames to ordinary `EvaluationRequest` values and uses the real `LazyEvaluator` plus
+  `FrameMemoryCache`. No production editor, playback, engine, API, or UI owner invokes warming yet.
 
 ## Invariants and operational boundaries
 
@@ -344,6 +378,14 @@ identity.
   nonzero signed step. Prediction changes no graph, project, source, cache identity, or final output.
 - The owned asynchronous adapter is host-only. Device placement still requires a borrowed GPU pool
   and pressure-cooperator scope, so asynchronous ownership cannot silently change accounting.
+- Warming targets are bounded exact timeline frame positions, not cache keys or stored values.
+  Equal edit inputs produce equal priority order regardless of input order or duplicates. Scrub
+  direction, stride capping, clipping, and tie order are deterministic. The hard target limit bounds
+  every plan before any caller-owned evaluation begins.
+- Warming never bypasses complete cache identity, memory admission, LRU eviction, disk schema,
+  graph revision fences, source freshness, proxy quality selection, or original fallback. A skipped,
+  evicted, stale, or failed speculative request remains an ordinary demand miss and cannot change
+  project meaning or the freshly evaluated result.
 - Driver allocation overhead and physical residency remain outside managed-payload accounting.
   Invalidation invocation and broader cache management remain later concerns. Cross-quality
   substitution is scheduler-owned and engine-integrated, while playback scheduling stays owned by
@@ -408,15 +450,23 @@ boundary-empty plans, invalid-input classification, the hard request ceiling, an
 equal-input output. Engine playback contracts then prove nonblocking consumption and exact graph
 cache reuse without semantic drift.
 
+`cache_warming_contract.rs` runs four contracts over the public planner and real retained evaluator
+path. It proves zero stride and target limits, empty or reversed bounds, out-of-range edit and scrub
+observations, canonical duplicate-independent multi-edit distance rings, hard output bounds,
+forward, backward, stationary, and clipped scrub order, exact-frame graph warming, subsequent demand
+hits without node execution, changed media fingerprint recomputation, and exact fresh results after
+budget pressure evicts speculative work.
+
 Focused package tests, graph, concurrency, dependency, and engine contract closure,
 warnings-denied Clippy, and rustdoc pass after the integrated budget, LRU, invalidation,
-persistence, generation, layered rendering, and prediction implementation. Cache integration tests
-prove bounded retained evaluator values, shared managed GPU accounting, exact eviction, precise
-revision-safe cleanup, process-restart reuse, corruption recovery, complete-only derived
-publication, layered render reuse, cancellation-safe background population, bounded predictive
-plans, and asynchronous host retention. Engine contracts add real AV1 packet generation,
-packet-backed transparent proxy substitution with strict fallback, and playback prefetch. They do
-not prove playback-clock integration, muxing, or physical GPU residency.
+persistence, generation, layered rendering, prediction, and warming implementation. The 47 cache
+integration contracts across ten files prove bounded retained evaluator values, shared managed GPU
+accounting, exact eviction, precise revision-safe cleanup, process-restart reuse, corruption
+recovery, complete-only derived publication, layered render reuse, cancellation-safe background
+population, bounded predictive plans, asynchronous host retention, and bounded exact-frame edit and
+scrub targets. Engine contracts add real AV1 packet generation, packet-backed transparent proxy
+substitution with strict fallback, and playback prefetch. They do not prove production editor
+warming, playback-clock integration, muxing, or physical GPU residency.
 
 ## Current status and risks
 
@@ -424,7 +474,8 @@ Deterministic composite key derivation, exact cached color metadata, hierarchica
 two-tier retained evaluation, priority-aware strict per-tier LRU eviction, precise revision-safe
 edit invalidation, versioned two-tier disk persistence, proxy or optimized-media identity and
 atomic publication, layered render reuse, bounded background population, bounded playback
-prediction, and owned asynchronous host retention are substantive and test-backed. Final
+prediction, owned asynchronous host retention, and bounded edit and scrub warming plans are
+substantive and test-backed. Final
 hits stop the complete graph pull, intermediate hits stop their prerequisite subtree, hard caps
 remain exact, automatic or explicit victims recompute with unchanged result meaning, edit plans
 remove only affected older lineage, and disk corruption falls back to exact fresh evaluation.
@@ -434,8 +485,10 @@ one immutable snapshot and outer render context, stage newly evaluated values un
 checks pass, and expose deterministic active-work inspection. The engine generates real complete
 AV1 packet artifacts through the proxy module and selects exact or lower-quality fresh proxies
 through the scheduler. Engine playback also consumes prediction and retained graph evaluation.
-Cache itself owns no quality-selection policy. No production frame pixels are selected or reclaimed
-by a playback clock, export encoder, or GPU upload through this cache path.
+Cache itself owns no quality-selection policy. Warming has a real graph-backed retained-value
+consumer test but no production editor, engine, playback, API, or UI caller. No production frame
+pixels are selected or reclaimed by a playback clock, export encoder, or GPU upload through this
+cache path.
 
 The main correctness risk is each caller's canonical parameter and render-settings encoding.
 Omitting one output-affecting byte can cause false reuse even though composition and storage are
@@ -452,7 +505,10 @@ settings; substitution admits only exact request identity and revision before sc
 Persistent value callers must version codec meaning correctly, choose bounded entry sizes, and
 provide cleanup and relocation policy. Independently opened cache instances can duplicate
 deterministic work and last-writer publication, but immutable complete keys keep the published
-meaning equal. The crate is not yet a complete cache subsystem.
+meaning equal. Warming callers must map timeline frame indexes to the authoritative timeline rate
+and ordinary graph request, invalidate or abandon superseded plans at their orchestration boundary,
+and never treat ranking as permission to weaken exact demand. The crate is not yet a complete cache
+subsystem.
 
 ## Maintenance notes
 
@@ -472,3 +528,8 @@ checks, schema
 partition, synchronization sequence, corruption revalidation, or fallback-to-fresh behavior.
 Derived-media producers must compute complete output identity before publication, never mutate
 source state, and keep media or codec dependencies above this crate.
+Keep warming plans stateless, exact-frame-only, input-order-independent, and bounded before caller
+evaluation. Do not add source identity, cache-key derivation, direct insertion, proxy selection,
+project mutation, worker dispatch, or caller-specific timeline state to the planner. Production
+editor and playback owners should map targets through their ordinary revisioned graph and complete
+cache scopes, then abandon obsolete plans without changing demand behavior.

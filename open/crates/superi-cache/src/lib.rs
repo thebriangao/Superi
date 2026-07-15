@@ -7,7 +7,8 @@
 //! precise graph edit invalidation, versioned corruption-recovering disk persistence, media-neutral
 //! proxy or optimized-media generation identity and publication, layered render caching, bounded
 //! background population, bounded playback prediction, and an owned asynchronous host-cache adapter
-//! are implemented; broader quality substitution integration remains.
+//! plus bounded edit and scrub cache-warming plans are implemented; broader quality substitution
+//! integration remains.
 
 pub mod disk;
 pub mod eviction;
@@ -16,3 +17,4 @@ pub mod key;
 pub mod prefetch;
 pub mod proxy;
 pub mod render;
+pub mod warming;
