@@ -18,9 +18,12 @@
 //! positioned glyphs. The spatial module provides editable 2D and 3D layer transforms, cameras,
 //! lights, deterministic depth ordering, exact motion sampling, graph-native persistence, and a
 //! bounded real-pixel reference renderer. The built-in catalog and bounded CPU reference cover
-//! common visual operations and transition semantics, while vector and mask rasterization,
-//! propagation solvers, text rasterization and GPU atlases, production tracking attachment and
-//! acceleration, OFX hosting, and production GPU integration remain staged in their owning modules.
+//! and transition semantics. The OpenFX host validates an isolated worker adapter, projects scanned
+//! contexts into graph-native definitions, samples timeline and graph parameter state, and exposes
+//! explicit permissions, lifecycle, recovery, and quarantine controls. Vector and mask
+//! rasterization, propagation solvers, text rasterization and GPU atlases, production tracking
+//! attachment and acceleration, native plugin discovery and transport, and production GPU
+//! integration remain staged in their owners.
 
 pub mod authoring;
 pub mod catalog;

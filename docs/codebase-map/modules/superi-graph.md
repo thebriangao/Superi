@@ -567,13 +567,16 @@ The shared interactive and headless evaluation flow is:
    layered memory and disk adapters, and stages background inserts until cooperative completion.
    `superi-effects` now implements a higher-tier authoring catalog, exact-schema `NodeCompiler`
    adapter, strict animation, visual and spatial composition, vector shape, animated mask-stack,
-   rotoscope, motion-tracking, and text-layer payloads over this snapshot, plus versioned built-in effect and
-   transition definitions, exact transition timing, and bounded CPU reference factories. Transition
-   tests use the same snapshot for two semantic image inputs, animatable parameters, diagnostics,
-   cache identity, and old-revision isolation. Effects supplies no production GPU runtime factory,
-   spatial GPU renderer, vector, mask, or text rasterizer, production tracking accelerator,
-   propagation solver, timeline transition binder, or rendered application value. No current color,
-   engine, API, CLI, or GPU owner supplies the missing production runtime, so the
+   rotoscope, motion-tracking, and text-layer payloads over this snapshot, plus versioned built-in
+   effect and transition definitions, exact transition timing, an isolated OpenFX host, and bounded
+   CPU reference factories. The OpenFX host uses projected
+   parameter evaluation for explicit-time samples and exact registry snapshots for discovered versus
+   active plugin availability. Transition tests use the same snapshot for two semantic image
+   inputs, animatable parameters, diagnostics, cache identity, and old-revision isolation. Effects
+   supplies no production GPU runtime factory, spatial GPU renderer, vector, mask, or text
+   rasterizer, production tracking accelerator, native OpenFX transport, propagation solver,
+   timeline transition binder, or rendered application value. No current color, engine, API, CLI,
+   or GPU owner supplies the missing production runtime, so the
    canonical `graph.evaluate` stage remains an honest stub even though the generic interactive,
    playback, headless, and cache boundaries are explicit and test-backed. Engine playback now
    accepts an externally prepared snapshot and runs exact predicted frames through this cached path.
@@ -801,6 +804,9 @@ graph evaluation or runtime integration.
   rotoscope, motion-tracking, and text-layer payloads through animatable authoring definitions,
   compiles reusable controls including lossless complete-mask links into ordinary typed drivers, and
   uses `evaluate_parameter_with` to sample only literal curves before graph driver resolution.
+  Its OpenFX host also projects explicit-time literals through that same evaluator, publishes scanned
+  definitions through `NodeRegistry`, and removes non-ready schemas from active discovery so
+  `resolve_graph` retains authored unavailable operations without a graph rewrite.
   It also declares transition nodes with ordinary typed image ports and animatable scalar or choice
   parameters, registers them through `NodeRegistry`, mutates them through `EditableGraph`, and
   compiles them through `GraphEvaluationSnapshot`. Graph remains unaware of effect presentation,
@@ -1174,15 +1180,14 @@ plugin implementations, or render production values. Timeline compilation and me
 retention are now real downstream consumers. Effects is a concrete downstream schema, expression,
 diagnostics, evaluator, immutable compiler, generic serialization, authoring, and animation consumer
 with strict visual composition, spatial composition, vector shape, mask, rotoscope, motion-tracking,
-and text
-payloads, inspectable glyph layout, ordinary transition nodes, and bounded reference pixels. Effects
-also consumes projected parameter evaluation
+and text payloads, inspectable glyph layout, ordinary transition nodes, isolated OpenFX definitions
+and lifecycle catalogs, and bounded reference pixels. Effects also consumes projected parameter evaluation
 and typed drivers for exact-time links, reusable controls, and parent expressions, including ordinary
-`GraphValue<T>` built-in state. It does not yet connect production spatial GPU execution, vector,
-mask, or text rasterization, glyph atlases, production tracking pyramids and GPU acceleration,
-propagation solvers, timeline tracking
-or transition attachment, invalidation, missing-node resolution, GPU execution, or production engine
-orchestration into a complete render path.
+`GraphValue<T>` built-in state. Its OpenFX contract now consumes missing-node resolution for
+disabled, faulted, and quarantined plugins, but it does not yet connect native plugin transport,
+production spatial GPU execution, vector, mask, or text rasterization, glyph atlases, production
+tracking pyramids and GPU acceleration, propagation solvers, timeline tracking or transition
+attachment, invalidation, GPU execution, or production engine orchestration into a complete render path.
 
 The latest-version rule deterministically selects the lexically highest build-metadata variant when
 SemVer precedence ties. Consumers that require one deployment-specific build must request its exact
@@ -1302,9 +1307,10 @@ rejection, and leave atomic project storage, recovery selection, and locking in 
 
 Keep plugin availability derived from the immutable graph and registry snapshots. Preserve exact
 saved schemas, typed instance state, stable blocker order, fail-closed definition conflicts, and the
-shared degraded evaluation gate together. A future plugin host may register explicitly supported
-historical schemas and implementation factories above this crate, but it must not teach the neutral
-resolver to guess compatibility or persist discovery state.
+shared degraded evaluation gate together. The effects OpenFX host now registers only scanned exact
+schemas and derives active availability from plugin lifecycle. A future engine adapter may add
+explicitly supported historical schemas and implementation factories above this crate, but neither
+layer may teach the neutral resolver to guess compatibility or persist discovery state.
 
 Update this map when mutation, invalidation, ROI, serialization, expressions, diagnostics, and
 evaluation integrate further, concrete retention or eviction behavior changes, or cache revision

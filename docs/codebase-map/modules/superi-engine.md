@@ -239,7 +239,10 @@ audio mutation, so their user intent remains attached without synthesis.
   Concurrency supplies the production quality and fallback selector for proxy resolution plus
   playback ownership, worker priority, cancellation, progress, and nonblocking completion. Image
   and timeline support the color metadata integration contract. Timeline and audio are jointly
-  consumed by the clip-mix edit transaction. Color execution, effects, AI, and project remain
+  consumed by the clip-mix edit transaction. Effects now supplies the safe
+  `IsolatedOfxAdapter` contract, typed requests, graph projection, and plugin lifecycle state that a
+  future engine worker supervisor can consume, but engine implements no adapter, native discovery,
+  transport, or production command integration. Color execution, AI, and project likewise remain
   declared dependencies without production command integration.
 - `superi-api` consumes command snapshots and capability snapshots, preserving the public seam.
 - `superi-cli` reaches this module only through `superi-api`.
@@ -332,8 +335,10 @@ production timeline owner or the generic `superi-graph` DAG store.
 
 Eight orchestration files remain documentation-only placeholders. There is no coherent source
 registry integration, playback clock, audio flow, persistent cache lifecycle owner, rendered color
-execution, encoder-to-mux path, project persistence, lifecycle, plugin host, or real-condition
-validator. Playback prefetch is substantive but is not a full transport or proxy selector. The
+execution, encoder-to-mux path, project persistence, lifecycle, native plugin discovery, isolated
+OpenFX adapter implementation, worker transport, or real-condition validator. The effects-side
+OpenFX host contract is substantive, but `plugins.rs` remains the production supervisor placeholder.
+Playback prefetch is substantive but is not a full transport or proxy selector. The
 derived-media driver and resolver are synchronous and caller-owned, and no production playback,
 export queue, or API path invokes them yet. Clip-mix reconciliation is substantive but currently
 entered by Rust callers rather than the public API or a playback controller.
@@ -349,3 +354,6 @@ and keep codec selection, cancellation, complete publication, proxy admission, s
 quality choice, lazy source opening, and full identity verification explicit. Keep playback prefetch
 domain-owned, nonblocking, cooperatively cancellable between exact frames, and bound to complete
 cache identity. Remove a placeholder label only after substantive behavior and consumer proof exist.
+When implementing `plugins.rs`, consume `superi_effects::ofx::IsolatedOfxAdapter` and preserve its
+worker-process, bounded-message, deadline, permission, restart, and quarantine guarantees rather
+than creating an engine-private editable plugin model.

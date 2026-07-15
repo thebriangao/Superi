@@ -2,8 +2,8 @@
 module_id: superi-effects
 source_paths:
   - open/crates/superi-effects
-source_hash: bf1fb9ad3199d558f86b0d97a946e4076813ee7f0167a98bc77db170d565e9e9
-source_files: 30
+source_hash: 45f4db66d49319466b514275eb626bd3b0896e0c27b0bea5d00cc350a3d15756
+source_files: 31
 mapped_at_commit: working-tree
 ---
 
@@ -30,7 +30,11 @@ OpenType shaping, Unicode line breaking and bidi reordering, and inspectable pos
 a later raster owner. It also provides reusable cross-dissolve and directional-wipe schemas with
 exact handle-to-progress conversion, concrete schemas, and real reference pixels
 for transform, crop, opacity, blend, composite, Gaussian blur, sharpen, radial distortion, chroma
-key, invert, grade, cross dissolves, directional wipes, and complete planar spatial compositions.
+key, invert, grade, cross dissolves, directional wipes, and complete planar spatial compositions. It
+also owns the safe OpenFX 1.5.1
+effect-side host contract: isolated worker adapter validation, plugin and context description,
+graph-native schema projection, exact-time parameter sampling, explicit permissions and activation,
+instance lifecycle, structured failures, restart, and quarantine.
 
 The generic graph remains authoritative for schema identity, instance identities, typed editable
 values, transactions, parameter drivers, immutable snapshots, topology, serialization, evaluation,
@@ -48,7 +52,8 @@ persistence, UI, production spatial GPU execution, vector shape rasterization, m
 feather and expansion
 filtering, propagation solvers, production transition attachment and GPU execution, text
 rasterization and GPU atlases, pyramidal or GPU tracking acceleration, production tracking
-attachment, and OFX hosting remain absent or staged in their owning modules.
+attachment, native OpenFX bundle discovery, worker IPC, and native OFX entry-point execution remain
+absent or staged in their owning modules.
 
 ## Source inventory
 
@@ -80,14 +85,16 @@ attachment, and OFX hosting remain absent or staged in their owning modules.
   easing, bounded time expressions, immutable curve editing, exact uniform retiming, deterministic
   evaluation, and the revisioned standalone wire.
 - `open/crates/superi-effects/src/lib.rs`: Documents the implemented authoring, animation,
-  composition, spatial, control, vector shape, mask, rotoscope, tracking, text, and transition
-  foundations and publicly exports them
-  with the built-in catalog, reference evaluator, and staged visual feature modules.
+  composition, spatial, control, vector shape, mask, rotoscope, tracking, text, transition, and
+  OpenFX foundations and publicly exports them with the built-in catalog and reference evaluator.
 - `open/crates/superi-effects/src/mask.rs`: Implements animated closed cubic mask paths, fill rules,
   complete checked controls, immutable topology, control, and stack edits, exact-time sampling,
   deterministic soft-coverage boolean composition, and the strict revisioned mask-stack wire.
-- `open/crates/superi-effects/src/ofx.rs`: Placeholder for an additive OFX-compatible plugin
-  surface.
+- `open/crates/superi-effects/src/ofx.rs`: Implements the OpenFX 1.5.1 compatible effect-side host
+  contract, validated isolated-worker guarantees, exact lifecycle and standard-context descriptors,
+  graph-native clip and finite parameter projection, discovered and active catalogs, explicit-time
+  timeline projection before graph expression evaluation, bounded opaque image resources, explicit
+  permission grants, instance state, structured adapter failures, restart, and quarantine.
 - `open/crates/superi-effects/src/reference.rs`: Implements immutable effect and transition state,
   conservative ROI mapping, canonical image and shared transition-window validation, bounded
   binary16 and binary32 CPU pixel operations, editable-snapshot runtime compilation, graph
@@ -150,6 +157,11 @@ attachment, and OFX hosting remain absent or staged in their owning modules.
   control sampling, immutable topology, mask-control, and stack edits, every boolean alpha
   operation, invalid and hostile-state rejection, strict standalone persistence, reusable control
   linking, and ordinary timeline-role and node-graph-role mutation plus canonical graph reload.
+- `open/crates/superi-effects/tests/ofx_contract.rs`: Proves scan and activation lifecycle order,
+  isolated adapter rejection, exact standard context validation, deterministic graph definitions,
+  permission denial, discovered versus active catalogs, timeline projection before graph
+  expressions, bounded clip access, canonical graph reload, retained missing-node state, structured
+  worker failure, panic containment, recovery, and repeated-failure quarantine.
 - `open/crates/superi-effects/tests/reference_contract.rs`: Exercises real pixels for every
   operation category, binary16 and binary32 retention, extended RGB, metadata, premultiplied
   algebra, ROI, monotonic distortion, unsupported image meaning, invalid state, and final plus
@@ -202,6 +214,28 @@ The library exports `authoring`, `catalog`, `composition`, `control`, `keyframe`
 - `EffectNodeFactory<T, N>` receives the exact immutable `GraphSnapshot<T>`, `NodeId`, and authored
   node. `EffectNodeCompiler<T, N>` binds exact factories to one catalog snapshot, implements graph
   `NodeCompiler`, and rejects absent factories, unregistered nodes, and same-ID schema drift.
+
+`ofx` exposes the isolated OpenFX effect-side contract without loading native code:
+
+- `OfxHostCapabilities`, `OfxAdapterContract`, and `IsolatedOfxAdapter` make the supported OpenFX
+  1.5.1 contexts and finite parameter types, worker-process isolation, protocol revision, bounded
+  messages, render deadline, restart guarantee, and typed lifecycle actions inspectable.
+- `OfxPluginDescriptor`, `OfxContextDescriptor`, clip and parameter descriptors, plugin
+  capabilities, exact identities, and render-thread declarations validate standard mandatory
+  clips and host-managed parameters. Exact OpenFX names are retained while deterministic lower-kebab
+  graph names are collision checked.
+- `OfxPluginHost<A>` scans through load, describe, describe-in-context, and unload with no granted
+  permissions. `definition`, `discovered_catalog`, and `active_catalog` project contexts into
+  ordinary `EffectNodeDefinition<GraphValue<T>>` values and publish runtime schemas only while the
+  plugin is ready.
+- `OfxParameterSampler<T>` projects timeline-owned literals at one finite `OfxTime` before
+  `GraphSnapshot::evaluate_parameter_with` resolves graph links and expressions. Create and render
+  requests retain the exact graph revision, instance key, OpenFX parameter names, render window,
+  and read-only input or write-only Output resource tokens.
+- Explicit enable, disable, destroy, recover, and quarantine acknowledgement operations enforce
+  permissions and lifecycle order. Adapter errors and panics become structured failure records;
+  repeated failures quarantine the plugin and failed schemas leave active discovery without
+  changing authored graph state.
 
 `composition` exposes reusable visual layering without taking editorial timeline ownership:
 
@@ -448,7 +482,7 @@ The library exports `authoring`, `catalog`, `composition`, `control`, `keyframe`
   `IntrospectNode` behavior. Transitions require a shared display window, fingerprint resolved
   progress and discrete choices, and blend premultiplied channels with exact endpoint behavior.
 
-The remaining OFX feature module exposes no substantive public types or behavior.
+No exported feature module remains a scaffold placeholder.
 
 ## Architecture and data flow
 
@@ -466,6 +500,27 @@ The shared authoring flow is:
    schema equality before invoking an exact caller-supplied factory.
 5. The concrete built-in catalog constructs every definition through this same authoring path and
    stores its exact schema for deterministic discovery and graph registration.
+
+The OpenFX flow reuses that graph authority behind a native isolation seam:
+
+1. `OfxPluginHost::scan` rejects in-process or unbounded adapters, loads the permission-free worker,
+   reads plugin-wide and per-context descriptions, validates exact OpenFX mandatory state and every
+   derived graph name, then unloads and publishes only disabled metadata.
+2. A discovered context becomes one exact `ofx.<plugin>.<context>` schema at the plugin semantic
+   version. Clips become typed image ports, supported finite parameters become ordinary
+   `GraphValue<T>` defaults, and plugin permission requests remain required schema capabilities.
+3. Explicit enable checks the complete caller grant before loading. Only Ready contributes an
+   active catalog; Disabled, Faulted, and Quarantined keep editor discovery but rely on graph-owned
+   missing-node resolution for runtime availability.
+4. Create and render validate the authored node against the complete scanned schema. A caller
+   projects reached literals at one `OfxTime`, then graph links and expressions resolve and exact
+   OpenFX names are reconstructed for the adapter request.
+5. Render binds bounded opaque resources against every required clip, grants read-only inputs and a
+   write-only Output, and validates the adapter receipt. Graph or binding failures occur before the
+   adapter and do not count as plugin failures.
+6. An adapter error or panic marks all worker instances failed and records action, category,
+   recovery, and diagnostic context. Explicit restart retains the consecutive count; the configured
+   threshold quarantines repeated failures until the user acknowledges and restarts the worker.
 
 The animation flow is:
 
@@ -730,8 +785,10 @@ The vector shape authoring flow is:
   handle
   parameters. A higher integration owner can pair that editorial projection with the effects-owned
   transition definitions without reversing the dependency or copying timeline mutation policy.
-- `superi-engine` declares `superi-effects` but has no production catalog, animation, evaluator,
-  playback, viewport, or export call site. Current real consumers are the role-neutral authoring,
+- `superi-engine` declares `superi-effects` but has no production catalog, native plugin discovery,
+  worker adapter, IPC transport, animation, evaluator, playback, viewport, or export call site. Its
+  future plugin supervisor can implement `IsolatedOfxAdapter` without moving native code or worker
+  lifecycle into effects. Current real consumers are the role-neutral authoring,
   generic graph reload, reusable controls over shared processing payloads, strict animation,
   visual-composition, spatial-composition, vector-shape, mask, rotoscope, tracking, and text payloads,
   inspectable glyph layout, transition authoring and timing, and bounded headless graph-evaluation
@@ -753,6 +810,20 @@ The vector shape authoring flow is:
 - Discovery, definition, port, parameter, catalog, and schema iteration is deterministic. Batch
   registration is atomic, earlier snapshots remain immutable, and failures cannot publish partial
   state.
+- OpenFX native code is never loaded or invoked by this crate. Adapters must report worker-process
+  isolation, protocol revision 1, a positive message bound and render deadline, and restart support;
+  scanning grants no permissions and activation denies every ungranted requested capability.
+- OpenFX exact names and plugin versions remain stable at the adapter boundary. Portable graph names
+  are deterministic and collision checked, standard context clips and host-managed parameters are
+  validated exactly, and unsupported or lossy parameter state fails before schema publication.
+- OpenFX parameter state belongs to the graph. Timeline projection runs only for reached literals at
+  explicit finite time, graph links and expressions retain dependency authority, and native requests
+  contain no hidden editable value. Disabled and failed plugins retain discovered definitions while
+  active catalogs fail closed for runtime evaluation.
+- OpenFX resource tokens are bounded and opaque. Required clips must bind exactly once, input access
+  is read-only, Output access is write-only, and graph, sampling, or binding errors do not increment
+  plugin failure state. Adapter errors and panics fault every instance, repeated failures quarantine,
+  and a worker restart is required before native execution resumes.
 - Every result-affecting built-in parameter is typed, inspectable, editable, and animatable.
   Discrete choices remain bounded choice variants rather than numeric coercions.
 - Transition visual state is graph-native and workflow-neutral. Timeline retains endpoint identity,
@@ -929,6 +1000,13 @@ display-window validation, same-region dependencies, tile stability, and real im
 evaluation with introspection, semantic cache changes, old-revision isolation, and independent
 timeline-role and node-graph-role reuse.
 
+Seven OpenFX tests prove the permission-free scan lifecycle, exact descriptor and standard-context
+validation, unsafe adapter and graph-name collision rejection, inspectable graph-native definitions,
+explicit permission grants, discovered and active catalogs, canonical graph persistence, retained
+missing-node state, timeline projection before graph expressions, exact clip access, authored-error
+separation, host-managed transition animation, structured adapter failures, panic containment,
+recovery, and quarantine acknowledgement.
+
 Five control integration tests prove inspectable canonical controls and relationships, exact-time
 curve projection, chained scalar parenting, one child control reused by multiple targets, lossless
 two-component links, explicit nonscalar expression rejection, equal timeline-role and node-graph
@@ -1010,8 +1088,10 @@ reference solvers, built-in definitions, generic editable instantiation, determi
 pixels including bounded spatial composition, ROI mapping, immutable graph compilation,
 introspection, reusable transition definitions,
 exact transition timing, bounded transition pixels, and role-neutral graph proofs are substantive
-and test-backed. Strict curve, visual-composition, spatial-composition, vector-shape, mask-stack,
-rotoscope, tracking, and text
+and test-backed. The OpenFX 1.5.1 effect-side host, isolated adapter contract, graph projection,
+explicit-time sampling, permissions, lifecycle, structured failure, recovery, and quarantine are
+also substantive and test-backed. Strict curve, visual-composition, spatial-composition,
+vector-shape, mask-stack, rotoscope, tracking, and text
 payloads retain authored state across generic graph reload. The reference and text layout
 implementations are scalar, allocation-bounded CPU proofs, not performance production render code,
 and vector shapes, masks, and text have no rasterizer or rendered consumer.
@@ -1021,7 +1101,8 @@ playback, viewport, export, project persistence, UI, production spatial transfor
 motion-blur execution, vector shape rasterization, mask rasterization,
 propagation solver, text rasterization or glyph atlas, production tracking attachment, pyramid or GPU
 tracking acceleration, production transition
-attachment, or OFX host. Rotoscope mask payloads are generic and have no production mask-type
+attachment, native OpenFX bundle discovery, worker transport, process supervisor, or production OFX
+adapter. Rotoscope mask payloads are generic and have no production mask-type
 consumer yet. Authoring metadata is in memory and has no independent wire. Control hints do not yet
 encode enforceable numeric bounds, choice option vocabularies, grouping, conditional visibility, or
 accessibility policy; transition domains and wipe choices are therefore validated by the reference
@@ -1083,6 +1164,11 @@ Future pyramid, GPU, frame-provider, cache, timeline, UI, project, and engine in
 consume the same artifact without hiding observations, overwriting corrections, weakening revision
 fences, changing deterministic CPU meaning, or treating known-landmark pose refinement as camera
 calibration or scene reconstruction.
+
+Keep OpenFX native loading, bundle discovery, IPC, deadlines, GPU-handle transport, and worker
+supervision in the engine adapter. Preserve permission-free scanning, explicit activation grants,
+exact context and name validation, ordinary graph-owned values, literal-only timeline projection,
+fail-closed active catalogs, bounded opaque resources, structured failures, restart, and quarantine.
 
 Keep text fonts caller-resolved and offline, authored spans canonical, curve clocks and intervals
 identical, discrete changes hold-interpolated, nested wires reconstructed through checked owners,
