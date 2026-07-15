@@ -41,7 +41,7 @@ grep -Fq 'sudo apt-get install --yes libdrm-dev meson nasm ninja-build pkg-confi
     fail "provisioner must install exact source-build prerequisites"
 grep -Fq 'va/va_dec_vvc.h' "$provisioner" ||
     fail "provisioner must verify the required VVC header"
-grep -Fq 'pkg-config --atleast-version=2.22.0 libva' "$provisioner" ||
+grep -Fq 'pkg-config --atleast-version=1.22.0 libva' "$provisioner" ||
     fail "provisioner must verify the required libva API version"
 grep -Fq 'meson compile -C "$build" --jobs 2' "$provisioner" ||
     fail "provisioner must use the portable Meson compile build-directory option"

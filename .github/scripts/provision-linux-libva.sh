@@ -32,7 +32,7 @@ meson compile -C "$build" --jobs 2
 meson install -C "$build" --no-rebuild
 
 test -f "$prefix/include/va/va_dec_vvc.h"
-PKG_CONFIG_PATH="$prefix/lib/pkgconfig" pkg-config --atleast-version=2.22.0 libva
+PKG_CONFIG_PATH="$prefix/lib/pkgconfig" pkg-config --atleast-version=1.22.0 libva
 
 {
     echo "CROS_LIBVA_H_PATH=$prefix/include"
