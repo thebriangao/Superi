@@ -2,8 +2,8 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: 4204e2ab056533df22bc04f9428251afc58b24f04143b7e38a634549cdfae7f5
-source_files: 28
+source_hash: 9af9cc5c41d1b78782c0e4a5c277a18a139f0850dbcda1f27a9e5662277eed33
+source_files: 30
 mapped_at_commit: working-tree
 ---
 
@@ -49,6 +49,14 @@ that clip's own time map to a directly inspectable media or nested-source coordi
 replacement operations inherit target switch intent and source-angle membership through the same
 atomic edit path used by selection, links, groups, annotations, nesting, and retiming.
 
+Versioned `superi.timeline` component documents preserve that complete editable project state in
+canonical JSON. Revision 1 records the stable core primitive revision, protects the canonical
+payload with SHA-256, rejects malformed or unknown state, migrates the supported revision 0
+envelope in memory, and reconstructs every owner through checked constructors and timeline APIs.
+The codec returns canonical current bytes only after whole-project validation. It owns no file I/O,
+SQLite container, autosave policy, replacement protocol, or recovery journal, which remain the
+future `superi-project` boundary.
+
 The model also owns a narrow immutable color metadata seam that retains graph color state through
 the future compilation boundary without changing source meaning.
 
@@ -69,8 +77,9 @@ with stable warnings.
 ## Source inventory
 
 - `open/crates/superi-timeline/Cargo.toml`: Declares runtime dependencies on `superi-core`,
-  `superi-graph`, the workspace-pinned SHA-256 implementation, and workspace-pinned `serde_json`
-  for offline OTIO JSON interchange.
+  `superi-graph`, `serde`, `serde_json`, and the workspace-pinned SHA-256 implementation for the
+  model, color seam, strict timeline documents, canonical JSON, integrity digests, and offline OTIO
+  interchange.
 - `open/crates/superi-timeline/src/compile.rs`: Compiles validated root and nested timelines into
   one typed editable graph transaction with stable graph, node, port, parameter, and edge IDs,
   explicit stream routing, authored track and item order, complete object and multicam parameters,
@@ -87,7 +96,8 @@ with stable warnings.
 - `open/crates/superi-timeline/src/ids.rs`: Re-exports the canonical project, editorial object, and
   multicam angle identities owned by `superi-core`.
 - `open/crates/superi-timeline/src/lib.rs`: Exports the implemented identity, edit-state, edit
-  operation, model, media, retime, nesting, marker, multicam, OTIO, and graph compilation modules.
+  operation, model, media, retime, nesting, marker, multicam, serialization, OTIO, and graph
+  compilation modules.
 - `open/crates/superi-timeline/src/markers.rs`: Implements stable timeline, track, and object marker
   ownership, visible labels, flags, notes, recursively nested ordered metadata, owner-relative range
   resolution, dangling-owner reconciliation, persistent snapping state, exact candidate projection,
@@ -115,6 +125,10 @@ with stable warnings.
   continuous clip-local retime segments, immutable complete time maps, exact and explicitly
   rounded record-to-source queries, reverse and freeze constructors, direct mode inspection,
   retime slicing, clock replacement, and source translation.
+- `open/crates/superi-timeline/src/serialize.rs`: Implements the strict revisioned timeline state
+  envelope, complete wire model, stable collection canonicalization, primitive revision check,
+  SHA-256 integrity, revision 0 migration, checked reconstruction, canonical load output, and
+  classified recovery failures without file I/O.
 - `open/crates/superi-timeline/tests/edit_state_contract.rs`: Proves linked and grouped selection,
   direct member control, target and sync-lock ordering, link and group independence, state
   reconciliation, identity and timing retention, revision conflicts, and atomic rollback.
@@ -162,6 +176,10 @@ with stable warnings.
   identity resize compatibility, linked intent, and retime preservation through edit splitting.
 - `open/crates/superi-timeline/tests/track_semantics_contract.rs`: Proves all four track kinds,
   exact clocks, channel routing, linked audio reshaping, continuity, and bounded validation.
+- `open/crates/superi-timeline/tests/serialization_contract.rs`: Proves deterministic complete
+  state round trips, revision 0 migration, canonical current output, corruption and interruption
+  rejection, strict unknown and future state handling, multicam recovery, and continued direct
+  editing after load.
 
 ## Public surface
 
@@ -266,6 +284,19 @@ The multicam surface includes:
 - `resolve_multicam_frame` and `ResolvedMulticamFrame`, which expose the target timeline and clip,
   synchronized source timeline coordinate, selected angle and source clip, direct source
   relationship and time, and active audio angles.
+
+The timeline state document surface includes:
+
+- `TIMELINE_STATE_FORMAT_REVISION`, currently `1`, for the incompatible component document
+  contract layered over `STABLE_PRIMITIVE_SCHEMA_REVISION`.
+- `serialize_timeline_state`, which emits deterministic `superi.timeline` JSON with complete
+  project identity, published revision, media, library, track, item, edit, annotation, retime,
+  nested, and multicam state plus a canonical payload SHA-256 digest.
+- `deserialize_timeline_state`, which rejects malformed, oversized, corrupt, unknown, or future
+  state, migrates revision 0 in memory, reconstructs the model through checked owners, and returns
+  no partial project on failure.
+- `TimelineStateLoad`, which exposes the validated editable project, source format revision,
+  migration status, and canonical current-format bytes for a caller-owned save or recovery policy.
 
 The editorial operation surface includes:
 
@@ -505,6 +536,28 @@ OTIO interchange composes the same native owners:
 6. `OtioSchemaTarget::OtioCore0181` makes the pinned target explicit. Runtime behavior uses only
    Rust and `serde_json`; the official OpenTimelineIO package is an external verification oracle.
 
+Timeline document flow preserves those owners without becoming a project container:
+
+1. Serialization projects the immutable `EditorialProject` into an explicit wire model and
+   canonicalizes only identity-addressed sets and maps. Authored track, item, angle, source-clip,
+   switch, predicate, and retime order remains intact.
+2. Revision 1 records the `superi.timeline` format, component revision, stable core primitive
+   revision, lowercase SHA-256 payload digest, and complete payload. Wide project revisions,
+   playback ratios, and metadata integers use canonical decimal strings.
+3. Loading first inspects the minimal header. It strictly decodes revision 1 or the supported
+   revision 0 envelope, rejects unknown fields and future revisions, and verifies the digest before
+   interpreting current payload meaning.
+4. Reconstruction creates metadata keys, labels, notes, language tags, data schemas, audio routes,
+   clips, time maps, markers, relationships, multicam sources, switch programs, media libraries,
+   and the complete project through their checked constructors and mutation APIs. Duplicate set
+   members and gapful switch partitions fail instead of being silently normalized.
+5. The published project revision and exact relink evidence use narrow crate-private restoration
+   seams, followed by whole-project validation. Canonical current bytes are regenerated from the
+   validated project, so successful migration never returns stale or unchecked input bytes.
+6. The API performs no file I/O and mutates no caller-owned project. A future `superi-project`
+   transaction decides whether and how canonical bytes enter SQLite, autosave, replacement, or
+   journal recovery.
+
 ## Dependencies and consumers
 
 - `superi-core` supplies shared errors, exact rational and sample time, channel layouts, project and
@@ -514,10 +567,11 @@ OTIO interchange composes the same native owners:
   schema, typed DAG, port validation, editable node, snapshot, and atomic mutation contracts used
   by timeline compilation.
 - The workspace-pinned `sha2` 0.10.9 implementation derives stable graph-facing identifiers from
-  domain-separated, length-framed editorial identity inputs without adding a network path.
-- `serde_json` is a workspace-pinned production dependency for offline OTIO JSON parsing and
-  serialization. No OTIO library, Python package, network path, plugin host, or fixture-tool
-  runtime dependency enters the crate.
+  domain-separated, length-framed editorial identity inputs and protects canonical timeline payload
+  meaning without adding a network path.
+- `serde` and `serde_json` encode and strictly decode the stable component wire model and provide
+  offline OTIO JSON parsing and serialization. No OTIO library, Python package, network path,
+  plugin host, or fixture-tool runtime dependency enters the crate.
 - `superi-project` and `superi-engine` declare `superi-timeline` as a dependency. Engine integration
   tests consume the color metadata seam; neither source tree consumes the editorial model yet.
 - Public integration tests and the `otio_roundtrip` example are real consumers. No application API
@@ -602,6 +656,18 @@ OTIO interchange composes the same native owners:
   groups, annotations, cache state, and revision history are not processing inputs.
 - Compilation publishes one complete graph transaction or no graph. All identifiers are
   domain-separated, every hash part is length-framed, and any derived-ID collision fails closed.
+- Timeline state revision 1 is strict and integrity-protected. Unknown fields, wrong formats,
+  unsupported component or primitive revisions, malformed canonical integers, invalid typed IDs,
+  oversized documents, and SHA-256 mismatches never produce a partial project.
+- Timeline document canonicalization sorts identity-addressed media, timelines, bins, saved
+  collections, markers, metadata keys and owners, edit sets, relationship components, and multicam
+  target clips. It preserves authored track, item, predicate, angle, source membership, switch, and
+  retime order.
+- Revision 0 migration is in-memory and lossless. Loaded state must pass the same media, timeline,
+  nesting, retime, annotation, edit-state, and multicam validation as newly authored state before
+  canonical revision 1 bytes are exposed.
+- The codec is a state component rather than a `.superi` file format. It performs no filesystem,
+  database, journal, autosave, replacement, network, device, process, or GPU operation.
 - A transition names the timed item immediately before and after it. Its offsets use the track edit
   clock, fit adjacent durations, do not overlap another transition on the same item, and do not add
   to track duration. Adjacent transitions are invalid.
@@ -720,6 +786,11 @@ inspection, bidirectional provenance, stable graph and node addresses across a s
 identical graph state after a selection-only project revision, directly editable graph parameters,
 typed multicam source, switching, and audio intent, and classified missing-root failure.
 
+Three serialization tests prove deterministic complete project equality, revision 1 envelope and
+primitive revision identity, SHA-256 integrity, revision 0 migration, canonical current output,
+truncated and tampered recovery rejection, strict unknown and future state handling, invalid link
+rejection, exact multicam resolution after load, and continued revision-checked editing.
+
 Workspace tests, warnings-denied Clippy, formatting, dependency direction, the offline boundary
 scan, and codebase-map validation are required delivery gates.
 
@@ -733,8 +804,10 @@ compound creation, shared child editing, recursive inspection, and native multic
 synchronization, switching, audio-intent, structural inheritance, and exact resolution are
 substantive and test-backed. Deterministic graph compilation and production OTIO 0.18.1 reading,
 writing, opaque preservation, stable diagnostics, and a headless consumer are also test-backed.
-Graph evaluation, fit-to-fill, grouped-source compound synthesis, undo ownership, multicam mixing
-and runtime playback, persistence, and engine or API integration remain absent.
+Strict canonical timeline documents, revision 0 migration, checked recovery, and continued editing
+after load are test-backed. Graph evaluation, fit-to-fill, grouped-source compound synthesis, undo
+ownership, multicam mixing and runtime playback, the owning SQLite project container, autosave and
+recovery orchestration, and engine or API integration remain absent.
 
 The model retains equal physical source and record duration for nominal clip ranges, while separate
 time maps may sample beyond that selection and report known unavailable points. Exact seam and slice
@@ -748,11 +821,14 @@ with explicit per-track identity material; the resolver alone remains a pure pro
 groups are timeline-local and have no independent durable ID. Edit material is currently one timed
 object per command; multi-object source sequences and link-group targeting belong to later command
 and orchestration layers. Audio continuity is structural evidence rather than signal analysis or
-playback. The native project model has no stable Serde schema, and OTIO collection sizes are not
-yet bounded independently of process memory. The `otio_roundtrip` example is the first production
-consumer outside contract tests. The engine color propagation contract consumes only the narrow
-metadata seam. Timeline compilation now produces real generic editable graph state, but no engine,
-API, CLI, evaluator catalog, playback, or render owner consumes that result yet.
+playback. The model now has a strict stable component schema, a 64 MiB document bound, checked
+collection and relationship reconstruction, while OTIO collection sizes are not yet bounded
+independently of process memory. Nested component collection counts are validated by domain
+construction after JSON allocation rather than by a streaming preallocation quota. The
+`otio_roundtrip` example is the first production consumer outside contract tests. The engine color
+propagation contract consumes only the narrow metadata seam. Timeline compilation now produces real
+generic editable graph state, but no engine, API, CLI, evaluator catalog, playback, or render owner
+consumes that result yet.
 
 ## Maintenance notes
 
@@ -764,6 +840,10 @@ source-link resolution, selection expansion, track intent, clip relationship par
 reconciliation, transition adjacency, nesting acyclicity, exact nested placement, shared-instance
 reporting, multicam angle identity and metadata, source membership, switch coverage, exact
 resolution, audio intent, structural inheritance, and atomic publication as public contracts.
+Treat the timeline document format, primitive revision gate, field names, enum codes, decimal
+integer forms, canonical collection rules, checksum scope, migration behavior, and checked
+reconstruction as the same class of public contract. Add a new component revision and explicit
+migration for incompatible changes instead of changing revision 1 in place.
 Extend tests before changing them. Later
 higher-level and grouped-source compound operations must consume `tracks_affected_by_sync`, exact
 selection state, and clip-owned time maps instead of recreating those policies. Add higher-level
@@ -771,4 +851,6 @@ edit commands and graph evaluation only through their owning modules, and update
 API, CLI, persistence, and fixture maps when those paths begin consuming native timeline state.
 Extend OTIO only through `OtioDocument` and the pinned schema target, preserve unknown source
 templates and stable diagnostics, and prove emitted files through an official compatible reader
-before expanding the supported subset.
+before expanding the supported subset. Keep file I/O, SQLite schema, autosave, replacement, and
+recovery journals in `superi-project`, consuming `TimelineStateLoad::canonical_document` only after
+project-level acceptance.

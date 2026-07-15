@@ -2833,6 +2833,22 @@ impl EditorialProject {
         }
         Ok(())
     }
+
+    pub(crate) fn restore_persisted_state(
+        &mut self,
+        revision: u64,
+        media_library: MediaLibrary,
+    ) -> Result<()> {
+        let previous_revision = self.revision;
+        let previous_library = std::mem::replace(&mut self.media_library, media_library);
+        self.revision = revision;
+        if let Err(error) = self.validate() {
+            self.revision = previous_revision;
+            self.media_library = previous_library;
+            return Err(error);
+        }
+        Ok(())
+    }
 }
 
 /// Mutable state exposed only while one project edit is unpublished.

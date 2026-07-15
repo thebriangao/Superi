@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 9ecac603c2bf71f4eb79c1058e0bb0a5664046fa8ab034132857db7104feb09c
+source_hash: 38958cc887352991b5b6568720b02f62407a76e87096c002efd6f9bb86d65771
 source_files: 124
 mapped_at_commit: working-tree
 ---
@@ -310,9 +310,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 
 - `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 24 local
   workspace packages, registry dependencies, target-support dependency trees, scenario digest
-  and process-instrumentation dependency edges, graph document serialization and integrity edges,
-  and the exact `oxideav-mp3` Git revision. It is generated resolution evidence and is not
-  hand-edited policy.
+  and process-instrumentation dependency edges, graph and timeline document serialization and
+  integrity edges, and the exact `oxideav-mp3` Git revision. Timeline state now directly consumes
+  the already-resolved `serde`, `serde_json`, and `sha2` packages, so this change adds no new
+  registry package. The lockfile is generated resolution evidence and is not hand-edited policy.
 - `open/Cargo.toml`: Root Cargo workspace manifest using resolver 2 and glob members under
   `crates/*` and `tools/*`. It centralizes version `0.0.0`, Rust 2021, MIT, Rust 1.80, repository
   metadata, deny-by-default unsafe lints, and shared dependencies for error handling, serialization,
@@ -572,6 +573,11 @@ GPU, concurrency, media, graph, and codecs; feature catalogs and timeline build 
 orchestration assembles them; the API is the stable facade; and CLI is a headless consumer. The
 fixture, dependency-check, boundary, and structured-report tools are workspace members for common
 build, test, Clippy, and MSRV coverage, but none is part of the runtime DAG.
+
+The timeline component document reuses workspace `serde`, `serde_json`, and `sha2` pins already
+present for core and graph contracts. This changes the direct package edges recorded for
+`superi-timeline` but does not change crate-tier direction, introduce a network path, or transfer
+SQLite and autosave ownership away from `superi-project`.
 
 The dependency-direction path is a separate local architecture gate. `superi-dependency-check`
 reads locked offline Cargo metadata, classifies all 19 runtime crates, and checks internal normal,

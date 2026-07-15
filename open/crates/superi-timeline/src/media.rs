@@ -278,6 +278,24 @@ impl LinkedMediaReference {
         require_text("validate_media", "media target", &self.target)?;
         self.relink_state.validate()
     }
+
+    pub(crate) fn restore_relink_state(
+        &mut self,
+        status: RelinkStatus,
+        expected_fingerprint: Option<String>,
+        observed_fingerprint: Option<String>,
+        rejected_target: Option<String>,
+    ) -> Result<()> {
+        let state = MediaRelinkState {
+            status,
+            expected_fingerprint,
+            observed_fingerprint,
+            rejected_target,
+        };
+        state.validate()?;
+        self.relink_state = state;
+        Ok(())
+    }
 }
 
 /// A manually organized, optionally nested media container.

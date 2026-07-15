@@ -31,7 +31,7 @@ against raw source before changing code.
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; production source registration and muxing absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
-| `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Native editorial project state, media bins and saved queries, metadata and relink state, rational range maps and availability, exact clip retiming, typed tracks, authoritative edit intent, markers, exact snapping, clip relationships, atomic foundational, advanced, nested, and multicam operations, OTIO 0.18.1 interchange, color metadata propagation, and deterministic typed graph compilation | Foundational model, bins, sub-bins, metadata smart collections, explicit relink evidence, exact range and retime resolution, speed changes, reverse, freeze, piecewise time remapping, track clocks, linked sample reshaping, selection, targeting, synchronization, clip relationships, three-class marker ownership, snapping, six primary operations, nine advanced edit families, nested placement, compound creation, shared child editing, recursive inspection, native multicam angle metadata, switching, structural inheritance and resolution, dependency-light OTIO import and export, opaque preservation, stable interchange diagnostics, a headless consumer, graph color metadata, and stable editable timeline-to-graph compilation including multicam intent are test-backed; broader interchange interpretation, fit-to-fill, grouped-source compound synthesis, persistence, graph evaluation, multicam mixing, and runtime integration are absent |
+| `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Native editorial project state, media bins and saved queries, metadata and relink state, rational range maps and availability, exact clip retiming, typed tracks, authoritative edit intent, markers, exact snapping, clip relationships, atomic foundational, advanced, nested, and multicam operations, OTIO 0.18.1 interchange, versioned integrity-checked state documents, color metadata propagation, and deterministic typed graph compilation | Foundational model, bins, sub-bins, metadata smart collections, explicit relink evidence, exact range and retime resolution, speed changes, reverse, freeze, piecewise time remapping, track clocks, linked sample reshaping, selection, targeting, synchronization, clip relationships, three-class marker ownership, snapping, six primary operations, nine advanced edit families, nested placement, compound creation, shared child editing, recursive inspection, native multicam angle metadata, switching, structural inheritance and resolution, dependency-light OTIO import and export, opaque preservation, stable interchange diagnostics, a headless consumer, strict canonical timeline documents, revision 0 migration, checked recovery, graph color metadata, and stable editable timeline-to-graph compilation including multicam intent are test-backed; broader interchange interpretation, fit-to-fill, grouped-source compound synthesis, the owning project container and autosave policy, graph evaluation, multicam mixing, and runtime integration are absent |
 | `tool-superi-dependency-check` | [module map](modules/tool-superi-dependency-check.md) | `open/tools/superi-dependency-check` | Offline executable policy for the open runtime dependency graph | Implemented exact runtime, build, dev, and new-crate checks |
 | `tool-superi-boundary-tool` | [module map](modules/tool-superi-boundary-tool.md) | `open/tools/superi-boundary-tool` | Offline scanner for network-client and open-to-closed policy | Implemented library, CLI, workspace gate, and hosted-build command |
 | `tool-superi-bench` | [module map](modules/tool-superi-bench.md) | `open/tools/superi-bench` | Stable benchmark harnesses and reproducible stage reporting | Implemented seven-stage runner with real graph evaluation and explicit gaps |
@@ -777,8 +777,17 @@ fixed-angle, or all-angle audio intent. Resolution follows the target clip time 
 membership, and selected source clip time map without flattening the direct source relationship.
 Structural fragments and replacements inherit source membership and target switch intent through
 the shared atomic edit path. Graph compilation retains that intent as typed parameters. Runtime
-graph evaluation, playback, mixing, persistence, OTIO interchange, engine, and API consumers remain
+graph evaluation, playback, mixing, the owning project container, engine, and API consumers remain
 absent.
+
+Versioned timeline state documents preserve the complete editable owner graph without claiming the
+project file boundary. `serialize_timeline_state` emits canonical `superi.timeline` revision 1 JSON
+with the stable primitive revision and SHA-256 payload integrity. `deserialize_timeline_state`
+strictly rejects corrupt, interrupted, unknown, oversized, or future state, migrates revision 0 in
+memory, reconstructs through checked media, timeline, annotation, relationship, retime, nesting,
+and multicam APIs, and exposes canonical current bytes only after whole-project validation. Runtime
+playback, mixing, the SQLite container, autosave and journal orchestration, engine, and API consumers
+remain absent.
 
 The largest verification gap is the absence of a production import-to-export slice. Its canonical
 contract, source fixture, reference project state, graph control state, public action flow, and
@@ -818,10 +827,11 @@ Partial modules contain these explicit placeholder areas:
   timing, and shared interactive and headless evaluation surfaces.
 - `superi-timeline`: broader OTIO schema and vendor-effect interpretation beyond its pinned 0.18.1
   native subset, graph evaluation, fit-to-fill, grouped-source compound synthesis and higher-level
-  edit orchestration, undo ownership, multicam playback and mixing, persistence, and application
-  consumers beyond its native model, authoritative edit state, marker and metadata state, exact
-  snapping, foundational, advanced, nested, and multicam edit operations, deterministic graph
-  compilation, OTIO headless consumer, and contract tests.
+  edit orchestration, undo ownership, multicam playback and mixing, the owning SQLite project
+  container, autosave and recovery-journal orchestration, and application consumers beyond its
+  native model, authoritative edit state, marker and metadata state, exact snapping, foundational,
+  advanced, nested, and multicam edit operations, deterministic graph compilation, versioned state
+  documents, OTIO headless consumer, and contract tests.
 
 Substantive modules also have intentionally incomplete boundaries. Media I/O has no muxer or
 production registry owner for its source backends. GPU has no cross-adapter transfer or external
