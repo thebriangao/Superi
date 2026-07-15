@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 57b1cde4b34bc2ce75c4396b5b0be29de0f778d1542da6f4db994d1aefdfdac3
-source_files: 123
+source_hash: 246d7fd41aeaa0b942b3e525c2e8d50885b39eb128b0a88eac88f953e3a03cdf
+source_files: 124
 mapped_at_commit: working-tree
 ---
 
@@ -65,10 +65,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   SHA-256, builds a private prefix, verifies the VVC header and API version, installs the GBM
   development link target, and publishes header, pkg-config, native-linker, and runtime library
   paths to subsequent hosted steps.
+- `.github/scripts/libvpx-windows.def`: Reviewed Windows DLL export surface containing the official
+  libvpx 1.16 symbols consumed by the production runtime loader.
 - `.github/scripts/provision-windows-libvpx.sh`: Windows hosted runtime provisioner that pins the
   reviewed vcpkg registry baseline, builds libvpx 1.16.0 with VP9 high-bit-depth support through the
-  dynamic MinGW triplet without binary-cache reuse, requires one produced DLL, and publishes its
-  native path to strict capability and codec tests.
+  supported static MSVC triplet without binary-cache reuse, relinks the archive into one DLL using
+  the reviewed exports, verifies the exports and runtime version, and publishes its native path.
 - `.github/scripts/check-ci-features.py`: Standard-library contract that binds supported matrix
   lanes to explicit default or `os-codecs` policy, the real CLI feature build, engine and API
   consumer tests, and a default-only Ubuntu 22.04 job.
@@ -86,7 +88,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   jobs install `nasm` with Homebrew. Linux and macOS jobs build the approved
   libvpx 1.16.0 archive after verifying its pinned checksum and expose that exact shared runtime to
   capability and codec tests. Windows builds the same approved runtime from a pinned vcpkg registry
-  revision as a dynamic MinGW DLL with VP9 high-bit-depth support. Both macOS lanes, Windows 2025,
+  revision as a static MSVC archive with VP9 high-bit-depth support, then relinks it into a DLL with
+  only the production loader's reviewed symbols. Both macOS lanes, Windows 2025,
   and Ubuntu 26.04
   also build the CLI with `os-codecs` and test the engine and API consumers; Ubuntu 24.04 and the
   Ubuntu 22.04 job remain default-only.

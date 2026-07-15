@@ -64,12 +64,24 @@ grep -Fq 'vcpkg_baseline="a0400024711b283056538ac19ced80b91a83c24c"' "$windows_l
     fail "Windows libvpx provisioning must pin the reviewed vcpkg registry revision"
 grep -Fq 'VCPKG_BINARY_SOURCES=clear' "$windows_libvpx_provisioner" ||
     fail "Windows libvpx provisioning must build from the pinned source package"
-grep -Fq -- '--triplet x64-mingw-dynamic' "$windows_libvpx_provisioner" ||
-    fail "Windows libvpx provisioning must produce a dynamically loadable runtime"
+grep -Fq -- '--triplet x64-windows-static' "$windows_libvpx_provisioner" ||
+    fail "Windows libvpx provisioning must use the supported static source build"
+grep -Fq '/WHOLEARCHIVE:' "$windows_libvpx_provisioner" ||
+    fail "Windows libvpx provisioning must relink the approved archive as a DLL"
+grep -Fq 'libvpx-windows.def' "$windows_libvpx_provisioner" ||
+    fail "Windows libvpx provisioning must use the reviewed runtime exports"
+grep -Fq 'MSYS_NO_PATHCONV=1 powershell.exe' "$windows_libvpx_provisioner" ||
+    fail "Windows libvpx provisioning must preserve MSVC linker switches under Git Bash"
+grep -Fq 'dumpbin.exe /NOLOGO /EXPORTS' "$windows_libvpx_provisioner" ||
+    fail "Windows libvpx provisioning must verify the produced exports"
 grep -Fq '"features": ["highbitdepth"]' "$windows_libvpx_provisioner" ||
     fail "Windows libvpx provisioning must retain VP9 high-bit-depth support"
 grep -Fq 'SUPERI_LIBVPX_PATH=' "$windows_libvpx_provisioner" ||
     fail "Windows libvpx provisioning must publish the exact runtime path"
+grep -Fq 'vpx_codec_version_str' "$workspace_root/.github/scripts/libvpx-windows.def" ||
+    fail "Windows libvpx exports must retain runtime ABI validation"
+[[ "$(grep -Ec '^[[:space:]]+vpx_' "$workspace_root/.github/scripts/libvpx-windows.def")" -eq 18 ]] ||
+    fail "Windows libvpx exports must contain exactly the 18 production runtime symbols"
 grep -Fq 'LIBVPX_VERSION: "1.16.0"' "$workflow" ||
     fail "workflow must pin the approved libvpx version"
 grep -Fq 'LIBVPX_SOURCE_SHA256:' "$workflow" ||
