@@ -36,6 +36,7 @@ against raw source before changing code.
 | `tool-superi-boundary-tool` | [module map](modules/tool-superi-boundary-tool.md) | `open/tools/superi-boundary-tool` | Offline scanner for network-client and open-to-closed policy | Implemented library, CLI, workspace gate, and hosted-build command |
 | `tool-superi-bench` | [module map](modules/tool-superi-bench.md) | `open/tools/superi-bench` | Stable benchmark harnesses and reproducible stage reporting | Implemented seven-stage runner with real graph evaluation and explicit gaps |
 | `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline fixture validation, generation, and typed golden verification | Implemented validation library, six generators, seven-command CLI, four golden harnesses, and focused contracts |
+| `tool-superi-test-report` | [module map](modules/tool-superi-test-report.md) | `open/tools/superi-test-report` | Offline structured platform-lane evidence generator | Implemented strict schema, deterministic findings, collision-safe CLI, and focused contracts |
 | `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: hosted slice baseline, portable expected contract, and canonical source delivered; runtime slice absent |
 
 ## Ownership and repository boundaries
@@ -53,8 +54,8 @@ when all maps validate. `.worktreeinclude` copies it into Codex-managed worktree
 
 The open runtime and tool workspace lives under `open/`. Current Cargo membership is 19 runtime
 crates plus `superi-fixture-tool`, `superi-dependency-check`, `superi-boundary-tool`, and
-`superi-bench`. All four
-tools are built with the workspace but remain outside the runtime dependency graph. The root
+`superi-bench`, and `superi-test-report`. All five tools are built with the workspace but remain
+outside the runtime dependency graph. The root
 `closed/README.md` is only a boundary notice for the separately maintained proprietary tier. Open
 Superi must never import, link, or depend on closed code. Closed
 Superi may consume the same open public API as any other client and must produce ordinary editable
@@ -515,6 +516,11 @@ Cargo and Rust source deterministically, rejects forbidden network clients and d
 rejects supported open-to-closed import routes and symlinks, and runs before each locked hosted
 workspace build as well as through the canonical workspace test gate.
 
+`superi-test-report` is an offline repository utility that validates explicit schema-versioned lane
+evidence and derives canonical status, summary counts, performance regressions, golden mismatches,
+flaky tests, and platform gaps. It retains retry and artifact evidence, creates missing-suite gaps,
+writes valid blocking reports before returning failure, and refuses to replace an existing report.
+
 ## Shared invariants
 
 The following constraints cross multiple modules and should be preserved together:
@@ -813,6 +819,7 @@ For common concerns, begin at these owners:
 - Canonical first editorial slice, typed scenario state, replacement stages, and proof: `workspace`.
 - Reviewed internal runtime dependency direction: `tool-superi-dependency-check`.
 - Static network-client and open-to-closed enforcement: `tool-superi-boundary-tool`.
+- Deterministic structured platform-lane evidence: `tool-superi-test-report`.
 
 ## Map maintenance
 

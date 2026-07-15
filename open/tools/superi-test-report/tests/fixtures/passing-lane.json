@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "matrix_revision": 1,
+  "lane_id": "ci-ubuntu-24-x64",
+  "suites": ["toolchain"],
+  "blocking": true,
+  "source": {
+    "commit_sha": "0123456789abcdef0123456789abcdef01234567",
+    "dirty": false,
+    "build_profile": "test",
+    "rust_version": "1.80.0",
+    "cargo_lock_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "enabled_features": []
+  },
+  "fixtures": {
+    "manifest_revision": "policy/utf8/v1",
+    "reference_project_ids": ["project/toolchain-v1"],
+    "reference_media_ids": ["media/toolchain-v1"],
+    "expected_output_revision": "toolchain-v1"
+  },
+  "platform": {
+    "os_name": "ubuntu",
+    "os_edition": "lts",
+    "os_version": "24.04",
+    "os_build": "20260714",
+    "kernel": "6.8.0",
+    "architecture": "x86_64",
+    "cpu_model": "hosted-runner",
+    "logical_cores": 4,
+    "memory_bytes": 17179869184,
+    "hardware_tier": "hosted-ci",
+    "gpu": null,
+    "audio": null,
+    "codec_backends": [],
+    "cache": {
+      "state": "cold",
+      "size_bytes": 0,
+      "storage_medium": "ephemeral-ssd"
+    }
+  },
+  "timing": {
+    "started_at": "2026-07-14T00:00:00Z",
+    "ended_at": "2026-07-14T00:02:00Z",
+    "duration_ms": 120000
+  },
+  "artifacts": [
+    {
+      "id": "raw-log",
+      "uri": "artifacts/toolchain.log"
+    }
+  ],
+  "tests": [
+    {
+      "id": "toolchain.workspace",
+      "suite": "toolchain",
+      "command": "cargo test --workspace --locked --offline --no-fail-fast",
+      "attempts": [
+        {
+          "number": 1,
+          "status": "pass",
+          "duration_ms": 120000,
+          "seed": "not-applicable",
+          "reason": null,
+          "artifacts": []
+        }
+      ],
+      "evidence": []
+    }
+  ]
+}

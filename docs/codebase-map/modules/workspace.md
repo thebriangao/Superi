@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 66bf86cc548cb3ca9d82b334a64c77f2f73aad617dd141a7808e8c191c15dc8f
-source_files: 119
+source_hash: 535cd424364d4627ad64f8776ced3ef7fe92a22ddc82b0f0a7a28c76fcfc7c04
+source_files: 120
 mapped_at_commit: working-tree
 ---
 
@@ -172,6 +172,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P1.W07.C011.md`: Durable implementation evidence for the seven-stage benchmark
   harness, real graph evaluator workload, reproducible context, explicit gap policy, verification,
   delivery, and intentionally unregistered consumer paths.
+- `docs/checkpoints/P1.W07.C015.md`: Durable implementation evidence for schema-versioned
+  platform-lane reports, deterministic performance, golden, flaky, and gap findings, collision-safe
+  publication, focused contracts, delivery context, and intentionally external raw artifacts.
 - `docs/checkpoints/P1.W07.C017.md`: Durable implementation evidence for the canonical headless
   runner. It records exact editorial state, API and CLI integration, honest stub publication,
   red-to-green contracts, fixture dependency, verification boundaries, and delivery context.
@@ -286,7 +289,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 
 ### Cargo workspace and repository configuration
 
-- `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 23 local
+- `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 24 local
   workspace packages, registry dependencies, target-support dependency trees, scenario digest
   and process-instrumentation dependency edges, graph document serialization and integrity edges,
   and the exact `oxideav-mp3` Git revision. It is generated resolution evidence and is not
@@ -310,8 +313,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   permitting only the pinned OxideAV MP3 repository as a Git source.
 - `open/docs/STRUCTURE.md`: Compact dependency-tier map, codec placement, suggested human ownership,
   crate-boundary working rules, repository-tool placement, fixture-tool responsibility including
-  OTIO baseline generation, and a list of deferred production work. Its 18-crate wording is also
-  behind the current workspace membership.
+  OTIO baseline generation, structured test-report responsibility, and deferred production work.
 - `open/rust-toolchain.toml`: Selects the floating stable Rust channel with `rustfmt` and Clippy.
   Package metadata separately declares Rust 1.80 as the minimum supported version.
 - `open/rustfmt.toml`: Sets Rust 2021 formatting and a 100-column maximum width.
@@ -440,7 +442,8 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
   now exist under C017, C024, and C025 ownership.
 - `open/Cargo.toml` exports inherited workspace package metadata, lints, and dependency declarations
   to every member manifest. The current glob expansion is 19 crate packages plus
-  `superi-fixture-tool`, `superi-dependency-check`, and `superi-boundary-tool`, for 22 members total.
+  `superi-fixture-tool`, `superi-dependency-check`, `superi-boundary-tool`, `superi-bench`, and
+  `superi-test-report`, for 24 members total.
 - `open/Cargo.lock` is the reproducible dependency-resolution surface for builds and audit tools.
 - `open/deny.toml`, `open/rust-toolchain.toml`, and `open/rustfmt.toml` are entry points for license
   audit, toolchain installation, and formatting.
@@ -544,8 +547,8 @@ shared package metadata and lint defaults, resolves member and external dependen
 dependency direction is downward through the crate tiers: core and representation types support
 GPU, concurrency, media, graph, and codecs; feature catalogs and timeline build on those; engine
 orchestration assembles them; the API is the stable facade; and CLI is a headless consumer. The
-fixture, dependency-check, and boundary tools are workspace members for common build, test, Clippy,
-and MSRV coverage, but none is part of the runtime DAG.
+fixture, dependency-check, boundary, and structured-report tools are workspace members for common
+build, test, Clippy, and MSRV coverage, but none is part of the runtime DAG.
 
 The dependency-direction path is a separate local architecture gate. `superi-dependency-check`
 reads locked offline Cargo metadata, classifies all 19 runtime crates, and checks internal normal,
@@ -684,6 +687,8 @@ The documents deliberately point into other modules:
 - `superi-fixture-tool` validates repository fixture policy but does not enter runtime engine flow.
 - `superi-dependency-check` validates the runtime Cargo graph but does not enter runtime engine flow.
 - `superi-boundary-tool` validates source boundaries but does not enter runtime engine flow.
+- `superi-test-report` validates and normalizes platform-lane evidence but does not enter runtime
+  engine flow.
 
 The closed tier is only a consumer of the open API. It is never a workspace dependency or a source
 of open runtime behavior.
@@ -841,9 +846,9 @@ lane, an unimplemented suite is a gap, and a retry retains its original failure 
 ## Current status and risks
 
 The workspace is beyond the original empty scaffold even though the public orientation has not been
-updated consistently. Fresh Cargo metadata expands the member globs to 22 packages: 19 crates under
-`open/crates/` plus the `superi-fixture-tool`, `superi-dependency-check`, and
-`superi-boundary-tool` repository utilities. The
+updated consistently. Fresh Cargo metadata expands the member globs to 24 packages: 19 crates under
+`open/crates/` plus the `superi-fixture-tool`, `superi-dependency-check`,
+`superi-boundary-tool`, `superi-bench`, and `superi-test-report` repository utilities. The
 lockfile includes a substantial
 GPU, image, codec, serialization, platform, and native-build dependency graph, and current codec,
 image, platform, and unsafe documents describe implemented contracts rather than empty placeholders.

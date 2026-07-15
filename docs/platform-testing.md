@@ -151,6 +151,14 @@ Every lane emits a structured report and preserves its raw logs. At minimum, the
 - test start and end timestamps, duration, retries, random seed, and artifact links;
 - exact failure, warning, skip, and platform-gap reasons.
 
+Repository and CI consumers create the canonical schema-versioned JSON with
+`cargo run -p superi-test-report --locked --offline -- build INPUT.json OUTPUT.json` from `open/`.
+The input and derived finding contract is documented in
+[`open/tools/superi-test-report/README.md`](../open/tools/superi-test-report/README.md). The generator
+writes valid blocking reports before returning failure, refuses to overwrite an existing report,
+and derives summaries from retained attempts and typed evidence rather than trusting caller-supplied
+status counts.
+
 A retry does not erase the first result. Flaky passes retain the failed attempt and retry count. A
 skip without a declared capability reason is a gap.
 

@@ -70,6 +70,8 @@ Clippy, and minimum-Rust verification cover them. They do not participate in the
 integrity rules documented in `../test-fixtures/README.md` without network access. Its deterministic
 generators include the versioned OTIO 0.18.1 interchange baseline consumed by timeline development
 contracts without creating a runtime dependency.
+`superi-test-report` validates explicit lane evidence and emits deterministic structured reports for
+performance regressions, golden mismatches, flaky tests, and platform gaps without network access.
 
 ### Automated dependency-direction gate
 

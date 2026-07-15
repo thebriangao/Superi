@@ -2825,6 +2825,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "superi-test-report"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "superi-timeline"
 version = "0.0.0"
 dependencies = [
