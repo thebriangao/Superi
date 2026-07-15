@@ -10,20 +10,26 @@ use superi_concurrency::backpressure::{
     bounded_handoff, BackpressureConfig, HandoffReceiver, PipelineRoute, PipelineStage,
 };
 use superi_concurrency::jobs::{BoundedWorkerPool, WorkerPoolConfig};
+use superi_concurrency::lifecycle::LifecyclePhase;
 use superi_concurrency::threads::ExecutionDomain;
 use superi_core::color_space::ColorSpace;
 use superi_core::error::{Error, ErrorCategory, Recoverability};
 use superi_core::ids::JobId;
 use superi_core::pixel::AlphaMode;
 use superi_core::time::{Duration, RationalTime, TimeRange, Timebase};
+use superi_engine::dispatcher::{
+    EngineCommand, EngineCommandDispatcher, EngineCommandRequest, EngineCommandResult, EngineEvent,
+    EngineTransactionId,
+};
+use superi_engine::lifecycle::{EngineSubsystem, EngineWorkKind};
 use superi_engine::playback::{
     PlaybackAudioOutput, PlaybackFrameEvaluator, PlaybackOrchestrator, PlaybackPoll,
     PlaybackPrefetchEvaluator, PlaybackPrefetcher, PlaybackViewportFrame,
 };
 use superi_engine::render::ViewportColorMetadata;
 use superi_engine::transport::{
-    DroppedFramePolicy, PlaybackDirection, PlaybackTransport, PlaybackTransportConfig,
-    PlaybackTransportMode, PlaybackTransportSnapshot, TransportAudioState,
+    DroppedFramePolicy, PlaybackDirection, PlaybackTransport, PlaybackTransportCommand,
+    PlaybackTransportConfig, PlaybackTransportMode, PlaybackTransportSnapshot, TransportAudioState,
     TransportDegradationCode,
 };
 use superi_graph::node::GraphColorMetadata;
@@ -579,4 +585,188 @@ fn viewport_color() -> ViewportColorMetadata {
 fn transport_job_namespace_is_deterministic_and_nonzero() {
     let job = JobId::from_raw((u128::from(91_u64) << 64) | 1);
     assert_ne!(job.raw(), 0);
+}
+
+#[test]
+fn engine_dispatcher_routes_transport_commands_across_domains_with_ordered_state_events() {
+    let base = Instant::now();
+    let mut harness = Harness::new(
+        DroppedFramePolicy::PreserveEveryFrame,
+        RationalTime::new(0, frame_timebase()),
+        base,
+    );
+
+    let engine_domain = ExecutionDomain::EngineControl.enter_current().unwrap();
+    let (mut dispatcher, mut playback_executor) =
+        EngineCommandDispatcher::new_with_playback_bridge().unwrap();
+    drive_dispatcher_to_running(&mut dispatcher);
+    dispatcher.drain_events().unwrap();
+
+    let seek = dispatcher
+        .dispatch(EngineCommandRequest::new(
+            EngineTransactionId::new("playback-seek").unwrap(),
+            EngineCommand::ExecutePlayback(PlaybackTransportCommand::Seek(RationalTime::new(
+                5,
+                frame_timebase(),
+            ))),
+        ))
+        .unwrap();
+    let EngineCommandResult::PlaybackAccepted { permit } = seek.result() else {
+        panic!("playback command did not return typed admission")
+    };
+    assert_eq!(permit.unwrap().work(), EngineWorkKind::Playback);
+
+    let inspection = dispatcher
+        .dispatch(EngineCommandRequest::new(
+            EngineTransactionId::new("inspect-while-playback-pending").unwrap(),
+            EngineCommand::InspectLifecycle,
+        ))
+        .unwrap();
+    assert!(matches!(
+        inspection.result(),
+        EngineCommandResult::Lifecycle(_)
+    ));
+    assert!(inspection.command_sequence() > seek.command_sequence());
+
+    let blocked = dispatcher
+        .dispatch(EngineCommandRequest::new(
+            EngineTransactionId::new("overtake-playback").unwrap(),
+            EngineCommand::BeginShutdown,
+        ))
+        .unwrap_err();
+    assert_eq!(blocked.category(), ErrorCategory::Conflict);
+    drop(engine_domain);
+
+    let off_domain = playback_executor
+        .execute_next(&mut harness.transport, base)
+        .unwrap_err();
+    assert_eq!(off_domain.category(), ErrorCategory::Conflict);
+    assert_eq!(harness.transport.snapshot().epoch(), 0);
+
+    let playback_domain = ExecutionDomain::Playback.enter_current().unwrap();
+    let execution = playback_executor
+        .execute_next(&mut harness.transport, base)
+        .unwrap()
+        .unwrap();
+    assert_eq!(execution.command_sequence(), seek.command_sequence());
+    assert_eq!(execution.snapshot().playhead().value(), 5);
+    assert_eq!(execution.snapshot().epoch(), 1);
+    assert!(execution.failure().is_none());
+    drop(playback_domain);
+
+    let engine_domain = ExecutionDomain::EngineControl.enter_current().unwrap();
+    let events = dispatcher.drain_events().unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].command_sequence(), seek.command_sequence());
+    assert_eq!(events[0].playback_epoch(), Some(1));
+    match events[0].event() {
+        EngineEvent::PlaybackStateChanged { snapshot, failure } => {
+            assert_eq!(snapshot.playhead().value(), 5);
+            assert!(failure.is_none());
+        }
+        event => panic!("unexpected playback event: {event:?}"),
+    }
+
+    dispatcher
+        .dispatch(EngineCommandRequest::new(
+            EngineTransactionId::new("degrade-playback").unwrap(),
+            EngineCommand::ReportRuntimeFailure {
+                subsystem: EngineSubsystem::Playback,
+                failure: superi_engine::dispatcher::EngineReportedFailure::new(
+                    ErrorCategory::Unavailable,
+                    Recoverability::Retryable,
+                    "playback scheduler is rebuilding",
+                )
+                .unwrap(),
+            },
+        ))
+        .unwrap();
+    let denied = dispatcher
+        .dispatch(EngineCommandRequest::new(
+            EngineTransactionId::new("degraded-playback-command").unwrap(),
+            EngineCommand::ExecutePlayback(PlaybackTransportCommand::Play),
+        ))
+        .unwrap_err();
+    assert_eq!(denied.category(), ErrorCategory::Conflict);
+
+    let recovery = dispatcher
+        .dispatch(EngineCommandRequest::new(
+            EngineTransactionId::new("recover-playback").unwrap(),
+            EngineCommand::BeginRecovery(EngineSubsystem::Playback),
+        ))
+        .unwrap();
+    let EngineCommandResult::Lifecycle(recovery) = recovery.result() else {
+        panic!("recovery did not return lifecycle state")
+    };
+    let action = recovery.pending_action().unwrap();
+    dispatcher
+        .dispatch(EngineCommandRequest::new(
+            EngineTransactionId::new("complete-playback-recovery").unwrap(),
+            EngineCommand::CompleteLifecycleAction(action),
+        ))
+        .unwrap();
+    dispatcher.drain_events().unwrap();
+
+    let invalid = dispatcher
+        .dispatch(EngineCommandRequest::new(
+            EngineTransactionId::new("invalid-playback-seek").unwrap(),
+            EngineCommand::ExecutePlayback(PlaybackTransportCommand::Seek(RationalTime::new(
+                99,
+                frame_timebase(),
+            ))),
+        ))
+        .unwrap();
+    drop(engine_domain);
+
+    let playback_domain = ExecutionDomain::Playback.enter_current().unwrap();
+    let execution = playback_executor
+        .execute_next(&mut harness.transport, base)
+        .unwrap()
+        .unwrap();
+    assert_eq!(execution.command_sequence(), invalid.command_sequence());
+    assert_eq!(execution.snapshot().playhead().value(), 5);
+    assert!(execution.failure().is_some());
+    drop(playback_domain);
+
+    let engine_domain = ExecutionDomain::EngineControl.enter_current().unwrap();
+    let events = dispatcher.drain_events().unwrap();
+    assert_eq!(events.len(), 1);
+    match events[0].event() {
+        EngineEvent::PlaybackStateChanged { snapshot, failure } => {
+            assert_eq!(snapshot.playhead().value(), 5);
+            assert_eq!(
+                failure.as_ref().unwrap().category(),
+                ErrorCategory::InvalidInput
+            );
+        }
+        event => panic!("unexpected playback failure event: {event:?}"),
+    }
+    drop(engine_domain);
+
+    drop(playback_executor);
+    harness.shutdown();
+}
+
+fn drive_dispatcher_to_running(dispatcher: &mut EngineCommandDispatcher) {
+    loop {
+        let inspection = dispatcher
+            .dispatch(EngineCommandRequest::new(
+                EngineTransactionId::new("inspect-startup").unwrap(),
+                EngineCommand::InspectLifecycle,
+            ))
+            .unwrap();
+        let EngineCommandResult::Lifecycle(snapshot) = inspection.result() else {
+            panic!("lifecycle inspection returned another result")
+        };
+        if snapshot.phase() == LifecyclePhase::Running {
+            break;
+        }
+        let action = snapshot.pending_action().unwrap();
+        dispatcher
+            .dispatch(EngineCommandRequest::new(
+                EngineTransactionId::new("complete-startup").unwrap(),
+                EngineCommand::CompleteLifecycleAction(action),
+            ))
+            .unwrap();
+    }
 }

@@ -16,3 +16,9 @@ pub const SLICE_SCENARIO_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(
 
 /// JSON-RPC method for executing one reference slice scenario action.
 pub const EXECUTE_SCENARIO_ACTION_METHOD: &str = "superi.slice.scenario.action.execute";
+
+/// JSON-RPC method for executing one atomic reference slice transaction.
+pub const EXECUTE_SCENARIO_TRANSACTION_METHOD: &str = "superi.slice.scenario.transaction.execute";
+
+/// Ordered event name for complete scenario state changes.
+pub const SCENARIO_STATE_CHANGED_EVENT: &str = "superi.slice.scenario.state.changed";

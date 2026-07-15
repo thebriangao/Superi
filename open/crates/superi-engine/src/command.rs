@@ -16,6 +16,9 @@ use superi_core::time::FrameRate;
 const COMPONENT: &str = "superi-engine.command";
 const MAX_HISTORY_ENTRIES: usize = 4;
 
+/// Maximum ordered mutations accepted in one atomic scenario transaction.
+pub const MAX_SCENARIO_TRANSACTION_ACTIONS: usize = 64;
+
 /// Stable canonical fixture identifier.
 pub const CANONICAL_FIXTURE_ID: &str = "slice/video-cfr";
 /// Stable canonical fixture revision.
@@ -669,20 +672,69 @@ impl ScenarioEngine {
         match action {
             ScenarioAction::Undo => self.undo(),
             ScenarioAction::Redo => self.redo(),
-            action => self.commit(action),
+            action => self.commit_transaction(vec![action]),
         }
     }
 
-    fn commit(&mut self, action: ScenarioAction) -> Result<ScenarioSnapshot> {
+    /// Applies one bounded ordered transaction as a single revision and undo unit.
+    ///
+    /// Every mutation is staged against private content. The public state, revision, history, and
+    /// redo stack change only after every action succeeds. Undo and redo are accepted only as a
+    /// one-action transaction because mixing history navigation with new mutations would make the
+    /// transaction boundary ambiguous.
+    ///
+    /// # Errors
+    ///
+    /// Returns a classified error without changing state or history when the transaction is empty,
+    /// exceeds the action bound, mixes history navigation with mutations, or any action fails.
+    pub fn execute_transaction(
+        &mut self,
+        actions: Vec<ScenarioAction>,
+    ) -> Result<ScenarioSnapshot> {
+        if actions.is_empty() {
+            return Err(invalid(
+                "execute_transaction",
+                "scenario transaction must contain at least one action",
+            ));
+        }
+        if actions.len() > MAX_SCENARIO_TRANSACTION_ACTIONS {
+            return Err(resource_exhausted(
+                "execute_transaction",
+                "scenario transaction exceeds the action bound",
+            ));
+        }
+        if actions.len() == 1 {
+            let action = actions
+                .into_iter()
+                .next()
+                .expect("one-action transaction contains one action");
+            return self.execute(action);
+        }
+        if actions
+            .iter()
+            .any(|action| matches!(action, ScenarioAction::Undo | ScenarioAction::Redo))
+        {
+            return Err(invalid(
+                "execute_transaction",
+                "history actions must be dispatched in a one-action transaction",
+            ));
+        }
+        self.commit_transaction(actions)
+    }
+
+    fn commit_transaction(&mut self, actions: Vec<ScenarioAction>) -> Result<ScenarioSnapshot> {
         if self.undo.len() >= MAX_HISTORY_ENTRIES {
             return Err(resource_exhausted(
-                "commit_action",
-                "canonical history reached its four-action capacity",
+                "commit_transaction",
+                "canonical history reached its four-transaction capacity",
             ));
         }
         let next_revision = next_revision(self.revision)?;
         let before = self.content.clone();
-        let after = apply(&before, action, next_revision)?;
+        let mut after = before.clone();
+        for action in actions {
+            after = apply(&after, action, next_revision)?;
+        }
         self.content = after.clone();
         self.revision = next_revision;
         self.undo.push(HistoryEntry { before, after });

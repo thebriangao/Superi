@@ -9,12 +9,17 @@ use superi_core::settings::SemanticVersion;
 use superi_core::time::FrameRate;
 use superi_engine::command::{
     GraphEffect as EngineGraphEffect, GraphNodeKind as EngineGraphNodeKind,
-    OperationArguments as EngineOperationArguments, ScenarioAction as EngineAction, ScenarioEngine,
+    OperationArguments as EngineOperationArguments, ScenarioAction as EngineAction,
     ScenarioPhase as EnginePhase, ScenarioSnapshot as EngineSnapshot,
     SliceImplementation as EngineImplementation,
 };
+use superi_engine::dispatcher::{
+    EngineCommand, EngineCommandDispatcher, EngineCommandRequest, EngineCommandResult, EngineEvent,
+    EngineTransactionId, ScenarioTransaction as EngineScenarioTransaction,
+};
 
-use crate::commands::ExecuteScenarioAction;
+use crate::commands::{ExecuteScenarioAction, ExecuteScenarioTransaction};
+use crate::events::ScenarioStateChanged;
 use crate::version::SLICE_SCENARIO_SCHEMA_VERSION;
 
 /// Maximum actions accepted in one scenario document.
@@ -714,6 +719,42 @@ pub struct ScenarioActionResult {
     state: ScenarioStateSnapshot,
 }
 
+/// Successful result for one optimistic ordered scenario transaction.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScenarioTransactionResult {
+    transaction_id: String,
+    command_sequence: u64,
+    actions: Vec<SliceActionKind>,
+    state: ScenarioStateSnapshot,
+}
+
+impl ScenarioTransactionResult {
+    /// Returns the exact caller-owned transaction identity.
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    /// Returns the monotonic successful-command sequence.
+    #[must_use]
+    pub const fn command_sequence(&self) -> u64 {
+        self.command_sequence
+    }
+
+    /// Returns action kinds in committed order.
+    #[must_use]
+    pub fn actions(&self) -> &[SliceActionKind] {
+        &self.actions
+    }
+
+    /// Returns complete state after the transaction.
+    #[must_use]
+    pub const fn state(&self) -> &ScenarioStateSnapshot {
+        &self.state
+    }
+}
+
 impl ScenarioActionResult {
     /// Returns the executed action kind.
     #[must_use]
@@ -826,10 +867,10 @@ impl ScenarioFailure {
     }
 }
 
-/// Mutable public API facade around one engine-owned canonical scenario.
-#[derive(Debug, Default)]
+/// Mutable public API facade around one engine-owned canonical scenario dispatcher.
 pub struct ScenarioApi {
-    engine: ScenarioEngine,
+    dispatcher: EngineCommandDispatcher,
+    legacy_transaction_sequence: u64,
 }
 
 impl ScenarioApi {
@@ -842,7 +883,11 @@ impl ScenarioApi {
     /// Returns the complete current public state.
     #[must_use]
     pub fn snapshot(&self) -> ScenarioStateSnapshot {
-        public_snapshot(&self.engine.snapshot())
+        let snapshot = self
+            .dispatcher
+            .scenario_snapshot()
+            .expect("the scenario-only dispatcher has no execution-domain failure");
+        public_snapshot(&snapshot)
     }
 
     /// Executes the same typed command used by CLI, UI, and automation clients.
@@ -856,22 +901,152 @@ impl ScenarioApi {
     ) -> Result<ScenarioActionResult, ScenarioFailure> {
         let action = command.into_action();
         let kind = action.kind();
-        if matches!(action, SliceAction::Inspect {}) {
-            return Ok(ScenarioActionResult {
-                action: kind,
-                state: self.snapshot(),
-            });
-        }
-        let engine_action = to_engine_action(action)
-            .map_err(|error| ScenarioFailure::from_error(&error, self.snapshot()))?;
-        let state = self
-            .engine
-            .execute(engine_action)
-            .map_err(|error| ScenarioFailure::from_error(&error, self.snapshot()))?;
+        let sequence = self
+            .legacy_transaction_sequence
+            .checked_add(1)
+            .ok_or_else(|| {
+                ScenarioFailure::from_error(
+                    &Error::new(
+                        superi_core::error::ErrorCategory::ResourceExhausted,
+                        superi_core::error::Recoverability::Terminal,
+                        "legacy scenario transaction sequence is exhausted",
+                    ),
+                    self.snapshot(),
+                )
+            })?;
+        let transaction = ExecuteScenarioTransaction::new(
+            format!("legacy-scenario-{sequence}"),
+            self.snapshot().revision(),
+            vec![action],
+        );
+        let result = self.execute_transaction(transaction)?;
+        self.legacy_transaction_sequence = sequence;
         Ok(ScenarioActionResult {
             action: kind,
-            state: public_snapshot(&state),
+            state: result.state,
         })
+    }
+
+    /// Executes one stable typed automation transaction through the engine dispatcher.
+    ///
+    /// Successful mutations commit as one revision and one undo unit and enqueue one ordered full
+    /// replacement event. Failed conversion, validation, revision, or engine work leaves the last
+    /// valid state and event stream unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns a structured failure containing the complete last valid public state.
+    pub fn execute_transaction(
+        &mut self,
+        command: ExecuteScenarioTransaction,
+    ) -> Result<ScenarioTransactionResult, ScenarioFailure> {
+        let (transaction_id, expected_revision, actions) = command.into_parts();
+        let action_kinds = actions.iter().map(SliceAction::kind).collect::<Vec<_>>();
+        let inspect_count = actions
+            .iter()
+            .filter(|action| matches!(action, SliceAction::Inspect {}))
+            .count();
+        if inspect_count > 0 && (inspect_count != 1 || actions.len() != 1) {
+            return Err(ScenarioFailure::plain(
+                "invalid_input",
+                "user_correctable",
+                "inspect must be the only action in a scenario transaction",
+                self.snapshot(),
+            ));
+        }
+
+        let id = EngineTransactionId::new(transaction_id)
+            .map_err(|error| ScenarioFailure::from_error(&error, self.snapshot()))?;
+        let request = if inspect_count == 1 {
+            let actual_revision = self.snapshot().revision();
+            if actual_revision != expected_revision {
+                return Err(ScenarioFailure::plain(
+                    "conflict",
+                    "user_correctable",
+                    "scenario revision does not match the transaction fence",
+                    self.snapshot(),
+                ));
+            }
+            EngineCommandRequest::new(id, EngineCommand::InspectScenario)
+        } else {
+            let engine_actions = actions
+                .into_iter()
+                .map(to_engine_action)
+                .collect::<superi_core::error::Result<Vec<_>>>()
+                .map_err(|error| ScenarioFailure::from_error(&error, self.snapshot()))?;
+            let transaction = EngineScenarioTransaction::new(expected_revision, engine_actions)
+                .map_err(|error| ScenarioFailure::from_error(&error, self.snapshot()))?;
+            EngineCommandRequest::new(id, EngineCommand::ExecuteScenario(transaction))
+        };
+
+        let outcome = self
+            .dispatcher
+            .dispatch(request)
+            .map_err(|error| ScenarioFailure::from_error(&error, self.snapshot()))?;
+        let snapshot = match outcome.result() {
+            EngineCommandResult::Scenario(snapshot) => snapshot,
+            _ => {
+                return Err(ScenarioFailure::plain(
+                    "internal",
+                    "terminal",
+                    "scenario dispatcher returned a non-scenario result",
+                    self.snapshot(),
+                ));
+            }
+        };
+        Ok(ScenarioTransactionResult {
+            transaction_id: outcome.transaction_id().as_str().to_owned(),
+            command_sequence: outcome.command_sequence(),
+            actions: action_kinds,
+            state: public_snapshot(snapshot),
+        })
+    }
+
+    /// Drains ordered scenario state events for the current in-process consumer.
+    #[must_use]
+    pub fn drain_events(&mut self) -> Vec<ScenarioStateChanged> {
+        self.dispatcher
+            .drain_events()
+            .expect("the scenario-only dispatcher has no execution-domain failure")
+            .into_iter()
+            .map(|envelope| match envelope.event() {
+                EngineEvent::ScenarioStateChanged(snapshot) => ScenarioStateChanged::new(
+                    envelope.sequence(),
+                    envelope.command_sequence(),
+                    envelope.transaction_id().as_str().to_owned(),
+                    envelope
+                        .project_revision()
+                        .expect("scenario event carries a scenario revision"),
+                    public_snapshot(snapshot),
+                ),
+                EngineEvent::LifecycleStateChanged(_) => {
+                    unreachable!("the scenario-only dispatcher cannot emit lifecycle state")
+                }
+                _ => unreachable!("the scenario-only dispatcher emitted an unknown event kind"),
+            })
+            .collect()
+    }
+}
+
+impl Default for ScenarioApi {
+    fn default() -> Self {
+        Self {
+            dispatcher: EngineCommandDispatcher::scenario_only(),
+            legacy_transaction_sequence: 0,
+        }
+    }
+}
+
+impl std::fmt::Debug for ScenarioApi {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ScenarioApi")
+            .field("revision", &self.snapshot().revision())
+            .field(
+                "legacy_transaction_sequence",
+                &self.legacy_transaction_sequence,
+            )
+            .finish_non_exhaustive()
     }
 }
 
@@ -1055,7 +1230,11 @@ fn public_operation_arguments(value: &EngineOperationArguments) -> OperationArgu
 }
 
 fn empty_state() -> ScenarioStateSnapshot {
-    public_snapshot(&ScenarioEngine::new().snapshot())
+    let dispatcher = EngineCommandDispatcher::scenario_only();
+    let snapshot = dispatcher
+        .scenario_snapshot()
+        .expect("the scenario-only dispatcher has no execution-domain failure");
+    public_snapshot(&snapshot)
 }
 
 fn public_phase(value: EnginePhase) -> ScenarioPhase {

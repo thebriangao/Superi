@@ -13,7 +13,7 @@ use crate::instrumentation::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use superi_api::commands::ExecuteScenarioAction;
+use superi_api::commands::ExecuteScenarioTransaction;
 use superi_api::scenario::{ExactFrameRate, ScenarioApi, SliceAction, SliceGraphEffect};
 
 use crate::expectations::{resolve_expectations, ContractObservations, ExpectationFailureKind};
@@ -681,8 +681,22 @@ fn execute_action(
     stage_id: &'static str,
     action: SliceAction,
 ) -> Result<Value, CliFailure> {
-    api.execute(ExecuteScenarioAction::new(action))
-        .map(|result| serde_json::to_value(result).expect("API result is serializable"))
+    let expected_revision = api.snapshot().revision();
+    let transaction_number = expected_revision.checked_add(1).ok_or_else(|| {
+        CliFailure::stage(
+            stage_id,
+            "resource_exhausted",
+            "terminal",
+            "scenario revision is exhausted before transaction dispatch",
+        )
+    })?;
+    let transaction_id = format!("slice-transaction-{transaction_number}");
+    let result = api
+        .execute_transaction(ExecuteScenarioTransaction::new(
+            transaction_id.clone(),
+            expected_revision,
+            vec![action],
+        ))
         .map_err(|failure| {
             CliFailure::stage(
                 stage_id,
@@ -690,7 +704,32 @@ fn execute_action(
                 failure_recoverability(failure.recoverability()),
                 failure.message().to_owned(),
             )
-        })
+        })?;
+    let events = api.drain_events();
+    let event = match events.as_slice() {
+        [event] => event,
+        _ => {
+            return Err(CliFailure::stage(
+                stage_id,
+                "internal",
+                "terminal",
+                "scenario transaction did not publish exactly one state event",
+            ));
+        }
+    };
+    if event.transaction_id() != transaction_id
+        || event.command_sequence() != result.command_sequence()
+        || event.project_revision() != result.state().revision()
+        || event.state() != result.state()
+    {
+        return Err(CliFailure::stage(
+            stage_id,
+            "internal",
+            "terminal",
+            "scenario transaction result and state event do not match",
+        ));
+    }
+    Ok(serde_json::to_value(result).expect("API result is serializable"))
 }
 
 fn failure_category(value: &str) -> &'static str {
@@ -1239,7 +1278,11 @@ fn emit_failure(failure: CliFailure) -> i32 {
 mod tests {
     use serde_json::json;
 
-    use super::{digest_json, portable_project_state, PORTABLE_FIXTURE_PATH};
+    use super::{
+        digest_json, execute_action, portable_project_state, ExactFrameRate, ScenarioApi,
+        SliceAction, PORTABLE_FIXTURE_PATH, TEMPORARY_FILE_COUNTER,
+    };
+    use std::sync::atomic::Ordering;
 
     #[test]
     fn portable_project_digest_does_not_depend_on_the_checkout_path() {
@@ -1257,5 +1300,41 @@ mod tests {
         assert_eq!(first["media"]["path"], PORTABLE_FIXTURE_PATH);
         assert_eq!(first, second);
         assert_eq!(digest_json(&first), digest_json(&second));
+    }
+
+    #[test]
+    fn action_helper_uses_revision_fenced_transactions_and_consumes_the_matching_event() {
+        let counter = TEMPORARY_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let source = std::env::temp_dir().join(format!(
+            "superi-cli-dispatcher-test-{}-{counter}.webm",
+            std::process::id()
+        ));
+        let bytes = b"cli dispatcher fixture";
+        std::fs::write(&source, bytes).unwrap();
+        let mut api = ScenarioApi::new();
+
+        let value = execute_action(
+            &mut api,
+            "dispatcher.test",
+            SliceAction::ImportClip {
+                path: source.display().to_string(),
+                fixture_id: "slice/video-cfr".to_owned(),
+                fixture_version: 1,
+                manifest_sha256: "1d2b28b5f44c7f86dce50d67b718b0fad967d267d9016961e3d71bb9dab94419"
+                    .to_owned(),
+                payload_sha256: super::sha256_hex(bytes),
+                frame_rate: ExactFrameRate::new(24, 1),
+                frame_count: 96,
+                width: 96,
+                height: 54,
+            },
+        )
+        .unwrap_or_else(|failure| panic!("transaction helper failed: {}", failure.message));
+
+        assert_eq!(value["transaction_id"], "slice-transaction-1");
+        assert_eq!(value["command_sequence"], 1);
+        assert_eq!(value["state"]["revision"], 1);
+        assert!(api.drain_events().is_empty());
+        std::fs::remove_file(source).unwrap();
     }
 }

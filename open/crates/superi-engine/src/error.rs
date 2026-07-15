@@ -20,7 +20,8 @@ use crate::lifecycle::{
 const COMPONENT: &str = "superi-engine.error";
 const FAILURE_EVENT: &str = "engine.subsystem.failed";
 const RECOVERY_EVENT: &str = "engine.subsystem.recovered";
-const MAX_OPERATION_BYTES: usize = 128;
+/// Maximum UTF-8 bytes accepted in one subsystem operation label.
+pub const MAX_FAILURE_OPERATION_BYTES: usize = 128;
 
 /// Default number of cross-subsystem diagnostic events retained by EngineControl.
 pub const DEFAULT_ERROR_HISTORY_CAPACITY: usize = 64;
@@ -82,7 +83,9 @@ impl EngineFailureDisposition {
         }
     }
 
-    const fn expected_request(self) -> Option<EngineRecoveryRequest> {
+    /// Returns the exact recovery intent accepted for this disposition.
+    #[must_use]
+    pub const fn recovery_request(self) -> Option<EngineRecoveryRequest> {
         match self {
             Self::RetryAvailable => Some(EngineRecoveryRequest::RetryOperation),
             Self::ContinueDegraded => Some(EngineRecoveryRequest::RestoreSubsystem),
@@ -451,7 +454,7 @@ impl EngineErrorCoordinator {
             }
             let expected = active
                 .disposition
-                .expected_request()
+                .recovery_request()
                 .expect("nonterminal failure has recovery intent");
             if request != expected {
                 return Err(coordinator_error(
@@ -662,7 +665,7 @@ impl EngineErrorState {
     ) -> Result<&EngineFailureRecord> {
         let active = self.active_failure(action.subsystem, action.sequence, operation)?;
         if active.recovery_attempts != action.attempt
-            || active.disposition.expected_request() != Some(action.request)
+            || active.disposition.recovery_request() != Some(action.request)
         {
             return Err(coordinator_error(
                 ErrorCategory::Conflict,
@@ -774,7 +777,7 @@ fn recovery_context(
 
 fn validate_operation(operation: String) -> Result<String> {
     let trimmed = operation.trim();
-    if trimmed.is_empty() || trimmed.len() > MAX_OPERATION_BYTES {
+    if trimmed.is_empty() || trimmed.len() > MAX_FAILURE_OPERATION_BYTES {
         return Err(coordinator_error(
             ErrorCategory::InvalidInput,
             Recoverability::UserCorrectable,
@@ -784,7 +787,7 @@ fn validate_operation(operation: String) -> Result<String> {
         .with_context(
             ErrorContext::new(COMPONENT, "operation_label")
                 .with_field("bytes", trimmed.len().to_string())
-                .with_field("maximum", MAX_OPERATION_BYTES.to_string()),
+                .with_field("maximum", MAX_FAILURE_OPERATION_BYTES.to_string()),
         ));
     }
     Ok(trimmed.to_owned())

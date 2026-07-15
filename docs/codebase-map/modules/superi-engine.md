@@ -2,8 +2,8 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 79ced7d3f00397aeb57769226e823695bab76727ba2b11f483f70a3c97bce89a
-source_files: 42
+source_hash: 892f86a014f8dceae20c675102dcbf358c93710c98fa2ecbea565a3e4a1ec304
+source_files: 47
 mapped_at_commit: working-tree
 ---
 
@@ -18,9 +18,13 @@ audio-master A/V coordination with bounded video correction and discontinuity re
 clock fallback, lossless viewport handoff, exact interactive transport control, coherent decode,
 graph, delivery-color, audio, and elementary-stream export execution, deterministic subsystem
 lifecycle, bounded logical export job orchestration, classified cross-subsystem failure propagation
-and recovery, and atomic timeline plus clip-mix edits. Native GPU presentation, timeline-owned
-decoded-audio rendering, export muxing and publication, broad transactions, plugins, nodes, and
-validation remain incomplete.
+and recovery, and atomic timeline plus clip-mix edits. An
+engine-wide typed command dispatcher
+coordinates canonical scenario transactions, lifecycle state changes, failure and recovery control,
+coherent work admission, bounded cross-domain playback control, canonical logical export-job
+control, and ordered replacement events.
+Native GPU presentation, timeline-owned decoded-audio rendering, export muxing and publication,
+general project transactions, plugins, nodes, and validation remain incomplete.
 
 The command path is a bounded reference owner for contract conformance. It does not claim to replace
 the production project, timeline, graph, media, color, render, or muxing owners.
@@ -38,15 +42,26 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   applied discontinuity rebases, clock fallback and restoration, and coherent diagnostics.
 - `open/crates/superi-engine/src/command.rs`: Implements canonical fixture identity, named timeline
   and trim state, complete mirror graph control state, typed operation evidence, bounded source
-  validation, monotonic revisions, and full-state undo plus redo.
+  validation, atomic bounded ordered transactions, monotonic revisions, and full-state undo plus
+  redo where one transaction is one history unit.
 - `open/crates/superi-engine/src/derived_media.rs`: Canonicalizes complete video or audio encoder
   settings, validates cache request identity, selects one explicit primary encoder, drives its
   nonblocking lifecycle to end of stream, hashes complete packet semantics, and publishes only a
   complete proxy or optimized-media payload through `superi-cache`.
+- `open/crates/superi-engine/src/dispatcher.rs`: Implements bounded typed engine requests,
+  optimistic scenario transactions, successful-command and event sequencing, complete replacement
+  scenario, lifecycle, classified recovery, playback, and logical export events with
+  originating-command correlation, canonical error-coordinator ownership, exact recovery tokens,
+  lifecycle action routing, shutdown, restart, coherent work admission, plus a one-command
+  nonblocking bridge from EngineControl to the playback owner.
 - `open/crates/superi-engine/src/error.rs`: Implements EngineControl-owned classified failure
   propagation, immutable actionable records, bounded diagnostic history, exact recovery-intent
   validation, failed-recovery reclassification, and coherent lifecycle routing without copying
   subsystem readiness or workflow admission state.
+- `open/crates/superi-engine/src/export_dispatch.rs`: Projects bounded logical export jobs into a
+  stable command vocabulary, complete deterministic replacement state, lifecycle-admitted fresh
+  attempts, and a typed runtime handle for executor preparation, result access, and blocking-safe
+  shutdown while every queue mutation remains dispatcher owned.
 - `open/crates/superi-engine/src/export_jobs.rs`: Implements a bounded EngineControl-owned logical
   export queue with immutable dependency declarations, export-priority worker attempts, nonblocking
   progress and result observation, cooperative pause and cancel, fresh-attempt resume and retry,
@@ -61,7 +76,7 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 - `open/crates/superi-engine/src/introspection.rs`: Implements deterministic API-neutral backend and
   codec capability snapshots.
 - `open/crates/superi-engine/src/lib.rs`: Documents the implemented orchestration boundaries and
-  exposes nineteen engine modules.
+  exposes twenty-one engine modules.
 - `open/crates/superi-engine/src/lifecycle.rs`: Implements the EngineControl-owned lifecycle state
   machine, canonical subsystem dependency plan, exact action tokens, immutable generated snapshots,
   coherent playback/render/export admission, recoverable degradation, rollback, reverse teardown,
@@ -88,7 +103,8 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 - `open/crates/superi-engine/src/transport.rs`: Implements playback-domain pause, play, seek,
   superseding scrub, exact frame step, reduced signed rate, direction, half-open loop, rational
   clock cadence, prediction replanning, protected discontinuities, bounded ordinary late-frame
-  dropping, explicit audio degradation, and immutable transport observations.
+  dropping, explicit audio degradation, immutable transport observations, and the stable typed
+  command vocabulary consumed by the engine bridge.
 - `open/crates/superi-engine/src/validation.rs`: Placeholder for real-condition validation.
 - `open/crates/superi-engine/tests/av1_capability_contract.rs`: Default AV1 selection proof.
 - `open/crates/superi-engine/tests/audio_editorial_mix_contract.rs`: Proves atomic timeline and
@@ -106,10 +122,24 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   user-correctable, and terminal propagation; source and context retention; separate safe
   projection; coherent playback, rendering, and export admission; exact recovery intent; failed
   recovery reclassification; stale-action rejection; bounded history; and EngineControl ownership.
+- `open/crates/superi-engine/tests/error_dispatcher_contract.rs`: Proves dispatcher-owned
+  operation-labeled failure reporting, independently revisioned full recovery state, coherent
+  lifecycle admission, exact request and action validation, successful recovery, failed-recovery
+  reclassification, stale-token rejection, inspection without events, and legacy command routing
+  through the canonical coordinator.
 - `open/crates/superi-engine/tests/export_job_queue_contract.rs`: Proves bounded logical identity,
   immutable dependency ordering, nonblocking progress and retained results, cooperative pause and
   cancel, fresh-attempt resume and retry, recovery-class policy, terminal propagation, safe removal,
   execution-domain enforcement, and blocking-safe shutdown.
+- `open/crates/superi-engine/tests/export_dispatcher_contract.rs`: Proves dispatcher-owned prepared
+  submit, ordered complete replacement state, automated progress and completion polling, typed
+  result retention, inspection, pause, fresh resume, dependency release, one-job and all-job cancel,
+  degradation denial, recovery retry with a fresh permit, removal, and final-state-only blocking-safe
+  shutdown.
+- `open/crates/superi-engine/tests/dispatcher_contract.rs`: Proves atomic multi-action commit and
+  rollback, revision fences, one-unit undo, bounded ordered replacement events, EngineControl
+  enforcement, coherent normal and degraded work admission, recovery, stale permits, retained
+  failure context, restart, shutdown, and inspection.
 - `open/crates/superi-engine/tests/frame_upload_contract.rs`: Upload, ownership, storage, and budget
   proof.
 - `open/crates/superi-engine/tests/lifecycle_contract.rs`: Proves deterministic startup and reverse
@@ -139,11 +169,13 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   video and audio export, deterministic fallback evidence, no exception retry, lifecycle degradation,
   partial-source recovery, encoder and terminal-delivery color agreement, exact WAVE PCM completion,
   rejection of real VP9 timing drift after complete WebM AV1 decode and shared graph evaluation, and
-  completion through the real logical export queue with exact semantic progress.
+  completion through dispatcher-owned logical export commands over the real queue with exact
+  semantic progress and retained typed artifact access.
 - `open/crates/superi-engine/tests/playback_transport_contract.rs`: Proves exact seek and scrub
   supersession, pause and resume, frame stepping, fractional cadence, reverse looping, stale-work
   exclusion, bounded drops, protected intent, audio discontinuity, foreground and prediction
-  degradation, viewport backpressure, and recovery through the real playback owners.
+  degradation, viewport backpressure, recovery through the real playback owners, and bounded
+  EngineControl-to-Playback command and event dispatch.
 - `open/crates/superi-engine/tests/scenario_contract.rs`: Exact canonical state, atomicity, bounds,
   operation log, and reversal proof.
 - `open/crates/superi-engine/tests/vendor_codec_registry_contract.rs`: Explicit vendor registry
@@ -157,6 +189,26 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 implementation identity, typed operation arguments, and operation records. Supported mutations are
 import, insert, trim, and horizontal mirror. Undo and redo are history actions. Export is
 intentionally absent from engine mutations.
+
+`dispatcher` exposes `EngineTransactionId`, `ScenarioTransaction`, `EngineCommandRequest`, the
+non-exhaustive `EngineCommand` and `EngineCommandResult` vocabularies, classified
+`EngineReportedFailure`, `EngineEventEnvelope`, `PlaybackCommandExecution`,
+`PlaybackCommandExecutor`, and `EngineCommandDispatcher`. The coherent constructor binds scenario
+and lifecycle control behind EngineControl, `new_with_playback_bridge` adds a bounded nonblocking
+executor for the real playback owner, `attach_export_jobs` installs the canonical logical export
+queue behind a type-erased controller, and `scenario_only` is the explicit compatibility owner used
+by the narrow public reference API. Successful command and event sequences are independently
+monotonic, each event identifies its originating command sequence, and event draining returns
+complete ordered replacement state with scenario, lifecycle, playback, or export correlation.
+
+`export_dispatch` exposes the bounded `EngineExportJobSubmission` and
+`EngineExportJobCommand` vocabulary, `EngineExportJobSnapshot` and revisioned full
+`EngineExportJobState`, the permit-aware `EngineExportJobExecutor<R>` contract, and the typed
+`EngineExportJobRuntime<R>` handle. Submit, automated poll, inspection, pause, resume, retry,
+one-job or all-job cancel, and remove mutate or observe the existing `ExportJobQueue<R>` only through dispatcher
+commands. Generic executors are prepared against stable job identities, each fresh attempt receives
+the current export lifecycle permit, typed artifacts remain behind the runtime handle, and worker
+joining remains explicit outside nonblocking EngineControl.
 
 `frame_upload` exposes `UploadedVideoFrame` and `VideoFrameUploader` with explicit configuration,
 shared pool construction, and exact color-pipeline access. `render` exposes `ViewportColorMetadata`
@@ -229,11 +281,11 @@ evidence. Foreground work can be cancelled without presenting a late result, and
 is inspectable. Submission, polling, audio admission, coordination, and clock switching require the
 playback domain and never block.
 
-`transport` exposes `PlaybackTransport<O>`, validated configuration, exact mode and direction,
-`DroppedFramePolicy`, drop evidence, audio state, degraded-condition codes, immutable snapshots, and
-nonblocking updates. It composes the existing foreground and prefetch owners, maps frame cadence to
-the independent clock timebase with checked rational arithmetic, and protects seek, scrub, step,
-resume, and loop-boundary frames from dropping.
+`transport` exposes `PlaybackTransport<O>`, `PlaybackTransportCommand`, validated configuration,
+exact mode and direction, `DroppedFramePolicy`, drop evidence, audio state, degraded-condition
+codes, immutable snapshots, command execution, and nonblocking updates. It composes the existing
+foreground and prefetch owners, maps frame cadence to the independent clock timebase with checked
+rational arithmetic, and protects seek, scrub, step, resume, and loop-boundary frames from dropping.
 
 `audio_mix` exposes `apply_edit_batch_with_clip_mix` for caller-owned `EditorialProject` and
 `ClipMixState` values, and the narrower `reconcile_clip_mix_edit_batch` for an already validated
@@ -269,11 +321,55 @@ accepts only timeline frame zero. Trim accepts only source `[24, 72)`. The mirro
 the exact source, transform, and output graph, two image edges, binary64 matrix, nearest sampling,
 transparent black edges, and derived timeline identity.
 
-Every successful mutation stores a complete before and after content snapshot plus one stable typed
-operation record. The active log uses `slice.op.import`, `slice.op.insert`, `slice.op.trim`, and
-`slice.op.effect` with original resulting revisions. Undo and redo restore complete content without
-filesystem side effects or reimport and advance the global revision monotonically. Rejected actions
-leave state and both history stacks unchanged.
+Every successful transaction stores a complete before and after content snapshot plus its stable
+typed operation records. The active log uses `slice.op.import`, `slice.op.insert`, `slice.op.trim`,
+and `slice.op.effect`. All operations in one ordered transaction carry the same resulting revision,
+and that transaction becomes one undo unit only after every action succeeds. Undo and redo restore
+complete content without filesystem side effects or reimport and advance the global revision
+monotonically. Rejected actions and failed trailing actions leave state and both history stacks
+unchanged.
+
+### Engine command dispatch and event publication
+
+One `EngineCommandRequest` combines a validated caller transaction identity with one typed command.
+Scenario execution requires an exact expected revision and one to 64 ordered actions. Lifecycle
+inspection and mutation, operation-labeled classified failure, exact recovery start, completion,
+failure and inspection, shutdown, restart, work admission, permit validation, stable interactive
+transport control, and every logical export queue action all route through the same dispatcher
+rather than creating parallel control paths. The lifecycle-attached owner checks EngineControl
+before observing or mutating authoritative state.
+
+Before a state-changing command executes, the dispatcher reserves bounded event capacity and
+checks command and event sequence exhaustion. Success advances the command sequence once and emits
+one full replacement scenario, lifecycle, or recovery event when state changed. Recovery state has
+its own monotonic revision and contains the coherent lifecycle snapshot, active failures in
+canonical subsystem order, bounded diagnostic history, and the exact pending coordinator action.
+A synchronous failure advances neither sequence and publishes no event. Playback is the explicit
+cross-domain case: EngineControl
+admits and orders one command, reserves its event, and publishes it through a capacity-one
+nonblocking channel. `PlaybackCommandExecutor` applies it on the playback domain to the real
+transport and returns complete state through the paired completion channel. Another state-changing
+command cannot overtake that reserved event, while read-only inspection may continue. Accepted
+playback failure still emits complete state plus bounded classified evidence because the transport
+may have made externally visible discontinuity progress before reporting the failure. The queue
+retains at most 64 events, transaction IDs are bounded to 128 bytes, and copied failure messages and
+context-frame counts are bounded before lifecycle storage or event publication. Classified
+operation labels share the coordinator's 128-byte bound.
+
+The full dispatcher constructs and owns `EngineErrorCoordinator` beside lifecycle. Classified
+commands route report, begin, complete, and failed-recovery reclassification through it. Legacy
+runtime-failure and begin-recovery commands derive the same coordinator record and request, and a
+legacy lifecycle action that addresses pending recovery resolves through the retained exact
+coordinator token. Legacy results remain lifecycle shaped, but their events contain the composite
+replacement state, so no command path can bypass recovery-intent, sequence, attempt, diagnostic, or
+stale-action validation. Scenario-only mode owns neither lifecycle nor the error coordinator.
+
+The export controller type-erases only the runtime result type, not queue ownership. Submit, resume,
+and retry require a current export permit, and recovery attempts replace the prior permit before a
+fresh worker attempt. Poll compares complete state around the canonical queue refresh and emits one
+revisioned full replacement event for observed progress, status, dependency, result, or failure
+changes. Inspection has no event, while pause, cancel, and removal remain available during
+degradation. Executor closures and typed artifacts never enter the command or event stream.
 
 ### Registry, introspection, and upload
 
@@ -338,7 +434,9 @@ the engine can acknowledge `Stopped`. Restart first completes this teardown, inc
 lifetime, clears resolved failure state, and begins the canonical startup again. Action tokens and
 work permits carry lifetime and revision identity, so late completion and stale work are rejected.
 EngineControl never executes subsystem acquisition or teardown inline and therefore remains
-nonblocking.
+nonblocking. When the logical export queue is attached, the dispatcher rejects completion of its
+export teardown action until all retained jobs are final. Stable all-job cancellation plus polling
+settles that state before the blocking-safe runtime handle joins workers.
 
 ### Timeline graph and media preparation
 
@@ -530,6 +628,13 @@ pauses advancement and discards queued audio until explicit recovery, natural en
 tail audio, a failed newest prefetch generation remains replaceable, and viewport or audio
 limitations stay visible in the immutable snapshot.
 
+`PlaybackTransportCommand` names inspection, play, pause, seek, scrub lifecycle, loop, rate,
+direction, and frame-step actions without carrying process-local `Instant` values or bulk media.
+`execute_command` receives the executor-owned instant on Playback and returns complete state after
+success. The engine bridge also snapshots after failure, preserves command and event correlation,
+and prevents lifecycle degradation or another authored mutation from overtaking the in-flight
+transport state event.
+
 The output producer and callback coordinate discontinuities through atomic requested and applied
 generations. Producer admission remains blocked until the callback clears its consumer-owned queue.
 Inactive audio is muted, and non-normal or reverse playing audio is explicitly muted because the
@@ -579,7 +684,10 @@ audio mutation, so their user intent remains attached without synthesis.
   future engine worker supervisor can consume, but engine implements no adapter, native discovery,
   transport, or production command integration. AI and project remain declared dependencies without
   production command integration.
-- `superi-api` consumes command snapshots and capability snapshots, preserving the public seam.
+- `superi-api` consumes dispatcher transactions and events plus command and capability snapshots,
+  preserving the public scenario seam without exposing engine-private owners. The broader Rust
+  engine vocabulary includes playback and logical export dispatch, while their wire projection
+  remains with the future unified protocol host.
 - `superi-cli` reaches this module only through `superi-api`.
 
 ## Invariants and operational boundaries
@@ -587,7 +695,33 @@ audio mutation, so their user intent remains attached without synthesis.
 - Canonical arguments are exact; the reference engine is not a general editor model.
 - Source validation is bounded, digest checked, and atomic.
 - Four mutations have stable typed IDs and complete internal prior state.
+- Scenario transactions contain one to 64 ordered actions, use an exact revision fence, publish one
+  revision and one undo unit, and leave state, history, sequences, and events unchanged on failure.
+- Transaction IDs, pending events, retained error messages, and copied context frames are hard
+  bounded. Successful command and event sequences are independently monotonic, each event retains
+  its originating command sequence, and both exhaustion paths are checked before mutation.
+- Failure operation labels are nonempty and bounded to 128 UTF-8 bytes. Every successful report,
+  recovery begin, completion, or failure advances one recovery-state revision and emits complete
+  lifecycle, active-failure, diagnostic-history, and pending-action state. Inspection and rejected
+  recovery intent emit no event.
+- The dispatcher owns the canonical error coordinator. Legacy failure and recovery commands route
+  through it and cannot call lifecycle directly around classification-specific request validation,
+  failed-recovery reclassification, or exact stale-token rejection.
+- The lifecycle-attached dispatcher requires EngineControl for inspection, command execution, and
+  event draining. Scenario-only mode is an explicit narrow compatibility boundary. Playback
+  execution crosses only the bounded bridge and requires Playback on the executor side.
+- At most one playback command may be pending. Its event capacity and sequence are reserved before
+  enqueue, and no later state-changing command may overtake it. Every accepted playback command
+  yields complete replacement state, including bounded failure evidence when execution fails.
 - Export is not a project mutation and is not represented in engine history.
+- Logical export submit, poll, inspect, pause, resume, retry, cancel, and remove route through the
+  dispatcher. Submit, resume, and retry require fresh export admission; other controls remain
+  available during degradation. Each observed state change publishes complete deterministic queue
+  state with one monotonic export revision.
+- Export executor preparation binds runtime resources but does not admit a job. Generic closures
+  and typed results remain outside stable command and event values. All-job cancellation plus
+  polling must make logical state final before worker joining, which remains an explicit
+  blocking-safe operation outside EngineControl.
 - Undo and redo restore complete semantic state without reimport or filesystem effects.
 - Default registry construction is vendor free; host and vendor behavior remains opt-in.
 - Default registry construction includes all four in-tree source backends as primary priority-100
@@ -672,17 +806,26 @@ audio mutation, so their user intent remains attached without synthesis.
 - Resume and permitted retry use fresh controls and progress. Retryable, degraded, and
   user-correctable failures permit retry, while terminal failures retain context and deny retry.
 - Export queue shutdown can block and is legal only from a blocking-safe domain. It cancels all
-  unfinished attempts before draining and joining workers.
+  unfinished attempts before draining and joining workers when called directly. The dispatcher
+  runtime handle is stricter: one-job or all-job cancel plus polling must make every logical job
+  final before shutdown, so joining changes no dispatcher-visible job state.
 - Transport controls require playback ownership and preserve integral frame identity. Cadence uses
   fixed checked anchors, loop ranges are nonempty half-open subranges, and only ordinary playing
   frames may be dropped. User targets, loop boundaries, and the forced-progress frame are protected.
+- Stable transport commands contain exact media values only. The playback executor supplies the
+  process-local clock instant, and audio samples, frames, textures, and packets never enter the
+  command or event bridge.
 - Dropping changes scheduling only. It cannot alter graph evaluation, cache identity, decoded
   provenance, color or alpha meaning, authored state, or later render and export inputs.
 - GPU ownership and pool lifetime remain tied to the originating device.
 - Timeline and clip-mix publication is all-or-nothing across both expected revisions and typed edit
-  outcomes. It does not imply a general whole-engine transaction owner.
+  outcomes. The engine dispatcher can route this kind of future command, but the current public
+  scenario transaction does not make independent project, graph, cache, persistence, and output
+  owners one atomic commit.
 - Lifecycle mutation and publication require EngineControl, while subsystem acquisition and
   teardown occur outside the controller through exact immutable actions.
+- An attached logical export queue must report every job final before the dispatcher accepts the
+  exact export teardown completion token.
 - Startup is dependency-first and teardown is dependent-first. A retained failed resource blocks
   teardown of its dependencies but not independent branches.
 - Action completion must match subsystem, kind, lifetime, and action revision exactly. Every
@@ -710,6 +853,18 @@ Canonical scenario contracts prove the exact fixture metadata, names, half-open 
 graph topology and ports, mirror matrix, four operation IDs and original revisions, two undo plus
 two redo recovery at revision 8, rejected-action atomicity, payload digest failure, and the 64 MiB
 bound.
+
+Four dispatcher contracts prove atomic multi-action rollback and commit, one revision and one undo
+unit, optimistic conflict rejection, matching complete replacement state events, sequence ordering,
+full-queue rejection before mutation, off-domain rejection before mutation, coherent playback,
+rendering, and export admission through healthy and degraded states, recovery, stale permit
+rejection, retained failure context, restart, shutdown, and both scenario and lifecycle inspection.
+
+Two error dispatcher contracts run the canonical coordinator through the full engine command owner.
+They prove retryable and degraded failure state, unrelated-work admission, independent recovery
+revision and event correlation, exact request validation, inspection without events, successful
+recovery, legacy result compatibility, failed-recovery reclassification with a new sequence,
+stale-token rejection without publication, and fresh retry completion.
 
 Codec contracts prove default AV1, Opus, and Vorbis declarations, optional host exposure, and
 explicit vendor registration. Upload contracts prove semantic preservation and cloned allocation
@@ -771,7 +926,8 @@ recovery, and later fresh success. Production lanes open and decode the canonica
 fixtures: WAVE PCM completes through the in-tree decoder and encoder with all 4,410 samples, while
 the WebM AV1 path evaluates all 96 frames and rejects libvpx VP9 duration rounding before artifact
 publication. A queue-backed paired route exercises the same real transaction as one logical export
-job and proves exactly 11 semantic progress units before the retained artifact becomes observable.
+job through dispatcher submit and automated poll commands. It proves exactly 11 semantic progress
+units, ordered replacement events, and typed runtime artifact access only after completion.
 
 Seven export-job contracts prove EngineControl ownership, configuration bounds, retained logical
 identity, dependency admission and propagation, temporary worker saturation, nonblocking progress,
@@ -779,12 +935,20 @@ typed result retention, pause acknowledgement, fresh resume, cancel winning over
 four recoverability classes, retry unblocking a dependent, terminal retry denial, safe removal, and
 blocking-safe shutdown.
 
-Four transport contracts use the real bounded worker pool, prefetcher, output producer and callback,
+Three export dispatcher contracts run against that real queue. They prove prepared submit, complete
+state and revision events, automated progress and completion observation, typed result retention,
+inspection without publication, pause and fresh resume, dependency release, cancellation,
+degradation denial, observation while degraded, recovery retry with a distinct lifecycle permit,
+finalized removal, all-job cancellation, and final-state-only blocking-safe worker shutdown.
+
+Five transport contracts use the real bounded worker pool, prefetcher, output producer and callback,
 shared clock, and viewport handoff. They prove superseding seek and scrub generations, stale-result
 exclusion, exact step and resume behavior, 0.5x and 1.5x frame deadlines, reverse loop wrapping,
 unsupported-rate audio, bounded late skipping with forced progress, protected seeks, replaceable
 prefetch failure, foreground failure, viewport saturation, and recovery without frame-identity
-drift.
+drift. The fifth contract moves one dispatcher bridge between its legal EngineControl and Playback
+owners and proves admitted exact seek, ordered completion, overtaking rejection, degraded denial,
+recovery, epoch correlation, and a failed command with complete replacement state.
 
 The audio editorial contract drives a real `superi-timeline` razor operation through the combined
 engine transaction. It proves exact source and record subdivision, retained and new identities,
@@ -813,6 +977,14 @@ implementation identity is disclosed as such. It validates fixture bytes without
 container or decoding frames. Timeline and graph state are exact control models but do not use the
 production timeline owner or the generic `superi-graph` DAG store.
 
+The typed dispatcher is the substantive engine-wide control seam for current scenario, lifecycle,
+classified failure and recovery, work admission, interactive transport, and logical export
+operations. Playback crosses
+one bounded nonblocking bridge to its real domain owner. Logical export state remains in the
+canonical queue behind a type-erased dispatcher controller, while prepared executors receive fresh
+revision-scoped permits and render-export revalidates one before publication. The public JSON
+scenario projection remains intentionally narrower than the full Rust engine vocabulary.
+
 Three orchestration files remain documentation-only placeholders. Source registration, timeline
 media preparation, deterministic lifecycle, classified failure propagation and recovery,
 foreground playback, interactive transport, render-export execution, and bounded logical export
@@ -831,17 +1003,28 @@ media owner now has a real export consumer.
 Export still requires caller-supplied graph, delivery, and audio stage owners and returns elementary
 streams without muxing or persistence. The export queue retains results in process memory, uses
 cooperative checkpoints, and requires an explicit blocking-safe shutdown; it is not a persistent or
-crash-recoverable scheduler. The derived-media driver and resolver are synchronous and
-caller-owned, and no application or API path invokes them yet.
+crash-recoverable scheduler. Its generic executor preparation and typed results remain process-local
+runtime bindings, and no application or wire API path invokes them yet. The derived-media driver
+and resolver are synchronous and caller-owned, and no application or API path invokes them yet.
 Clip-mix reconciliation is substantive but currently entered by Rust callers rather than the public
-API or playback controller. Lifecycle is a production control-plane contract, but later transport,
-render, export, resource-arbitration, and error owners still must perform concrete subsystem actions
-before acknowledging it.
+API or playback controller. Lifecycle is a production control-plane contract, but later native
+render submission, export publication, resource arbitration, and subsystem owners still must
+perform concrete actions before acknowledging it.
 
 ## Maintenance notes
 
 Keep fixed canonical state synchronized with `docs/vertical-slice.md`, the strict API projection,
-CLI runner, and operation contracts. A new production owner should replace the corresponding stub
+CLI runner, dispatcher transaction and event contracts, and operation contracts. Keep transaction
+identities bounded and public method and event names permanent, reserve sequence and event capacity
+before mutation, route lifecycle state only through EngineControl, and preserve one-revision and
+one-undo-unit transaction atomicity. Route every supported failure and recovery command through the
+dispatcher-owned error coordinator, keep lifecycle as the only admission authority, publish the
+complete independently revisioned recovery state, retain the exact pending recovery token, and do
+not let legacy lifecycle actions bypass coordinator validation. Keep playback commands media-only
+and transport neutral,
+preserve the capacity-one nonblocking domain bridge, emit complete replacement state after every
+accepted execution, and never allow another state mutation to overtake its reserved event. A new
+production owner should replace the corresponding stub
 through its real crate rather than growing this reference model into a competing system. Registry
 or upload changes require updating their actual consumers and tests independently. Keep source
 registration synchronized with all four media-I/O adapters, and keep resource preparation bound to
@@ -868,7 +1051,10 @@ partial output. Add muxing or persistence only through an explicit owner after e
 have passed the current completion checks. Keep logical export identity stable across attempts,
 dependency edges immutable and older-only, recoverable failures unresolved until retry, terminal
 history final, all controls nonblocking on EngineControl, and worker joining confined to explicit
-blocking-safe shutdown.
+blocking-safe shutdown after every logical job is final. Route every logical export action through the dispatcher, require fresh
+admission for submit and recovery attempts, emit full revisioned replacement state for explicit and
+automated transitions, and keep runtime executor bindings plus typed artifacts outside stable event
+payloads.
 Remove a placeholder label only after substantive behavior and consumer proof exist.
 When implementing `plugins.rs`, consume `superi_effects::ofx::IsolatedOfxAdapter` and preserve its
 worker-process, bounded-message, deadline, permission, restart, and quarantine guarantees rather

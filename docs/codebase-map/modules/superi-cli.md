@@ -2,7 +2,7 @@
 module_id: superi-cli
 source_paths:
   - open/crates/superi-cli
-source_hash: c026c8dca00868008d2d2d8a6119fe3f8700b8b9bdd7c3f8e091e1cc9a2c7141
+source_hash: a11b56ec2a66de6b0f372ffc6571287a5da46a27043d653a2d72b5a2d3cd6c0b
 source_files: 6
 mapped_at_commit: working-tree
 ---
@@ -14,6 +14,8 @@ contract for `superi.slice.canonical.v1`. It validates the authoritative reposit
 executes canonical editorial actions through `superi-api`, proves exact reversal, writes the strict
 eight-stage report, verifies the revisioned expectation fixture, records bounded timing and process
 resident-memory evidence, and publishes a clearly labeled non-playable contract artifact.
+Each mutation uses one optimistic typed transaction and consumes one matching ordered replacement
+event before the next stage proceeds.
 Its portable project-state observation removes checkout location from the canonical digest without
 weakening the exact undo and redo comparison or changing the path reported to clients.
 
@@ -29,7 +31,8 @@ production owner is explicit in stage diagnostics and the artifact name.
   fixture resolution, bounded strict manifest validation, canonical API execution, stage and
   digest reporting, instrumentation integration, undo plus redo proof, expectation observation
   wiring, active-feature reporting, checkout-independent project-state normalization,
-  collision-safe publication, structured exit errors, and a focused portable-digest contract.
+  revision-fenced transaction and event agreement, collision-safe publication, structured exit
+  errors, and focused portable-digest and dispatcher-consumer contracts.
 - `open/crates/superi-cli/src/expectations.rs`: Strictly resolves the derived slice expectation
   fixture, validates both parent identities, reference frames, synchronized PCM samples,
   timestamps, project states, and export metadata, then returns stable contract evidence. Focused
@@ -85,7 +88,10 @@ fixture.resolve
   -> slice.verify
 ```
 
-The API receives exact import, placement, trim, and mirror actions. Timeline compilation, pixel
+The API receives exact import, placement, trim, and mirror actions. Each helper call snapshots the
+current revision, creates one caller-identified single-action transaction, dispatches it, drains
+exactly one event, and requires matching transaction identity, originating command sequence,
+project revision, and complete state. Timeline compilation, pixel
 evaluation, color delivery, and media export remain contract stubs. The runner undoes effect and
 trim, redoes both, removes only the monotonic revision from comparison, and requires exact final
 semantic state recovery without reimport. It then compares the real state digests, 48 modeled
@@ -159,6 +165,8 @@ harness are its current consumers.
   rejected.
 - Export is outside engine mutation history. The four mutation records remain import, insert, trim,
   and effect.
+- Every CLI mutation is revision fenced and must produce exactly one matching complete-state event
+  before stage execution continues. A mismatch is a terminal internal stage failure.
 - Contract stubs are never called runtime, and the non-playable artifact is never called WebM
   output.
 - Stage order, implementation identity, input and output summaries, diagnostics, state, and artifact
@@ -185,8 +193,10 @@ paths.
 Focused unit contracts prove all applicable canonical observations pass, one changed RGBA payload
 is rejected as corruption before comparison, and one changed project-state digest is classified as
 a terminal contract mismatch rather than fixture corruption. A command unit contract proves two
-checkout roots produce the same portable project digest. The process suite also requires one exact
-fixture validator and one exact slice command for every declared hosted Rust build job. It requires
+checkout roots produce the same portable project digest. A second command unit contract proves the
+helper uses a revision-fenced public transaction and consumes its matching event. The process suite
+also requires one exact fixture validator and one exact slice command for every declared hosted
+Rust build job. It requires
 the locked `os-codecs` build and test in the capability-gated platform matrix job, while the Ubuntu
 22.04 job remains default-only, and verifies active feature identity. The tests do not claim runtime
 media decoding, pixel evaluation, audio rendering, or playable export.
@@ -220,7 +230,8 @@ inside each destination directory.
 Keep argument order, scenario identity, exit statuses, artifact name, report fields, stage IDs, and
 stub disclosure synchronized with `docs/vertical-slice.md`, process contracts, isolated CI, and
 public guidance. Keep both hosted build jobs synchronized with the locked fixture and normalized
-slice commands. Keep stage probes around each stage when its stub is replaced so the fixed
+slice commands. Keep every mutation behind the typed transaction helper and preserve exact result
+and event agreement. Keep stage probes around each stage when its stub is replaced so the fixed
 instrumentation contract is inherited by the production owner. When a production owner replaces a
 stub, route through that real subsystem, add consumer proof, update implementation identity and
 diagnostics, and raise conformance only after all runtime gates pass. Never rename a contract stub

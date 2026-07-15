@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: ac5a69578a16203da59ed1ab0ca590b193d2127342df4252724ec9ad080ff587
-source_files: 141
+source_hash: 7ac0696734fbb294c3f0311f612afd34f4ec916ef55acd98c4ca99a31e6597ce
+source_files: 142
 mapped_at_commit: working-tree
 ---
 
@@ -302,6 +302,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   scrub, pause and resume, frame stepping, reduced signed speeds, direction, half-open looping,
   bounded dropped-frame policy, callback-owned audio discontinuities, explicit degradation, and
   recovery over the existing playback engine.
+- `docs/checkpoints/P2.W06.C007.md`: Durable implementation evidence for the engine-wide typed
+  command dispatcher, atomic revision-fenced canonical transactions, bounded ordered replacement
+  events, coherent lifecycle and workflow admission, dispatcher-owned classified error and exact
+  recovery state, bounded cross-domain playback control, dispatcher-owned logical export commands
+  and automated state observation, public API and headless consumer integration, research basis,
+  deterministic proof, and remaining wire and production transaction boundaries.
 - `docs/checkpoints/P2.W04.C010.md`: Durable implementation evidence for production input-device
   discovery, atomic record arming and monitoring, bounded exact-timestamp capture, and the real
   monitoring bridge into existing output playback.
@@ -762,9 +768,11 @@ The intended media path is source and container handling through `superi-media-i
 selection for permissive, platform, or vendor codecs, validated image and audio representations,
 GPU upload and resident graph evaluation, color processing, cache participation, and explicit
 readback only at delivery boundaries. The timeline deterministically compiles edits into graph
-state. Engine transactions coordinate project, timeline, graph, caches, persistence, undo, events,
-playback, and export. The API presents the same command surface to UI, CLI, scripts, extensions, and
-Superi Max, with no privileged closed-tier route.
+state. The engine now dispatches canonical scenario transactions and lifecycle commands and emits
+ordered replacement state events. The API projects that first scenario transaction seam and the CLI
+consumes it. The documented broader target coordinates project, timeline, graph, caches,
+persistence, undo, events, playback, and export and presents the same command surface to UI, CLI,
+scripts, extensions, and Superi Max, with no privileged closed-tier route.
 
 The canonical slice makes that target executable in stable increments. It fixes one default-build
 WebM and AV1 fixture role, exact 24 fps half-open trim, one video track, one typed transform effect,
@@ -939,6 +947,18 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   recovery while preserving C006 live synchronization evidence. Decoded source binding, native GPU
   presentation, public dispatch, and physical hardware remain with their owners.
 
+- `docs/checkpoints/P2.W06.C007.md` records the first engine-wide typed dispatcher and public
+  transaction plus ordered event seam. Focused engine, API, and CLI contracts prove atomic rollback
+  and one-unit commit, revision fencing, coherent playback, rendering, and export admission through
+  degradation and recovery, exact event agreement, legacy compatibility, and headless consumption.
+  A fifth real transport contract proves the capacity-one nonblocking EngineControl-to-Playback
+  command bridge, overtaking prevention, degraded denial, recovery, complete replacement state, and
+  structured command-failure evidence. Three export dispatcher contracts prove stable submit,
+  automated progress and completion events, inspection, pause, fresh resume and retry, dependency
+  release, cancellation, degraded denial, recovery permits, typed result retention, removal, and
+  blocking-safe shutdown over the canonical logical queue. This in-process proof does not imply
+  wire transport or a broad production project transaction.
+
 - The focused effects preset contract verifies the runtime JSON and SHA-256 edges through canonical
   current documents, legacy migration, integrity rejection, and exact graph reload. Crate-wide
   effects and graph suites prove downstream compatibility; dependency and boundary gates remain the
@@ -1042,12 +1062,14 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   The encoded slice fixture is a digest-bound 28,178-byte AV1 WebM. Current expectation version 2
   contains a 995,328-byte 48-frame RGBA8 reference payload plus exact audio, timing, portable state,
   and export records. Focused engine, API, and CLI contracts prove exact canonical state, strict
-  public projection, checkout-independent project identity, eight-stage reports, expectation
+  public projection, atomic revision-fenced transactions, ordered replacement event agreement,
+  checkout-independent project identity, eight-stage reports, expectation
   evidence, collision safety, two-run reproducibility, hosted command coverage, honest stub
   disclosure, all-stage timing and resident-memory records, and an exact observed-boundary maximum.
 - Phase 0 completion additionally requires written codec counsel, a Tauri, React, and native wgpu
-  viewport demonstration on all three operating systems, an API command and ordered event round
-  trip, reference-validated OTIO interchange, color reference proof, and named subsystem owners.
+  viewport demonstration on all three operating systems, reference-validated OTIO interchange,
+  color reference proof, and named subsystem owners. The in-process API command and ordered event
+  round trip now has focused engine, API, and CLI proof, but no wire transport proof.
 - The mapping script is the structural proof for this map. Its focused requirements are the exact
   source hash and file count, one occurrence of every required heading, every owned path in the
   source inventory, a global-index link for every discovered module, and no Unicode em dash or en

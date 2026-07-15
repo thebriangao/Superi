@@ -162,6 +162,41 @@ pub struct PlaybackTransportConfig {
     drop_policy: DroppedFramePolicy,
 }
 
+/// Stable automation command vocabulary for the interactive transport owner.
+///
+/// Process-local clock instants are supplied by the playback-domain executor rather than entering
+/// this transport-neutral command value. Audio samples and rendered frames remain outside the
+/// command boundary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum PlaybackTransportCommand {
+    /// Return complete current state without changing transport.
+    Inspect,
+    /// Start clock-driven playback from the exact current frame.
+    Play,
+    /// Pause on the exact frame intended at command execution time.
+    Pause,
+    /// Seek to one exact frame coordinate.
+    Seek(RationalTime),
+    /// Enter superseding scrub mode.
+    BeginScrub,
+    /// Replace the active scrub target.
+    ScrubTo(RationalTime),
+    /// Leave scrub mode and optionally resume playback.
+    EndScrub {
+        /// Whether clock-driven playback resumes from the latest scrub coordinate.
+        resume: bool,
+    },
+    /// Enable or disable one exact half-open loop.
+    SetLoop(Option<TimeRange>),
+    /// Set one exact reduced signed playback rate.
+    SetRate(PlaybackRate),
+    /// Change traversal direction without changing rate magnitude.
+    SetDirection(PlaybackDirection),
+    /// Move by an exact signed number of frames and remain paused.
+    StepFrames(i64),
+}
+
 impl PlaybackTransportConfig {
     /// Creates one exact bounded frame-coordinate transport configuration.
     pub fn new(
@@ -426,6 +461,35 @@ impl<O: Send + 'static> PlaybackTransport<O> {
             audio_discard_status,
             degradation: self.degradation(audio_state, audio_discard_status),
         }
+    }
+
+    /// Executes one stable transport command on the playback domain.
+    ///
+    /// The returned value is always a complete replacement snapshot after successful execution.
+    /// A dispatcher bridge also snapshots after failure because some real discontinuity work can
+    /// become externally observable before a later scheduling operation reports an error.
+    pub fn execute_command(
+        &mut self,
+        command: PlaybackTransportCommand,
+        now: Instant,
+    ) -> Result<PlaybackTransportSnapshot> {
+        ExecutionDomain::Playback.require_current()?;
+        match command {
+            PlaybackTransportCommand::Inspect => {}
+            PlaybackTransportCommand::Play => self.play(now)?,
+            PlaybackTransportCommand::Pause => self.pause(now)?,
+            PlaybackTransportCommand::Seek(target) => self.seek(target, now)?,
+            PlaybackTransportCommand::BeginScrub => self.begin_scrub(now)?,
+            PlaybackTransportCommand::ScrubTo(target) => self.scrub_to(target, now)?,
+            PlaybackTransportCommand::EndScrub { resume } => self.end_scrub(resume, now)?,
+            PlaybackTransportCommand::SetLoop(range) => self.set_loop(range, now)?,
+            PlaybackTransportCommand::SetRate(rate) => self.set_rate(rate, now)?,
+            PlaybackTransportCommand::SetDirection(direction) => {
+                self.set_direction(direction, now)?;
+            }
+            PlaybackTransportCommand::StepFrames(delta) => self.step_frames(delta, now)?,
+        }
+        Ok(self.snapshot())
     }
 
     /// Starts clock-driven playback from the exact current frame.

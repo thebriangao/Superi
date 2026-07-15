@@ -17,14 +17,21 @@ use superi_core::settings::{CapabilitySet, SemanticVersion};
 use superi_core::time::{
     Duration, FrameRate, RationalTime, SampleTime, TimeRange, TimeRounding, Timebase,
 };
-use superi_engine::export_jobs::{ExportJobQueue, ExportJobQueueConfig, ExportJobStatus};
+use superi_engine::dispatcher::{
+    EngineCommand, EngineCommandDispatcher, EngineCommandRequest, EngineCommandResult, EngineEvent,
+    EngineTransactionId,
+};
+use superi_engine::export_dispatch::EngineExportJobCommand;
+use superi_engine::export_jobs::{
+    ExportJobExecutionContext, ExportJobQueueConfig, ExportJobStatus,
+};
 use superi_engine::export_queue::{
     render_and_export, render_and_export_tracked, ExportAudioGraph, ExportInputProvenance,
     ExportMediaSession, ExportStreamRoute, ExportVideoDelivery, HeadlessGraphVideoRenderer,
     RenderExportRequest, RenderExportStages, RenderedExportAudio, SharedExportDecodedFrame,
 };
 use superi_engine::lifecycle::{
-    EngineLifecycle, EngineLifecycleActionKind, EngineSubsystem, EngineWorkKind,
+    EngineLifecycle, EngineLifecycleActionKind, EngineSubsystem, EngineWorkKind, EngineWorkPermit,
 };
 use superi_engine::media::media_backend_registry;
 use superi_engine::playback::PlaybackSceneFrame;
@@ -236,78 +243,119 @@ fn paired_export_uses_one_graph_engine_and_preserves_exact_media_semantics() {
 #[test]
 fn queued_export_runs_the_real_transaction_and_retains_only_complete_tracked_results() {
     let domain = ExecutionDomain::EngineControl.enter_current().unwrap();
-    let engine = running_engine();
-    let lifecycle_snapshot = engine.snapshot().unwrap().value().clone();
-    let permit = lifecycle_snapshot
-        .admit(EngineWorkKind::Export)
-        .permit()
+    let mut dispatcher = EngineCommandDispatcher::new().unwrap();
+    let runtime = dispatcher
+        .attach_export_jobs::<superi_engine::export_queue::RenderExportArtifact>(
+            ExportJobQueueConfig::new(1, 2, 4).unwrap(),
+        )
         .unwrap();
-    let request = RenderExportRequest::new(
-        RationalTime::zero(Timebase::integer(24).unwrap()),
-        vec![
-            ExportStreamRoute::new(VIDEO_SOURCE, video_encoder_config()),
-            ExportStreamRoute::new(AUDIO_SOURCE, audio_encoder_config()),
-        ],
-        FallbackPolicy::Disallow,
-        permit,
+    let mut lifecycle_snapshot = match dispatch_engine(
+        &mut dispatcher,
+        "inspect-render-export-startup",
+        EngineCommand::InspectLifecycle,
     )
-    .unwrap();
+    .result()
+    {
+        EngineCommandResult::Lifecycle(snapshot) => snapshot.as_ref().clone(),
+        _ => panic!("expected lifecycle state"),
+    };
+    while lifecycle_snapshot.phase() == LifecyclePhase::Starting {
+        let action = lifecycle_snapshot.pending_action().unwrap();
+        lifecycle_snapshot = match dispatch_engine(
+            &mut dispatcher,
+            &format!("initialize-render-export-{}", action.subsystem().code()),
+            EngineCommand::CompleteLifecycleAction(action),
+        )
+        .result()
+        {
+            EngineCommandResult::Lifecycle(snapshot) => snapshot.as_ref().clone(),
+            _ => panic!("expected lifecycle state"),
+        };
+    }
+    dispatcher.drain_events().unwrap();
+
     let attempts = Arc::new(AtomicUsize::new(0));
     let resets = Arc::new(AtomicUsize::new(0));
     let attempts_in_job = attempts.clone();
     let resets_in_job = resets.clone();
-    let mut queue = ExportJobQueue::new(ExportJobQueueConfig::new(1, 2, 4).unwrap()).unwrap();
     let job_id = JobId::from_raw(0x800);
 
-    queue
-        .submit(job_id, [], move |context| {
-            let decoded_binding = SharedExportDecodedFrame::new();
-            let scene_pipeline = scene_pipeline();
-            let (graph_snapshot, output) = graph_snapshot(
-                decoded_binding.clone(),
-                scene_pipeline.clone(),
-                AlphaMode::Premultiplied,
-                Arc::new(AtomicUsize::new(0)),
-            );
-            let mut video_graph = HeadlessGraphVideoRenderer::new(
-                graph_snapshot,
-                output,
-                PixelBounds::from_origin_size(0, 0, 1, 1).unwrap(),
-                scene_pipeline.clone(),
-                AlphaMode::Premultiplied,
-                decoded_binding,
-            )?;
-            let mut delivery = TestDelivery::new(scene_pipeline, Arc::new(AtomicUsize::new(0)));
-            let mut audio_graph = TestAudioGraph {
-                id: AudioGraphId::from_raw(78),
-                calls: Arc::new(AtomicUsize::new(0)),
-            };
-            let mut session = TestSession::paired(video_frame(0), audio_block(0), false);
-            let registry = primary_registry(attempts_in_job.clone(), resets_in_job.clone());
-            render_and_export_tracked(
-                &request,
-                || Ok(lifecycle_snapshot.clone()),
-                &mut session,
-                &registry,
-                RenderExportStages::av(&mut video_graph, &mut delivery, &mut audio_graph),
-                context.progress(),
-                context.operation(),
-            )
-        })
+    runtime
+        .prepare_executor(
+            job_id,
+            move |context: &ExportJobExecutionContext, permit: EngineWorkPermit| {
+                let request = RenderExportRequest::new(
+                    RationalTime::zero(Timebase::integer(24).unwrap()),
+                    vec![
+                        ExportStreamRoute::new(VIDEO_SOURCE, video_encoder_config()),
+                        ExportStreamRoute::new(AUDIO_SOURCE, audio_encoder_config()),
+                    ],
+                    FallbackPolicy::Disallow,
+                    permit,
+                )?;
+                let decoded_binding = SharedExportDecodedFrame::new();
+                let scene_pipeline = scene_pipeline();
+                let (graph_snapshot, output) = graph_snapshot(
+                    decoded_binding.clone(),
+                    scene_pipeline.clone(),
+                    AlphaMode::Premultiplied,
+                    Arc::new(AtomicUsize::new(0)),
+                );
+                let mut video_graph = HeadlessGraphVideoRenderer::new(
+                    graph_snapshot,
+                    output,
+                    PixelBounds::from_origin_size(0, 0, 1, 1).unwrap(),
+                    scene_pipeline.clone(),
+                    AlphaMode::Premultiplied,
+                    decoded_binding,
+                )?;
+                let mut delivery = TestDelivery::new(scene_pipeline, Arc::new(AtomicUsize::new(0)));
+                let mut audio_graph = TestAudioGraph {
+                    id: AudioGraphId::from_raw(78),
+                    calls: Arc::new(AtomicUsize::new(0)),
+                };
+                let mut session = TestSession::paired(video_frame(0), audio_block(0), false);
+                let registry = primary_registry(attempts_in_job.clone(), resets_in_job.clone());
+                render_and_export_tracked(
+                    &request,
+                    || Ok(lifecycle_snapshot.clone()),
+                    &mut session,
+                    &registry,
+                    RenderExportStages::av(&mut video_graph, &mut delivery, &mut audio_graph),
+                    context.progress(),
+                    context.operation(),
+                )
+            },
+        )
         .unwrap();
 
+    dispatch_engine(
+        &mut dispatcher,
+        "submit-real-render-export",
+        EngineCommand::ExecuteExportJob(EngineExportJobCommand::submit(job_id, []).unwrap()),
+    );
+
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-    loop {
-        queue.poll().unwrap();
-        if queue.snapshot(job_id).unwrap().status() == ExportJobStatus::Completed {
-            break;
+    let mut poll = 0_u64;
+    let snapshot = loop {
+        let outcome = dispatch_engine(
+            &mut dispatcher,
+            &format!("poll-real-render-export-{poll}"),
+            EngineCommand::ExecuteExportJob(EngineExportJobCommand::Poll),
+        );
+        poll += 1;
+        let EngineCommandResult::ExportJobs(state) = outcome.result() else {
+            panic!("expected logical export state")
+        };
+        let snapshot = state.job(job_id).unwrap();
+        if snapshot.status() == ExportJobStatus::Completed {
+            break snapshot.clone();
         }
         assert!(std::time::Instant::now() < deadline);
         std::thread::yield_now();
-    }
+    };
 
-    let snapshot = queue.snapshot(job_id).unwrap();
-    let artifact = queue.result(job_id).unwrap().unwrap();
+    let artifact = runtime.result(job_id).unwrap().unwrap();
     assert_eq!(snapshot.attempt(), 1);
     assert_eq!(snapshot.progress().completed_units(), 11);
     assert_eq!(snapshot.progress().revision(), 11);
@@ -315,9 +363,14 @@ fn queued_export_runs_the_real_transaction_and_retains_only_complete_tracked_res
     assert_eq!(artifact.streams().len(), 2);
     assert_eq!(attempts.load(Ordering::SeqCst), 2);
     assert_eq!(resets.load(Ordering::SeqCst), 4);
+    assert!(dispatcher
+        .drain_events()
+        .unwrap()
+        .iter()
+        .any(|event| matches!(event.event(), EngineEvent::ExportJobsStateChanged(_))));
 
     drop(domain);
-    queue.shutdown().unwrap();
+    runtime.shutdown().unwrap();
 }
 
 #[test]
@@ -716,6 +769,19 @@ fn degraded_lifecycle_partial_media_and_fresh_recovery_publish_only_complete_out
     assert_eq!(artifact.streams()[0].packets().len(), 1);
     assert_eq!(session.reset_calls, 4);
     assert_eq!(resets.load(Ordering::SeqCst), 4);
+}
+
+fn dispatch_engine(
+    dispatcher: &mut EngineCommandDispatcher,
+    transaction_id: &str,
+    command: EngineCommand,
+) -> superi_engine::dispatcher::EngineCommandOutcome {
+    dispatcher
+        .dispatch(EngineCommandRequest::new(
+            EngineTransactionId::new(transaction_id).unwrap(),
+            command,
+        ))
+        .unwrap()
 }
 
 fn running_engine() -> EngineLifecycle {
