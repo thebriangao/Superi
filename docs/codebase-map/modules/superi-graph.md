@@ -791,7 +791,10 @@ The disclosed canonical reference graph in `superi-engine` uses core `NodeId` bu
 of this store and retains string ports and edges. It remains reference behavior, not production
 graph evaluation or runtime integration. Separately, engine resource preparation retains the real
 `TimelineGraphCompilation` produced by `superi-timeline`; it does not translate that graph into the
-reference model.
+reference model. `superi-project` now owns those compilations as ordinary whole-project state and
+also admits named standalone `EditableGraph<CompiledTimelineGraphValue>` documents. Its immutable
+snapshots preserve graph revisions and prior graph state without moving graph validation or
+mutation policy into the project crate.
 
 ## Dependencies and consumers
 
@@ -807,6 +810,9 @@ reference model.
   render coordinators and `superi-concurrency`.
 - Direct manifest consumers are `superi-ai`, `superi-cache`, `superi-color`, `superi-effects`,
   `superi-timeline`, `superi-project`, and `superi-engine`.
+- Project consumes `EditableGraph` and `GraphSnapshot` directly for retained timeline and named
+  standalone graph state. It validates project-level identity and revision relationships while all
+  node, port, parameter, edge, transaction, and immutable graph semantics remain owned here.
 - Effects consumes `ScalarExpression` for bounded animation time and parent expressions, stores its
   strict curve, visual composition, spatial composition, vector shape document, animated mask-stack,
   rotoscope, motion-tracking, text-layer payloads, and complete reusable preset state through
@@ -842,8 +848,9 @@ reference model.
   `superi-engine::plugins::PluginSupervisor` rebuilds an active `NodeRegistrySnapshot` from ready
   OpenFX hosts and resolves the same immutable graph for playback, rendering, and export, preserving
   graph-owned blocker order and revision semantics. The
-  resource preparation path also retains one timeline compilation and its editable graph beside
-  exact opened media owners, without copying or evaluating graph state. The engine color
+  project resource preparation path clones the exact published timeline compilation and editable
+  graph beside exact opened media owners, without recompiling, copying payloads, or evaluating graph
+  state. The engine color
   propagation contract exercises metadata. Effects consumes versioned schemas, schema registration
   snapshots, typed editable
   nodes and values, instance bindings, immutable snapshots, bounded scalar expressions,
@@ -1200,8 +1207,10 @@ foreground contract evaluates one exact scene value through validated retention 
 conversion. Engine render-export is a second production role consumer: it binds each prepared
 decoded frame to one immutable snapshot, evaluates the exact requested time and region, retains the
 source graph revision, and validates scene timing, color, and alpha before delivery and encode.
-Engine resource preparation is the first owner to retain timeline's editable compilation with exact
-source and decoder lifetimes, but it does not compile runtime nodes or evaluate output.
+Project is the first whole-project owner to retain timeline's editable compilation and named
+standalone graphs. Engine resource preparation consumes one immutable project snapshot and keeps
+its exact editable compilation beside source and decoder lifetimes, but it does not compile runtime
+nodes or evaluate output.
 The versioned graph document codec now preserves and validates that complete editable state,
 migrates the supported legacy envelope, returns canonical upgraded bytes, and retains typed links
 and editable expression source through save and load. Missing-node resolution now derives exact
@@ -1210,8 +1219,9 @@ incompatible nodes as typed placeholders, and gives every caller one determinist
 evaluation result until exact schemas return. Exact schemas then enable the shared interactive and
 headless evaluation snapshot without a graph rewrite. The crate cannot store a project atomically,
 own concrete cached values, persist cache data, bind
-plugin implementations, or render production values. Timeline compilation, engine preparation
-retention, and memory cache retention are now real downstream consumers. Effects is a concrete downstream schema, expression,
+plugin implementations, or render production values. Timeline compilation, project document
+retention, engine preparation retention, and memory cache retention are now real downstream
+consumers. Effects is a concrete downstream schema, expression,
 diagnostics, evaluator, immutable compiler, generic serialization, authoring, and animation consumer
 with strict visual composition, spatial composition, vector shape, mask, rotoscope, motion-tracking,
 and text payloads, inspectable glyph layout, ordinary transition nodes, isolated OpenFX definitions

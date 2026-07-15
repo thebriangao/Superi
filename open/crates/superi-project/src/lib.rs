@@ -1,6 +1,9 @@
-//! `superi-project`, project/document model + persistence + autosave/recovery.
+//! `superi-project`, coherent editable whole-project state.
 //!
-//! § 5.12 in `docs/architecture.md`. Depends on: superi-core, superi-graph, superi-timeline. Status: skeleton.
+//! Section 5.12 in `docs/architecture.md`. The in-memory document aggregate,
+//! immutable snapshots, atomic revision-fenced edits, timeline compilations,
+//! and named standalone graphs are implemented. Persistence, autosave, and
+//! recovery remain staged in their dedicated modules.
 
 pub mod autosave;
 pub mod document;

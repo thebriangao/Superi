@@ -2,7 +2,7 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 458f99a701b46423fc5f12193c265f8d2717e3a01519278af24cf979ff579fee
+source_hash: 863a553a308daae5a688eacae064b205594f4652b1aa39b4f06d49d1b058fc84
 source_files: 52
 mapped_at_commit: working-tree
 ---
@@ -10,8 +10,8 @@ mapped_at_commit: working-tree
 ## Purpose and ownership
 
 `superi-engine` is the open orchestration layer. Its substantive paths cover canonical editorial
-command state, complete media backend registry assembly, transactional timeline graph plus source
-and decoder preparation, capability and health introspection, CPU-decoded frame upload, exact viewport and
+command state, complete media backend registry assembly, transactional project snapshot or timeline
+graph plus source and decoder preparation, capability and health introspection, CPU-decoded frame upload, exact viewport and
 export color metadata branching, derived-media generation, transparent proxy resolution,
 predictive cache population, foreground graph and display-color execution, bounded audio admission,
 audio-master A/V coordination with bounded video correction and discontinuity recovery, monotonic
@@ -116,7 +116,8 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   envelope for decoded buffers, GPU payloads, caches, prepared audio, AI work, and exports with
   complete class configuration, protected floors, exact hard limits, noncloneable reservations,
   fixed-order cooperative reclaim, consumer-aware fallbacks, and deterministic snapshots.
-- `open/crates/superi-engine/src/resources.rs`: Compiles one reachable timeline graph, validates the
+- `open/crates/superi-engine/src/resources.rs`: Either compiles one reachable editorial timeline or
+  clones the exact root compilation retained by an immutable `ProjectSnapshot`, then validates the
   exact caller-declared media and stream request set, binds and verifies project fingerprints,
   probes and opens each source, selects and creates each decoder once, retains policy evidence, and
   publishes one all-or-nothing owner bundle.
@@ -181,9 +182,10 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   degradation and recovery, initialization rollback, stale action rejection, dependency-safe
   teardown retry, direct and stopped restart, and EngineControl ownership.
 - `open/crates/superi-engine/tests/media_resource_acquisition_contract.rs`: Proves complete source
-  registration, real WebM and AV1 preparation, compiled graph retention, exact timing, precision,
-  metadata, color and alpha semantics, strict request validation, explicit fallback evidence,
-  cancellation, no exception retry, and fresh-context recovery.
+  registration, real WebM and AV1 preparation, exact published project graph retention after a
+  direct graph edit, legacy timeline compilation, exact timing, precision, metadata, color and
+  alpha semantics, strict request validation, explicit fallback evidence, cancellation, no
+  exception retry, and fresh-context recovery.
 - `open/crates/superi-engine/tests/opus_capability_contract.rs`: Default Opus selection proof.
 - `open/crates/superi-engine/tests/os_codec_registry_contract.rs`: Feature-gated host registry proof.
 - `open/crates/superi-engine/tests/proxy_substitution_contract.rs`: Proves real AV1 proxy
@@ -286,10 +288,12 @@ registry snapshot identically for playback, rendering, and export.
 
 `resources` exposes explicit `MediaResourceRequest`, `DecoderResourceRequest`, and
 `ResourceAcquisitionPolicy` inputs; stable source and decoder selection evidence; stateful acquired
-source and decoder owners; and `TimelineResources`. `acquire_timeline_resources` compiles one root
-and its reachable nested timelines, requires exactly one request for each reachable linked media
-identity, and publishes the compilation and live media owners only after every source and decoder
-has succeeded.
+source and decoder owners; and `TimelineResources`. `acquire_timeline_resources` preserves the
+legacy editorial entry point and compiles one root plus its reachable nested timelines.
+`acquire_project_resources` accepts an immutable `ProjectSnapshot` and clones its exact selected
+`TimelineGraphCompilation` without recompiling, so published direct graph edits remain intact. Both
+paths require exactly one request for each reachable linked media identity and share the same
+source, decoder, cancellation, and all-or-nothing publication implementation.
 
 `derived_media` exposes `EncodedDerivedMedia`, `derived_media_render_settings`, and
 `generate_derived_media`. Settings derive from purpose, quality, stream, codec, timebase, complete
@@ -574,13 +578,16 @@ and export pauses rather than publishing a partial or semantically changed resul
 pressure is scheduling state, not an automatic lifecycle failure; a caller may route a persistent
 classified failure through the separate error coordinator.
 
-### Timeline graph and media preparation
+### Project snapshot, timeline graph, and media preparation
 
-The caller supplies one validated `EditorialProject`, root timeline, immutable backend registry,
-explicit request for each reachable linked media identity, fallback policy, and operation context.
-The engine first consumes `superi-timeline::compile_timeline`, then recursively identifies every
-media clip in the same reachable nested-timeline closure. Missing, duplicate, or extra media
-requests and empty or duplicate decoder sets fail before any bundle is published.
+The legacy caller supplies one validated `EditorialProject`, root timeline, immutable backend
+registry, explicit request for each reachable linked media identity, fallback policy, and operation
+context. That path first consumes `superi-timeline::compile_timeline`. The project path instead
+supplies one immutable `superi-project::ProjectSnapshot` and clones its retained selected-root
+compilation, including its exact editable graph revision and direct changes. It never recompiles the
+snapshot. Both paths recursively identify every media clip in the same reachable nested-timeline
+closure. Missing, duplicate, or extra media requests and empty or duplicate decoder sets fail before
+any bundle is published.
 
 For each media identity, the engine binds the project's persistent fingerprint when the request
 omits it and rejects a conflicting caller identity. `BackendRegistry::probe_source` performs the
@@ -821,8 +828,9 @@ audio mutation, so their user intent remains attached without synthesis.
   `IsolatedOfxAdapter` contract, typed requests, graph projection, and plugin lifecycle state that a
   future engine worker supervisor can consume, but engine implements no adapter, native discovery,
   transport, or production command integration. AI remains a declared dependency without
-  production command integration. Project remains a skeleton; engine names only its quiescence and
-  retained authoritative-state lifecycle boundary, not persistence or a project command model.
+  production command integration. Project supplies the implemented immutable whole-project
+  snapshot consumed by resource preparation. Engine lifecycle still names only abstract project
+  quiescence, and engine implements neither persistence nor a parallel project command model.
 - `superi-api` consumes dispatcher transactions and events plus command, media capability, and
   complete engine introspection and integration validation snapshots, preserving public adaptation,
   validation, and scenario seams without exposing engine-private owners. Playback and logical export
@@ -880,6 +888,8 @@ audio mutation, so their user intent remains attached without synthesis.
   diagnostics and internal recovery tokens never cross the introspection boundary.
 - Timeline resource preparation requires the exact reachable media request set and at least one
   unique explicit decoder stream for each source-bearing media request.
+- Project resource preparation must clone the exact selected compilation from an immutable
+  `ProjectSnapshot`. It cannot recompile and erase ordinary published graph edits.
 - Project fingerprints are bound when omitted and rejected when conflicting. Opened source media ID
   and fingerprint are verified again before decoder construction.
 - Timeline compilation, sources, decoders, and selection evidence publish together only after every
@@ -1220,7 +1230,9 @@ accept caller-prepared graph, audio, cache, and viewport owners and are not a so
 decoded-audio rate processor, or native presentation path. Engine A/V coordination consumes the
 shared scheduler and actual audio clock, but physical A/V latency and drift remain hardware-lane
 evidence. `TimelineResources` prepares the reachable sources, decoders, and graph, and its acquired
-media owner now has a real export consumer.
+media owner now has a real export consumer. Its project entry point preserves one exact published
+document compilation, but playback and export do not yet acquire the whole bundle directly from
+the document owner.
 Export still requires caller-supplied graph, delivery, and audio stage owners and returns elementary
 streams without muxing or persistence. The export queue retains results in process memory, uses
 cooperative checkpoints, and requires an explicit blocking-safe shutdown; it is not a persistent or
@@ -1251,9 +1263,10 @@ accepted execution, and never allow another state mutation to overtake its reser
 production owner should replace the corresponding stub
 through its real crate rather than growing this reference model into a competing system. Registry
 or upload changes require updating their actual consumers and tests independently. Keep source
-registration synchronized with all four media-I/O adapters, and keep resource preparation bound to
-the timeline compiler, exact reachable media set, persistent source identity, explicit decoder
-streams, one-shot selection, operation checks, and all-or-nothing publication. Keep derived
+registration synchronized with all four media-I/O adapters. Keep legacy resource preparation bound
+to the timeline compiler and project resource preparation bound to the exact retained snapshot
+compilation. Both paths must preserve the exact reachable media set, persistent source identity,
+explicit decoder streams, one-shot selection, operation checks, and all-or-nothing publication. Keep derived
 request canonicalization synchronized with every media format field that can change encoder output,
 and keep codec selection, cancellation, complete publication, proxy admission, scheduler-owned
 quality choice, lazy source opening, and full identity verification explicit. Keep playback prefetch

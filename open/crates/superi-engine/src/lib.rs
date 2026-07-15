@@ -1,6 +1,7 @@
 //! `superi-engine`, orchestration, the binder that wires all subsystems into one coherent engine.
 //!
-//! Media backend construction, transactional timeline graph and source or decoder preparation,
+//! Media backend construction, transactional project snapshot or timeline graph resource
+//! preparation,
 //! decoded-frame GPU upload, complete proxy or optimized-media packet generation, transparent proxy
 //! or original-source resolution, predictive cache population, foreground playback graph and color
 //! execution, audio-device admission, audio-master A/V coordination and recovery, bounded viewport

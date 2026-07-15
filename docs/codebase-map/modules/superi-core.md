@@ -250,7 +250,7 @@ Eighteen workspace crates declare a direct path dependency on `superi-core`:
 `superi-concurrency`, `superi-effects`, `superi-engine`, `superi-gpu`, `superi-graph`,
 `superi-image`, `superi-media-io`, `superi-project`, and `superi-timeline`.
 
-Repository source search shows active direct Rust imports in twelve of them:
+Repository source search shows active direct Rust imports in thirteen of them:
 
 - `superi-api` uses shared errors and semantic versions for API behavior and version reporting.
 - `superi-codecs-platform`, `superi-codecs-rs`, and `superi-codecs-vendor` use shared errors,
@@ -276,12 +276,15 @@ Repository source search shows active direct Rust imports in twelve of them:
 - `superi-media-io` is the broadest timing consumer. It uses identifiers, errors, color, pixel and
   sample tags, rational clocks, durations, ranges, rounding, and timecode across probe, demux,
   decode, container, VFR, image-sequence, PCM, selection, and metadata paths.
+- `superi-project` uses project, timeline, and graph identities plus classified errors,
+  recoverability, contexts, and `Result` to enforce whole-project revision fencing and coherent
+  candidate validation.
 - `superi-timeline` uses project, media, timeline, track, clip, gap, transition, generator,
   caption, marker, and multicam angle identities with exact rational ranges to own validated
   editable project, annotation, synchronization, and switching state.
 
-The other six declared consumers, `superi-ai`, `superi-audio`, `superi-cache`, `superi-cli`,
-`superi-effects`, and `superi-project`, currently have no direct `superi_core::` reference in Rust
+The other five declared consumers, `superi-ai`, `superi-audio`, `superi-cache`, `superi-cli`, and
+`superi-effects`, currently have no direct `superi_core::` reference in Rust
 source. Their manifest dependencies express intended layering or scaffold readiness rather than
 an exercised code relationship.
 
@@ -394,7 +397,7 @@ Material risks and incomplete paths are:
   for those consumers, but no checked-in cross-language fixture currently proves them.
 - Parse and validation tests are representative rather than generated. Canonical name, semantic
   version, timecode, identifier, and decimal parsers have no fuzz corpus in this module.
-- Six workspace crates declare the dependency without using a core type yet. Their intended
+- Five workspace crates declare the dependency without using a core type yet. Their intended
   ownership and integration paths remain incomplete outside this module, and their manifests alone
   should not be treated as consumer proof.
 

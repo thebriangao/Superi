@@ -2,7 +2,7 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: 584881a944d7c0af59a944af67717f70eecd507cb8385c2a3307a9540c4bac41
+source_hash: 4f1b7946dbc64c96b0b01b7650096b5af636845d547c4af5d2c951a3c1df1caf
 source_files: 30
 mapped_at_commit: working-tree
 ---
@@ -54,8 +54,9 @@ canonical JSON. Revision 1 records the stable core primitive revision, protects 
 payload with SHA-256, rejects malformed or unknown state, migrates the supported revision 0
 envelope in memory, and reconstructs every owner through checked constructors and timeline APIs.
 The codec returns canonical current bytes only after whole-project validation. It owns no file I/O,
-SQLite container, autosave policy, replacement protocol, or recovery journal, which remain the
-future `superi-project` boundary.
+SQLite container, autosave policy, replacement protocol, or recovery journal. The implemented
+`superi-project` document aggregate retains this editorial state in memory, while those durable
+policies remain staged at that higher boundary.
 
 The model also owns a narrow immutable color metadata seam that retains graph color state through
 the future compilation boundary without changing source meaning.
@@ -86,7 +87,8 @@ with stable warnings.
   one typed editable graph transaction with stable graph, node, port, parameter, and edge IDs,
   explicit stream routing, authored track and item order, complete object and multicam parameters,
   bidirectional editorial provenance, and a shared graph payload that retains all native values as
-  exact domain variants beside catalog-neutral processing values.
+  exact domain variants beside catalog-neutral processing values. It can install externally checked
+  editable state only when the deterministic graph identity matches the compiled project and root.
 - `open/crates/superi-timeline/examples/otio_roundtrip.rs`: Imports one OTIO document through the
   public native boundary, reports stable diagnostics, and writes deterministic OTIO 0.18.1 JSON.
 - `open/crates/superi-timeline/src/edit_ops.rs`: Implements directly inspectable foundational and
@@ -342,6 +344,9 @@ variant, while shared scalar, vector, color, matrix, Boolean, and choice process
 authored through the same graph. The compilation captures the source project and revision, exposes
 the editable graph and immutable snapshots, resolves timeline, track, and object origins in both
 directions, and allows later checked graph transactions without inventing a second topology.
+`TimelineGraphCompilation::with_graph` lets a higher persistence owner join deterministically
+recompiled provenance to a checked decoded graph of the same stable identity while rejecting a
+graph derived for another project or root.
 
 The OTIO interchange surface includes:
 
@@ -529,6 +534,9 @@ Timeline compilation consumes the validated result without changing authoring st
 7. A higher-tier catalog may add shared processing nodes and typed values through ordinary checked
    graph transactions. The timeline crate neither imports that catalog nor interprets its values,
    and existing native state remains editable under the same stable identities.
+8. `superi-project::ProjectDocument` retains the complete compilation beside the matching
+   editorial revision. Its immutable snapshots let engine resource acquisition consume the exact
+   graph, including later checked graph transactions, without recompiling away editable state.
 
 OTIO interchange composes the same native owners:
 
@@ -590,12 +598,13 @@ Timeline document flow preserves those owners without becoming a project contain
 - `serde` and `serde_json` encode and strictly decode the stable component wire model and provide
   offline OTIO JSON parsing and serialization. No OTIO library, Python package, network path,
   plugin host, or fixture-tool runtime dependency enters the crate.
-- `superi-project` and `superi-engine` declare `superi-timeline` as a dependency. Engine integration
-  consumes the color metadata seam, calls `compile_timeline`, traverses reachable media and nested
-  timeline relationships, and retains the resulting `TimelineGraphCompilation` with prepared source
-  and decoder owners. Engine transport separately consumes the retime-owned reduced signed
-  `PlaybackRate` for exact speed and direction cadence without importing editorial mutation policy.
-  Project remains a declaration-only consumer.
+- `superi-project` and `superi-engine` consume `superi-timeline`. Project retains one validated
+  `EditorialProject` plus complete matching `TimelineGraphCompilation` values in its revisioned
+  immutable whole-project snapshots. Engine integration consumes the color metadata seam, preserves
+  the legacy direct compiler path, traverses reachable media and nested timeline relationships, and
+  can clone the exact project-retained compilation with prepared source and decoder owners. Engine
+  transport separately consumes the retime-owned reduced signed `PlaybackRate` for exact speed and
+  direction cadence without importing editorial mutation policy.
 - Public integration tests and the `otio_roundtrip` example are real consumers. No application API
   or editor surface exposes the general editorial model yet.
 
@@ -841,7 +850,7 @@ Strict canonical timeline documents, revision 0 migration, checked recovery, and
 after load are test-backed. Effects now has compatible graph-native transition authoring and a
 bounded oracle, but the production binder from this timeline-owned state to those visual schemas is
 absent. Graph evaluation, fit-to-fill, grouped-source compound synthesis, undo ownership, multicam
-mixing and runtime playback, the owning SQLite project container, autosave and recovery
+mixing and runtime playback, the SQLite project format, durable save, autosave, and recovery
 orchestration, and API integration remain absent. Engine preparation integration now consumes and
 retains the compiled graph, and engine transport consumes the standalone signed rate value, but no
 owner yet binds that prepared native timeline graph to decoded playback, multicam mixing, or render
@@ -864,9 +873,10 @@ collection and relationship reconstruction, while OTIO collection sizes are not 
 independently of process memory. Nested component collection counts are validated by domain
 construction after JSON allocation rather than by a streaming preallocation quota. The
 `otio_roundtrip` example is the first production interchange consumer outside contract tests. The
-engine color propagation contract consumes the narrow metadata seam, and engine resource
-preparation now consumes and retains real generic editable graph state that can admit a higher-tier
-effects catalog. No API, CLI, playback, or production render owner evaluates that result yet.
+engine color propagation contract consumes the narrow metadata seam. The project document now
+retains real generic editable graph state that can admit a higher-tier effects catalog, and engine
+resource preparation consumes its exact selected compilation. No API, CLI, playback, or production
+render owner evaluates that result yet.
 
 ## Maintenance notes
 

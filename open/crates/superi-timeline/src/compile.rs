@@ -236,6 +236,33 @@ impl TimelineGraphCompilation {
         &mut self.graph
     }
 
+    /// Installs externally reconstructed editable state with the same stable graph identity.
+    ///
+    /// Persistence owners can deterministically compile fresh provenance from the validated
+    /// editorial project, decode the separately stored editable graph through its checked graph
+    /// codec, and join the two without losing ordinary graph edits. A graph derived for another
+    /// project or root is rejected.
+    pub fn with_graph(mut self, graph: EditableGraph<CompiledTimelineGraphValue>) -> Result<Self> {
+        let expected_graph_id = self.graph.snapshot().graph_id();
+        let actual_graph_id = graph.snapshot().graph_id();
+        if actual_graph_id != expected_graph_id {
+            return Err(Error::new(
+                ErrorCategory::Conflict,
+                Recoverability::UserCorrectable,
+                "restored graph identity does not match the timeline compilation",
+            )
+            .with_context(
+                ErrorContext::new(COMPONENT, "restore_compiled_graph")
+                    .with_field("project_id", self.project_id.to_string())
+                    .with_field("timeline_id", self.root_timeline_id.to_string())
+                    .with_field("expected_graph_id", expected_graph_id.to_string())
+                    .with_field("actual_graph_id", actual_graph_id.to_string()),
+            ));
+        }
+        self.graph = graph;
+        Ok(self)
+    }
+
     /// Captures an immutable graph snapshot for inspection or evaluation.
     #[must_use]
     pub fn snapshot(&self) -> GraphSnapshot<CompiledTimelineGraphValue> {

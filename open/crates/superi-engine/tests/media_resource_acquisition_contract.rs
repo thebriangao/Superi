@@ -11,9 +11,11 @@ use superi_core::pixel::{AlphaMode, PixelFormat};
 use superi_core::time::{Duration, FrameRate, RationalTime, TimeRange, Timebase};
 use superi_engine::media::media_backend_registry;
 use superi_engine::resources::{
-    acquire_timeline_resources, DecoderResourceRequest, MediaResourceRequest,
-    ResourceAcquisitionPolicy,
+    acquire_project_resources, acquire_timeline_resources, DecoderResourceRequest,
+    MediaResourceRequest, ResourceAcquisitionPolicy,
 };
+use superi_graph::mutate::{GraphMutation, GraphTransaction, TypedParameterValue};
+use superi_graph::value::GraphValue;
 use superi_media_io::backend::{
     BackendCapabilities, BackendCapability, BackendDescriptor, BackendRegistration,
     BackendRegistry, BackendTier, FallbackPolicy, MediaBackend,
@@ -27,13 +29,16 @@ use superi_media_io::encode::{Encoder, EncoderConfig};
 use superi_media_io::mkv_webm::MkvWebmBackend;
 use superi_media_io::operation::{MediaPriority, OperationContext};
 use superi_media_io::read::ReadOutcome;
+use superi_project::document::ProjectDocument;
+use superi_timeline::compile::{TimelineGraphOrigin, TimelineGraphValue};
 use superi_timeline::model::{
-    Clip, ClipSource, EditorialProject, LinkedMediaReference, Timeline, Track, TrackItem,
-    TrackSemantics, VideoCompositing, VideoTrackSemantics,
+    Clip, ClipSource, EditorialObjectId, EditorialProject, LinkedMediaReference, Timeline, Track,
+    TrackItem, TrackSemantics, VideoCompositing, VideoTrackSemantics,
 };
 
 const MEDIA: MediaId = MediaId::from_raw(0x100);
 const ROOT: TimelineId = TimelineId::from_raw(0x200);
+const CLIP: ClipId = ClipId::from_raw(0x300);
 const STREAM: StreamId = StreamId::new(1);
 const SOURCE_FINGERPRINT: &str =
     "sha256:117f5cebcaaf788d1891e84aec57066c73e33d4af308368f640f28a8419f4bbc";
@@ -64,7 +69,7 @@ fn project() -> EditorialProject {
     )
     .unwrap();
     let clip = Clip::new(
-        ClipId::from_raw(0x300),
+        CLIP,
         "trimmed canonical source",
         ClipSource::Media(MEDIA),
         range(1_000_000_000, 2_000_000_000, source_timebase),
@@ -254,6 +259,70 @@ fn real_timeline_acquisition_compiles_once_and_preserves_media_semantics() {
     );
     assert_eq!(frame.format().alpha_mode(), AlphaMode::Opaque);
     assert!(frame.metadata().get("container.offset").is_some());
+}
+
+#[test]
+fn project_acquisition_preserves_published_editable_graph_state() {
+    let mut document = ProjectDocument::new(project(), ROOT).unwrap();
+    let compilation = document.timeline_graph(ROOT).unwrap();
+    let node_id = compilation
+        .index()
+        .node(TimelineGraphOrigin::Object(EditorialObjectId::Clip(CLIP)))
+        .unwrap();
+    let graph_snapshot = compilation.snapshot();
+    let parameter = graph_snapshot
+        .node(node_id)
+        .unwrap()
+        .parameters()
+        .values()
+        .find(|parameter| parameter.name().as_str() == "name")
+        .unwrap();
+    let parameter_id = parameter.id();
+    let value_type = parameter.value().value_type().clone();
+
+    document
+        .edit(0, |draft| {
+            let compilation = draft.timeline_graph_mut(ROOT)?;
+            let graph_revision = compilation.graph().revision();
+            compilation
+                .graph_mut()
+                .apply(GraphTransaction::with_mutations(
+                    graph_revision,
+                    [GraphMutation::SetParameter {
+                        node_id,
+                        parameter_id,
+                        value: TypedParameterValue::new(
+                            value_type,
+                            GraphValue::domain(TimelineGraphValue::Text(
+                                "published intelligent result".to_owned(),
+                            )),
+                        ),
+                    }],
+                ))?;
+            Ok(())
+        })
+        .unwrap();
+
+    let snapshot = document.snapshot();
+    let registry = media_backend_registry().unwrap();
+    let resources = acquire_project_resources(
+        &snapshot,
+        &registry,
+        [request()],
+        ResourceAcquisitionPolicy::default(),
+        &operation(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        resources.compilation(),
+        snapshot.timeline_graph(ROOT).unwrap()
+    );
+    assert_eq!(resources.compilation().snapshot().revision(), 2);
+    assert_eq!(
+        resources.media(MEDIA).unwrap().info().streams()[0].id(),
+        STREAM
+    );
 }
 
 #[test]

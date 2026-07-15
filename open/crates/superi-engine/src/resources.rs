@@ -1,9 +1,10 @@
 //! Transactional timeline graph and media resource acquisition.
 //!
-//! Preparation compiles one reachable editorial timeline graph, opens every source used by that
-//! graph, selects explicit stream decoders, and publishes the resulting owners only after every
-//! step succeeds. Playback, render, export, scheduling, and resource arbitration consume this
-//! shared bundle but remain separate orchestration responsibilities.
+//! Preparation either compiles one reachable editorial timeline graph or retains the exact root
+//! compilation from an immutable project snapshot. It opens every source used by that graph,
+//! selects explicit stream decoders, and publishes the resulting owners only after every step
+//! succeeds. Playback, render, export, scheduling, and resource arbitration consume this shared
+//! bundle but remain separate orchestration responsibilities.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -20,6 +21,7 @@ use superi_media_io::demux::{
     SourceRequest, StreamId,
 };
 use superi_media_io::operation::OperationContext;
+use superi_project::document::ProjectSnapshot;
 use superi_timeline::compile::{compile_timeline, TimelineGraphCompilation};
 use superi_timeline::media::LinkedMediaReference;
 use superi_timeline::model::{ClipSource, EditorialProject};
@@ -448,6 +450,68 @@ where
     operation.check("acquire_timeline_resources")?;
     let compilation = compile_timeline(project, root_timeline_id)?;
     operation.check("acquire_timeline_resources")?;
+
+    acquire_compiled_resources(project, compilation, registry, requests, policy, operation)
+}
+
+/// Acquires resources for the exact root graph retained by a project snapshot.
+///
+/// Direct graph edits, generated results, and editorial provenance remain
+/// unchanged because this path clones the already published compilation. It
+/// never recompiles the snapshot. Media source and decoder owners are still
+/// published only after the complete transaction succeeds.
+pub fn acquire_project_resources<I>(
+    project: &ProjectSnapshot,
+    registry: &BackendRegistry,
+    requests: I,
+    policy: ResourceAcquisitionPolicy,
+    operation: &OperationContext,
+) -> Result<TimelineResources>
+where
+    I: IntoIterator<Item = MediaResourceRequest>,
+{
+    operation.check("acquire_project_resources")?;
+    let root_timeline_id = project.root_timeline_id();
+    let compilation = project
+        .timeline_graph(root_timeline_id)
+        .ok_or_else(|| {
+            resource_error(
+                ErrorCategory::Internal,
+                Recoverability::Terminal,
+                "acquire_project_resources",
+                "project snapshot has no retained root timeline compilation",
+            )
+            .with_context(
+                ErrorContext::new(COMPONENT, "resolve_project_root_compilation")
+                    .with_field("project_id", project.project_id().to_string())
+                    .with_field("timeline_id", root_timeline_id.to_string()),
+            )
+        })?
+        .clone();
+    operation.check("acquire_project_resources")?;
+
+    acquire_compiled_resources(
+        project.editorial_project(),
+        compilation,
+        registry,
+        requests,
+        policy,
+        operation,
+    )
+}
+
+fn acquire_compiled_resources<I>(
+    project: &EditorialProject,
+    compilation: TimelineGraphCompilation,
+    registry: &BackendRegistry,
+    requests: I,
+    policy: ResourceAcquisitionPolicy,
+    operation: &OperationContext,
+) -> Result<TimelineResources>
+where
+    I: IntoIterator<Item = MediaResourceRequest>,
+{
+    let root_timeline_id = compilation.root_timeline_id();
 
     let required_media = reachable_media(project, root_timeline_id)?;
     let requests = index_requests(requests)?;
