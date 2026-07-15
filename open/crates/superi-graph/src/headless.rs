@@ -12,7 +12,8 @@ use superi_core::error::{ErrorContext, Result, ResultExt};
 use crate::dag::DirectedAcyclicGraph;
 use crate::diagnostics::{EvaluationInspection, EvaluationReport, IntrospectNode};
 use crate::eval::{
-    EvaluateNode, EvaluationRequest, EvaluationResult, EvaluationSchedule, LazyEvaluator,
+    EvaluateNode, EvaluationRequest, EvaluationResult, EvaluationSchedule, EvaluationValueCache,
+    LazyEvaluator,
 };
 use crate::ids::{GraphId, NodeId};
 use crate::mutate::{EditableNode, GraphSnapshot};
@@ -134,6 +135,24 @@ impl<T, N> GraphEvaluationSnapshot<T, N> {
         N: EvaluateNode<V>,
     {
         LazyEvaluator::evaluate(&self.executable, request)
+    }
+
+    /// Evaluates one request through the shared path with retained final and intermediate values.
+    ///
+    /// The concrete cache remains caller-owned. Cache identity is derived from this snapshot's
+    /// immutable executable projection, so every role observes the same authored revision and
+    /// semantic result whether a value is retained or freshly evaluated.
+    pub fn evaluate_with_cache<V, C>(
+        &self,
+        request: EvaluationRequest,
+        cache: &C,
+    ) -> Result<EvaluationResult<V>>
+    where
+        N: EvaluateNode<V> + IntrospectNode,
+        V: Clone,
+        C: EvaluationValueCache<V>,
+    {
+        LazyEvaluator::evaluate_with_cache(&self.executable, request, cache)
     }
 
     /// Inspects deterministic node identity and cache decisions through the shared evaluator.

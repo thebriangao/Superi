@@ -16,7 +16,7 @@ against raw source before changing code.
 | `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
 | `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade for capabilities and canonical editorial state | Partial: capability and canonical scenario controls implemented; transport, general API, and scripting absent |
 | `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Reserved audio graph, playback, mixing, resampling, metering, and plugin boundary | Skeleton: public module names only |
-| `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Reserved frame, proxy, render, prefetch, eviction, and disk cache boundary | Narrow color-pipeline identity seam implemented; storage and policy remain skeletons |
+| `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, final-frame and intermediate-node memory retention, plus reserved proxy, render, prefetch, eviction, and disk cache policy | Complete media, graph, parameter, color, time, and render identity feeds two independent thread-safe value tiers; budgets, eviction, invalidation cleanup, persistence, proxies, render caching, and prefetch remain |
 | `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario consumer | Implemented portable expectation verifier and eight instrumented contract stages; rendered media flow absent |
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
 | `superi-codecs-rs` | [module map](modules/superi-codecs-rs.md) | `open/crates/superi-codecs-rs` | Default permissive software codec implementations | Implemented: AV1, FLAC, MP3, Opus, PCM, Vorbis, VP8, and VP9 decode and encode |
@@ -27,7 +27,7 @@ against raw source before changing code.
 | `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Reserved effect-node catalog, animation, mask, transition, text, tracking, and OFX boundary | Skeleton: public module names only |
 | `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: canonical command state, registry, capability introspection, CPU-frame GPU upload, and viewport or export color metadata branching implemented |
 | `superi-gpu` | [module map](modules/superi-gpu.md) | `open/crates/superi-gpu` | wgpu device, resource, upload, conversion, pass, submission, presentation, and recovery substrate | Implemented substrate with explicit application-level integration gaps |
-| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, typed parameter links and expressions, derived missing-node resolution, dependency invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, cache identity, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, typed driver state, bounded expressions, parameter-cycle protection, fail-closed missing-node placeholders, exact invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic cache-key inspection, run-local timing, and role-neutral editable-to-runtime evaluation implemented; cache storage, production catalog and plugin binding, project persistence, and rendered integration absent |
+| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, typed parameter links and expressions, derived missing-node resolution, dependency invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, graph-lineage cache identity and adapter, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, typed driver state, bounded expressions, parameter-cycle protection, fail-closed missing-node placeholders, exact invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic graph cache inspection, final and intermediate retained-work pruning, run-local timing, and role-neutral editable-to-runtime evaluation implemented; production catalog and plugin binding, project persistence, cache generation policy, and rendered integration absent |
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; production source registration and muxing absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
@@ -270,26 +270,34 @@ without a production catalog:
    occur in earlier batches, and equal-ready keys are ordered independently of graph insertion
    history or thread timing.
 4. Pre-execution inspection binds each reached payload's exact schema, behavior, and canonical
-   editable-state fingerprint to a versioned cache decision. Available keys include stable graph,
+   editable-state fingerprint to a versioned graph cache decision. Available keys include stable graph,
    endpoint, route, policy-scoped time and region, and complete upstream key lineage; disabled,
    nondeterministic, and dependency-blocked work stays explicitly non-cacheable.
 5. Evaluation walks that exact schedule, evaluates identical work once per call, and returns opaque
    values, the schedule, and stable semantic completion keys. Diagnostic evaluation uses the same
    executor and pairs the unchanged result with monotonic planning, execution, and per-node timing.
    Timings do not participate in semantic inspection, result equality, or cache identity.
-6. `GraphEvaluationSnapshot<T, N>` retains one exact editable snapshot and uses a higher-tier
+6. Cached evaluation accepts one caller-owned `EvaluationValueCache<V>`, checks the final key before
+   node execution, and recursively stops at retained intermediate keys. Every adapter call receives
+   graph lineage and exact work identity. `superi-cache::FrameMemoryCacheContext` adds authoritative
+   media, parameter, color, and render context, and the scoped adapter derives a complete
+   `FrameCacheKey` before either concrete tier is consulted. Only successful cacheable work enters
+   storage.
+7. `GraphEvaluationSnapshot<T, N>` retains one exact editable snapshot and uses a higher-tier
    `NodeCompiler<T, N>` to replace only node payloads while preserving graph identity, node IDs,
    edge routes, and checked topology. Each compilation receives the full snapshot, so authored
-   parameter drivers remain visible. Scheduling, inspection, ordinary evaluation, and diagnostic
-   evaluation delegate to the same `LazyEvaluator` for editor, script, interactive, playback, and
-   headless callers.
-7. Public tests prove linked parameter state enters runtime-node compilation, exact invalidated lazy
-   work, equal role schedules, semantic inspection, cache keys, and results, immutable old
-   revisions, fresh edited results, and contextual atomic compiler failure. No production node
-   catalog, engine, API, CLI, GPU, cache store, or render stage calls this path yet, so the canonical
-   `graph.evaluate` stage remains a disclosed stub.
-8. Invalidation-to-render orchestration, ROI-plan-to-evaluator binding, outer job dispatch, cache
-   value storage and generations, and production catalog wiring remain separate later checkpoints.
+   parameter drivers remain visible. Scheduling, inspection, ordinary evaluation, cached
+   evaluation, and diagnostic evaluation delegate to the same `LazyEvaluator` for editor, script,
+   interactive, playback, and headless callers.
+8. Public tests prove linked parameter state enters runtime-node compilation, exact invalidated lazy
+   work, equal role schedules, semantic inspection, cache keys, exact retained results, final-hit
+   short circuiting, intermediate subtree pruning, immutable old revisions, fresh edited results,
+   and contextual atomic compiler failure. No production node catalog, engine, API, CLI, GPU, or
+   render stage calls this path yet, so the canonical `graph.evaluate` stage remains a disclosed
+   stub.
+9. Invalidation-to-render orchestration, ROI-plan-to-evaluator binding, outer job dispatch, cache
+   generations, budgets, eviction, persistence, and production catalog wiring remain separate later
+   checkpoints.
 
 No transport, request envelope, dispatcher, event channel, subscription, broad public transaction,
 script runtime, or UI is implemented. There is no shell, extension, automation, or closed-tier
@@ -582,6 +590,8 @@ The following constraints cross multiple modules and should be preserved togethe
   state, and cannot be treated as cache-generation ownership.
 - Runtime-node compilation receives that complete immutable graph snapshot, including parameter
   drivers, then preserves checked topology and delegates every caller role to one lazy evaluator.
+  Retained evaluation uses one explicit caller-owned adapter and only complete semantic cache keys;
+  final and intermediate hits cannot change authored state or result meaning.
 - Capability declarations are metadata, not proof that a factory or every declared format can run.
   Introspection must not instantiate codecs or sources.
 - Backend fallback is explicit. The registry, platform adapters, and vendor workers do not silently
@@ -820,9 +830,11 @@ encodes and muxes output, persists a project, and drives the flow through the pu
 
 ## Placeholders and incomplete integration
 
-Entire crate skeletons are `superi-ai`, `superi-audio`, `superi-cache`, `superi-effects`, and
-`superi-project`. Their manifests establish intended dependency direction, but their public modules
-expose no substantive types or operations.
+Entire crate skeletons are `superi-ai`, `superi-audio`, `superi-effects`, and `superi-project`.
+Their manifests establish intended dependency direction, but their public modules expose no
+substantive types or operations. `superi-cache` now has substantive composite identity, memory
+retention, and color metadata, while its five policy and storage-extension modules remain
+placeholders.
 
 Partial modules contain these explicit placeholder areas:
 
@@ -834,13 +846,14 @@ Partial modules contain these explicit placeholder areas:
 - `superi-engine`: ten orchestration modules covering A/V sync, errors, export, lifecycle, nodes,
   playback, plugins, render, resources, and validation.
 - `superi-graph`: invalidation and ROI render orchestration, outer job dispatch, project persistence,
-  undo ownership, engine coordination, cache storage and generations, production node catalogs, and
-  runtime consumers beyond its implemented identifier, node-schema, typed DAG storage and
+  undo ownership, engine coordination, cache generations and resource policy, production node
+  catalogs, and runtime consumers beyond its implemented identifier, node-schema, typed DAG storage and
   validation, schema-bound instances, immutable snapshots, atomic editable transactions, canonical
   versioned graph documents, typed parameter drivers and expressions, derived fail-closed plugin
   availability, exact dirty regions, dependency invalidation, snapshot-bound ROI planning,
-  deterministic request-scoped scheduling, node introspection, versioned cache identity, run-local
-  timing, and shared interactive and headless evaluation surfaces.
+  deterministic request-scoped scheduling, node introspection, versioned graph-lineage identity,
+  retained value adapter and pruning, run-local timing, and shared interactive and headless evaluation
+  surfaces.
 - `superi-timeline`: broader OTIO schema and vendor-effect interpretation beyond its pinned 0.18.1
   native subset, graph evaluation, fit-to-fill, grouped-source compound synthesis and higher-level
   edit orchestration, undo ownership, multicam playback and mixing, the owning SQLite project
@@ -889,9 +902,11 @@ For common concerns, begin at these owners:
   schema-bound instances, editable transactions, canonical graph documents, typed parameter links
   and expressions, missing-node resolution, exact dirty regions, dependency invalidation,
   snapshot-bound ROI propagation, deterministic request-scoped scheduling and evaluation,
-  pre-execution node introspection, cache identity, run-local timing, and shared interactive and
-  headless evaluation:
+  pre-execution node introspection, graph-lineage identity and retained-value adapter, run-local timing, and
+  shared interactive and headless evaluation:
   `superi-graph`, with value identity, rational time, and pixel bounds owned by `superi-core`.
+- Complete reusable-result identity, final-frame and intermediate-node memory retention, and cache
+  color identity: `superi-cache`.
 - Native editorial objects, typed track semantics, exact timing and clip retiming, selection, track
   targeting, sync locks, linked selection, clip grouping, markers, deterministic metadata, exact
   snapping, and foundational insert, overwrite, append, replace, lift, and extract operations plus

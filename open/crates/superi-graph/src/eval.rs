@@ -16,8 +16,8 @@ use superi_core::time::RationalTime;
 
 use crate::dag::{DirectedAcyclicGraph, GraphEdge, GraphEndpoint};
 use crate::diagnostics::{
-    derive_cache_status, CacheKeyStatus, EvaluationDiagnostics, EvaluationInspection,
-    EvaluationReport, IntrospectNode, NodeInspection, NodeTiming,
+    derive_cache_status, CacheKeyStatus, EvaluationCacheKey, EvaluationDiagnostics,
+    EvaluationInspection, EvaluationReport, IntrospectNode, NodeInspection, NodeTiming,
 };
 use crate::ids::EdgeId;
 use crate::node::{CachePolicy, Determinism};
@@ -129,6 +129,62 @@ impl From<EvaluationKey> for EvaluationRequest {
     fn from(key: EvaluationKey) -> Self {
         Self { key }
     }
+}
+
+/// The retention tier used for one reusable evaluator value.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum EvaluationCacheEntryKind {
+    /// The exact top-level output requested by an evaluator caller.
+    FinalFrame,
+    /// One prerequisite node output reached while resolving a final frame.
+    IntermediateNode,
+}
+
+/// The graph-owned identity inputs for one retained evaluator value.
+///
+/// `graph_key` covers graph topology, node state, request scope, behavior, and upstream lineage.
+/// `evaluation_key` exposes the exact endpoint, physical time, and region so an outer cache owner
+/// can compose graph identity with media, parameter, color, and render-setting identity without
+/// moving those concerns into the graph crate.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct EvaluationCacheIdentity {
+    graph_key: EvaluationCacheKey,
+    evaluation_key: EvaluationKey,
+}
+
+impl EvaluationCacheIdentity {
+    const fn new(graph_key: EvaluationCacheKey, evaluation_key: EvaluationKey) -> Self {
+        Self {
+            graph_key,
+            evaluation_key,
+        }
+    }
+
+    /// Returns the deterministic graph-lineage component.
+    #[must_use]
+    pub const fn graph_key(self) -> EvaluationCacheKey {
+        self.graph_key
+    }
+
+    /// Returns the exact evaluator work identity.
+    #[must_use]
+    pub const fn evaluation_key(self) -> EvaluationKey {
+        self.evaluation_key
+    }
+}
+
+/// Node-neutral retained value storage consumed by cached graph evaluation.
+///
+/// Implementations own synchronization, memory placement, and retention policy. A lookup miss or
+/// insertion replacement is ordinary cache behavior and cannot change graph meaning. The evaluator
+/// calls this interface only for work with complete graph-owned identity. Outer implementations may
+/// compose [`EvaluationCacheIdentity`] with additional authoritative identity categories.
+pub trait EvaluationValueCache<V> {
+    /// Returns an owned reusable value from the requested retention tier.
+    fn get(&self, kind: EvaluationCacheEntryKind, identity: EvaluationCacheIdentity) -> Option<V>;
+
+    /// Retains one exact evaluator value in the requested tier.
+    fn insert(&self, kind: EvaluationCacheEntryKind, identity: EvaluationCacheIdentity, value: V);
 }
 
 /// One incoming edge request declared by a node implementation.
@@ -418,6 +474,27 @@ impl LazyEvaluator {
     {
         let plan = PlanBuilder::build::<V>(graph, request)?;
         execute_plan(graph, plan, None).map(|(result, _)| result)
+    }
+
+    /// Evaluates one output while reusing exact final and intermediate values when available.
+    ///
+    /// Cache identity comes only from deterministic graph inspection. A final-frame hit returns
+    /// immediately, while an intermediate-node hit prunes that node's complete prerequisite
+    /// subtree. Misses execute through the ordinary immutable node contract and retain a clone of
+    /// the exact result, leaving the returned value and authored graph unchanged.
+    pub fn evaluate_with_cache<N, V, C>(
+        graph: &DirectedAcyclicGraph<N>,
+        request: EvaluationRequest,
+        cache: &C,
+    ) -> Result<EvaluationResult<V>>
+    where
+        N: EvaluateNode<V> + IntrospectNode,
+        V: Clone,
+        C: EvaluationValueCache<V>,
+    {
+        let plan = PlanBuilder::build::<V>(graph, request)?;
+        let inspection = build_inspection(graph, &plan);
+        execute_plan_with_cache(graph, plan, &inspection, cache)
     }
 
     /// Evaluates one private plan and returns its ordinary result beside graph diagnostics.
@@ -830,6 +907,169 @@ where
         },
         node_timings,
     ))
+}
+
+fn execute_plan_with_cache<N, V, C>(
+    graph: &DirectedAcyclicGraph<N>,
+    plan: EvaluationPlan,
+    inspection: &EvaluationInspection,
+    cache: &C,
+) -> Result<EvaluationResult<V>>
+where
+    N: EvaluateNode<V>,
+    V: Clone,
+    C: EvaluationValueCache<V>,
+{
+    let target = plan.schedule.request().key();
+    if let Some(cache_key) = inspection
+        .node(target)
+        .and_then(|node| node.cache_status().key())
+    {
+        let identity = EvaluationCacheIdentity::new(cache_key, target);
+        if let Some(value) = cache.get(EvaluationCacheEntryKind::FinalFrame, identity) {
+            return Ok(EvaluationResult {
+                request: plan.schedule.request(),
+                target_index: 0,
+                evaluated: vec![EvaluatedValue { key: target, value }],
+                schedule: plan.schedule,
+            });
+        }
+    }
+
+    let mut required = BTreeSet::new();
+    let mut retained = BTreeMap::new();
+    select_required_work(
+        target,
+        target,
+        &plan.work,
+        inspection,
+        cache,
+        &mut required,
+        &mut retained,
+    );
+
+    let EvaluationPlan { schedule, work } = plan;
+    let mut evaluated: Vec<EvaluatedValue<V>> = Vec::with_capacity(required.len() + retained.len());
+    let mut completed = BTreeMap::new();
+
+    for batch in schedule.batches() {
+        for key in batch.keys() {
+            let value = if let Some(value) = retained.remove(key) {
+                value
+            } else if required.contains(key) {
+                let planned = work
+                    .get(key)
+                    .expect("required evaluator work remains planned");
+                let input_indices = planned
+                    .dependencies
+                    .iter()
+                    .map(|dependency| {
+                        completed
+                            .get(&dependency.source)
+                            .copied()
+                            .expect("required prerequisite completed in an earlier batch")
+                    })
+                    .collect::<Vec<usize>>();
+                let inputs = planned
+                    .dependencies
+                    .iter()
+                    .zip(&input_indices)
+                    .map(|(dependency, index)| EvaluationInput {
+                        dependency: dependency.dependency,
+                        edge: dependency.edge,
+                        source: dependency.source,
+                        value: &evaluated[*index].value,
+                    })
+                    .collect::<Vec<_>>();
+                let context = EvaluationContext {
+                    request: EvaluationRequest::from(*key),
+                    inputs: &inputs,
+                };
+                let node = graph
+                    .node(key.output().node_id())
+                    .expect("planned evaluation node remains present");
+                let value = node.evaluate(&context).map_err(|mut error| {
+                    error.push_context(request_context(graph, *key, "evaluate_node"));
+                    error
+                })?;
+                if let Some(cache_key) = inspection
+                    .node(*key)
+                    .and_then(|node| node.cache_status().key())
+                {
+                    let kind = if *key == target {
+                        EvaluationCacheEntryKind::FinalFrame
+                    } else {
+                        EvaluationCacheEntryKind::IntermediateNode
+                    };
+                    cache.insert(
+                        kind,
+                        EvaluationCacheIdentity::new(cache_key, *key),
+                        value.clone(),
+                    );
+                }
+                value
+            } else {
+                continue;
+            };
+
+            let index = evaluated.len();
+            evaluated.push(EvaluatedValue { key: *key, value });
+            completed.insert(*key, index);
+        }
+    }
+
+    let target_index = completed[&target];
+    Ok(EvaluationResult {
+        request: schedule.request(),
+        target_index,
+        evaluated,
+        schedule,
+    })
+}
+
+fn select_required_work<V, C>(
+    key: EvaluationKey,
+    target: EvaluationKey,
+    work: &BTreeMap<EvaluationKey, PlannedWork>,
+    inspection: &EvaluationInspection,
+    cache: &C,
+    required: &mut BTreeSet<EvaluationKey>,
+    retained: &mut BTreeMap<EvaluationKey, V>,
+) where
+    C: EvaluationValueCache<V>,
+{
+    if required.contains(&key) || retained.contains_key(&key) {
+        return;
+    }
+
+    if key != target {
+        if let Some(cache_key) = inspection
+            .node(key)
+            .and_then(|node| node.cache_status().key())
+        {
+            let identity = EvaluationCacheIdentity::new(cache_key, key);
+            if let Some(value) = cache.get(EvaluationCacheEntryKind::IntermediateNode, identity) {
+                retained.insert(key, value);
+                return;
+            }
+        }
+    }
+
+    let planned = work
+        .get(&key)
+        .expect("selected evaluator work remains planned");
+    for dependency in &planned.dependencies {
+        select_required_work(
+            dependency.source,
+            target,
+            work,
+            inspection,
+            cache,
+            required,
+            retained,
+        );
+    }
+    required.insert(key);
 }
 
 fn diagnostic_context(node: &NodeInspection, elapsed: std::time::Duration) -> ErrorContext {

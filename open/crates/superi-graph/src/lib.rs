@@ -5,10 +5,11 @@
 //! discovery, deterministic DAG storage, typed port validation, atomic editable graph transactions,
 //! exact dependency invalidation, region-of-interest propagation, deterministic request-scoped
 //! scheduling and evaluation, typed parameter links and bounded pure expressions, deterministic
-//! node introspection and cache identity, run-local evaluation timing, shared interactive and
-//! headless evaluation snapshots, derived missing-node placeholders, and versioned
-//! integrity-checked graph documents with migration are implemented; cache storage and production
-//! node-catalog and render integration remain pending.
+//! node introspection and cache identity, run-local evaluation timing, retained-value adapter
+//! evaluation, shared interactive and headless evaluation snapshots, derived missing-node
+//! placeholders, and versioned integrity-checked graph documents with migration are implemented;
+//! concrete cache storage remains in `superi-cache`, while production node-catalog and render
+//! integration remain pending.
 
 pub mod dag;
 pub mod diagnostics;

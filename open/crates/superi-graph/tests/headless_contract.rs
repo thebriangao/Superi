@@ -1,14 +1,18 @@
+use std::collections::BTreeMap;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use superi_core::error::{Error, ErrorCategory, Recoverability, Result};
 use superi_core::geometry::PixelBounds;
 use superi_core::settings::{CapabilitySet, SemanticVersion};
 use superi_core::time::{RationalTime, Timebase};
 use superi_graph::dag::{GraphEdge, GraphEndpoint};
-use superi_graph::diagnostics::{IntrospectNode, NodeIntrospection, NodeStateFingerprint};
+use superi_graph::diagnostics::{
+    EvaluationCacheKey, IntrospectNode, NodeIntrospection, NodeStateFingerprint,
+};
 use superi_graph::eval::{
-    EvaluateNode, EvaluationContext, EvaluationDependency, EvaluationRequest,
+    EvaluateNode, EvaluationCacheEntryKind, EvaluationCacheIdentity, EvaluationContext,
+    EvaluationDependency, EvaluationRequest, EvaluationValueCache,
 };
 use superi_graph::expr::{
     ExpressionParameterValue, ParameterAddress, ParameterDriver, ParameterReference,
@@ -117,8 +121,39 @@ fn behavior() -> NodeBehavior {
         RoiBehavior::InputBounds,
         ColorRequirements::NotApplicable,
         Determinism::Deterministic,
-        CachePolicy::Disabled,
+        CachePolicy::PerRegion,
     )
+}
+
+#[derive(Default)]
+struct SnapshotCache {
+    entries: Mutex<BTreeMap<(EvaluationCacheEntryKind, EvaluationCacheKey), i64>>,
+}
+
+impl EvaluationValueCache<i64> for SnapshotCache {
+    fn get(
+        &self,
+        kind: EvaluationCacheEntryKind,
+        identity: EvaluationCacheIdentity,
+    ) -> Option<i64> {
+        self.entries
+            .lock()
+            .unwrap()
+            .get(&(kind, identity.graph_key()))
+            .copied()
+    }
+
+    fn insert(
+        &self,
+        kind: EvaluationCacheEntryKind,
+        identity: EvaluationCacheIdentity,
+        value: i64,
+    ) {
+        self.entries
+            .lock()
+            .unwrap()
+            .insert((kind, identity.graph_key()), value);
+    }
 }
 
 fn schema(
@@ -429,5 +464,24 @@ fn compilation_failure_preserves_classification_and_identifies_exact_editable_st
     assert_eq!(
         context.field("schema_id"),
         Some("superi.test.failure@1.0.0")
+    );
+}
+
+#[test]
+fn role_neutral_snapshot_delegates_to_the_same_retained_evaluation_path() {
+    let evaluation =
+        GraphEvaluationSnapshot::compile(editable_graph().snapshot(), compile_node).unwrap();
+    let request = request(PixelBounds::new(0, 0, 32, 18).unwrap());
+    let cache = SnapshotCache::default();
+
+    let first = evaluation.evaluate_with_cache(request, &cache).unwrap();
+    let retained = evaluation.evaluate_with_cache(request, &cache).unwrap();
+
+    assert_eq!(*first.value(), 19);
+    assert_eq!(retained.value(), first.value());
+    assert_eq!(first.evaluated_keys().len(), 2);
+    assert_eq!(
+        retained.evaluated_keys().collect::<Vec<_>>(),
+        [request.key()]
     );
 }
