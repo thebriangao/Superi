@@ -14,12 +14,13 @@ current_netns="$(readlink /proc/self/ns/net)"
 [[ "$current_netns" != "$SUPERI_HOST_NETNS" ]] ||
     fail "the workflow did not enter a distinct network namespace"
 
-shopt -s nullglob
-interfaces=(/sys/class/net/*)
+mapfile -t interfaces < <(
+    awk -F: 'NR > 2 { name = $1; gsub(/^[[:space:]]+|[[:space:]]+$/, "", name); print name }' \
+        /proc/net/dev
+)
 (( ${#interfaces[@]} > 0 )) || fail "the isolated namespace exposes no loopback interface"
 for interface in "${interfaces[@]}"; do
-    [[ "${interface##*/}" == "lo" ]] ||
-        fail "unexpected network interface ${interface##*/} is available"
+    [[ "$interface" == "lo" ]] || fail "unexpected network interface $interface is available"
 done
 
 if tail -n +2 /proc/net/route | grep -q '[^[:space:]]'; then

@@ -70,6 +70,10 @@ grep -Fq 'cargo test --workspace --locked --no-run' "$workflow" ||
     fail "workflow must prepare locked test artifacts before isolation"
 
 grep -Fq 'CARGO_NET_OFFLINE=true' "$harness" || fail "harness must force Cargo offline"
+grep -Fq '/proc/net/dev' "$harness" ||
+    fail "harness must inspect interfaces through the current network namespace"
+! grep -Fq '/sys/class/net/' "$harness" ||
+    fail "harness must not inspect interfaces through the host-mounted sysfs view"
 grep -Fq 'cargo test --workspace --locked --offline' "$harness" ||
     fail "harness must run locked offline workspace tests"
 grep -Fq 'superi-fixture-tool -- check test-fixtures' "$harness" ||

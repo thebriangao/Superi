@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 99a48cd6e63cef1c804253f2f16ee0c9b212ffbd624c9546d2b61724cf0354e7
+source_hash: d9f3568b463c13d83348b47c64702cd4a9368b57c6d783d5480066649c8a1470
 source_files: 121
 mapped_at_commit: working-tree
 ---
@@ -309,11 +309,13 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   the remaining production integration boundary.
 - `open/ci/network-isolated-contract.sh`: Executable contract binding the dedicated workflow to
   immutable checkout, least privilege, locked artifact preparation, namespace isolation, fixture
-  validation, and the exact canonical headless CLI invocation and output locations.
+  validation, namespace-aware interface inspection, and the exact canonical headless CLI invocation
+  and output locations.
 - `open/ci/run-network-isolated.sh`: Linux harness that verifies a distinct namespace,
-  loopback-only interfaces, no IPv4 route, and a failed numeric outbound connection before running
-  locked workspace tests, fixture validation, and the canonical runner with temporary outputs under
-  locked offline Cargo.
+  reads its current interface inventory from `/proc/net/dev`, requires loopback-only interfaces and
+  no IPv4 route, and proves a numeric outbound connection fails before running locked workspace
+  tests, fixture validation, and the canonical runner with temporary outputs under locked offline
+  Cargo.
 - `open/deny.toml`: Cargo-deny policy allowing a bounded permissive license set, warning on duplicate
   versions and yanked advisories, rejecting unknown Git sources, requiring pinned Git revisions, and
   permitting only the pinned OxideAV MP3 repository as a Git source.
@@ -609,8 +611,10 @@ builds the workspace and test executables while online. It records the host name
 privileged `unshare --net` to enter a new namespace, carrying only the required Rust environment and
 approved libva and libvpx paths. The harness rejects the host namespace, any non-loopback interface,
 any IPv4 route, or a successful numeric outbound connection before forcing Cargo offline and
-running workspace tests, fixture validation, and the CLI. This proves current core commands operate
-without outbound access after setup, not that dependency or media-runtime acquisition is offline.
+running workspace tests, fixture validation, and the CLI. Interface discovery uses the current
+namespace's procfs network view rather than a sysfs mount that can retain the host namespace view.
+This proves current core commands operate without outbound access after setup, not that dependency
+or media-runtime acquisition is offline.
 
 The intended media path is source and container handling through `superi-media-io`, explicit backend
 selection for permissive, platform, or vendor codecs, validated image and audio representations,
@@ -791,8 +795,11 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   24.04 after building checksum-pinned libva 2.22 and libvpx 1.16 and installing nasm, then uses a
   distinct empty network namespace and Cargo offline mode for workspace tests, canonical fixture
   validation, and the CLI consumer. Hosted run `29308007012` stopped before isolation because the
-  former distribution libva API 1.20 could not satisfy the H.266 API 1.22 boundary. The final
-  delivered run is authoritative because the local macOS host cannot execute Linux `unshare --net`.
+  former distribution libva API 1.20 could not satisfy the H.266 API 1.22 boundary. Run
+  `29382902840` reached the distinct namespace after all artifact preparation passed, then exposed
+  that host-mounted sysfs did not represent that namespace's interface inventory. The harness now
+  uses `/proc/net/dev`; the final delivered run is authoritative because the local macOS host cannot
+  execute Linux `unshare --net`.
 - `docs/checkpoints/P1.W07.C004.md` records a fresh clean npm installation, typecheck, production
   build, three passing contract tests, zero reported vulnerabilities, negative TypeScript and
   missing-bundle controls, YAML parsing, and a complete locked Rust test run. These are delivery

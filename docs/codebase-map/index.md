@@ -673,7 +673,8 @@ behavior.
 The dedicated network-isolated workflow prepares locked Cargo artifacts, checksum-pinned libva 2.22
 and libvpx 1.16 runtimes, and nasm on Ubuntu 24.04 while online, then runs workspace tests, canonical
 fixture validation, and the canonical headless slice inside a distinct Linux network namespace with only
-loopback, no IPv4 route, a failed numeric outbound probe, and Cargo offline mode. Hosted run
+loopback as verified through the namespace-aware procfs network view, no IPv4 route, a failed
+numeric outbound probe, and Cargo offline mode. Hosted run
 `29308007012` stopped before namespace entry because distribution libva API 1.20 could not satisfy
 the unchanged H.266 API 1.22 requirement; both Rust workflows now use the shared source provisioner.
 The final hosted run remains the offline execution proof, not an offline acquisition proof or a
