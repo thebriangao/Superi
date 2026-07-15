@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: fc5f84579e4caafd4708f7d1ab7a027b05d2b77be13030d1830dee0d3f565b38
-source_files: 134
+source_hash: a56be5f8d00004b3feba3e57e4ca9f4d8f98d0abd7a23ee619e099bd02bd9905
+source_files: 135
 mapped_at_commit: working-tree
 ---
 
@@ -266,6 +266,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   sample-rate conversion. It records exact source and device clocks, ordered channels, fixed
   lookahead and output blocks, bounded drift correction, dependency evidence, focused proof,
   delivery context, and remaining engine and physical-device integration.
+- `docs/checkpoints/P2.W04.C009.md`: Durable implementation evidence for transparent graph-native
+  peak, RMS, true-peak, phase, spectrum, and loudness metering. It records bounded preparation,
+  lock-free coherent snapshots, standards research, real graph-consumer proof, delivery context,
+  and remaining engine, hardware, and export integration.
 - `docs/checkpoints/P2.W05.C001.md`: Durable implementation evidence for the graph-native visual
   effect authoring SDK. It records typed inspectable definitions and defaults, workflow-neutral
   editable graph instances, deterministic catalog discovery, exact-schema runtime factories,

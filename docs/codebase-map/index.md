@@ -15,7 +15,7 @@ against raw source before changing code.
 | --- | --- | --- | --- | --- |
 | `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
 | `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade for capabilities and canonical editorial state | Partial: capability and canonical scenario controls implemented; transport, general API, and scripting absent |
-| `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Independent prepared audio graph with explicit channel conversion, typed bus routing, transactional clip DSP, core effects, sample-accurate scheduling, bounded device playback, and dual-clock sample-rate conversion | Partial: graph processing, channel-layout conversion, bus routing, clip controls, equalization, compression, limiting, delay, saturation, callback scheduling, audio-master publication, device output, and band-limited resampling implemented; decoded-sample binding, automation, metering, hosting, and complete engine composition absent |
+| `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Independent prepared audio graph with explicit channel conversion, typed bus routing, transactional clip DSP, core effects, sample-accurate scheduling, bounded device playback, dual-clock sample-rate conversion, and graph-native metering | Partial: graph processing, channel-layout conversion, bus routing, clip controls, equalization, compression, limiting, delay, saturation, callback scheduling, audio-master publication, device output, band-limited resampling, and peak, RMS, true-peak, phase, spectrum, and loudness metering implemented; decoded-sample binding, automation, hosting, and complete engine composition absent |
 | `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, precise graph edit invalidation, versioned corruption-recovering disk persistence, replaceable derived-media publication, layered render reuse, bounded background population, bounded playback prediction, bounded edit and scrub warming, and deterministic lifecycle management | Complete identity feeds independent memory and disk tiers with exact admission, revision fencing, bounded envelopes, atomic publication, schema isolation, and corruption quarantine; memory, persistent, and derived owners expose inspection and exact clearing, persistent namespaces relocate through rename or synchronized staged copy, render jobs add cancellation-safe layered reuse, prediction supplies finite signed frame plans and an owned host adapter, and warming is deterministic and hard bounded; engine and scheduler own quality substitution and lifecycle policy remains caller-owned |
 | `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario consumer | Implemented portable expectation verifier and eight instrumented contract stages; rendered media flow absent |
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
@@ -1046,8 +1046,8 @@ module, while built-in visual nodes, masks, transitions, text, tracking, OFX, pr
 factories, and execution remain placeholders or absent. `superi-audio` now has a substantive
 independent processing graph, typed bus routing, sample-accurate scheduler, production device output,
 clip-mix processor, prepared sample-rate converter, explicit channel conversion, and prepared core
-effects, while automation, metering, hosting,
-decoded-sample binding, and complete engine composition remain absent.
+effects, plus a graph-native meter, while automation, hosting, and decoded-sample
+binding, and complete engine composition remain absent.
 `superi-cache` now has substantive composite identity, budgeted memory retention, hierarchical
 memory policy, priority-aware LRU eviction, precise edit invalidation, persistent storage, color
 metadata, replaceable proxy or optimized-media publication, deterministic inspection and clearing,
@@ -1063,7 +1063,7 @@ Partial modules contain these explicit placeholder areas:
 
 - `superi-api`: scripting and every general command, dispatcher, transport, subscription, and
   transaction path beyond capabilities and the fixed canonical scenario.
-- `superi-audio`: decoded sample binding, metering, plugin hosting, effect automation, and engine
+- `superi-audio`: decoded sample binding, plugin hosting, effect automation, and engine
   composition across schedule, conversion, clip and effects processing, graph routing, and device
   execution.
 - `superi-color`: broader config-persisted rule graphs, ICC transform evaluation, GPU output
@@ -1134,7 +1134,8 @@ For common concerns, begin at these owners:
 - GPU resources, residency, conversion, submission, and recovery: `superi-gpu`.
 - Jobs, domains, clocks, handoffs, lifecycle, and liveness: `superi-concurrency`.
 - Audio graph topology, output-device identity, capability discovery, bounded sample handoff, typed
-  platform callbacks, stream lifecycle, audio-clock publication, and output telemetry: `superi-audio`.
+  platform callbacks, stream lifecycle, audio-clock publication, output telemetry, and graph-native
+  peak, RMS, true-peak, phase, spectrum, and loudness analysis: `superi-audio`.
 - Graph-facing identifiers, node schemas, deterministic DAG state, typed binding validation,
   schema-bound instances, editable transactions, canonical graph documents, typed parameter links
   and expressions, missing-node resolution, exact dirty regions, dependency and semantic edit

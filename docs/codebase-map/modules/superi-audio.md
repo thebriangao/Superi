@@ -2,8 +2,8 @@
 module_id: superi-audio
 source_paths:
   - open/crates/superi-audio
-source_hash: 3a459fe36cacd66e1c6b7a9f2bb1ae651940f8c5f4c333827d95325a5d735472
-source_files: 20
+source_hash: 095eb0753738789ede50e2464156d723d135501e526810efa2a3de9f8ac99d31
+source_files: 21
 mapped_at_commit: working-tree
 ---
 
@@ -26,12 +26,15 @@ prepared speaker or discrete conversion nodes adapt channels without implicit gr
 Prepared core effects add cascaded biquad equalization, linked-channel compression and peak
 limiting, fixed channel-preserving delay, and normalized soft saturation through the existing
 single-input graph processor boundary.
+Its transparent prepared meter preserves graph samples while publishing coherent peak, RMS,
+true-peak, phase, spectrum, momentary, short-term, and integrated loudness snapshots through
+bounded lock-free storage.
 
-All three paths enforce the platform-owned audio execution domain, but their control-path owners
+All processing paths enforce the platform-owned audio execution domain, but their control-path owners
 remain separate. Graph editing and preparation allocate outside callbacks. Schedule construction and
-transport reanchoring also occur outside callbacks. Resampler construction and scratch allocation
-remain outside callbacks. Device discovery and stream setup remain on control threads. Decoded
-sample binding, automation, metering, plugins, and complete engine orchestration remain separate
+transport reanchoring also occur outside callbacks. Resampler and meter construction and scratch
+allocation remain outside callbacks. Device discovery and stream setup remain on control threads. Decoded
+sample binding, automation, plugins, and complete engine orchestration remain separate
 concerns.
 
 ## Source inventory
@@ -53,7 +56,10 @@ concerns.
 - `open/crates/superi-audio/src/lib.rs`: Documents the implemented graph, channel, routing,
   scheduling, playback, conversion, and effects boundaries and exports the ten audio concern
   modules.
-- `open/crates/superi-audio/src/metering.rs`: Placeholder for metering and audio analysis.
+- `open/crates/superi-audio/src/metering.rs`: Implements transparent prepared graph metering,
+  per-channel sample peak, RMS and true peak, stereo phase correlation, bounded spectrum analysis,
+  K-weighted EBU windows, ITU programme gating, coherent lock-free snapshots, and explicit history
+  saturation.
 - `open/crates/superi-audio/src/mixing.rs`: Implements validated clip controls, semantic channel
   matrices, revisioned identity mutations, immutable solo-aware snapshots, bounded clip
   preparation, and allocation-free gain, fade, pan, mute, solo, phase, and routing DSP.
@@ -91,12 +97,15 @@ concerns.
 - `open/crates/superi-audio/tests/audio_effects_contract.rs`: Proves all public effects through the
   real prepared graph, including adjacent-block state, channel linking, exact delay timing,
   response and ceiling behavior, bounds, and non-finite rejection.
+- `open/crates/superi-audio/tests/metering_contract.rs`: Proves sample-transparent graph execution,
+  exact channel semantics and continuity, peak, RMS, inter-sample true peak, phase, spectrum,
+  calibrated EBU loudness windows, ITU gating, and bounded preparation.
 
 ## Public surface
 
 The crate root exports `channels`, `effects`, `graph`, `hosting`, `metering`, `mixing`, `playback`,
-`resample`, `routing`, and `sync`. Every module except the metering and hosting placeholders
-contains substantive behavior.
+`resample`, `routing`, and `sync`. Every module except the hosting placeholder contains substantive
+behavior.
 
 `channels` exposes `CommonChannelLayout`, `ChannelInterpretation`, and `PreparedChannelMixer`.
 Canonical layouts preserve core speaker order. Speaker conversion implements documented mono,
@@ -109,6 +118,11 @@ high-pass, peaking, low-shelf, and high-shelf equalization; feed-forward compres
 zero-lookahead peak limiting; fixed feedback delay; and normalized soft saturation. Equalizer,
 compressor, and limiter preparation bind one positive sample rate. Every processor binds one
 unchanged ordered layout and implements the graph's public single-input `AudioProcessor` contract.
+
+`metering` exposes validated `MeterConfig`, transparent `PreparedMeter`, independently retained
+`MeterReadings`, and owned `MeterSnapshot` values. Snapshots retain exact sample coordinates and
+semantic channel order while reporting per-channel instantaneous and held levels, phase,
+frequency bins, EBU loudness windows, bounded integrated programme history, and saturation.
 
 `graph` exposes ordered audio-owned `AudioGraphId`, `AudioNodeId`, and `AudioEdgeId` values.
 `AudioNode` declares a source, single-input processor, or typed multi-input bus with exact input and
@@ -217,6 +231,13 @@ before state mutation. Equalizer state is independent per band and channel; dyna
 gain are linked once per frame; the delay ring advances in interleaved channel order; and all state
 continues identically across arbitrary adjacent block partitions.
 
+Meter preparation validates the exact sample clock, ordered channel layout, callback bound,
+spectrum dimensions, and integrated-history ceiling before fallibly allocating all DSP and atomic
+publication storage. The audio callback copies its sole input unchanged, then updates K-weighting,
+four-phase true-peak interpolation, rolling loudness and spectrum windows, and one seqlock-protected
+atomic snapshot. The control-side reader retries concurrent publication, constructs owned channel
+and spectrum values, and performs the two-stage integrated loudness gate without blocking audio.
+
 ## Dependencies and consumers
 
 - `superi-core` supplies ordered `ChannelLayout`, exact `SampleTime`, and the shared classified
@@ -242,7 +263,8 @@ continues identically across arbitrary adjacent block partitions.
   blocks through clip DSP, dry, auxiliary, submix, and master paths, publish scheduled presentation
   through actual concurrency clocks, exercise bounded device output, and prove clip identity
   inheritance while converting between independent source and device clocks and applying core
-  effects through the prepared graph.
+  effects through the prepared graph. The metering contract places a real meter between a source
+  and master bus.
 
 ## Invariants and operational boundaries
 
@@ -302,6 +324,13 @@ continues identically across arbitrary adjacent block partitions.
   transfer to a replacement, and disappear with a removed clip through engine-owned reconciliation.
 - Nonzero pan requires canonical stereo output. Gain and route coefficients are finite and bounded;
   fades use exact integer sample lengths and must fit the prepared clip interval.
+- Meter processing requires one exact-layout input, copies it before analysis, and never changes
+  sample timing, routing, channel order, or continuity. Callback state and publication storage are
+  preallocated, lock-free, and bounded; programme history reports saturation instead of growing.
+- True peak uses the ITU four-phase FIR at 48 kHz, loudness applies K weighting with LFE exclusion
+  and surround weighting, momentary and short-term windows are 400 ms and 3 s, and integrated
+  loudness applies absolute and relative gates. Spectrum resolution is explicitly configured and
+  bounded rather than inferred as a mastering-grade FFT contract.
 
 ## Tests and verification
 
@@ -352,14 +381,19 @@ compression, an exact peak ceiling, fixed stereo delay coordinates without cross
 bounded odd saturation, finite output, rejected invalid parameters, and non-finite input failure
 without graph-clock advancement.
 
+Four metering contracts prove transparent placement in the prepared audio graph, exact stereo
+channel identity and sample continuity, sample peak and RMS, coherent phase and spectrum output,
+inter-sample true peak, calibrated 400 ms, 3 s, and integrated loudness, history saturation policy,
+and rejection of unbounded or nonsensical preparation.
+
 ## Current status and risks
 
 The independent audio graph, channel conversion, bus routing, sample-accurate schedule, production
-device-output substrate, clip mix processor, prepared sample-rate converter, and core effects are
-substantive and publicly test-backed. Two sibling modules remain documentation-only placeholders.
+device-output substrate, clip mix processor, prepared sample-rate converter, core effects, and graph-native meter are
+substantive and publicly test-backed. Plugin hosting remains a documentation-only placeholder.
 Engine consumes timeline edit outcomes for atomic clip identity reconciliation, but there is no
-decoded-audio fetch, scheduled-slice graph binding, metering, plugin host, platform channel-layout
-negotiation, engine playback composition, or end-to-end
+decoded-audio fetch, scheduled-slice graph binding, plugin host, platform channel-layout negotiation,
+engine playback composition, or end-to-end
 source-playback-final-mix path.
 
 Multi-input routing is deliberately unity-only to avoid claiming later control semantics. Prepared
@@ -381,7 +415,9 @@ ceiling, timed-silence clock behavior, callback-only atomic telemetry, and failu
 allocation. Preserve direct, send, return, and single-master role validation and stable edge-ordered
 summing. Preserve fixed converter lookahead, explicit filter delay, bounded ramped clock correction,
 exact dual-clock reports, effect configuration bounds, linked dynamics, channel-local filter and
-delay state, and adjacent-block continuity. Any indexed extension must define ordering explicitly and prove
+delay state, and adjacent-block continuity. Preserve transparent meter placement, fixed analysis windows,
+bounded atomic publication, explicit programme-history saturation, and control-side integrated
+gating. Any indexed extension must define ordering explicitly and prove
 callback safety. Keep discovery and stream setup on control threads, and revalidate capabilities
 before stream creation.
 

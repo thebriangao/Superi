@@ -7,8 +7,9 @@
 //! routing are implemented in [`routing`]. Explicit prepared layout conversion is implemented in
 //! [`channels`]. Prepared band-limited conversion between independent source and device sample
 //! clocks is implemented in [`resample`]. Prepared equalization, dynamics, limiting, delay, and
-//! saturation are implemented in [`effects`]. Metering and plugin hosting remain separate staged
-//! owners.
+//! saturation are implemented in [`effects`]. Transparent graph-native level,
+//! spectrum, phase, true-peak, and loudness analysis is implemented in [`metering`]. Plugin hosting
+//! remains a separate staged owner.
 
 pub mod channels;
 pub mod effects;
