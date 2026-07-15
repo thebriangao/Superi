@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 5ba0dcd77004ffbe1db9213eed69cc3f0fae6dab629c70b95dff0eb085c42b5b
-source_files: 130
+source_hash: 0e9c688619049de40cb7ba9d52beb1fb9cc6ee1225aac75f889f9ee8cc567fba
+source_files: 131
 mapped_at_commit: working-tree
 ---
 
@@ -262,6 +262,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   send, return, and master routing. It records deterministic exact-layout summing, borrowed
   prepared inputs, real-time ownership, red-to-green and dependent proof, delivery context, and
   intentionally separate metering, resampling, plugins, and engine-composition work.
+- `docs/checkpoints/P2.W04.C006.md`: Durable implementation evidence for prepared band-limited
+  sample-rate conversion. It records exact source and device clocks, ordered channels, fixed
+  lookahead and output blocks, bounded drift correction, dependency evidence, focused proof,
+  delivery context, and remaining engine and physical-device integration.
 - `docs/checkpoints/P1.W07.C025.md`: Durable implementation evidence for bounded timing and process
   resident-memory instrumentation across all eight canonical slice stages. It records the private
   sampler boundary, schema 1.1.0 report contract, dependency decision, red-to-green proof,
@@ -616,7 +620,8 @@ integration or rebase, and before delivery. A passing hash never excuses stale p
 
 The build control plane begins at `open/Cargo.toml`. Cargo expands `crates/*` and `tools/*`, applies
 shared package metadata and lint defaults, resolves member and external dependencies into
-`open/Cargo.lock`, and writes generated build output under the ignored `open/target/`. Runtime
+`open/Cargo.lock`, including the pinned MIT rubato 0.16.2 sample-rate converter, and writes
+generated build output under the ignored `open/target/`. Runtime
 dependency direction is downward through the crate tiers: core and representation types support
 GPU, concurrency, media, graph, and codecs; feature catalogs and timeline build on those; engine
 orchestration assembles them; the API is the stable facade; and CLI is a headless consumer. The
