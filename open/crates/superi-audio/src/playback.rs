@@ -297,6 +297,15 @@ pub enum OutputBufferError {
         /// Samples available when admission was checked.
         available_samples: usize,
     },
+    /// A discontinuity is waiting for the realtime consumer to discard queued samples.
+    DiscardPending {
+        /// Latest generation requested by the control-thread producer.
+        requested_generation: u64,
+        /// Latest generation applied by the realtime consumer.
+        applied_generation: u64,
+    },
+    /// The exact discard-generation counter cannot advance further.
+    DiscardGenerationExhausted,
     /// The platform supplied a callback buffer containing a partial frame.
     CallbackNotFrameAligned {
         /// Callback sample count.
@@ -336,6 +345,23 @@ pub struct OutputRenderReport {
     pub underrun: bool,
 }
 
+/// Producer-visible state for the asynchronous output discontinuity boundary.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct OutputDiscardStatus {
+    /// Latest generation requested by the control-thread producer.
+    pub requested_generation: u64,
+    /// Latest generation applied by the realtime consumer.
+    pub applied_generation: u64,
+}
+
+impl OutputDiscardStatus {
+    /// Reports whether sample admission must remain blocked for the pending discontinuity.
+    #[must_use]
+    pub const fn is_pending(self) -> bool {
+        self.requested_generation != self.applied_generation
+    }
+}
+
 /// Stable category for an asynchronous platform stream error.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -361,6 +387,10 @@ pub struct OutputTelemetrySnapshot {
     pub underruns: u64,
     /// Samples rejected by bounded producer backpressure.
     pub dropped_samples: u64,
+    /// Producer discontinuity requests accepted by the output path.
+    pub discard_requests: u64,
+    /// Queued samples discarded by the realtime consumer.
+    pub discarded_samples: u64,
     /// Malformed platform callback buffers.
     pub callback_shape_errors: u64,
     /// Callback domain-entry failures.
@@ -379,6 +409,8 @@ struct OutputTelemetryInner {
     silence_samples: AtomicU64,
     underruns: AtomicU64,
     dropped_samples: AtomicU64,
+    discard_requests: AtomicU64,
+    discarded_samples: AtomicU64,
     callback_shape_errors: AtomicU64,
     callback_domain_errors: AtomicU64,
     clock_errors: AtomicU64,
@@ -399,6 +431,8 @@ impl OutputTelemetry {
             silence_samples: self.0.silence_samples.load(Ordering::Relaxed),
             underruns: self.0.underruns.load(Ordering::Relaxed),
             dropped_samples: self.0.dropped_samples.load(Ordering::Relaxed),
+            discard_requests: self.0.discard_requests.load(Ordering::Relaxed),
+            discarded_samples: self.0.discarded_samples.load(Ordering::Relaxed),
             callback_shape_errors: self.0.callback_shape_errors.load(Ordering::Relaxed),
             callback_domain_errors: self.0.callback_domain_errors.load(Ordering::Relaxed),
             clock_errors: self.0.clock_errors.load(Ordering::Relaxed),
@@ -422,6 +456,22 @@ impl OutputTelemetry {
         self.0.stream_errors.fetch_add(1, Ordering::Relaxed);
         if kind == StreamFailureKind::BufferUnderrun {
             self.0.underruns.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct OutputDiscardState {
+    requested_generation: AtomicU64,
+    applied_generation: AtomicU64,
+}
+
+impl OutputDiscardState {
+    fn status(&self) -> OutputDiscardStatus {
+        let applied_generation = self.applied_generation.load(Ordering::Acquire);
+        OutputDiscardStatus {
+            requested_generation: self.requested_generation.load(Ordering::Acquire),
+            applied_generation,
         }
     }
 }
@@ -450,9 +500,37 @@ pub struct OutputProducer {
     channels: u16,
     ring: HeapProd<f32>,
     telemetry: OutputTelemetry,
+    discard: Arc<OutputDiscardState>,
 }
 
 impl OutputProducer {
+    /// Requests that the realtime callback discard every queued pre-discontinuity sample.
+    pub fn request_discard(&self) -> Result<OutputDiscardStatus, OutputBufferError> {
+        let requested_generation = self
+            .discard
+            .requested_generation
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |generation| {
+                generation.checked_add(1)
+            })
+            .map_err(|_| OutputBufferError::DiscardGenerationExhausted)?
+            .checked_add(1)
+            .expect("successful discard generation advance cannot overflow");
+        self.telemetry
+            .0
+            .discard_requests
+            .fetch_add(1, Ordering::Relaxed);
+        Ok(OutputDiscardStatus {
+            requested_generation,
+            applied_generation: self.discard.applied_generation.load(Ordering::Acquire),
+        })
+    }
+
+    /// Returns the current producer-requested and consumer-applied discard generations.
+    #[must_use]
+    pub fn discard_status(&self) -> OutputDiscardStatus {
+        self.discard.status()
+    }
+
     /// Atomically admits all complete frames or rejects the entire submission.
     pub fn push_interleaved(&mut self, samples: &[f32]) -> Result<OutputWrite, OutputBufferError> {
         let channels = usize::from(self.channels);
@@ -469,6 +547,13 @@ impl OutputProducer {
             if !(-1.0..=1.0).contains(&sample) {
                 return Err(OutputBufferError::SampleOutOfRange { index });
             }
+        }
+        let discard = self.discard.status();
+        if discard.is_pending() {
+            return Err(OutputBufferError::DiscardPending {
+                requested_generation: discard.requested_generation,
+                applied_generation: discard.applied_generation,
+            });
         }
         let available_samples = self.ring.vacant_len();
         if samples.len() > available_samples {
@@ -498,6 +583,7 @@ pub struct OutputConsumer {
     ring: HeapCons<f32>,
     clock: Arc<AudioMasterClock>,
     telemetry: OutputTelemetry,
+    discard: Arc<OutputDiscardState>,
 }
 
 impl OutputConsumer {
@@ -548,6 +634,8 @@ impl OutputConsumer {
             });
         }
 
+        self.apply_pending_discard();
+
         let _domain = match ExecutionDomain::Audio.enter_current() {
             Ok(guard) => guard,
             Err(_) => {
@@ -588,6 +676,22 @@ impl OutputConsumer {
             silence_samples,
             underrun,
         })
+    }
+
+    fn apply_pending_discard(&mut self) {
+        let requested_generation = self.discard.requested_generation.load(Ordering::Acquire);
+        let applied_generation = self.discard.applied_generation.load(Ordering::Relaxed);
+        if requested_generation == applied_generation {
+            return;
+        }
+        let discarded_samples = self.ring.clear();
+        self.telemetry.0.discarded_samples.fetch_add(
+            u64::try_from(discarded_samples).unwrap_or(u64::MAX),
+            Ordering::Relaxed,
+        );
+        self.discard
+            .applied_generation
+            .store(requested_generation, Ordering::Release);
     }
 
     fn finish_callback(&mut self, frames: usize, silence_samples: usize, underrun: bool) {
@@ -649,6 +753,7 @@ pub fn create_output_buffer(
     let ring = HeapRb::<f32>::new(capacity_samples);
     let (producer, consumer) = ring.split();
     let telemetry = OutputTelemetry::default();
+    let discard = Arc::new(OutputDiscardState::default());
     let clock = Arc::new(AudioMasterClock::new(
         SampleTime::new(config.initial_sample, config.sample_rate)
             .expect("nonzero sample rate was validated"),
@@ -658,6 +763,7 @@ pub fn create_output_buffer(
             channels: config.channels,
             ring: producer,
             telemetry: telemetry.clone(),
+            discard: Arc::clone(&discard),
         },
         OutputConsumer {
             channels: config.channels,
@@ -666,6 +772,7 @@ pub fn create_output_buffer(
             ring: consumer,
             clock,
             telemetry: telemetry.clone(),
+            discard,
         },
         telemetry,
     ))

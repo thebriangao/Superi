@@ -4,7 +4,7 @@ source_paths:
   - open/crates/superi-concurrency
 source_hash: 9ce012335b1e1f30f8fd86ab8813f68f90a8c6eb1878cc28ddded4a4fd634310
 source_files: 22
-mapped_at_commit: 217e9d48703bcfd4736d949aea510c94505071bc
+mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
@@ -360,9 +360,12 @@ generations, advances determinate progress, and polls `JobTaskHandle` without bl
 controller stores only a weak pool reference so a blocking-safe lifecycle owner remains responsible
 for shutdown. Foreground playback also submits one exact `JobKind::Frame`, paces its completed value
 through engine-owned `AvSyncCoordinator`, which composes `PlaybackClock` and `AvSyncScheduler`,
-applies a requested rebase to the concrete clock, exposes exact drift and statistics, and publishes
+applies requested rebases to the concrete clock, exposes exact drift and statistics, and publishes
 through `HandoffSender` while retaining the payload and resolved presentation returned by
-backpressure. `superi-engine::lifecycle` composes
+backpressure. `superi-engine::transport` keeps all mutations on the playback domain, reanchors that
+coordinator at explicit discontinuities, assigns distinct frame deadlines and live presentation
+durations in the clock timebase, cancels stale frame and prediction tokens, and exposes bounded
+handoff pressure without waiting. `superi-engine::lifecycle` composes
 `LifecycleCoordinator` as one engine participant, keeps authoritative state in `DomainOwned` on
 EngineControl, publishes every committed transition through `SnapshotPublisher`, and exposes the
 coordinator's lock-free `LifecycleSignal` to latency-sensitive consumers. Engine render-export is
@@ -371,11 +374,12 @@ codec creation and immediately before artifact publication, so rendering or expo
 recovery cannot be bypassed by a long-running transaction. The broader downstream
 crate graph is not evidence that other transitive crates call these runtime surfaces.
 The concurrency integration-test files, cache render contract, audio graph contract, engine
-substitution contract, engine playback contracts, engine render-export contract, and engine lifecycle
-contract exercise the public crate paths directly. No public API crate currently reexports these
-types. Engine composes lifecycle with export admission, while foreground playback consumes A/V drift
-decisions with the actual audio clock, graph result, and viewport handoff. Lifecycle does not yet own
-that foreground flow, and no end-to-end runtime composes it with liveness or native GPU submission.
+substitution contract, engine playback and transport contracts, engine render-export contract, and
+engine lifecycle contract exercise the public crate paths directly. No public API crate currently
+reexports these types. Engine composes lifecycle with export admission, while foreground playback
+and transport consume A/V drift decisions with the actual audio clock, graph result, and viewport
+handoff. Lifecycle does not yet own that foreground flow, and no end-to-end runtime composes it with
+liveness or native GPU submission.
 
 ## Invariants and operational boundaries
 
@@ -459,11 +463,13 @@ non-`Send` or non-`Sync` guards and owners. Test coverage is contract-oriented:
   projection, and public auto traits.
 
 There is no test for `submit` because it has no behavior. The engine foreground playback contract
-wires jobs, the audio-master and monotonic clock modes, A/V drift decisions and diagnostics, and a
-bounded handoff around a real graph frame. It proves bounded wait and correction plus applied
-discontinuity recovery, but no end-to-end consumer yet adds lifecycle or native GPU submission.
-Contract suites validate each mechanism and selected production combinations, not the future
-complete engine runtime.
+wires cancellable jobs, audio-master and monotonic clock modes, A/V drift decisions and diagnostics,
+and a bounded handoff around a real graph frame. The transport contract adds exact cross-timebase
+frame deadlines, rate-adjusted live durations, bounded prediction, discontinuity cancellation, and
+lossless handoff across real control transitions. Together they prove bounded wait and correction,
+applied discontinuity recovery, and exact transport pacing, but no end-to-end consumer yet adds
+lifecycle or native GPU submission. Contract suites validate each mechanism and selected production
+combinations, not the future complete engine runtime.
 
 ## Current status and risks
 
@@ -475,8 +481,10 @@ incomplete:
 - Cache now uses worker scheduling, typed completion, cancellation, deadlines, and progress for
   bounded background rendering. Engine playback uses domain ownership, worker scheduling,
   cancellation, progress, and nonblocking result polling for predictive cache work. Its foreground
-  path adds exact frame jobs, audio-master pacing with monotonic fallback, and lossless viewport
-  backpressure, while engine proxy resolution uses the derived-media selector. Audio uses the audio
+  path adds cancellable exact frame jobs, audio-master pacing with monotonic fallback, and lossless
+  viewport backpressure. Engine transport now composes those mechanisms into exact seek, scrub,
+  step, signed-rate, direction, loop, and bounded late-frame control, while engine proxy resolution
+  uses the derived-media selector. Audio uses the audio
   execution domain for prepared processing, exact scheduling, and device output and publishes the
   completed presentation clock. Engine also composes lifecycle acknowledgement and shared snapshot
   publication as a control plane, but it does not drive the prepared resource or foreground
@@ -536,8 +544,9 @@ incomplete:
   retirement flow, device-loss recovery, and its relationship to `ExecutionDomain::GpuSubmission`.
 - When graph, engine, API, or CLI begins using more of these surfaces, replace the declared-consumer
   description with the exact construction and event paths and update the relevant consumer maps.
-  Keep the engine's derived selection, playback worker, A/V coordinator, and lifecycle-control uses
-  distinct from a complete runtime composition.
+  Keep the engine's derived selection, playback worker, A/V coordinator, transport scheduler, and
+  lifecycle-control uses distinct from a complete runtime composition. Transport must keep clock
+  mapping anchor based, cancellation cooperative, and viewport backpressure lossless.
   Keep the existing audio scheduler, device callback, and audio-master publication paths current as
   engine integration expands.
 - If job dependencies become scheduler-owned, document admission, cycle detection, cancellation

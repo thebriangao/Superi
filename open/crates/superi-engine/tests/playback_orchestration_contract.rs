@@ -212,7 +212,9 @@ fn playback_is_one_coherent_bounded_engine_across_normal_degraded_and_recovery_p
         .submit_frame(JobId::from_raw(901), first_time)
         .unwrap();
     match poll_ready(&mut playback, Instant::now()) {
-        PlaybackPoll::Waiting { frame, clock, sync } => {
+        PlaybackPoll::Waiting {
+            frame, clock, sync, ..
+        } => {
             assert_eq!(frame, first_time);
             assert_eq!(clock, RationalTime::new(0, timebase));
             assert_eq!(sync.timing().presentation_time(), first_time);

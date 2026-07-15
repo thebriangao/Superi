@@ -2,7 +2,7 @@
 module_id: superi-audio
 source_paths:
   - open/crates/superi-audio
-source_hash: 6aa5c29b2fc50fa7c16f90b9017b982fd6ea3a34baa6221f4e82247771af5601
+source_hash: 56318bac9273de2e89987b051c32282d72a84a9d0b3d2ead17bb205076903b3f
 source_files: 23
 mapped_at_commit: working-tree
 ---
@@ -39,13 +39,14 @@ existing output path. Atomic arming and monitoring controls take effect at callb
 All processing paths enforce the platform-owned audio execution domain, but their control-path owners
 remain separate. Graph editing and preparation allocate outside callbacks. Schedule construction and
 transport reanchoring also occur outside callbacks. Resampler and meter construction and scratch
-allocation remain outside callbacks. Device discovery and stream setup remain on control threads. Decoded
-sample binding to the real prepared graph, automation, plugins, and complete timeline audio-graph
-orchestration remain separate concerns. Engine foreground playback feeds the existing bounded output
-producer and paces video from its paired presentation clock without moving device callback work into
-the engine. Engine render-export now invokes a caller-owned audio processing stage, records its
-`AudioGraphId`, and validates exact returned block semantics before encoding, but it does not yet
-adapt decoded blocks into `PreparedAudioGraph`.
+allocation remain outside callbacks. Device discovery and stream setup remain on control threads.
+Decoded sample binding to the real prepared graph, automation, plugins, and complete timeline
+audio-graph orchestration remain separate concerns. Engine foreground playback feeds the existing
+bounded output producer and paces video from its paired presentation clock. Engine transport
+requests queued-audio discard through an atomic generation handshake without moving queue ownership
+or device callback work into the engine. Engine render-export now invokes a caller-owned audio
+processing stage, records its `AudioGraphId`, and validates exact returned block semantics before
+encoding, but it does not yet adapt decoded blocks into `PreparedAudioGraph`.
 
 ## Source inventory
 
@@ -79,7 +80,8 @@ adapt decoded blocks into `PreparedAudioGraph`.
   preparation, and allocation-free gain, fade, pan, mute, solo, phase, and routing DSP.
 - `open/crates/superi-audio/src/playback.rs`: Implements stable device identity, capability
   discovery, exact configuration validation, bounded producer and callback endpoints, sample
-  conversion, audio-clock publication, atomic telemetry, and production stream lifecycle.
+  conversion, producer-requested and callback-applied queue discontinuities, audio-clock
+  publication, atomic telemetry, and production stream lifecycle.
 - `open/crates/superi-audio/src/resample.rs`: Implements prepared fixed-output band-limited
   conversion, ordered interleaved and planar transfer, exact dual-clock accounting, sinc delay
   reporting, and bounded ramped device-clock correction.
@@ -98,7 +100,8 @@ adapt decoded blocks into `PreparedAudioGraph`.
   long-duration timing, audio-master publication, and zero video drift.
 - `open/crates/superi-audio/tests/device_output_contract.rs`: Proves capability containment, bounded
   whole-frame admission, allocation ceilings, timed silence, clock progression, persisted device
-  identities, domain-conflict behavior, telemetry, and real host discovery.
+  identities, domain-conflict behavior, atomic discard coalescing and recovery, telemetry, and real
+  host discovery.
 - `open/crates/superi-audio/tests/device_input_contract.rs`: Proves capability containment, atomic
   arming and monitoring, exact timing through gaps, independent whole-frame backpressure, malformed
   callback rejection, domain-conflict behavior, stable locators, real discovery, long-session
@@ -180,8 +183,10 @@ results. It does not own gain, pan, effects, automation, or channel conversion.
 
 `playback` exposes validated opaque `OutputDeviceId` values, exact capability ranges and stream
 configurations, partial discovery failures, bounded `OutputProducer` and `OutputConsumer` endpoints,
-clonable telemetry, and an owning `DeviceOutput`. `discover_output_devices` performs real host
-enumeration, `create_output_buffer` preallocates the engine-to-device handoff, and
+`OutputDiscardStatus`, clonable telemetry, and an owning `DeviceOutput`. The producer requests an
+exact discard generation and exposes pending status; sample admission remains blocked until the
+consumer applies that generation. `discover_output_devices` performs real host enumeration,
+`create_output_buffer` preallocates the engine-to-device handoff, and
 `start_device_output` revalidates and starts the selected stream.
 
 `mixing` exposes `ChannelMap`, complete inspectable `ClipMixControls`, revisioned `ClipMixState`,
@@ -229,7 +234,11 @@ retaining channel and routing ownership. Only after the complete device window i
 caller publish its exclusive end to `AudioMasterClock`; existing playback policy then paces video.
 
 Playback discovery and stream setup stay on control threads. The sole producer admits complete
-interleaved frame submissions or rejects them whole. The platform callback enters
+interleaved frame submissions or rejects them whole. A control-side discontinuity increments one
+atomic requested generation and blocks new admission. At the next valid callback, the sole consumer
+clears its ring, publishes the applied generation, and then renders only post-acknowledgement samples
+or silence. Multiple pending requests coalesce at the latest observed generation, and no producer
+can admit new-epoch samples that the same acknowledgement would clear. The platform callback enters
 `ExecutionDomain::Audio`, converts samples directly into the device-owned typed slice, substitutes
 silence on starvation or a domain conflict, advances `AudioMasterClock` by every complete presented
 frame, and updates relaxed atomics. Device capabilities are re-read before stream construction, and
@@ -299,6 +308,10 @@ and spectrum values, and performs the two-stage integrated loudness gate without
   exact timestamp, duration, metadata, sample precision, rate, and channel layout, and then encodes
   the returned block. The current production PCM lane proves source, codec, and stage orchestration,
   but the stage implementation in that contract is not a `PreparedAudioGraph` adapter.
+- `superi-engine::transport` requests producer-side discard generations for seek, scrub, step,
+  rate, direction, resume, and loop discontinuities, and exposes pending acknowledgement. It admits
+  no inactive samples and mutes non-normal or reverse samples because this queue does not own
+  timestamped rate conversion.
 - `superi-timeline` remains upstream through future engine composition rather than a direct Rust
   dependency. Its sample-exact placements, track order, channel layout, and routing intent are
   adapter inputs.
@@ -352,6 +365,10 @@ and spectrum values, and performs the two-stage integrated loudness gate without
   remain outside this module.
 - The output queue is nonzero, checked for overflow, capped at 1,048,576 samples, and admits only
   finite normalized complete frames. The callback takes no blocking lock and grows no storage.
+- Output discard is requested only by the producer and applied only by the consumer. Admission is
+  rejected while requested and applied generations differ. The callback clears preallocated ring
+  state and publishes acknowledgement without allocation or locking; an already presented hardware
+  buffer cannot be recalled.
 - Starvation and conflicting domain ownership produce timed digital silence rather than clock
   stalls. Device reset, removal, or format changes require control-side stream reconstruction.
 - Capture rings are nonzero, checked for overflow, capped at 1,048,576 samples each, and admit only
@@ -418,10 +435,12 @@ local proof does not claim physical hardware latency, hot-plug behavior, prepare
 hardware A/V behavior. Engine export adds real acquired PCM decode and encode around an explicit test
 audio stage, not a binding into this crate's prepared graph.
 
-Two playback unit tests and ten public output contracts prove typed conversion, backend-default
+Two playback unit tests and eleven public output contracts prove typed conversion, backend-default
 buffer semantics, capacity and normalized-sample validation, whole-frame backpressure, silence and
-telemetry, exact clock progression, persisted locators, domain-conflict degradation, production host
-discovery, endpoint thread transfer, and 5,120,000 simulated frames without accumulated drift.
+telemetry, two-generation discard coalescing, pending producer rejection, callback-owned clearing,
+post-acknowledgement recovery, exact clock progression, persisted locators, domain-conflict
+degradation, production host discovery, endpoint thread transfer, and 5,120,000 simulated frames
+without accumulated drift.
 
 Nine public input contracts prove capability containment, atomic arming and monitoring, exact
 sample coordinates across gaps, independent whole-frame pressure, malformed and non-finite input
@@ -458,7 +477,8 @@ substantive and publicly test-backed. Plugin hosting remains a documentation-onl
 Engine consumes timeline edit outcomes for atomic clip identity reconciliation and foreground
 playback feeds the bounded device producer while coordinating video from the actual audio clock.
 That foreground path now exposes bounded video correction and applied discontinuity recovery without
-mutating audio timing. Engine export now fetches decoded audio, invokes an explicit graph-stage seam,
+mutating audio timing, and transport uses the callback-owned discard handshake for control
+discontinuities. Engine export now fetches decoded audio, invokes an explicit graph-stage seam,
 preserves its graph identity, and completes an exact in-tree PCM encode. There is still no
 scheduled-slice `PreparedAudioGraph` binding, plugin host, platform channel-layout negotiation, or
 end-to-end source-playback-final-mix path. Microphone permission, physical input latency, semantic
@@ -480,7 +500,9 @@ separate prepared control and latency contracts.
 Preserve the edit-versus-prepare split, fixed schedule epochs, stable identity ordering, exact
 sample and channel meanings, fallible preallocation, whole-frame queue admission, explicit capacity
 ceiling, timed-silence clock behavior, callback-only atomic telemetry, and failure-only diagnostic
-allocation. Preserve direct, send, return, and single-master role validation and stable edge-ordered
+allocation. Preserve sole-writer discard ownership, pending admission rejection, acquire and release
+generation ordering, and callback-only queue clearing. Preserve direct, send, return, and
+single-master role validation and stable edge-ordered
 summing. Preserve fixed converter lookahead, explicit filter delay, bounded ramped clock correction,
 exact dual-clock reports, effect configuration bounds, linked dynamics, channel-local filter and
 delay state, and adjacent-block continuity. Preserve transparent meter placement, fixed analysis windows,

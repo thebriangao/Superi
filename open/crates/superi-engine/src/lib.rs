@@ -25,4 +25,5 @@ pub mod plugins;
 pub mod proxy_substitution;
 pub mod render;
 pub mod resources;
+pub mod transport;
 pub mod validation;

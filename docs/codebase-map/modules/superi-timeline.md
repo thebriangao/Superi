@@ -593,7 +593,9 @@ Timeline document flow preserves those owners without becoming a project contain
 - `superi-project` and `superi-engine` declare `superi-timeline` as a dependency. Engine integration
   consumes the color metadata seam, calls `compile_timeline`, traverses reachable media and nested
   timeline relationships, and retains the resulting `TimelineGraphCompilation` with prepared source
-  and decoder owners. Project remains a declaration-only consumer.
+  and decoder owners. Engine transport separately consumes the retime-owned reduced signed
+  `PlaybackRate` for exact speed and direction cadence without importing editorial mutation policy.
+  Project remains a declaration-only consumer.
 - Public integration tests and the `otio_roundtrip` example are real consumers. No application API
   or editor surface exposes the general editorial model yet.
 
@@ -841,8 +843,9 @@ bounded oracle, but the production binder from this timeline-owned state to thos
 absent. Graph evaluation, fit-to-fill, grouped-source compound synthesis, undo ownership, multicam
 mixing and runtime playback, the owning SQLite project container, autosave and recovery
 orchestration, and API integration remain absent. Engine preparation integration now consumes and
-retains the compiled graph, but it does not evaluate nodes, schedule playback, mix multicam sources,
-or render output.
+retains the compiled graph, and engine transport consumes the standalone signed rate value, but no
+owner yet binds that prepared native timeline graph to decoded playback, multicam mixing, or render
+output.
 
 The model retains equal physical source and record duration for nominal clip ranges, while separate
 time maps may sample beyond that selection and report known unavailable points. Exact seam and slice
@@ -888,6 +891,9 @@ Keep every compiled editorial value wrapped in `GraphValue::Domain`, preserve
 `CompiledTimelineGraphValue` as the shared public payload, and let higher-tier catalogs add only
 their own processing nodes and schemas. Timeline must not import effects or translate catalog
 choices into a competing native representation.
+Keep `PlaybackRate` reduced, signed, and policy-neutral. Engine transport may consume its exact
+ratio, but loop, drop, clock, audio, and command behavior must remain above timeline rather than
+entering clip retime state.
 Extend OTIO only through `OtioDocument` and the pinned schema target, preserve unknown source
 templates and stable diagnostics, and prove emitted files through an official compatible reader
 before expanding the supported subset. Keep file I/O, SQLite schema, autosave, replacement, and

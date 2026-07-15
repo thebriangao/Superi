@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 5a223963fd4be1722413aa38c511e94568ea62aad71fb045acadae220fff24c8
-source_files: 140
+source_hash: ac5a69578a16203da59ed1ab0ca590b193d2127342df4252724ec9ad080ff587
+source_files: 141
 mapped_at_commit: working-tree
 ---
 
@@ -25,7 +25,7 @@ a single checkpoint through mapping, planning, and execution, and routes multipl
 separate Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers
 but obeys an explicit positive user concurrency value. The file is ignored by Git and copied into
 managed worktrees through `.worktreeinclude`, so the mapping script does not include it in this
-module's 139-file inventory or source hash. It must still be reread independently before repository
+module's 141-file inventory or source hash. It must still be reread independently before repository
 work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
@@ -298,6 +298,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   render and export orchestration through decode, immutable graph evaluation, delivery color, audio
   processing, deterministic encoder selection, complete elementary packet validation, lifecycle
   degradation, reset recovery, exact PCM completion, and rejected VP9 timing drift.
+- `docs/checkpoints/P2.W06.C004.md`: Durable implementation evidence for exact seek, superseding
+  scrub, pause and resume, frame stepping, reduced signed speeds, direction, half-open looping,
+  bounded dropped-frame policy, callback-owned audio discontinuities, explicit degradation, and
+  recovery over the existing playback engine.
 - `docs/checkpoints/P2.W04.C010.md`: Durable implementation evidence for production input-device
   discovery, atomic record arming and monitoring, bounded exact-timestamp capture, and the real
   monitoring bridge into existing output playback.
@@ -929,6 +933,11 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   validation, and complete elementary stream publication. Its contract covers normal, degraded, and
   recovery behavior, real acquired WebM and WAVE paths, exact PCM completion, and rejection of VP9
   duration drift without claiming muxing, persistence, native GPU readback, or public API control.
+- `docs/checkpoints/P2.W06.C004.md` records the transport owner layered over that foreground path.
+  It proves exact discontinuity supersession, rational cross-timebase cadence, protected intent,
+  bounded ordinary dropping, prediction cancellation, queued-audio discard, backpressure, and
+  recovery while preserving C006 live synchronization evidence. Decoded source binding, native GPU
+  presentation, public dispatch, and physical hardware remain with their owners.
 
 - The focused effects preset contract verifies the runtime JSON and SHA-256 edges through canonical
   current documents, legacy migration, integrity rejection, and exact graph reload. Crate-wide
@@ -1104,18 +1113,17 @@ layouts using documented speaker rules or caller-selected discrete order without
 time. Plugin hosting and decoded-sample binding remain absent. Production device output and
 sample-accurate scheduling are implemented in the same audio crate, and engine foreground playback
 now feeds its bounded producer and coordinates video from its actual presentation clock with
-explicit hold, correction, drop, rebase, and recovery evidence. No engine owner yet renders prepared
-timeline audio through routing, effects, resampling, and device delivery. Engine render-export invokes
-an explicit audio stage and completes a real acquired PCM decode and encode path, but no engine owner
-yet binds decoded or scheduled timeline audio into the actual prepared graph, routing, effects,
-resampling, and device delivery path.
+explicit hold, correction, drop, rebase, and recovery evidence. Engine transport requests
+callback-owned discard generations across control discontinuities and explicitly mutes inactive or
+non-normal sample pacing, but no engine owner yet renders prepared timeline audio through routing,
+effects, resampling, and device delivery.
 
-Engine render-export now consumes an acquired media owner through exact seek, complete packet reads,
+Engine render-export consumes an acquired media owner through exact seek, complete packet reads,
 decode drain and flush, immutable graph evaluation, caller-owned delivery color or audio processing,
 one-shot encoder selection, encode drain and flush, exact provenance and packet validation, and
 fresh-context reset recovery. It returns complete in-memory elementary packet streams only after a
 current lifecycle permit is rechecked. Container muxing and publication, arbitrary stream counts,
-transport, native GPU readback, and application or public API integration remain separate gaps.
+native GPU readback, and application or public API integration remain separate gaps.
 
 The effects crate now provides a substantive graph-native authoring SDK. It composes canonical graph
 schemas, editable nodes, deterministic registry snapshots, and snapshot-bound compiler translation,
@@ -1142,7 +1150,9 @@ The largest current risk is cross-document drift:
   muxing, playable output, and all-runtime execution remain future work. Foreground engine playback
   now composes prepared graph, cache, CPU display color, bounded audio, audio-master A/V
   coordination, worker, and viewport contracts, including deterministic late correction and
-  discontinuity recovery, but does not close those broader paths. The current contract-conformant
+  discontinuity recovery, and exact interactive transport now controls that prepared path. Decoded
+  source and audio binding, native presentation, render and export orchestration, and public dispatch
+  remain open, so those additions do not close the broader paths. The current contract-conformant
   run must not be reported as product or runtime conformance.
   Boundary samples are not continuous intra-stage peaks, constrained-device thresholds, or
   long-session soak proof.

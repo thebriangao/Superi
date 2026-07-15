@@ -154,6 +154,41 @@ fn normal_and_stressed_frames_return_explicit_bounded_actions() {
 }
 
 #[test]
+fn distinct_live_deadline_and_duration_preserve_immutable_media_timing() {
+    let playback = ExecutionDomain::Playback.enter_current().unwrap();
+    let (_, mut coordinator) = coordinator(0);
+    let exact_timing = timing(48_000);
+    let live_duration = MediaDuration::new(4_000, Timebase::new(SAMPLE_RATE, 1).unwrap()).unwrap();
+
+    let outcome = coordinator
+        .coordinate_at_deadline(
+            exact_timing,
+            sample_time(0),
+            live_duration,
+            AvSyncFrameReadiness::last_ready(),
+            Instant::now(),
+        )
+        .unwrap();
+
+    assert_eq!(outcome.timing(), exact_timing);
+    assert_eq!(outcome.master_time(), sample_time(0));
+    assert_eq!(outcome.drift().nanoseconds(), 0);
+    assert_eq!(
+        outcome,
+        AvSyncOutcome::Present {
+            timing: exact_timing,
+            master_time: sample_time(0),
+            drift: outcome.drift(),
+            display_for: StdDuration::from_nanos(83_333_333),
+            correction: AvFrameCorrection::None,
+            reason: AvPresentationReason::InTolerance,
+            recovery: None,
+        }
+    );
+    drop(playback);
+}
+
+#[test]
 fn discontinuity_rebases_once_then_presents_without_rewriting_frame_time() {
     let playback = ExecutionDomain::Playback.enter_current().unwrap();
     let (_, mut coordinator) = coordinator(0);

@@ -145,6 +145,63 @@ fn callback_renders_silence_on_starvation_and_advances_complete_frames() {
 }
 
 #[test]
+fn discontinuity_discards_only_pre_acknowledgement_audio_and_recovers() {
+    let (mut producer, mut consumer, telemetry) = create_output_buffer(OutputBufferConfig {
+        channels: 2,
+        sample_rate: 48_000,
+        capacity_frames: 4,
+        initial_sample: 200,
+    })
+    .expect("valid bounded output buffer");
+    producer
+        .push_interleaved(&[0.25, -0.25, 0.5, -0.5])
+        .expect("old epoch audio fits");
+
+    let first = producer
+        .request_discard()
+        .expect("first discard generation is available");
+    let second = producer
+        .request_discard()
+        .expect("coalesced discard generation is available");
+    assert_eq!(first.requested_generation, 1);
+    assert_eq!(second.requested_generation, 2);
+    assert!(second.is_pending());
+    assert_eq!(
+        producer.push_interleaved(&[0.75, -0.75]),
+        Err(OutputBufferError::DiscardPending {
+            requested_generation: 2,
+            applied_generation: 0,
+        })
+    );
+
+    let mut discarded_callback = [1.0; 2];
+    let discarded_report = consumer
+        .render_f32(&mut discarded_callback)
+        .expect("callback applies the pending discard");
+    assert_eq!(discarded_callback, [0.0; 2]);
+    assert_eq!(discarded_report.consumed_samples, 0);
+    assert_eq!(consumer.clock().position().sample(), 201);
+
+    let acknowledged = producer.discard_status();
+    assert_eq!(acknowledged.requested_generation, 2);
+    assert_eq!(acknowledged.applied_generation, 2);
+    assert!(!acknowledged.is_pending());
+    producer
+        .push_interleaved(&[0.75, -0.75])
+        .expect("new epoch audio is admitted after acknowledgement");
+    let mut recovered_callback = [0.0; 2];
+    let recovered_report = consumer
+        .render_f32(&mut recovered_callback)
+        .expect("callback renders only new epoch audio");
+    assert_eq!(recovered_callback, [0.75, -0.75]);
+    assert_eq!(recovered_report.consumed_samples, 2);
+
+    let snapshot = telemetry.snapshot();
+    assert_eq!(snapshot.discard_requests, 2);
+    assert_eq!(snapshot.discarded_samples, 4);
+}
+
+#[test]
 fn invalid_callback_shape_is_silenced_without_moving_the_clock() {
     let (_producer, mut consumer, telemetry) = create_output_buffer(OutputBufferConfig {
         channels: 2,

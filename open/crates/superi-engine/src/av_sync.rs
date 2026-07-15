@@ -17,7 +17,7 @@ use superi_concurrency::clock::{
 };
 use superi_concurrency::threads::ExecutionDomain;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result, ResultExt};
-use superi_core::time::{Duration as MediaDuration, RationalTime, TimeRounding};
+use superi_core::time::{Duration as MediaDuration, RationalTime, TimeRounding, Timebase};
 
 const COMPONENT: &str = "superi-engine.av-sync";
 const INTERACTIVE_PRESENTATION_TOLERANCE: StdDuration = StdDuration::from_millis(8);
@@ -224,6 +224,19 @@ impl AvSyncOutcome {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct LivePresentationTiming {
+    deadline: RationalTime,
+    duration: MediaDuration,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct DiscontinuityRequest {
+    previous_master_time: RationalTime,
+    requested_target: RationalTime,
+    discontinuity: AvDriftMeasurement,
+}
+
 /// Playback-domain owner for one master clock and one video scheduling stream.
 #[derive(Debug)]
 pub struct AvSyncCoordinator {
@@ -272,12 +285,26 @@ impl AvSyncCoordinator {
         self.scheduler.statistics()
     }
 
+    /// Returns the exact timebase emitted by the owned playback clock.
+    #[must_use]
+    pub const fn clock_timebase(&self) -> Timebase {
+        self.clock.timeline_timebase()
+    }
+
     /// Reads the shared timeline clock at an explicit process-local instant.
     pub fn clock_position_at(&self, now: Instant) -> Result<RationalTime> {
         ExecutionDomain::Playback.require_current()?;
         self.clock
             .position_at(now)
             .with_error_context(ErrorContext::new(COMPONENT, "read_clock"))
+    }
+
+    /// Reanchors the owned playback clock after an explicit transport discontinuity.
+    pub fn reanchor_clock_at(&mut self, timeline_anchor: RationalTime, now: Instant) -> Result<()> {
+        ExecutionDomain::Playback.require_current()?;
+        self.clock
+            .reanchor_at(timeline_anchor, now)
+            .with_error_context(ErrorContext::new(COMPONENT, "reanchor_clock"))
     }
 
     /// Falls back to monotonic playback without changing timeline position.
@@ -307,13 +334,35 @@ impl AvSyncCoordinator {
         readiness: AvSyncFrameReadiness,
         now: Instant,
     ) -> Result<AvSyncOutcome> {
+        self.coordinate_at_deadline(
+            timing,
+            timing.presentation_time(),
+            timing.duration(),
+            readiness,
+            now,
+        )
+    }
+
+    /// Coordinates immutable media timing against a distinct live presentation deadline.
+    pub fn coordinate_at_deadline(
+        &mut self,
+        timing: AvSyncFrameTiming,
+        presentation_deadline: RationalTime,
+        presentation_duration: MediaDuration,
+        readiness: AvSyncFrameReadiness,
+        now: Instant,
+    ) -> Result<AvSyncOutcome> {
         ExecutionDomain::Playback.require_current()?;
+        let presentation = LivePresentationTiming {
+            deadline: presentation_deadline,
+            duration: presentation_duration,
+        };
         let master_time = self
             .clock
             .position_at(now)
             .with_error_context(ErrorContext::new(COMPONENT, "observe_master"))?;
         let decision = self
-            .schedule(timing, readiness, master_time)
+            .schedule(presentation, readiness, master_time)
             .with_error_context(ErrorContext::new(COMPONENT, "schedule_frame"))?;
 
         match decision.action() {
@@ -343,11 +392,14 @@ impl AvSyncCoordinator {
             }),
             AvFrameAction::Rebase { target_master_time } => self.recover_discontinuity(
                 timing,
+                presentation,
                 readiness,
                 now,
-                master_time,
-                target_master_time,
-                decision.drift(),
+                DiscontinuityRequest {
+                    previous_master_time: master_time,
+                    requested_target: target_master_time,
+                    discontinuity: decision.drift(),
+                },
             ),
             _ => Err(Error::new(
                 ErrorCategory::Internal,
@@ -360,12 +412,12 @@ impl AvSyncCoordinator {
 
     fn schedule(
         &mut self,
-        timing: AvSyncFrameTiming,
+        presentation: LivePresentationTiming,
         readiness: AvSyncFrameReadiness,
         master_time: RationalTime,
     ) -> Result<superi_concurrency::clock::AvScheduleDecision> {
         self.scheduler.schedule(
-            AvFrameObservation::new(timing.presentation_time(), master_time, timing.duration())
+            AvFrameObservation::new(presentation.deadline, master_time, presentation.duration)
                 .with_following_frame_ready(readiness.following_frame_ready())
                 .with_drop_eligible(readiness.drop_eligible()),
         )
@@ -374,20 +426,20 @@ impl AvSyncCoordinator {
     fn recover_discontinuity(
         &mut self,
         timing: AvSyncFrameTiming,
+        presentation: LivePresentationTiming,
         readiness: AvSyncFrameReadiness,
         now: Instant,
-        previous_master_time: RationalTime,
-        requested_target: RationalTime,
-        discontinuity: AvDriftMeasurement,
+        request: DiscontinuityRequest,
     ) -> Result<AvSyncOutcome> {
-        let target_master_time = requested_target
+        let target_master_time = request
+            .requested_target
             .checked_rescale(self.clock.timeline_timebase(), TimeRounding::Exact)
             .with_error_context(ErrorContext::new(COMPONENT, "rescale_rebase_target"))?;
         self.clock
             .reanchor_at(target_master_time, now)
             .with_error_context(ErrorContext::new(COMPONENT, "apply_rebase"))?;
         let aligned = self
-            .schedule(timing, readiness, target_master_time)
+            .schedule(presentation, readiness, target_master_time)
             .with_error_context(ErrorContext::new(COMPONENT, "schedule_rebased_frame"))?;
 
         let AvFrameAction::Present {
@@ -415,9 +467,9 @@ impl AvSyncCoordinator {
             correction,
             reason,
             recovery: Some(AvSyncRecovery {
-                previous_master_time,
+                previous_master_time: request.previous_master_time,
                 target_master_time,
-                discontinuity,
+                discontinuity: request.discontinuity,
             }),
         })
     }

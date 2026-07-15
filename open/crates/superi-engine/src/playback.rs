@@ -11,7 +11,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Weak};
 use std::time::Instant;
 
-use superi_audio::playback::{OutputBufferError, OutputProducer, OutputWrite};
+use superi_audio::playback::{OutputBufferError, OutputDiscardStatus, OutputProducer, OutputWrite};
 use superi_cache::frame::{FrameMemoryCache, OwnedHostFrameMemoryCache};
 use superi_cache::key::{MediaCacheIdentity, ParameterStateFingerprint, RenderSettingsFingerprint};
 use superi_cache::prefetch::PlaybackPrefetchPlan;
@@ -30,7 +30,7 @@ use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Res
 use superi_core::geometry::PixelBounds;
 use superi_core::ids::{JobId, ProjectId};
 use superi_core::pixel::AlphaMode;
-use superi_core::time::{Duration, RationalTime};
+use superi_core::time::{Duration, RationalTime, TimeRounding};
 use superi_graph::dag::GraphEndpoint;
 use superi_graph::diagnostics::IntrospectNode;
 use superi_graph::eval::{
@@ -430,6 +430,33 @@ pub struct PlaybackViewportFrame<O> {
 }
 
 impl<O> PlaybackViewportFrame<O> {
+    /// Creates a display-ready frame with exact timing and preserved semantic metadata.
+    pub fn new(
+        output: O,
+        timestamp: RationalTime,
+        duration: Duration,
+        decoded: Vec<DecodedFrameMetadata>,
+        color_metadata: ViewportColorMetadata,
+        alpha_mode: AlphaMode,
+    ) -> Result<Self> {
+        if timestamp.timebase() != duration.timebase() || duration.is_zero() {
+            return Err(orchestration_error(
+                ErrorCategory::InvalidInput,
+                Recoverability::UserCorrectable,
+                "playback viewport timing must use one exact timebase and a nonzero duration",
+                "create_viewport_frame",
+            ));
+        }
+        Ok(Self {
+            output,
+            timestamp,
+            duration,
+            decoded,
+            color_metadata,
+            alpha_mode,
+        })
+    }
+
     /// Returns the display-ready output value.
     #[must_use]
     pub const fn output(&self) -> &O {
@@ -613,6 +640,14 @@ impl PlaybackAudioOutput {
             .push_interleaved(samples)
             .map_err(audio_output_error)
     }
+
+    fn request_discard(&self) -> Result<OutputDiscardStatus> {
+        self.producer.request_discard().map_err(audio_discard_error)
+    }
+
+    fn discard_status(&self) -> OutputDiscardStatus {
+        self.producer.discard_status()
+    }
 }
 
 /// Nonblocking playback observation after one poll.
@@ -632,6 +667,8 @@ pub enum PlaybackPoll {
     Waiting {
         /// Exact frame presentation coordinate.
         frame: RationalTime,
+        /// Exact shared-clock coordinate at which this frame becomes eligible.
+        due_clock: RationalTime,
         /// Current shared clock position.
         clock: RationalTime,
         /// Complete nonblocking synchronization decision.
@@ -671,10 +708,15 @@ pub enum PlaybackPoll {
 
 struct PendingPlaybackFrame<O> {
     frame: RationalTime,
+    due_clock: RationalTime,
+    presentation_duration: Option<Duration>,
+    cancellation: JobCancellationToken,
     handle: JobTaskHandle<PlaybackViewportFrame<O>>,
 }
 
 struct ReadyPlaybackFrame<O> {
+    due_clock: RationalTime,
+    presentation_duration: Option<Duration>,
     frame: PlaybackViewportFrame<O>,
     presentation: Option<AvSyncOutcome>,
 }
@@ -741,7 +783,57 @@ impl<O: Send + 'static> PlaybackOrchestrator<O> {
 
     /// Publishes one exact foreground frame request without waiting for worker capacity or output.
     pub fn submit_frame(&mut self, job_id: JobId, frame: RationalTime) -> Result<()> {
+        let due_clock = frame.checked_rescale(self.av_sync.clock_timebase(), TimeRounding::Ceil)?;
+        self.submit_frame_with_timing(job_id, frame, due_clock, None)
+    }
+
+    /// Publishes one exact foreground frame with a distinct shared-clock presentation deadline.
+    pub fn submit_frame_at(
+        &mut self,
+        job_id: JobId,
+        frame: RationalTime,
+        due_clock: RationalTime,
+    ) -> Result<()> {
+        self.submit_frame_with_timing(job_id, frame, due_clock, None)
+    }
+
+    /// Publishes one exact foreground frame with distinct deadline and live display duration.
+    pub fn submit_frame_at_with_duration(
+        &mut self,
+        job_id: JobId,
+        frame: RationalTime,
+        due_clock: RationalTime,
+        presentation_duration: Duration,
+    ) -> Result<()> {
+        self.submit_frame_with_timing(job_id, frame, due_clock, Some(presentation_duration))
+    }
+
+    fn submit_frame_with_timing(
+        &mut self,
+        job_id: JobId,
+        frame: RationalTime,
+        due_clock: RationalTime,
+        presentation_duration: Option<Duration>,
+    ) -> Result<()> {
         ExecutionDomain::Playback.require_current()?;
+        if due_clock.timebase() != self.av_sync.clock_timebase() {
+            return Err(orchestration_error(
+                ErrorCategory::InvalidInput,
+                Recoverability::UserCorrectable,
+                "playback presentation deadline must use the shared clock timebase",
+                "submit_frame",
+            ));
+        }
+        if presentation_duration.is_some_and(|duration| {
+            duration.timebase() != due_clock.timebase() || duration.is_zero()
+        }) {
+            return Err(orchestration_error(
+                ErrorCategory::InvalidInput,
+                Recoverability::UserCorrectable,
+                "playback presentation duration must be nonzero in the shared clock timebase",
+                "submit_frame",
+            ));
+        }
         if self.pending.is_some() || self.ready.is_some() {
             return Err(orchestration_error(
                 ErrorCategory::Conflict,
@@ -759,6 +851,8 @@ impl<O: Send + 'static> PlaybackOrchestrator<O> {
             )
         })?;
         let evaluator = self.evaluator.clone();
+        let cancellation = JobCancellationToken::new();
+        let control = JobControl::new().with_cancellation(cancellation.clone());
         let progress = JobProgress::with_total(1)?;
         let handle = pool.submit(
             ScheduledJob::new(
@@ -768,15 +862,39 @@ impl<O: Send + 'static> PlaybackOrchestrator<O> {
                 move |context: superi_concurrency::jobs::JobExecutionContext| {
                     context.check("evaluate_playback_frame")?;
                     let output = evaluator.evaluate_frame(frame)?;
+                    context.check("complete_playback_frame")?;
                     context.progress().advance_to(1)?;
                     Ok(output)
                 },
             ),
-            JobControl::new(),
+            control,
             progress,
         )?;
-        self.pending = Some(PendingPlaybackFrame { frame, handle });
+        self.pending = Some(PendingPlaybackFrame {
+            frame,
+            due_clock,
+            presentation_duration,
+            cancellation,
+            handle,
+        });
         Ok(())
+    }
+
+    /// Cancels and releases any evaluating or retained foreground frame without waiting.
+    pub fn cancel_frame(&mut self) -> Result<bool> {
+        ExecutionDomain::Playback.require_current()?;
+        let mut cancelled = self.ready.take().is_some();
+        if let Some(pending) = self.pending.take() {
+            pending.cancellation.cancel();
+            cancelled = true;
+        }
+        Ok(cancelled)
+    }
+
+    /// Reports whether playback currently owns an evaluating or retained frame.
+    #[must_use]
+    pub fn owns_frame(&self) -> bool {
+        self.pending.is_some() || self.ready.is_some()
     }
 
     /// Polls worker completion, clock eligibility, and viewport admission without waiting.
@@ -790,6 +908,8 @@ impl<O: Send + 'static> PlaybackOrchestrator<O> {
         };
         let job_id = pending.handle.job_id();
         let frame = pending.frame;
+        let due_clock = pending.due_clock;
+        let presentation_duration = pending.presentation_duration;
         let Some(execution) = pending.handle.try_completion()? else {
             return Ok(PlaybackPoll::Rendering { job_id, frame });
         };
@@ -809,6 +929,8 @@ impl<O: Send + 'static> PlaybackOrchestrator<O> {
                     });
                 }
                 self.ready = Some(ReadyPlaybackFrame {
+                    due_clock,
+                    presentation_duration,
                     frame: output,
                     presentation: None,
                 });
@@ -868,6 +990,18 @@ impl<O: Send + 'static> PlaybackOrchestrator<O> {
         self.audio.queue(samples)
     }
 
+    /// Requests callback-owned removal of every queued pre-discontinuity audio sample.
+    pub fn request_audio_discard(&mut self) -> Result<OutputDiscardStatus> {
+        ExecutionDomain::Playback.require_current()?;
+        self.audio.request_discard()
+    }
+
+    /// Returns producer-requested and callback-applied audio discard generations.
+    #[must_use]
+    pub fn audio_discard_status(&self) -> OutputDiscardStatus {
+        self.audio.discard_status()
+    }
+
     /// Returns the active shared clock source.
     #[must_use]
     pub const fn clock_mode(&self) -> PlaybackClockMode {
@@ -886,10 +1020,22 @@ impl<O: Send + 'static> PlaybackOrchestrator<O> {
         self.av_sync.statistics()
     }
 
+    /// Returns the exact timebase emitted by the shared playback clock.
+    #[must_use]
+    pub const fn clock_timebase(&self) -> superi_core::time::Timebase {
+        self.av_sync.clock_timebase()
+    }
+
     /// Reads the shared timeline clock at an explicit process-local instant.
     pub fn clock_position_at(&self, now: Instant) -> Result<RationalTime> {
         ExecutionDomain::Playback.require_current()?;
         self.av_sync.clock_position_at(now)
+    }
+
+    /// Reanchors the active shared clock after an explicit transport discontinuity.
+    pub fn reanchor_clock_at(&mut self, timeline_anchor: RationalTime, now: Instant) -> Result<()> {
+        ExecutionDomain::Playback.require_current()?;
+        self.av_sync.reanchor_clock_at(timeline_anchor, now)
     }
 
     /// Falls back from a lost audio clock to monotonic time without a timeline jump.
@@ -911,10 +1057,15 @@ impl<O: Send + 'static> PlaybackOrchestrator<O> {
             .take()
             .expect("present_ready is called only with one retained frame");
         let timestamp = ready.frame.timestamp();
+        let presentation_duration = ready
+            .presentation_duration
+            .unwrap_or(ready.frame.duration());
         let sync = match ready.presentation {
             Some(sync) => sync,
-            None => match self.av_sync.coordinate_at(
+            None => match self.av_sync.coordinate_at_deadline(
                 AvSyncFrameTiming::new(ready.frame.timestamp(), ready.frame.duration()),
+                ready.due_clock,
+                presentation_duration,
                 AvSyncFrameReadiness::last_ready(),
                 now,
             ) {
@@ -929,9 +1080,11 @@ impl<O: Send + 'static> PlaybackOrchestrator<O> {
         match sync {
             AvSyncOutcome::Hold { master_time, .. } => {
                 ready.presentation = None;
+                let due_clock = ready.due_clock;
                 self.ready = Some(ready);
                 return Ok(PlaybackPoll::Waiting {
                     frame: timestamp,
+                    due_clock,
                     clock: master_time,
                     sync,
                 });
@@ -947,6 +1100,8 @@ impl<O: Send + 'static> PlaybackOrchestrator<O> {
             }
         }
 
+        let due_clock = ready.due_clock;
+        let presentation_duration = ready.presentation_duration;
         match self.viewport.try_send(ready.frame) {
             Ok(()) => Ok(PlaybackPoll::Presented {
                 frame: timestamp,
@@ -954,6 +1109,8 @@ impl<O: Send + 'static> PlaybackOrchestrator<O> {
             }),
             Err(backpressure) => {
                 self.ready = Some(ReadyPlaybackFrame {
+                    due_clock,
+                    presentation_duration,
                     frame: backpressure.into_item(),
                     presentation: Some(sync),
                 });
@@ -1000,6 +1157,11 @@ fn audio_output_error(source: OutputBufferError) -> Error {
             Recoverability::Retryable,
             "playback audio output buffer is full",
         ),
+        OutputBufferError::DiscardPending { .. } => (
+            ErrorCategory::Conflict,
+            Recoverability::Retryable,
+            "playback audio output is applying a transport discontinuity",
+        ),
         _ => (
             ErrorCategory::InvalidInput,
             Recoverability::UserCorrectable,
@@ -1007,6 +1169,19 @@ fn audio_output_error(source: OutputBufferError) -> Error {
         ),
     };
     orchestration_error(category, recoverability, message, "queue_audio").with_context(
+        ErrorContext::new(ORCHESTRATION_COMPONENT, "audio_buffer")
+            .with_field("source", source.to_string()),
+    )
+}
+
+fn audio_discard_error(source: OutputBufferError) -> Error {
+    orchestration_error(
+        ErrorCategory::ResourceExhausted,
+        Recoverability::Terminal,
+        "playback audio discard generation space is exhausted",
+        "discard_audio",
+    )
+    .with_context(
         ErrorContext::new(ORCHESTRATION_COMPONENT, "audio_buffer")
             .with_field("source", source.to_string()),
     )
