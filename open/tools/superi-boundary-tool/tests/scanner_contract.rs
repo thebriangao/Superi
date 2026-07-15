@@ -213,5 +213,7 @@ fn command_line_reports_success_and_policy_failures() {
         .output()
         .expect("boundary command must run");
     assert_eq!(failure.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&failure.stderr).contains("network.api: src/lib.rs:1:"));
+    let expected_path = Path::new("src").join("lib.rs");
+    let expected_diagnostic = format!("network.api: {}:1:", expected_path.display());
+    assert!(String::from_utf8_lossy(&failure.stderr).contains(&expected_diagnostic));
 }

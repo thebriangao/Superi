@@ -2,7 +2,7 @@
 module_id: tool-superi-boundary-tool
 source_paths:
   - open/tools/superi-boundary-tool
-source_hash: a9fa4d961d30ce77085c4000990adfd6be81374822c232d4553e9425e8be9bc2
+source_hash: d92ee3833778f235b8443c2c16b3b5a68de1bc91bb7333880155f67f1c2154b9
 source_files: 4
 mapped_at_commit: working-tree
 ---
@@ -80,15 +80,22 @@ workspace package without adding an external dependency. GitHub Actions invokes 
 Eight integration contracts cover canonical-tree gating, exact cross-platform workflow wiring,
 direct and renamed network dependencies, direct and nested network APIs, build scripts, closed
 manifest paths and package identities, source includes and attributes, ignored comments and
-strings, symlink rejection, and process behavior. Fresh Rust 1.80 formatting, focused tests,
-warnings-denied focused Clippy, the canonical scan of 304 files and 23 manifests, workflow YAML
-parsing, a locked full workspace build, and the complete workspace test and documentation suite
-passed using `CARGO_TARGET_DIR=/private/tmp/superi-targets/P1.W07.C008`.
+strings, symlink rejection, and process behavior. The CLI diagnostic contract constructs and
+displays its expected relative path through `std::path::Path`, so Windows and Unix separators are
+both verified without weakening the stable code or line check. Fresh Rust 1.80 formatting, focused
+tests, warnings-denied focused Clippy, the canonical scan of 304 files and 23 manifests, workflow
+YAML parsing, a locked full workspace build, and the complete workspace test and documentation
+suite passed using `CARGO_TARGET_DIR=/private/tmp/superi-targets/P1.W07.C008`.
 
 Full strict workspace Clippy was also executed. It reached seven pre-existing missing safety
 comments in AV1, Opus, and VideoToolbox files outside this module; strict focused Clippy for this
 tool passed. A sandboxed native codec run was denied host framework access, while the same contract
 and complete workspace suite passed with native system-service access.
+
+The follow-up Windows portability correction passed all eight focused contracts, strict focused
+Clippy, formatting, a canonical scan of 383 files and 25 manifests, workflow parsing, and complete
+map validation in the checkpoint-owned isolated target. Hosted descendant run `29384905525`
+provides the cross-platform widening evidence for the test-only assertion change.
 
 ## Current status and risks
 
