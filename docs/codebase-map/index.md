@@ -666,8 +666,9 @@ These mechanisms are not yet a complete composed runtime. Engine proxy resolutio
 derived-media selection policy, and engine playback consumes playback domain ownership, bounded
 workers, playback priority, cooperative cancellation, progress, and nonblocking completion for
 predictive cache population. Audio enforces the platform-owned audio domain for fixed prepared
-graph processing and exact callback scheduling. Device output uses a preallocated lock-free queue
-and publishes an audio master clock from the same domain. Cache's background render queue
+graph processing and exact callback scheduling. Device input uses independent preallocated capture
+and monitoring queues with exact physical sample coordinates. Device output uses a preallocated
+lock-free queue and publishes an audio master clock from the same domain. Cache's background render queue
 constructs a bounded pool, submits cache-kind work at background priority, carries `JobControl`,
 exposes typed completion and snapshots, and layers exact-frame single-flight over dispatch. Graph
 has no production concurrency consumer. Playback accepts an externally lifecycle-owned pool and
@@ -1055,7 +1056,7 @@ dependency direction, but their public modules expose no substantive types or op
 visual nodes, and bounded CPU reference execution, while production GPU factories, masks,
 transitions, text, tracking, OFX, timeline attachment, and engine execution remain absent.
 `superi-audio` now has a substantive
-independent processing graph, typed bus routing, sample-accurate scheduler, production device output,
+independent processing graph, typed bus routing, sample-accurate scheduler, production device input and output,
 clip-mix processor, prepared sample-rate converter, explicit channel conversion, and prepared core
 effects, plus a graph-native meter, while automation, hosting, and decoded-sample
 binding, and complete engine composition remain absent.
@@ -1143,8 +1144,9 @@ For common concerns, begin at these owners:
 - Color interpretation and transforms: `superi-color`.
 - GPU resources, residency, conversion, submission, and recovery: `superi-gpu`.
 - Jobs, domains, clocks, handoffs, lifecycle, and liveness: `superi-concurrency`.
-- Audio graph topology, output-device identity, capability discovery, bounded sample handoff, typed
-  platform callbacks, stream lifecycle, audio-clock publication, output telemetry, and graph-native
+- Audio graph topology, input and output device identity, capability discovery, record arming,
+  input monitoring, bounded sample handoff, typed platform callbacks, stream lifecycle,
+  audio-clock publication, capture and output telemetry, and graph-native
   peak, RMS, true-peak, phase, spectrum, and loudness analysis: `superi-audio`.
 - Graph-facing identifiers, node schemas, deterministic DAG state, typed binding validation,
   schema-bound instances, editable transactions, canonical graph documents, typed parameter links

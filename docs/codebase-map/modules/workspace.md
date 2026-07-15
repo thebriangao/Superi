@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 53d57983705224806d05e8e407df300085d6cd690929058f4f2836dc45e53abb
-source_files: 136
+source_hash: bb1a7ac74ab6e938b334e14f8d81941c346befbcd0d072100c2865ab56510568
+source_files: 137
 mapped_at_commit: working-tree
 ---
 
@@ -286,6 +286,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   the neutral shared graph payload, timeline coexistence, schema and authoring contracts, bounded
   CPU reference semantics, research basis, real pixel and immutable graph proof, and intentionally
   separate GPU, engine, UI, persistence, playback, and export integration.
+- `docs/checkpoints/P2.W04.C010.md`: Durable implementation evidence for production input-device
+  discovery, atomic record arming and monitoring, bounded exact-timestamp capture, and the real
+  monitoring bridge into existing output playback.
 - `docs/checkpoints/P1.W07.C025.md`: Durable implementation evidence for bounded timing and process
   resident-memory instrumentation across all eight canonical slice stages. It records the private
   sampler boundary, schema 1.1.0 report contract, dependency decision, red-to-green proof,

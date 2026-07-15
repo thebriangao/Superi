@@ -1,4 +1,4 @@
-//! `superi-audio`, independent audio processing, device playback, mixing, and sample-accurate sync.
+//! `superi-audio`, independent audio processing, device I/O, mixing, and sample-accurate sync.
 //!
 //! The foundational editable and prepared processing graph is implemented in [`graph`]. Exact
 //! timeline callback scheduling and audio-master publication are implemented in [`sync`]. Device
@@ -8,9 +8,11 @@
 //! [`channels`]. Prepared band-limited conversion between independent source and device sample
 //! clocks is implemented in [`resample`]. Prepared equalization, dynamics, limiting, delay, and
 //! saturation are implemented in [`effects`]. Transparent graph-native level,
-//! spectrum, phase, true-peak, and loudness analysis is implemented in [`metering`]. Plugin hosting
-//! remains a separate staged owner.
+//! spectrum, phase, true-peak, and loudness analysis is implemented in [`metering`]. Bounded record
+//! arming, input monitoring, and operating-system capture are implemented in [`capture`]. Plugin
+//! hosting remains a separate staged owner.
 
+pub mod capture;
 pub mod channels;
 pub mod effects;
 pub mod graph;

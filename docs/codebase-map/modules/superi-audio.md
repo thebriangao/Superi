@@ -2,14 +2,15 @@
 module_id: superi-audio
 source_paths:
   - open/crates/superi-audio
-source_hash: 095eb0753738789ede50e2464156d723d135501e526810efa2a3de9f8ac99d31
-source_files: 21
+source_hash: 6aa5c29b2fc50fa7c16f90b9017b982fd6ea3a34baa6221f4e82247771af5601
+source_files: 23
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
-`superi-audio` owns independent audio processing and sample-accurate playback scheduling. Its
+`superi-audio` owns independent audio processing, sample-accurate playback scheduling, and bounded
+operating-system input capture. Its
 foundational graph provides an editable deterministic DAG, typed direct, send, and auxiliary-return
 routes, one terminal master, and a separately prepared plan for bounded interleaved f32 processing
 at exact sample coordinates. Exact-layout submix, auxiliary, and master buses consume borrowed
@@ -30,6 +31,11 @@ Its transparent prepared meter preserves graph samples while publishing coherent
 true-peak, phase, spectrum, momentary, short-term, and integrated loudness snapshots through
 bounded lock-free storage.
 
+Its capture slice discovers input devices, validates exact stream configurations, and publishes
+channel-indexed recorded samples at exact physical input coordinates through one preallocated
+ring. An independent preallocated monitoring ring preserves normalized interleaved samples for the
+existing output path. Atomic arming and monitoring controls take effect at callback boundaries.
+
 All processing paths enforce the platform-owned audio execution domain, but their control-path owners
 remain separate. Graph editing and preparation allocate outside callbacks. Schedule construction and
 transport reanchoring also occur outside callbacks. Resampler and meter construction and scratch
@@ -44,6 +50,10 @@ concerns.
 - `open/crates/superi-audio/src/channels.rs`: Defines the common-layout catalog, explicit speaker
   and discrete interpretations, control-side conversion-matrix preparation, and allocation-free
   exact-layout processing with fail-closed validation.
+- `open/crates/superi-audio/src/capture.rs`: Implements stable input-device identity, capability
+  discovery, exact configuration validation, atomic arming and monitoring, dual bounded capture
+  and monitor rings, exact channel-indexed sample coordinates, telemetry, and production stream
+  lifecycle.
 - `open/crates/superi-audio/src/effects.rs`: Implements validated prepared equalization,
   linked-channel compression and limiting, channel-preserving fixed delay, and normalized soft
   saturation with finite input and output enforcement.
@@ -54,8 +64,8 @@ concerns.
   exact consecutive block processing on the audio domain.
 - `open/crates/superi-audio/src/hosting.rs`: Placeholder for additive VST3 and Audio Unit hosting.
 - `open/crates/superi-audio/src/lib.rs`: Documents the implemented graph, channel, routing,
-  scheduling, playback, conversion, and effects boundaries and exports the ten audio concern
-  modules.
+  scheduling, capture, playback, conversion, effects, and metering boundaries and exports the
+  eleven audio concern modules.
 - `open/crates/superi-audio/src/metering.rs`: Implements transparent prepared graph metering,
   per-channel sample peak, RMS and true peak, stereo phase correlation, bounded spectrum analysis,
   K-weighted EBU windows, ITU programme gating, coherent lock-free snapshots, and explicit history
@@ -85,6 +95,10 @@ concerns.
 - `open/crates/superi-audio/tests/device_output_contract.rs`: Proves capability containment, bounded
   whole-frame admission, allocation ceilings, timed silence, clock progression, persisted device
   identities, domain-conflict behavior, telemetry, and real host discovery.
+- `open/crates/superi-audio/tests/device_input_contract.rs`: Proves capability containment, atomic
+  arming and monitoring, exact timing through gaps, independent whole-frame backpressure, malformed
+  callback rejection, domain-conflict behavior, stable locators, real discovery, long-session
+  drift freedom, and a real monitoring bridge into bounded output playback.
 - `open/crates/superi-audio/tests/clip_mixing_contract.rs`: Public consumer proof for every clip
   control, exact multi-block envelopes, snapshot solo behavior, atomic identity mutations, invalid
   layouts and values, clip bounds, and failure atomicity.
@@ -103,9 +117,17 @@ concerns.
 
 ## Public surface
 
-The crate root exports `channels`, `effects`, `graph`, `hosting`, `metering`, `mixing`, `playback`,
-`resample`, `routing`, and `sync`. Every module except the hosting placeholder contains substantive
+The crate root exports `capture`, `channels`, `effects`, `graph`, `hosting`, `metering`, `mixing`,
+`playback`, `resample`, `routing`, and `sync`. Every module except the hosting placeholder contains substantive
 behavior.
+
+`capture` exposes validated opaque `InputDeviceId` values, exact capability ranges and stream
+configurations, partial discovery failures, atomic `CaptureControl`, bounded `CaptureReader` and
+`MonitorReader` endpoints, clonable telemetry, and an owning `DeviceCapture`. Recording preserves
+exact `SampleTime`, channel index, and normalized value; monitoring preserves complete interleaved
+frames independently. `discover_input_devices` performs real host enumeration,
+`create_capture_buffer` preallocates both handoffs, and `start_device_capture` revalidates and
+starts the selected stream.
 
 `channels` exposes `CommonChannelLayout`, `ChannelInterpretation`, and `PreparedChannelMixer`.
 Canonical layouts preserve core speaker order. Speaker conversion implements documented mono,
@@ -209,6 +231,14 @@ silence on starvation or a domain conflict, advances `AudioMasterClock` by every
 frame, and updates relaxed atomics. Device capabilities are re-read before stream construction, and
 portable speaker positions remain explicitly unknown when CPAL reports only channel count.
 
+Capture discovery, buffer construction, and stream setup also stay on control threads. The input
+callback enters `ExecutionDomain::Audio`, validates complete finite normalized frames, advances its
+physical sample position for every accepted platform frame, and independently admits whole frames
+to recording and monitoring rings according to atomic controls. Disarmed, pressured, and
+domain-conflicted intervals remain physical timing gaps instead of collapsing later sample
+coordinates. A monitor reader copies into caller-owned storage for submission through the existing
+output producer.
+
 Clip preparation validates that fades fit the exact clip duration and precomputes a dense
 destination-by-source routing matrix plus per-output phase coefficients. The processor validates
 the prepared clock, layouts, and half-open clip interval before touching output. It maps semantic
@@ -246,7 +276,7 @@ and spectrum values, and performs the two-stage integrated loudness gate without
 - `superi-concurrency` supplies `ExecutionDomain::Audio` and its platform-owned, nonblocking,
   allocation-free policy plus `AudioMasterClock`, `PlaybackClock`, and downstream A/V policy. The
   prepared graph, scheduler, and output callback enforce the audio domain at their boundaries.
-- CPAL 0.17.3 supplies CoreAudio, WASAPI, and ALSA discovery and output adapters while remaining
+- CPAL 0.17.3 supplies CoreAudio, WASAPI, and ALSA input and output adapters while remaining
   compatible with the repository Rust declaration. ringbuf 0.4.8 supplies the preallocated SPSC
   sample queue. Linux CI installs ALSA development headers.
 - rubato 0.16.2 supplies the MIT-licensed adjustable asynchronous sinc implementation with a Rust
@@ -259,12 +289,14 @@ and spectrum values, and performs the two-stage integrated loudness gate without
   adapter inputs.
 - `superi-media-io` remains the decoded sample owner and is not a direct dependency. No production
   decoder currently feeds a prepared graph from scheduled slices.
-- The seven public integration contracts are the current real consumers. They process exact adjacent
+- The ten public integration contracts are the current real consumers. They process exact adjacent
   blocks through clip DSP, dry, auxiliary, submix, and master paths, publish scheduled presentation
   through actual concurrency clocks, exercise bounded device output, and prove clip identity
   inheritance while converting between independent source and device clocks and applying core
   effects through the prepared graph. The metering contract places a real meter between a source
-  and master bus.
+  and master bus. Input proof
+  additionally exercises exact channel-indexed capture and routes monitoring samples through the
+  production bounded output handoff.
 
 ## Invariants and operational boundaries
 
@@ -305,6 +337,12 @@ and spectrum values, and performs the two-stage integrated loudness gate without
   finite normalized complete frames. The callback takes no blocking lock and grows no storage.
 - Starvation and conflicting domain ownership produce timed digital silence rather than clock
   stalls. Device reset, removal, or format changes require control-side stream reconstruction.
+- Capture rings are nonzero, checked for overflow, capped at 1,048,576 samples each, and admit only
+  finite normalized complete frames. Recording and monitoring pressure are independent and never
+  admit a partial frame.
+- Capture callback processing takes no blocking lock, grows no storage, and preserves the physical
+  sample clock across disarmed, pressured, and domain-conflicted intervals. CPAL channel count is
+  retained without inventing semantic speaker positions.
 - Timeline placements are nonnegative, nonempty, checked half-open record windows. Source
   coordinates may be negative. One track has one order, one order identifies one track, and only
   different tracks may overlap.
@@ -365,6 +403,11 @@ buffer semantics, capacity and normalized-sample validation, whole-frame backpre
 telemetry, exact clock progression, persisted locators, domain-conflict degradation, production host
 discovery, endpoint thread transfer, and 5,120,000 simulated frames without accumulated drift.
 
+Nine public input contracts prove capability containment, atomic arming and monitoring, exact
+sample coordinates across gaps, independent whole-frame pressure, malformed and non-finite input
+rejection, domain-conflict timing, stable locators, real host discovery, endpoint thread transfer,
+a real monitoring-to-output bridge, and 512,000 simulated frames without accumulated drift.
+
 `clip_mixing_contract` has four public integration tests. It proves swapped channel routing, phase
 inversion, bounded gain, exact three-sample fade endpoints across adjacent callback blocks,
 hard-pan endpoint exactness, mute, snapshot-wide solo, transactional set/inherit/transfer/remove,
@@ -389,12 +432,14 @@ and rejection of unbounded or nonsensical preparation.
 ## Current status and risks
 
 The independent audio graph, channel conversion, bus routing, sample-accurate schedule, production
-device-output substrate, clip mix processor, prepared sample-rate converter, core effects, and graph-native meter are
+device-input and device-output substrates, clip mix processor, prepared sample-rate converter,
+core effects, and graph-native meter are
 substantive and publicly test-backed. Plugin hosting remains a documentation-only placeholder.
 Engine consumes timeline edit outcomes for atomic clip identity reconciliation, but there is no
 decoded-audio fetch, scheduled-slice graph binding, plugin host, platform channel-layout negotiation,
 engine playback composition, or end-to-end
-source-playback-final-mix path.
+source-playback-final-mix path. Microphone permission, physical input latency, semantic input
+layout, and hot-plug recovery remain platform-owned boundaries.
 
 Multi-input routing is deliberately unity-only to avoid claiming later control semantics. Prepared
 input views retain immutable routes and earlier buffers without self-referential storage or callback
@@ -420,6 +465,10 @@ bounded atomic publication, explicit programme-history saturation, and control-s
 gating. Any indexed extension must define ordering explicitly and prove
 callback safety. Keep discovery and stream setup on control threads, and revalidate capabilities
 before stream creation.
+
+Preserve capture's independent whole-frame rings, atomic callback-boundary controls, exact physical
+sample continuation through dropped intervals, and channel-index meaning. Bridge monitoring into
+the existing output producer rather than adding a competing playback path.
 
 When engine integration arrives, adapt immutable timeline and decoded audio owners into the
 existing schedule and graph types instead of adding upward dependencies. Keep channel layout and
