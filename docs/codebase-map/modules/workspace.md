@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 0e9c688619049de40cb7ba9d52beb1fb9cc6ee1225aac75f889f9ee8cc567fba
-source_files: 131
+source_hash: e519efc0b45875405248c32c3a1e1b37f60c4cfb8976fe8a59860f70ad1c646c
+source_files: 132
 mapped_at_commit: working-tree
 ---
 
@@ -25,7 +25,7 @@ a single checkpoint through mapping, planning, and execution, and routes multipl
 separate Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers
 but obeys an explicit positive user concurrency value. The file is ignored by Git and copied into
 managed worktrees through `.worktreeinclude`, so the mapping script does not include it in this
-module's 130-file inventory or source hash. It must still be reread independently before repository
+module's 132-file inventory or source hash. It must still be reread independently before repository
 work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
@@ -266,6 +266,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   sample-rate conversion. It records exact source and device clocks, ordered channels, fixed
   lookahead and output blocks, bounded drift correction, dependency evidence, focused proof,
   delivery context, and remaining engine and physical-device integration.
+- `docs/checkpoints/P2.W05.C001.md`: Durable implementation evidence for the graph-native visual
+  effect authoring SDK. It records typed inspectable definitions and defaults, workflow-neutral
+  editable graph instances, deterministic catalog discovery, exact-schema runtime factories,
+  OpenFX-informed design, red-to-green proof, delivery context, and deferred visual execution.
 - `docs/checkpoints/P1.W07.C025.md`: Durable implementation evidence for bounded timing and process
   resident-memory instrumentation across all eight canonical slice stages. It records the private
   sampler boundary, schema 1.1.0 report contract, dependency decision, red-to-green proof,
@@ -1012,6 +1016,12 @@ floating-point behavior. Gain, pan, fader, metering, resampling, plugin hosting,
 binding, and engine composition remain absent; production device output and sample-accurate
 scheduling are implemented in the same audio crate but are not yet assembled by the engine.
 
+The effects crate now provides a substantive graph-native authoring SDK. It composes canonical graph
+schemas, editable nodes, deterministic registry snapshots, and snapshot-bound compiler translation,
+and its public contract proves the same definition and typed edit path in timeline-role and
+node-graph-role graphs. Built-in effects, image or GPU execution, timeline attachment, engine
+integration, persistence, and rendered output remain absent.
+
 The largest current risk is cross-document drift:
 
 - The canonical fixture, independent expected contract, reference project and graph state, strict
@@ -1093,8 +1103,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`38543db81341b8ff8519b280516c658bcd46199e` when the map was refreshed. Its hash describes the exact
-130 discovered source files, including twelve generated binary payloads, layered on that revision.
+`38ed11c9a0ba3acec0bd7d0e63ba23df294ecf59` when the map was refreshed. Its hash describes the exact
+132 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 

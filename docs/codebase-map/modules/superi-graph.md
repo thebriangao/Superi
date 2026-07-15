@@ -519,7 +519,9 @@ The shared interactive and headless evaluation flow is:
    values become ordinary misses and recompute through this same evaluator. Cache render
    orchestration now inspects target identity before bounded dispatch, drives this snapshot through
    layered memory and disk adapters, and stages background inserts until cooperative completion.
-   No current effects, color, engine, API, CLI, or GPU owner implements a production node catalog,
+   `superi-effects` now implements a higher-tier authoring catalog and exact-schema `NodeCompiler`
+   adapter over this snapshot, but it supplies no built-in definition, runtime factory, or rendered
+   value. No current color, engine, API, CLI, or GPU owner supplies the missing production runtime,
    so the canonical
    `graph.evaluate` stage remains an honest stub even though the generic interactive, playback,
    headless, and cache boundaries are explicit and test-backed. Engine playback now accepts an
@@ -702,9 +704,11 @@ snapshot binds one complete
 `GraphSnapshot<T>` to those payloads through a caller-owned compiler without adding catalog
 knowledge. Runtime payloads can expose exact schema, behavior, and canonical state identity by
 opting into `IntrospectNode`. The document codec preserves and reconstructs that same checked
-snapshot without assuming a project container. A production catalog implementation, cache value
-integration and invalidation invocation, project persistence, undo history, and engine transaction
-coordination remain separate later owners.
+snapshot without assuming a project container. `superi-effects` now supplies the first production
+higher-tier definition catalog and compiler adapter while retaining all authored values in these
+graph owners. Concrete runtime factories, cache value integration and invalidation invocation,
+project persistence, undo history, and engine transaction coordination remain separate later
+owners.
 
 The disclosed canonical reference graph in `superi-engine` uses core `NodeId` but is not a consumer
 of this store and retains string ports and edges. It remains reference behavior, not production
@@ -734,13 +738,19 @@ graph evaluation or runtime integration.
   `superi-engine::playback` consumes `GraphEvaluationSnapshot` and
   `EvaluationRequest` to populate predicted frames through the cache-owned host adapter, without
   adding mode-specific evaluation behavior. The engine color propagation contract exercises
-  metadata. Timeline compilation consumes versioned
+  metadata. Effects authoring consumes versioned schemas, schema registration snapshots, typed
+  editable nodes and values, instance bindings, immutable graph snapshots, and `NodeCompiler` to
+  publish a workflow-neutral catalog and exact runtime factory adapter. Its public contract proves
+  ordinary graph mutation and role-neutral snapshot compilation without executing pixels. Timeline
+  compilation consumes versioned
   schemas, typed ports, complete editable nodes, atomic graph transactions, DAG validation, and
   immutable snapshots to publish generic processing intent from native editorial state. Other
   declared domain consumers still have no production graph call site.
 - The fifteen graph integration test targets remain the direct consumers of identifier,
   schema-discovery, DAG, validation, mutation, invalidation, ROI, serialization, expression,
   diagnostics, ordinary and cached evaluation, shared evaluation-snapshot, and missing-node APIs.
+  The effects authoring contract is the first downstream catalog test to compose schema discovery,
+  editable instances, graph mutation, and evaluation-snapshot compilation into one higher-tier SDK.
 
 ## Invariants and operational boundaries
 
@@ -1028,11 +1038,12 @@ and optional device accounting, applies graph edit invalidation atomically, prom
 insertions, and reclaims eligible LRU values under budget or GPU pressure. Disk validates bounded
 versioned envelopes, isolates invalid entries, and records classified failures. Reclamation,
 budget refusal, or persistence failure remains an ordinary miss or skipped insertion and cannot
-change the evaluator result. Cache can dispatch caller-compiled snapshots, but no production
-catalog implements that compiler or connects complete ROI and invalidation plans to a complete
-rendered-frame application flow yet. Engine playback is the first production role consumer of an
-externally prepared evaluation snapshot, and its contract proves exact cached prediction does not
-change foreground evaluation meaning.
+change the evaluator result. Cache can dispatch caller-compiled snapshots. Effects now implements a
+production definition catalog and exact-schema compiler adapter, but it has no built-in runtime
+factory and does not connect complete ROI and invalidation plans to a rendered-frame application
+flow. Engine playback is the first production role consumer of an externally prepared evaluation
+snapshot, and its contract proves exact cached prediction does not change foreground evaluation
+meaning.
 The versioned graph document codec now preserves and validates that complete editable state,
 migrates the supported legacy envelope, returns canonical upgraded bytes, and retains typed links
 and editable expression source through save and load. Missing-node resolution now derives exact
@@ -1042,9 +1053,10 @@ evaluation result until exact schemas return. Exact schemas then enable the shar
 headless evaluation snapshot without a graph rewrite. The crate cannot store a project atomically,
 own concrete cached values, persist cache data, bind
 plugin implementations, or render production values. Timeline compilation and memory cache
-retention are now real downstream consumers, but no production node catalog consumes the
-invalidation, ROI, serialization, scheduling, expression, diagnostics, evaluation, or missing-node
-owner.
+retention are real downstream consumers. Effects is now a real authoring catalog consumer of
+schema, registry, node, mutation, immutable snapshot, and compiler surfaces, but no production
+catalog consumes complete invalidation, ROI, serialization, scheduling, expression, diagnostics,
+evaluation, or missing-node behavior to render a visual value.
 
 The latest-version rule deterministically selects the lexically highest build-metadata variant when
 SemVer precedence ties. Consumers that require one deployment-specific build must request its exact
@@ -1161,5 +1173,6 @@ Update this map when mutation, invalidation, ROI, serialization, expressions, di
 evaluation integrate further, concrete retention or eviction behavior changes, or cache revision
 and resource policies change the adapter contract,
 ROI-to-evaluator binding, project storage, undo ownership, engine coordination,
-plugin implementation lookup, or a downstream catalog becomes real. Recheck direct consumer maps
-whenever they begin importing any public graph contract.
+plugin implementation lookup, the effects catalog gains executable nodes, or another downstream
+catalog becomes real. Recheck direct consumer maps whenever they begin importing any public graph
+contract.
