@@ -260,8 +260,9 @@ Repository source search shows active direct Rust imports in twelve of them:
   actual transforms, gamut operations, working spaces, LUTs, HDR interpretation, and ICC paths.
 - `superi-concurrency` uses job and media identifiers, exact clocks, diagnostic values, and the
   shared error model for pools, priorities, liveness, playback clocks, backpressure, and lifecycle.
-- `superi-engine` uses shared errors, color and pixel metadata, and exact timestamps at media,
-  introspection, and CPU-frame upload boundaries.
+- `superi-engine` uses shared errors, identifiers, color, pixel and alpha meaning, and exact
+  timestamps at media, introspection, CPU-frame upload, cache identity, and foreground playback
+  boundaries.
 - `superi-gpu` uses errors and diagnostics throughout resource and submission paths, plus color,
   pixel, and geometry values for conversion and upload contracts.
 - `superi-graph` re-exports the official graph, node, port, edge, parameter, and resource identifier

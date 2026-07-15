@@ -2,23 +2,22 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 244fade246777434141211bef02ac9764efcc067025b495e50484a5b05b43a15
-source_files: 34
+source_hash: 3e3cff4c17dcbabcf1debbe6e196aeeafce1fb876af1eabb3e1cb9ee20162a39
+source_files: 35
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
 `superi-engine` is the open orchestration layer. Its substantive paths cover canonical editorial
-command state, media backend registry assembly, declaration-based capability
-introspection, CPU-decoded frame upload into GPU allocations, and exact viewport and export color
-metadata branching, plus codec-neutral proxy and optimized-media packet generation and transparent
-proxy or original-source resolution, predictive playback cache population, and atomic timeline and
-clip-mix edit publication. It now also owns canonical subsystem initialization, dependency ordering,
-immutable lifecycle state, coherent playback/render/export admission, degraded recovery, reverse
-teardown, restart, and transactional timeline graph, source, and decoder preparation. Full
-transport, rendered color execution, export muxing, broad transactions, plugins, nodes, A/V sync,
-and validation remain incomplete.
+command state, complete media backend registry assembly, transactional timeline graph plus source
+and decoder preparation, capability introspection, CPU-decoded frame upload, exact viewport and
+export color metadata branching, derived-media generation, transparent proxy resolution,
+predictive cache population, foreground graph and display-color execution, bounded audio admission,
+audio-master pacing with monotonic fallback, lossless viewport handoff, deterministic subsystem
+lifecycle, and atomic timeline plus clip-mix edits. Full transport policy, native GPU presentation,
+export muxing, broad transactions, plugins, nodes, A/V drift correction, and validation remain
+incomplete.
 
 The command path is a bounded reference owner for contract conformance. It does not claim to replace
 the production project, timeline, graph, media, color, render, or muxing owners.
@@ -53,9 +52,11 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 - `open/crates/superi-engine/src/media.rs`: Builds default and feature-gated media registries,
   including atomically preflighted primary registrations for all four in-tree container sources.
 - `open/crates/superi-engine/src/nodes.rs`: Placeholder for media and graph nodes.
-- `open/crates/superi-engine/src/playback.rs`: Defines playback-domain nonblocking prediction
-  submission and polling, cooperative generation supersession, structured degraded completion, a
-  weak worker-pool lifecycle boundary, and the shared-graph owned-host-cache evaluator.
+- `open/crates/superi-engine/src/playback.rs`: Defines playback-domain nonblocking prediction and
+  foreground submission, complete decoded and scene semantic envelopes, shared-graph retained
+  evaluation, validated cache admission, concrete CPU display conversion behind a generic output
+  seam, bounded audio output, audio-master and monotonic clock continuity, lossless viewport
+  handoff, structured degradation, and weak worker-pool lifecycle boundaries.
 - `open/crates/superi-engine/src/plugins.rs`: Placeholder for plugins and extensions.
 - `open/crates/superi-engine/src/proxy_substitution.rs`: Validates exact proxy purpose, source
   fingerprint, source revision, packet integrity, and stream metadata; translates cache quality to
@@ -96,6 +97,9 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 - `open/crates/superi-engine/tests/playback_prefetch_graph_contract.rs`: Proves exact predicted
   frames populate and reuse the real budgeted cache through one immutable graph snapshot without
   changing foreground evaluator output.
+- `open/crates/superi-engine/tests/playback_orchestration_contract.rs`: Proves one coherent decoded
+  frame, graph, cache, color, audio, clock, worker, and viewport path across normal playback,
+  backpressure, invalid scene degradation, cache reuse, and recovery.
 - `open/crates/superi-engine/tests/scenario_contract.rs`: Exact canonical state, atomicity, bounds,
   operation log, and reversal proof.
 - `open/crates/superi-engine/tests/vendor_codec_registry_contract.rs`: Explicit vendor registry
@@ -138,11 +142,15 @@ source revision, scheduler quality, and fallback policy. Resolution returns one 
 to a generated packet adapter or the lazily opened original source.
 
 `playback` exposes the `PlaybackPrefetchEvaluator` seam, concrete
-`GraphPlaybackPrefetchEvaluator`, playback-owned `PlaybackPrefetcher`, and structured submission
-and completion reports. Submission accepts one caller-owned `JobId` and bounded cache prediction,
-cancels the previous generation, queues playback-priority cache work without waiting, and requires
-the playback execution domain. Polling is also playback-owned and never blocks. An empty clipped
-plan cancels older work and publishes immediate successful no-work completion.
+`GraphPlaybackPrefetchEvaluator`, playback-owned `PlaybackPrefetcher`, and structured prediction
+submission and completion reports. It also exposes `DecodedFrameMetadata`,
+`PlaybackSceneFrame<V>`, `PlaybackCacheIdentity`, `PlaybackDisplayTransform<V>`,
+`CpuPlaybackDisplayTransform`, `PlaybackViewportFrame<O>`, `PlaybackFrameEvaluator<O>`,
+`GraphPlaybackFrameEvaluator<T, N, V, D>`, `PlaybackAudioOutput`, `PlaybackPoll`, and
+`PlaybackOrchestrator<O>`. Foreground orchestration admits one exact frame at a time, executes it on
+a playback-priority worker, validates cache identity and scene meaning, applies display color,
+paces presentation from the shared clock, and retains a saturated viewport payload. Submission,
+polling, audio admission, and clock switching require the playback domain and never block.
 
 `audio_mix` exposes `apply_edit_batch_with_clip_mix` for caller-owned `EditorialProject` and
 `ClipMixState` values, and the narrower `reconcile_clip_mix_edit_batch` for an already validated
@@ -303,6 +311,32 @@ completion, and leaves transport, project meaning, source selection, and final-r
 unchanged. The controller stores a weak pool reference, so playback-thread destruction cannot own a
 blocking worker shutdown.
 
+### Foreground playback orchestration
+
+The caller supplies a prepared immutable graph, exact output endpoint and region, a budgeted scene
+cache, complete project, media, parameter, color, and render-setting identity, a display transform,
+the producer and audio clock from one output buffer, a lifecycle-owned worker pool, and a bounded
+viewport sender. `PlaybackOrchestrator` stores only weak pool ownership and admits exactly one
+foreground frame at a time, leaving source selection, graph construction, transport controls, and
+drop policy to their dedicated owners.
+
+`PlaybackSceneFrame<V>` retains exact output timing, decoded representation and metadata provenance,
+nonterminal scene color history, and alpha association. `GraphPlaybackFrameEvaluator` evaluates the
+ordinary `GraphEvaluationSnapshot` through `OwnedHostFrameMemoryCache`. Its validating adapter
+reuses and inserts only values whose timestamp and complete scene pipeline match the graph-owned
+evaluation identity, then performs display conversion on the worker. The concrete CPU transform
+accepts canonical binary16 working images and produces premultiplied binary32 display images plus a
+terminal `ViewportColorMetadata` branch. The generic display seam preserves a future GPU-resident
+payload without moving native presentation into the engine.
+
+The audio producer admits complete borrowed interleaved frames or rejects the submission. Its paired
+device consumer remains the only writer of `AudioMasterClock`, which paces the ready video frame.
+Polling returns rendering, clock waiting, presented, viewport-backpressured, or classified failed
+state without waiting. Viewport saturation returns and retains the exact payload. Invalid graph or
+color output is not cached, clears only that request, and permits later recovery. Explicit audio
+loss and restoration switch the existing `PlaybackClock` source while preserving the current
+timeline position.
+
 ### Editorial audio intent
 
 The engine applies a timeline edit batch to a cloned project, reads its typed fragment, inserted,
@@ -315,26 +349,27 @@ audio mutation, so their user intent remains attached without synthesis.
 ## Dependencies and consumers
 
 - `superi-core` supplies errors, identifiers, geometry, and exact time used directly by canonical
-  commands, introspection, upload, playback prefetch, and retained lifecycle failure evidence.
+  commands, introspection, upload, playback prediction, foreground pixel and alpha meaning, and
+  retained lifecycle failure evidence.
 - `sha2` supplies bounded fixture payload identity and complete packet-content fingerprinting.
 - `superi-media-io`, `superi-gpu`, and `superi-codecs-rs` support source and codec registry assembly,
   content probing, source and decoder preparation, declaration, upload, codec-neutral derived
   generation, and the common proxy or original source interface.
 - Platform and vendor codec crates are feature-gated.
 - Cache now supplies color metadata, media-neutral derived publication, bounded playback prediction,
-  and an owned host evaluator adapter. Graph supplies the immutable evaluation snapshot. Timeline
-  supplies the retained editable graph compilation and reachable editorial source relationships for
-  resource preparation.
-  Concurrency supplies the production quality and fallback selector for proxy resolution plus
-  playback ownership, worker priority, cancellation, progress, and nonblocking completion. It also
-  supplies the shared lifecycle coordinator and lock-free signal, EngineControl domain enforcement,
-  single-owner mutable state, and immutable generated snapshot publication used by engine lifecycle.
-  Image and timeline support the color metadata integration contract. Timeline and audio are jointly
-  consumed by the clip-mix edit transaction. Effects now supplies the safe
+  budgeted scene retention, and an owned host evaluator adapter. Graph supplies the immutable
+  evaluation snapshot. Timeline supplies the retained editable graph compilation and reachable
+  editorial source relationships for resource preparation. Concurrency supplies proxy selection,
+  playback ownership, worker priority, nonblocking completion, clocks, bounded handoffs, the shared
+  lifecycle coordinator and signal, EngineControl ownership, and immutable snapshot publication.
+  Media I/O supplies exact decoded frame semantics, image supplies color and scene artifacts, color
+  supplies CPU display execution, and audio supplies the bounded producer and actual presentation
+  clock. Timeline and audio are also jointly consumed by the clip-mix edit transaction. Effects
+  supplies the safe
   `IsolatedOfxAdapter` contract, typed requests, graph projection, and plugin lifecycle state that a
   future engine worker supervisor can consume, but engine implements no adapter, native discovery,
-  transport, or production command integration. Color execution, AI, and project likewise remain
-  declared dependencies without production command integration.
+  transport, or production command integration. AI and project remain declared dependencies without
+  production command integration.
 - `superi-api` consumes command snapshots and capability snapshots, preserving the public seam.
 - `superi-cli` reaches this module only through `superi-api`.
 
@@ -384,6 +419,12 @@ audio mutation, so their user intent remains attached without synthesis.
   evaluation failure are observed only as cache completion state and cannot alter transport.
 - Exact predicted frames use the shared graph snapshot and complete host cache identity. Reuse skips
   evaluator work but cannot change graph meaning, foreground frame value, or final-render output.
+- Foreground playback admits one exact frame at a time, never waits on worker, clock, audio, or
+  viewport progress, and never invents transport rate, seek, direction, step, or frame-drop policy.
+- Decoded timing, format, metadata, color history, and alpha meaning remain immutable provenance.
+  Cache admission requires the exact requested timestamp and complete nonterminal scene pipeline.
+- Audio admission is all-or-nothing. The device-owned sample clock paces video, mode changes
+  preserve timeline position, and viewport saturation returns the exact frame for retry.
 - GPU ownership and pool lifetime remain tied to the originating device.
 - Timeline and clip-mix publication is all-or-nothing across both expected revisions and typed edit
   outcomes. It does not imply a general whole-engine transaction owner.
@@ -434,12 +475,19 @@ exact seek preroll, stale and mismatched rejection, missing and higher-only fall
 identity verification, and source-only final delivery. This is a real encoder and source-interface
 consumer but not a render, resize, mux, persistence, playback clock, or container-delivery proof.
 
-Four playback orchestration contracts prove playback-domain enforcement, immediate nonblocking
+Four playback prediction contracts prove playback-domain enforcement, immediate nonblocking
 submission and polling, exact nearest-first execution, cooperative supersession between frames,
 structured degraded failure, recovery on later work, and boundary-empty cancellation without a
 replacement job. The graph integration contract uses the real immutable snapshot and budgeted host
 cache to prove three exact predicted frames execute once, reuse without node calls, and return the
 same foreground evaluator value.
+
+The foreground playback integration contract constructs a real high-precision decoded frame,
+immutable graph snapshot, budgeted scene cache, binary16 working image, CPU display transform,
+lock-free audio producer and consumer, audio master clock, bounded worker pool, and one-slot viewport
+handoff. It proves exact semantics through binary32 display output, clock waiting, cache reuse,
+audio saturation, lossless viewport retry, invalid scene rejection without cache poisoning, later
+frame recovery, and continuity across audio-clock loss and restoration.
 
 The audio editorial contract drives a real `superi-timeline` razor operation through the combined
 engine transaction. It proves exact source and record subdivision, retained and new identities,
@@ -462,19 +510,22 @@ container or decoding frames. Timeline and graph state are exact control models 
 production timeline owner or the generic `superi-graph` DAG store.
 
 Six orchestration files remain documentation-only placeholders. Source registration and timeline
-media preparation are coherent and test-backed, but there is no playback clock, audio flow,
-persistent cache lifecycle owner, rendered color execution, encoder-to-mux path, project
-persistence, native plugin discovery, isolated OpenFX adapter implementation, worker transport, or
-real-condition validator. The effects-side
+media preparation, deterministic lifecycle, and foreground playback are coherent and test-backed,
+but there is no transport controller, decoded-audio graph renderer, persistent cache lifecycle
+owner, native GPU viewport submission, encoder-to-mux path, project persistence, native plugin
+discovery, isolated OpenFX adapter implementation, worker transport, or real-condition validator.
+The effects-side
 OpenFX host contract is substantive, but `plugins.rs` remains the production supervisor placeholder.
-Playback prefetch is substantive but is not a full transport or proxy selector. The
-derived-media driver and resolver are synchronous and caller-owned, and no production playback,
-export queue, or API path invokes them yet. `TimelineResources` is likewise prepared for those later
-consumers but does not schedule packets, synchronize A/V, evaluate frames, or write outputs.
-Clip-mix reconciliation is substantive but currently entered by Rust callers rather than the
-public API or a playback controller. Lifecycle is a production control-plane contract, but later
-transport, render, export, resource-arbitration, and error checkpoints still must perform their
-concrete subsystem actions before acknowledging it.
+Playback prediction and foreground orchestration are substantive, but they accept caller-prepared
+graph, audio, cache, and viewport owners and are not a full transport, proxy selector, source
+session binder, A/V drift scheduler, or native presentation path. `TimelineResources` prepares the
+reachable sources, decoders, and graph but does not schedule packets, evaluate frames, or write
+outputs. The derived-media driver and resolver are synchronous and caller-owned, and no application,
+export queue, or API path invokes them yet.
+Clip-mix reconciliation is substantive but currently entered by Rust callers rather than the public
+API or playback controller. Lifecycle is a production control-plane contract, but later transport,
+render, export, resource-arbitration, and error owners still must perform concrete subsystem actions
+before acknowledging it.
 
 ## Maintenance notes
 
@@ -491,8 +542,10 @@ quality choice, lazy source opening, and full identity verification explicit. Ke
 domain-owned, nonblocking, cooperatively cancellable between exact frames, and bound to complete
 cache identity. Keep lifecycle actions nonblocking on EngineControl, add new canonical subsystems
 only in dependency order, preserve exact token checks, update every work requirement that consumes
-them, and never release a dependency while an owned dependent remains. Remove a placeholder label
-only after substantive behavior and consumer proof exist.
+them, and never release a dependency while an owned dependent remains. Keep foreground playback
+single-flight and nonblocking, retain exact sink payloads under backpressure, validate scene time,
+color, and alpha before retention, and preserve timeline position when changing clock sources.
+Remove a placeholder label only after substantive behavior and consumer proof exist.
 When implementing `plugins.rs`, consume `superi_effects::ofx::IsolatedOfxAdapter` and preserve its
 worker-process, bounded-message, deadline, permission, restart, and quarantine guarantees rather
 than creating an engine-private editable plugin model.

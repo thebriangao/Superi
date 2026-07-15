@@ -21,7 +21,9 @@ Implemented ownership is narrower than the full color architecture described by
 `docs/phase-0-build-contracts.md`. Input and output transforms, transfer functions, primary
 conversion, working-space storage, LUTs, ICC validation and discovery, and stale-profile
 presentation checks are implemented. A managed GPU wide-gamut transform is implemented for
-canonical `Rgba16Float` textures. Executable ICC evaluation and production engine orchestration remain absent.
+canonical `Rgba16Float` textures. Engine foreground playback now consumes the CPU output transform
+for an explicit display branch; executable ICC evaluation, native GPU display conversion, export,
+and shell integration remain absent.
 
 The crate owns color interpretation, transform policy, and explicit legal-range RGB normalization,
 but it does not own YUV matrix conversion, media decoding, image storage primitives, GPU device
@@ -279,14 +281,14 @@ uses it. This keeps graph integration conceptual rather than implemented. The ar
 `open/docs/STRUCTURE.md` still matters: `superi-graph` must not depend upward on `superi-color`;
 node catalogs or orchestration must consume both from above.
 
-`superi-engine` declares `superi-color` in `open/crates/superi-engine/Cargo.toml`, but there is no
-current `superi_color` use in engine Rust source. Repository-wide code consumers are therefore the
-crate's own contract tests. `docs/phase-0-build-contracts.md` assigns the shell-to-color display
-handoff and every viewer and export transform to this subsystem, but those runtime callers are not
-wired in the current source tree. The output transform is currently consumed by its public
-integration contracts, including the canonical repository color fixture, and is ready for the later
-engine output-node consumer. The fixture contract reads versioned artifacts directly and does not
-add a runtime dependency on the repository fixture generator.
+`superi-engine::playback` is the first runtime source consumer. Its
+`CpuPlaybackDisplayTransform` binds one exact nonterminal scene pipeline and display stage to
+`OutputColorTransform`, executes the transform on a playback-priority worker, and publishes the
+result with `ViewportColorMetadata` through a bounded handoff. Native surface submission, ICC
+evaluation, GPU output conversion, export, and shell display remain unwired. The crate's own public
+integration contracts, including the canonical repository color fixture, remain the direct color
+algorithm proofs. The fixture contract reads versioned artifacts directly and does not add a
+runtime dependency on the repository fixture generator.
 
 `docs/unsafe-ffi.md` consumes the macOS boundary as an audit inventory, and
 `open/crates/superi-color/tests/icc_contract.rs` verifies that this inventory remains present.
@@ -375,8 +377,9 @@ The ten integration suites cover the implemented CPU and presentation-state cont
   transactional catalog state, stale monitor tokens, shell-provided native IDs, audit inventory,
   and macOS discovery when a display server is available.
 
-There is no current end-to-end engine test that imports decoded media, produces a working image, applies project-configured
-looks and ICC processing, renders it to the viewport, and exports it.
+The engine playback contract now constructs decoded provenance, a canonical working image, one CPU
+display transform, and a bounded viewport payload. There is still no end-to-end source import,
+project-configured look, ICC evaluation, native GPU viewport presentation, or export test.
 
 ## Current status and risks
 
@@ -386,20 +389,21 @@ contracts are implemented and extensively tested. The module is not yet a comple
 - Versioned named scene-linear spaces, aliases, roles, and project pinning are implemented. File
   rules, config-persisted looks, displays, views, context variables, and transform graphs do not
   exist in this configuration schema; runtime look and output rules remain separate typed APIs.
-- Output transforms and rule evaluation remain CPU implementations that emit RGBA binary32 artifacts. Executable
-  ICC profile evaluation, project-configured rule persistence, concrete integer or YUV encoding,
-  complete display and delivery GPU output transforms, and a production
-  export or viewport consumer remain absent.
+- Output transforms and rule evaluation remain CPU implementations that emit RGBA binary32
+  artifacts. Engine foreground playback is a concrete display consumer, but executable ICC profile
+  evaluation, project-configured rule persistence, concrete integer or YUV encoding, complete
+  display and delivery GPU output transforms, native viewport submission, and export remain absent.
 - ICC profiles are validated and bound to presentation, but their matrix/TRC or LUT payloads are
   not evaluated. `MonitorAwareViewport` prevents stale profile use but does not color-convert the
   rendered texture by itself.
-- There is no live engine or shell consumer in current Rust source. The implemented color paths are
-  exercised only by `superi-color` tests, including the canonical fixture consumer.
+- Engine foreground playback is a live CPU output-transform consumer. There is no shell, native
+  viewport, export, or public API consumer.
 - `superi-graph` is an unused manifest dependency. No color node catalog or graph-visible transform
   integration exists in this crate.
 - CPU input, gamut, and LUT application allocate replacement sample vectors and iterate pixels on
   the CPU. The managed GPU path currently covers wide-gamut linear transforms only; it has no
-  engine or graph consumer and no cross-transform compiled cache.
+  graph consumer and no cross-transform compiled cache. The engine CPU playback path does not claim
+  GPU output execution.
 - `WorkingImageF32::quantize_f16` directly narrows samples and can encode finite values beyond the
   binary16 maximum as infinity. `InputColorTransform::apply` guards this, but direct callers of
   quantization must own that semantic choice. Canonical working construction also intentionally
@@ -431,8 +435,9 @@ profile absence explicit and retain atomic snapshot publication.
 
 When configuration becomes real, replace the placeholder in
 `open/crates/superi-color/src/config.rs`, add its complete contracts and tests, and update the
-dependency and consumer trace. When an engine output node consumes `OutputColorTransform`, record
-the exact viewport and export integration. Do not describe future OCIO, ICC evaluation, GPU output
+dependency and consumer trace. Keep the existing engine CPU playback consumer and its bounded
+viewport integration explicit, and record native viewport or export integration separately when it
+exists. Do not describe future OCIO, ICC evaluation, GPU output
 conversion, or export orchestration as implemented before the source and
 end-to-end consumers exist. Keep legal-range RGB encoding distinct from later YUV matrix and packed
 integer storage ownership.

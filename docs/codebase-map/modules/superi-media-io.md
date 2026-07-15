@@ -165,7 +165,9 @@ Waveform preview begins after audio decode. The adapter checks one stable audio 
   snapshots, compiles reachable timeline media requests into opened sources and selected decoders,
   consumes `VideoFrame`, `MediaMetadata`, and the complete color pipeline at its CPU-frame-to-GPU
   upload boundary, and adapts complete generated proxy packets or a verified original source behind
-  one `MediaSource`.
+  one `MediaSource`. Foreground playback snapshots exact `VideoFrame` format, timestamp, duration,
+  metadata, color history, and alpha meaning as graph-result provenance without copying decoded
+  pixel storage.
 - `superi-api` has a test-only direct dependency for public capability fixtures; its production path consumes engine-owned projections rather than media-I/O types directly.
 - `superi-concurrency` has a test-only direct dependency used to prove backpressure with decoded frame, audio block, and media metadata payloads.
 - Codec integration tests in `superi-codecs-rs` directly connect `MkvWebmBackend` packets to AV1, VP8/VP9, Opus, and FLAC codec implementations, proving selected cross-crate compositions beyond the media-I/O fake backend tests.
@@ -183,10 +185,12 @@ Waveform preview begins after audio decode. The adapter checks one stable audio 
 the selected source once, maps explicit stream IDs into exact decoder configurations, selects one
 decoder, and retains source and decoder policy evidence with one timeline compilation. Engine proxy
 substitution separately provides a `MediaSource` adapter over generated packets and a verified lazy
-original-source seam. `nodes`, full playback, render, and export orchestration remain incomplete, so
-there is still no scheduled source-to-decode-to-playback or encode-to-mux flow. Repository search
-likewise finds no production consumer for paired selection, source timecode tracks, image-sequence
-traits, or waveform generation.
+original-source seam. Foreground playback consumes caller-prepared decoded provenance and graph
+values, but it does not yet bind prepared sources and decoders to scheduled graph requests. `nodes`,
+transport, native presentation, and export orchestration remain incomplete, so there is still no
+scheduled source-to-decode-to-playback or encode-to-mux flow. Repository search likewise finds no
+production consumer for paired selection, source timecode tracks, image-sequence traits, or
+waveform generation.
 
 ## Invariants and operational boundaries
 

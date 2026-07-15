@@ -303,7 +303,9 @@ timebase, bounds, and signed step into finite ordered frame requests. The engine
 for cancellation, scheduling, graph evaluation, and observing degradation. Its concrete playback
 consumer passes each request through `GraphEvaluationSnapshot::evaluate_with_cache` and the owned
 host adapter, so hits skip evaluator work while misses preserve the same graph result and composite
-identity.
+identity. Foreground playback uses the same owned adapter with a scene-value validator that admits
+only the exact requested timestamp, complete nonterminal color pipeline, and expected alpha
+association before display execution.
 
 Warming planning is also separate from retained graph values and derived media. The planner keeps no
 history or cache contents. For edits, it validates every boundary against one half-open frame range,
@@ -340,10 +342,12 @@ or changes original-source fallback.
   layered persistent reuse, and bounded background jobs. Cache integration contracts remain the
   first executable consumers of that surface and of budgeted GPU cache memory. No production engine
   node catalog, playback, export, or GPU value path invokes the render queue.
-- `superi-engine::playback` consumes prediction plans and `OwnedHostFrameMemoryCache`, then populates
-  exact frames through the role-neutral graph evaluator on bounded playback-priority worker jobs.
+- `superi-engine::playback` consumes prediction plans, `FrameMemoryCache`, and
+  `OwnedHostFrameMemoryCache`. Prediction populates exact frames through the role-neutral graph
+  evaluator, while foreground playback reuses the same complete identity and rejects invalid scene
+  time, color, or alpha before cache admission and display conversion.
 - Engine generation and substitution are the cross-crate derived-media consumers, while playback
-  prefetch is the first retained-value engine consumer.
+  prediction and foreground evaluation are retained-value engine consumers.
 - The warming integration contract is the first concrete consumer of edit and scrub plans. It maps
   exact target frames to ordinary `EvaluationRequest` values and uses the real `LazyEvaluator` plus
   `FrameMemoryCache`. No production editor, playback, engine, API, or UI owner invokes warming yet.
@@ -520,7 +524,9 @@ clearing and relocation, complete-only derived publication and clearing, layered
 cancellation-safe background population, bounded predictive plans, asynchronous host retention,
 and bounded exact-frame edit and scrub targets. Engine contracts add real AV1 packet generation,
 packet-backed transparent proxy substitution with strict fallback, and playback prefetch. They do
-not prove production editor warming, playback-clock integration, muxing, or physical GPU residency.
+not prove production editor warming, muxing, native GPU display residency, or physical hardware.
+The engine foreground playback contract separately proves clock-paced reuse of exact scene values,
+invalid-result rejection without cache poisoning, and later recovery.
 
 ## Current status and risks
 
@@ -542,8 +548,9 @@ AV1 packet artifacts through the proxy module and selects exact or lower-quality
 through the scheduler. Engine playback also consumes prediction and retained graph evaluation.
 Cache itself owns no quality-selection policy. Warming has a real graph-backed retained-value
 consumer test but no production editor, engine, playback, API, or UI caller. No production frame
-pixels are selected or reclaimed by a playback clock, export encoder, or GPU upload through this
-cache path.
+pixels are reclaimed by an export encoder or GPU upload through this cache path. Engine foreground
+playback now selects exact retained CPU scene values under an audio-master clock and converts them
+for a bounded viewport handoff, but native GPU and export cache consumers remain absent.
 
 The main correctness risk is each caller's canonical parameter and render-settings encoding.
 Omitting one output-affecting byte can cause false reuse even though composition and storage are

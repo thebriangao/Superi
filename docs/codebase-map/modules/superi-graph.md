@@ -577,11 +577,13 @@ The shared interactive and headless evaluation flow is:
    animatable parameters, diagnostics, cache identity, and old-revision isolation. Effects supplies
    no production GPU runtime factory, spatial GPU renderer, vector, mask, or text rasterizer,
    production tracking accelerator, native OpenFX transport, propagation solver, timeline transition
-   binder, or rendered application value. No current color, engine, API, CLI, or GPU owner supplies
-   the missing production runtime, so the
+   binder, or production GPU-rendered application value. Engine foreground playback now supplies a
+   caller-prepared scene-value runtime and CPU display consumer, but no API, CLI, or GPU owner closes
+   the missing source-to-render runtime, so the
    canonical `graph.evaluate` stage remains an honest stub even though the generic interactive,
    playback, headless, and cache boundaries are explicit and test-backed. Engine playback now
-   accepts an externally prepared snapshot and runs exact predicted frames through this cached path.
+   accepts an externally prepared snapshot and runs both exact predicted and foreground frames
+   through this cached path.
 
 The schema discovery flow is:
 
@@ -830,11 +832,12 @@ reference model.
   this graph contract. Cache render orchestration composes immutable evaluation snapshots with
   layered reuse and bounded background jobs without moving worker policy into graph.
   `superi-engine::playback` consumes `GraphEvaluationSnapshot` and
-  `EvaluationRequest` to populate predicted frames through the cache-owned host adapter, without
-  adding mode-specific evaluation behavior. Engine resource preparation also retains one timeline
-  compilation and its editable graph beside exact opened media owners, without copying or
-  evaluating graph state. The engine color propagation contract exercises metadata. Effects
-  consumes versioned schemas, schema registration snapshots, typed editable
+  `EvaluationRequest` to populate predicted frames and evaluate exact foreground scene values
+  through the cache-owned host adapter, without adding mode-specific evaluation behavior. The
+  resource preparation path also retains one timeline compilation and its editable graph beside
+  exact opened media owners, without copying or evaluating graph state. The engine color
+  propagation contract exercises metadata. Effects consumes versioned schemas, schema registration
+  snapshots, typed editable
   nodes and values, instance bindings, immutable snapshots, bounded scalar expressions,
   `NodeCompiler`, parameter evaluation, diagnostics, and evaluator seams. It uses those neutral
   contracts for workflow-neutral authoring, exact keyframe, visual composition, spatial composition,
@@ -1181,9 +1184,11 @@ production definition catalog, exact-schema compiler adapter, graph-native trans
 bounded CPU reference factory, but it has no production GPU runtime factory and does not connect
 complete ROI and invalidation plans or timeline-owned transitions to a rendered-frame application
 flow. Engine playback is the first production role consumer of an externally prepared evaluation
-snapshot, and its contract proves exact cached prediction does not change foreground evaluation
-meaning. Engine resource preparation is the first owner to retain timeline's editable compilation
-with exact source and decoder lifetimes, but it does not compile runtime nodes or evaluate output.
+snapshot. Its prediction contract proves cached warming does not change foreground meaning, and its
+foreground contract evaluates one exact scene value through validated retention and CPU display
+conversion.
+Engine resource preparation is the first owner to retain timeline's editable compilation with exact
+source and decoder lifetimes, but it does not compile runtime nodes or evaluate output.
 The versioned graph document codec now preserves and validates that complete editable state,
 migrates the supported legacy envelope, returns canonical upgraded bytes, and retains typed links
 and editable expression source through save and load. Missing-node resolution now derives exact

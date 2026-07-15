@@ -40,8 +40,9 @@ All processing paths enforce the platform-owned audio execution domain, but thei
 remain separate. Graph editing and preparation allocate outside callbacks. Schedule construction and
 transport reanchoring also occur outside callbacks. Resampler and meter construction and scratch
 allocation remain outside callbacks. Device discovery and stream setup remain on control threads. Decoded
-sample binding, automation, plugins, and complete engine orchestration remain separate
-concerns.
+sample binding, automation, plugins, and complete engine audio-graph orchestration remain separate
+concerns. Engine foreground playback now feeds the existing bounded output producer and paces video
+from its paired presentation clock without moving device callback work into the engine.
 
 ## Source inventory
 
@@ -284,12 +285,17 @@ and spectrum values, and performs the two-stage integrated loudness gate without
   `process_into_buffer` path.
 - `superi-engine::audio_mix` owns production timeline edit and clip-mix identity reconciliation.
   No production adapter yet binds decoded media into the schedule or prepared graph.
+- `superi-engine::playback` wraps the existing `OutputProducer`, accepts only whole borrowed sample
+  submissions, and uses the paired `AudioMasterClock` as its authoritative video pacing source with
+  continuity-preserving monotonic fallback. The device callback and `OutputConsumer` remain
+  audio-owned.
 - `superi-timeline` remains upstream through future engine composition rather than a direct Rust
   dependency. Its sample-exact placements, track order, channel layout, and routing intent are
   adapter inputs.
 - `superi-media-io` remains the decoded sample owner and is not a direct dependency. No production
   decoder currently feeds a prepared graph from scheduled slices.
-- The ten public integration contracts are the current real consumers. They process exact adjacent
+- The ten public integration contracts and the engine foreground playback contract are current real
+  consumers. They process exact adjacent
   blocks through clip DSP, dry, auxiliary, submix, and master paths, publish scheduled presentation
   through actual concurrency clocks, exercise bounded device output, and prove clip identity
   inheritance while converting between independent source and device clocks and applying core
@@ -435,10 +441,10 @@ The independent audio graph, channel conversion, bus routing, sample-accurate sc
 device-input and device-output substrates, clip mix processor, prepared sample-rate converter,
 core effects, and graph-native meter are
 substantive and publicly test-backed. Plugin hosting remains a documentation-only placeholder.
-Engine consumes timeline edit outcomes for atomic clip identity reconciliation, but there is no
-decoded-audio fetch, scheduled-slice graph binding, plugin host, platform channel-layout negotiation,
-engine playback composition, or end-to-end
-source-playback-final-mix path. Microphone permission, physical input latency, semantic input
+Engine consumes timeline edit outcomes for atomic clip identity reconciliation and foreground
+playback feeds the bounded device producer while pacing video from the actual audio clock. There is
+still no decoded-audio fetch, scheduled-slice graph binding, plugin host, platform channel-layout
+negotiation, or end-to-end source-playback-final-mix path. Microphone permission, physical input latency, semantic input
 layout, and hot-plug recovery remain platform-owned boundaries.
 
 Multi-input routing is deliberately unity-only to avoid claiming later control semantics. Prepared
@@ -470,10 +476,11 @@ Preserve capture's independent whole-frame rings, atomic callback-boundary contr
 sample continuation through dropped intervals, and channel-index meaning. Bridge monitoring into
 the existing output producer rather than adding a competing playback path.
 
-When engine integration arrives, adapt immutable timeline and decoded audio owners into the
-existing schedule and graph types instead of adding upward dependencies. Keep channel layout and
-routing intent attached through that adapter, publish only completed audible windows, and add a
-real engine consumer before claiming source playback, mixing, or final delivery.
+Extend the existing engine output and clock consumer by adapting immutable timeline and decoded
+audio owners into the existing schedule and graph types instead of adding upward dependencies. Keep
+channel layout and routing intent attached through that adapter, publish only completed audible
+windows, and add a real prepared-graph consumer before claiming source playback, mixing, or final
+delivery.
 
 After source changes, refresh this map's inventory, architecture, invariants, tests, hash, and file
 count from resulting behavior, then update consumer maps and validate the global map closure.

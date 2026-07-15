@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 47615b80116cc115591f318709bfb1aec6387f8bf27a339529b42edaa1687391
-source_files: 137
+source_hash: 6fb9399d13373400d5ad7fc933a152d6419de5c7299caa635c25803579465d55
+source_files: 138
 mapped_at_commit: working-tree
 ---
 
@@ -286,6 +286,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   the neutral shared graph payload, timeline coexistence, schema and authoring contracts, bounded
   CPU reference semantics, research basis, real pixel and immutable graph proof, and intentionally
   separate GPU, engine, UI, persistence, playback, and export integration.
+- `docs/checkpoints/P2.W06.C003.md`: Durable implementation evidence for foreground playback
+  orchestration across decoded provenance, immutable graph evaluation, complete cache identity,
+  CPU display color execution, bounded audio admission, audio-master timing with monotonic fallback,
+  lossless viewport backpressure, degraded scene rejection, and recovery.
 - `docs/checkpoints/P2.W04.C010.md`: Durable implementation evidence for production input-device
   discovery, atomic record arming and monitoring, bounded exact-timestamp capture, and the real
   monitoring bridge into existing output playback.
@@ -902,6 +906,11 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   evidence for a deterministic headless reference path, not production GPU, engine, viewport,
   playback, persistence, or export integration.
 
+- `docs/checkpoints/P2.W06.C003.md` records the single-flight engine playback path through real
+  graph, cache, color, audio, clock, worker, and viewport contracts. Its deterministic integration
+  proof covers normal, degraded, backpressured, and recovered operation, but does not claim source
+  session preparation, transport controls, native GPU presentation, physical hardware, or export.
+
 - The focused effects preset contract verifies the runtime JSON and SHA-256 edges through canonical
   current documents, legacy migration, integrity rejection, and exact graph reload. Crate-wide
   effects and graph suites prove downstream compatibility; dependency and boundary gates remain the
@@ -1073,9 +1082,10 @@ meaning and avoid callback allocation. Public consumers prove both a source-to-g
 dry-submix plus auxiliary-return path, including atomic topology rejection and order-sensitive
 floating-point behavior. Explicit prepared channel nodes now convert canonical mono through 7.1
 layouts using documented speaker rules or caller-selected discrete order without changing sample
-time. Gain, pan, fader, metering, resampling, plugin hosting, decoded-sample
-binding, and engine composition remain absent; production device output and sample-accurate
-scheduling are implemented in the same audio crate but are not yet assembled by the engine.
+time. Plugin hosting and decoded-sample binding remain absent. Production device output and
+sample-accurate scheduling are implemented in the same audio crate, and engine foreground playback
+now feeds its bounded producer and uses its actual presentation clock, but no engine owner yet
+renders prepared timeline audio through routing, effects, resampling, and device delivery.
 
 The effects crate now provides a substantive graph-native authoring SDK. It composes canonical graph
 schemas, editable nodes, deterministic registry snapshots, and snapshot-bound compiler translation,
@@ -1098,8 +1108,10 @@ The largest current risk is cross-document drift:
   identity. Generic typed DAG storage, cycle prevention, schema-bound editable nodes, atomic graph
   mutation transactions, native timeline-to-graph compilation, a shared typed processing payload,
   and a deterministic CPU reference effect catalog now exist. Production GPU effect evaluation,
-  engine orchestration, rendered comparison, color and render integration, muxing, playable output,
-  and all-runtime execution remain future work. The current contract-conformant
+  source and timeline session preparation, native viewport integration, rendered comparison,
+  muxing, playable output, and all-runtime execution remain future work. Foreground engine playback
+  now composes prepared graph, cache, CPU display color, bounded audio, clock, worker, and viewport
+  contracts, but does not close those broader paths. The current contract-conformant
   run must not be reported as product or runtime conformance.
   Boundary samples are not continuous intra-stage peaks, constrained-device thresholds, or
   long-session soak proof.
