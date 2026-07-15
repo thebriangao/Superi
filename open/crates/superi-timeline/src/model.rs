@@ -6,11 +6,12 @@
 //! objects without creating another identity or time model.
 
 use std::collections::{BTreeMap, BTreeSet};
+
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 
 use superi_core::ids::{
-    CaptionId, ClipId, GapId, GeneratorId, MarkerId, MediaId, ProjectId, TimelineId, TrackId,
-    TransitionId,
+    CaptionId, ClipId, GapId, GeneratorId, MarkerId, MediaId, ProjectId, SmartCollectionId,
+    TimelineId, TrackId, TransitionId,
 };
 use superi_core::pixel::{ChannelLayout, ChannelPosition};
 use superi_core::time::{
@@ -22,6 +23,8 @@ use crate::edit_state::{SelectionExpansion, SelectionUpdate, TimelineEditState};
 use crate::markers::{
     Marker, MetadataOwner, SnapMatch, SnapRequest, TimelineAnnotations, TimelineMetadata,
 };
+pub use crate::media::LinkedMediaReference;
+use crate::media::MediaLibrary;
 use crate::retime::{ClipTimeMap, MappedSourceTime, RetimeMode, RetimeResolution};
 
 /// The semantic media class of an editorial track.
@@ -1019,71 +1022,6 @@ impl std::fmt::Display for EditorialObjectId {
             Self::Generator(id) => id.fmt(formatter),
             Self::Caption(id) => id.fmt(formatter),
         }
-    }
-}
-
-/// A media resource linked into an editorial project.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct LinkedMediaReference {
-    id: MediaId,
-    name: String,
-    target: String,
-    available_range: Option<TimeRange>,
-}
-
-impl LinkedMediaReference {
-    /// Creates a linked media reference.
-    pub fn new(
-        id: MediaId,
-        name: impl Into<String>,
-        target: impl Into<String>,
-        available_range: Option<TimeRange>,
-    ) -> Self {
-        Self {
-            id,
-            name: name.into(),
-            target: target.into(),
-            available_range,
-        }
-    }
-
-    /// Returns the stable media identity.
-    #[must_use]
-    pub const fn id(&self) -> MediaId {
-        self.id
-    }
-
-    /// Returns the editor-facing media name.
-    #[must_use]
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    /// Returns the opaque media locator retained by the project.
-    #[must_use]
-    pub fn target(&self) -> &str {
-        &self.target
-    }
-
-    /// Returns the known source availability, when discovery supplied one.
-    #[must_use]
-    pub const fn available_range(&self) -> Option<TimeRange> {
-        self.available_range
-    }
-
-    /// Replaces the editor-facing name inside an unpublished draft.
-    pub fn set_name(&mut self, name: impl Into<String>) {
-        self.name = name.into();
-    }
-
-    /// Replaces the media locator inside an unpublished draft.
-    pub fn set_target(&mut self, target: impl Into<String>) {
-        self.target = target.into();
-    }
-
-    /// Replaces the known available range inside an unpublished draft.
-    pub fn set_available_range(&mut self, available_range: Option<TimeRange>) {
-        self.available_range = available_range;
     }
 }
 
@@ -2319,6 +2257,7 @@ pub struct EditorialProject {
     name: String,
     revision: u64,
     media_references: BTreeMap<MediaId, LinkedMediaReference>,
+    media_library: MediaLibrary,
     timelines: BTreeMap<TimelineId, Timeline>,
 }
 
@@ -2363,6 +2302,7 @@ impl EditorialProject {
             name: name.into(),
             revision: 0,
             media_references: media_by_id,
+            media_library: MediaLibrary::new(),
             timelines: timelines_by_id,
         };
         project.validate()?;
@@ -2396,6 +2336,18 @@ impl EditorialProject {
     /// Iterates linked media in stable identity order.
     pub fn media_references(&self) -> impl ExactSizeIterator<Item = &LinkedMediaReference> {
         self.media_references.values()
+    }
+
+    /// Returns manual organization and directly editable saved media queries.
+    #[must_use]
+    pub const fn media_library(&self) -> &MediaLibrary {
+        &self.media_library
+    }
+
+    /// Evaluates one smart collection over current linked media state.
+    pub fn smart_collection_members(&self, id: SmartCollectionId) -> Result<Vec<MediaId>> {
+        self.media_library
+            .matching_media(id, &self.media_references)
     }
 
     /// Looks up a timeline by stable identity.
@@ -2488,6 +2440,7 @@ impl EditorialProject {
         let mut draft = ProjectDraft {
             name: self.name.clone(),
             media_references: self.media_references.clone(),
+            media_library: self.media_library.clone(),
             timelines: self.timelines.clone(),
         };
         edit(&mut draft)?;
@@ -2504,6 +2457,7 @@ impl EditorialProject {
             name: draft.name,
             revision,
             media_references: draft.media_references,
+            media_library: draft.media_library,
             timelines: draft.timelines,
         };
         candidate.reconcile_timeline_state();
@@ -2522,9 +2476,9 @@ impl EditorialProject {
     fn validate(&self) -> Result<()> {
         require_text("validate_project", "project name", &self.name)?;
         for media in self.media_references.values() {
-            require_text("validate_media", "media name", media.name())?;
-            require_text("validate_media", "media target", media.target())?;
+            media.validate()?;
         }
+        self.media_library.validate(&self.media_references)?;
 
         let mut track_ids = BTreeSet::new();
         let mut object_ids = BTreeSet::new();
@@ -2681,6 +2635,7 @@ impl EditorialProject {
 pub struct ProjectDraft {
     name: String,
     media_references: BTreeMap<MediaId, LinkedMediaReference>,
+    media_library: MediaLibrary,
     timelines: BTreeMap<TimelineId, Timeline>,
 }
 
@@ -2713,6 +2668,17 @@ impl ProjectDraft {
     /// Removes linked media. Commit fails if a clip still references it.
     pub fn remove_media_reference(&mut self, id: MediaId) -> Option<LinkedMediaReference> {
         self.media_references.remove(&id)
+    }
+
+    /// Returns manual media organization inside this unpublished draft.
+    #[must_use]
+    pub const fn media_library(&self) -> &MediaLibrary {
+        &self.media_library
+    }
+
+    /// Mutably exposes manual organization and saved queries in this draft.
+    pub fn media_library_mut(&mut self) -> &mut MediaLibrary {
+        &mut self.media_library
     }
 
     /// Mutably looks up a timeline.

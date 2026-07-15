@@ -30,6 +30,10 @@ pub enum IdentifierKind {
     Project,
     /// An imported or generated media resource.
     Media,
+    /// A manually organized media container.
+    Bin,
+    /// A saved dynamic media query.
+    SmartCollection,
     /// An editorial track.
     Track,
     /// An editorial clip.
@@ -71,6 +75,8 @@ impl IdentifierKind {
     pub const ALL: &'static [Self] = &[
         Self::Project,
         Self::Media,
+        Self::Bin,
+        Self::SmartCollection,
         Self::Track,
         Self::Clip,
         Self::Timeline,
@@ -96,6 +102,8 @@ impl IdentifierKind {
         match self {
             Self::Project => "project",
             Self::Media => "media",
+            Self::Bin => "bin",
+            Self::SmartCollection => "smart_collection",
             Self::Track => "track",
             Self::Clip => "clip",
             Self::Timeline => "timeline",
@@ -122,6 +130,8 @@ impl IdentifierKind {
         match code {
             "project" => Some(Self::Project),
             "media" => Some(Self::Media),
+            "bin" => Some(Self::Bin),
+            "smart_collection" => Some(Self::SmartCollection),
             "track" => Some(Self::Track),
             "clip" => Some(Self::Clip),
             "timeline" => Some(Self::Timeline),
@@ -347,6 +357,12 @@ macro_rules! define_identifier {
 
 define_identifier!(ProjectId, Project, "A strongly typed project identifier.");
 define_identifier!(MediaId, Media, "A strongly typed media identifier.");
+define_identifier!(BinId, Bin, "A strongly typed media bin identifier.");
+define_identifier!(
+    SmartCollectionId,
+    SmartCollection,
+    "A strongly typed smart collection identifier."
+);
 define_identifier!(
     TrackId,
     Track,

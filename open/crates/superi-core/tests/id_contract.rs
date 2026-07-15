@@ -5,9 +5,9 @@ use std::hash::Hash;
 use std::str::FromStr;
 
 use superi_core::ids::{
-    CacheId, CaptionId, ClipId, DeviceId, EdgeId, GapId, GeneratorId, GraphId, IdentifierKind,
-    JobId, MarkerId, MediaId, NodeId, ParameterId, ParseIdentifierError, PortId, ProjectId,
-    ResourceId, TimelineId, TrackId, TransitionId, TypedId,
+    BinId, CacheId, CaptionId, ClipId, DeviceId, EdgeId, GapId, GeneratorId, GraphId,
+    IdentifierKind, JobId, MarkerId, MediaId, NodeId, ParameterId, ParseIdentifierError, PortId,
+    ProjectId, ResourceId, SmartCollectionId, TimelineId, TrackId, TransitionId, TypedId,
 };
 
 const RAW: u128 = 0x0011_2233_4455_6677_8899_aabb_ccdd_eeff;
@@ -38,6 +38,8 @@ where
 fn concrete_types_are_distinct_and_share_one_contract() {
     assert_common_traits::<ProjectId>();
     assert_common_traits::<MediaId>();
+    assert_common_traits::<BinId>();
+    assert_common_traits::<SmartCollectionId>();
     assert_common_traits::<TrackId>();
     assert_common_traits::<ClipId>();
     assert_common_traits::<TimelineId>();
@@ -62,12 +64,15 @@ fn concrete_types_are_distinct_and_share_one_contract() {
     assert_ne!(type_name::<GraphId>(), type_name::<NodeId>());
     assert_ne!(type_name::<PortId>(), type_name::<EdgeId>());
     assert_ne!(type_name::<ResourceId>(), type_name::<MediaId>());
+    assert_ne!(type_name::<BinId>(), type_name::<SmartCollectionId>());
     assert_ne!(type_name::<TimelineId>(), type_name::<ProjectId>());
     assert_ne!(type_name::<GapId>(), type_name::<ClipId>());
     assert_ne!(type_name::<GeneratorId>(), type_name::<CaptionId>());
 
     assert_contract::<ProjectId>(IdentifierKind::Project, "ProjectId");
     assert_contract::<MediaId>(IdentifierKind::Media, "MediaId");
+    assert_contract::<BinId>(IdentifierKind::Bin, "BinId");
+    assert_contract::<SmartCollectionId>(IdentifierKind::SmartCollection, "SmartCollectionId");
     assert_contract::<TrackId>(IdentifierKind::Track, "TrackId");
     assert_contract::<ClipId>(IdentifierKind::Clip, "ClipId");
     assert_contract::<TimelineId>(IdentifierKind::Timeline, "TimelineId");
@@ -92,6 +97,8 @@ fn kind_codes_are_stable_and_discoverable() {
     let expected = [
         "project",
         "media",
+        "bin",
+        "smart_collection",
         "track",
         "clip",
         "timeline",

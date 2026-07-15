@@ -14,9 +14,9 @@ use superi_core::diagnostics::{
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability};
 use superi_core::geometry::{AspectRatio, Matrix3, PixelBounds, Point2, Rect, Vector2};
 use superi_core::ids::{
-    CacheId, CaptionId, ClipId, DeviceId, EdgeId, GapId, GeneratorId, GraphId, IdentifierKind,
-    JobId, MarkerId, MediaId, NodeId, ParameterId, PortId, ProjectId, ResourceId, TimelineId,
-    TrackId, TransitionId,
+    BinId, CacheId, CaptionId, ClipId, DeviceId, EdgeId, GapId, GeneratorId, GraphId,
+    IdentifierKind, JobId, MarkerId, MediaId, NodeId, ParameterId, PortId, ProjectId, ResourceId,
+    SmartCollectionId, TimelineId, TrackId, TransitionId,
 };
 use superi_core::pixel::{
     AlphaMode, ChannelLayout, ChannelPosition, ChromaSubsampling, PixelFormat, PixelModel,
@@ -209,6 +209,8 @@ fn permanent_codes_and_identifier_text_are_the_wire_identity() {
     }
     assert_id!(ProjectId, "project");
     assert_id!(MediaId, "media");
+    assert_id!(BinId, "bin");
+    assert_id!(SmartCollectionId, "smart_collection");
     assert_id!(TrackId, "track");
     assert_id!(ClipId, "clip");
     assert_id!(TimelineId, "timeline");

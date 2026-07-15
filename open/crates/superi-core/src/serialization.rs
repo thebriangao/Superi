@@ -27,9 +27,9 @@ use crate::diagnostics::{
 use crate::error::{ErrorCategory, ErrorContext, Recoverability};
 use crate::geometry::{AspectRatio, Matrix3, PixelBounds, Point2, Rect, Vector2};
 use crate::ids::{
-    CacheId, CaptionId, ClipId, DeviceId, EdgeId, GapId, GeneratorId, GraphId, IdentifierKind,
-    JobId, MarkerId, MediaId, NodeId, ParameterId, PortId, ProjectId, ResourceId, TimelineId,
-    TrackId, TransitionId,
+    BinId, CacheId, CaptionId, ClipId, DeviceId, EdgeId, GapId, GeneratorId, GraphId,
+    IdentifierKind, JobId, MarkerId, MediaId, NodeId, ParameterId, PortId, ProjectId, ResourceId,
+    SmartCollectionId, TimelineId, TrackId, TransitionId,
 };
 use crate::pixel::{
     AlphaMode, ChannelLayout, ChannelPosition, ChromaSubsampling, PixelFormat, PixelModel,
@@ -187,6 +187,8 @@ impl_string_enum!(
     {
         IdentifierKind::Project => "project",
         IdentifierKind::Media => "media",
+        IdentifierKind::Bin => "bin",
+        IdentifierKind::SmartCollection => "smart_collection",
         IdentifierKind::Track => "track",
         IdentifierKind::Clip => "clip",
         IdentifierKind::Timeline => "timeline",
@@ -432,6 +434,8 @@ macro_rules! impl_typed_id {
 impl_typed_id!(
     ProjectId,
     MediaId,
+    BinId,
+    SmartCollectionId,
     TrackId,
     ClipId,
     TimelineId,

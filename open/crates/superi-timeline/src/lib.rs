@@ -10,6 +10,7 @@ pub mod edit_ops;
 pub mod edit_state;
 pub mod ids;
 pub mod markers;
+pub mod media;
 pub mod model;
 pub mod multicam;
 pub mod nested;

@@ -2,8 +2,8 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: dc29966adac23b170c288ea66db403c56bb171f4e4283e248202d906be0a9496
-source_files: 22
+source_hash: 3e118671d3a769c7f1c3d4db6ed0289bcbe54d529b521a3b78d84dc6e1dd314f
+source_files: 24
 mapped_at_commit: working-tree
 ---
 
@@ -29,6 +29,12 @@ Clip-owned exact time maps add rational speed changes, reverse playback, freeze 
 continuous piecewise-linear time remapping without weakening nominal range invariants. Immutable
 segment storage and binary-search record-to-source queries expose exact, held, explicitly rounded,
 known, unknown, and unavailable transport behavior directly.
+
+Project media state includes stable manual bins and sub-bins, deterministic metadata, saved smart
+collections evaluated from current media state, and explicit online, missing, unverified, or
+fingerprint-mismatch relink evidence. The media library shares the project draft transaction, so
+organization and relink changes preserve stable `MediaId` source links, exact timing, synchronization,
+nested relationships, and subsequent direct edits.
 
 Nested-sequence operations place an existing child timeline or create a new compound timeline and
 its parent clip in the same project revision. They reuse foundational insert, overwrite, append,
@@ -63,6 +69,9 @@ than a production reader or writer.
   ownership, visible labels, flags, notes, recursively nested ordered metadata, owner-relative range
   resolution, dangling-owner reconciliation, persistent snapping state, exact candidate projection,
   target filters, exclusions, and deterministic tie resolution.
+- `open/crates/superi-timeline/src/media.rs`: Implements metadata-bearing linked media, persistent
+  relink evidence, stable manual bins and parent paths, direct membership movement, saved smart
+  collection predicates, deterministic query evaluation, and complete media-library validation.
 - `open/crates/superi-timeline/src/model.rs`: Implements four track kinds, track-specific timing and
   media semantics, exact clip range maps, clip-owned time maps, linked range and playback
   availability context, every foundational editorial object, ordered tracks, timelines, annotation
@@ -95,6 +104,10 @@ than a production reader or writer.
   track, and object ownership, visible semantics, nested metadata, direct mutation, owner-relative
   resolution, preserved overscan, structural-edit survival, dangling-owner cleanup, exact snapping,
   filters, exclusions, persistent disablement, stable ties, and atomic rollback.
+- `open/crates/superi-timeline/tests/media_library_contract.rs`: Proves bins, sub-bins, stable paths,
+  direct membership, cycle and duplicate rejection, metadata-driven smart collections, missing,
+  unverified, mismatched, and accepted relinks, atomic rollback, stable media identity, and
+  preservation of retime, links, groups, sync state, nesting, and subsequent direct edits.
 - `open/crates/superi-timeline/tests/advanced_edit_ops_contract.rs`: Proves ripple, roll, slip,
   slide, razor, trim, extend, all four three-point forms, exact four-point placement, explicit
   fit-to-fill rejection, sync-locked companion tracks, relationship inheritance, cross-rate
@@ -113,9 +126,9 @@ than a production reader or writer.
 
 ## Public surface
 
-The `ids` module re-exports `ProjectId`, `MediaId`, `TimelineId`, `TrackId`, `ClipId`, `GapId`,
-`TransitionId`, `GeneratorId`, `CaptionId`, and `MarkerId`. These are the same sealed core identifier
-types used by every other subsystem.
+The `ids` module re-exports `ProjectId`, `MediaId`, `BinId`, `SmartCollectionId`, `TimelineId`,
+`TrackId`, `ClipId`, `GapId`, `TransitionId`, `GeneratorId`, `CaptionId`, and `MarkerId`. These are
+the same sealed core identifier types used by every other subsystem.
 
 The track semantics surface includes:
 
@@ -134,8 +147,15 @@ The track semantics surface includes:
 
 The editorial state surface includes:
 
-- `LinkedMediaReference`, including stable media identity, display name, target locator, and an
-  optional available source range.
+- `LinkedMediaReference`, including stable media identity, display name, target locator, optional
+  available source range, deterministic `MediaMetadata`, and persistent `MediaRelinkState`.
+- `RelinkStatus` and `RelinkDecision` expose online, missing, unverified, and rejected mismatch
+  behavior without replacing the active target or stable identity on a failed content check.
+- `MediaBin` and `MediaLibrary` expose stable hierarchical organization, root and child iteration,
+  root-to-leaf paths, direct membership, and atomic full-library validation.
+- `SmartCollection`, `SmartCollectionMatch`, and `MediaPredicate` expose saved all or any queries
+  over media names, targets, metadata keys and values, and relink status. Results are derived in
+  stable `MediaId` order rather than stored as stale membership.
 - `ClipSource`, which links a clip to either media or another timeline.
 - `ClipRangeMap` for nonempty equal-duration source and record ranges plus checked exact point and
   subrange translation in both directions.
@@ -242,7 +262,8 @@ source samples with checked exact conversion, so split and trim operations canno
 Editorial construction and validation then proceed as follows:
 
 1. Callers construct media references and timeline objects using canonical identities, exact
-   `TimeRange` values, and `TrackSemantics` embedded in each track.
+   `TimeRange` values, and `TrackSemantics` embedded in each track. Media references may retain a
+   verified content fingerprint and deterministic metadata beside their replaceable locator.
 2. `ClipRangeMap::new` requires nonempty source and record ranges with equal physical rational
    duration. Exact point and subrange mapping uses checked core arithmetic and never rounds.
 3. `EditorialProject::new` indexes media and timelines, rejects duplicate identities, and validates
@@ -267,8 +288,10 @@ Editorial construction and validation then proceed as follows:
 
 Direct edits use a copy-validate-publish transaction. `EditorialProject::edit` checks the expected
 revision and clones current state into `ProjectDraft`. The closure mutates fields or inserts and
-removes linked media and timelines. The entire candidate is revalidated and its revision advances
-only after the closure succeeds; every failure discards the draft.
+removes linked media and timelines, reorganizes bins, edits saved queries, or records relink
+evidence. The entire candidate is revalidated and its revision advances only after the closure
+succeeds; every failure discards the draft. Smart collection results are evaluated on demand from
+the published media map and current relink state.
 
 Each `Timeline` constructs one edit state beside its ordered tracks. New tracks begin untargeted
 with sync lock enabled, linked selection begins enabled, and selection and relationships begin
@@ -366,9 +389,15 @@ assertions. It does not enter the native model yet.
 
 ## Invariants and operational boundaries
 
-- Project, media, timeline, track, clip, gap, transition, generator, caption, and marker identities
-  are permanent typed domains. Track, editorial object, and marker identities are unique across one
-  project.
+- Project, media, bin, smart collection, timeline, track, clip, gap, transition, generator,
+  caption, and marker identities are permanent typed domains. Track, editorial object, and marker
+  identities are unique across one project.
+- Manual bin parents must exist and remain acyclic. One linked media identity may belong to at most
+  one manual bin, and every member must resolve in the same project. Smart collection membership is
+  never persisted and always follows current metadata and relink state in stable identity order.
+- A rejected relink retains the active locator and `MediaId`, plus the rejected locator and distinct
+  expected and observed fingerprints. Unverified and missing states are explicit and never rewrite
+  clip source relationships.
 - Marker ranges use their explicit owner's exact clock and never start before owner zero. Timeline
   and track markers use record coordinates. Object markers remain relative to a stable timed object,
   preserve overscan across trims, resolve through current record placement, and disappear only when
@@ -501,13 +530,20 @@ continuous seams, complete coverage, half-open bounds, explicit rounding, point 
 atomic clip binding, identity resize compatibility, link retention, and retime-preserving split and
 record-shift behavior through a real insert operation.
 
+Four media-library tests prove stable bin and sub-bin paths, direct media movement, deterministic
+metadata smart collections, atomic cycle, duplicate membership, and missing-media rejection,
+explicit missing and unverified state, content-mismatch evidence, accepted relinks, preserved
+stable identity, and unchanged exact retime, link, group, synchronization, and nested sequence
+state through a subsequent real edit batch.
+
 Workspace tests, warnings-denied Clippy, formatting, dependency direction, the offline boundary
 scan, and codebase-map validation are required delivery gates.
 
 ## Current status and risks
 
-The foundational project model, rational range mapping, linked availability context, typed track
-semantics, authoritative timeline edit state, markers, deterministic metadata, exact snapping,
+The foundational project model, rational range mapping, linked availability context, manual media
+organization, saved smart collections, explicit relink state, typed track semantics, authoritative
+timeline edit state, markers, deterministic metadata, exact snapping,
 exact clip retiming, six primary operations, nine advanced edit families, nested placement,
 compound creation, shared child editing, and recursive inspection are substantive and test-backed.
 Production OTIO reading and writing, graph compilation, fit-to-fill, grouped-source compound
@@ -531,7 +567,8 @@ narrow metadata seam and does not make timeline-to-graph compilation operational
 
 ## Maintenance notes
 
-Treat track clocks and semantics, object identity, continuity, physical-time equality, source-aware
+Treat track clocks and semantics, object identity, media identity, bin hierarchy, smart query
+derivation, relink evidence, continuity, physical-time equality, source-aware
 and retime-aware fragmentation, exact time-map seams, explicit transport resolution, explicit
 transition invalidation, result reporting, marker ownership, exact snapping, metadata ordering,
 source-link resolution, selection expansion, track intent, clip relationship partitions,

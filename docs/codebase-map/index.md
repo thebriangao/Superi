@@ -31,7 +31,7 @@ against raw source before changing code.
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; production source registration and muxing absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
-| `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Native editorial project state, rational range maps and availability, exact clip retiming, typed tracks, authoritative edit intent, markers, deterministic metadata, exact snapping, clip relationships, atomic foundational, advanced, and nested operations, color metadata propagation, and staged OTIO and graph compilation | Foundational model, exact range and retime resolution, speed changes, reverse, freeze, piecewise time remapping, track clocks, linked sample reshaping, selection, targeting, synchronization, clip relationships, three-class marker ownership, metadata, snapping, six primary operations, nine advanced edit families, nested placement, compound creation, shared child editing, recursive inspection, and the graph color metadata seam are test-backed; interchange, fit-to-fill, grouped-source compound synthesis, compilation, persistence, and runtime integration absent |
+| `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Native editorial project state, media bins and saved queries, metadata and relink state, rational range maps and availability, exact clip retiming, typed tracks, authoritative edit intent, markers, exact snapping, clip relationships, atomic foundational, advanced, and nested operations, color metadata propagation, and staged OTIO and graph compilation | Foundational model, bins, sub-bins, metadata smart collections, explicit relink evidence, exact range and retime resolution, speed changes, reverse, freeze, piecewise time remapping, track clocks, linked sample reshaping, selection, targeting, synchronization, clip relationships, three-class marker ownership, snapping, six primary operations, nine advanced edit families, nested placement, compound creation, shared child editing, recursive inspection, and the graph color metadata seam are test-backed; interchange, fit-to-fill, grouped-source compound synthesis, compilation, persistence, and runtime integration absent |
 | `tool-superi-dependency-check` | [module map](modules/tool-superi-dependency-check.md) | `open/tools/superi-dependency-check` | Offline executable policy for the open runtime dependency graph | Implemented exact runtime, build, dev, and new-crate checks |
 | `tool-superi-boundary-tool` | [module map](modules/tool-superi-boundary-tool.md) | `open/tools/superi-boundary-tool` | Offline scanner for network-client and open-to-closed policy | Implemented library, CLI, workspace gate, and hosted-build command |
 | `tool-superi-bench` | [module map](modules/tool-superi-bench.md) | `open/tools/superi-bench` | Stable benchmark harnesses and reproducible stage reporting | Implemented seven-stage runner with real graph evaluation and explicit gaps |
@@ -541,6 +541,9 @@ The following constraints cross multiple modules and should be preserved togethe
   order, error categories, recoverability, and primitive serialization are owned by `superi-core`.
 - Project identity is separate from replaceable media location. Content fingerprints protect
   relinking, while metadata and source timing remain attached to the artifact that produced them.
+- Timeline media organization retains stable bin and smart collection identities. Manual bin
+  membership and dynamic query results never replace clip `MediaId` links, and mismatched relink
+  candidates retain evidence without replacing the active target.
 - Deterministic ordering is explicit. Stable backend IDs break selection ties; ordered maps and
   sets stabilize public snapshots, fixtures, diagnostics, and validator output.
 - Editable graph state has one optimistic revision and immutable shared snapshots. A nonempty
@@ -731,6 +734,10 @@ overscan remains editable, and nested availability derives from the linked timel
 require one explicit decision per source channel, sample placements retain typed clip links through
 split and trim, and continuity reports expose every record gap, overlap, source jump, or linked-clip
 change. Tracks embed those semantics in the validated native timeline container. Timeline-local
+project state also owns stable manual bins and sub-bins, saved metadata and relink queries, and
+explicit online, missing, unverified, or fingerprint-mismatch evidence. Those values publish in the
+same atomic project revision without replacing clip media identity or flattening nested sequences.
+Timeline-local
 edit state adds exact or relationship-expanded selection, stable per-track target and sync-lock
 intent, canonical clip links and groups, direct member control, deterministic target and sync
 projection, and structural reconciliation inside the same project transaction. Atomic foundational
