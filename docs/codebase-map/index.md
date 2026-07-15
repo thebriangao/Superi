@@ -37,7 +37,7 @@ against raw source before changing code.
 | `tool-superi-bench` | [module map](modules/tool-superi-bench.md) | `open/tools/superi-bench` | Stable benchmark harnesses and reproducible stage reporting | Implemented seven-stage runner with real graph evaluation and explicit gaps |
 | `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline fixture validation, generation, and typed golden verification | Implemented validation library, six generators, seven-command CLI, four golden harnesses, and focused contracts |
 | `tool-superi-test-report` | [module map](modules/tool-superi-test-report.md) | `open/tools/superi-test-report` | Offline structured platform-lane evidence generator | Implemented strict schema, deterministic findings, collision-safe CLI, and focused contracts |
-| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: hosted slice baseline, portable expected contract, and canonical source delivered; runtime slice absent |
+| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: deterministic checkpoint workflow and contract slice delivered; runtime slice absent |
 
 ## Ownership and repository boundaries
 
@@ -51,6 +51,15 @@ ignored files do not contribute to module hashes.
 `AGENTS.md` is the repository's operational law but is intentionally ignored by Git and therefore
 outside the generated workspace inventory and hash. It must be read separately for every task even
 when all maps validate. `.worktreeinclude` copies it into Codex-managed worktrees.
+
+Checkpoint work reads this global index plus every directly affected, caller, consumer, contract,
+and runtime-path map in full. Another map may be omitted only through the recorded deeper raw-code
+substitution defined by root law; directly affected and contract-path maps remain mandatory.
+Planning and execution write only `plans/<id>/planning.md` and `plans/<id>/execution.md`, then the
+changed-path verifier establishes the deterministic local gate floor. Hosted CI status is not a
+general checkpoint completion gate unless the checkpoint explicitly owns hosted CI behavior.
+Multi-checkpoint dispatch defaults to three active worktrees but follows any explicit positive
+concurrency value from the user.
 
 The open runtime and tool workspace lives under `open/`. Current Cargo membership is 19 runtime
 crates plus `superi-fixture-tool`, `superi-dependency-check`, `superi-boundary-tool`, and
@@ -607,6 +616,13 @@ application tests. `superi-core`, `superi-graph`, `superi-image`, `superi-media-
 engine and API slices all have focused contracts around their public values and lifecycles.
 Container-to-codec tests and engine capability tests provide selected cross-crate composition.
 
+Repository checkpoint execution also has a deterministic local selector at
+`.agents/skills/superi-execution/scripts/verify_checkpoint.py`. Given a recorded base revision, it
+collects committed, staged, unstaged, and untracked changes, validates changed Python and JSON,
+always validates codebase maps, and conditionally runs applicable workflow, dependency, Rust,
+fixture, codec-feature, slice, shell, and frontend gates. `--full` selects the complete supported
+local set, while checkpoint-specific proof remains mandatory beyond this floor.
+
 Test source documents an intended or previously exercised contract, but its presence is not a fresh
 passing result. Individual module maps state whether synthesis ran a suite. At mapping time, the
 core and fixture-tool maps record fresh successful runs; several other maps explicitly state that
@@ -850,9 +866,10 @@ real consumer and proportionate verification.
 1. Start with this index to identify the owning module and its direct producers and consumers.
 2. Read the owning module map from first line through EOF. For a cross-module change, also read each
    affected producer, consumer, and public contract map in full.
-3. Use the module's `Source inventory` to locate complete raw-file ownership. Use search only for
-   discovery; it does not replace reading selected source, manifests, tests, schemas, fixtures, and
-   governing documents through EOF.
+3. Use the module's `Source inventory` to locate complete raw-file ownership. An optional map may be
+   omitted only when root law permits it and the module manifest, public entry points, cross-module
+   interfaces, and relevant implementation and tests are read through EOF and recorded instead.
+   Search is only for discovery and never replaces the required complete reads.
 4. Follow `Public surface` for supported entry points, `Architecture and data flow` for actual
    execution, `Dependencies and consumers` for direction, `Invariants and operational boundaries`
    for constraints, and `Current status and risks` for incomplete behavior.

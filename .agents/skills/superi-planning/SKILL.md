@@ -14,19 +14,23 @@ working, testable behavior through Superi's real architecture.
 
 1. **Pin the assignment.** Read the exact checkpoint and surrounding workstream from the master
    checklist. Extract the required behavior, dependencies, exclusions, and completion evidence.
-2. **Claim visibly.** Follow the root `AGENTS.md` claim lifecycle before expensive research. Place
-   the timestamped claim paragraph directly below the checkpoint, apply the exact configured font,
-   size, and color, and verify it through a fresh document readback before touching the repository.
+2. **Claim visibly.** Follow the root `AGENTS.md` claim lifecycle before expensive research. On the
+   descriptions tab, replace the ID-only paragraph or resolved blocker suffix with the exact
+   timestamped `CLAIMED |` suffix. Preserve the bold ID and format only the suffix as black, nonbold,
+   nonitalic, unhighlighted Urbanist at 11 pt. Change no main-tab text or highlight, then verify both
+   tabs through fresh readback before touching the repository.
 3. **Load the codebase maps.** Run the map validator, refresh any missing or stale relevant map with
-   `superi-mapping`, then read the global index and every module map in full. Use the maps to define
-   affected ownership, dependency direction, public boundaries, runtime flow, current status, and
-   likely raw-file scope. Never use a stale map or a search result as source evidence.
+   `superi-mapping`, then read the global index, every directly affected map, and every caller,
+   consumer, contract, and runtime-path map in full. Omit another map only through the root
+   `AGENTS.md` raw-code substitution rule. Use the resulting evidence to define affected ownership,
+   dependency direction, public boundaries, runtime flow, current status, and likely raw-file scope.
+   Never use a stale map or a search result as source evidence.
 4. **Read the implementation path.** Read every raw file that may change from first line through EOF,
    plus all relevant callers, consumers, public interfaces, manifests, tests, schemas, fixtures, and
    governing docs needed to trace and prove the checkpoint. Apply the same rule to every directly
    changed module. Chunk only when every chunk is consumed, and continue after tool truncation until
-   EOF. Record the complete map inventory, selected raw-file inventory, traced consumer path, recent
-   history, and material findings as planning evidence.
+   EOF. Record the complete map inventory, every omitted-map substitution, selected raw-file
+   inventory, traced consumer path, recent history, and material findings as planning evidence.
 5. **Research uncertainty.** Research the topic whenever specifications, standards, licenses,
    security guidance, platform behavior, algorithms, dependencies, or current best practice matter.
    Prefer primary sources and current official documentation. Cross-check consequential claims,
@@ -35,27 +39,30 @@ working, testable behavior through Superi's real architecture.
    constraints, and tests. Include feature configurations, migrations, concurrency, GPU, codec,
    offline, and open or closed boundary effects when applicable.
 7. **Sequence the work.** Order small implementation slices so each has a failing proof first, a
-   minimal implementation, and focused verification. End with the full relevant suite, real workflow
-   validation, delivery, and checklist readback required by root `AGENTS.md`.
+   minimal implementation, and focused verification. End with checkpoint-specific proof, the
+   deterministic verifier from root `AGENTS.md`, any applicable local workflow-contract validation,
+   delivery, and checklist readback.
 
 ## Internal output
 
-Keep the plan concise and internal. Structure it as:
+Write the concise internal plan to `plans/<checkpoint-id>/planning.md`. This file is mandatory and
+is the only planning document permitted for the checkpoint. Structure it as:
 
 ```text
 outcome: one measurable sentence
-reading record: every map plus all selected raw files read through EOF
+reading record: global index, required maps, omitted-map substitutions, and selected raw files
 evidence: repository findings and research conclusions
 change map: ordered files, interfaces, and implementation slices
-proof: focused failures, success tests, full suites, and real workflow
+proof: focused failures, success tests, applicable local suites, and real consumer
 risks: only live risks with a concrete mitigation or blocking condition
 ```
 
 Every checkpoint requirement must map to an implementation slice and proof. The plan is invalid
-until the map validator passes, every codebase map was read in full, and every selected raw file was
-read through EOF and recorded. Leave no placeholders, unresolved design choices, or invented
-architecture. Do not create a plan document or ask for routine approval unless the checkpoint
-explicitly requires one.
+until the map validator passes, every mandatory map was read in full, every omitted map has recorded
+raw-code substitutes, and every selected raw file was read through EOF and recorded. Leave no
+placeholders, unresolved design choices, or invented architecture. Do not create any planning
+document other than the mandatory `planning.md`, and do not ask for routine approval unless the
+checkpoint explicitly requires it.
 
 If legal approval, credentials, external authority, or an absent architectural decision blocks safe
 work, follow the root `AGENTS.md` blocked path. Otherwise invoke `superi-execution` immediately and

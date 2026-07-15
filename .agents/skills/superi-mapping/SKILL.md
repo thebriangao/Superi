@@ -28,15 +28,23 @@ The `workspace` module owns repository files outside `open/crates/*` and `open/t
 output, dependency caches, ignored files, plan files, and the generated map tree are excluded.
 Tracked binary artifacts remain in the inventory, but their bytes are not treated as readable prose.
 
+For ordinary checkpoint work, root `AGENTS.md` controls map selection. Read the global index and the
+complete affected caller, consumer, contract, and runtime-path map closure. Omit another map only by
+recording the deeper raw-code substitution required there. Never substitute raw code for a directly
+affected or contract-path map.
+
 ## Create all maps
 
-The coordinator performs these steps:
+This coordinator workflow applies only when the user explicitly assigns a full-map creation or
+full-map rebuild outside a normal single-checkpoint worker. A standard checkpoint worker must refresh
+its affected maps itself and must not delegate. The explicit full-map coordinator performs these
+steps:
 
 1. Synchronize the repository safely, run `inventory`, and create one mapping assignment per module.
 2. Partition large modules with `shards`. A shard contains whole files only and may exceed the line
    target when one file is larger than the target.
-3. Run no more than three reader agents concurrently. Assign distinct files and distinct shard note
-   paths so readers never write over one another.
+3. Use the concurrency value requested by the user, or the root default when none was stated. Assign
+   distinct files and distinct shard note paths so readers never write over one another.
 4. Require each reader to read every assigned text file from its first line through EOF. Reading in
    chunks is allowed only when every chunk is consumed. Search may locate symbols, but search output
    is never a substitute for the full read.
@@ -111,4 +119,3 @@ Map maintenance is part of implementation, not a later documentation task:
 
 No source-changing commit is complete while an affected map is stale. Do not update only the hash;
 the prose and inventory must truthfully describe the resulting code.
-
