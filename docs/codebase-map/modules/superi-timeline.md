@@ -2,8 +2,8 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: 03d7bc55ba651427a6cb5f19e1fb8bde5cd6e1e09bc53e976d8e53ce5d9461a7
-source_files: 15
+source_hash: a1de5c2be2b5413eabc6753cb5b50f4e3d8667290231267311e3440e76cf70c2
+source_files: 16
 mapped_at_commit: working-tree
 ---
 
@@ -14,28 +14,32 @@ semantics. It represents linked media, timelines, ordered tracks, clips, explici
 transitions, generators, captions, and nested timeline sources with core-owned identities and
 exact rational timing. It also owns authoritative timeline selection, track targeting, sync locks,
 linked selection, and clip grouping. Video, audio, caption, and timed-data tracks carry their
-explicit clock and media behavior. Whole-project validation and revision-checked atomic drafts keep
-linked objects, user intent, timing, synchronization, nesting, and direct edits valid at publication
-boundaries.
+explicit clock and media behavior. Foundational insert, overwrite, append, replace, lift, and
+extract commands reshape those objects while reporting every inserted, removed, modified, split,
+or invalidated relationship. Whole-project validation and revision-checked atomic batches keep
+linked objects, timing,
+synchronization, nesting, and direct edits valid at publication boundaries.
 
-The crate continues to reserve advanced edit operations, markers, multicam behavior,
-OTIO-compatible interchange, and deterministic timeline-to-graph compilation. Those surfaces are
-not implemented. The canonical OTIO 0.18.1 fixture remains executable evidence for future
-interchange work rather than a production reader or writer.
+The crate continues to reserve advanced trim operations, markers, multicam behavior, OTIO-compatible
+interchange, and deterministic timeline-to-graph compilation. Those surfaces are not implemented.
+The canonical OTIO 0.18.1 fixture remains executable evidence for future interchange work rather
+than a production reader or writer.
 
 ## Source inventory
 
 - `open/crates/superi-timeline/Cargo.toml`: Declares runtime dependencies on `superi-core` and
   `superi-graph`, plus development-only `serde_json` for canonical OTIO fixture contracts.
 - `open/crates/superi-timeline/src/compile.rs`: Placeholder for timeline-to-graph compilation.
-- `open/crates/superi-timeline/src/edit_ops.rs`: Placeholder for general editorial edit primitives.
+- `open/crates/superi-timeline/src/edit_ops.rs`: Implements directly inspectable insert, overwrite,
+  append, replace, lift, and extract commands, exact source-aware splitting, deterministic fragment
+  identities, transition reconciliation, result reports, and atomic multi-track batches.
 - `open/crates/superi-timeline/src/edit_state.rs`: Implements exact and relationship-expanded
   selection, per-track targeting and sync-lock intent, canonical clip links and groups, stable
   introspection, and structural reconciliation.
 - `open/crates/superi-timeline/src/ids.rs`: Re-exports the canonical project and editorial object
   identities owned by `superi-core`.
-- `open/crates/superi-timeline/src/lib.rs`: Exports the implemented identity, edit-state, and model
-  modules plus the staged editorial namespaces.
+- `open/crates/superi-timeline/src/lib.rs`: Exports the implemented identity, edit-state, edit
+  operation, and model modules plus the staged editorial namespaces.
 - `open/crates/superi-timeline/src/markers.rs`: Placeholder for markers, metadata, bins, and media
   management.
 - `open/crates/superi-timeline/src/model.rs`: Implements four track kinds, track-specific timing and
@@ -54,6 +58,9 @@ interchange work rather than a production reader or writer.
 - `open/crates/superi-timeline/tests/model_contract.rs`: Proves every foundational object,
   cross-rate and cross-track synchronization, linked media and nesting, direct edits, revision
   conflicts, atomic rollback, transition bounds, continuity, missing links, and nesting cycles.
+- `open/crates/superi-timeline/tests/edit_ops_contract.rs`: Proves all six foundational operations,
+  exact cross-rate source slicing, nested source preservation, typed fragment identities, explicit
+  transition removal, lift gaps, synchronized multi-track publication, and failed-batch rollback.
 - `open/crates/superi-timeline/tests/otio_fixture_contract.rs`: Proves canonical OTIO schema,
   hierarchy, identity, timing, relationships, opaque retention, and unsupported diagnostics.
 - `open/crates/superi-timeline/tests/track_semantics_contract.rs`: Proves all four track kinds,
@@ -107,8 +114,20 @@ The timeline edit-state surface includes:
   intent, enumerate targeted tracks by timeline order and media kind, and resolve sync-affected
   tracks for later insert and ripple commands.
 
-`compile`, `edit_ops`, `markers`, `multicam`, `nested`, and `otio` remain public namespace
-reservations without production operations.
+The foundational operation surface includes:
+
+- `EditOperation` and `EditKind` for insert, overwrite, append, replace, lift, and extract commands
+  targeted by stable timeline and track identity.
+- Caller-supplied typed right-fragment identities whenever one existing timed object must survive on
+  both sides of an edit boundary. The left fragment retains the original object identity.
+- `apply_edit_batch`, which applies one or more commands through one existing
+  `EditorialProject::edit` publication and returns `EditBatchResult` at the new project revision.
+- `EditOutcome`, `EditFragment`, and `TrackDurationChange`, which expose affected ranges,
+  inserted and removed objects, changed retained objects, created right fragments, removed
+  transitions, and exact duration effects without reconstructing a diff from the final track.
+
+`compile`, `markers`, `multicam`, `nested`, and `otio` remain public namespace reservations without
+production operations. `edit_ops` is a substantive public operation surface.
 
 ## Architecture and data flow
 
@@ -153,6 +172,25 @@ selection, track controls, links, and groups for every surviving identity, initi
 new tracks, removes references to deleted objects, and dissolves relationship components with fewer
 than two surviving clips. The reconciled state and all clip source and record data publish in the
 same project revision or roll back together.
+
+Foundational operation flow extends that transaction without creating another state model:
+
+1. `apply_edit_batch` resolves each target timeline and track inside the unpublished
+   `ProjectDraft`, preserving command order across related tracks.
+2. Each operation validates that record points and ranges use the target track clock. Material
+   duration is rescaled only when exact, and transitions are rejected as timed material.
+3. A boundary inside a clip, gap, generator, or caption slices the object. Clip slicing adjusts the
+   source start and duration with exact rational conversion, while other object payloads remain
+   unchanged. Caller-supplied typed IDs identify right fragments deterministically.
+4. Insert shifts later items right, overwrite changes an equal-duration interval in place, append
+   uses the exact current end, replace preserves target placement and duration, lift creates an
+   explicit caller-owned gap, and extract shifts later items left.
+5. Existing transitions are restored only when their original endpoints remain adjacent and their
+   offsets still fit without overlap. Every invalidated transition is returned in the operation
+   result rather than retargeted implicitly.
+6. The existing whole-project validator resolves media and nested timeline sources, global object
+   identity, track continuity, synchronization, and nesting cycles before one new revision is
+   published. A failure in any command or final invariant discards every command in the batch.
 
 The separate fixture path reads checked-in OTIO JSON through development-only `serde_json::Value`
 assertions. It does not enter the native model yet.
@@ -202,8 +240,19 @@ assertions. It does not enter the native model yet.
   membership. Data schema labels are bounded ASCII without whitespace or control characters.
 - Atomic drafts publish only after complete validation. Stale expected revisions are conflicts;
   every rejected edit preserves the prior snapshot and revision.
-- Advanced retiming, production OTIO preservation, deterministic graph compilation, undo-history
-  ownership, markers, multicam, and higher-level editorial commands remain outside this state.
+- Foundational edit points and ranges use the target track clock. Cross-rate material duration and
+  clip source slices require exact rational conversion, never implicit rounding.
+- Splitting an object keeps the original identity on the left and requires a same-domain caller ID
+  for the right. Missing, wrong-domain, or unused fragment identities reject the complete batch.
+- Insert and extract ripple only the addressed track per command. Related track changes remain
+  synchronized when callers submit them in one atomic batch at one expected project revision.
+- Overwrite and replace preserve track duration. Lift makes empty time explicit with a named gap.
+  Append and insert report exact extension, while extract reports exact shortening.
+- A transition is never silently redirected. It survives only with its original adjacent endpoints
+  and valid nonoverlapping handles; otherwise its typed identity appears in the outcome.
+- Advanced retiming, ripple and roll trims, slip, slide, razor, three-point and four-point edits,
+  production OTIO preservation, deterministic graph compilation, undo-history ownership, markers,
+  multicam, and higher-level editorial commands remain outside this state.
 
 ## Tests and verification
 
@@ -228,33 +277,43 @@ changes, stable unsupported-object pointers, opaque preservation, and the warnin
 `timeline.otio.unsupported_construct`. Official OpenTimelineIO 0.18.1 separately loads both files
 and reports exact 48-frame and 120-frame durations at 24 fps.
 
+Five foundational edit-operation tests prove insert, overwrite, append, replace, lift, and extract
+through the public API. They cover source and record clocks at 48 and 24 units per second, arbitrary
+boundaries within clips and gaps, nested timeline material, exact right-fragment identities,
+transition invalidation, unchanged and changed duration reports, synchronized two-track batches,
+stale revisions, wrong clocks, transition material, overwrite bounds, and complete rollback after a
+later command fails.
+
 Workspace tests, warnings-denied Clippy, formatting, dependency direction, the offline boundary
 scan, and codebase-map validation are required delivery gates.
 
 ## Current status and risks
 
-The foundational project model, typed track semantics, and authoritative timeline edit state are
-substantive and test-backed. Production OTIO reading and writing, graph compilation, advanced edit
-transforms, undo ownership, markers, multicam, persistence, and engine or API integration remain
-absent.
+The foundational project model, typed track semantics, authoritative timeline edit state, and six
+primary editorial operations are substantive and test-backed. Production OTIO reading and writing,
+graph compilation, advanced trim transforms, undo ownership, markers, multicam, persistence, and
+engine or API integration remain absent.
 
 The model requires equal physical source and record duration for clips. Future time-warp support
 must introduce explicit retime state rather than weakening that invariant. Direct setters permit
-temporarily invalid unpublished state; callers must use `EditorialProject::edit` for atomic
-publication. Audio continuity is structural evidence rather than signal analysis or playback.
-Selection is authoritative command intent, not hover, focus, marquee geometry, or optimistic UI
-presentation state. Sync resolution identifies participating tracks but performs no insert, ripple,
-or trim transform yet. Links and groups are timeline-local and have no independent durable ID.
-The model has no stable Serde schema, hostile-input collection bounds, or consumer outside its
-contract tests.
+temporarily invalid unpublished state; callers must use `EditorialProject::edit` or
+`apply_edit_batch` for atomic publication. Selection is authoritative command intent, not hover,
+focus, marquee geometry, or optimistic UI presentation state. Sync resolution identifies
+participating tracks but performs no transform on its own. Links and groups are timeline-local and
+have no independent durable ID. Edit material is currently one timed object per command;
+multi-object source sequences and link-group targeting belong to later command and orchestration
+layers. Audio continuity is structural evidence rather than signal analysis or playback. The model
+has no stable Serde schema, hostile-input collection bounds, or consumer outside its contract tests.
 
 ## Maintenance notes
 
-Treat track clocks and semantics, object identity, continuity, physical-time equality, source-link
-resolution, selection expansion, track intent, clip relationship partitions, reconciliation,
-transition adjacency, nesting acyclicity, and atomic publication as public contracts. Extend tests
-before changing them. Later edit operations must consume `tracks_affected_by_sync` and exact
-selection state instead of recreating those policies. Add interchange and graph compilation only
-through their owning modules, and update project, engine, API, CLI, persistence, and fixture maps
-when those paths begin consuming native timeline state. Preserve the OTIO fixture's versioned
-semantics rather than inferring interchange behavior from the native model alone.
+Treat track clocks and semantics, object identity, continuity, physical-time equality, source-aware
+fragmentation, explicit transition invalidation, result reporting, source-link resolution,
+selection expansion, track intent, clip relationship partitions, reconciliation, transition
+adjacency, nesting acyclicity, and atomic publication as public contracts. Extend tests before
+changing them. Later higher-level operations must consume `tracks_affected_by_sync` and exact
+selection state instead of recreating those policies. Add advanced edit commands, interchange, and
+graph compilation only through their owning modules, and update project, engine, API, CLI,
+persistence, and fixture maps when those paths begin consuming native timeline state. Preserve the
+OTIO fixture's versioned semantics rather than inferring interchange behavior from the native model
+alone.
