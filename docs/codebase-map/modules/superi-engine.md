@@ -2,8 +2,8 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 15a56ab260b32966ff54f28ce7c528dd7ffd1b81dfe182ea3548921cad7eb988
-source_files: 41
+source_hash: 79ced7d3f00397aeb57769226e823695bab76727ba2b11f483f70a3c97bce89a
+source_files: 42
 mapped_at_commit: working-tree
 ---
 
@@ -17,9 +17,10 @@ predictive cache population, foreground graph and display-color execution, bound
 audio-master A/V coordination with bounded video correction and discontinuity recovery, monotonic
 clock fallback, lossless viewport handoff, exact interactive transport control, coherent decode,
 graph, delivery-color, audio, and elementary-stream export execution, deterministic subsystem
-lifecycle, bounded logical export job orchestration, and atomic timeline plus clip-mix edits. Native
-GPU presentation, timeline-owned decoded-audio rendering, export muxing and publication, broad
-transactions, plugins, nodes, and validation remain incomplete.
+lifecycle, bounded logical export job orchestration, classified cross-subsystem failure propagation
+and recovery, and atomic timeline plus clip-mix edits. Native GPU presentation, timeline-owned
+decoded-audio rendering, export muxing and publication, broad transactions, plugins, nodes, and
+validation remain incomplete.
 
 The command path is a bounded reference owner for contract conformance. It does not claim to replace
 the production project, timeline, graph, media, color, render, or muxing owners.
@@ -42,7 +43,10 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   settings, validates cache request identity, selects one explicit primary encoder, drives its
   nonblocking lifecycle to end of stream, hashes complete packet semantics, and publishes only a
   complete proxy or optimized-media payload through `superi-cache`.
-- `open/crates/superi-engine/src/error.rs`: Placeholder for cross-subsystem recovery.
+- `open/crates/superi-engine/src/error.rs`: Implements EngineControl-owned classified failure
+  propagation, immutable actionable records, bounded diagnostic history, exact recovery-intent
+  validation, failed-recovery reclassification, and coherent lifecycle routing without copying
+  subsystem readiness or workflow admission state.
 - `open/crates/superi-engine/src/export_jobs.rs`: Implements a bounded EngineControl-owned logical
   export queue with immutable dependency declarations, export-priority worker attempts, nonblocking
   progress and result observation, cooperative pause and cancel, fresh-attempt resume and retry,
@@ -98,6 +102,10 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 - `open/crates/superi-engine/tests/derived_media_generation_contract.rs`: Proves complete and
   deterministic real AV1 generation, exact cache reuse, quality identity, settings mismatch
   rejection, cooperative cancellation, and original-source fallback.
+- `open/crates/superi-engine/tests/error_recovery_contract.rs`: Proves retryable, degraded,
+  user-correctable, and terminal propagation; source and context retention; separate safe
+  projection; coherent playback, rendering, and export admission; exact recovery intent; failed
+  recovery reclassification; stale-action rejection; bounded history; and EngineControl ownership.
 - `open/crates/superi-engine/tests/export_job_queue_contract.rs`: Proves bounded logical identity,
   immutable dependency ordering, nonblocking progress and retained results, cooperative pause and
   cancel, fresh-attempt resume and retry, recovery-class policy, terminal propagation, safe removal,
@@ -241,7 +249,14 @@ on their legal domain. `EngineWorkKind` admission returns revision-scoped permit
 required subsystem is ready in the same running lifetime. The retained `LifecycleSignal` is the
 lock-free observation path for latency-sensitive consumers.
 
-The five remaining placeholder modules contain documentation only.
+`error` exposes `EngineErrorCoordinator`, monotonic `EngineFailureSequence`, stable
+`EngineFailureDisposition` and `EngineRecoveryRequest` codes, immutable `EngineFailureRecord` and
+failure reports, exact `EngineRecoveryAction` tokens, and recovery start and completion reports.
+Every returned report carries the canonical lifecycle snapshot that determined workflow admission.
+Mutable active-failure and bounded-history bookkeeping remains EngineControl-owned and deliberately
+non-`Sync`; immutable records and snapshots remain `Send + Sync`.
+
+The three remaining placeholder modules contain documentation only.
 
 ## Architecture and data flow
 
@@ -296,6 +311,24 @@ failure therefore denies only its transitive work while unrelated work remains a
 uses another exact action token. Successful recovery clears the subsystem blocker while the latest
 reported failure remains inspectable for the rest of that lifetime. A terminal failure advances the
 shared lifecycle phase to `Failed` and denies every workflow.
+
+`EngineErrorCoordinator` borrows this lifecycle for each mutation instead of owning a second
+subsystem model. A ready subsystem failure receives a monotonic sequence and bounded operation
+label, appends stable subsystem, operation, sequence, and attempt context, and becomes one
+`DiagnosticEvent` before the error moves into lifecycle state. The event retains the raw source
+chain and ordered context internally while deriving `UserSafeError` only from core category and
+recoverability. Reviewed subsystem, recoverability, and disposition fields are user-safe;
+operation labels, sequence values, and attempt counters remain internal.
+
+Retryable, degraded, user-correctable, and terminal errors map to retry, continue-degraded,
+user-correction, and restart dispositions. Only `RetryOperation`, `RestoreSubsystem`, or
+`ApplyUserCorrection`, respectively, may emit a lifecycle recovery action. A terminal disposition
+cannot emit recovery in the current lifetime. Exact failure sequence, attempt, request, and
+lifecycle action tokens reject stale completion before ordinary caller validation can mutate
+state. Successful completion removes the active failure and emits a recovery event. Failed
+completion flows through `EngineLifecycle::fail_action`, receives a new sequence and classification,
+and remains active with the accumulated attempt count. History evicts the oldest event at its fixed
+capacity while one active record per subsystem remains separately queryable.
 
 Shutdown emits teardown actions only after every owned dependent has released its resource, which
 produces the exact inverse of initialization. Initialization failure enters the same reverse path
@@ -517,7 +550,9 @@ audio mutation, so their user intent remains attached without synthesis.
 
 - `superi-core` supplies errors, identifiers, geometry, and exact time used directly by canonical
   commands, introspection, upload, playback prediction, foreground pixel and alpha meaning, and
-  retained lifecycle failure evidence.
+  retained lifecycle failure evidence. Error propagation additionally consumes core-owned
+  recoverability, ordered contexts, full source-chain diagnostics, typed visibility fields, and the
+  separate user-safe projection.
 - `sha2` supplies bounded fixture payload identity and complete packet-content fingerprinting.
 - `superi-media-io`, `superi-gpu`, and `superi-codecs-rs` support source and codec registry assembly,
   content probing, source and decoder preparation, declaration, upload, codec-neutral derived
@@ -531,7 +566,8 @@ audio mutation, so their user intent remains attached without synthesis.
   by transport cadence. Concurrency supplies proxy selection, playback ownership, worker priority,
   bounded export workers, job progress and control, dependency history, nonblocking completion, the
   playback clock, A/V drift measurement and scheduling policy, bounded handoffs, the shared lifecycle
-  coordinator and signal, EngineControl ownership, and immutable snapshot publication.
+  coordinator and signal, EngineControl ownership for lifecycle and error bookkeeping through
+  `DomainOwned`, and immutable snapshot publication.
   Media I/O supplies exact decoded frame and audio block semantics, image supplies color and scene
   artifacts, color supplies CPU display execution, and audio supplies the prepared graph identity,
   bounded producer, callback-owned discard acknowledgement, and actual presentation clock. Export
@@ -655,6 +691,14 @@ audio mutation, so their user intent remains attached without synthesis.
   transitive subsystem set to be ready in the same running lifetime.
 - Nonterminal failures degrade only dependent work. Terminal failures close all admission until
   orderly teardown and a fresh lifetime complete.
+- Recovery intent is determined by explicit recoverability, never inferred from error category.
+  Retryable, degraded, and user-correctable failures accept only their matching stable request;
+  terminal failures require a new lifetime. Sequence, attempt, request, and lifecycle action must
+  all describe the same active failure.
+- Raw diagnostic summaries, contexts, sources, operation labels, sequences, and attempts remain
+  internal evidence. Presentation consumes only `UserSafeError` and reviewed user-safe fields.
+  Diagnostic history is bounded and oldest-first eviction never removes the separately retained
+  active failure.
 - Successful recovery clears the subsystem's active failure and restores admission without erasing
   the latest reported failure evidence from the current lifetime snapshot.
 - Remaining placeholder modules do not imply whole-engine transport, node registration,
@@ -755,6 +799,13 @@ lifetimes; initialization rollback; stale completion rejection; terminal engine 
 dependency-safe teardown failure and retry; and unchanged owner state after off-domain construction,
 inspection, and mutation rejection.
 
+Four error-recovery contracts drive the coordinator beside that lifecycle. They prove all four
+recoverability dispositions and stable request codes, source-chain and ordered-context retention,
+separate safe projection, playback-only and rendering-plus-export denial, unrelated-work
+continuation, exact retry and correction completion, failed-recovery reclassification, stale
+sequence rejection without lifecycle mutation, terminal all-work denial, bounded oldest-event
+eviction, cross-thread immutable record safety, and off-domain coordinator rejection.
+
 ## Current status and risks
 
 Canonical command state is substantive and test-backed, but it is a reference boundary whose
@@ -762,12 +813,12 @@ implementation identity is disclosed as such. It validates fixture bytes without
 container or decoding frames. Timeline and graph state are exact control models but do not use the
 production timeline owner or the generic `superi-graph` DAG store.
 
-Four orchestration files remain documentation-only placeholders. Source registration, timeline
-media preparation, deterministic lifecycle, foreground playback, interactive transport,
-render-export execution, and bounded logical export scheduling are coherent and test-backed, but
-there is no timeline-owned decoded-audio
-graph renderer, persistent cache lifecycle owner, native GPU viewport or export submission, packet
-muxer, output publisher, project persistence, native plugin discovery, isolated OpenFX adapter
+Three orchestration files remain documentation-only placeholders. Source registration, timeline
+media preparation, deterministic lifecycle, classified failure propagation and recovery,
+foreground playback, interactive transport, render-export execution, and bounded logical export
+scheduling are coherent and test-backed, but there is no timeline-owned decoded-audio graph
+renderer, persistent cache lifecycle owner, native GPU viewport or export submission, packet muxer,
+output publisher, project persistence, native plugin discovery, isolated OpenFX adapter
 implementation, worker transport, or real-condition validator.
 The effects-side
 OpenFX host contract is substantive, but `plugins.rs` remains the production supervisor placeholder.

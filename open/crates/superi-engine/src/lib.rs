@@ -4,10 +4,11 @@
 //! decoded-frame GPU upload, complete proxy or optimized-media packet generation, transparent proxy
 //! or original-source resolution, predictive cache population, foreground playback graph and color
 //! execution, audio-device admission, audio-master A/V coordination and recovery, bounded viewport
-//! handoff, coherent
-//! decode, graph, delivery color, audio, and elementary-stream export orchestration, deterministic
-//! subsystem lifecycle, and atomic timeline plus clip-mix edits are integrated while the remaining
-//! orchestration modules advance through their focused checkpoints.
+//! handoff, classified cross-subsystem failure propagation and recovery, coherent
+//! decode, graph, delivery color, audio, and elementary-stream export orchestration, bounded export
+//! job orchestration, deterministic subsystem lifecycle, and atomic timeline plus clip-mix edits
+//! are integrated while the remaining orchestration modules advance through their focused
+//! checkpoints.
 
 pub mod audio_mix;
 pub mod av_sync;

@@ -264,6 +264,9 @@ Repository source search shows active direct Rust imports in twelve of them:
   timestamps at media, introspection, CPU-frame upload, cache identity, and foreground playback
   boundaries. Render-export additionally uses rational interval unions, exact rescaling, lifecycle
   errors, stream identity, and pixel or sample meaning to reject semantic drift before publication.
+  The EngineControl error coordinator snapshots complete source chains and ordered contexts through
+  `DiagnosticEvent::from_error`, maps explicit `Recoverability` into stable recovery intent, and
+  exposes only `UserSafeError` plus reviewed user-safe fields at its presentation boundary.
 - `superi-gpu` uses errors and diagnostics throughout resource and submission paths, plus color,
   pixel, and geometry values for conversion and upload contracts.
 - `superi-graph` re-exports the official graph, node, port, edge, parameter, and resource identifier

@@ -368,7 +368,11 @@ durations in the clock timebase, cancels stale frame and prediction tokens, and 
 handoff pressure without waiting. `superi-engine::lifecycle` composes
 `LifecycleCoordinator` as one engine participant, keeps authoritative state in `DomainOwned` on
 EngineControl, publishes every committed transition through `SnapshotPublisher`, and exposes the
-coordinator's lock-free `LifecycleSignal` to latency-sensitive consumers. Engine render-export is
+coordinator's lock-free `LifecycleSignal` to latency-sensitive consumers.
+`superi-engine::error` independently keeps only active-failure records and bounded diagnostic
+history in an EngineControl `DomainOwned`; it borrows the lifecycle for mutation and returns the
+same immutable lifecycle snapshots beside `Send + Sync` diagnostic records, so it cannot become a
+second readiness or workflow-admission owner. Engine render-export is
 the first concrete workflow to require the resulting revision-scoped export permit both before
 codec creation and immediately before artifact publication, so rendering or export degradation and
 recovery cannot be bypassed by a long-running transaction. `superi-engine::export_jobs` wraps that
@@ -379,8 +383,10 @@ completion without waiting, and composes `JobDependencyTracker` into determinist
 admission and terminal propagation. The broader downstream
 crate graph is not evidence that other transitive crates call these runtime surfaces.
 The concurrency integration-test files, cache render contract, audio graph contract, engine
-substitution contract, engine playback and transport contracts, engine export queue and render-export
-contracts, and engine lifecycle contract exercise the public crate paths directly. No public API crate currently
+substitution contract, engine playback and transport contracts, engine export queue and
+render-export contracts, engine lifecycle contract, and engine error-recovery contract exercise the
+public crate paths directly. The error-recovery contract also proves coordinator access is rejected
+off EngineControl while propagated records remain cross-thread values. No public API crate currently
 reexports these types. Engine composes lifecycle with export admission, while foreground playback
 and transport consume A/V drift decisions with the actual audio clock, graph result, and viewport
 handoff. Lifecycle does not yet own that foreground flow, and no end-to-end runtime composes it with
