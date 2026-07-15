@@ -2,8 +2,8 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 892f86a014f8dceae20c675102dcbf358c93710c98fa2ecbea565a3e4a1ec304
-source_files: 47
+source_hash: b154fdaa7feba0ac9267a06ffeaf51bd0093badb82947dddd67ce667e091bf6b
+source_files: 49
 mapped_at_commit: working-tree
 ---
 
@@ -18,8 +18,8 @@ audio-master A/V coordination with bounded video correction and discontinuity re
 clock fallback, lossless viewport handoff, exact interactive transport control, coherent decode,
 graph, delivery-color, audio, and elementary-stream export execution, deterministic subsystem
 lifecycle, bounded logical export job orchestration, classified cross-subsystem failure propagation
-and recovery, and atomic timeline plus clip-mix edits. An
-engine-wide typed command dispatcher
+and recovery, shared finite-resource arbitration across decode, GPU, cache, audio, AI, and export
+work, and atomic timeline plus clip-mix edits. An engine-wide typed command dispatcher
 coordinates canonical scenario transactions, lifecycle state changes, failure and recovery control,
 coherent work admission, bounded cross-domain playback control, canonical logical export-job
 control, and ordered replacement events.
@@ -76,7 +76,7 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 - `open/crates/superi-engine/src/introspection.rs`: Implements deterministic API-neutral backend and
   codec capability snapshots.
 - `open/crates/superi-engine/src/lib.rs`: Documents the implemented orchestration boundaries and
-  exposes twenty-one engine modules.
+  exposes twenty-two engine modules.
 - `open/crates/superi-engine/src/lifecycle.rs`: Implements the EngineControl-owned lifecycle state
   machine, canonical subsystem dependency plan, exact action tokens, immutable generated snapshots,
   coherent playback/render/export admission, recoverable degradation, rollback, reverse teardown,
@@ -96,6 +96,10 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   scheduler quality; consumes deterministic derived selection; lazily opens verified original
   media; and adapts complete generated packets to the codec-neutral `MediaSource` contract.
 - `open/crates/superi-engine/src/render.rs`: Defines independent viewport and export color metadata branches from cached scene state, requiring correctly classified terminal display or output stages.
+- `open/crates/superi-engine/src/resource_arbitration.rs`: Implements one thread-safe managed-byte
+  envelope for decoded buffers, GPU payloads, caches, prepared audio, AI work, and exports with
+  complete class configuration, protected floors, exact hard limits, noncloneable reservations,
+  fixed-order cooperative reclaim, consumer-aware fallbacks, and deterministic snapshots.
 - `open/crates/superi-engine/src/resources.rs`: Compiles one reachable timeline graph, validates the
   exact caller-declared media and stream request set, binds and verifies project fingerprints,
   probes and opens each source, selects and creates each decoder once, retains policy evidence, and
@@ -171,6 +175,10 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   rejection of real VP9 timing drift after complete WebM AV1 decode and shared graph evaluation, and
   completion through dispatcher-owned logical export commands over the real queue with exact
   semantic progress and retained typed artifact access.
+- `open/crates/superi-engine/tests/resource_arbitration_contract.rs`: Proves complete configuration,
+  opaque high-precision decoded-frame retention, exact RAII accounting, protected floors,
+  fixed-order cooperative reclaim, classified callback failure, all six semantic fallback classes,
+  class-ceiling recovery, concurrent hard limits, and recursive callback rejection.
 - `open/crates/superi-engine/tests/playback_transport_contract.rs`: Proves exact seek and scrub
   supersession, pause and resume, frame stepping, fractional cadence, reverse looping, stale-work
   exclusion, bounded drops, protected intent, audio discontinuity, foreground and prediction
@@ -308,6 +316,14 @@ Every returned report carries the canonical lifecycle snapshot that determined w
 Mutable active-failure and bounded-history bookkeeping remains EngineControl-owned and deliberately
 non-`Sync`; immutable records and snapshots remain `Send + Sync`.
 
+`resource_arbitration` exposes complete `ResourceArbitrationConfig` and `ResourceClassBudget`
+values; exact `ResourceRequest` values for playback, render, export, background, and recovery;
+`EngineResourceArbiter`; cooperative `ResourceReclaimer` registration; noncloneable
+`ResourceReservation`; opaque `ArbitratedResource<T>` bindings; and deterministic admission,
+degradation, reclaim, and snapshot evidence. The six stable classes are decoded buffers, GPU
+memory, cache, audio, AI, and export. Lower subsystem allocators remain authoritative and callers
+charge the same declared managed payload into this higher shared envelope.
+
 The three remaining placeholder modules contain documentation only.
 
 ## Architecture and data flow
@@ -437,6 +453,30 @@ EngineControl never executes subsystem acquisition or teardown inline and theref
 nonblocking. When the logical export queue is attached, the dispatcher rejects completion of its
 export teardown action until all retained jobs are final. Stable all-job cancellation plus polling
 settles that state before the blocking-safe runtime handle joins workers.
+
+### Shared finite-resource arbitration
+
+The engine constructs one validated configuration with an exact shared hard limit and exactly one
+protected floor plus hard ceiling for every resource class. Protected floors may be borrowed while
+unused, but global pressure cannot reclaim another class below its floor. A class-local ceiling may
+ask its own registered owner to replace existing reservations. Admission is serialized, commits
+class and shared accounting atomically, and returns either one exact noncloneable reservation or a
+typed degradation with the remaining shortage and semantic fallback.
+
+Pressure visits cache, AI, export, decode, GPU, and audio owners in fixed order after any required
+same-class replacement. Each callback runs outside the accounting lock and can make progress only
+by releasing its own RAII reservations. The arbiter ignores reported byte claims, measures live
+counters after the callback, retains classified callback failure evidence, and continues to the
+next eligible owner. A callback-local guard rejects recursive admission before it can wait on the
+serialized gate. Audio reservations must be prepared outside the real-time callback.
+
+`ArbitratedResource<T>` binds an admitted reservation to the caller's real value without inspecting,
+copying, converting, or mutating it. Decode timing, pixel precision, metadata, color, and alpha
+therefore remain owned by the media value. Cache pressure bypasses retention, playback decode
+reduces lookahead, GPU and AI work defer, playback audio preserves its clock with timed silence,
+and export pauses rather than publishing a partial or semantically changed result. Ordinary finite
+pressure is scheduling state, not an automatic lifecycle failure; a caller may route a persistent
+classified failure through the separate error coordinator.
 
 ### Timeline graph and media preparation
 
@@ -655,7 +695,9 @@ audio mutation, so their user intent remains attached without synthesis.
 
 - `superi-core` supplies errors, identifiers, geometry, and exact time used directly by canonical
   commands, introspection, upload, playback prediction, foreground pixel and alpha meaning, and
-  retained lifecycle failure evidence. Error propagation additionally consumes core-owned
+  retained lifecycle failure evidence. Resource arbitration consumes the same classified error
+  vocabulary while keeping finite-capacity degradation typed and local. Error propagation
+  additionally consumes core-owned
   recoverability, ordered contexts, full source-chain diagnostics, typed visibility fields, and the
   separate user-safe projection.
 - `sha2` supplies bounded fixture payload identity and complete packet-content fingerprinting.
@@ -688,6 +730,10 @@ audio mutation, so their user intent remains attached without synthesis.
   preserving the public scenario seam without exposing engine-private owners. The broader Rust
   engine vocabulary includes playback and logical export dispatch, while their wire projection
   remains with the future unified protocol host.
+- Cache and GPU retain their own exact local budget enforcement, audio retains its preallocated
+  callback-safe queue, media I/O retains decoded value and lifecycle ownership, and export retains
+  logical job and publication ownership. The engine arbiter composes a higher shared managed-byte
+  envelope without replacing or weakening any of those local owners.
 - `superi-cli` reaches this module only through `superi-api`.
 
 ## Invariants and operational boundaries
@@ -768,6 +814,22 @@ audio mutation, so their user intent remains attached without synthesis.
   present.
 - Decoded timing, format, metadata, color history, and alpha meaning remain immutable provenance.
   Cache admission requires the exact requested timestamp and complete nonterminal scene pipeline.
+- Resource configuration contains all six classes exactly once. Every class hard limit fits within
+  the shared hard limit, every protected floor fits within its class limit, and protected floors do
+  not overcommit the shared total.
+- Shared and class hard limits count exact caller-declared managed payload bytes. Reservations are
+  noncloneable and release both counters through RAII; opaque resource binding cannot inspect or
+  change timing, precision, metadata, color, alpha, or subsystem ownership.
+- A single request larger than its shared or class hard limit degrades without reclaiming valid
+  existing work because no release could make that request admissible.
+- Unused protected floors are borrowable. Global reclaim never asks a different class to cross its
+  protected floor, fixed reclaim order is cache, AI, export, decode, GPU, then audio, and measured
+  reservation release is the only progress signal.
+- Reclaim callbacks execute outside the accounting lock while admission remains serialized. Direct
+  callback recursion is a retryable conflict, callback failures remain classified evidence, and
+  audio callback code must not perform arbitration or allocation.
+- Finite pressure selects semantic scheduling fallback only. Playback audio alone may preserve its
+  clock with timed silence; export pauses, and no fallback changes decoded or rendered meaning.
 - The device-owned sample clock is the normal master. Live A/V coordination occurs only on the
   playback domain and returns rather than sleeping for early video.
 - Frame PTS and nominal duration remain immutable through hold, correction, drop, and rebase
@@ -970,6 +1032,15 @@ continuation, exact retry and correction completion, failed-recovery reclassific
 sequence rejection without lifecycle mutation, terminal all-work denial, bounded oldest-event
 eviction, cross-thread immutable record safety, and off-domain coordinator rejection.
 
+Ten resource-arbitration contracts bind a real `Rgba16Float` decoded frame with straight alpha,
+exact timing, metadata, and color state to a reservation without semantic drift. They prove
+complete and nonovercommitted configuration, exact grant and release revisions, class and shared
+hard limits under sixteen concurrent callers, protected-floor borrowing and fixed reclaim order,
+authoritative callback progress, retained classified failure, all six class fallbacks across
+playback, render, export, background, and recovery consumers, class-ceiling retry, and rejection of
+recursive callback admission. An individually impossible request proves immediate degradation
+without evicting valid existing work.
+
 ## Current status and risks
 
 Canonical command state is substantive and test-backed, but it is a reference boundary whose
@@ -987,8 +1058,9 @@ scenario projection remains intentionally narrower than the full Rust engine voc
 
 Three orchestration files remain documentation-only placeholders. Source registration, timeline
 media preparation, deterministic lifecycle, classified failure propagation and recovery,
-foreground playback, interactive transport, render-export execution, and bounded logical export
-scheduling are coherent and test-backed, but there is no timeline-owned decoded-audio graph
+shared finite-resource arbitration, foreground playback, interactive transport, render-export
+execution, and bounded logical export scheduling are coherent and test-backed, but there is no
+timeline-owned decoded-audio graph
 renderer, persistent cache lifecycle owner, native GPU viewport or export submission, packet muxer,
 output publisher, project persistence, native plugin discovery, isolated OpenFX adapter
 implementation, worker transport, or real-condition validator.
@@ -1008,8 +1080,10 @@ runtime bindings, and no application or wire API path invokes them yet. The deri
 and resolver are synchronous and caller-owned, and no application or API path invokes them yet.
 Clip-mix reconciliation is substantive but currently entered by Rust callers rather than the public
 API or playback controller. Lifecycle is a production control-plane contract, but later native
-render submission, export publication, resource arbitration, and subsystem owners still must
-perform concrete actions before acknowledging it.
+render submission, export publication, arbitration consumers, and subsystem owners still must
+perform concrete actions before acknowledging it. The shared arbiter is a substantive opt-in
+engine contract, but current playback, render-export, cache, GPU, audio, and AI owners do not yet
+install their reclaimers or bind every live resource automatically.
 
 ## Maintenance notes
 
@@ -1055,6 +1129,12 @@ blocking-safe shutdown after every logical job is final. Route every logical exp
 admission for submit and recovery attempts, emit full revisioned replacement state for explicit and
 automated transitions, and keep runtime executor bindings plus typed artifacts outside stable event
 payloads.
+Keep resource classes complete and stable, preserve exact shared and class accounting, keep unused
+floors borrowable without reclaiming protected capacity, invoke cooperative owners only in the
+documented order, and measure progress from reservation release rather than callback claims. Bind
+real values opaquely, keep audio arbitration outside its callback, preserve consumer-aware fallback,
+and do not turn this shared envelope into a competing cache, GPU pool, decoder, audio queue, AI
+runtime, export scheduler, or lifecycle authority.
 Remove a placeholder label only after substantive behavior and consumer proof exist.
 When implementing `plugins.rs`, consume `superi_effects::ofx::IsolatedOfxAdapter` and preserve its
 worker-process, bounded-message, deadline, permission, restart, and quarantine guarantees rather
