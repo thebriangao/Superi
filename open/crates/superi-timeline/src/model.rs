@@ -16,6 +16,8 @@ use superi_core::time::{
     Duration, FrameRate, RationalTime, SampleTime, TimeRange, TimeRounding, Timebase,
 };
 
+use crate::edit_state::{SelectionExpansion, SelectionUpdate, TimelineEditState};
+
 /// The semantic media class of an editorial track.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[non_exhaustive]
@@ -1637,6 +1639,7 @@ pub struct Timeline {
     edit_rate: Timebase,
     global_start: RationalTime,
     tracks: Vec<Track>,
+    edit_state: TimelineEditState,
 }
 
 impl Timeline {
@@ -1648,12 +1651,14 @@ impl Timeline {
         global_start: RationalTime,
         tracks: Vec<Track>,
     ) -> Self {
+        let edit_state = TimelineEditState::from_tracks(&tracks);
         Self {
             id,
             name: name.into(),
             edit_rate,
             global_start,
             tracks,
+            edit_state,
         }
     }
 
@@ -1685,6 +1690,121 @@ impl Timeline {
     #[must_use]
     pub fn tracks(&self) -> &[Track] {
         &self.tracks
+    }
+
+    /// Returns authoritative selection, targeting, synchronization, and relationship intent.
+    #[must_use]
+    pub const fn edit_state(&self) -> &TimelineEditState {
+        &self.edit_state
+    }
+
+    /// Sets whether ordinary clip selection follows linked clip components.
+    pub fn set_linked_selection_enabled(&mut self, enabled: bool) {
+        self.edit_state.set_linked_selection_enabled(enabled);
+    }
+
+    /// Sets whether commands target one existing track.
+    pub fn set_track_targeted(&mut self, track_id: TrackId, targeted: bool) -> Result<()> {
+        self.edit_state.set_track_targeted(track_id, targeted)
+    }
+
+    /// Sets whether ripple-style changes on other tracks keep one track synchronized.
+    pub fn set_track_sync_locked(&mut self, track_id: TrackId, sync_locked: bool) -> Result<()> {
+        self.edit_state.set_track_sync_locked(track_id, sync_locked)
+    }
+
+    /// Updates the selected object set with related or exact-object behavior.
+    pub fn update_selection<I>(
+        &mut self,
+        objects: I,
+        update: SelectionUpdate,
+        expansion: SelectionExpansion,
+    ) -> Result<()>
+    where
+        I: IntoIterator<Item = EditorialObjectId>,
+    {
+        self.edit_state
+            .update_selection(objects, update, expansion, &self.tracks)
+    }
+
+    /// Links two or more existing clips for synchronized ordinary selection.
+    pub fn link_clips<I>(&mut self, clips: I) -> Result<()>
+    where
+        I: IntoIterator<Item = ClipId>,
+    {
+        self.edit_state.link_clips(clips, &self.tracks)
+    }
+
+    /// Removes named clips from their linked components.
+    pub fn unlink_clips<I>(&mut self, clips: I) -> Result<()>
+    where
+        I: IntoIterator<Item = ClipId>,
+    {
+        self.edit_state.unlink_clips(clips, &self.tracks)
+    }
+
+    /// Groups clips as one editorial unit, including each named clip's linked component.
+    pub fn group_clips<I>(&mut self, clips: I) -> Result<()>
+    where
+        I: IntoIterator<Item = ClipId>,
+    {
+        self.edit_state.group_clips(clips, &self.tracks)
+    }
+
+    /// Dissolves every clip group containing one of the named clips.
+    pub fn ungroup_clips<I>(&mut self, clips: I) -> Result<()>
+    where
+        I: IntoIterator<Item = ClipId>,
+    {
+        self.edit_state.ungroup_clips(clips, &self.tracks)
+    }
+
+    /// Iterates targeted tracks in authoritative bottom-to-top timeline order.
+    pub fn targeted_tracks(&self) -> impl Iterator<Item = &Track> {
+        self.tracks.iter().filter(|track| {
+            self.edit_state
+                .track_state(track.id())
+                .is_some_and(|state| state.targeted())
+        })
+    }
+
+    /// Iterates targeted tracks of one media kind in bottom-to-top order.
+    pub fn targeted_tracks_by_kind(&self, kind: TrackKind) -> impl Iterator<Item = &Track> {
+        self.targeted_tracks()
+            .filter(move |track| track.kind() == kind)
+    }
+
+    /// Resolves tracks shifted by a synchronization-sensitive operation.
+    ///
+    /// Explicitly edited tracks participate even when their sync lock is off.
+    /// Other tracks participate only while their sync lock is enabled.
+    pub fn tracks_affected_by_sync<I>(&self, explicit_tracks: I) -> Result<Vec<TrackId>>
+    where
+        I: IntoIterator<Item = TrackId>,
+    {
+        let explicit: BTreeSet<_> = explicit_tracks.into_iter().collect();
+        for track_id in &explicit {
+            if self.track(*track_id).is_none() {
+                return Err(not_found(
+                    "resolve_sync_tracks",
+                    "editorial track was not found",
+                    "track",
+                    track_id,
+                ));
+            }
+        }
+        Ok(self
+            .tracks
+            .iter()
+            .filter(|track| {
+                explicit.contains(&track.id())
+                    || self
+                        .edit_state
+                        .track_state(track.id())
+                        .is_some_and(|state| state.sync_locked())
+            })
+            .map(Track::id)
+            .collect())
     }
 
     /// Looks up a track by stable identity.
@@ -1867,16 +1987,23 @@ impl EditorialProject {
                 self.revision,
             )
         })?;
-        let candidate = Self {
+        let mut candidate = Self {
             id: self.id,
             name: draft.name,
             revision,
             media_references: draft.media_references,
             timelines: draft.timelines,
         };
+        candidate.reconcile_edit_state();
         candidate.validate()?;
         *self = candidate;
         Ok(())
+    }
+
+    fn reconcile_edit_state(&mut self) {
+        for timeline in self.timelines.values_mut() {
+            timeline.edit_state.reconcile(&timeline.tracks);
+        }
     }
 
     fn validate(&self) -> Result<()> {
@@ -1907,6 +2034,7 @@ impl EditorialProject {
                 }
                 validate_track(track, &mut object_ids)?;
             }
+            timeline.edit_state.validate(timeline.tracks())?;
         }
         self.validate_source_links()?;
         self.validate_nesting_cycles()?;

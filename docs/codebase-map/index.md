@@ -31,7 +31,7 @@ against raw source before changing code.
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; production source registration and muxing absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
-| `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Native editorial project state, typed video, audio, caption, and data tracks, rational links, validated direct edits, and staged OTIO and graph compilation | Foundational model, exact track clocks, audio routing and linked sample reshaping are test-backed; interchange, advanced edits, compilation, persistence, and runtime integration absent |
+| `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Native editorial project state, typed tracks, exact timing, selection, targeting, synchronization, clip relationships, validated direct edits, and staged OTIO and graph compilation | Foundational model, exact track clocks, audio routing, linked sample reshaping, and authoritative edit intent are test-backed; interchange, advanced edit transforms, compilation, persistence, and runtime integration absent |
 | `tool-superi-dependency-check` | [module map](modules/tool-superi-dependency-check.md) | `open/tools/superi-dependency-check` | Offline executable policy for the open runtime dependency graph | Implemented exact runtime, build, dev, and new-crate checks |
 | `tool-superi-boundary-tool` | [module map](modules/tool-superi-boundary-tool.md) | `open/tools/superi-boundary-tool` | Offline scanner for network-client and open-to-closed policy | Implemented library, CLI, workspace gate, and hosted-build command |
 | `tool-superi-bench` | [module map](modules/tool-superi-bench.md) | `open/tools/superi-bench` | Stable benchmark harnesses and reproducible stage reporting | Implemented seven-stage runner with real graph evaluation and explicit gaps |
@@ -289,9 +289,10 @@ project, timeline, graph, caches, undo, persistence, lifecycle, playback, render
 publication. Bulk frames, audio, packets, and GPU resources are intended to stay behind that seam.
 
 That target must not be read as current behavior. Timeline now owns foundational validated
-editorial state, and graph owns a substantive generic DAG and evaluator, but the two are not
-integrated. Project, cache, audio, effects, and most engine orchestration remain placeholders, so no
-complete edit, playback, render, save, or export control flow exists.
+editorial state plus selection, targeting, sync locks, linked selection, and clip groups. Graph owns
+a substantive generic DAG and evaluator, but the two are not integrated. Project, cache, audio,
+effects, and most engine orchestration remain placeholders, so no complete edit, playback, render,
+save, or export control flow exists.
 
 `docs/vertical-slice.md` now defines the exact first control flow as scenario
 `superi.slice.canonical.v1`: one immutable WebM and AV1 fixture role, one 24 fps video track, a
@@ -533,6 +534,10 @@ The following constraints cross multiple modules and should be preserved togethe
   dependency is explicit, direct links preserve exact types and payloads, expressions are bounded
   and pure, parameter cycles fail before publication, and all caller roles evaluate one immutable
   snapshot through the same request-local result path.
+- Timeline selection, per-track targeting and sync locks, linked selection, and clip groups publish
+  inside the same revision-checked project transaction as clip source and record state. Stable
+  surviving identities retain intent, direct selection bypasses relationships, and sync-sensitive
+  track resolution preserves timeline layer order.
 - Plugin availability is derived from immutable graph and registry snapshots, never persisted into
   authored state. Only an exact saved schema definition is available; absent or conflicting schemas
   retain typed placeholders and produce one stable degraded evaluation result for every caller.
@@ -697,7 +702,10 @@ The native timeline model now exposes embeddable video, audio, caption, and data
 core-owned clocks, identifiers, and ordered channel meanings. Audio routes require one explicit
 decision per source channel, sample placements retain typed clip links through split and trim, and
 continuity reports expose every record gap, overlap, source jump, or linked-clip change. Tracks
-embed those semantics in the validated native timeline container. Project persistence, engine, API,
+embed those semantics in the validated native timeline container. Timeline-local edit state adds
+exact or relationship-expanded selection, stable per-track target and sync-lock intent, canonical
+clip links and groups, direct member control, deterministic target and sync projection, and
+structural reconciliation inside the same project transaction. Project persistence, engine, API,
 CLI, playback, audio-engine, and graph-compiler paths do not consume that container yet.
 
 The largest verification gap is the absence of a production import-to-export slice. Its canonical
@@ -737,8 +745,8 @@ Partial modules contain these explicit placeholder areas:
   deterministic request-scoped scheduling, node introspection, versioned cache identity, run-local
   timing, and shared interactive and headless evaluation surfaces.
 - `superi-timeline`: OTIO reading and writing, deterministic graph compilation, advanced edit
-  operations, undo ownership, markers, multicam, persistence, and production consumers beyond its
-  foundational native project model and contract tests.
+  transforms, undo ownership, markers, multicam, persistence, and production consumers beyond its
+  foundational native project model, authoritative edit state, and contract tests.
 
 Substantive modules also have intentionally incomplete boundaries. Media I/O has no muxer or
 production registry owner for its source backends. GPU has no cross-adapter transfer or external
@@ -782,6 +790,8 @@ For common concerns, begin at these owners:
   pre-execution node introspection, cache identity, run-local timing, and shared interactive and
   headless evaluation:
   `superi-graph`, with value identity, rational time, and pixel bounds owned by `superi-core`.
+- Native editorial objects, typed track semantics, exact timing, selection, track targeting, sync
+  locks, linked selection, and clip grouping: `superi-timeline`.
 - Current assembly and public capability flow: `superi-engine` then `superi-api`.
 - Product law, open and closed boundaries, CI, fixtures, and maintenance workflow: `workspace`.
 - Canonical first editorial slice, typed scenario state, replacement stages, and proof: `workspace`.
