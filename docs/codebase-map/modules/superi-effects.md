@@ -2,22 +2,23 @@
 module_id: superi-effects
 source_paths:
   - open/crates/superi-effects
-source_hash: 52cda14022d63108e3904ea4fa5fcaa642f4beeecca2cb6f5276fbac1ebe2ff9
-source_files: 21
+source_hash: 797aad844fd82b11bb646d153d8e6632f6d749165cafff994e33f02f8d7e672c
+source_files: 22
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
 `superi-effects` owns the higher-tier open visual effect authoring, animation, reusable control,
-mask, rotoscoping, built-in operation, and bounded reference-evaluation layer above the generic
-graph. It provides inspectable typed definitions, ordinary editable graph-node instantiation,
-deterministic discovery, exact-schema runtime factory translation, exact keyframe animation,
-graph-native links and parent controls, bounded animated closed cubic masks with complete controls
-and ordered soft-alpha composition, and editable exact-frame rotoscope artifacts with
-solver-independent propagation hooks. It also provides concrete schemas plus real reference pixels
+mask, rotoscoping, transition, built-in operation, and bounded reference-evaluation layer above the
+generic graph. It provides inspectable typed definitions, ordinary editable graph-node
+instantiation, deterministic discovery, exact-schema runtime factory translation, exact keyframe
+animation, graph-native links and parent controls, bounded animated closed cubic masks with complete
+controls and ordered soft-alpha composition, editable exact-frame rotoscope artifacts with
+solver-independent propagation hooks, and reusable cross-dissolve and directional-wipe schemas with
+exact handle-to-progress conversion. It also provides concrete schemas plus real reference pixels
 for transform, crop, opacity, blend, composite, Gaussian blur, sharpen, radial distortion, chroma
-key, invert, and grade.
+key, invert, grade, cross dissolves, and directional wipes.
 
 The generic graph remains authoritative for schema identity, instance identities, typed editable
 values, transactions, parameter drivers, immutable snapshots, topology, serialization, evaluation,
@@ -31,7 +32,7 @@ The built-in schemas require the production `superi.render.gpu` capability, but 
 implements only a deterministic bounded CPU oracle and headless proof. Production GPU kernels,
 engine catalog registration, timeline effect attachment, playback, viewport, export, project
 persistence, UI, mask rasterization, feather and expansion filtering, propagation solvers,
-transitions beyond the explicit composite operation, text, tracking, and OFX hosting remain absent
+production transition attachment and GPU execution, text, tracking, and OFX hosting remain absent
 or staged in their owning modules.
 
 ## Source inventory
@@ -57,17 +58,17 @@ or staged in their owning modules.
   easing, bounded time expressions, immutable curve editing, exact uniform retiming, deterministic
   evaluation, and the revisioned standalone wire.
 - `open/crates/superi-effects/src/lib.rs`: Documents the implemented authoring, animation,
-  control, mask, and rotoscope foundations and publicly exports them with the built-in catalog,
-  reference evaluator, and staged visual feature modules.
+  control, mask, rotoscope, and transition foundations and publicly exports them with the built-in
+  catalog, reference evaluator, and staged visual feature modules.
 - `open/crates/superi-effects/src/mask.rs`: Implements animated closed cubic mask paths, fill rules,
   complete checked controls, immutable topology, control, and stack edits, exact-time sampling,
   deterministic soft-coverage boolean composition, and the strict revisioned mask-stack wire.
 - `open/crates/superi-effects/src/ofx.rs`: Placeholder for an additive OFX-compatible plugin
   surface.
-- `open/crates/superi-effects/src/reference.rs`: Implements immutable operation state, conservative
-  ROI mapping, canonical image validation, bounded binary16 and binary32 CPU pixel operations,
-  editable-snapshot runtime compilation, graph evaluation, deterministic introspection, and cache
-  fingerprints.
+- `open/crates/superi-effects/src/reference.rs`: Implements immutable effect and transition state,
+  conservative ROI mapping, canonical image and shared transition-window validation, bounded
+  binary16 and binary32 CPU pixel operations, editable-snapshot runtime compilation, graph
+  evaluation, deterministic introspection, and cache fingerprints.
 - `open/crates/superi-effects/src/rotoscope.rs`: Implements bounded exact-frame span identities,
   generic authored base masks and corrections, inspectable derived propagation, directional request
   construction, revision-fenced solver hooks, immutable editing and invalidation, strict versioned
@@ -75,7 +76,11 @@ or staged in their owning modules.
 - `open/crates/superi-effects/src/text.rs`: Placeholder for additive text and motion-design
   primitives.
 - `open/crates/superi-effects/src/tracking.rs`: Placeholder for motion-tracking data and solving.
-- `open/crates/superi-effects/src/transition.rs`: Placeholder for higher-level transitions.
+- `open/crates/superi-effects/src/transition.rs`: Implements stable cross-dissolve and
+  directional-wipe kinds, exact versioned definitions and graph schemas, caller-owned instance
+  construction, animatable progress, direction, and softness parameters, atomic registration,
+  stable wipe direction choices, and exact handle timing mapped to clamped progress without taking
+  timeline editorial ownership.
 - `open/crates/superi-effects/tests/authoring_contract.rs`: Proves typed discovery, immutable
   snapshots, workflow-neutral editable instances, graph mutation, exact runtime compilation,
   atomic failures, schema drift rejection, and thread-safe sharing.
@@ -106,6 +111,11 @@ or staged in their owning modules.
   targets, directional anchors, injected hook execution, source provenance, correction precedence,
   immutable span and base editing, exact invalidation, stale and malformed result rejection, bounded
   state, strict persistence, `GraphValue::Domain`, and real editable graph reload.
+- `open/crates/superi-effects/tests/transition_contract.rs`: Proves exact handle timing, stable
+  transition discovery, typed animatable parameters, atomic registration, caller-owned bindings,
+  premultiplied dissolve and four-direction wipe pixels, soft edges, common display windows, ROI and
+  tile stability, real graph evaluation, introspection, cache identity, immutable revisions,
+  cross-workflow reuse, and invalid choice rejection.
 
 ## Public surface
 
@@ -222,17 +232,37 @@ The library exports `authoring`, `catalog`, `control`, `keyframe`, `mask`, `ofx`
   decoding, and reconstructs all state through checked ranges, clocks, ordering, overlap, and size
   validation.
 
+`transition` exposes reusable graph-native visual transitions without duplicating editorial state:
+
+- `TransitionKind` discovers exact `1.0.0` cross-dissolve and directional-wipe schemas in stable
+  presentation order. `TransitionCatalog` returns their authoring definitions, registers both
+  graph schemas atomically, and instantiates ordinary `EditableNode<GraphValue<T>>` values from
+  caller-owned `TransitionNodeBindings` and `TransitionParameterBinding` identities.
+- Every transition has required `from` and `to` image inputs, one `result` image output, and an
+  animatable normalized `progress` parameter. Directional wipes additionally expose the stable
+  `WipeDirection` choice vocabulary and animatable normalized `softness`.
+- Transition definitions declare exact ACEScg, current-frame, deterministic input-bounds,
+  per-region semantics and require `superi.render.gpu`, while the bounded CPU reference remains an
+  oracle rather than a production fallback.
+- `TransitionTiming` checks one exact core-owned edit clock, nonempty combined handles, and bounded
+  coordinates. It retains the cut plus from and to offsets, exposes the exact half-open range from
+  `cut - from_offset` through `cut + to_offset`, and maps caller time to clamped progress.
+
 `reference` exposes bounded executable proof:
 
-- `ReferenceEffectState`, sampling, blend, and Porter-Duff enums retain exact compiled operation
-  state. `required_input_regions` calculates state-dependent conservative dependencies.
+- `ReferenceEffectState` plus sampling, blend, and Porter-Duff enums retain exact compiled effect
+  and transition state; directional-wipe state uses the transition module's stable
+  `WipeDirection`. `required_input_regions` calculates state-dependent conservative dependencies in
+  semantic input order.
 - `evaluate_reference` accepts premultiplied, unqualified RGBA ACEScg in `Rgba16Float` or
   `Rgba32Float`. Results retain color tags, channel identity, metadata, representation, and display
   window without clamping extended scene-linear RGB.
 - `ReferenceEffectNode`, `compile_reference_node`, and the limits-aware compiler translate an exact
-  immutable editable snapshot into graph `EvaluateNode<Image>` and `IntrospectNode` behavior.
+  immutable editable effect or transition snapshot into graph `EvaluateNode<Image>` and
+  `IntrospectNode` behavior. Transitions require a shared display window, fingerprint resolved
+  progress and discrete choices, and blend premultiplied channels with exact endpoint behavior.
 
-The four remaining feature modules expose no substantive public types or behavior.
+The three remaining feature modules expose no substantive public types or behavior.
 
 ## Architecture and data flow
 
@@ -306,6 +336,27 @@ The built-in evaluation flow is:
 6. The CPU oracle validates image meaning, state, dimensions, channels, final storage, temporary
    pixels, kernels, and coordinate arithmetic against `ImageLimits` before loops or allocation.
 
+The transition flow reuses that same authoring and evaluation path while preserving timeline law:
+
+1. `superi-timeline` remains the owner of transition identity, adjacency, source handles, record
+   placement, grouping, synchronization, edit reconciliation, serialization, and graph compilation.
+   It has no dependency on effects.
+2. A higher integration owner selects one `TransitionKind`, allocates stable graph identities, and
+   projects timeline-owned endpoint and timing intent into the catalog's ordinary `from`, `to`,
+   `result`, and animatable parameter bindings. No effect-owned timeline list or topology is created.
+3. `TransitionTiming` converts the exact timeline cut and handles into a half-open visual range and
+   host-owned progress without rescaling or rounding clocks. Graph drivers may animate the same
+   declared parameters because they remain ordinary typed graph state.
+4. Reference compilation requires exact transition schema equality, resolves all graph drivers from
+   one immutable snapshot, parses stable wipe choices, validates normalized domains, and includes
+   schema, semantic port identities, progress, direction, and softness in node fingerprints.
+5. Cross dissolve linearly interpolates every premultiplied RGBA channel. Directional wipe derives
+   tile-independent pixel-center coordinates from the shared display window, supports four stable
+   directions and a normalized smooth band, and guarantees exact all-from and all-to endpoints.
+6. Both semantic inputs request the exact output region. The real `GraphEvaluationSnapshot`
+   contract proves evaluation, diagnostics, cache changes, old-snapshot isolation, and identical
+   behavior in independent ordinary graphs representing timeline and node-graph workflows.
+
 The reusable-control flow composes animation and built-in state with existing graph drivers:
 
 1. A host stores animatable literals in ordinary typed graph parameters and implements
@@ -372,14 +423,16 @@ The mask authoring and composition flow is:
 - Serde owns strict animation, mask-stack, and rotoscope records. JSON is test-only. `half` performs
   checked reference conversion to and from binary16.
 - `superi-timeline` does not depend on effects. It compiles native state into graph-owned
-  `GraphValue<TimelineGraphValue>`, the neutral payload shape that a higher integration owner can
-  share with built-in processing values.
+  `GraphValue<TimelineGraphValue>`, including stable transition endpoint, identity, and handle
+  parameters. A higher integration owner can pair that editorial projection with the effects-owned
+  transition definitions without reversing the dependency or copying timeline mutation policy.
 - `superi-engine` declares `superi-effects` but has no production catalog, animation, evaluator,
   playback, viewport, or export call site. Current real consumers are the role-neutral authoring,
   generic graph reload, reusable controls over shared processing payloads, strict animation and
-  mask payloads, strict rotoscope artifacts, and bounded headless graph-evaluation contracts. Mask
-  tests label independent ordinary graphs as timeline and node-graph roles without claiming
-  production timeline attachment.
+  mask payloads, strict rotoscope artifacts, transition authoring and timing, and bounded headless
+  graph-evaluation contracts.
+  Mask and transition tests label independent ordinary graphs as timeline and node-graph roles
+  without claiming production timeline attachment.
 
 ## Invariants and operational boundaries
 
@@ -397,6 +450,19 @@ The mask authoring and composition flow is:
   state.
 - Every result-affecting built-in parameter is typed, inspectable, editable, and animatable.
   Discrete choices remain bounded choice variants rather than numeric coercions.
+- Transition visual state is graph-native and workflow-neutral. Timeline retains endpoint identity,
+  adjacency, source and record timing, grouping, synchronization, persistence, and mutation policy;
+  effects retains only reusable schemas, parameter meaning, exact handle-to-progress conversion,
+  and bounded visual semantics.
+- Transition timing uses one exact core clock, requires a nonzero combined handle range, checks both
+  range endpoints, and clamps progress only after exact integer-coordinate comparison. No implicit
+  timebase rescale or timeline-owned identity is hidden in `TransitionTiming`.
+- Cross-dissolve and wipe progress plus wipe softness are finite and normalized. Wipe direction is
+  one stable choice, both inputs share canonical pixel, channel, color, alpha, and display-window
+  meaning, and spatial coordinates derive from the display window rather than the requested tile.
+- Transition endpoints are exact even with a soft wipe. Every premultiplied RGBA channel uses the
+  same interpolation weight, and both semantic input bindings participate in deterministic
+  fingerprints and same-region dependencies.
 - Production schemas require `superi.render.gpu`. CPU evaluation is an oracle and headless proof,
   not an engine fallback or production render route.
 - Blend and composite algebra uses premultiplied alpha. Straight-color pointwise operations
@@ -455,8 +521,9 @@ The mask authoring and composition flow is:
   revision, and rebuilds all nested state through checked constructors before publication.
 - Current code performs bounded reference pixel processing and ROI calculation, but no production
   GPU submission, cache integration, mask path rasterization, feather or expansion filtering,
-  production timeline sampling, engine playback, project autosave, propagation solver, plugin
-  containment, or text rendering. The reference oracle is not a production route.
+  production timeline sampling or transition attachment, engine playback, project autosave,
+  propagation solver, plugin containment, or text rendering. The reference oracle is not a
+  production route.
 
 ## Tests and verification
 
@@ -473,6 +540,14 @@ real canonical images, both sample representations, retained semantics, formulas
 invalid domains, and limits. Two graph workflow tests prove expression resolution, immutable real
 pixel evaluation, diagnostic parity, cache-key changes, old-reader stability, and fail-closed exact
 schema versioning.
+
+Five transition tests prove exact cut and handle timing, clamped progress, mixed-clock and overflow
+rejection, stable kind and direction discovery, exact schemas, metadata, ports, animatable controls,
+typed defaults, GPU capability, caller-owned identities, atomic registration, invalid binding and
+choice rejection, cross-dissolve endpoints and midpoint, four wipe directions, soft bands, shared
+display-window validation, same-region dependencies, tile stability, and real immutable graph
+evaluation with introspection, semantic cache changes, old-revision isolation, and independent
+timeline-role and node-graph-role reuse.
 
 Five control integration tests prove inspectable canonical controls and relationships, exact-time
 curve projection, chained scalar parenting, one child control reused by multiple targets, lossless
@@ -511,18 +586,21 @@ graphs.
 The authoring SDK, exact keyframe animation, reusable graph-native control rigs, animated mask
 authoring and composition, editable rotoscope artifacts and propagation hooks, built-in definitions,
 generic editable instantiation, deterministic CPU reference pixels, ROI mapping, immutable graph
-compilation, introspection, and role-neutral graph proofs are substantive and test-backed. Strict
-curve, mask-stack, and rotoscope payloads retain authored state across generic graph reload. The
-reference implementation is scalar and allocation-bounded, not performance production code, and
-masks have no rasterizer or rendered consumer.
+compilation, introspection, animated mask authoring and composition, reusable transition definitions,
+exact transition timing, bounded transition pixels, and role-neutral graph proofs are substantive and
+test-backed. Strict curve, mask-stack, and rotoscope payloads retain authored state across generic
+graph reload.
+The reference implementation is scalar and allocation-bounded, not performance production code,
+and masks have no rasterizer or rendered consumer.
 
 There is no GPU shader parity, engine registry, production runtime catalog, timeline attachment,
 playback, viewport, export, project persistence, UI, spatial motion path beyond mask contours, mask
-rasterization, propagation solver, text, tracking solver, higher transition authoring, or OFX host.
-Rotoscope mask payloads are generic and have no production mask-type consumer yet. Authoring
-metadata is in memory and has no independent wire. Control hints do not yet contain numeric bounds,
-choice option vocabularies, grouping, conditional visibility, or accessibility policy. Animation
-has no stable project-level property identity or production caller-time context.
+rasterization, propagation solver, text, tracking solver, production transition attachment, or OFX
+host. Rotoscope mask payloads are generic and have no production mask-type consumer yet. Authoring
+metadata is in memory and has no independent wire. Control hints do not yet encode enforceable
+numeric bounds, choice option vocabularies, grouping, conditional visibility, or accessibility
+policy; transition domains and wipe choices are therefore validated by the reference compiler.
+Animation has no stable project-level property identity or production caller-time context.
 
 Reusable control presentation and rig definitions remain in-memory authoring descriptions, while
 their applied driver meaning is persisted by graph. Parent expressions are scalar only; transform
@@ -538,6 +616,10 @@ sampled authoring inputs, but a later runtime still owns rasterization, ROI, fil
 values, caching, and pixels. The timeline-role mask proof uses an ordinary graph because production
 effect attachment does not exist. Generic graph reload proves persistence and editability, not
 project autosave, rendered pixels, or engine playback.
+Transition definitions likewise have no standalone wire or production timeline binder. Timeline
+already preserves editorial transition state and compiles neutral graph parameters, while the
+effects contract proves reusable visual nodes in ordinary graphs; the higher integration that maps
+between those contracts is intentionally still absent.
 
 ## Maintenance notes
 
@@ -562,6 +644,13 @@ order, and reconstruct authored curves and every immutable control replacement t
 existing checked owners. Preserve the clear boundary between sampled mask state and caller-owned
 rasterization. Future rasterizers must consume fill rule, expansion, feather, inversion, opacity,
 and boolean ordering without hiding edits or claiming a new persistence or graph owner.
+
+Keep transition schemas versioned, workflow-neutral, and limited to visual parameter meaning. Do
+not move timeline identity, adjacency, handles, record placement, grouping, synchronization,
+serialization, or edit reconciliation into effects. Preserve exact-clock handle conversion,
+closed progress domains, stable wipe choice codes, common display-window coordinates, exact
+endpoints, premultiplied interpolation, same-region dependencies, semantic fingerprints, and tiled
+parity. Future GPU implementations must match the bounded oracle and use the same graph parameters.
 
 When production consumers arrive, record property identities, caller-time flow, GPU resource
 ownership, cache behavior, serialization and migration ownership, timeline attachment, project

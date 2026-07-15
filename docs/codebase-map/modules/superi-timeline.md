@@ -578,6 +578,12 @@ Timeline document flow preserves those owners without becoming a project contain
   neutral `GraphValue` payload, schema, typed DAG, port validation, editable node, snapshot, and
   atomic mutation contracts used by timeline compilation. Timeline depends on no concrete effect
   catalog.
+- `superi-effects` now supplies reusable cross-dissolve and directional-wipe schemas, animatable
+  visual parameters, exact handle-to-progress conversion, and bounded reference pixels over the
+  neutral graph. Timeline does not depend on that crate and remains authoritative for transition
+  identity, adjacency, source and record timing, grouping, synchronization, persistence, and edit
+  reconciliation. A higher integration owner may bind the existing neutral timeline projection to
+  those schemas without moving editorial policy or reversing the dependency.
 - The workspace-pinned `sha2` 0.10.9 implementation derives stable graph-facing identifiers from
   domain-separated, length-framed editorial identity inputs and protects canonical timeline payload
   meaning without adding a network path.
@@ -682,7 +688,8 @@ Timeline document flow preserves those owners without becoming a project contain
   database, journal, autosave, replacement, network, device, process, or GPU operation.
 - A transition names the timed item immediately before and after it. Its offsets use the track edit
   clock, fit adjacent durations, do not overlap another transition on the same item, and do not add
-  to track duration. Adjacent transitions are invalid.
+  to track duration. Adjacent transitions are invalid. Effects-owned visual kinds and parameters do
+  not replace or reinterpret this editorial owner contract.
 - Audio routes cover every ordered source channel exactly once. Span construction, endpoints,
   splits, trims, and continuity distances use checked sample arithmetic and retain `ClipId` links.
 - Language tags normalize case and validate bounded BCP 47 syntax without claiming IANA registry
@@ -822,9 +829,11 @@ substantive and test-backed. Deterministic graph compilation with lossless nativ
 shared processing-value coexistence, plus production OTIO 0.18.1 reading,
 writing, opaque preservation, stable diagnostics, and a headless consumer are also test-backed.
 Strict canonical timeline documents, revision 0 migration, checked recovery, and continued editing
-after load are test-backed. Graph evaluation, fit-to-fill, grouped-source compound synthesis, undo
-ownership, multicam mixing and runtime playback, the owning SQLite project container, autosave and
-recovery orchestration, and engine or API integration remain absent.
+after load are test-backed. Effects now has compatible graph-native transition authoring and a
+bounded oracle, but the production binder from this timeline-owned state to those visual schemas is
+absent. Graph evaluation, fit-to-fill, grouped-source compound synthesis, undo ownership, multicam
+mixing and runtime playback, the owning SQLite project container, autosave and recovery
+orchestration, and engine or API integration remain absent.
 
 The model retains equal physical source and record duration for nominal clip ranges, while separate
 time maps may sample beyond that selection and report known unavailable points. Exact seam and slice

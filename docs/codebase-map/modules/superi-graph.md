@@ -567,12 +567,15 @@ The shared interactive and headless evaluation flow is:
    layered memory and disk adapters, and stages background inserts until cooperative completion.
    `superi-effects` now implements a higher-tier authoring catalog, exact-schema `NodeCompiler`
    adapter, strict animation, animated mask-stack, and rotoscope payloads over this snapshot, plus
-   versioned built-in definitions and a bounded CPU reference factory. It supplies no production
-   GPU runtime factory, mask rasterizer, propagation solver, or rendered application value. No
-   current color, engine, API, CLI, or GPU owner supplies the missing production runtime, so the
-   canonical `graph.evaluate` stage remains an honest stub even though the generic interactive,
-   playback, headless, and cache boundaries are explicit and test-backed. Engine playback now
-   accepts an externally prepared snapshot and runs exact predicted frames through this cached path.
+   versioned built-in effect and transition definitions, exact transition timing, and a bounded CPU
+   reference factory. Transition tests use the same snapshot for two semantic image inputs,
+   animatable parameters, diagnostics, cache identity, and old-revision isolation. Effects supplies
+   no production GPU runtime factory, mask rasterizer, propagation solver, timeline transition
+   binder, or rendered application value. No current color, engine, API, CLI, or GPU owner supplies
+   the missing production runtime, so the canonical `graph.evaluate` stage remains an honest stub
+   even though the generic interactive, playback, headless, and cache boundaries are explicit and
+   test-backed. Engine playback now accepts an externally prepared snapshot and runs exact predicted
+   frames through this cached path.
 
 The schema discovery flow is:
 
@@ -766,9 +769,13 @@ snapshot without assuming a project container. `superi-effects` now supplies the
 higher-tier definition catalog and compiler adapter while retaining all authored values in these
 graph owners. Its strict curve, animated mask-stack, and rotoscope payloads survive canonical graph
 reload through generic parameter serialization without adding animation, mask, or propagation
-meaning to graph. Concrete runtime factories, rasterization, propagation solving, cache value
-integration and invalidation invocation, project persistence, undo history, and engine transaction
-coordination remain separate later owners.
+meaning to graph. Its
+cross-dissolve and directional-wipe schemas, parameters, port bindings, immutable compilation, and
+reference evaluation likewise use neutral graph contracts without adding transition meaning or
+timeline edit policy to graph.
+Concrete runtime factories, rasterization, propagation solving, cache value integration and
+invalidation invocation, project persistence, undo history, and engine transaction coordination
+remain separate later owners.
 
 The disclosed canonical reference graph in `superi-engine` uses core `NodeId` but is not a consumer
 of this store and retains string ports and edges. It remains reference behavior, not production
@@ -790,11 +797,15 @@ graph evaluation or runtime integration.
   `superi-timeline`, `superi-project`, and `superi-engine`.
 - Effects consumes `ScalarExpression` for bounded animation time and parent expressions, stores its
   strict curve, animated mask-stack, and rotoscope payloads through animatable authoring definitions,
-  compiles reusable controls including lossless complete-mask links into ordinary typed drivers,
-  and uses `evaluate_parameter_with` to sample only literal curves before graph driver resolution.
-  Graph remains unaware of effect presentation, control rigs, curve, mask, and rotoscope types,
-  interpolation, keyframes, path geometry, mask controls, boolean operations, propagation state, and
-  animation variable meaning.
+  compiles reusable controls including lossless complete-mask links into ordinary typed drivers, and
+  uses
+  `evaluate_parameter_with` to sample only literal curves before graph driver resolution. It also
+  declares transition nodes with ordinary typed image ports and animatable scalar or choice
+  parameters, registers them through `NodeRegistry`, mutates them through `EditableGraph`, and
+  compiles them through `GraphEvaluationSnapshot`. Graph remains unaware of effect presentation,
+  control rigs, curve, mask, and rotoscope types, interpolation, keyframes, path geometry, mask
+  controls, boolean operations, propagation state, transition visual semantics, timeline adjacency,
+  and animation variable meaning.
 - Cache consumes `EvaluationValueCache`, `EvaluationCacheEntryKind`, `EvaluationCacheIdentity`,
   `EvaluationCacheKey`, `GraphEditInvalidation`, and `GraphColorMetadata`; its scoped adapter
   composes graph lineage and work time with outer result identity before concrete retention, applies
@@ -809,7 +820,8 @@ graph evaluation or runtime integration.
   nodes and values, instance bindings, immutable snapshots, bounded scalar expressions,
   `NodeCompiler`, parameter evaluation, diagnostics, and evaluator seams. It uses those neutral
   contracts for workflow-neutral authoring, exact keyframe, mask-stack, and rotoscope payload reload,
-  a versioned built-in visual catalog, and bounded reference pixels without reversing the dependency.
+  a versioned built-in effect and transition catalog, and bounded reference pixels without reversing
+  the dependency.
   The mask contract mutates, links, and reloads strict domain payloads in independent timeline-role
   and node-graph-role graphs without adding mask behavior to graph. The rotoscope contract reloads
   generic authored and derived per-frame state without adding propagation behavior. Timeline
@@ -1096,9 +1108,12 @@ Focused verification runs all sixteen integration targets through the crate's pu
 tests, strict Clippy, and rustdoc cover the library and integration targets. The complete workspace
 suite exercises downstream compatibility. The repository map validator checks the source inventory
 and hash, while dependency and boundary tools enforce the one-way open architecture. Effects tests
-now connect the neutral value and evaluation contracts to a concrete visual catalog and bounded CPU
-reference implementation. No test yet connects that catalog to the production engine, GPU value,
-CLI, or import-to-export rendered artifact.
+now connect the neutral value and evaluation contracts to concrete effect and transition catalogs
+plus bounded CPU reference implementation. Transition coverage proves two semantic image inputs,
+ordinary animatable parameter mutation, exact-schema compilation, immutable revision isolation,
+diagnostic and cache identity changes, same-region dependency requests, and tiled evaluation through
+the public `GraphEvaluationSnapshot`. No test yet connects those catalogs to the production engine,
+GPU value, timeline transition binder, CLI, or import-to-export rendered artifact.
 
 ## Current status and risks
 
@@ -1130,9 +1145,10 @@ insertions, and reclaims eligible LRU values under budget or GPU pressure. Disk 
 versioned envelopes, isolates invalid entries, and records classified failures. Reclamation,
 budget refusal, or persistence failure remains an ordinary miss or skipped insertion and cannot
 change the evaluator result. Cache can dispatch caller-compiled snapshots. Effects now implements a
-production definition catalog, exact-schema compiler adapter, and bounded CPU reference factory,
-but it has no production GPU runtime factory and does not connect complete ROI and invalidation
-plans to a rendered-frame application flow. Engine playback is the first production role consumer
+production definition catalog, exact-schema compiler adapter, graph-native transition catalog, and
+bounded CPU reference factory, but it has no production GPU runtime factory and does not connect
+complete ROI and invalidation plans or timeline-owned transitions to a rendered-frame application
+flow. Engine playback is the first production role consumer
 of an externally prepared evaluation snapshot, and its contract proves exact cached prediction does
 not change foreground evaluation meaning.
 The versioned graph document codec now preserves and validates that complete editable state,
@@ -1146,11 +1162,12 @@ own concrete cached values, persist cache data, bind
 plugin implementations, or render production values. Timeline compilation and memory cache
 retention are now real downstream consumers. Effects is a concrete downstream schema, expression,
 diagnostics, evaluator, immutable compiler, generic serialization, authoring, and animation consumer
-with strict mask and rotoscope payloads plus bounded reference pixels. Effects also consumes
-projected parameter evaluation and typed drivers for exact-time links, reusable controls, and parent
-expressions, including ordinary `GraphValue<T>` built-in state. It does not yet connect mask
-rasterization, propagation solvers, invalidation, missing-node resolution, GPU execution, or
-production engine orchestration into a complete render path.
+with strict mask and rotoscope payloads, ordinary transition nodes, and bounded reference pixels.
+Effects also consumes projected parameter evaluation and typed drivers for exact-time links,
+reusable controls, and parent expressions,
+including ordinary `GraphValue<T>` built-in state. It does not yet connect mask rasterization,
+propagation solvers, timeline transition attachment, invalidation, missing-node resolution, GPU
+execution, or production engine orchestration into a complete render path.
 
 The latest-version rule deterministically selects the lexically highest build-metadata variant when
 SemVer precedence ties. Consumers that require one deployment-specific build must request its exact

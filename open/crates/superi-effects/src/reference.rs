@@ -17,13 +17,14 @@ use superi_graph::eval::{
 };
 use superi_graph::ids::{NodeId, PortId};
 use superi_graph::mutate::{EditableNode, GraphSnapshot};
-use superi_graph::node::{NodeBehavior, NodeSchemaId};
+use superi_graph::node::{NodeBehavior, NodeSchema, NodeSchemaId};
 use superi_graph::value::GraphValue;
 use superi_image::limits::ImageLimits;
 use superi_image::ops::{crop_with_limits, transform_with_limits, ResampleFilter};
 use superi_image::value::{Image, ImageDescriptor, ImageSampleType, ImageSamples};
 
 use crate::catalog::{EffectCatalog, EffectNodeKind};
+use crate::transition::{TransitionCatalog, TransitionKind, WipeDirection};
 
 const COMPONENT: &str = "superi-effects.reference";
 
@@ -77,6 +78,20 @@ pub enum ReferenceCompositeOperator {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum ReferenceEffectState {
+    /// Premultiplied interpolation between adjacent transition images.
+    CrossDissolve {
+        /// Inclusive zero-through-one host-owned progress.
+        progress: f64,
+    },
+    /// Spatial reveal between adjacent transition images.
+    DirectionalWipe {
+        /// Inclusive zero-through-one host-owned progress.
+        progress: f64,
+        /// Direction in which the to image is revealed.
+        direction: WipeDirection,
+        /// Inclusive zero-through-one normalized soft-edge width.
+        softness: f64,
+    },
     /// Forward source-to-destination projective transform.
     Transform {
         /// Row-major finite matrix.
@@ -167,6 +182,8 @@ impl ReferenceEffectState {
     #[must_use]
     pub const fn code(&self) -> &'static str {
         match self {
+            Self::CrossDissolve { .. } => "cross-dissolve",
+            Self::DirectionalWipe { .. } => "directional-wipe",
             Self::Transform { .. } => "transform",
             Self::Crop { .. } => "crop",
             Self::Opacity { .. } => "opacity",
@@ -185,14 +202,26 @@ impl ReferenceEffectState {
     #[must_use]
     pub const fn input_count(&self) -> usize {
         match self {
-            Self::Blend { .. } | Self::Composite { .. } => 2,
+            Self::CrossDissolve { .. }
+            | Self::DirectionalWipe { .. }
+            | Self::Blend { .. }
+            | Self::Composite { .. } => 2,
             _ => 1,
         }
+    }
+
+    const fn is_transition(&self) -> bool {
+        matches!(
+            self,
+            Self::CrossDissolve { .. } | Self::DirectionalWipe { .. }
+        )
     }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ReferenceInput {
+    From,
+    To,
     Source,
     Backdrop,
 }
@@ -200,13 +229,22 @@ enum ReferenceInput {
 impl ReferenceInput {
     const fn index(self) -> usize {
         match self {
-            Self::Source => 0,
-            Self::Backdrop => 1,
+            Self::From | Self::Source => 0,
+            Self::To | Self::Backdrop => 1,
+        }
+    }
+
+    const fn code(self) -> &'static str {
+        match self {
+            Self::From => "from",
+            Self::To => "to",
+            Self::Source => "source",
+            Self::Backdrop => "backdrop",
         }
     }
 }
 
-/// One immutable executable projection of an editable built-in effect node.
+/// One immutable executable projection of an editable built-in visual operation.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReferenceEffectNode {
     schema_id: NodeSchemaId,
@@ -215,6 +253,12 @@ pub struct ReferenceEffectNode {
     input_ports: BTreeMap<PortId, ReferenceInput>,
     limits: ImageLimits,
     fingerprint: NodeStateFingerprint,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ReferenceOperationKind {
+    Effect(EffectNodeKind),
+    Transition(TransitionKind),
 }
 
 impl ReferenceEffectNode {
@@ -242,7 +286,7 @@ impl EvaluateNode<Image> for ReferenceEffectNode {
                 ErrorCategory::InvalidInput,
                 "dependencies",
                 "missing_effect_input",
-                "effect node must have exactly one edge for every semantic image input",
+                "visual operation must have exactly one edge for every semantic image input",
             ));
         }
         let regions = required_input_regions(&self.state, request.region())?;
@@ -258,7 +302,7 @@ impl EvaluateNode<Image> for ReferenceEffectNode {
                         ErrorCategory::InvalidInput,
                         "dependencies",
                         "unknown_effect_input",
-                        "incoming edge targets an unknown effect input binding",
+                        "incoming edge targets an unknown visual operation input binding",
                     )
                 })?;
             let index = semantic.index();
@@ -267,7 +311,7 @@ impl EvaluateNode<Image> for ReferenceEffectNode {
                     ErrorCategory::InvalidInput,
                     "dependencies",
                     "duplicate_effect_input",
-                    "effect node has more than one edge for a single-cardinality input",
+                    "visual operation has more than one edge for a single-cardinality input",
                 ));
             }
             seen[index] = true;
@@ -282,15 +326,14 @@ impl EvaluateNode<Image> for ReferenceEffectNode {
                 ErrorCategory::InvalidInput,
                 "dependencies",
                 "missing_effect_input",
-                "effect node is missing a required semantic image input",
+                "visual operation is missing a required semantic image input",
             ));
         }
         Ok(dependencies)
     }
 
     fn evaluate(&self, context: &EvaluationContext<'_, Image>) -> Result<Image> {
-        let mut source = None;
-        let mut backdrop = None;
+        let mut resolved = vec![None; self.state.input_count()];
         for input in context.inputs() {
             let semantic = self
                 .input_ports
@@ -301,37 +344,37 @@ impl EvaluateNode<Image> for ReferenceEffectNode {
                         ErrorCategory::Internal,
                         "evaluate_node",
                         "unknown_resolved_input",
-                        "resolved effect input has no compiled semantic binding",
+                        "resolved visual operation input has no compiled semantic binding",
                     )
                 })?;
-            match semantic {
-                ReferenceInput::Source => source = Some(input.value().clone()),
-                ReferenceInput::Backdrop => backdrop = Some(input.value().clone()),
+            let slot = &mut resolved[semantic.index()];
+            if slot.replace(input.value().clone()).is_some() {
+                return Err(reference_error(
+                    ErrorCategory::Internal,
+                    "evaluate_node",
+                    "duplicate_resolved_input",
+                    "reference evaluator received one semantic input more than once",
+                ));
             }
         }
-        let source = source.ok_or_else(|| {
-            reference_error(
-                ErrorCategory::Internal,
-                "evaluate_node",
-                "missing_resolved_source",
-                "effect evaluator did not receive its declared source input",
-            )
-        })?;
-        let inputs = if self.state.input_count() == 2 {
-            vec![
-                source,
-                backdrop.ok_or_else(|| {
+        let inputs = resolved
+            .into_iter()
+            .enumerate()
+            .map(|(index, value)| {
+                value.ok_or_else(|| {
                     reference_error(
                         ErrorCategory::Internal,
                         "evaluate_node",
-                        "missing_resolved_backdrop",
-                        "binary effect evaluator did not receive its declared backdrop input",
+                        "missing_resolved_input",
+                        "reference evaluator did not receive every declared semantic input",
                     )
-                })?,
-            ]
-        } else {
-            vec![source]
-        };
+                    .with_context(
+                        ErrorContext::new(COMPONENT, "evaluate_node")
+                            .with_field("semantic_index", index.to_string()),
+                    )
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
         evaluate_reference(
             &self.state,
             &inputs,
@@ -347,7 +390,7 @@ impl IntrospectNode for ReferenceEffectNode {
     }
 }
 
-/// Compiles one editable built-in effect using default image limits.
+/// Compiles one editable built-in visual operation using default image limits.
 ///
 /// Parameter links and expressions resolve from the exact immutable graph snapshot. The runtime
 /// node retains no second editable state and fingerprints every result-affecting resolved value and
@@ -355,7 +398,7 @@ impl IntrospectNode for ReferenceEffectNode {
 ///
 /// # Errors
 ///
-/// Returns an actionable error for a non-effect schema, missing or mistyped parameter, invalid
+/// Returns an actionable error for an unsupported schema, missing or mistyped parameter, invalid
 /// choice, invalid operation domain, or incomplete semantic port binding.
 pub fn compile_reference_node<T: Clone>(
     snapshot: &GraphSnapshot<GraphValue<T>>,
@@ -365,7 +408,7 @@ pub fn compile_reference_node<T: Clone>(
     compile_reference_node_with_limits(snapshot, node_id, node, ImageLimits::default())
 }
 
-/// Compiles one editable built-in effect using caller-selected image limits.
+/// Compiles one editable built-in visual operation using caller-selected image limits.
 ///
 /// # Errors
 ///
@@ -376,34 +419,28 @@ pub fn compile_reference_node_with_limits<T: Clone>(
     node: &EditableNode<GraphValue<T>>,
     limits: ImageLimits,
 ) -> Result<ReferenceEffectNode> {
-    let kind =
-        EffectNodeKind::from_code(node.schema().id().node_type().as_str()).ok_or_else(|| {
-            reference_error(
-                ErrorCategory::Unsupported,
-                "compile_node",
-                "unknown_effect_schema",
-                "reference compiler supports only built-in effect schemas",
-            )
-            .with_context(
-                ErrorContext::new(COMPONENT, "compile_node")
-                    .with_field("schema_id", node.schema().id().to_string()),
-            )
-        })?;
-    let catalog = EffectCatalog::new()?;
-    let expected_schema = catalog.schema(kind);
-    if node.schema() != expected_schema {
+    let node_type = node.schema().id().node_type().as_str();
+    let operation = if let Some(kind) = EffectNodeKind::from_code(node_type) {
+        let catalog = EffectCatalog::new()?;
+        require_exact_schema(node.schema(), catalog.schema(kind))?;
+        ReferenceOperationKind::Effect(kind)
+    } else if let Some(kind) = TransitionKind::from_code(node_type) {
+        let catalog = TransitionCatalog::new()?;
+        require_exact_schema(node.schema(), catalog.schema(kind))?;
+        ReferenceOperationKind::Transition(kind)
+    } else {
         return Err(reference_error(
             ErrorCategory::Unsupported,
             "compile_node",
-            "unsupported_effect_schema",
-            "reference compiler requires the exact built-in effect schema",
+            "unknown_effect_schema",
+            "reference compiler supports only built-in effect and transition schemas",
         )
         .with_context(
             ErrorContext::new(COMPONENT, "compile_node")
-                .with_field("expected_schema_id", expected_schema.id().to_string())
-                .with_field("actual_schema_id", node.schema().id().to_string()),
+                .with_field("schema_id", node.schema().id().to_string()),
         ));
-    }
+    };
+
     let mut parameters = BTreeMap::new();
     for parameter in node.parameters().values() {
         let evaluated = snapshot.evaluate_parameter(superi_graph::expr::ParameterAddress::new(
@@ -415,12 +452,19 @@ pub fn compile_reference_node_with_limits<T: Clone>(
             evaluated.value().payload().clone(),
         );
     }
-    let state = state_from_parameters(kind, &parameters)?;
+    let state = match operation {
+        ReferenceOperationKind::Effect(kind) => state_from_parameters(kind, &parameters)?,
+        ReferenceOperationKind::Transition(kind) => {
+            transition_state_from_parameters(kind, &parameters)?
+        }
+    };
     validate_state(&state)?;
 
     let mut input_ports = BTreeMap::new();
     for (port_id, name) in node.inputs() {
         let semantic = match name.as_str() {
+            "from" => ReferenceInput::From,
+            "to" => ReferenceInput::To,
             "source" => ReferenceInput::Source,
             "backdrop" => ReferenceInput::Backdrop,
             _ => {
@@ -428,7 +472,7 @@ pub fn compile_reference_node_with_limits<T: Clone>(
                     ErrorCategory::InvalidInput,
                     "compile_node",
                     "unknown_input_binding",
-                    "built-in effect instance contains an unknown semantic input",
+                    "built-in visual operation contains an unknown semantic input",
                 )
                 .with_context(
                     ErrorContext::new(COMPONENT, "compile_node").with_field("input", name.as_str()),
@@ -437,20 +481,24 @@ pub fn compile_reference_node_with_limits<T: Clone>(
         };
         input_ports.insert(*port_id, semantic);
     }
-    if input_ports.len() != state.input_count()
-        || !input_ports
-            .values()
-            .any(|value| *value == ReferenceInput::Source)
-        || (state.input_count() == 2
-            && !input_ports
-                .values()
-                .any(|value| *value == ReferenceInput::Backdrop))
-    {
+    let mut seen = vec![false; state.input_count()];
+    let bindings_are_complete = input_ports.len() == state.input_count()
+        && input_ports.values().all(|semantic| {
+            let index = semantic.index();
+            if index >= seen.len() || seen[index] {
+                false
+            } else {
+                seen[index] = true;
+                true
+            }
+        })
+        && seen.iter().all(|present| *present);
+    if !bindings_are_complete {
         return Err(reference_error(
             ErrorCategory::InvalidInput,
             "compile_node",
             "incomplete_input_bindings",
-            "built-in effect instance is missing a required semantic input binding",
+            "built-in visual operation is missing a required semantic input binding",
         ));
     }
 
@@ -467,9 +515,9 @@ pub fn compile_reference_node_with_limits<T: Clone>(
 
 /// Maps one output region to the conservative source work needed by the operation.
 ///
-/// Returned regions use semantic input order. Binary operations return source first and backdrop
-/// second. Blur and sharpen expand by the exact three-sigma integer support. Transform and radial
-/// distortion return conservative inverse-mapped bounds.
+/// Returned regions use semantic input order. Binary effects return source then backdrop;
+/// transitions return from then to. Blur and sharpen expand by the exact three-sigma integer
+/// support. Transform and radial distortion return conservative inverse-mapped bounds.
 ///
 /// # Errors
 ///
@@ -568,10 +616,25 @@ pub fn evaluate_reference(
     }
     if inputs.len() == 2 {
         validate_binary_semantics(&inputs[0], &inputs[1])?;
+        if state.is_transition() {
+            validate_transition_semantics(&inputs[0], &inputs[1])?;
+        }
     }
     ensure_output_limits(&inputs[0], output, *limits)?;
 
     match state {
+        ReferenceEffectState::CrossDissolve { progress } => {
+            evaluate_binary(&inputs[0], &inputs[1], output, *limits, |from, to| {
+                Ok(transition_pixel(from, to, *progress))
+            })
+        }
+        ReferenceEffectState::DirectionalWipe {
+            progress,
+            direction,
+            softness,
+        } => evaluate_directional_wipe(
+            &inputs[0], &inputs[1], output, *progress, *direction, *softness, *limits,
+        ),
         ReferenceEffectState::Transform { matrix, sampling } => transform_with_limits(
             &inputs[0],
             *matrix,
@@ -641,6 +704,45 @@ pub fn evaluate_reference(
             })
         }
     }
+}
+
+fn require_exact_schema(actual: &NodeSchema, expected: &NodeSchema) -> Result<()> {
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(reference_error(
+            ErrorCategory::Unsupported,
+            "compile_node",
+            "unsupported_effect_schema",
+            "reference compiler requires the exact built-in visual operation schema",
+        )
+        .with_context(
+            ErrorContext::new(COMPONENT, "compile_node")
+                .with_field("expected_schema_id", expected.id().to_string())
+                .with_field("actual_schema_id", actual.id().to_string()),
+        ))
+    }
+}
+
+fn transition_state_from_parameters<T>(
+    kind: TransitionKind,
+    parameters: &BTreeMap<String, GraphValue<T>>,
+) -> Result<ReferenceEffectState> {
+    Ok(match kind {
+        TransitionKind::CrossDissolve => ReferenceEffectState::CrossDissolve {
+            progress: scalar(parameters, "progress")?,
+        },
+        TransitionKind::DirectionalWipe => {
+            let direction_code = choice(parameters, "direction")?;
+            let direction = WipeDirection::from_code(direction_code)
+                .ok_or_else(|| invalid_transition_choice(kind, "direction", direction_code))?;
+            ReferenceEffectState::DirectionalWipe {
+                progress: scalar(parameters, "progress")?,
+                direction,
+                softness: scalar(parameters, "softness")?,
+            }
+        }
+    })
 }
 
 fn state_from_parameters<T>(
@@ -758,7 +860,7 @@ fn parameter<'a, T>(
             ErrorCategory::InvalidInput,
             "compile_node",
             "missing_parameter",
-            "built-in effect instance is missing a required parameter",
+            "built-in visual operation is missing a required parameter",
         )
         .with_context(ErrorContext::new(COMPONENT, "compile_node").with_field("parameter", name))
     })
@@ -770,7 +872,7 @@ fn scalar<T>(parameters: &BTreeMap<String, GraphValue<T>>, name: &str) -> Result
             ErrorCategory::InvalidInput,
             "compile_node",
             "mistyped_scalar_parameter",
-            "built-in effect scalar parameter has a non-scalar payload",
+            "built-in visual operation scalar parameter has a non-scalar payload",
         )
         .with_context(ErrorContext::new(COMPONENT, "compile_node").with_field("parameter", name))
     })
@@ -782,7 +884,7 @@ fn color<T>(parameters: &BTreeMap<String, GraphValue<T>>, name: &str) -> Result<
             ErrorCategory::InvalidInput,
             "compile_node",
             "mistyped_color_parameter",
-            "built-in effect color parameter has a non-color payload",
+            "built-in visual operation color parameter has a non-color payload",
         )
         .with_context(ErrorContext::new(COMPONENT, "compile_node").with_field("parameter", name))
     })
@@ -794,7 +896,7 @@ fn choice<'a, T>(parameters: &'a BTreeMap<String, GraphValue<T>>, name: &str) ->
             ErrorCategory::InvalidInput,
             "compile_node",
             "mistyped_choice_parameter",
-            "built-in effect choice parameter has a non-choice payload",
+            "built-in visual operation choice parameter has a non-choice payload",
         )
         .with_context(ErrorContext::new(COMPONENT, "compile_node").with_field("parameter", name))
     })
@@ -834,6 +936,21 @@ fn invalid_choice(kind: EffectNodeKind, parameter: &str, value: &str) -> Error {
     )
 }
 
+fn invalid_transition_choice(kind: TransitionKind, parameter: &str, value: &str) -> Error {
+    reference_error(
+        ErrorCategory::InvalidInput,
+        "compile_node",
+        "unknown_choice",
+        "transition choice parameter contains an unsupported value",
+    )
+    .with_context(
+        ErrorContext::new(COMPONENT, "compile_node")
+            .with_field("node_type", kind.code())
+            .with_field("parameter", parameter)
+            .with_field("value", value),
+    )
+}
+
 fn reference_fingerprint(
     schema_id: &NodeSchemaId,
     state: &ReferenceEffectState,
@@ -845,13 +962,7 @@ fn reference_fingerprint(
     push_u64(&mut bytes, input_ports.len() as u64);
     for (port_id, semantic) in input_ports {
         bytes.extend_from_slice(&port_id.to_bytes());
-        push_text(
-            &mut bytes,
-            match semantic {
-                ReferenceInput::Source => "source",
-                ReferenceInput::Backdrop => "backdrop",
-            },
-        );
+        push_text(&mut bytes, semantic.code());
     }
     NodeStateFingerprint::from_canonical_bytes(bytes)
 }
@@ -859,6 +970,16 @@ fn reference_fingerprint(
 fn push_state(bytes: &mut Vec<u8>, state: &ReferenceEffectState) {
     push_text(bytes, state.code());
     match state {
+        ReferenceEffectState::CrossDissolve { progress } => push_f64(bytes, *progress),
+        ReferenceEffectState::DirectionalWipe {
+            progress,
+            direction,
+            softness,
+        } => {
+            push_f64(bytes, *progress);
+            push_text(bytes, direction.code());
+            push_f64(bytes, *softness);
+        }
         ReferenceEffectState::Transform { matrix, sampling } => {
             for row in matrix.rows() {
                 for value in row {
@@ -970,6 +1091,10 @@ fn validate_state(state: &ReferenceEffectState) -> Result<()> {
     let finite = |value: f64| value.is_finite();
     let unit = |value: f64| finite(value) && (0.0..=1.0).contains(&value);
     let valid = match state {
+        ReferenceEffectState::CrossDissolve { progress } => unit(*progress),
+        ReferenceEffectState::DirectionalWipe {
+            progress, softness, ..
+        } => unit(*progress) && unit(*softness),
         ReferenceEffectState::Transform { .. } | ReferenceEffectState::Crop { .. } => true,
         ReferenceEffectState::Opacity { opacity }
         | ReferenceEffectState::Blend { opacity, .. }
@@ -1043,7 +1168,7 @@ fn validate_canonical_image(image: &Image) -> Result<()> {
             ErrorCategory::Unsupported,
             "validate_image",
             "unsupported_image_semantics",
-            "reference effects require premultiplied unqualified RGBA ACEScg binary16 or binary32",
+            "reference operations require premultiplied unqualified RGBA ACEScg binary16 or binary32",
         )
         .with_context(
             ErrorContext::new(COMPONENT, "validate_image")
@@ -1062,7 +1187,7 @@ fn validate_canonical_image(image: &Image) -> Result<()> {
                 ErrorCategory::InvalidInput,
                 "validate_image",
                 "nonfinite_image_sample",
-                "reference effects reject nonfinite image samples",
+                "reference operations reject nonfinite image samples",
             )
             .with_context(
                 ErrorContext::new(COMPONENT, "validate_image")
@@ -1074,7 +1199,7 @@ fn validate_canonical_image(image: &Image) -> Result<()> {
                 ErrorCategory::InvalidInput,
                 "validate_image",
                 "invalid_alpha_sample",
-                "reference effect alpha samples must remain between zero and one",
+                "reference operation alpha samples must remain between zero and one",
             )
             .with_context(
                 ErrorContext::new(COMPONENT, "validate_image")
@@ -1098,6 +1223,18 @@ fn validate_binary_semantics(source: &Image, backdrop: &Image) -> Result<()> {
             "validate_binary",
             "incompatible_image_semantics",
             "binary reference inputs must share pixel, channel, color, and alpha semantics",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_transition_semantics(from: &Image, to: &Image) -> Result<()> {
+    if from.descriptor().display_window() != to.descriptor().display_window() {
+        return Err(reference_error(
+            ErrorCategory::InvalidInput,
+            "validate_transition",
+            "incompatible_transition_windows",
+            "transition inputs must share one canonical display window",
         ));
     }
     Ok(())
@@ -1191,6 +1328,59 @@ fn evaluate_binary(
         }
     }
     build_output(source, output, result, limits)
+}
+
+fn evaluate_directional_wipe(
+    from: &Image,
+    to: &Image,
+    output: PixelBounds,
+    progress: f64,
+    direction: WipeDirection,
+    softness: f64,
+    limits: ImageLimits,
+) -> Result<Image> {
+    let display = from.descriptor().display_window();
+    let width = f64::from(display.width());
+    let height = f64::from(display.height());
+    let mut result = pixel_buffer(output, limits)?;
+    for y in output.min_y()..output.max_y() {
+        for x in output.min_x()..output.max_x() {
+            let horizontal = (f64::from(x) - f64::from(display.min_x()) + 0.5) / width;
+            let vertical = (f64::from(y) - f64::from(display.min_y()) + 0.5) / height;
+            let coordinate = match direction {
+                WipeDirection::LeftToRight => horizontal,
+                WipeDirection::RightToLeft => 1.0 - horizontal,
+                WipeDirection::TopToBottom => vertical,
+                WipeDirection::BottomToTop => 1.0 - vertical,
+            };
+            let to_weight = wipe_weight(coordinate, progress, softness);
+            let pixel = transition_pixel(read_pixel(from, x, y), read_pixel(to, x, y), to_weight);
+            validate_output_pixel(pixel)?;
+            result.push(pixel);
+        }
+    }
+    build_output(from, output, result, limits)
+}
+
+fn wipe_weight(coordinate: f64, progress: f64, softness: f64) -> f64 {
+    if progress <= 0.0 {
+        return 0.0;
+    }
+    if progress >= 1.0 {
+        return 1.0;
+    }
+    if softness == 0.0 {
+        return if coordinate <= progress { 1.0 } else { 0.0 };
+    }
+    let start = progress - softness * 0.5;
+    let end = progress + softness * 0.5;
+    let normalized = ((coordinate - start) / (end - start)).clamp(0.0, 1.0);
+    let smooth = normalized * normalized * (3.0 - 2.0 * normalized);
+    1.0 - smooth
+}
+
+fn transition_pixel(from: [f64; 4], to: [f64; 4], progress: f64) -> [f64; 4] {
+    std::array::from_fn(|channel| from[channel] * (1.0 - progress) + to[channel] * progress)
 }
 
 fn evaluate_blur(
@@ -1855,7 +2045,7 @@ fn output_range_error() -> Error {
         ErrorCategory::InvalidInput,
         "output",
         "nonfinite_output",
-        "reference effect produced a nonfinite or invalid-alpha output",
+        "reference operation produced a nonfinite or invalid-alpha output",
     )
 }
 
