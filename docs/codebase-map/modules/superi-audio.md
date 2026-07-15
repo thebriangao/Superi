@@ -2,16 +2,18 @@
 module_id: superi-audio
 source_paths:
   - open/crates/superi-audio
-source_hash: 14c0283d62ec817203e51158e436ce00abf5c4b0f020b8579618f123c77a45ec
-source_files: 13
+source_hash: dc21164feb2c93a82150da62d3143ee327bf9bc4c2f75423b7f6265a14327eeb
+source_files: 15
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
 `superi-audio` owns independent audio processing and sample-accurate playback scheduling. Its
-foundational graph provides an editable deterministic DAG and a separately prepared plan for
-bounded interleaved f32 processing at exact sample coordinates. Its timeline scheduler maps
+foundational graph provides an editable deterministic DAG, typed direct, send, and auxiliary-return
+routes, one terminal master, and a separately prepared plan for bounded interleaved f32 processing
+at exact sample coordinates. Exact-layout submix, auxiliary, and master buses consume borrowed
+multi-input views and sum in stable route-identity order. Its timeline scheduler maps
 immutable editorial placements into exact callback source slices and publishes completed device
 presentation to the shared audio master clock. Its playback slice discovers operating-system output
 devices and moves normalized interleaved samples through a fixed-capacity lock-free queue into typed
@@ -21,20 +23,21 @@ fades, pan, mute, solo, phase, and semantic channel mapping with immutable prepa
 All three paths enforce the platform-owned audio execution domain, but their control-path owners
 remain separate. Graph editing and preparation allocate outside callbacks. Schedule construction and
 transport reanchoring also occur outside callbacks. Device discovery and stream setup remain on
-control threads. Decoded sample binding, buses, mixing, routing execution, resampling, metering,
-plugins, and engine orchestration remain separate concerns.
+control threads. Decoded sample binding, automation, resampling, metering, plugins, and complete
+engine orchestration remain separate concerns.
 
 ## Source inventory
 
 - `open/crates/superi-audio/Cargo.toml`: Declares dependencies on `superi-core`,
   `superi-concurrency`, exact CPAL 0.17.3, and ringbuf 0.4.8.
 - `open/crates/superi-audio/src/graph.rs`: Implements typed audio graph, node, and edge identities;
-  editable node and edge storage; deterministic cycle-safe topology; exact channel-layout
-  validation; destination-scoped preparation; processor contracts; preallocated intermediate
-  buffers; and exact consecutive block processing on the audio domain.
+  source, processor, submix, auxiliary, and master roles; direct, send, and return routes; one-master
+  and deterministic cycle-safe topology; exact channel-layout validation; destination-scoped and
+  master preparation; borrowed ordered multi-input views; preallocated intermediate buffers; and
+  exact consecutive block processing on the audio domain.
 - `open/crates/superi-audio/src/hosting.rs`: Placeholder for additive VST3 and Audio Unit hosting.
-- `open/crates/superi-audio/src/lib.rs`: Documents the implemented graph and scheduling boundaries
-  and exports the seven audio concern modules.
+- `open/crates/superi-audio/src/lib.rs`: Documents the implemented graph, routing, scheduling, and
+  playback boundaries and exports the eight audio concern modules.
 - `open/crates/superi-audio/src/metering.rs`: Placeholder for metering and audio analysis.
 - `open/crates/superi-audio/src/mixing.rs`: Implements validated clip controls, semantic channel
   matrices, revisioned identity mutations, immutable solo-aware snapshots, bounded clip
@@ -43,6 +46,8 @@ plugins, and engine orchestration remain separate concerns.
   discovery, exact configuration validation, bounded producer and callback endpoints, sample
   conversion, audio-clock publication, atomic telemetry, and production stream lifecycle.
 - `open/crates/superi-audio/src/resample.rs`: Placeholder for sample-rate conversion.
+- `open/crates/superi-audio/src/routing.rs`: Implements allocation-free unity summing for prepared
+  submix, auxiliary, and master buses in stable route-identity order with non-finite rejection.
 - `open/crates/superi-audio/src/sync.rs`: Implements exact timeline placements, immutable schedule
   validation, transport epochs, callback-window mapping, lazy source slices, and audio-master
   publication.
@@ -57,18 +62,28 @@ plugins, and engine orchestration remain separate concerns.
 - `open/crates/superi-audio/tests/clip_mixing_contract.rs`: Public consumer proof for every clip
   control, exact multi-block envelopes, snapshot solo behavior, atomic identity mutations, invalid
   layouts and values, clip bounds, and failure atomicity.
+- `open/crates/superi-audio/tests/routing_contract.rs`: Proves dry submix, auxiliary send and return,
+  single-master delivery, stable route order independent of edit history, exact consecutive blocks,
+  and atomic role, layout, master, and cycle rejection.
 
 ## Public surface
 
-The crate root exports `graph`, `hosting`, `metering`, `mixing`, `playback`, `resample`, and `sync`.
-`graph`, `sync`, and `playback` contain substantive behavior.
+The crate root exports `graph`, `hosting`, `metering`, `mixing`, `playback`, `resample`, `routing`,
+and `sync`. `graph`, `mixing`, `routing`, `sync`, and `playback` contain substantive behavior.
 
 `graph` exposes ordered audio-owned `AudioGraphId`, `AudioNodeId`, and `AudioEdgeId` values.
-`AudioNode` declares one optional input layout and one output layout. `AudioEdge` identifies one
-directed route. `AudioGraph` owns a fixed sample rate and positive maximum frame count, supports
-checked node and edge mutation, and exposes deterministic topology. `AudioGraph::prepare` consumes
-processor implementations for one destination and returns `PreparedAudioGraph`, whose `process`
-method accepts exact `SampleTime`, bounded frames, and caller-owned output.
+`AudioNode` declares a source, single-input processor, or typed multi-input bus with exact input and
+output layout. `AudioEdge` retains direct, send, or auxiliary-return intent. `AudioGraph` owns a
+fixed sample rate, positive maximum frame count, and at most one master, supports checked node and
+edge mutation, and exposes deterministic topology. `AudioGraph::prepare` consumes processor
+implementations for one destination, while `prepare_master` selects the authored master. The
+resulting `PreparedAudioGraph` exposes stable prepared input routes and processes exact
+`SampleTime`, bounded frames, and caller-owned output. `AudioProcessInputs` lazily yields borrowed
+current-block samples, source identities, route identities, and layouts without allocation.
+
+`routing::SummingBus` is a unity processor for submix, auxiliary, and master nodes. It clears the
+prepared output and adds exact-layout inputs in ascending route identity, rejecting non-finite
+results. It does not own gain, pan, effects, automation, or channel conversion.
 
 `sync` exposes these scheduling values:
 
@@ -98,16 +113,19 @@ Preparation binds one clip identity to an exact `SampleTime` interval and fixed 
 ## Architecture and data flow
 
 Graph editing occurs outside the audio callback. Nodes and edges live in ordered maps, adjacency is
-kept in ordered sets, and edge insertion validates endpoints, cycles, one incoming route per
-processing node, and exact ordered layout equality before mutation. Preparation walks backward from
-one destination, validates connectivity and processor coverage, filters stable topological order,
-resolves runtime input indices, and fallibly reserves one maximum-sized interleaved f32 buffer per
-node.
+kept in ordered sets, and edge insertion validates endpoints, cycles, route roles, one incoming
+route per ordinary processor, variadic bus inputs, one master, and exact ordered layout equality
+before mutation. Direct routes carry dry or submix flow, sends terminate at auxiliaries, returns
+leave auxiliaries for a submix or master, and the master has no output route. Preparation walks
+backward from one destination, validates connectivity and processor coverage, filters stable
+topological order, resolves every input to an earlier runtime index in edge identity order, and
+fallibly reserves one maximum-sized interleaved f32 buffer per node.
 
 Prepared processing requires `ExecutionDomain::Audio`, then validates rate, positive bounded frame
 count, exact output length, coordinate overflow, and continuity with the prior successful block.
-Each processor reads an earlier node's current buffer and writes its own prepared buffer. The
-destination is copied into caller-owned output, and continuity advances only after full success.
+Each processor reads earlier current-block buffers through a borrowed input view and writes its own
+prepared buffer. `SummingBus` performs deterministic unity addition without callback allocation.
+The destination is copied into caller-owned output, and continuity advances only after full success.
 
 Schedule construction is also a control-path operation. It validates half-open source and record
 windows, one common rate, stable track-order ownership, unique clip identities, and no overlap
@@ -153,9 +171,10 @@ decision. Its successful callback path allocates nothing and takes no lock.
   adapter inputs.
 - `superi-media-io` remains the decoded sample owner and is not a direct dependency. No production
   decoder currently feeds a prepared graph from scheduled slices.
-- The four public integration contracts are the current real consumers. They process exact adjacent
-  blocks, publish scheduled presentation through actual concurrency clocks, exercise bounded
-  device output, and prove clip DSP plus identity inheritance.
+- The five public integration contracts are the current real consumers. They process exact adjacent
+  blocks through clip DSP, dry, auxiliary, submix, and master paths, publish scheduled presentation
+  through actual concurrency clocks, exercise bounded device output, and prove clip identity
+  inheritance.
 
 ## Invariants and operational boundaries
 
@@ -163,9 +182,10 @@ decision. Its successful callback path allocates nothing and takes no lock.
   both paths.
 - Graph nodes and edges are deterministically inspectable. Rejected mutations leave primary and
   adjacency collections unchanged.
-- A source has no input. A processing node has exactly one connected input in this foundational
-  graph. Clip channel mapping changes layout inside one processor; multi-input summing, buses, and
-  automation remain later mixing work.
+- A source has no input and an ordinary processor has exactly one direct input. Submix, auxiliary,
+  and master buses accept one or more routes and sum them in immutable edge identity order.
+- One graph has at most one master. The master is terminal, send destinations are auxiliary buses,
+  and auxiliary returns terminate only at submix or master buses. Failed route edits are atomic.
 - Edges require exact ordered channel-layout equality. The graph performs no implicit upmix,
   downmix, remap, pan, or resample.
 - Prepared execution includes only the chosen destination and its connected ancestors. Its order
@@ -215,10 +235,16 @@ cross-track overlap, rejected same-track overlap and invalid identities or clock
 clipping and silence gaps, audio-domain ownership, seek epochs, coordinate limits, a one-hour exact
 mapping, real `AudioMasterClock` publication, and zero observed video drift.
 
+`routing_contract.rs` has three public tests. One renders two sources through a dry submix and a
+parallel auxiliary send and return into the single master over adjacent 48 kHz stereo blocks. One
+uses order-sensitive floating-point values and different edit orders to prove summing order
+comes from stable edge identity. One proves duplicate masters, master outputs, wrong direct, send,
+and return roles, layout mismatch, and cycles fail without mutating topology.
+
 Together these contracts prove the graph and scheduler coexist without changing exact timing or
 channel meaning. Dependent concurrency clock and A/V tests and timeline track-semantics tests guard
 the composed contracts. Deterministic local proof does not claim physical hardware latency,
-hot-plug behavior, decoded sample binding, routed mixing, or hardware A/V behavior.
+hot-plug behavior, decoded sample binding, engine-composed delivery, or hardware A/V behavior.
 
 Two playback unit tests and ten public output contracts prove typed conversion, backend-default
 buffer semantics, capacity and normalized-sample validation, whole-frame backpressure, silence and
@@ -233,16 +259,16 @@ duration bounds, and out-of-clip processing rejection through the actual prepare
 
 ## Current status and risks
 
-The independent audio graph, sample-accurate schedule, production device-output substrate, and clip
-mix processor are substantive and publicly test-backed. Three sibling modules remain
-documentation-only placeholders. Engine consumes timeline edit outcomes for atomic clip identity
-reconciliation, but there is no decoded-audio fetch, scheduled-slice graph binding, bus mixing,
+The independent audio graph, bus routing, sample-accurate schedule, production device-output
+substrate, and clip mix processor are substantive and publicly test-backed. Two sibling modules
+remain documentation-only placeholders. Engine consumes timeline edit outcomes for atomic clip
+identity reconciliation, but there is no decoded-audio fetch, scheduled-slice graph binding,
 resampling, metering, plugin host, engine playback composition, or end-to-end
 source-playback-final-mix path.
 
-The single-input shape is deliberately narrow to avoid inventing later bus semantics. Extending it
-to multi-input processing will require precomputed input views that preserve allocation-free callback
-behavior. The schedule iterator is deterministic and allocation-free but scans placements linearly;
+Multi-input routing is deliberately unity-only to avoid claiming later control semantics. Prepared
+input views retain immutable routes and earlier buffers without self-referential storage or callback
+allocation. The schedule iterator is deterministic and allocation-free but scans placements linearly;
 a future index must be prepared outside callbacks and preserve exact render order. Caller processors
 remain a trust boundary for real-time safety and error atomicity. Physical latency, semantic
 channel routing, hot-plug, constrained-device, and soak evidence remain
@@ -254,9 +280,9 @@ decibel-addressed, fades are linear only, and pan is the canonical stereo equal-
 Preserve the edit-versus-prepare split, fixed schedule epochs, stable identity ordering, exact
 sample and channel meanings, fallible preallocation, whole-frame queue admission, explicit capacity
 ceiling, timed-silence clock behavior, callback-only atomic telemetry, and failure-only diagnostic
-allocation. Any multi-input or indexed extension must define ordering explicitly and prove callback
-safety. Keep discovery and stream setup on control threads, and revalidate capabilities before
-stream creation.
+allocation. Preserve direct, send, return, and single-master role validation and stable edge-ordered
+summing. Any indexed extension must define ordering explicitly and prove callback safety. Keep
+discovery and stream setup on control threads, and revalidate capabilities before stream creation.
 
 When engine integration arrives, adapt immutable timeline and decoded audio owners into the
 existing schedule and graph types instead of adding upward dependencies. Keep channel layout and

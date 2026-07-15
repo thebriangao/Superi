@@ -46,13 +46,50 @@ audio_id!(AudioGraphId, "audio-graph");
 audio_id!(AudioNodeId, "audio-node");
 audio_id!(AudioEdgeId, "audio-edge");
 
+/// The routing role of one multi-input audio bus.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[non_exhaustive]
+pub enum AudioBusKind {
+    /// An intermediate summing destination on the dry signal path.
+    Submix,
+    /// A parallel effects destination reached by sends and left by returns.
+    Auxiliary,
+    /// The single terminal destination rendered for final output.
+    Master,
+}
+
+/// The processing role of one audio node.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[non_exhaustive]
+pub enum AudioNodeKind {
+    /// A node that produces audio without a graph input.
+    Source,
+    /// A node with exactly one direct input.
+    Processor,
+    /// A node that sums one or more ordered routes.
+    Bus(AudioBusKind),
+}
+
+/// The authored meaning of one audio route.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[non_exhaustive]
+pub enum AudioRouteKind {
+    /// A route along the ordinary dry or submix path.
+    Direct,
+    /// A parallel route into an auxiliary bus.
+    Send,
+    /// A route from an auxiliary bus back to a submix or the master.
+    AuxReturn,
+}
+
 /// One editable audio processing node with explicit channel meaning.
 ///
-/// A node with no input layout is a source. Every other node accepts exactly one connection in
-/// this foundational graph. Multi-input buses and channel mapping remain later mixing concerns.
+/// A node with no input layout is a source. Ordinary processors accept exactly one connection,
+/// while typed buses accept multiple exact-layout routes in stable edge-identity order.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AudioNode {
     id: AudioNodeId,
+    kind: AudioNodeKind,
     input_layout: Option<ChannelLayout>,
     output_layout: ChannelLayout,
 }
@@ -67,8 +104,24 @@ impl AudioNode {
     ) -> Self {
         Self {
             id,
+            kind: if input_layout.is_some() {
+                AudioNodeKind::Processor
+            } else {
+                AudioNodeKind::Source
+            },
             input_layout,
             output_layout,
+        }
+    }
+
+    /// Creates a multi-input bus whose inputs and output share exact channel meaning.
+    #[must_use]
+    pub fn bus(id: AudioNodeId, kind: AudioBusKind, layout: ChannelLayout) -> Self {
+        Self {
+            id,
+            kind: AudioNodeKind::Bus(kind),
+            input_layout: Some(layout.clone()),
+            output_layout: layout,
         }
     }
 
@@ -76,6 +129,12 @@ impl AudioNode {
     #[must_use]
     pub const fn id(&self) -> AudioNodeId {
         self.id
+    }
+
+    /// Returns the source, single-input processor, or bus role.
+    #[must_use]
+    pub const fn kind(&self) -> AudioNodeKind {
+        self.kind
     }
 
     /// Returns the required input layout, or `None` for a source.
@@ -97,6 +156,7 @@ pub struct AudioEdge {
     id: AudioEdgeId,
     source: AudioNodeId,
     destination: AudioNodeId,
+    kind: AudioRouteKind,
 }
 
 impl AudioEdge {
@@ -107,6 +167,33 @@ impl AudioEdge {
             id,
             source,
             destination,
+            kind: AudioRouteKind::Direct,
+        }
+    }
+
+    /// Creates a parallel send into an auxiliary bus.
+    #[must_use]
+    pub const fn send(id: AudioEdgeId, source: AudioNodeId, auxiliary: AudioNodeId) -> Self {
+        Self {
+            id,
+            source,
+            destination: auxiliary,
+            kind: AudioRouteKind::Send,
+        }
+    }
+
+    /// Creates a return from an auxiliary bus to a submix or master bus.
+    #[must_use]
+    pub const fn aux_return(
+        id: AudioEdgeId,
+        auxiliary: AudioNodeId,
+        destination: AudioNodeId,
+    ) -> Self {
+        Self {
+            id,
+            source: auxiliary,
+            destination,
+            kind: AudioRouteKind::AuxReturn,
         }
     }
 
@@ -127,6 +214,12 @@ impl AudioEdge {
     pub const fn destination(self) -> AudioNodeId {
         self.destination
     }
+
+    /// Returns whether this route is direct, a send, or an auxiliary return.
+    #[must_use]
+    pub const fn kind(self) -> AudioRouteKind {
+        self.kind
+    }
 }
 
 /// Editable deterministic audio DAG.
@@ -139,6 +232,7 @@ pub struct AudioGraph {
     edges: BTreeMap<AudioEdgeId, AudioEdge>,
     incoming: BTreeMap<AudioNodeId, BTreeSet<AudioEdgeId>>,
     outgoing: BTreeMap<AudioNodeId, BTreeSet<AudioEdgeId>>,
+    master: Option<AudioNodeId>,
 }
 
 impl AudioGraph {
@@ -168,6 +262,7 @@ impl AudioGraph {
             edges: BTreeMap::new(),
             incoming: BTreeMap::new(),
             outgoing: BTreeMap::new(),
+            master: None,
         })
     }
 
@@ -201,6 +296,12 @@ impl AudioGraph {
         &self.edges
     }
 
+    /// Returns the single authored master bus, when one exists.
+    #[must_use]
+    pub const fn master_node(&self) -> Option<AudioNodeId> {
+        self.master
+    }
+
     /// Inserts one uniquely identified node.
     pub fn insert_node(&mut self, node: AudioNode) -> Result<()> {
         if self.nodes.contains_key(&node.id) {
@@ -211,7 +312,18 @@ impl AudioGraph {
                 [("node_id", node.id.to_string())],
             ));
         }
+        if node.kind == AudioNodeKind::Bus(AudioBusKind::Master) && self.master.is_some() {
+            return Err(self.error(
+                ErrorCategory::Conflict,
+                "insert_node",
+                "audio graph already contains a master bus",
+                [("node_id", node.id.to_string())],
+            ));
+        }
         let id = node.id;
+        if node.kind == AudioNodeKind::Bus(AudioBusKind::Master) {
+            self.master = Some(id);
+        }
         self.nodes.insert(id, node);
         self.incoming.insert(id, BTreeSet::new());
         self.outgoing.insert(id, BTreeSet::new());
@@ -238,6 +350,9 @@ impl AudioGraph {
         }
         self.incoming.remove(&id);
         self.outgoing.remove(&id);
+        if self.master == Some(id) {
+            self.master = None;
+        }
         Ok(self
             .nodes
             .remove(&id)
@@ -267,6 +382,49 @@ impl AudioGraph {
                 edge,
             )
         })?;
+        if source.kind == AudioNodeKind::Bus(AudioBusKind::Master) {
+            return Err(self.edge_error(
+                ErrorCategory::InvalidInput,
+                "audio master bus cannot have an outgoing route",
+                edge,
+            ));
+        }
+        match edge.kind {
+            AudioRouteKind::Direct => {
+                if source.kind == AudioNodeKind::Bus(AudioBusKind::Auxiliary)
+                    || destination.kind == AudioNodeKind::Bus(AudioBusKind::Auxiliary)
+                {
+                    return Err(self.edge_error(
+                        ErrorCategory::InvalidInput,
+                        "auxiliary buses require explicit send and return routes",
+                        edge,
+                    ));
+                }
+            }
+            AudioRouteKind::Send => {
+                if destination.kind != AudioNodeKind::Bus(AudioBusKind::Auxiliary) {
+                    return Err(self.edge_error(
+                        ErrorCategory::InvalidInput,
+                        "audio send destination must be an auxiliary bus",
+                        edge,
+                    ));
+                }
+            }
+            AudioRouteKind::AuxReturn => {
+                if source.kind != AudioNodeKind::Bus(AudioBusKind::Auxiliary)
+                    || !matches!(
+                        destination.kind,
+                        AudioNodeKind::Bus(AudioBusKind::Submix | AudioBusKind::Master)
+                    )
+                {
+                    return Err(self.edge_error(
+                        ErrorCategory::InvalidInput,
+                        "audio return must route an auxiliary bus into a submix or master bus",
+                        edge,
+                    ));
+                }
+            }
+        }
         if edge.source == edge.destination || self.reaches(edge.destination, edge.source) {
             return Err(self.edge_error(
                 ErrorCategory::Conflict,
@@ -281,7 +439,9 @@ impl AudioGraph {
                 edge,
             ));
         };
-        if !self.incoming[&edge.destination].is_empty() {
+        if destination.kind == AudioNodeKind::Processor
+            && !self.incoming[&edge.destination].is_empty()
+        {
             return Err(self.edge_error(
                 ErrorCategory::Conflict,
                 "audio node input is already connected",
@@ -408,10 +568,14 @@ impl AudioGraph {
         let mut prepared_nodes = Vec::with_capacity(order.len());
         for node_id in &order {
             let descriptor = self.nodes[node_id].clone();
-            let source_index = self.incoming[node_id]
+            let input_routes = self.incoming[node_id]
                 .iter()
-                .next()
-                .map(|edge_id| indices[&self.edges[edge_id].source]);
+                .map(|edge_id| PreparedAudioRoute {
+                    edge_id: *edge_id,
+                    source_node: self.edges[edge_id].source,
+                    source_index: indices[&self.edges[edge_id].source],
+                })
+                .collect();
             let samples = self
                 .maximum_frames
                 .checked_mul(descriptor.output_layout.len())
@@ -435,7 +599,7 @@ impl AudioGraph {
             buffer.resize(samples, 0.0);
             prepared_nodes.push(PreparedNode {
                 descriptor,
-                source_index,
+                input_routes,
                 processor: processors
                     .remove(node_id)
                     .expect("required audio processor was validated"),
@@ -452,6 +616,22 @@ impl AudioGraph {
             nodes: prepared_nodes,
             next_sample: None,
         })
+    }
+
+    /// Prepares the graph's single master bus and every connected ancestor.
+    pub fn prepare_master(
+        &self,
+        processors: BTreeMap<AudioNodeId, Box<dyn AudioProcessor>>,
+    ) -> Result<PreparedAudioGraph> {
+        let master = self.master.ok_or_else(|| {
+            self.error(
+                ErrorCategory::NotFound,
+                "prepare_master",
+                "audio graph does not contain a master bus",
+                [],
+            )
+        })?;
+        self.prepare(master, processors)
     }
 
     fn reaches(&self, start: AudioNodeId, target: AudioNodeId) -> bool {
@@ -528,7 +708,8 @@ pub struct AudioProcessBlock<'a> {
     pub start_time: SampleTime,
     /// Number of sample frames per channel.
     pub frame_count: usize,
-    /// Optional connected input samples in `input_layout` order.
+    /// The first connected input in `input_layout` order, retained for single-input processors.
+    /// Multi-input processors consume every route through [`AudioProcessor::process_inputs`].
     pub input: Option<&'a [f32]>,
     /// Optional input channel meaning. This is `None` only for a source node.
     pub input_layout: Option<&'a ChannelLayout>,
@@ -538,15 +719,161 @@ pub struct AudioProcessBlock<'a> {
     pub output_layout: &'a ChannelLayout,
 }
 
+/// One immutable prepared route into a processing node.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PreparedAudioRoute {
+    edge_id: AudioEdgeId,
+    source_node: AudioNodeId,
+    source_index: usize,
+}
+
+impl PreparedAudioRoute {
+    /// Returns the stable route identity.
+    #[must_use]
+    pub const fn edge_id(self) -> AudioEdgeId {
+        self.edge_id
+    }
+
+    /// Returns the upstream node identity.
+    #[must_use]
+    pub const fn source_node(self) -> AudioNodeId {
+        self.source_node
+    }
+}
+
+/// One borrowed input block yielded without allocating or copying samples.
+#[derive(Clone, Copy, Debug)]
+pub struct AudioProcessInput<'a> {
+    route: PreparedAudioRoute,
+    samples: &'a [f32],
+    layout: &'a ChannelLayout,
+}
+
+impl<'a> AudioProcessInput<'a> {
+    /// Returns the route identity that supplied these samples.
+    #[must_use]
+    pub const fn edge_id(self) -> AudioEdgeId {
+        self.route.edge_id
+    }
+
+    /// Returns the upstream node identity.
+    #[must_use]
+    pub const fn source_node(self) -> AudioNodeId {
+        self.route.source_node
+    }
+
+    /// Returns interleaved samples for the current exact process window.
+    #[must_use]
+    pub const fn samples(self) -> &'a [f32] {
+        self.samples
+    }
+
+    /// Returns the ordered channel meaning of the samples.
+    #[must_use]
+    pub const fn layout(self) -> &'a ChannelLayout {
+        self.layout
+    }
+}
+
+/// Allocation-free view of a node's prepared inputs.
+#[derive(Clone, Copy)]
+pub struct AudioProcessInputs<'a> {
+    previous: &'a [PreparedNode],
+    routes: &'a [PreparedAudioRoute],
+    frame_count: usize,
+}
+
+impl<'a> AudioProcessInputs<'a> {
+    /// Returns the number of connected routes.
+    #[must_use]
+    pub const fn len(self) -> usize {
+        self.routes.len()
+    }
+
+    /// Returns whether the node has no connected route.
+    #[must_use]
+    pub const fn is_empty(self) -> bool {
+        self.routes.is_empty()
+    }
+
+    /// Returns one input by stable route order.
+    #[must_use]
+    pub fn get(self, index: usize) -> Option<AudioProcessInput<'a>> {
+        let route = *self.routes.get(index)?;
+        let source = self.previous.get(route.source_index)?;
+        let sample_count = self.frame_count * source.descriptor.output_layout.len();
+        Some(AudioProcessInput {
+            route,
+            samples: &source.buffer[..sample_count],
+            layout: source.descriptor.output_layout(),
+        })
+    }
+
+    /// Iterates inputs without allocating in stable route-identity order.
+    #[must_use]
+    pub const fn iter(self) -> AudioProcessInputsIter<'a> {
+        AudioProcessInputsIter {
+            inputs: self,
+            next_index: 0,
+        }
+    }
+}
+
+impl<'a> IntoIterator for AudioProcessInputs<'a> {
+    type Item = AudioProcessInput<'a>;
+    type IntoIter = AudioProcessInputsIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+/// Iterator over borrowed prepared audio inputs.
+#[derive(Clone)]
+pub struct AudioProcessInputsIter<'a> {
+    inputs: AudioProcessInputs<'a>,
+    next_index: usize,
+}
+
+impl<'a> Iterator for AudioProcessInputsIter<'a> {
+    type Item = AudioProcessInput<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let input = self.inputs.get(self.next_index)?;
+        self.next_index += 1;
+        Some(input)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.inputs.len().saturating_sub(self.next_index);
+        (remaining, Some(remaining))
+    }
+}
+
+impl ExactSizeIterator for AudioProcessInputsIter<'_> {}
+impl std::iter::FusedIterator for AudioProcessInputsIter<'_> {}
+
 /// One prepared audio node implementation.
 pub trait AudioProcessor: Send {
     /// Processes one complete bounded block.
     fn process(&mut self, block: AudioProcessBlock<'_>) -> Result<()>;
+
+    /// Processes one complete bounded block with every prepared input route available.
+    ///
+    /// Single-input processors retain source compatibility by using the default implementation.
+    /// Multi-input bus processors override this method and consume `inputs` without allocation.
+    fn process_inputs(
+        &mut self,
+        block: AudioProcessBlock<'_>,
+        _inputs: AudioProcessInputs<'_>,
+    ) -> Result<()> {
+        self.process(block)
+    }
 }
 
 struct PreparedNode {
     descriptor: AudioNode,
-    source_index: Option<usize>,
+    input_routes: Vec<PreparedAudioRoute>,
     processor: Box<dyn AudioProcessor>,
     buffer: Vec<f32>,
 }
@@ -585,6 +912,15 @@ impl PreparedAudioGraph {
     #[must_use]
     pub const fn next_sample(&self) -> Option<i64> {
         self.next_sample
+    }
+
+    /// Returns one prepared node's immutable input routes in processing order.
+    #[must_use]
+    pub fn input_routes(&self, node: AudioNodeId) -> Option<&[PreparedAudioRoute]> {
+        self.order
+            .iter()
+            .position(|candidate| *candidate == node)
+            .map(|index| self.nodes[index].input_routes.as_slice())
     }
 
     /// Processes one exact consecutive block on the platform-owned audio domain.
@@ -671,11 +1007,12 @@ impl PreparedAudioGraph {
             let (previous, current_and_later) = self.nodes.split_at_mut(index);
             let current = &mut current_and_later[0];
             let output_len = frame_count * current.descriptor.output_layout.len();
-            let input = current.source_index.map(|source_index| {
-                let source = &previous[source_index];
-                let input_len = frame_count * source.descriptor.output_layout.len();
-                &source.buffer[..input_len]
-            });
+            let inputs = AudioProcessInputs {
+                previous,
+                routes: &current.input_routes,
+                frame_count,
+            };
+            let input = inputs.get(0).map(AudioProcessInput::samples);
             let block = AudioProcessBlock {
                 start_time,
                 frame_count,
@@ -684,7 +1021,7 @@ impl PreparedAudioGraph {
                 output: &mut current.buffer[..output_len],
                 output_layout: current.descriptor.output_layout(),
             };
-            if let Err(mut error) = current.processor.process(block) {
+            if let Err(mut error) = current.processor.process_inputs(block, inputs) {
                 error.push_context(
                     ErrorContext::new(COMPONENT, "process_node")
                         .with_field("graph_id", self.id.to_string())

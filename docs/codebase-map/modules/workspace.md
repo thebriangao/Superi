@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: e8ed9eed532c90e3791a0ddc29c657bf9cc489d6b0c50c6b8dad4e402ab95d19
-source_files: 129
+source_hash: 5ba0dcd77004ffbe1db9213eed69cc3f0fae6dab629c70b95dff0eb085c42b5b
+source_files: 130
 mapped_at_commit: working-tree
 ---
 
@@ -25,7 +25,7 @@ a single checkpoint through mapping, planning, and execution, and routes multipl
 separate Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers
 but obeys an explicit positive user concurrency value. The file is ignored by Git and copied into
 managed worktrees through `.worktreeinclude`, so the mapping script does not include it in this
-module's 127-file inventory or source hash. It must still be reread independently before repository
+module's 130-file inventory or source hash. It must still be reread independently before repository
 work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
@@ -258,6 +258,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   mute, solo, phase, and semantic channel mapping. It records transactional audio intent,
   allocation-free prepared DSP, atomic timeline identity reconciliation, real razor-edit proof,
   delivery context, and the intentionally separate bus, device, automation, and export work.
+- `docs/checkpoints/P2.W04.C005.md`: Durable implementation evidence for typed submix, auxiliary,
+  send, return, and master routing. It records deterministic exact-layout summing, borrowed
+  prepared inputs, real-time ownership, red-to-green and dependent proof, delivery context, and
+  intentionally separate metering, resampling, plugins, and engine-composition work.
 - `docs/checkpoints/P1.W07.C025.md`: Durable implementation evidence for bounded timing and process
   resident-memory instrumentation across all eight canonical slice stages. It records the private
   sampler boundary, schema 1.1.0 report contract, dependency decision, red-to-green proof,
@@ -994,10 +998,14 @@ Commit `5649d9075b29eef79b181caa880a650a59786ae1` added the independent canonica
 strict CLI consumption, reference frames, audio and timing proof, and its durable checkpoint record.
 
 The independent audio processing graph now provides deterministic audio-owned topology,
-destination-scoped preparation with fixed intermediate buffers, and exact consecutive block
-processing on the concurrency-owned audio domain. Its current public consumer proves a
-source-to-gain-to-gain chain and atomic topology and block rejection, while engine playback,
-mixing, devices, resampling, A/V synchronization, metering, and plugin hosting remain absent.
+destination-scoped preparation with fixed intermediate buffers, exact consecutive block
+processing on the concurrency-owned audio domain, and typed submix, auxiliary, send, return, and
+single-master routing. Borrowed prepared input views and stable route-ID summing preserve channel
+meaning and avoid callback allocation. Public consumers prove both a source-to-gain chain and a
+dry-submix plus auxiliary-return path, including atomic topology rejection and order-sensitive
+floating-point behavior. Gain, pan, fader, metering, resampling, plugin hosting, decoded-sample
+binding, and engine composition remain absent; production device output and sample-accurate
+scheduling are implemented in the same audio crate but are not yet assembled by the engine.
 
 The largest current risk is cross-document drift:
 
@@ -1080,8 +1088,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`88cbdbbae49bb5df393cbbdc3b39a81a86b10eb3` when the map was refreshed. Its hash describes the exact
-127 discovered source files, including twelve generated binary payloads, layered on that revision.
+`38543db81341b8ff8519b280516c658bcd46199e` when the map was refreshed. Its hash describes the exact
+130 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 
