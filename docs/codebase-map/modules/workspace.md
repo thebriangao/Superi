@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 72d2e79a8290e73eb44e8216b8b68b6ef10e35cac382bf0b5413e5ffb9385384
-source_files: 127
+source_hash: fe922e21958d3faf2697223828da08f3c3f2f69b0811dd40c19bce54ac6119af
+source_files: 128
 mapped_at_commit: working-tree
 ---
 
@@ -250,6 +250,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   bounded low-latency playback. It records stable backend identity, exact capability ranges,
   lock-free whole-frame handoff, timed silence, sample-clock publication, dependency and Linux CI
   integration, critical verification, delivery context, and physical-platform constraints.
+- `docs/checkpoints/P2.W04.C003.md`: Durable implementation evidence for sample-accurate audio
+  timeline scheduling. It records immutable placement snapshots, callback-safe exact mapping,
+  audio-master publication, dependent A/V proof, delivery context, and intentionally separate
+  decoded-sample binding, routing, mixing, and engine work.
 - `docs/checkpoints/P1.W07.C025.md`: Durable implementation evidence for bounded timing and process
   resident-memory instrumentation across all eight canonical slice stages. It records the private
   sampler boundary, schema 1.1.0 report contract, dependency decision, red-to-green proof,
@@ -1072,8 +1076,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`f41619eee9fa3518e47ae4e40d6ff43f7816ad70` when the map was refreshed. Its hash describes the exact
-126 discovered source files, including twelve generated binary payloads, layered on that revision.
+`88cbdbbae49bb5df393cbbdc3b39a81a86b10eb3` when the map was refreshed. Its hash describes the exact
+127 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 

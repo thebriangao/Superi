@@ -15,7 +15,7 @@ against raw source before changing code.
 | --- | --- | --- | --- | --- |
 | `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
 | `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade for capabilities and canonical editorial state | Partial: capability and canonical scenario controls implemented; transport, general API, and scripting absent |
-| `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Independent editable audio graph plus stable output-device discovery and bounded sample-clocked playback | Partial: graph and production device output implemented; engine composition, mixing, sync, resampling, metering, and hosting absent |
+| `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Independent editable and prepared audio graph, sample-accurate timeline schedule, stable output-device discovery, and bounded sample-clocked playback | Partial: graph processing, immutable callback scheduling, audio-master publication, and production device output implemented; engine binding, decoded-sample binding, mixing, resampling, metering, and hosting absent |
 | `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, precise graph edit invalidation, versioned corruption-recovering disk persistence, replaceable derived-media publication, layered render reuse, bounded background population, bounded playback prediction, and bounded edit and scrub warming | Complete identity feeds independent memory and disk tiers with exact admission, revision fencing, bounded envelopes, atomic publication, schema isolation, and corruption quarantine; render jobs add persistent fallback, promotion, exact-frame single-flight, staged publication, and cancellation, prediction supplies finite signed frame plans and an owned host adapter, warming is deterministic and hard bounded, and cache lifecycle remains |
 | `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario consumer | Implemented portable expectation verifier and eight instrumented contract stages; rendered media flow absent |
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
@@ -606,14 +606,15 @@ call, or closure that omits checkpoints.
 These mechanisms are not yet a complete composed runtime. Engine proxy resolution consumes the
 derived-media selection policy, and engine playback consumes playback domain ownership, bounded
 workers, playback priority, cooperative cancellation, progress, and nonblocking completion for
-predictive cache population. The audio graph enforces the platform-owned audio domain for fixed
-prepared block processing, while device output uses a preallocated lock-free queue and publishes an
-audio master clock from the same domain. Cache's background render queue
+predictive cache population. Audio enforces the platform-owned audio domain for fixed prepared
+graph processing and exact callback scheduling. Device output uses a preallocated lock-free queue
+and publishes an audio master clock from the same domain. Cache's background render queue
 constructs a bounded pool, submits cache-kind work at background priority, carries `JobControl`,
 exposes typed completion and snapshots, and layers exact-frame single-flight over dispatch. Graph
 has no production concurrency consumer. Playback accepts an externally lifecycle-owned pool and
 does not construct clocks,
-handoffs, lifecycle participants, or liveness monitors. The `submit` module is a placeholder. A
+handoffs, lifecycle participants, or liveness monitors. No engine owner binds scheduled source
+slices to the prepared audio graph or a device. The `submit` module is a placeholder. A
 contract test hosts the real non-Send `GpuSubmissionQueue` inside the GPU submission domain, but no
 engine owner wires that pattern into playback or render.
 
@@ -990,7 +991,8 @@ encodes and muxes output, persists a project, and drives the flow through the pu
 Entire crate skeletons are `superi-ai`, `superi-effects`, and `superi-project`.
 Their manifests establish intended dependency direction, but their public modules expose no
 substantive types or operations. `superi-audio` now has a substantive independent processing graph
-and production device output, while mixing, sync, resample, metering, and hosting remain placeholders.
+sample-accurate scheduler, and production device output, while mixing, resample, metering, and
+hosting remain placeholders.
 `superi-cache` now has substantive composite identity, budgeted memory retention, hierarchical
 memory policy, priority-aware LRU eviction, precise edit invalidation, persistent storage, color
 metadata, replaceable proxy or optimized-media publication, layered render reuse, bounded
@@ -1005,6 +1007,8 @@ Partial modules contain these explicit placeholder areas:
 
 - `superi-api`: scripting and every general command, dispatcher, transport, subscription, and
   transaction path beyond capabilities and the fixed canonical scenario.
+- `superi-audio`: decoded sample binding, channel routing, device playback, multi-input mixing,
+  resampling, metering, plugin hosting, and engine composition across schedule and graph execution.
 - `superi-color`: broader config-persisted rule graphs, ICC transform evaluation, GPU output
   conversion, and production viewport or export integration.
 - `superi-concurrency`: GPU submission coordination module and production composition beyond the

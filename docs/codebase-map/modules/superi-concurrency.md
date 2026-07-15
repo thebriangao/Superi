@@ -31,8 +31,8 @@ Implemented responsibilities are:
 
 GPU submission is only represented as an execution domain and a contract test against
 `superi-gpu`. The dedicated submission module remains a skeleton. The crate exposes building
-blocks, not a composed runtime: current graph, audio, and engine source does not yet construct these
-objects or wire their state machines together.
+blocks, not a composed runtime: audio and engine construct selected domain, clock, and worker
+mechanisms, but no owner wires the complete state machines together.
 
 ## Source inventory
 
@@ -346,6 +346,8 @@ Production dependencies and internal relationships are:
 Direct workspace consumers declared in manifests are `superi-graph`, `superi-audio`,
 `superi-cache`, and `superi-engine`. `superi-graph` does not import runtime surfaces in production source.
 `superi-audio::graph` enforces `ExecutionDomain::Audio` at its prepared processing boundary.
+`superi-audio::sync` enforces it for exact callback scheduling and audio-master publication, while
+`superi-audio::playback` enters it inside the production output callback and advances the same clock.
 `superi-cache::render` owns a `BoundedWorkerPool`, submits exact `JobKind::Cache` work at
 `JobPriority::Background` with `JobControl`, exposes typed task completion and worker snapshots,
 and composes queue-local exact-frame single-flight over the generic pool.
@@ -358,7 +360,6 @@ generations, advances determinate progress, and polls `JobTaskHandle` without bl
 controller stores only a weak pool reference so a blocking-safe lifecycle owner remains responsible
 for shutdown. The broader downstream crate graph is not evidence that other transitive crates call
 these runtime surfaces.
-
 The concurrency integration-test files, cache render contract, audio graph contract, engine
 substitution contract, and engine playback contracts exercise the public crate paths directly. No
 public API crate currently reexports these types, and no engine module composes lifecycle
@@ -455,9 +456,11 @@ incomplete:
   bounded background rendering. Engine playback now uses domain ownership, worker scheduling,
   cancellation, progress, and
   nonblocking result polling for predictive cache work, and engine proxy resolution uses the
-  derived-media selector. Audio processing enforces its platform-owned domain. Graph still does not
-  use runtime surfaces, and lifecycle acknowledgement, playback clocks, A/V decisions,
-  backpressure, and liveness are not yet composed into a real application flow.
+  derived-media selector. Audio uses the audio execution domain for prepared processing and exact
+  scheduling and device output and uses the audio master clock for completed presentation. Graph
+  still does not use runtime surfaces, and lifecycle acknowledgement, decoded-sample binding,
+  engine A/V composition, backpressure, and liveness are not yet composed into a real application
+  flow.
 - Dependency tracking is passive. The worker pool does not delay a job until prerequisites are
   ready, propagate terminal states, create `DependencyFailed`, or detect cycles across submitted
   jobs. Callers must provide all of that orchestration.
@@ -505,9 +508,11 @@ incomplete:
   updates all callers and tests.
 - When `submit` becomes substantive, map the real command ownership, queue admission, fence and
   retirement flow, device-loss recovery, and its relationship to `ExecutionDomain::GpuSubmission`.
-- When graph, audio, engine, API, or CLI begins using more of these surfaces, replace the
-  declared-consumer description with the exact construction and event paths and update the relevant
-  consumer maps. Keep the engine's derived-selection-only use distinct from runtime composition.
+- When graph, engine, API, or CLI begins using more of these surfaces, replace the declared-consumer
+  description with the exact construction and event paths and update the relevant consumer maps.
+  Keep the engine's derived-selection-only use distinct from runtime composition.
+  Keep the existing audio scheduler, device callback, and audio-master publication paths current as
+  engine integration expands.
 - If job dependencies become scheduler-owned, document admission, cycle detection, cancellation
   propagation, terminal result publication, identity lifetime, and how they interact with weighted
   queues and shutdown.
