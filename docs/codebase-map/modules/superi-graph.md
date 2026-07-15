@@ -294,9 +294,10 @@ use a schema identity or a separate payload without coupling the DAG algorithm t
 - Graph identity does not own media content, evaluated parameter, color-pipeline, render-setting,
   concrete stored value, eviction, resource budget, persistence, or invalidation-generation state.
   `superi-cache` composes the graph adapter inputs with its complete outer identity before memory
-  retention and owns exact hierarchical budgets, automatic priority-aware pressure handling, and
-  strict per-tier LRU victim selection. Generation and persistence policies stay with later cache
-  and orchestration checkpoints.
+  or versioned disk retention. Its memory adapter owns exact hierarchical budgets, automatic
+  priority-aware pressure handling, strict per-tier LRU victim selection, and precise edit
+  invalidation. Generation cleanup and persistent directory lifecycle stay with later cache and
+  orchestration checkpoints.
 
 `superi_graph::validation` exposes the node-neutral runtime boundary:
 
@@ -511,12 +512,13 @@ The shared interactive and headless evaluation flow is:
 5. ROI and invalidation remain derived from the retained editable snapshot. Their exact requested
    regions can enter evaluation unchanged. A new edit compiles a new evaluation snapshot, while
    old readers retain the old immutable result boundary and cannot observe partial mutation.
-6. `superi-cache` implements the retained-value adapter and strict LRU reclamation for its separate
-   final and intermediate tiers. Eviction remains transparent to graph: a removed value becomes an
-   ordinary miss and recomputes through this same evaluator. No current effects, color, engine, API,
-   CLI, or GPU owner implements the compiler in production, so the canonical `graph.evaluate` stage
-   remains an honest stub even though the generic interactive, headless, and cache boundaries are
-   explicit and test-backed.
+6. `superi-cache` implements memory and persistent retained-value adapters for separate final and
+   intermediate tiers, plus strict memory LRU reclamation and precise edit invalidation. Eviction,
+   invalidation, and persistence failures remain transparent to graph: removed or unavailable
+   values become ordinary misses and recompute through this same evaluator. No current effects,
+   color, engine, API, CLI, or GPU owner implements the compiler in production, so the canonical
+   `graph.evaluate` stage remains an honest stub even though the generic interactive, headless, and
+   cache boundaries are explicit and test-backed.
 
 The schema discovery flow is:
 
@@ -871,8 +873,9 @@ graph evaluation or runtime integration.
 - Graph owns its lineage component and the storage-neutral adapter, not complete outer result
   identity, concrete storage, synchronization, invalidation cleanup, eviction, budgets, or
   persistence. `superi-cache` owns complete composite identity, exact hierarchical admission, and
-  the first budgeted two-tier memory implementation with priority-aware strict per-tier LRU victim
-  selection. Later checkpoints own generation cleanup and persistence.
+  budgeted memory plus versioned corruption-recovering disk implementations for both retention
+  tiers. Memory includes priority-aware strict per-tier LRU victim selection and precise graph edit
+  cleanup. Later checkpoints own generation cleanup and persistent directory lifecycle policy.
 - ROI validates all authored requests before custom mapping, walks nodes and edges deterministically,
   and records only nonempty connected work. Unrelated graph branches cannot enter the plan.
 - Full-frame ROI resolves each connected source's declared output domain. Input-bound and expanded
@@ -1009,11 +1012,13 @@ evaluation snapshot compiles one exact editable revision into caller-owned evalu
 retains the source state for every reader, and delegates scheduling and execution to that same
 evaluator. Cached evaluation accepts caller-owned storage, stops at exact final and intermediate
 hits, inserts only successful cacheable values, and carries snapshot graph and revision lineage.
-`superi-cache` supplies a scoped composite-key memory consumer that binds graph identity to
-authoritative outer result context, retains each admitted value with exact total, project, and
-optional device accounting, and applies graph edit invalidation atomically. It promotes hits and
-insertions, reclaims eligible LRU values under budget or GPU pressure, and transparently recomputes
-exact values after automatic, explicit, or edit-driven reclamation. No production
+`superi-cache` supplies scoped composite-key memory and disk consumers that bind graph identity to
+authoritative outer result context. Memory retains each admitted value with exact total, project,
+and optional device accounting, applies graph edit invalidation atomically, promotes hits and
+insertions, and reclaims eligible LRU values under budget or GPU pressure. Disk validates bounded
+versioned envelopes, isolates invalid entries, and records classified failures. Reclamation,
+budget refusal, or persistence failure remains an ordinary miss or skipped insertion and cannot
+change the evaluator result. No production
 catalog implements that compiler or connects complete ROI and invalidation
 plans to render orchestration yet.
 The versioned graph document codec now preserves and validates that complete editable state,
