@@ -8,6 +8,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use std::path::Path;
 
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_core::ids::{MediaId, TimelineId};
@@ -17,13 +18,14 @@ use superi_media_io::backend::{
 };
 use superi_media_io::decode::{Decoder, DecoderConfig};
 use superi_media_io::demux::{
-    BackendId, ContainerId, MediaSource, ProbeConfidence, SourceInfo, SourceProbeLimits,
-    SourceRequest, StreamId,
+    BackendId, ContainerId, MediaSource, ProbeConfidence, SourceInfo, SourceLocation,
+    SourceProbeLimits, SourceRequest, StreamId,
 };
 use superi_media_io::operation::OperationContext;
 use superi_project::document::ProjectSnapshot;
+use superi_project::media::ReferencedMediaPath;
 use superi_timeline::compile::{compile_timeline, TimelineGraphCompilation};
-use superi_timeline::media::LinkedMediaReference;
+use superi_timeline::media::{LinkedMediaReference, RelinkStatus};
 use superi_timeline::model::{ClipSource, EditorialProject};
 
 const COMPONENT: &str = "superi-engine.resources";
@@ -111,6 +113,66 @@ impl MediaResourceRequest {
             source,
             decoders: requests,
         })
+    }
+
+    /// Creates a request from one persistent filesystem target in an editorial project.
+    ///
+    /// Relative targets resolve from the absolute path of the owning `.superi` file. The stable
+    /// MediaId and expected content fingerprint come from project state, so acquisition cannot
+    /// substitute a caller-selected path or identity while claiming to open this reference.
+    pub fn from_project_media<I>(
+        project: &EditorialProject,
+        project_file: impl AsRef<Path>,
+        media_id: MediaId,
+        decoders: I,
+    ) -> Result<Self>
+    where
+        I: IntoIterator<Item = DecoderResourceRequest>,
+    {
+        let linked_media = project.media_reference(media_id).ok_or_else(|| {
+            resource_error(
+                ErrorCategory::NotFound,
+                Recoverability::UserCorrectable,
+                "create_project_media_resource_request",
+                "linked media identity was not found in the project",
+            )
+            .with_context(
+                ErrorContext::new(COMPONENT, "resolve_project_media_reference")
+                    .with_field("media_id", media_id_text(media_id)),
+            )
+        })?;
+        if linked_media.relink_state().status() == RelinkStatus::Missing {
+            return Err(resource_error(
+                ErrorCategory::NotFound,
+                Recoverability::UserCorrectable,
+                "create_project_media_resource_request",
+                "linked media target is marked missing in project state",
+            )
+            .with_context(
+                ErrorContext::new(COMPONENT, "resolve_project_media_reference")
+                    .with_field("media_id", media_id_text(media_id))
+                    .with_field("target", linked_media.target().to_owned()),
+            ));
+        }
+        let path = ReferencedMediaPath::from_target(linked_media.target())?.ok_or_else(|| {
+            resource_error(
+                ErrorCategory::Unsupported,
+                Recoverability::UserCorrectable,
+                "create_project_media_resource_request",
+                "linked media target is not a supported filesystem path",
+            )
+            .with_context(
+                ErrorContext::new(COMPONENT, "resolve_project_media_target")
+                    .with_field("media_id", media_id_text(media_id))
+                    .with_field("target", linked_media.target().to_owned()),
+            )
+        })?;
+        let location = SourceLocation::Path(path.resolve(project_file)?);
+        let mut source = SourceRequest::new(media_id, location);
+        if let Some(fingerprint) = linked_media.relink_state().expected_fingerprint() {
+            source = source.with_expected_fingerprint(fingerprint.to_owned())?;
+        }
+        Self::new(source, decoders)
     }
 
     /// Returns the immutable source request.

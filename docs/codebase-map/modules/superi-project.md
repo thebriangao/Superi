@@ -2,8 +2,8 @@
 module_id: superi-project
 source_paths:
   - open/crates/superi-project
-source_hash: 739499cf71fa14aaa35c198c21d365e70b72137fb5adc4148222a2cff5993cb8
-source_files: 10
+source_hash: baed0463ed04915b968c1197d2eeef2d5e99ff06c635dab28174fb8cc84b915a
+source_files: 12
 mapped_at_commit: working-tree
 ---
 
@@ -24,6 +24,11 @@ its source schema and migrates exact schema 0 to schema 1 in one immediate trans
 persists canonical timeline and graph component documents instead of copying their domain models
 into competing SQL fields.
 
+The project media boundary interprets timeline-owned opaque targets as versioned filesystem
+references when their syntax is known. It owns portable relative path validation, project-file
+resolution, explicit host-absolute platform evidence, stable `MediaId` queries, and atomic path,
+missing, and fingerprint-checked relink commands without creating a second media state model.
+
 This module does not yet own temporary save publication, filesystem synchronization, atomic
 destination replacement, save-as, copy, backup, settings, history, autosave, recovery journals,
 unknown extension preservation, modified-since-open policy, or public API and CLI commands. Those
@@ -38,11 +43,15 @@ remain assigned to later project checkpoints.
   private edit candidates, retained timeline compilations, named standalone graphs, revision
   fencing, checked reconstruction, and complete relationship validation.
 - `open/crates/superi-project/src/lib.rs`: Documents the implemented aggregate, schema-1
-  persistence, and migration boundary, exports public project modules, keeps migration private, and
-  re-exports `ProjectDatabase` plus stable format constants.
+  persistence, migration, and referenced-media boundaries, exports public project modules, keeps
+  migration private, and re-exports `ProjectDatabase` plus stable format constants.
 - `open/crates/superi-project/src/migrate.rs`: Owns the exact schema-0 contract, contiguous migration
   registry, secured compatibility decoding, checked aggregate reconstruction, single-transaction
   canonical schema-1 rewrite, full integrity checks, and precommit rollback proof.
+- `open/crates/superi-project/src/media.rs`: Implements versioned referenced-media target encoding,
+  portable relative path normalization, deterministic project-file resolution, host-platform
+  evidence, stable media lookup, and revision-fenced path and relink commands that retain editable
+  timeline graphs.
 - `open/crates/superi-project/src/persist.rs`: Implements secured SQLite connections, schema 1,
   deterministic component records and manifest evidence, transactional replacement, strict
   interpretation, bounded decoding, and checked aggregate reconstruction.
@@ -54,14 +63,17 @@ remain assigned to later project checkpoints.
   legacy timeline and graph component migration, exact editable-state preservation, canonical
   current reopen, continued editing and replacement, current byte stability, read-only legacy
   refusal, future nonmutation, and malformed legacy rollback.
+- `open/crates/superi-project/tests/media_reference_contract.rs`: Proves portable path grammar,
+  versioned target round trips, relative and host-absolute resolution, stable identity commands,
+  retained direct graph edits, relink conflicts, database round trips, and unknown target handling.
 - `open/crates/superi-project/tests/persistence_contract.rs`: Proves durable create and read-only
   reopen, exact schema identity, deterministic semantic rows, complete timeline, media, relink,
   graph, and revision preservation, rollback, read-only enforcement, and corruption rejection.
 
 ## Public surface
 
-The crate root exports `autosave`, `document`, `persist`, and `recovery`, and re-exports the stable
-persistence authority and constants.
+The crate root exports `autosave`, `document`, `media`, `persist`, and `recovery`, and re-exports the
+stable persistence authority, project format constants, and media path target format identifier.
 
 - `ProjectDocument::new` accepts one `EditorialProject` and selected `TimelineId`, compiles that
   root through `superi_timeline::compile_timeline`, validates the aggregate, and starts document
@@ -80,6 +92,15 @@ persistence authority and constants.
   around a decoded editable graph only when the graph identity matches the same project and root.
 - `StandaloneProjectGraph` owns one nonblank name and one ordinary
   `EditableGraph<CompiledTimelineGraphValue>`.
+- `PortableRelativePath` canonicalizes one UTF-8 slash syntax and rejects host-specific characters,
+  reserved device names, and ambiguous trailing forms. `ReferencedMediaPath` encodes
+  `superi.media-path.v1` relative or platform-qualified absolute targets, accepts compatible raw
+  paths, leaves URI-style locators opaque, and resolves relative paths only from an absolute owning
+  project file path.
+- `ProjectDocument::media_path` and `ProjectSnapshot::media_path` resolve one typed target by stable
+  `MediaId`. `ProjectDocument::execute_media_command` applies `SetPath`, `MarkMissing`, or
+  `ConsiderRelink` behind the document revision fence and returns the semantic result with the exact
+  published snapshot.
 - `ProjectDatabase::create` reserves a new path without overwriting an existing file, secures the
   connection, creates exact schema 1, and records the Superi application and schema identities.
 - `ProjectDatabase::memory` creates the same secured schema without filesystem state.
@@ -157,15 +178,25 @@ Writable open adds one explicit compatibility path:
    constant. A failure at any point, including after the schema rewrite but before commit, drops the
    borrowed transaction and restores the complete schema-0 database.
 
+Referenced-media commands reuse the same aggregate publication boundary. A command captures each
+retained timeline graph, changes only the timeline-owned media target or relink evidence through an
+editorial draft, then rebuilds checked compilation provenance around the unchanged editable graph.
+The project document revision and editorial revision advance atomically, while stable `MediaId`,
+direct graph edits, and canonical persistence meaning remain intact. Portable relative targets are
+normalized once and resolve lexically from the owning project file, without process current
+directory or filesystem-dependent interpretation.
+
 Connections enable SQLite defensive mode, foreign keys, cell-size checks, and a finite busy
 timeout. They disable triggers, views, trusted schema, double-quoted string literals, and memory
 mapping. Read-only connections also enable query-only mode. Schema 1 contains no trigger, view,
 extension, network, process, device, or GPU behavior. Migration never opens a second connection and
 never owns commit authority outside the one outer transaction.
 
-`superi-engine::resources::acquire_project_resources` remains the real downstream consumer. It
-clones the exact selected compilation from `ProjectSnapshot`, including reloaded direct graph
-edits, then acquires the exact reachable source and decoder set before one resources publication.
+`superi-engine::resources::MediaResourceRequest::from_project_media` is the real target consumer.
+It resolves one stored project filesystem path, retains `MediaId` and expected fingerprint, rejects
+explicit missing state, and feeds the ordinary media-I/O request. `acquire_project_resources` then
+clones the exact selected compilation from `ProjectSnapshot`, including reloaded direct graph edits,
+and acquires the exact reachable source and decoder set before one resources publication.
 
 ## Dependencies and consumers
 
@@ -181,7 +212,8 @@ edits, then acquires the exact reachable source and decoder set before one resou
   public dirty-state hash.
 - Test-only `serde_json` builds exact legacy revision-0 component fixtures from current canonical
   payloads without entering the runtime dependency surface.
-- `superi-engine` consumes immutable snapshots for transactional resource acquisition.
+- `superi-engine` consumes immutable snapshots for transactional resource acquisition and adapts
+  project-owned referenced-media paths into media-I/O source requests.
 - API and CLI do not yet expose database or document commands. Later public commands must wrap this
   owner instead of creating another project or database authority.
 
@@ -203,6 +235,10 @@ edits, then acquires the exact reachable source and decoder set before one resou
   Typed IDs use fixed 16-byte big-endian blobs.
 - Canonical component bytes remain owned by timeline and graph. Project stores them with exact
   length and SHA-256 evidence and does not duplicate their semantic fields.
+- Timeline remains the owner of media identity, opaque target text, and relink evidence. Project
+  interprets only recognized filesystem target syntax, preserves unknown locators, and never derives
+  identity from a path. Relative resolution is lexical and requires an absolute project file path;
+  foreign-platform absolute targets and future target versions fail explicitly.
 - The project manifest is private integrity evidence. It is not C014's public dirty-state hash.
 - Wrong application identity, future schema or format versions, and read-only legacy open are
   unsupported. Malformed, noncanonical current state, tampered, missing, extra, or inconsistent
@@ -234,6 +270,12 @@ schema nonmutation, and malformed legacy logical rollback. The private migration
 forces a classified failure after the schema-1 rewrite and before commit, verifies exact schema-0
 reconstruction after rollback, then runs the production migration successfully on the same state.
 
+`media_reference_contract.rs` contains five public tests. They prove canonical portable relative
+paths, versioned and compatible target decoding, deterministic project-relative resolution,
+foreign-platform visibility, stable `MediaId` commands, revision conflicts, preserved direct graph
+edits, explicit missing and fingerprint-mismatch state, exact database round trips, accepted relinks,
+and safe rejection of opaque or future syntax.
+
 Timeline's serialization contract independently round trips a real compiled multicam graph through
 the public graph codec and rejects unknown `TimelineGraphValue` fields and tags. The engine resource
 contract opens an exact schema-0 fixture through the public database owner and proves that the
@@ -246,7 +288,8 @@ repository verifier remain required delivery gates.
 The coherent in-memory document owner, schema-1 SQLite application format, deterministic component
 records, integrity manifest, transactional replacement, exact schema-0 compatibility, ordered
 forward migration, checked reconstruction, durable create and read-only reopen, writable current or
-legacy open, and engine snapshot consumer are substantive and test-backed.
+legacy open, versioned referenced-media paths, stable identity commands, and the real engine target
+consumer are substantive and test-backed.
 
 Additional schema revisions, synchronized temporary save publication, atomic destination
 replacement, save-as, copy, backup, settings, history, autosave, recovery, unknown extension

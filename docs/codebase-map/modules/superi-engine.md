@@ -2,7 +2,7 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 03488e249f40f7d1b5151a14a92844496eede7304399b304930b07944cff08d1
+source_hash: 43bdc74574bb94e25880a549fe5ed91e72d062339ad8b5b6735287d943509bed
 source_files: 52
 mapped_at_commit: working-tree
 ---
@@ -118,9 +118,10 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   fixed-order cooperative reclaim, consumer-aware fallbacks, and deterministic snapshots.
 - `open/crates/superi-engine/src/resources.rs`: Either compiles one reachable editorial timeline or
   clones the exact root compilation retained by an immutable `ProjectSnapshot`, then validates the
-  exact caller-declared media and stream request set, binds and verifies project fingerprints,
-  probes and opens each source, selects and creates each decoder once, retains policy evidence, and
-  publishes one all-or-nothing owner bundle.
+  exact caller-declared media and stream request set, adapts recognized project media paths into
+  fingerprint-bound local source requests, binds and verifies project fingerprints, probes and
+  opens each source, selects and creates each decoder once, retains policy evidence, and publishes
+  one all-or-nothing owner bundle.
 - `open/crates/superi-engine/src/transport.rs`: Implements playback-domain pause, play, seek,
   superseding scrub, exact frame step, reduced signed rate, direction, half-open loop, rational
   clock cadence, prediction replanning, protected discontinuities, bounded ordinary late-frame
@@ -297,6 +298,10 @@ paths require exactly one request for each reachable linked media identity and s
 source, decoder, cancellation, and all-or-nothing publication implementation. The consumer contract
 now obtains that snapshot through `ProjectDatabase::open` from a supported schema-0 fixture, proving
 that project migration cannot erase the graph revision before engine preparation.
+`MediaResourceRequest::from_project_media` resolves a recognized filesystem target through the
+project-owned codec, binds the stored `MediaId` and expected fingerprint into `SourceRequest`, and
+rejects missing identities, explicit missing state, opaque targets, and nondeterministic relative
+project-file context before acquisition.
 
 `derived_media` exposes `EncodedDerivedMedia`, `derived_media_render_settings`, and
 `generate_derived_media`. Settings derive from purpose, quality, stream, codec, timebase, complete
@@ -600,6 +605,12 @@ media ID and fingerprint again. Each requested `StreamId` resolves to its comple
 registry ranking selects exactly one decoder factory. Source and decoder selections retain stable
 backend IDs, fallback candidates, fallback-use state, container confidence, and probe bounds.
 
+Callers that begin from persistent project state can construct the request through
+`MediaResourceRequest::from_project_media`. The project layer interprets the stored target and
+resolves relative paths from the absolute `.superi` path; engine supplies the resulting local
+`SourceLocation` to media I/O while preserving project identity and integrity evidence. This keeps
+path portability in project, source mechanics in media I/O, and acquisition orchestration in engine.
+
 The graph compilation, all opened sources, and all live decoders remain local until a final
 cancellation check. An open or decoder factory error returns directly and never retries through
 fallback candidates. The returned `TimelineResources` is therefore one shared preparation boundary
@@ -834,7 +845,8 @@ audio mutation, so their user intent remains attached without synthesis.
   production command integration. Project supplies the implemented immutable whole-project
   snapshot consumed by resource preparation, including snapshots reconstructed by its schema
   migration path. Test-only rusqlite creates the exact legacy database fixture without entering the
-  engine runtime graph. Engine lifecycle still names only abstract project quiescence, and engine
+  engine runtime graph, and its referenced-media path adapter constructs local `SourceRequest`
+  values. Engine lifecycle still names only abstract project quiescence, and engine
   implements neither persistence nor a parallel project command model.
 - `superi-api` consumes dispatcher transactions and events plus command, media capability, and
   complete engine introspection and integration validation snapshots, preserving public adaptation,
@@ -1092,9 +1104,12 @@ real WebM fixture, creates the real Rust AV1 decoder, and retains exact source f
 packet and decoded-frame timing, 8-bit YUV representation, partially specified color tags, opaque
 alpha, and metadata. The same contract creates an exact schema-0 project around a directly edited
 graph, migrates it through the sole project database owner, proves full snapshot equality, and then
-acquires the retained graph revision plus real media stream without recompilation. It also proves
-exact request-set validation, fallback-tier policy evidence, selected-factory failure without
-retry, pre-cancelled atomic failure, and later success through a fresh operation context.
+acquires the retained graph revision plus real media stream without recompilation. It resolves a
+portable stored project target into that real WebM path,
+retains the project `MediaId` and expected fingerprint, rejects opaque targets, missing identities,
+explicit missing state, and relative project-file context, and proves exact request-set validation,
+fallback-tier policy evidence, selected-factory failure without retry, pre-cancelled atomic failure,
+and later success through a fresh operation context.
 
 The two generation contracts and three substitution contracts run through the default registry and
 real Rust AV1 encoder. They prove complete packet timing and metadata, deterministic content and
@@ -1239,7 +1254,8 @@ decoded-audio rate processor, or native presentation path. Engine A/V coordinati
 shared scheduler and actual audio clock, but physical A/V latency and drift remain hardware-lane
 evidence. `TimelineResources` prepares the reachable sources, decoders, and graph, and its acquired
 media owner now has a real export consumer. Its project entry point preserves one exact published
-document compilation, but playback and export do not yet acquire the whole bundle directly from
+document compilation, and the request adapter now resolves project-owned filesystem targets through
+the real local source path. Playback and export do not yet acquire the whole bundle directly from
 the document owner.
 Export still requires caller-supplied graph, delivery, and audio stage owners and returns elementary
 streams without muxing or persistence. The export queue retains results in process memory, uses
@@ -1275,7 +1291,10 @@ registration synchronized with all four media-I/O adapters. Keep legacy resource
 to the timeline compiler and project resource preparation bound to the exact retained snapshot
 compilation, including snapshots returned after project schema migration. Both paths must preserve
 the exact reachable media set, persistent source identity,
-explicit decoder streams, one-shot selection, operation checks, and all-or-nothing publication. Keep derived
+explicit decoder streams, one-shot selection, operation checks, and all-or-nothing publication.
+Keep project request construction dependent on the project path codec, reject explicit missing
+state before media I/O, and never infer `MediaId` or fingerprint identity from a filesystem path.
+Keep derived
 request canonicalization synchronized with every media format field that can change encoder output,
 and keep codec selection, cancellation, complete publication, proxy admission, scheduler-owned
 quality choice, lazy source opening, and full identity verification explicit. Keep playback prefetch

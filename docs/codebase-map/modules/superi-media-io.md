@@ -162,10 +162,11 @@ Waveform preview begins after audio decode. The adapter checks one stable audio 
 - `superi-codecs-vendor` adapts explicitly configured external RAW workers into `MediaBackend` implementations and uses operation, packet, decoder, encoder, corruption, and frame-conversion contracts. It does not alter this crate's discovery policy.
 - `superi-engine` constructs registries from Rust codecs and optional platform or vendor backends,
   registers all four in-tree source backends, converts declarations into deterministic capability
-  snapshots, compiles reachable timeline media requests into opened sources and selected decoders,
-  consumes `VideoFrame`, `MediaMetadata`, and the complete color pipeline at its CPU-frame-to-GPU
-  upload boundary, and adapts complete generated proxy packets or a verified original source behind
-  one `MediaSource`. Foreground playback snapshots exact `VideoFrame` format, timestamp, duration,
+  snapshots, adapts project-owned referenced-media paths into local `SourceRequest` values,
+  compiles reachable timeline media requests into opened sources and selected decoders, consumes
+  `VideoFrame`, `MediaMetadata`, and the complete color pipeline at its CPU-frame-to-GPU upload
+  boundary, and adapts complete generated proxy packets or a verified original source behind one
+  `MediaSource`. Foreground playback snapshots exact `VideoFrame` format, timestamp, duration,
   metadata, color history, and alpha meaning as graph-result provenance without copying decoded
   pixel storage. Render-export orchestration consumes an acquired source and selected decoders
   through exact seek, complete and partial read handling, packet routing, decode drain and flush,
@@ -186,7 +187,10 @@ Waveform preview begins after audio decode. The adapter checks one stable audio 
 `superi-engine::media` is the production registry owner for `MkvWebmBackend`, `Mp4MovBackend`,
 `MxfBackend`, and `PcmContainerBackend`. Its resource preparation path uses bounded probing, opens
 the selected source once, maps explicit stream IDs into exact decoder configurations, selects one
-decoder, and retains source and decoder policy evidence with one timeline compilation. Engine proxy
+decoder, and retains source and decoder policy evidence with one timeline compilation. Its project
+request adapter obtains the path, `MediaId`, and expected fingerprint from `superi-project`; this
+crate receives only the resolved location and integrity evidence and owns no project path syntax.
+Engine proxy
 substitution separately provides a `MediaSource` adapter over generated packets and a verified lazy
 original-source seam. Foreground playback consumes caller-prepared decoded provenance and graph
 values, but it does not yet bind prepared sources and decoders to scheduled graph requests. Export
@@ -200,6 +204,9 @@ waveform generation.
 ## Invariants and operational boundaries
 
 - Project identity is independent of location. Relinking may change a path or memory label, but a caller-supplied prior fingerprint must match the newly opened bytes before the source is accepted.
+- `SourceLocation::Path` is already resolved runtime input. Portable relative path grammar,
+  project-file context, explicit missing state, and persistent target versions belong to
+  `superi-project`, not this crate or a container backend.
 - Content bytes are authoritative for container selection. File names and extensions can inform probes but cannot create a match.
 - Identifiers and metadata keys use deterministic syntax, maps and sets preserve stable order, and backend ranking has explicit tie-breakers. The registry is intended to be shared after registration; concurrent mutation is not synchronized.
 - `SourceInfo` requires at least one stream and unique stream IDs. Packet PTS, DTS, and duration are optional and remain absent when a container cannot derive them safely.
@@ -305,6 +312,10 @@ Principal incomplete behavior and risks are:
 When adding or changing media behavior, update the common contract and its actual implementers together. A new pixel or sample representation may require changes in decoded buffer validation, software/platform codec adapters, engine upload, waveform normalization, and tests. A new codec capability must keep coarse registration and correlated detail consistent.
 
 Container changes should keep probe, full parser, public metadata projection, packet ordering, seek behavior, fingerprint checks, resource bounds, operation polling, and contract fixtures aligned. Do not generalize one format's cancellation, error category, packet atomicity, source cap, or seek behavior to another.
+
+Keep project target decoding outside media I/O. New persistent path forms must be interpreted by
+`superi-project`, adapted by engine, and arrive here only as an explicit `SourceLocation` with stable
+caller-owned media identity and optional expected fingerprint.
 
 Keep the synchronized audio fixture contract aligned with shared channel layouts, exact sample clocks, the PCM parser's WAVE mask projection, and the repository fixture generator. Changing waveform bytes, timing boundaries, rates, masks, or channel order requires a new immutable fixture version and matching reproduction evidence.
 

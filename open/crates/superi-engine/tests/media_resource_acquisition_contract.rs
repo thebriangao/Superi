@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -31,6 +32,7 @@ use superi_media_io::mkv_webm::MkvWebmBackend;
 use superi_media_io::operation::{MediaPriority, OperationContext};
 use superi_media_io::read::ReadOutcome;
 use superi_project::document::ProjectDocument;
+use superi_project::media::{PortableRelativePath, ReferencedMediaPath};
 use superi_project::ProjectDatabase;
 use superi_timeline::compile::{TimelineGraphOrigin, TimelineGraphValue};
 use superi_timeline::model::{
@@ -142,6 +144,133 @@ fn request() -> MediaResourceRequest {
 
 fn operation() -> OperationContext {
     OperationContext::new(MediaPriority::Interactive)
+}
+
+#[test]
+fn project_relative_target_drives_the_real_source_request_and_acquisition_path() {
+    let mut project = project();
+    let relative = ReferencedMediaPath::project_relative(
+        PortableRelativePath::new("../../test-fixtures/slice/video-cfr/v1/input.webm").unwrap(),
+    );
+    project
+        .edit(0, |draft| {
+            draft
+                .media_reference_mut(MEDIA)?
+                .set_target(relative.to_target());
+            Ok(())
+        })
+        .unwrap();
+    let project_file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("portable.superi");
+
+    let request = MediaResourceRequest::from_project_media(
+        &project,
+        &project_file,
+        MEDIA,
+        [DecoderResourceRequest::new(STREAM)],
+    )
+    .unwrap();
+    assert_eq!(request.source().media_id(), MEDIA);
+    assert_eq!(
+        request.source().expected_fingerprint(),
+        Some(SOURCE_FINGERPRINT)
+    );
+    let SourceLocation::Path(resolved) = request.source().location() else {
+        panic!("project media path must resolve to a local source path")
+    };
+    assert_eq!(
+        fs::canonicalize(resolved).unwrap(),
+        fs::canonicalize(fixture_path()).unwrap()
+    );
+
+    let registry = media_backend_registry().unwrap();
+    let resources = acquire_timeline_resources(
+        &project,
+        ROOT,
+        &registry,
+        [request],
+        ResourceAcquisitionPolicy::default(),
+        &operation(),
+    )
+    .unwrap();
+    let acquired = resources.media(MEDIA).unwrap();
+    assert_eq!(acquired.info().identity().media_id(), MEDIA);
+    assert_eq!(acquired.info().identity().fingerprint(), SOURCE_FINGERPRINT);
+    assert_eq!(
+        acquired
+            .source_selection()
+            .selected()
+            .container_id()
+            .as_str(),
+        "webm"
+    );
+}
+
+#[test]
+fn project_media_request_rejects_opaque_targets_missing_ids_and_relative_project_files() {
+    let mut opaque = project();
+    opaque
+        .edit(0, |draft| {
+            draft
+                .media_reference_mut(MEDIA)?
+                .set_target("urn:opaque:media");
+            Ok(())
+        })
+        .unwrap();
+    let project_file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("opaque.superi");
+    let opaque_error = MediaResourceRequest::from_project_media(
+        &opaque,
+        &project_file,
+        MEDIA,
+        [DecoderResourceRequest::new(STREAM)],
+    )
+    .unwrap_err();
+    assert_eq!(opaque_error.category(), ErrorCategory::Unsupported);
+
+    let missing_error = MediaResourceRequest::from_project_media(
+        &project(),
+        &project_file,
+        MediaId::from_raw(999),
+        [DecoderResourceRequest::new(STREAM)],
+    )
+    .unwrap_err();
+    assert_eq!(missing_error.category(), ErrorCategory::NotFound);
+
+    let mut unavailable = project();
+    unavailable
+        .edit(0, |draft| {
+            draft.media_reference_mut(MEDIA)?.mark_missing();
+            Ok(())
+        })
+        .unwrap();
+    let unavailable_error = MediaResourceRequest::from_project_media(
+        &unavailable,
+        &project_file,
+        MEDIA,
+        [DecoderResourceRequest::new(STREAM)],
+    )
+    .unwrap_err();
+    assert_eq!(unavailable_error.category(), ErrorCategory::NotFound);
+
+    let mut relative = project();
+    relative
+        .edit(0, |draft| {
+            draft.media_reference_mut(MEDIA)?.set_target(
+                ReferencedMediaPath::project_relative(PortableRelativePath::new(
+                    "Media/clip.webm",
+                )?)
+                .to_target(),
+            );
+            Ok(())
+        })
+        .unwrap();
+    let relative_error = MediaResourceRequest::from_project_media(
+        &relative,
+        "relative/project.superi",
+        MEDIA,
+        [DecoderResourceRequest::new(STREAM)],
+    )
+    .unwrap_err();
+    assert_eq!(relative_error.category(), ErrorCategory::InvalidInput);
 }
 
 #[test]

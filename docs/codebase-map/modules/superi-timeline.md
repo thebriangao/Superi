@@ -57,6 +57,9 @@ The codec returns canonical current bytes only after whole-project validation. I
 SQLite schema, autosave policy, replacement protocol, or recovery journal. `superi-project` now
 retains this editorial state in memory and stores the canonical component bytes inside its stable
 schema-1 SQLite database, while timeline remains the only owner of component interpretation.
+Linked media target text remains opaque in this crate. `superi-project` recognizes versioned
+filesystem targets, resolves portable project-relative paths, and exposes revision-fenced path and
+relink commands while continuing to mutate this single timeline-owned media state.
 
 The model also owns a narrow immutable color metadata seam that retains graph color state through
 the future compilation boundary without changing source meaning.
@@ -211,7 +214,7 @@ The track semantics surface includes:
 
 The editorial state surface includes:
 
-- `LinkedMediaReference`, including stable media identity, display name, target locator, optional
+- `LinkedMediaReference`, including stable media identity, display name, opaque target locator, optional
   available source range, deterministic `MediaMetadata`, and persistent `MediaRelinkState`.
 - `RelinkStatus` and `RelinkDecision` expose online, missing, unverified, and rejected mismatch
   behavior without replacing the active target or stable identity on a failed content check.
@@ -414,6 +417,9 @@ removes linked media and timelines, reorganizes bins, edits saved queries, or re
 evidence. The entire candidate is revalidated and its revision advances only after the closure
 succeeds; every failure discards the draft. Smart collection results are evaluated on demand from
 the published media map and current relink state.
+`superi-project` wraps these same media mutations in a whole-document revision fence. Its path and
+relink commands retain existing editable timeline graphs, then regenerate only checked compilation
+provenance around the new editorial revision because path availability is nonprocessing state.
 
 Each `Timeline` constructs one edit state beside its ordered tracks. New tracks begin untargeted
 with sync lock enabled, linked selection begins enabled, and selection and relationships begin
@@ -609,11 +615,12 @@ Timeline document flow preserves those owners without becoming a project contain
 - `superi-project` and `superi-engine` consume `superi-timeline`. Project retains one validated
   `EditorialProject` plus complete matching `TimelineGraphCompilation` values in its revisioned
   immutable snapshots, stores canonical timeline bytes in schema 1, and uses timeline-owned strict
-  graph-value Serde when storing retained graph documents. Engine integration consumes the color
-  metadata seam, preserves the legacy direct compiler path, traverses reachable media and nested
-  timeline relationships, and clones the exact project-retained compilation with prepared source
-  and decoder owners. Engine transport separately consumes the retime-owned reduced signed
-  `PlaybackRate` without importing editorial mutation policy.
+  graph-value Serde when storing retained graph documents. Project also interprets recognized media
+  targets as typed filesystem paths without changing their timeline serialization meaning. Engine
+  integration consumes the color metadata seam, preserves the legacy direct compiler path,
+  traverses reachable media and nested timeline relationships, and clones the exact project-retained
+  compilation with prepared source and decoder owners. Engine transport separately consumes the
+  retime-owned reduced signed `PlaybackRate` without importing editorial mutation policy.
 - Public integration tests and the `otio_roundtrip` example are real consumers. No application API
   or editor surface exposes the general editorial model yet.
 
@@ -628,6 +635,9 @@ Timeline document flow preserves those owners without becoming a project contain
 - A rejected relink retains the active locator and `MediaId`, plus the rejected locator and distinct
   expected and observed fingerprints. Unverified and missing states are explicit and never rewrite
   clip source relationships.
+- Target text is persistent schema meaning but not media identity. This crate does not parse paths,
+  consult the current directory, or derive `MediaId` from a locator; recognized filesystem syntax
+  and project-file-relative resolution belong to `superi-project`.
 - Marker ranges use their explicit owner's exact clock and never start before owner zero. Timeline
   and track markers use record coordinates. Object markers remain relative to a stable timed object,
   preserve overscan across trims, resolve through current record placement, and disappear only when
@@ -836,7 +846,8 @@ switching, and audio intent, and classified missing-root failure.
 
 The engine media resource contract is the first production crate consumer of compilation. It
 retains the canonical fixture's three-node, two-edge graph beside a fingerprint-verified WebM source
-and live AV1 decoder, and proves exact timing, precision, metadata, color, and alpha semantics without
+and live AV1 decoder, resolves the persistent project target through the project path codec, and
+proves exact timing, precision, metadata, color, alpha, missing-state, and identity semantics without
 copying timeline graph or media identity into another owner.
 
 Four serialization tests prove deterministic complete project equality, revision 1 envelope and
@@ -890,9 +901,10 @@ independently of process memory. Nested component collection counts are validate
 construction after JSON allocation rather than by a streaming preallocation quota. The
 `otio_roundtrip` example is the first production interchange consumer outside contract tests. The
 engine color propagation contract consumes the narrow metadata seam. The project document now
-retains real generic editable graph state that can admit a higher-tier effects catalog, and engine
-resource preparation consumes its exact selected compilation. No API, CLI, playback, or production
-render owner evaluates that result yet.
+retains real generic editable graph state that can admit a higher-tier effects catalog, interprets
+recognized referenced-media paths without duplicating media state, and engine resource preparation
+consumes its exact selected compilation and resolved local target. No API, CLI, playback, or
+production render owner evaluates that result yet.
 
 ## Maintenance notes
 
@@ -904,6 +916,8 @@ source-link resolution, selection expansion, track intent, clip relationship par
 reconciliation, transition adjacency, nesting acyclicity, exact nested placement, shared-instance
 reporting, multicam angle identity and metadata, source membership, switch coverage, exact
 resolution, audio intent, structural inheritance, and atomic publication as public contracts.
+Keep linked media targets opaque here, preserve every relink evidence field in canonical state, and
+route filesystem interpretation through `superi-project` without moving or duplicating `MediaId`.
 Treat the timeline document format, primitive revision gate, field names, enum codes, decimal
 integer forms, canonical collection rules, checksum scope, migration behavior, and checked
 reconstruction as the same class of public contract. Add a new component revision and explicit
