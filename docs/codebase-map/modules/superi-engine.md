@@ -2,20 +2,22 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: d6769a2e26c798f4ed8d3def885e7510d65ea6e2badb43bc60a6e58215e324a0
-source_files: 32
+source_hash: a3a059e00137405fdef40c021a7906c5bda2e7530436a1489c94e6b5ecfacf32
+source_files: 33
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
-`superi-engine` is the open orchestration layer. Eight paths are currently substantive: canonical
-editorial command state, media backend registry assembly, declaration-based capability
+`superi-engine` is the open orchestration layer. Its substantive paths cover canonical editorial
+command state, media backend registry assembly, declaration-based capability
 introspection, CPU-decoded frame upload into GPU allocations, and exact viewport and export color
 metadata branching, plus codec-neutral proxy and optimized-media packet generation and transparent
 proxy or original-source resolution, predictive playback cache population, and atomic timeline and
-clip-mix edit publication. Full transport, rendered color execution, export muxing, broad
-transactions, lifecycle, resources, plugins, nodes, A/V sync, and validation remain incomplete.
+clip-mix edit publication. It now also owns canonical subsystem initialization, dependency ordering,
+immutable lifecycle state, coherent playback/render/export admission, degraded recovery, reverse
+teardown, and restart. Full transport, rendered color execution, export muxing, broad transactions,
+resources, plugins, nodes, A/V sync, and validation remain incomplete.
 
 The command path is a bounded reference owner for contract conformance. It does not claim to replace
 the production project, timeline, graph, media, color, render, or muxing owners.
@@ -43,7 +45,10 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   codec capability snapshots.
 - `open/crates/superi-engine/src/lib.rs`: Documents the implemented orchestration boundaries and
   exposes seventeen engine modules.
-- `open/crates/superi-engine/src/lifecycle.rs`: Placeholder for subsystem lifecycle.
+- `open/crates/superi-engine/src/lifecycle.rs`: Implements the EngineControl-owned lifecycle state
+  machine, canonical subsystem dependency plan, exact action tokens, immutable generated snapshots,
+  coherent playback/render/export admission, recoverable degradation, rollback, reverse teardown,
+  teardown retry, and fresh-lifetime restart.
 - `open/crates/superi-engine/src/media.rs`: Builds default and feature-gated media registries.
 - `open/crates/superi-engine/src/nodes.rs`: Placeholder for media and graph nodes.
 - `open/crates/superi-engine/src/playback.rs`: Defines playback-domain nonblocking prediction
@@ -67,6 +72,10 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   rejection, cooperative cancellation, and original-source fallback.
 - `open/crates/superi-engine/tests/frame_upload_contract.rs`: Upload, ownership, storage, and budget
   proof.
+- `open/crates/superi-engine/tests/lifecycle_contract.rs`: Proves deterministic startup and reverse
+  teardown, generated shared snapshots, coherent workflow admission, isolated degradation and
+  recovery, initialization rollback, stale action rejection, terminal closure, dependency-safe
+  teardown retry, direct and stopped restart, and EngineControl ownership.
 - `open/crates/superi-engine/tests/opus_capability_contract.rs`: Default Opus selection proof.
 - `open/crates/superi-engine/tests/os_codec_registry_contract.rs`: Feature-gated host registry proof.
 - `open/crates/superi-engine/tests/proxy_substitution_contract.rs`: Proves real AV1 proxy
@@ -123,7 +132,16 @@ plan cancels older work and publishes immediate successful no-work completion.
 `EditBatchResult`. The combined operation returns the ordinary timeline result only after both
 cloned states validate and publish.
 
-The remaining public modules contain documentation only.
+`lifecycle` exposes `EngineLifecycle` as the single EngineControl owner. Canonical
+`EngineSubsystem` values describe shared state, playback, rendering, and export. Generated
+`EngineLifecycleSnapshot` values expose lifecycle phase and revision, engine state revision,
+lifetime, health, ordered subsystem state, retained classified failure evidence, and one exact
+pending action. Subsystem owners complete or fail the full `EngineLifecycleAction` token after work
+on their legal domain. `EngineWorkKind` admission returns revision-scoped permits only when every
+required subsystem is ready in the same running lifetime. The retained `LifecycleSignal` is the
+lock-free observation path for latency-sensitive consumers.
+
+The seven remaining placeholder modules contain documentation only.
 
 ## Architecture and data flow
 
@@ -158,6 +176,33 @@ graph, timeline, and cache wrappers, then derives independent display and delive
 branch validates its terminal stage kind and leaves the cached scene state unchanged. No production
 path yet executes those transforms, connects uploaded textures to graph evaluation, monitors a
 viewport, or encodes an export.
+
+### Subsystem lifecycle and coherent work admission
+
+`EngineLifecycle` requires the EngineControl domain, validates the canonical dependency plan, and
+stores all authoritative mutable lifecycle state in `DomainOwned`. Its first generated action asks
+the shared-state owner to initialize. Exact action completion advances playback, rendering, and
+export one at a time in dependency order. After all four resources are owned, the engine participant
+acknowledges the shared `LifecycleCoordinator` startup revision and the common phase becomes
+`Running`.
+
+Every committed state change publishes a new generation-tagged immutable snapshot through
+`SnapshotPublisher`. Playback requires shared state and playback; rendering requires shared state
+and rendering; export requires shared state, rendering, and export. One nonterminal subsystem
+failure therefore denies only its transitive work while unrelated work remains admitted. Recovery
+uses another exact action token. Successful recovery clears the subsystem blocker while the latest
+reported failure remains inspectable for the rest of that lifetime. A terminal failure advances the
+shared lifecycle phase to `Failed` and denies every workflow.
+
+Shutdown emits teardown actions only after every owned dependent has released its resource, which
+produces the exact inverse of initialization. Initialization failure enters the same reverse path
+for already owned dependencies. A failed teardown retains ownership and blocks its dependencies,
+while an independent branch may continue stopping. Retry must release the retained resource before
+the engine can acknowledge `Stopped`. Restart first completes this teardown, increments the engine
+lifetime, clears resolved failure state, and begins the canonical startup again. Action tokens and
+work permits carry lifetime and revision identity, so late completion and stale work are rejected.
+EngineControl never executes subsystem acquisition or teardown inline and therefore remains
+nonblocking.
 
 ### Derived-media generation
 
@@ -229,7 +274,7 @@ audio mutation, so their user intent remains attached without synthesis.
 ## Dependencies and consumers
 
 - `superi-core` supplies errors, identifiers, geometry, and exact time used directly by canonical
-  commands, introspection, upload, and playback prefetch.
+  commands, introspection, upload, playback prefetch, and retained lifecycle failure evidence.
 - `sha2` supplies bounded fixture payload identity and complete packet-content fingerprinting.
 - `superi-media-io`, `superi-gpu`, and `superi-codecs-rs` support registry, declaration, upload,
   codec-neutral derived generation, and the common proxy or original source interface.
@@ -237,8 +282,10 @@ audio mutation, so their user intent remains attached without synthesis.
 - Cache now supplies color metadata, media-neutral derived publication, bounded playback prediction,
   and an owned host evaluator adapter. Graph supplies the immutable evaluation snapshot.
   Concurrency supplies the production quality and fallback selector for proxy resolution plus
-  playback ownership, worker priority, cancellation, progress, and nonblocking completion. Image
-  and timeline support the color metadata integration contract. Timeline and audio are jointly
+  playback ownership, worker priority, cancellation, progress, and nonblocking completion. It also
+  supplies the shared lifecycle coordinator and lock-free signal, EngineControl domain enforcement,
+  single-owner mutable state, and immutable generated snapshot publication used by engine lifecycle.
+  Image and timeline support the color metadata integration contract. Timeline and audio are jointly
   consumed by the clip-mix edit transaction. Effects now supplies the safe
   `IsolatedOfxAdapter` contract, typed requests, graph projection, and plugin lifecycle state that a
   future engine worker supervisor can consume, but engine implements no adapter, native discovery,
@@ -287,7 +334,19 @@ audio mutation, so their user intent remains attached without synthesis.
 - GPU ownership and pool lifetime remain tied to the originating device.
 - Timeline and clip-mix publication is all-or-nothing across both expected revisions and typed edit
   outcomes. It does not imply a general whole-engine transaction owner.
-- Placeholder modules do not imply whole-engine render or lifecycle behavior.
+- Lifecycle mutation and publication require EngineControl, while subsystem acquisition and
+  teardown occur outside the controller through exact immutable actions.
+- Startup is dependency-first and teardown is dependent-first. A retained failed resource blocks
+  teardown of its dependencies but not independent branches.
+- Action completion must match subsystem, kind, lifetime, and action revision exactly. Every
+  committed state publishes a new immutable generation, and prior snapshots never mutate.
+- Playback, rendering, and export permits come from one snapshot and require their complete
+  transitive subsystem set to be ready in the same running lifetime.
+- Nonterminal failures degrade only dependent work. Terminal failures close all admission until
+  orderly teardown and a fresh lifetime complete.
+- Successful recovery clears the subsystem's active failure and restores admission without erasing
+  the latest reported failure evidence from the current lifetime snapshot.
+- Placeholder modules do not imply whole-engine transport or render/export execution behavior.
 
 ## Tests and verification
 
@@ -326,6 +385,14 @@ engine transaction. It proves exact source and record subdivision, retained and 
 group, link, and sync-lock inheritance, complete clip mix inheritance, and unchanged caller state
 when the mix revision conflicts.
 
+Four lifecycle contracts drive the public EngineControl owner through exact action tokens. They
+prove shared-state, playback, rendering, and export initialization order; healthy common admission;
+playback-only and rendering-plus-export degradation; recovery; immutable prior snapshots and stale
+permits; cross-thread immutable inspection; reverse teardown; direct and stopped restart with fresh
+lifetimes; initialization rollback; stale completion rejection; terminal engine failure;
+dependency-safe teardown failure and retry; and unchanged owner state after off-domain construction,
+inspection, and mutation rejection.
+
 ## Current status and risks
 
 Canonical command state is substantive and test-backed, but it is a reference boundary whose
@@ -333,15 +400,17 @@ implementation identity is disclosed as such. It validates fixture bytes without
 container or decoding frames. Timeline and graph state are exact control models but do not use the
 production timeline owner or the generic `superi-graph` DAG store.
 
-Eight orchestration files remain documentation-only placeholders. There is no coherent source
+Seven orchestration files remain documentation-only placeholders. There is no coherent source
 registry integration, playback clock, audio flow, persistent cache lifecycle owner, rendered color
-execution, encoder-to-mux path, project persistence, lifecycle, native plugin discovery, isolated
+execution, encoder-to-mux path, project persistence, native plugin discovery, isolated
 OpenFX adapter implementation, worker transport, or real-condition validator. The effects-side
 OpenFX host contract is substantive, but `plugins.rs` remains the production supervisor placeholder.
 Playback prefetch is substantive but is not a full transport or proxy selector. The
 derived-media driver and resolver are synchronous and caller-owned, and no production playback,
 export queue, or API path invokes them yet. Clip-mix reconciliation is substantive but currently
-entered by Rust callers rather than the public API or a playback controller.
+entered by Rust callers rather than the public API or a playback controller. Lifecycle is a
+production control-plane contract, but the later source, transport, render, export, resource, and
+error checkpoints still must perform their concrete subsystem actions before acknowledging it.
 
 ## Maintenance notes
 
@@ -353,7 +422,10 @@ request canonicalization synchronized with every media format field that can cha
 and keep codec selection, cancellation, complete publication, proxy admission, scheduler-owned
 quality choice, lazy source opening, and full identity verification explicit. Keep playback prefetch
 domain-owned, nonblocking, cooperatively cancellable between exact frames, and bound to complete
-cache identity. Remove a placeholder label only after substantive behavior and consumer proof exist.
+cache identity. Keep lifecycle actions nonblocking on EngineControl, add new canonical subsystems
+only in dependency order, preserve exact token checks, update every work requirement that consumes
+them, and never release a dependency while an owned dependent remains. Remove a placeholder label
+only after substantive behavior and consumer proof exist.
 When implementing `plugins.rs`, consume `superi_effects::ofx::IsolatedOfxAdapter` and preserve its
 worker-process, bounded-message, deadline, permission, restart, and quarantine guarantees rather
 than creating an engine-private editable plugin model.

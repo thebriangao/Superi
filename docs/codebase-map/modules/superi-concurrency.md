@@ -358,12 +358,15 @@ playback domain,
 submits playback-priority cache closures to `BoundedWorkerPool`, cooperatively cancels superseded
 generations, advances determinate progress, and polls `JobTaskHandle` without blocking. Its
 controller stores only a weak pool reference so a blocking-safe lifecycle owner remains responsible
-for shutdown. The broader downstream crate graph is not evidence that other transitive crates call
-these runtime surfaces.
+for shutdown. `superi-engine::lifecycle` composes `LifecycleCoordinator` as one engine participant,
+keeps authoritative state in `DomainOwned` on EngineControl, publishes every committed transition
+through `SnapshotPublisher`, and exposes the coordinator's lock-free `LifecycleSignal` to
+latency-sensitive consumers. The broader downstream crate graph is not evidence that other
+transitive crates call these runtime surfaces.
 The concurrency integration-test files, cache render contract, audio graph contract, engine
-substitution contract, and engine playback contracts exercise the public crate paths directly. No
-public API crate currently reexports these types, and no engine module composes lifecycle
-participants, clocks, handoffs, liveness, or GPU submission into an end-to-end runtime.
+substitution contract, engine playback contracts, and engine lifecycle contract exercise the public
+crate paths directly. No public API crate currently reexports these types, and no engine module yet
+composes lifecycle with clocks, handoffs, liveness, or GPU submission into an end-to-end runtime.
 
 ## Invariants and operational boundaries
 
@@ -436,6 +439,9 @@ non-`Send` or non-`Sync` guards and owners. Test coverage is contract-oriented:
   audio rejection, and generation exhaustion.
 - Lifecycle tests prove exact revisions, idempotent requests, stale-acknowledgement rejection,
   pause intent across sleep, retained failure, restart, atomic observation, and change-wait policy.
+  Engine lifecycle tests additionally prove one EngineControl owner composes the coordinator,
+  `DomainOwned`, `SnapshotPublisher`, and the lock-free signal for deterministic subsystem startup,
+  degraded recovery, reverse teardown, and restart.
 - Liveness tests prove canonical validation, atomic progress under contention, exact starvation
   thresholds, RAII wait removal, unowned-resource handling, one- and two-actor cycles, stable event
   projection, and public auto traits.
@@ -458,9 +464,10 @@ incomplete:
   nonblocking result polling for predictive cache work, and engine proxy resolution uses the
   derived-media selector. Audio uses the audio execution domain for prepared processing and exact
   scheduling and device output and uses the audio master clock for completed presentation. Graph
-  still does not use runtime surfaces, and lifecycle acknowledgement, decoded-sample binding,
-  engine A/V composition, backpressure, and liveness are not yet composed into a real application
-  flow.
+  still does not use runtime surfaces. Engine now composes lifecycle acknowledgement and shared
+  snapshot publication as a control plane, but concrete source, playback, render, and export owners
+  do not yet perform those actions, and decoded-sample binding, engine A/V composition,
+  backpressure, and liveness are not yet composed into a real application flow.
 - Dependency tracking is passive. The worker pool does not delay a job until prerequisites are
   ready, propagate terminal states, create `DependencyFailed`, or detect cycles across submitted
   jobs. Callers must provide all of that orchestration.
@@ -510,7 +517,8 @@ incomplete:
   retirement flow, device-loss recovery, and its relationship to `ExecutionDomain::GpuSubmission`.
 - When graph, engine, API, or CLI begins using more of these surfaces, replace the declared-consumer
   description with the exact construction and event paths and update the relevant consumer maps.
-  Keep the engine's derived-selection-only use distinct from runtime composition.
+  Keep the engine's derived selection, playback worker, and lifecycle-control uses distinct from a
+  complete runtime composition.
   Keep the existing audio scheduler, device callback, and audio-master publication paths current as
   engine integration expands.
 - If job dependencies become scheduler-owned, document admission, cycle detection, cancellation
