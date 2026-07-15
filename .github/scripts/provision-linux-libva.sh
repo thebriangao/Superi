@@ -28,8 +28,8 @@ meson setup "$build" "$source" \
     -Dwith_x11=no \
     -Dwith_glx=no \
     -Dwith_wayland=no
-meson compile --jobs 2 --directory "$build"
-meson install --no-rebuild --directory "$build"
+meson compile -C "$build" --jobs 2
+meson install -C "$build" --no-rebuild
 
 test -f "$prefix/include/va/va_dec_vvc.h"
 PKG_CONFIG_PATH="$prefix/lib/pkgconfig" pkg-config --atleast-version=2.22.0 libva

@@ -43,6 +43,12 @@ grep -Fq 'va/va_dec_vvc.h' "$provisioner" ||
     fail "provisioner must verify the required VVC header"
 grep -Fq 'pkg-config --atleast-version=2.22.0 libva' "$provisioner" ||
     fail "provisioner must verify the required libva API version"
+grep -Fq 'meson compile -C "$build" --jobs 2' "$provisioner" ||
+    fail "provisioner must use the portable Meson compile build-directory option"
+grep -Fq 'meson install -C "$build" --no-rebuild' "$provisioner" ||
+    fail "provisioner must use the portable Meson install build-directory option"
+! grep -Eq '^meson (compile|install).*--directory' "$provisioner" ||
+    fail "provisioner must not use Meson build-directory syntax rejected by Ubuntu 24.04"
 grep -Fq 'CROS_LIBVA_H_PATH=' "$provisioner" ||
     fail "provisioner must publish the reviewed header path"
 grep -Fq 'LIBVPX_VERSION: "1.16.0"' "$workflow" ||
