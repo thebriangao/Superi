@@ -2,8 +2,8 @@
 //!
 //! Section 5.8 in `docs/architecture.md`. Foundational project and timeline objects, typed track
 //! semantics, authoritative edit intent, atomic validated edits, and foundational editorial
-//! operations are implemented. OTIO interchange, advanced trim operations, and compile-to-graph
-//! remain staged.
+//! operations, nesting, retiming, and deterministic compile-to-graph state are implemented. OTIO
+//! interchange and graph evaluation remain staged.
 
 pub mod compile;
 pub mod edit_ops;

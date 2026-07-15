@@ -646,7 +646,10 @@ graph evaluation or runtime integration.
 - Direct manifest consumers are `superi-ai`, `superi-cache`, `superi-color`, `superi-effects`,
   `superi-timeline`, `superi-project`, and `superi-engine`.
 - Timeline and cache consume `GraphColorMetadata`, and the engine color propagation contract
-  exercises those seams. Other declared domain consumers still have no production graph call site.
+  exercises those seams. Timeline compilation now also consumes versioned schemas, typed ports,
+  complete editable nodes, atomic graph transactions, DAG validation, and immutable snapshots to
+  publish generic processing intent from native editorial state. Other declared domain consumers
+  still have no production graph call site.
   The thirteen graph integration test targets remain the direct consumers of identifier, schema-discovery, DAG, validation,
   mutation, invalidation, ROI, serialization, expression, diagnostics, evaluation, shared
   evaluation-snapshot, and missing-node APIs.
@@ -909,9 +912,9 @@ incompatible nodes as typed placeholders, and gives every caller one determinist
 evaluation result until exact schemas return. Exact schemas then enable the shared interactive and
 headless evaluation snapshot without a graph rewrite. The crate cannot store a project atomically,
 retain or persist cached values, dispatch work through an outer job system, bind plugin
-implementations, or render production values, and no downstream production catalog consumes the
-mutation, invalidation, ROI, serialization, scheduling, expression, diagnostics, evaluation, or
-missing-node owner.
+implementations, or render production values. Timeline compilation is now a real downstream
+mutation and snapshot consumer, but no production node catalog consumes the invalidation, ROI,
+serialization, scheduling, expression, diagnostics, evaluation, or missing-node owner.
 
 The latest-version rule deterministically selects the lexically highest build-metadata variant when
 SemVer precedence ties. Consumers that require one deployment-specific build must request its exact

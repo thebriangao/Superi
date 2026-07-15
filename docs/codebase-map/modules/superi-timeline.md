@@ -2,8 +2,8 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: a78d2d121cb2e8de8aefc94be0bcad6bdc57134e356e789759f871e544e229b8
-source_files: 25
+source_hash: 268e3af451d1c088c756c47e1f708c495ea0a1c6dd54d1cec3b97e8a528cba7d
+source_files: 26
 mapped_at_commit: working-tree
 ---
 
@@ -52,16 +52,26 @@ atomic edit path used by selection, links, groups, annotations, nesting, and ret
 The model also owns a narrow immutable color metadata seam that retains graph color state through
 the future compilation boundary without changing source meaning.
 
-The crate continues to reserve OTIO-compatible interchange and deterministic timeline-to-graph
-compilation. Those surfaces are not implemented.
+The crate now compiles one selected timeline and every reachable nested timeline into one typed,
+editable `superi-graph` document. Stable domain-separated identifiers preserve graph addresses
+across semantic edits, while a bidirectional provenance index keeps every timeline, track, and
+editorial object understandable and directly controllable. Timeline outputs, ordered tracks,
+clips, gaps, transitions, generators, captions, and nested-sequence routing remain ordinary typed
+graph state. Native multicam source catalogs, synchronization provenance, switching, and audio
+intent remain ordinary typed graph parameters, while
+OTIO-compatible interchange remains staged.
 The canonical OTIO 0.18.1 fixture remains executable evidence for future interchange work rather
 than a production reader or writer.
 
 ## Source inventory
 
-- `open/crates/superi-timeline/Cargo.toml`: Declares runtime dependencies on `superi-core` and
-  `superi-graph`, plus development-only `serde_json` for canonical OTIO fixture contracts.
-- `open/crates/superi-timeline/src/compile.rs`: Placeholder for timeline-to-graph compilation.
+- `open/crates/superi-timeline/Cargo.toml`: Declares runtime dependencies on `superi-core`,
+  `superi-graph`, and the workspace-pinned SHA-256 implementation, plus development-only
+  `serde_json` for canonical OTIO fixture contracts.
+- `open/crates/superi-timeline/src/compile.rs`: Compiles validated root and nested timelines into
+  one typed editable graph transaction with stable graph, node, port, parameter, and edge IDs,
+  explicit stream routing, authored track and item order, complete object and multicam parameters,
+  and bidirectional editorial provenance.
 - `open/crates/superi-timeline/src/edit_ops.rs`: Implements directly inspectable foundational and
   advanced commands, exact source-aware and retime-aware trimming and splitting, deterministic
   fragment identities, explicit sync-locked ripple plans, transition reconciliation, result
@@ -72,7 +82,7 @@ than a production reader or writer.
 - `open/crates/superi-timeline/src/ids.rs`: Re-exports the canonical project, editorial object, and
   multicam angle identities owned by `superi-core`.
 - `open/crates/superi-timeline/src/lib.rs`: Exports the implemented identity, edit-state, edit
-  operation, model, multicam, nested, and retime modules plus staged interchange and compilation
+  operation, model, multicam, nested, retime, and graph compilation modules plus staged interchange
   namespaces.
 - `open/crates/superi-timeline/src/markers.rs`: Implements stable timeline, track, and object marker
   ownership, visible labels, flags, notes, recursively nested ordered metadata, owner-relative range
@@ -129,6 +139,10 @@ than a production reader or writer.
   fit-to-fill rejection, sync-locked companion tracks, relationship inheritance, cross-rate
   derivation, transition truth, annotation retention, typed object splits, caller parity, and atomic
   rollback.
+- `open/crates/superi-timeline/tests/compile_contract.rs`: Proves deterministic typed graph state,
+  exact nested and transition routing, stable addresses across source-range edits, bidirectional
+  provenance, unchanged processing state after a selection-only edit, direct graph parameter
+  editing, typed multicam source, switch, and audio intent, and missing-root failure.
 - `open/crates/superi-timeline/tests/otio_fixture_contract.rs`: Proves canonical OTIO schema,
   hierarchy, identity, timing, relationships, opaque retention, and unsupported diagnostics.
 - `open/crates/superi-timeline/tests/range_contract.rs`: Proves exact cross-clock point and subrange
@@ -276,11 +290,16 @@ The nested operation surface includes:
 - `NestedSequenceResult` and `NestedSequenceEditResult`, which expose the published revision,
   foundational placement outcome, edited child identity, and affected shared instances.
 
-`compile` and `otio` remain public namespace reservations without production operations.
-`edit_ops`, `markers`, `multicam`, and `nested` are substantive public operation surfaces.
+The compilation surface includes `compile_timeline`, `TimelineGraphCompilation`,
+`TimelineGraphValue`, `TimelineGraphOrigin`, and `TimelineGraphIndex`. It captures the source
+project and revision, exposes the editable graph and immutable snapshots, resolves timeline,
+track, and object origins in both directions, and allows later checked graph transactions without
+inventing a second topology. `otio` remains a namespace reservation without production operations.
+`edit_ops`, `markers`, `multicam`, `nested`, and `compile` are substantive public operation surfaces.
 
-`TimelineColorMetadata::from_graph` retains exact graph-owned color state, `graph` exposes it, and
-`compile` returns an unchanged clone for a later graph compiler.
+`TimelineColorMetadata::from_graph` retains exact graph-owned color state and `graph` exposes it.
+Timeline compilation keeps processing color requirements typed at the graph schema boundary but
+does not evaluate or transform color.
 
 ## Architecture and data flow
 
@@ -425,6 +444,26 @@ parallel editorial model:
 6. Audio policy either follows the video angle, fixes one explicit angle, or exposes all enabled
    angles in source order for a later mixer. This crate stores intent and does not mix samples.
 
+Timeline compilation consumes the validated result without changing authoring state:
+
+1. `compile_timeline` verifies the selected root and walks every reachable nested timeline once in
+   deterministic track and item order.
+2. One timeline output node, one node per track, and one node per editorial object retain complete
+   typed IDs, names, sources, ranges, time maps, semantics, authored order, transition intent,
+   generator parameters, caption data, multicam source catalogs, synchronization provenance,
+   switch partitions, and audio policy.
+3. Typed video, audio, caption, and data ports connect items to tracks and tracks to timeline
+   outputs. Transition endpoints and nested child outputs remain explicit graph edges.
+4. Graph, node, port, parameter, and edge identities use length-framed domain-separated SHA-256
+   derivation over stable editorial identities and semantic roles, truncated to the official
+   128-bit graph ID domains. Mutable values and insertion history do not change those addresses.
+5. All node additions and connections publish through one `GraphTransaction` at revision one.
+   Graph validation rejects duplicate IDs, incompatible ports, invalid cardinality, or cycles
+   before any compiled state is returned.
+6. The bidirectional index resolves every reachable timeline, track, and object to its node and
+   every compiled node back to its editorial owner. UI-only selection, targeting, sync locks,
+   links, groups, annotations, and caches do not become hidden processing inputs.
+
 The separate fixture path reads checked-in OTIO JSON through development-only `serde_json::Value`
 assertions. It does not enter the native model yet.
 
@@ -433,8 +472,11 @@ assertions. It does not enter the native model yet.
 - `superi-core` supplies shared errors, exact rational and sample time, channel layouts, project and
   media identity, all typed editorial identities, and the stable `MulticamAngleId` used by
   production source.
-- `superi-graph` supplies `GraphColorMetadata` to the narrow color propagation seam and remains the
-  future compilation target for the substantive editorial model.
+- `superi-graph` supplies `GraphColorMetadata` to the narrow color propagation seam and owns the
+  schema, typed DAG, port validation, editable node, snapshot, and atomic mutation contracts used
+  by timeline compilation.
+- The workspace-pinned `sha2` 0.10.9 implementation derives stable graph-facing identifiers from
+  domain-separated, length-framed editorial identity inputs without adding a network path.
 - `serde_json` is development-only and reads checked-in canonical JSON. No OTIO library, Python
   package, network path, or fixture-tool runtime dependency enters the crate.
 - `superi-project` and `superi-engine` declare `superi-timeline` as a dependency. Engine integration
@@ -513,6 +555,14 @@ assertions. It does not enter the native model yet.
 - Structural fragments inherit source angle membership and target switch intent. Replacement
   transfers those relationships to the new caller-owned clip identity, while deleted identities
   reconcile before publication. Every change remains inside one revision-checked project draft.
+- Compilation includes only the selected root and reachable nested timelines. Each reachable
+  timeline, track, and editorial object appears exactly once, every object remains independently
+  indexed, and nested child outputs feed every parent clip instance through exact typed ports.
+- Mutable names, ranges, time maps, order, semantics, and parameters change typed graph payloads
+  without changing stable graph addresses. Selection, targeting, synchronization locks, links,
+  groups, annotations, cache state, and revision history are not processing inputs.
+- Compilation publishes one complete graph transaction or no graph. All identifiers are
+  domain-separated, every hash part is length-framed, and any derived-ID collision fails closed.
 - A transition names the timed item immediately before and after it. Its offsets use the track edit
   clock, fit adjacent durations, do not overlap another transition on the same item, and do not add
   to track duration. Adjacent transitions are invalid.
@@ -533,8 +583,8 @@ assertions. It does not enter the native model yet.
   Append and insert report exact extension, while extract reports exact shortening.
 - A transition is never silently redirected. It survives only with its original adjacent endpoints
   and valid nonoverlapping handles; otherwise its typed identity appears in the outcome.
-- Fit-to-fill, production OTIO preservation, deterministic graph compilation, undo-history
-  ownership, and higher-level editorial commands remain outside this state.
+- Fit-to-fill, production OTIO preservation, graph evaluation, undo-history ownership, multicam
+  playback and mixing, and higher-level editorial commands remain outside this state.
 - The timeline color seam preserves exact graph metadata and performs no transform, inference,
   normalization, or reordering.
 
@@ -608,6 +658,13 @@ source clip, range switching, movable cuts, fixed and all-angle audio intent, ta
 fragment inheritance, target and source replacement inheritance, missing coverage and disabled
 angle rejection, stale revisions, and complete atomic rollback.
 
+Six compilation tests prove identical graph snapshots from identical project state, one atomic
+revision with twelve typed nodes and fourteen checked edges, two instances sharing one nested
+timeline output, explicit transition routing, retained bottom-to-top track order, caption parameter
+inspection, bidirectional provenance, stable graph and node addresses across a source-range edit,
+identical graph state after a selection-only project revision, directly editable graph parameters,
+typed multicam source, switching, and audio intent, and classified missing-root failure.
+
 Workspace tests, warnings-denied Clippy, formatting, dependency direction, the offline boundary
 scan, and codebase-map validation are required delivery gates.
 
@@ -620,7 +677,7 @@ exact clip retiming, six primary operations, nine advanced edit families, nested
 compound creation, shared child editing, recursive inspection, and native multicam angle,
 synchronization, switching, audio-intent, structural inheritance, and exact resolution are
 substantive and test-backed.
-Production OTIO reading and writing, graph compilation, fit-to-fill, grouped-source compound
+Production OTIO reading and writing, graph evaluation, fit-to-fill, grouped-source compound
 synthesis, undo ownership, multicam mixing and runtime playback, persistence, and engine or API
 integration remain absent.
 
@@ -638,7 +695,8 @@ object per command; multi-object source sequences and link-group targeting belon
 and orchestration layers. Audio continuity is structural evidence rather than signal analysis or
 playback. The model has no stable Serde schema, hostile-input collection bounds, or production
 consumer outside its contract tests. The engine color propagation contract consumes only the
-narrow metadata seam and does not make timeline-to-graph compilation operational.
+narrow metadata seam. Timeline compilation now produces real generic editable graph state, but no
+engine, API, CLI, evaluator catalog, playback, or render owner consumes that result yet.
 
 ## Maintenance notes
 
@@ -653,7 +711,7 @@ resolution, audio intent, structural inheritance, and atomic publication as publ
 Extend tests before changing them. Later
 higher-level and grouped-source compound operations must consume `tracks_affected_by_sync`, exact
 selection state, and clip-owned time maps instead of recreating those policies. Add higher-level
-edit commands, interchange, and graph compilation only through their owning modules, and update
+edit commands, interchange, and graph evaluation only through their owning modules, and update
 project, engine, API, CLI, persistence, and fixture maps when those paths begin consuming native
 timeline state. Preserve the OTIO fixture's versioned semantics rather than inferring interchange
 behavior from the native model alone.

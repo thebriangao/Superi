@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: dca616d41bc16124db593e82c227f1dca4edef1e99a2c52bcc9bf425a03a0317
+source_hash: 99a48cd6e63cef1c804253f2f16ee0c9b212ffbd624c9546d2b61724cf0354e7
 source_files: 121
 mapped_at_commit: working-tree
 ---
@@ -896,8 +896,8 @@ The largest current risk is cross-document drift:
   resident-memory boundary evidence. The hosted workflow directly runs fixture validation and the
   portable eight-stage contract, and expectation version 2 removes checkout location from project
   identity. Generic typed DAG storage, cycle prevention, schema-bound editable nodes, and atomic
-  graph mutation transactions now exist independently, while production timeline compilation,
-  graph evaluation and orchestration, rendered comparison, color and render integration, muxing,
+  graph mutation transactions and native timeline-to-graph compilation now exist, while graph
+  evaluation and orchestration, rendered comparison, color and render integration, muxing,
   playable output, and all-runtime execution remain future work. The current contract-conformant
   run must not be reported as product or runtime conformance.
   Boundary samples are not continuous intra-stage peaks, constrained-device thresholds, or
