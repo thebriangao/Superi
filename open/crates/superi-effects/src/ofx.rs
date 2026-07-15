@@ -1731,6 +1731,44 @@ pub trait IsolatedOfxAdapter: Send {
     fn restart_worker(&mut self) -> Result<()>;
 }
 
+impl<A: IsolatedOfxAdapter + ?Sized> IsolatedOfxAdapter for Box<A> {
+    fn contract(&self) -> OfxAdapterContract {
+        self.as_ref().contract()
+    }
+
+    fn load(&mut self, request: OfxLoadRequest) -> Result<()> {
+        self.as_mut().load(request)
+    }
+
+    fn describe(&mut self) -> Result<OfxPluginDescriptor> {
+        self.as_mut().describe()
+    }
+
+    fn describe_in_context(&mut self, context: OfxContext) -> Result<OfxContextDescriptor> {
+        self.as_mut().describe_in_context(context)
+    }
+
+    fn create_instance(&mut self, request: OfxCreateInstanceRequest) -> Result<()> {
+        self.as_mut().create_instance(request)
+    }
+
+    fn render(&mut self, request: OfxRenderRequest) -> Result<OfxRenderReceipt> {
+        self.as_mut().render(request)
+    }
+
+    fn destroy_instance(&mut self, key: OfxInstanceKey) -> Result<()> {
+        self.as_mut().destroy_instance(key)
+    }
+
+    fn unload(&mut self) -> Result<()> {
+        self.as_mut().unload()
+    }
+
+    fn restart_worker(&mut self) -> Result<()> {
+        self.as_mut().restart_worker()
+    }
+}
+
 /// Projects timeline-owned parameter literals at one explicit OpenFX time.
 ///
 /// Graph links and expressions resolve after this projection, so timeline sampling cannot replace

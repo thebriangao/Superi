@@ -2,7 +2,7 @@
 module_id: superi-effects
 source_paths:
   - open/crates/superi-effects
-source_hash: 919b9821fd01e046bef9db05adbebc1b09b67296a505c9fb287b7ae9b179d7ed
+source_hash: b6e6333de9992fee51e4fa03748a2c25fc2ff1bb12549891b9168fa12916b50d
 source_files: 33
 mapped_at_commit: working-tree
 ---
@@ -53,8 +53,9 @@ persistence, UI, production spatial GPU execution, vector shape rasterization, m
 feather and expansion
 filtering, propagation solvers, production transition attachment and GPU execution, text
 rasterization and GPU atlases, pyramidal or GPU tracking acceleration, production tracking
-attachment, native OpenFX bundle discovery, worker IPC, and native OFX entry-point execution remain
-absent or staged in their owning modules.
+attachment, concrete platform worker transport, GPU-handle IPC, and native OFX entry-point execution
+remain absent or staged in their owning modules. Engine-owned deterministic OpenFX bundle discovery,
+launcher coordination, containment, and graph availability are implemented above this crate.
 
 ## Source inventory
 
@@ -95,7 +96,8 @@ absent or staged in their owning modules.
   contract, validated isolated-worker guarantees, exact lifecycle and standard-context descriptors,
   graph-native clip and finite parameter projection, discovered and active catalogs, explicit-time
   timeline projection before graph expression evaluation, bounded opaque image resources, explicit
-  permission grants, instance state, structured adapter failures, restart, and quarantine.
+  permission grants, instance state, structured adapter failures, restart, quarantine, and boxed
+  dynamic-adapter forwarding for heterogeneous engine-owned hosts.
 - `open/crates/superi-effects/src/preset.rs`: Implements complete immutable effect presets,
   graph-native fresh instance creation, deterministic integrity-protected current documents,
   revision-zero document migration, and explicit transactional schema-migration chains while
@@ -228,7 +230,9 @@ The library exports `authoring`, `catalog`, `composition`, `control`, `keyframe`
 
 - `OfxHostCapabilities`, `OfxAdapterContract`, and `IsolatedOfxAdapter` make the supported OpenFX
   1.5.1 contexts and finite parameter types, worker-process isolation, protocol revision, bounded
-  messages, render deadline, restart guarantee, and typed lifecycle actions inspectable.
+  messages, render deadline, restart guarantee, and typed lifecycle actions inspectable. The
+  forwarding implementation for `Box<A>` preserves the same contract behind an engine-owned trait
+  object without adding native loading to this crate.
 - `OfxPluginDescriptor`, `OfxContextDescriptor`, clip and parameter descriptors, plugin
   capabilities, exact identities, and render-thread declarations validate standard mandatory
   clips and host-managed parameters. Exact OpenFX names are retained while deterministic lower-kebab
@@ -830,10 +834,11 @@ The vector shape authoring flow is:
   handle
   parameters. A higher integration owner can pair that editorial projection with the effects-owned
   transition definitions without reversing the dependency or copying timeline mutation policy.
-- `superi-engine` declares `superi-effects` but has no production catalog, native plugin discovery,
-  worker adapter, IPC transport, animation, evaluator, playback, viewport, or export call site. Its
-  future plugin supervisor can implement `IsolatedOfxAdapter` without moving native code or worker
-  lifecycle into effects. Current real consumers are the role-neutral authoring,
+- `superi-engine::plugins` now owns deterministic native bundle discovery, canonical validation,
+  platform-launcher coordination, heterogeneous boxed hosts, exact activation grants, classified
+  containment, restart and quarantine recovery, and shared playback, rendering, and export graph
+  availability. Concrete platform IPC adapters and native OFX entry-point execution remain outside
+  effects. Other real consumers are the role-neutral authoring,
   generic graph reload, reusable controls over shared processing payloads, strict animation,
   visual-composition, spatial-composition, vector-shape, mask, rotoscope, tracking, and text payloads,
   inspectable glyph layout, transition authoring and timing, and bounded headless graph-evaluation
@@ -1162,8 +1167,9 @@ playback, viewport, export, project persistence, UI, production spatial transfor
 motion-blur execution, vector shape rasterization, mask rasterization,
 propagation solver, text rasterization or glyph atlas, production tracking attachment, pyramid or GPU
 tracking acceleration, production transition
-attachment, native OpenFX bundle discovery, worker transport, process supervisor, or production OFX
-adapter. Rotoscope mask payloads are generic and have no production mask-type
+attachment, concrete platform worker transport, GPU-handle transport, or production native OFX
+adapter. Engine-owned bundle discovery and process-supervision coordination are implemented.
+Rotoscope mask payloads are generic and have no production mask-type
 consumer yet. Authoring metadata is in memory and has no independent wire. Control hints do not yet
 encode enforceable numeric bounds, choice option vocabularies, grouping, conditional visibility, or
 accessibility policy; transition domains and wipe choices are therefore validated by the reference
@@ -1185,8 +1191,9 @@ their applied driver meaning is persisted by graph. Parent expressions are scala
 matrix composition is planar and effects-local, with no material, shadow, volumetric, mesh, or GPU
 runtime contract. Presets exercise graph-derived unregistered and incompatible availability without
 persisting lifecycle state. The effect-side OpenFX host discovers validated descriptions and controls
-an isolated adapter lifecycle, while engine-owned native bundle discovery, worker transport, process
-supervision, and production factories remain absent. Runtime factories remain exact-version bound
+an isolated adapter lifecycle, while engine-owned native bundle discovery, launcher coordination,
+process supervision, and active graph-registry rebuilding now consume it. Platform worker transport,
+native ABI adapters, and production factories remain absent. Runtime factories remain exact-version bound
 with no GPU device or cache integration.
 
 The CPU evaluator proves implementation semantics and graph integration but does not close a
@@ -1233,8 +1240,9 @@ consume the same artifact without hiding observations, overwriting corrections, 
 fences, changing deterministic CPU meaning, or treating known-landmark pose refinement as camera
 calibration or scene reconstruction.
 
-Keep OpenFX native loading, bundle discovery, IPC, deadlines, GPU-handle transport, and worker
-supervision in the engine adapter. Preserve permission-free scanning, explicit activation grants,
+Keep OpenFX native loading, IPC, deadlines, GPU-handle transport, and platform worker launch in the
+engine adapter, with bundle discovery and supervision remaining engine-owned. Preserve
+permission-free scanning, explicit activation grants,
 exact context and name validation, ordinary graph-owned values, literal-only timeline projection,
 fail-closed active catalogs, bounded opaque resources, structured failures, restart, and quarantine.
 

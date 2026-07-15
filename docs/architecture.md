@@ -177,6 +177,13 @@ Project/document model & persistence; undo/redo model (engine-level command hist
 
 [FND] playback orchestration (decoder + graph + cache + audio + clock → synchronized real-time output); [FND] render/export orchestration flow (the actual end-to-end decode→graph→color→encode binding); [FND] A/V sync coordination under real conditions; [FND] engine-wide command/transaction model (undo, persistence, API all route through it); [FND] **the unified public engine API** (the single surface UI/scripting/extensions/agent drive, §3.5); [FND] subsystem lifecycle & shared-state management; [FND] cross-subsystem error propagation & recovery; [FND] cross-subsystem memory/resource arbitration (cache vs GPU buffers vs decode buffers for a finite budget); [FND] integration validation in concert under real conditions (format mismatches, sync races, color round-trips, memory interactions), engine-level work that happens *after* each component is individually "done."
 
+The engine plugin supervisor recursively discovers validated OpenFX packages, delegates native
+binary selection and operating-system containment to a platform launcher, and accepts only the
+bounded isolated adapter contract. It narrows activation to each plugin's exact requested
+capabilities, contains scan and worker failures per plugin, and projects one active graph registry
+into playback, rendering, and export so authored nodes remain editable while unavailable plugins
+fail closed.
+
 ---
 
 ## 6. Build phases (build-sequence framing)

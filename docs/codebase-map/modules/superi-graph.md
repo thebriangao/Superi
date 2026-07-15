@@ -839,6 +839,9 @@ reference model.
   `superi-engine::export_queue` consumes the same snapshot and request contracts, binds the current
   decoded frame through a caller-owned runtime node seam, retains the evaluated graph revision, and
   validates the existing playback scene envelope before delivery and encoding. The
+  `superi-engine::plugins::PluginSupervisor` rebuilds an active `NodeRegistrySnapshot` from ready
+  OpenFX hosts and resolves the same immutable graph for playback, rendering, and export, preserving
+  graph-owned blocker order and revision semantics. The
   resource preparation path also retains one timeline compilation and its editable graph beside
   exact opened media owners, without copying or evaluating graph state. The engine color
   propagation contract exercises metadata. Effects consumes versioned schemas, schema registration
@@ -929,6 +932,9 @@ reference model.
 - Plugin availability is derived from one graph snapshot and one registry snapshot. It is never
   authored, serialized, migrated, or cached into node state, so changing discovery cannot change
   the graph revision or editable meaning.
+- `superi-engine::plugins::PluginSupervisor` is a production consumer of this boundary. It rebuilds
+  one active `NodeRegistrySnapshot` after lifecycle changes and calls `resolve_graph` through the
+  same `EngineWorkKind` path for playback, rendering, and export.
 - An available node requires exact schema identity and structural equality. Missing identities and
   same-identity definition conflicts retain the original typed node as a stable placeholder and
   never substitute a latest version, coerce bindings, or rewrite saved schema fields.
@@ -1214,7 +1220,8 @@ also consumes canonical graph documents, exact-schema missing-node resolution, p
 evaluation, and typed drivers for exact-time links, reusable controls, and parent expressions,
 including ordinary `GraphValue<T>` built-in state. Its preset and OpenFX contracts consume
 missing-node resolution for absent, incompatible, disabled, faulted, and quarantined operations, but
-it does not yet connect native plugin transport, production spatial GPU execution, vector, mask, or
+engine plugin supervision now connects active plugin lifecycle to this derived availability, but it
+does not yet connect native plugin transport, production spatial GPU execution, vector, mask, or
 text rasterization, glyph atlases, production tracking pyramids and GPU acceleration, propagation
 solvers, timeline tracking or transition attachment, invalidation orchestration, production plugin
 binding, GPU execution, or production engine orchestration into a complete render path.
@@ -1338,8 +1345,9 @@ rejection, and leave atomic project storage, recovery selection, and locking in 
 Keep plugin availability derived from the immutable graph and registry snapshots. Preserve exact
 saved schemas, typed instance state, stable blocker order, fail-closed definition conflicts, and the
 shared degraded evaluation gate together. The effects OpenFX host now registers only scanned exact
-schemas and derives active availability from plugin lifecycle. A future engine adapter may add
-explicitly supported historical schemas and implementation factories above this crate, but neither
+schemas and derives active availability from plugin lifecycle. The engine supervisor rebuilds that
+active snapshot and resolves every workflow role through this same gate. Platform adapters may add
+explicitly supported historical schemas and implementation factories above this crate, but no
 layer may teach the neutral resolver to guess compatibility or persist discovery state.
 
 Recheck the effects preset consumer whenever preset capture, schema migration, document recovery, or

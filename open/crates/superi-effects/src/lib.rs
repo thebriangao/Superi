@@ -23,10 +23,11 @@
 //! bounded real-pixel reference renderer. The built-in catalog and bounded CPU reference cover
 //! and transition semantics. The OpenFX host validates an isolated worker adapter, projects scanned
 //! contexts into graph-native definitions, samples timeline and graph parameter state, and exposes
-//! explicit permissions, lifecycle, recovery, and quarantine controls. Vector and mask
+//! explicit permissions, lifecycle, recovery, quarantine controls, and dynamic adapter forwarding
+//! for engine-owned multi-plugin supervision. Vector and mask
 //! rasterization, propagation solvers, text rasterization and GPU atlases, production tracking
-//! attachment and acceleration, native plugin discovery and transport, and production GPU
-//! integration remain staged in their owners.
+//! attachment and acceleration, platform-specific native plugin transport, and production GPU
+//! integration remain staged in their owners; deterministic bundle discovery is engine-owned.
 
 pub mod authoring;
 pub mod catalog;

@@ -2,8 +2,8 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: b154fdaa7feba0ac9267a06ffeaf51bd0093badb82947dddd67ce667e091bf6b
-source_files: 49
+source_hash: 73b58abecb526b6a4985347cd7c30d4f13cdab743d891d6b387374079f2f2b54
+source_files: 50
 mapped_at_commit: working-tree
 ---
 
@@ -16,7 +16,9 @@ export color metadata branching, derived-media generation, transparent proxy res
 predictive cache population, foreground graph and display-color execution, bounded audio admission,
 audio-master A/V coordination with bounded video correction and discontinuity recovery, monotonic
 clock fallback, lossless viewport handoff, exact interactive transport control, coherent decode,
-graph, delivery-color, audio, and elementary-stream export execution, deterministic subsystem
+graph, delivery-color, audio, and elementary-stream export execution, deterministic OpenFX bundle
+discovery and isolated-worker supervision, coherent plugin availability across playback, rendering,
+and export, deterministic subsystem
 lifecycle, bounded logical export job orchestration, classified cross-subsystem failure propagation
 and recovery, shared finite-resource arbitration across decode, GPU, cache, audio, AI, and export
 work, and atomic timeline plus clip-mix edits. An engine-wide typed command dispatcher
@@ -90,7 +92,11 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   seam, cancellable distinct-deadline foreground work, bounded audio output and discontinuity
   status, audio-master and monotonic clock continuity, lossless viewport handoff, structured
   degradation, and weak worker-pool lifecycle boundaries.
-- `open/crates/superi-engine/src/plugins.rs`: Placeholder for plugins and extensions.
+- `open/crates/superi-engine/src/plugins.rs`: Implements deterministic recursive OpenFX bundle
+  discovery, canonical bundle validation, platform-launcher coordination, per-plugin isolated host
+  ownership, exact permission narrowing, classified failure retention, restart and quarantine
+  recovery, active graph-registry rebuilding, and one availability resolver for playback,
+  rendering, and export.
 - `open/crates/superi-engine/src/proxy_substitution.rs`: Validates exact proxy purpose, source
   fingerprint, source revision, packet integrity, and stream metadata; translates cache quality to
   scheduler quality; consumes deterministic derived selection; lazily opens verified original
@@ -169,6 +175,10 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   frame, graph, cache, color, audio, clock, worker, and viewport path across normal playback,
   early waiting, late correction, discontinuity recovery, backpressure without duplicate sync
   decisions, invalid scene degradation, cache reuse, and clock recovery.
+- `open/crates/superi-engine/tests/plugin_supervision_contract.rs`: Proves deterministic nested
+  bundle discovery, malformed and terminal launch containment, real child-process action isolation,
+  permission narrowing, retryable and user-correctable failures, quarantine, restart recovery, and
+  identical playback, rendering, and export availability snapshots.
 - `open/crates/superi-engine/tests/render_export_orchestration_contract.rs`: Proves coherent paired
   video and audio export, deterministic fallback evidence, no exception retry, lifecycle degradation,
   partial-source recovery, encoder and terminal-delivery color agreement, exact WAVE PCM completion,
@@ -225,6 +235,13 @@ stage without transforming pixels. `introspection` exposes engine-owned media ba
 constraint, and hardware records through `MediaCapabilities::from_registry`. `media` exposes the
 default registry with four primary source adapters and the feature-gated explicitly configured
 vendor constructor.
+
+`plugins` exposes canonical `OfxPluginBundle` validation, deterministic
+`discover_ofx_bundles`, the strict `OfxWorkerLauncher` platform seam, classified
+`PluginFailure` records, `PluginSupervisor`, and immutable `PluginWorkResolution`. The supervisor
+owns one boxed effects host per launched bundle, rebuilds its active graph registry after every
+lifecycle transition, contains bundle-local scan and worker failures, and resolves one graph plus
+registry snapshot identically for playback, rendering, and export.
 
 `resources` exposes explicit `MediaResourceRequest`, `DecoderResourceRequest`, and
 `ResourceAcquisitionPolicy` inputs; stable source and decoder selection evidence; stateful acquired
@@ -906,8 +923,8 @@ audio mutation, so their user intent remains attached without synthesis.
   active failure.
 - Successful recovery clears the subsystem's active failure and restores admission without erasing
   the latest reported failure evidence from the current lifetime snapshot.
-- Remaining placeholder modules do not imply whole-engine transport, node registration,
-  plugin supervision, or validation behavior.
+- Remaining placeholder modules do not imply whole-engine transport, node registration, concrete
+  native OFX ABI transport, or real-condition validation behavior.
 
 ## Tests and verification
 
@@ -1041,6 +1058,13 @@ playback, render, export, background, and recovery consumers, class-ceiling retr
 recursive callback admission. An individually impossible request proves immediate degradation
 without evicting valid existing work.
 
+The plugin supervision contract discovers nested bundles in stable canonical order, ignores OpenFX
+special directories, and retains malformed or terminal launcher failures without blocking a healthy
+sibling. Real child processes prove every adapter action crosses a process boundary; the contract
+also proves permission-free scan, exact activation grants, retryable and user-correctable failures,
+deadline quarantine, explicit clearing and restart, and equal playback, rendering, and export
+resolution revisions in degraded and recovered states.
+
 ## Current status and risks
 
 Canonical command state is substantive and test-backed, but it is a reference boundary whose
@@ -1056,16 +1080,16 @@ canonical queue behind a type-erased dispatcher controller, while prepared execu
 revision-scoped permits and render-export revalidates one before publication. The public JSON
 scenario projection remains intentionally narrower than the full Rust engine vocabulary.
 
-Three orchestration files remain documentation-only placeholders. Source registration, timeline
+Two orchestration files remain documentation-only placeholders. Source registration, timeline
 media preparation, deterministic lifecycle, classified failure propagation and recovery,
 shared finite-resource arbitration, foreground playback, interactive transport, render-export
 execution, and bounded logical export scheduling are coherent and test-backed, but there is no
 timeline-owned decoded-audio graph
 renderer, persistent cache lifecycle owner, native GPU viewport or export submission, packet muxer,
-output publisher, project persistence, native plugin discovery, isolated OpenFX adapter
-implementation, worker transport, or real-condition validator.
-The effects-side
-OpenFX host contract is substantive, but `plugins.rs` remains the production supervisor placeholder.
+output publisher, project persistence, concrete platform OpenFX worker launchers, native OFX ABI
+adapters, GPU-handle transport, or real-condition validator. The effects-side OpenFX host contract
+and engine-side bundle discovery, launch coordination, active registry rebuilding, containment,
+recovery, and quarantine are substantive.
 Playback prediction, foreground orchestration, and transport control are substantive, but they
 accept caller-prepared graph, audio, cache, and viewport owners and are not a source session binder,
 decoded-audio rate processor, or native presentation path. Engine A/V coordination consumes the
@@ -1135,7 +1159,9 @@ documented order, and measure progress from reservation release rather than call
 real values opaquely, keep audio arbitration outside its callback, preserve consumer-aware fallback,
 and do not turn this shared envelope into a competing cache, GPU pool, decoder, audio queue, AI
 runtime, export scheduler, or lifecycle authority.
-Remove a placeholder label only after substantive behavior and consumer proof exist.
-When implementing `plugins.rs`, consume `superi_effects::ofx::IsolatedOfxAdapter` and preserve its
-worker-process, bounded-message, deadline, permission, restart, and quarantine guarantees rather
-than creating an engine-private editable plugin model.
+Remove a placeholder label only after substantive behavior and consumer proof exist. Keep
+`plugins.rs` bound to `superi_effects::ofx::IsolatedOfxAdapter`, the graph-owned registry and
+missing-node resolver, canonical bundle paths, permission-free scanning, exact permission narrowing,
+and classified retained failures. Concrete platform launchers must satisfy the declared process,
+message, deadline, restart, and sandbox contract without moving native code into the engine process
+or creating an engine-private editable plugin model.

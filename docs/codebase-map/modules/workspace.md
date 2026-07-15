@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 7ac0696734fbb294c3f0311f612afd34f4ec916ef55acd98c4ca99a31e6597ce
-source_files: 142
+source_hash: 268d919e5b1fba18da73b9678198a57821e91f97aa1611b5c47fd804b6efe56a
+source_files: 143
 mapped_at_commit: working-tree
 ---
 
@@ -147,8 +147,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   Superi must never import, link, or depend on Max.
 - `docs/architecture.md`: Records the foundational product boundary, locked Rust, wgpu, native OTIO,
   Tauri, React, TypeScript, and public API directions, the graph/GPU/color/caching/concurrency model,
-  subsystem inventory, continuous-integration phasing, open and closed product separation, and open
-  legal or product decisions.
+  subsystem inventory, continuous-integration phasing, open and closed product separation, the
+  engine-owned plugin supervision boundary, and open legal or product decisions.
 - `docs/checkpoints/P1.W07.C001.md`: Durable implementation evidence for cross-platform hosted build
   CI. It records the six documented lane mappings, workflow security choices, corrected Ubuntu
   22.04 cadence design, local YAML and contract proof, locked workspace build, fixture-tool tests,
@@ -308,6 +308,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   recovery state, bounded cross-domain playback control, dispatcher-owned logical export commands
   and automated state observation, public API and headless consumer integration, research basis,
   deterministic proof, and remaining wire and production transaction boundaries.
+- `docs/checkpoints/P2.W06.C011.md`: Durable implementation evidence for deterministic OpenFX
+  discovery, isolated worker-launch coordination, exact permission narrowing, per-plugin failure
+  containment, quarantine and recovery, and one coherent availability path across playback,
+  rendering, and export.
 - `docs/checkpoints/P2.W04.C010.md`: Durable implementation evidence for production input-device
   discovery, atomic record arming and monitoring, bounded exact-timestamp capture, and the real
   monitoring bridge into existing output playback.
@@ -946,6 +950,11 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   bounded ordinary dropping, prediction cancellation, queued-audio discard, backpressure, and
   recovery while preserving C006 live synchronization evidence. Decoded source binding, native GPU
   presentation, public dispatch, and physical hardware remain with their owners.
+- `docs/checkpoints/P2.W06.C011.md` records deterministic recursive OpenFX discovery, strict bundle
+  validation, the platform worker-launch contract, classified containment, exact permission
+  narrowing, restart and quarantine recovery, and shared graph availability for playback,
+  rendering, and export. Its real child-process fixture proves process boundaries without claiming
+  a concrete XPC, AppContainer, Linux sandbox, native OFX ABI, or GPU-handle transport.
 
 - `docs/checkpoints/P2.W06.C007.md` records the first engine-wide typed dispatcher and public
   transaction plus ordered event seam. Focused engine, API, and CLI contracts prove atomic rollback
@@ -1090,9 +1099,10 @@ image, platform, and unsafe documents describe implemented contracts rather than
 The effects crate now owns a substantive graph-native authoring SDK, exact animation curves,
 complete reusable presets, explicit checked schema migration, and strict authored wires. Its preset
 lockfile change records direct runtime use of already-resolved JSON and SHA-256 packages for
-canonical integrity-protected documents, while atomic project persistence, production plugin
-binding, and engine integration remain incomplete. The effects-side isolated OpenFX contract is implemented, but
-native bundle discovery, worker transport, and production plugin binding remain outside that crate.
+canonical integrity-protected documents, while atomic project persistence and production native
+plugin execution remain incomplete. The effects-side isolated OpenFX contract and engine-side
+bundle discovery, launch coordination, containment, and graph availability are implemented, while
+concrete platform transport, native OFX ABI adapters, and GPU-handle IPC remain absent.
 The synchronized remote revision before this checkpoint is
 `f35aa144656cc0c51dd83d4549410b435e0d5fd4`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
@@ -1248,7 +1258,7 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`4b7de1f` when the map was refreshed. Its hash describes the exact 140 discovered source files,
+`d1df244` when the map was refreshed. Its hash describes the exact 143 discovered source files,
 including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
