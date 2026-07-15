@@ -13,7 +13,7 @@ build="$RUNNER_TEMP/libva-$libva_version-build"
 prefix="$RUNNER_TEMP/libva-$libva_version-install"
 
 sudo apt-get update
-sudo apt-get install --yes libdrm-dev meson nasm ninja-build pkg-config
+sudo apt-get install --yes libdrm-dev libgbm-dev meson nasm ninja-build pkg-config
 
 curl --fail --location --silent --show-error \
     "https://github.com/intel/libva/releases/download/$libva_version/libva-$libva_version.tar.bz2" \
@@ -37,5 +37,6 @@ PKG_CONFIG_PATH="$prefix/lib/pkgconfig" pkg-config --atleast-version=1.22.0 libv
 {
     echo "CROS_LIBVA_H_PATH=$prefix/include"
     echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+    echo "LIBRARY_PATH=$prefix/lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
     echo "LD_LIBRARY_PATH=$prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 } >> "$GITHUB_ENV"

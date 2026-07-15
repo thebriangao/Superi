@@ -37,7 +37,7 @@ grep -Fq 'libva_version="2.22.0"' "$provisioner" ||
     fail "provisioner must pin libva 2.22.0"
 grep -Fq 'libva_sha256="e3da2250654c8d52b3f59f8cb3f3d8e7fb1a2ee64378dbc400fbc5663de7edb8"' "$provisioner" ||
     fail "provisioner must pin the reviewed libva source digest"
-grep -Fq 'sudo apt-get install --yes libdrm-dev meson nasm ninja-build pkg-config' "$provisioner" ||
+grep -Fq 'sudo apt-get install --yes libdrm-dev libgbm-dev meson nasm ninja-build pkg-config' "$provisioner" ||
     fail "provisioner must install exact source-build prerequisites"
 grep -Fq 'va/va_dec_vvc.h' "$provisioner" ||
     fail "provisioner must verify the required VVC header"
@@ -51,6 +51,10 @@ grep -Fq 'meson install -C "$build" --no-rebuild' "$provisioner" ||
     fail "provisioner must not use Meson build-directory syntax rejected by Ubuntu 24.04"
 grep -Fq 'CROS_LIBVA_H_PATH=' "$provisioner" ||
     fail "provisioner must publish the reviewed header path"
+grep -Fq 'LIBRARY_PATH=$prefix/lib${LIBRARY_PATH:+:$LIBRARY_PATH}' "$provisioner" ||
+    fail "provisioner must publish the private libva native linker path"
+grep -Fq 'LD_LIBRARY_PATH=$prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}' "$provisioner" ||
+    fail "provisioner must publish the private libva runtime linker path"
 grep -Fq 'LIBVPX_VERSION: "1.16.0"' "$workflow" ||
     fail "workflow must pin the approved libvpx version"
 grep -Fq 'LIBVPX_SOURCE_SHA256:' "$workflow" ||

@@ -624,7 +624,8 @@ formatting, a locked workspace build, locked workspace tests, strict all-target 
 documentation tests from `open/`.
 Linux lanes use one repository-owned helper to install exact build tools, verify and build the
 official libva 2.22.0 source at a pinned SHA-256, and publish its header, pkg-config, and runtime
-paths. The helper also installs `nasm`, while Intel macOS lanes install `nasm` with Homebrew. Linux
+paths. The helper installs the GBM development target, publishes the private native-linker path,
+and installs `nasm`, while Intel macOS lanes install `nasm` with Homebrew. Linux
 and macOS lanes build the approved libvpx 1.16.0 source after verifying its pinned archive checksum,
 then expose the exact shared runtime to capability and codec tests.
 Hosted macOS skips only three named VideoToolbox or AudioConverter lifecycle tests whose physical

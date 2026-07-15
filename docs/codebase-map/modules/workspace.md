@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: e3e709fc3c95e0b0e071af28ccaaf82c2af9a3bb9fdb8c4a70be4951959c0e2d
+source_hash: 8e1b49f86e6fee209218bd7cb9c47d588fc99e17b0a912c3fa9dc9686aaceffb
 source_files: 121
 mapped_at_commit: working-tree
 ---
@@ -62,8 +62,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   any missing required line fails before cargo-deny runs.
 - `.github/scripts/provision-linux-libva.sh`: Shared Linux media provisioner for both Rust workflows.
   It installs exact source-build tools, verifies the official libva 2.22.0 archive against a pinned
-  SHA-256, builds a private prefix, verifies the VVC header and API version, and publishes header,
-  pkg-config, and runtime library paths to subsequent hosted steps.
+  SHA-256, builds a private prefix, verifies the VVC header and API version, installs the GBM
+  development link target, and publishes header, pkg-config, native-linker, and runtime library
+  paths to subsequent hosted steps.
 - `.github/scripts/check-ci-features.py`: Standard-library contract that binds supported matrix
   lanes to explicit default or `os-codecs` policy, the real CLI feature build, engine and API
   consumer tests, and a default-only Ubuntu 22.04 job.
@@ -75,9 +76,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   locked documentation tests, the supported `os-codecs` CLI build and tests, canonical fixture
   validation, and the normalized eight-stage slice contract from `open/`. Hosted macOS excludes
   only three named native codec lifecycle tests that require the physical hardware lane. Linux jobs
-  run the shared provisioner to build checksum-pinned libva 2.22.0 and install `nasm`, so the locked
-  media dependency graph sees the required VVC API and the approved runtime retains optimized x86
-  code. Intel macOS jobs install `nasm` with Homebrew. Linux and macOS jobs build the approved
+  run the shared provisioner to build checksum-pinned libva 2.22.0, install the GBM development link
+  target and `nasm`, and publish both native-linker and runtime paths, so the locked media dependency
+  graph sees the required VVC API and the approved runtime retains optimized x86 code. Intel macOS
+  jobs install `nasm` with Homebrew. Linux and macOS jobs build the approved
   libvpx 1.16.0 archive after verifying its pinned checksum and expose that exact shared runtime to
   capability and codec tests. Both macOS lanes, Windows 2025, and Ubuntu 26.04
   also build the CLI with `os-codecs` and test the engine and API consumers; Ubuntu 24.04 and the
