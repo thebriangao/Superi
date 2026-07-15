@@ -38,6 +38,7 @@ wgpu = "23"
 raw-window-handle = "=0.6.2"
 winit = { version = "=0.30.13", default-features = false }
 sha2 = "=0.10.9"
+rusqlite = { version = "=0.32.1", default-features = false, features = ["bundled"] }
 swash = { version = "=0.2.9", default-features = false, features = ["std"] }
 # Swash permits newer skrifa releases whose compiler floor exceeds this workspace's Rust 1.80 floor.
 skrifa = { version = "=0.31.1", default-features = false, features = ["std"] }

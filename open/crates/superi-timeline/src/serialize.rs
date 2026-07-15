@@ -7,7 +7,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use superi_core::diagnostics::FiniteF64;
@@ -20,6 +20,7 @@ use superi_core::pixel::{ChannelLayout, ChannelPosition};
 use superi_core::serialization::STABLE_PRIMITIVE_SCHEMA_REVISION;
 use superi_core::time::{Duration, FrameRate, RationalTime, TimeRange, Timebase};
 
+use crate::compile::TimelineGraphValue;
 use crate::edit_state::{SelectionExpansion, SelectionUpdate};
 use crate::markers::{
     Marker, MarkerFlag, MarkerLabel, MarkerNote, MarkerOwner, MetadataKey, MetadataOwner,
@@ -596,6 +597,129 @@ enum MulticamAudioPolicyWire {
     FollowVideo,
     Fixed(MulticamAngleId),
     AllAngles,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum TimelineGraphValueWire {
+    ProjectId { value: ProjectId },
+    TimelineId { value: TimelineId },
+    TrackId { value: TrackId },
+    EditorialObjectId { value: EditorialObjectIdWire },
+    Text { value: String },
+    OptionalText { value: Option<String> },
+    Timebase { value: Timebase },
+    RationalTime { value: RationalTime },
+    TimeRange { value: TimeRange },
+    Duration { value: Duration },
+    ClipSource { value: ClipSourceWire },
+    ClipTimeMap { value: ClipTimeMapWire },
+    OptionalMulticamSource { value: Option<MulticamSourceWire> },
+    OptionalMulticamClip { value: Option<MulticamClipWire> },
+    TrackSemantics { value: TrackSemanticsWire },
+    TrackOrder { value: Vec<TrackId> },
+    ObjectOrder { value: Vec<EditorialObjectIdWire> },
+    StringMap { value: BTreeMap<String, String> },
+}
+
+impl Serialize for TimelineGraphValue {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        TimelineGraphValueWire::from_value(self).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TimelineGraphValue {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        TimelineGraphValueWire::deserialize(deserializer)?
+            .into_value()
+            .map_err(serde::de::Error::custom)
+    }
+}
+
+impl TimelineGraphValueWire {
+    fn from_value(value: &TimelineGraphValue) -> Self {
+        match value {
+            TimelineGraphValue::ProjectId(value) => Self::ProjectId { value: *value },
+            TimelineGraphValue::TimelineId(value) => Self::TimelineId { value: *value },
+            TimelineGraphValue::TrackId(value) => Self::TrackId { value: *value },
+            TimelineGraphValue::EditorialObjectId(value) => Self::EditorialObjectId {
+                value: (*value).into(),
+            },
+            TimelineGraphValue::Text(value) => Self::Text {
+                value: value.clone(),
+            },
+            TimelineGraphValue::OptionalText(value) => Self::OptionalText {
+                value: value.clone(),
+            },
+            TimelineGraphValue::Timebase(value) => Self::Timebase { value: *value },
+            TimelineGraphValue::RationalTime(value) => Self::RationalTime { value: *value },
+            TimelineGraphValue::TimeRange(value) => Self::TimeRange { value: *value },
+            TimelineGraphValue::Duration(value) => Self::Duration { value: *value },
+            TimelineGraphValue::ClipSource(value) => Self::ClipSource {
+                value: (*value).into(),
+            },
+            TimelineGraphValue::ClipTimeMap(value) => Self::ClipTimeMap {
+                value: ClipTimeMapWire::from_time_map(value),
+            },
+            TimelineGraphValue::OptionalMulticamSource(value) => Self::OptionalMulticamSource {
+                value: value.as_ref().map(MulticamSourceWire::from_source),
+            },
+            TimelineGraphValue::OptionalMulticamClip(value) => Self::OptionalMulticamClip {
+                value: value.as_ref().map(MulticamClipWire::from_clip),
+            },
+            TimelineGraphValue::TrackSemantics(value) => Self::TrackSemantics {
+                value: TrackSemanticsWire::from_semantics(value),
+            },
+            TimelineGraphValue::TrackOrder(value) => Self::TrackOrder {
+                value: value.clone(),
+            },
+            TimelineGraphValue::ObjectOrder(value) => Self::ObjectOrder {
+                value: value.iter().copied().map(Into::into).collect(),
+            },
+            TimelineGraphValue::StringMap(value) => Self::StringMap {
+                value: value.clone(),
+            },
+        }
+    }
+
+    fn into_value(self) -> Result<TimelineGraphValue> {
+        Ok(match self {
+            Self::ProjectId { value } => TimelineGraphValue::ProjectId(value),
+            Self::TimelineId { value } => TimelineGraphValue::TimelineId(value),
+            Self::TrackId { value } => TimelineGraphValue::TrackId(value),
+            Self::EditorialObjectId { value } => {
+                TimelineGraphValue::EditorialObjectId(value.into())
+            }
+            Self::Text { value } => TimelineGraphValue::Text(value),
+            Self::OptionalText { value } => TimelineGraphValue::OptionalText(value),
+            Self::Timebase { value } => TimelineGraphValue::Timebase(value),
+            Self::RationalTime { value } => TimelineGraphValue::RationalTime(value),
+            Self::TimeRange { value } => TimelineGraphValue::TimeRange(value),
+            Self::Duration { value } => TimelineGraphValue::Duration(value),
+            Self::ClipSource { value } => TimelineGraphValue::ClipSource(value.into()),
+            Self::ClipTimeMap { value } => TimelineGraphValue::ClipTimeMap(value.into_time_map()?),
+            Self::OptionalMulticamSource { value } => TimelineGraphValue::OptionalMulticamSource(
+                value.map(MulticamSourceWire::into_source).transpose()?,
+            ),
+            Self::OptionalMulticamClip { value } => TimelineGraphValue::OptionalMulticamClip(
+                value.map(MulticamClipWire::into_clip).transpose()?,
+            ),
+            Self::TrackSemantics { value } => {
+                TimelineGraphValue::TrackSemantics(value.into_semantics()?)
+            }
+            Self::TrackOrder { value } => TimelineGraphValue::TrackOrder(value),
+            Self::ObjectOrder { value } => {
+                TimelineGraphValue::ObjectOrder(value.into_iter().map(Into::into).collect())
+            }
+            Self::StringMap { value } => TimelineGraphValue::StringMap(value),
+        })
+    }
 }
 
 impl TimelineStatePayloadWire {

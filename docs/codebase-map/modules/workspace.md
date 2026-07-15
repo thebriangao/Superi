@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 96ad935a0f20f5bf922a743b7e113f802492ea5a4eb426ea10009b8e768c519d
+source_hash: 54163614810468f82d8b5ab38543564904fa4cf6a381c948f3dfc6a0280434b3
 source_files: 143
 mapped_at_commit: working-tree
 ---
@@ -403,6 +403,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   test edge to `superi-concurrency`, graph and timeline document serialization and integrity edges,
   cache-key hashing, and the exact `oxideav-mp3` Git revision. Timeline state
   directly consumes the already-resolved `serde`, `serde_json`, and `sha2` packages, while
+  `superi-project` now directly consumes exact `rusqlite` 0.32.1 and the existing SHA-256 package.
+  The bundled SQLite edge resolves `libsqlite3-sys` 0.30.1, `ahash` 0.8.12, `hashbrown` 0.14.5,
+  `hashlink` 0.9.1, fallible iterator adapters, and native build discovery packages. This exact
+  path compiles on the declared Rust 1.80 floor and keeps project databases offline and
+  self-contained. Meanwhile,
   `superi-cache` directly consumes the same pinned `sha2` package and now records its reviewed
   internal dependency on `superi-concurrency` for bounded background rendering. `superi-effects`
   directly consumes Serde for its strict authored wires and now directly consumes the existing
@@ -419,7 +424,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   `crates/*` and `tools/*`. It centralizes version `0.0.0`, Rust 2021, MIT, Rust 1.80, repository
   metadata, deny-by-default unsafe lints, and shared dependencies for error handling, serialization,
   images, GPU, codecs, hashes, process instrumentation, platform APIs, native build support,
-  reviewed audio device and ring-buffer primitives, and offline font shaping plus Unicode layout.
+  reviewed audio device and ring-buffer primitives, exact bundled SQLite through rusqlite 0.32.1,
+  and offline font shaping plus Unicode layout.
 - `open/README.md`: Compact open-tree orientation and build commands. It records the 19 runtime
   crates plus repository tools, the exact canonical runner command, contract-only status, and
   the remaining production integration boundary.
@@ -696,6 +702,13 @@ The timeline component document reuses workspace `serde`, `serde_json`, and `sha
 present for core and graph contracts. This changes the direct package edges recorded for
 `superi-timeline` but does not change crate-tier direction, introduce a network path, or transfer
 SQLite and autosave ownership away from `superi-project`.
+
+The project schema owner consumes exact rusqlite 0.32.1 with default features disabled and bundled
+SQLite enabled. It also consumes the existing exact SHA-256 pin. Rusqlite and libsqlite3-sys are
+MIT-licensed, SQLite is public domain, and the bundled path performs no runtime discovery or
+network operation. The dependency remains below project and does not change any internal Superi
+crate edge. Fresh `cargo +1.80.1 check -p superi-project --locked` proves the selected resolution on
+the declared compiler floor.
 
 The effects animation, mask, rotoscope, text, and preset wires reuse the same workspace Serde pin.
 Effect presets additionally reuse the workspace JSON and SHA-256 pins at runtime for strict
@@ -996,9 +1009,10 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   licenses and sources with cargo-deny against `open/Cargo.toml` using all features. This is
   automated policy enforcement, not evidence that the workspace builds, tests, works offline, or
   passes any physical platform lane.
-- Fresh local verification for this refresh ran `bash -n` on the policy checker and executed it
-  successfully. cargo-deny 0.19.9 then reported `licenses ok, sources ok` for the all-feature open
-  workspace. The unused `Unicode-DFS-2016` allowance produced the documented non-failing warning.
+- Fresh local verification for this refresh executed the dependency-policy contract successfully.
+  cargo-deny then reported `licenses ok, sources ok` for the open workspace with the new rusqlite
+  and bundled SQLite resolution. The unused `Unicode-DFS-2016` allowance produced the documented
+  non-failing warning.
 - `docs/checkpoints/P1.W07.C006.md` records prior YAML parsing, formatting, diff, prose-dash, focused
   shell, license, and source checks plus successful initial GitHub Actions run `29302533491`. Those
   are durable checkpoint claims; only the shell and cargo-deny checks above were rerun during this
@@ -1123,8 +1137,13 @@ canonical integrity-protected documents, while atomic project persistence and pr
 plugin execution remain incomplete. The effects-side isolated OpenFX contract and engine-side
 bundle discovery, launch coordination, containment, and graph availability are implemented, while
 concrete platform transport, native OFX ABI adapters, and GPU-handle IPC remain absent.
+The project crate now owns a stable schema-1 SQLite application database with deterministic
+timeline and graph component rows, SHA-256 evidence, transactional replacement, checked reload,
+durable nonoverwriting create, and read-only reopen. The lockfile records exact rusqlite 0.32.1 and
+libsqlite3-sys 0.30.1 with bundled SQLite. Project migrations, synchronized temporary publication,
+atomic destination replacement, autosave, and recovery remain incomplete.
 The synchronized remote revision before this checkpoint is
-`f35aa144656cc0c51dd83d4549410b435e0d5fd4`.
+`61ac670f185e7511974cafad32974d65f331d9c2`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
 root README, deny policy, and structure guide with license-audit CI. Commit
 `e0b3af9f099f527a8544d1b0317896640969903b` added the executable dependency-policy contract and its
@@ -1230,8 +1249,9 @@ The largest current risk is cross-document drift:
 - `open/rust-toolchain.toml` follows floating `stable`, while workspace package metadata promises a
   Rust 1.80 floor. The hosted workflow still installs floating stable and there is no recurring
   Rust 1.80 lane. The text checkpoint freshly checks the affected `superi-effects` all-target graph
-  and runs its focused contract with Cargo and Rust 1.80 against the locked compatible dependency
-  resolution, but that focused local proof is not a recurring whole-workspace hosted guarantee.
+  and the project persistence checkpoint freshly checks `superi-project` with Cargo and Rust 1.80
+  against the locked compatible dependency resolution, but those focused local proofs are not a
+  recurring whole-workspace hosted guarantee.
 - The dependency-policy workflow uses third-party actions by major version tags rather than commit
   digests. It grants only read access, but action-version immutability is not enforced by this file.
 - The shell contract check is intentionally exact-line based. It catches deletion or textual drift
@@ -1278,8 +1298,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`d1df244` when the map was refreshed. Its hash describes the exact 143 discovered source files,
-including twelve generated binary payloads, layered on that revision.
+`61ac670f185e7511974cafad32974d65f331d9c2` when the map was refreshed. Its hash describes the exact
+143 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 

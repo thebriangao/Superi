@@ -24,14 +24,14 @@ against raw source before changing code.
 | `superi-color` | [module map](modules/superi-color.md) | `open/crates/superi-color` | Versioned configuration, project working spaces, color math, CPU input and output transforms, GPU wide-gamut transforms, tone mapping, legal-range RGB encoding, LUTs, ICC discovery, and presentation profile guards | Substantial but partial: project-pinned configuration, CPU transforms, managed GPU wide-gamut transforms, and an engine CPU display consumer are implemented; engine export validates a caller-owned delivery stage but does not execute this crate, while ICC evaluation, native GPU display conversion, concrete export conversion, and shell integration remain absent |
 | `superi-concurrency` | [module map](modules/superi-concurrency.md) | `open/crates/superi-concurrency` | Execution domains, jobs, clocks, handoffs, shared snapshots, lifecycle, liveness, and derived-media selection | Substantial; audio enforces its domain, engine proxy resolution consumes selection, engine foreground playback and transport consume bounded workers, cancellation, anchor-based clocks, the A/V scheduler, and handoffs, engine lifecycle composes acknowledged startup, sleep, wake, shutdown, and restart phases with EngineControl ownership, immutable publication, and lock-free signals, engine error propagation keeps bounded bookkeeping in a separate EngineControl `DomainOwned`, render-export enforces lifecycle admission, and the engine export queue composes bounded workers, progress, dependency history, typed completion, and recovery attempts; broader liveness and GPU submission composition remain incomplete |
 | `superi-core` | [module map](modules/superi-core.md) | `open/crates/superi-core` | Tier-zero values, validation, exact time, identifiers, errors, diagnostics, and stable serialization | Implemented and broadly consumed; crate-level skeleton wording is stale |
-| `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Graph-native visual definitions, editable defaults and instances, reusable presets, animation, controls, composition, spatial, shape, mask, rotoscope, tracking, text, transitions, isolated OpenFX hosting, and bounded CPU reference evaluation | Substantive but partial: graph-native authoring, strict documents and migrations, missing-plugin recovery, visual contracts, isolated OFX adapter validation, boxed dynamic forwarding, permissions, lifecycle, recovery, quarantine, workflow parity, and real pixel proof are implemented; project persistence, native plugin binding, production GPU execution, concrete worker transport, UI, and complete timeline attachment remain absent |
+| `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Graph-native visual definitions, editable defaults and instances, reusable presets, animation, controls, composition, spatial, shape, mask, rotoscope, tracking, text, transitions, isolated OpenFX hosting, and bounded CPU reference evaluation | Substantive but partial: graph-native authoring, strict documents and migrations, missing-plugin recovery, visual contracts, isolated OFX adapter validation, boxed dynamic forwarding, permissions, lifecycle, recovery, quarantine, workflow parity, and real pixel proof are implemented; effects-to-project persistence integration, native plugin binding, production GPU execution, concrete worker transport, UI, and complete timeline attachment remain absent |
 | `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: engine-wide typed command dispatch, coherent project and device lifecycle across sleep, wake, shutdown, and restart, unified playback, rendering, and export admission, classified recovery, read-only capability, resource, health, workflow, and recovery introspection plus integration validation, bounded playback and export dispatch, source and codec preparation from either editorial state or exact immutable project snapshots, playback and render-export orchestration, logical export jobs, shared finite-resource arbitration, deterministic OpenFX discovery and launcher coordination, exact permission narrowing, per-plugin containment, active graph-registry rebuilding, workflow-coherent plugin recovery, and atomic timeline plus clip-mix edits are implemented; platform power callback binding, concrete project and device lifecycle workers, automatic arbiter binding, decoded source and prepared-audio binding, native GPU presentation, muxing and publication, concrete platform plugin transport, native OFX ABI adapters, persistent job recovery, and production plugin factories remain absent |
 | `superi-gpu` | [module map](modules/superi-gpu.md) | `open/crates/superi-gpu` | wgpu device, resource, upload, conversion, pass, submission, presentation, and recovery substrate | Implemented substrate with explicit application-level integration gaps |
-| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers and shared typed values, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, reusable scalar expressions, typed parameter links and expressions, caller-projected literal evaluation, derived missing-node resolution, dependency and semantic edit invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, graph and revision cache lineage, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, exact neutral domain and processing values, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, shared bounded scalar programs, typed driver state, parameter-cycle protection, literal-only projected evaluation, fail-closed missing-node placeholders, exact region and edit invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic graph cache inspection, final and intermediate retained-work pruning, run-local timing, and role-neutral editable-to-runtime evaluation implemented; effects consumes broad authoring and reference evaluation, timeline compiles editable graphs, project retains timeline and named standalone graphs, and engine consumes externally prepared snapshots for playback and render-export, while production engine catalog and plugin binding, durable project persistence, and complete application rendering remain absent |
+| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers and shared typed values, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, reusable scalar expressions, typed parameter links and expressions, caller-projected literal evaluation, derived missing-node resolution, dependency and semantic edit invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, graph and revision cache lineage, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, exact neutral domain and processing values, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, shared bounded scalar programs, typed driver state, parameter-cycle protection, literal-only projected evaluation, fail-closed missing-node placeholders, exact region and edit invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic graph cache inspection, final and intermediate retained-work pruning, run-local timing, and role-neutral editable-to-runtime evaluation implemented; effects consumes broad authoring and reference evaluation, timeline compiles editable graphs, project retains and serializes timeline and named standalone graphs, and engine consumes externally prepared snapshots for playback and render-export, while production engine catalog and plugin binding, atomic project save publication, and complete application rendering remain absent |
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; engine source registration, preparation, and complete elementary-stream export lifecycle orchestration are integrated, while muxing and publication are absent |
-| `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Whole-project in-memory document, persistence, autosave, and recovery boundary | Partial: coherent revisioned project aggregate, immutable snapshots, retained timeline compilations, named standalone editable graphs, atomic candidate publication, checked reconstruction seam, and real engine resource consumption are implemented; serialization, migrations, durable save, history, autosave, recovery, public API, CLI, and scripting remain absent |
-| `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Native editorial project state, media bins and saved queries, metadata and relink state, rational range maps and availability, exact clip retiming, typed tracks, authoritative edit intent, markers, exact snapping, clip relationships, atomic foundational, advanced, nested, and multicam operations, OTIO 0.18.1 interchange, versioned integrity-checked state documents, color metadata propagation, and deterministic typed graph compilation | Foundational model, bins, sub-bins, metadata smart collections, explicit relink evidence, exact range and retime resolution, speed changes, reverse, freeze, piecewise time remapping, track clocks, linked sample reshaping, selection, targeting, synchronization, clip relationships, three-class marker ownership, snapping, six primary operations, nine advanced edit families, nested placement, compound creation, shared child editing, recursive inspection, native multicam angle metadata, switching, structural inheritance and resolution, dependency-light OTIO import and export, opaque preservation, stable interchange diagnostics, a headless consumer, strict canonical timeline documents, revision 0 migration, checked recovery, graph color metadata, stable editable timeline-to-graph compilation, project document retention, and engine preparation retention are test-backed; broader interchange interpretation, fit-to-fill, grouped-source compound synthesis, durable project storage and autosave policy, graph evaluation, multicam mixing, playback, and render integration are absent |
+| `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Whole-project in-memory document, stable SQLite serialization, autosave, and recovery boundary | Partial: coherent revisioned aggregate, immutable snapshots, retained timeline and named standalone graphs, atomic candidate publication, schema-1 SQLite identity and strict tables, deterministic canonical components and integrity manifest, transactional replacement, checked reconstruction, durable nonoverwriting create, read-only reopen, and real engine resource consumption are implemented; migrations, atomic destination replacement, save-as, backup, settings, history, autosave, recovery, public API, CLI, and scripting remain absent |
+| `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Native editorial project state, media bins and saved queries, metadata and relink state, rational range maps and availability, exact clip retiming, typed tracks, authoritative edit intent, markers, exact snapping, clip relationships, atomic foundational, advanced, nested, and multicam operations, OTIO 0.18.1 interchange, versioned integrity-checked state documents, color metadata propagation, and deterministic typed graph compilation | Foundational model, bins, sub-bins, metadata smart collections, explicit relink evidence, exact range and retime resolution, speed changes, reverse, freeze, piecewise time remapping, track clocks, linked sample reshaping, selection, targeting, synchronization, clip relationships, three-class marker ownership, snapping, six primary operations, nine advanced edit families, nested placement, compound creation, shared child editing, recursive inspection, native multicam angle metadata, switching, structural inheritance and resolution, dependency-light OTIO import and export, opaque preservation, stable interchange diagnostics, a headless consumer, strict canonical timeline documents, revision 0 migration, checked recovery, strict compiled graph-value Serde, graph color metadata, stable editable timeline-to-graph compilation, project database consumption, and engine preparation retention are test-backed; broader interchange interpretation, fit-to-fill, grouped-source compound synthesis, atomic project save publication and autosave policy, graph evaluation, multicam mixing, playback, and render integration are absent |
 | `tool-superi-dependency-check` | [module map](modules/tool-superi-dependency-check.md) | `open/tools/superi-dependency-check` | Offline executable policy for the open runtime dependency graph | Implemented exact runtime, build, dev, and new-crate checks |
 | `tool-superi-boundary-tool` | [module map](modules/tool-superi-boundary-tool.md) | `open/tools/superi-boundary-tool` | Offline scanner for network-client and open-to-closed policy | Implemented library, CLI, workspace gate, and hosted-build command |
 | `tool-superi-bench` | [module map](modules/tool-superi-bench.md) | `open/tools/superi-bench` | Stable benchmark harnesses and reproducible stage reporting | Implemented seven-stage runner with real graph evaluation and explicit gaps |
@@ -232,6 +232,30 @@ Whole-project in-memory publication is implemented as follows:
    installs an externally decoded editable graph only when its deterministic graph identity matches
    the same project and root. `ProjectDocument::from_parts` then validates the complete aggregate at
    the stored document revision without owning bytes, migrations, or file I/O.
+
+Stable whole-project serialization is implemented at the same owner boundary:
+
+1. `ProjectDatabase::create` reserves a new path without overwriting, or `memory` creates an
+   equivalent in-memory database. Both establish SQLite application ID `SUPR`, schema revision 1,
+   semantic format `superi.project` version `1.0.0`, and exactly three strict tables.
+2. `replace` serializes the editorial owner through the canonical timeline codec and every retained
+   graph through the canonical graph codec in stable `GraphId` order. Rows retain component
+   revisions, graph ownership, exact lengths, SHA-256 values, and a domain-separated project
+   manifest over all version, identity, revision, and ordered component evidence.
+3. One immediate transaction replaces semantic rows. Before commit, the candidate passes SQLite
+   integrity and exact schema checks, bounded component verification, canonical decoding, checked
+   timeline and standalone graph reconstruction, complete `ProjectDocument::from_parts`
+   validation, and exact snapshot equality. Failure leaves the prior complete database readable.
+4. `open_read_only` applies defensive, query-only connection policy and validates database identity
+   and exact schema objects. `load` pins one coherent read transaction across every check, returns no
+   partial state, and classifies future versions as unsupported and malformed, tampered, missing,
+   extra, or inconsistent state as corrupt data.
+5. Timeline owns `superi.timeline` meaning and strict `TimelineGraphValue` Serde, graph owns
+   `superi.graph` meaning, and project owns only the normalized container, manifest, transaction,
+   and aggregate reconstruction. Direct graph edits and document revisions survive reload.
+6. Schema migration, synchronized temporary publication, atomic destination replacement, save-as,
+   copy, backup, settings, autosave, recovery journals, modified-since-open policy, and public API
+   commands remain later project checkpoints.
 
 Project snapshot and legacy timeline graph media preparation are implemented at an engine-private
 shared-resource boundary:
@@ -602,7 +626,8 @@ Editable transitions now reuse the same one-way timeline, effects, and graph bou
 5. Focused tests execute these nodes through `GraphEvaluationSnapshot`, prove exact endpoints, soft
    edges, tiled parity, introspection, cache-key changes, immutable old revisions, and equal output
    in independent timeline-role and node-graph-role graphs. Production timeline binding, GPU parity,
-   engine registration, project persistence, viewport, playback, and export remain absent.
+   engine registration, effects-to-project persistence integration, viewport, playback, and export
+   remain absent.
 
 Editable text layout uses the same state boundary without claiming a rasterizer:
 
@@ -636,8 +661,10 @@ Versioned graph documents preserve that same editable state without claiming pro
    supported legacy revision, and reconstructs state through existing schema, node, transaction,
    connection, cardinality, and cycle checks.
 4. Independent editor, script, and headless-style tests load the document, observe equal snapshots,
-   and evaluate equal results through the shared evaluator. No project file, SQLite, autosave,
-   recovery journal, engine, API, CLI, or product runtime path consumes the codec yet.
+   and evaluate equal results through the shared evaluator. `superi-project` now stores canonical
+   graph documents, including strict timeline-owned graph values, in schema-1 SQLite rows and
+   reconstructs exact retained graph revisions. Autosave, recovery journal, API, CLI, and complete
+   product runtime paths do not yet consume that container.
 
 Missing plugin schemas now degrade that same editable state without creating a second model:
 
@@ -1544,8 +1571,10 @@ project file boundary. `serialize_timeline_state` emits canonical `superi.timeli
 with the stable primitive revision and SHA-256 payload integrity. `deserialize_timeline_state`
 strictly rejects corrupt, interrupted, unknown, oversized, or future state, migrates revision 0 in
 memory, reconstructs through checked media, timeline, annotation, relationship, retime, nesting,
-and multicam APIs, and exposes canonical current bytes only after whole-project validation. Runtime
-playback, mixing, the SQLite container, autosave and journal orchestration, engine, and API consumers
+and multicam APIs, and exposes canonical current bytes only after whole-project validation. Strict
+`TimelineGraphValue` Serde also preserves compiled graph payloads through the graph codec.
+`superi-project` stores both accepted component formats inside stable SQLite schema 1. Runtime
+playback, mixing, atomic save publication, autosave and journal orchestration, and API consumers
 remain absent.
 
 The largest verification gap is the absence of a production import-to-export slice. Its canonical
@@ -1572,8 +1601,9 @@ encodes and muxes output, persists a project, and drives the flow through the pu
 
 The only entire crate skeleton is `superi-ai`. `superi-project` now has a substantive in-memory
 document aggregate, immutable snapshots, checked whole-project edits, retained timeline and named
-standalone graphs, and a real engine resource consumer, while its persistence, autosave, and
-recovery modules remain placeholders.
+standalone graphs, stable schema-1 SQLite serialization, and a real engine resource consumer.
+Autosave and recovery remain placeholders, while migration and atomic destination publication are
+not yet implemented.
 `superi-effects` now has substantive graph-native authoring, exact keyframe animation, strict visual
 effect presets with complete schemas and typed literals, deterministic integrity-protected preset
 documents, explicit schema migration, missing-plugin editing and exact-schema recovery,
@@ -1657,7 +1687,8 @@ Partial modules contain these explicit placeholder areas:
   for all three workflow roles, while concrete platform transports and native OFX adapters remain
   absent.
 - `superi-effects`: production GPU node implementations, engine registration, playback, viewport,
-  export, project persistence, autosave and recovery orchestration, production native plugin binding, UI,
+  export, effects-to-project persistence integration, autosave and recovery orchestration,
+  production native plugin binding, UI,
   production spatial transform, camera, light, and motion-blur
   execution, vector shape and mask rasterization, reusable rigging beyond bounded time and scalar parent
   expressions, persistent rig presentation, feather and expansion filtering, propagation solvers,
@@ -1674,7 +1705,7 @@ Partial modules contain these explicit placeholder areas:
   reference solvers, strict styled text, real shaping and paragraph layout, bounded CPU reference
   including spatial real pixels,
   ROI, diagnostics, strict reload, and immutable real-pixel graph contracts.
-- `superi-graph`: invalidation and ROI render orchestration, outer job dispatch, project persistence,
+- `superi-graph`: invalidation and ROI render orchestration, outer job dispatch, project save policy,
   undo ownership, engine coordination, cache invalidation invocation and resource policy,
   production engine node catalogs, and runtime consumers beyond its implemented identifier,
   neutral typed value, node-schema, typed DAG storage and validation, schema-bound instances,
@@ -1687,8 +1718,8 @@ Partial modules contain these explicit placeholder areas:
   timing, and shared interactive and headless evaluation surfaces.
 - `superi-timeline`: broader OTIO schema and vendor-effect interpretation beyond its pinned 0.18.1
   native subset, graph evaluation, fit-to-fill, grouped-source compound synthesis and higher-level
-  edit orchestration, undo ownership, multicam playback and mixing, the owning SQLite project
-  container, autosave and recovery-journal orchestration, and application consumers beyond its
+  edit orchestration, undo ownership, multicam playback and mixing, atomic project save
+  publication, autosave and recovery-journal orchestration, and application consumers beyond its
   native model, authoritative edit state, marker and metadata state, exact snapping, foundational,
   advanced, nested, and multicam edit operations, deterministic graph compilation, versioned state
   documents, shared processing-payload compatibility, OTIO headless consumer, and contract tests.

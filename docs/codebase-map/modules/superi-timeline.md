@@ -2,7 +2,7 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: 4f1b7946dbc64c96b0b01b7650096b5af636845d547c4af5d2c951a3c1df1caf
+source_hash: 93d89f5f1abdd95da709c6ed3274c527a15cc403942c323b60aed19bab902d9a
 source_files: 30
 mapped_at_commit: working-tree
 ---
@@ -54,9 +54,9 @@ canonical JSON. Revision 1 records the stable core primitive revision, protects 
 payload with SHA-256, rejects malformed or unknown state, migrates the supported revision 0
 envelope in memory, and reconstructs every owner through checked constructors and timeline APIs.
 The codec returns canonical current bytes only after whole-project validation. It owns no file I/O,
-SQLite container, autosave policy, replacement protocol, or recovery journal. The implemented
-`superi-project` document aggregate retains this editorial state in memory, while those durable
-policies remain staged at that higher boundary.
+SQLite schema, autosave policy, replacement protocol, or recovery journal. `superi-project` now
+retains this editorial state in memory and stores the canonical component bytes inside its stable
+schema-1 SQLite database, while timeline remains the only owner of component interpretation.
 
 The model also owns a narrow immutable color metadata seam that retains graph color state through
 the future compilation boundary without changing source meaning.
@@ -133,7 +133,8 @@ with stable warnings.
 - `open/crates/superi-timeline/src/serialize.rs`: Implements the strict revisioned timeline state
   envelope, complete wire model, stable collection canonicalization, primitive revision check,
   SHA-256 integrity, revision 0 migration, checked reconstruction, canonical load output, and
-  classified recovery failures without file I/O.
+  classified recovery failures without file I/O. It also implements strict lossless Serde for
+  every `TimelineGraphValue` variant by reusing checked timeline-owned wire conversions.
 - `open/crates/superi-timeline/tests/edit_state_contract.rs`: Proves linked and grouped selection,
   direct member control, target and sync-lock ordering, link and group independence, state
   reconciliation, identity and timing retention, revision conflicts, and atomic rollback.
@@ -346,7 +347,11 @@ the editable graph and immutable snapshots, resolves timeline, track, and object
 directions, and allows later checked graph transactions without inventing a second topology.
 `TimelineGraphCompilation::with_graph` lets a higher persistence owner join deterministically
 recompiled provenance to a checked decoded graph of the same stable identity while rejecting a
-graph derived for another project or root.
+graph derived for another project or root. `TimelineGraphValue` implements strict Serde through an
+internally tagged, unknown-field-denying wire that preserves typed identities, exact timing, clip
+sources and maps, multicam state, track semantics, authored orders, and deterministic string maps.
+This lets `CompiledTimelineGraphValue` pass through the public graph codec without moving timeline
+semantics into graph or project.
 
 The OTIO interchange surface includes:
 
@@ -573,9 +578,12 @@ Timeline document flow preserves those owners without becoming a project contain
 5. The published project revision and exact relink evidence use narrow crate-private restoration
    seams, followed by whole-project validation. Canonical current bytes are regenerated from the
    validated project, so successful migration never returns stale or unchecked input bytes.
-6. The API performs no file I/O and mutates no caller-owned project. A future `superi-project`
-   transaction decides whether and how canonical bytes enter SQLite, autosave, replacement, or
-   journal recovery.
+6. The API performs no file I/O and mutates no caller-owned project. The `superi-project` schema-1
+   transaction stores accepted canonical bytes with independent length and SHA-256 evidence, while
+   autosave, destination replacement, and journal recovery remain later project policies.
+7. Compiled timeline graph values project through a separate strict tagged wire in this module.
+   The graph codec preserves those values and revisions, and project joins the decoded editable
+   graph to freshly derived trusted provenance through `TimelineGraphCompilation::with_graph`.
 
 ## Dependencies and consumers
 
@@ -600,11 +608,12 @@ Timeline document flow preserves those owners without becoming a project contain
   plugin host, or fixture-tool runtime dependency enters the crate.
 - `superi-project` and `superi-engine` consume `superi-timeline`. Project retains one validated
   `EditorialProject` plus complete matching `TimelineGraphCompilation` values in its revisioned
-  immutable whole-project snapshots. Engine integration consumes the color metadata seam, preserves
-  the legacy direct compiler path, traverses reachable media and nested timeline relationships, and
-  can clone the exact project-retained compilation with prepared source and decoder owners. Engine
-  transport separately consumes the retime-owned reduced signed `PlaybackRate` for exact speed and
-  direction cadence without importing editorial mutation policy.
+  immutable snapshots, stores canonical timeline bytes in schema 1, and uses timeline-owned strict
+  graph-value Serde when storing retained graph documents. Engine integration consumes the color
+  metadata seam, preserves the legacy direct compiler path, traverses reachable media and nested
+  timeline relationships, and clones the exact project-retained compilation with prepared source
+  and decoder owners. Engine transport separately consumes the retime-owned reduced signed
+  `PlaybackRate` without importing editorial mutation policy.
 - Public integration tests and the `otio_roundtrip` example are real consumers. No application API
   or editor surface exposes the general editorial model yet.
 
@@ -730,6 +739,9 @@ Timeline document flow preserves those owners without becoming a project contain
 - Compiled editorial parameters remain exact `GraphValue::Domain(TimelineGraphValue)` variants.
   Shared processing variants may coexist but cannot rewrite, coerce, or replace native domain state,
   and their presence does not change stable editorial-to-graph identities.
+- The `TimelineGraphValue` wire is internally tagged and denies unknown fields and tags. Decode
+  reuses checked timeline constructors for time maps, multicam state, track semantics, and other
+  structured variants before a graph can be published.
 - Fit-to-fill, arbitrary vendor-effect interpretation, graph evaluation, undo-history ownership,
   multicam playback and mixing, and higher-level editorial commands remain outside this state.
 - The timeline color seam preserves exact graph metadata and performs no transform, inference,
@@ -827,10 +839,12 @@ retains the canonical fixture's three-node, two-edge graph beside a fingerprint-
 and live AV1 decoder, and proves exact timing, precision, metadata, color, and alpha semantics without
 copying timeline graph or media identity into another owner.
 
-Three serialization tests prove deterministic complete project equality, revision 1 envelope and
+Four serialization tests prove deterministic complete project equality, revision 1 envelope and
 primitive revision identity, SHA-256 integrity, revision 0 migration, canonical current output,
 truncated and tampered recovery rejection, strict unknown and future state handling, invalid link
-rejection, exact multicam resolution after load, and continued revision-checked editing.
+rejection, exact multicam resolution after load, continued revision-checked editing, and a complete
+compiled multicam graph round trip through the public graph codec with unknown graph-value fields
+and tags rejected.
 
 Workspace tests, warnings-denied Clippy, formatting, dependency direction, the offline boundary
 scan, and codebase-map validation are required delivery gates.
@@ -846,13 +860,15 @@ synchronization, switching, audio-intent, structural inheritance, and exact reso
 substantive and test-backed. Deterministic graph compilation with lossless native domain values and
 shared processing-value coexistence, plus production OTIO 0.18.1 reading,
 writing, opaque preservation, stable diagnostics, and a headless consumer are also test-backed.
-Strict canonical timeline documents, revision 0 migration, checked recovery, and continued editing
-after load are test-backed. Effects now has compatible graph-native transition authoring and a
-bounded oracle, but the production binder from this timeline-owned state to those visual schemas is
-absent. Graph evaluation, fit-to-fill, grouped-source compound synthesis, undo ownership, multicam
-mixing and runtime playback, the SQLite project format, durable save, autosave, and recovery
-orchestration, and API integration remain absent. Engine preparation integration now consumes and
-retains the compiled graph, and engine transport consumes the standalone signed rate value, but no
+Strict canonical timeline documents, revision 0 migration, checked recovery, continued editing
+after load, and strict compiled graph-value round trips are test-backed. `superi-project` now stores
+canonical timeline and compiled graph components in stable SQLite schema 1. Effects has compatible
+graph-native transition authoring and a bounded oracle, but the production binder from this
+timeline-owned state to those visual schemas is absent. Graph evaluation, fit-to-fill,
+grouped-source compound synthesis, undo ownership, multicam mixing and runtime playback, atomic save
+publication, autosave, recovery orchestration, and API integration remain absent. Engine
+preparation integration now consumes and retains the compiled graph, and engine transport consumes
+the standalone signed rate value, but no
 owner yet binds that prepared native timeline graph to decoded playback, multicam mixing, or render
 output.
 
@@ -907,5 +923,6 @@ entering clip retime state.
 Extend OTIO only through `OtioDocument` and the pinned schema target, preserve unknown source
 templates and stable diagnostics, and prove emitted files through an official compatible reader
 before expanding the supported subset. Keep file I/O, SQLite schema, autosave, replacement, and
-recovery journals in `superi-project`, consuming `TimelineStateLoad::canonical_document` only after
-project-level acceptance.
+recovery journals in `superi-project`. Schema 1 must continue consuming
+`TimelineStateLoad::canonical_document` only after project-level acceptance, without duplicating or
+weakening timeline component meaning.

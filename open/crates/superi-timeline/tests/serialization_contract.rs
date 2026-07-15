@@ -6,6 +6,8 @@ use superi_core::ids::{
 };
 use superi_core::serialization::STABLE_PRIMITIVE_SCHEMA_REVISION;
 use superi_core::time::{Duration, FrameRate, RationalTime, TimeRange, Timebase};
+use superi_graph::serialize::{deserialize_graph, serialize_graph};
+use superi_timeline::compile::compile_timeline;
 use superi_timeline::edit_state::{SelectionExpansion, SelectionUpdate};
 use superi_timeline::ids::MulticamAngleId;
 use superi_timeline::markers::{
@@ -365,4 +367,29 @@ fn interrupted_tampered_future_and_semantically_invalid_state_is_rejected() {
         invalid.category(),
         ErrorCategory::InvalidInput | ErrorCategory::NotFound
     ));
+}
+
+#[test]
+fn compiled_multicam_graph_round_trips_through_the_public_graph_codec() {
+    let project = complete_project();
+    let compilation = compile_timeline(&project, TARGET).unwrap();
+    let encoded = serialize_graph(&compilation.snapshot()).unwrap();
+    let loaded = deserialize_graph(&encoded).unwrap();
+
+    assert_eq!(loaded.graph(), compilation.graph());
+    assert_eq!(loaded.canonical_document(), encoded);
+
+    let unknown_field =
+        serde_json::from_value::<superi_timeline::compile::TimelineGraphValue>(json!({
+            "kind": "text",
+            "value": "strict value",
+            "unexpected": true,
+        }));
+    assert!(unknown_field.is_err());
+    let unknown_tag =
+        serde_json::from_value::<superi_timeline::compile::TimelineGraphValue>(json!({
+            "kind": "future_value",
+            "value": "strict value",
+        }));
+    assert!(unknown_tag.is_err());
 }
