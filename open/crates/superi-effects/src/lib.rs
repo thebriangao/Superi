@@ -1,8 +1,8 @@
-//! `superi-effects`, graph-native visual effect authoring and staged compositing foundations.
+//! `superi-effects`, graph-native visual effect authoring and exact editable animation foundations.
 //!
-//! Section 5.10 in `docs/architecture.md`. The internal authoring SDK provides typed inspectable
-//! definitions, editable graph-node instantiation, deterministic discovery, and exact-schema runtime
-//! factory compilation shared by timeline and node-graph callers. Concrete visual nodes, animation,
+//! Section 5.10 in `docs/architecture.md`. The authoring SDK provides typed inspectable definitions,
+//! editable graph-node instantiation, deterministic discovery, and exact-schema runtime factory
+//! compilation. The keyframe module provides exact editable animation, while concrete visual nodes,
 //! masks, transitions, text, tracking, and OFX hosting remain staged in their owning modules.
 
 pub mod authoring;

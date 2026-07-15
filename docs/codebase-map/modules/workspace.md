@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 6adcf1b40d1e547cbe10127b781fb59d97ddd2cfe5efe3b8e0ef98c28a1ec295
+source_hash: c9fb96842d8d3c1c0591794fe94890be3190a4751743d17cc90b9639a2380e32
 source_files: 133
 mapped_at_commit: working-tree
 ---
@@ -25,7 +25,7 @@ a single checkpoint through mapping, planning, and execution, and routes multipl
 separate Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers
 but obeys an explicit positive user concurrency value. The file is ignored by Git and copied into
 managed worktrees through `.worktreeinclude`, so the mapping script does not include it in this
-module's 132-file inventory or source hash. It must still be reread independently before repository
+module's 133-file inventory or source hash. It must still be reread independently before repository
 work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
@@ -361,9 +361,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   integrity edges, cache-key hashing, and the exact `oxideav-mp3` Git revision. Timeline state
   directly consumes the already-resolved `serde`, `serde_json`, and `sha2` packages, while
   `superi-cache` directly consumes the same pinned `sha2` package and now records its reviewed
-  internal dependency on `superi-concurrency` for bounded background rendering. Audio output adds
-  exact CPAL 0.17.3 and ringbuf 0.4.8 plus their target-specific backend dependency trees. The
-  lockfile is generated resolution evidence and is not hand-edited policy.
+  internal dependency on `superi-concurrency` for bounded background rendering. `superi-effects`
+  now directly consumes the already-resolved `serde` package for its animation wire and records
+  `serde_json` only for strict persistence and graph-reload tests. Audio output adds exact CPAL
+  0.17.3 and ringbuf 0.4.8 plus their target-specific backend dependency trees. The lockfile is
+  generated resolution evidence and is not hand-edited policy.
 - `open/Cargo.toml`: Root Cargo workspace manifest using resolver 2 and glob members under
   `crates/*` and `tools/*`. It centralizes version `0.0.0`, Rust 2021, MIT, Rust 1.80, repository
   metadata, deny-by-default unsafe lints, and shared dependencies for error handling, serialization,
@@ -639,6 +641,10 @@ The timeline component document reuses workspace `serde`, `serde_json`, and `sha
 present for core and graph contracts. This changes the direct package edges recorded for
 `superi-timeline` but does not change crate-tier direction, introduce a network path, or transfer
 SQLite and autosave ownership away from `superi-project`.
+
+The effects animation wire reuses the same workspace Serde and JSON pins. The lockfile change only
+records direct dependencies on packages already resolved elsewhere in the workspace; it introduces
+no registry package, network behavior, runtime tier reversal, or persistence ownership transfer.
 
 The deterministic cache-key contract reuses the same resolved `sha2` pin. Its lockfile change adds
 one direct external package edge to `superi-cache` without changing the reviewed internal runtime
@@ -978,6 +984,10 @@ updated consistently. Fresh Cargo metadata expands the member globs to 24 packag
 lockfile includes a substantial
 GPU, image, codec, serialization, platform, and native-build dependency graph, and current codec,
 image, platform, and unsafe documents describe implemented contracts rather than empty placeholders.
+The effects crate now owns a substantive graph-native authoring SDK plus an exact animation curve
+and strict Serde wire. Its animation lockfile change records only direct use of already-resolved
+serialization packages, while built-in visual nodes, the remaining feature modules, and engine
+integration remain incomplete.
 The synchronized remote revision before this checkpoint is
 `5649d9075b29eef79b181caa880a650a59786ae1`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
@@ -1108,8 +1118,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`38ed11c9a0ba3acec0bd7d0e63ba23df294ecf59` when the map was refreshed. Its hash describes the exact
-132 discovered source files, including twelve generated binary payloads, layered on that revision.
+`ef6cc8fb9262f6ee6f8cd9ca1875210303120819` when the map was refreshed. Its hash describes the exact
+133 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 

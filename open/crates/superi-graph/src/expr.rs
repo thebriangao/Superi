@@ -153,7 +153,7 @@ impl FromStr for ExpressionVariableName {
 pub enum ExpressionInstruction {
     /// Pushes one finite decimal literal, preserved exactly as authored.
     Constant(String),
-    /// Pushes one explicitly bound parameter variable.
+    /// Pushes one explicitly allowed scalar variable.
     Variable(ExpressionVariableName),
     /// Negates the top value.
     Negate,
@@ -167,52 +167,42 @@ pub enum ExpressionInstruction {
     Divide,
 }
 
-/// Editable source plus its checked deterministic expression program.
+/// Editable source plus one checked bounded scalar arithmetic program.
+///
+/// This is the shared expression-language substrate. Higher-level owners choose the finite scalar
+/// variables that are allowed, retain their own binding semantics, and resolve values at evaluation
+/// time. The program has no I/O, mutation, loops, recursion, functions, or host script escape.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ParameterExpression {
+pub struct ScalarExpression {
     source: String,
-    variables: BTreeMap<ExpressionVariableName, ParameterReference>,
+    variables: BTreeSet<ExpressionVariableName>,
     instructions: Vec<ExpressionInstruction>,
 }
 
-impl ParameterExpression {
-    /// Compiles a bounded pure arithmetic expression with explicit typed variables.
+impl ScalarExpression {
+    /// Compiles bounded pure arithmetic over a declared set of allowed variables.
     ///
-    /// The language supports finite decimal constants, variables, parentheses, unary negation,
-    /// addition, subtraction, multiplication, and division. Every referenced variable must have
-    /// exactly one binding, and unused bindings are rejected so dependency inspection is complete.
+    /// Allowed variables may be unused. [`ScalarExpression::variables`] reports only names that the
+    /// source actually references so dependency inspection remains exact.
     ///
     /// # Errors
     ///
-    /// Returns user-correctable invalid input for syntax, bounds, duplicate bindings, missing
-    /// bindings, unused bindings, or nonfinite constants.
+    /// Returns user-correctable invalid input for syntax, bounds, duplicate allowed variables,
+    /// undeclared variables, or nonfinite constants.
     pub fn compile(
         source: &str,
-        variables: impl IntoIterator<Item = (ExpressionVariableName, ParameterReference)>,
+        allowed_variables: impl IntoIterator<Item = ExpressionVariableName>,
     ) -> Result<Self> {
         let source = source.trim().to_owned();
-        if source.is_empty() {
-            return Err(expression_error(
-                "compile",
-                "empty_expression",
-                "parameter expression cannot be empty",
-            ));
-        }
-        if source.len() > MAX_SOURCE_BYTES {
-            return Err(expression_error(
-                "compile",
-                "expression_source_too_long",
-                "parameter expression exceeds the supported source length",
-            ));
-        }
+        validate_expression_source(&source)?;
 
-        let mut bindings = BTreeMap::new();
-        for (name, reference) in variables {
-            if bindings.insert(name.clone(), reference).is_some() {
+        let mut allowed = BTreeSet::new();
+        for name in allowed_variables {
+            if !allowed.insert(name.clone()) {
                 return Err(expression_error(
                     "compile",
                     "duplicate_variable_binding",
-                    "parameter expression variable is bound more than once",
+                    "parameter expression variable is allowed more than once",
                 )
                 .with_context(
                     ErrorContext::new(COMPONENT, "compile").with_field("variable", name.as_str()),
@@ -220,7 +210,7 @@ impl ParameterExpression {
             }
         }
 
-        let mut parser = Parser::new(&source, &bindings);
+        let mut parser = Parser::new(&source, &allowed);
         parser.parse_expression(0)?;
         parser.skip_whitespace();
         if parser.position != source.len() {
@@ -229,25 +219,13 @@ impl ParameterExpression {
                 "parameter expression contains an unexpected token",
             ));
         }
-        if let Some(unused) = bindings
-            .keys()
-            .find(|name| !parser.referenced.contains(*name))
-        {
-            return Err(expression_error(
-                "compile",
-                "unused_variable_binding",
-                "parameter expression binding is not used by the source",
-            )
-            .with_context(
-                ErrorContext::new(COMPONENT, "compile").with_field("variable", unused.as_str()),
-            ));
-        }
         let instructions = std::mem::take(&mut parser.instructions);
+        let variables = std::mem::take(&mut parser.referenced);
         drop(parser);
 
         Ok(Self {
             source,
-            variables: bindings,
+            variables,
             instructions,
         })
     }
@@ -258,9 +236,9 @@ impl ParameterExpression {
         &self.source
     }
 
-    /// Returns explicit variables in canonical name order.
+    /// Returns only variables actually referenced by the source in canonical order.
     #[must_use]
-    pub const fn variables(&self) -> &BTreeMap<ExpressionVariableName, ParameterReference> {
+    pub const fn variables(&self) -> &BTreeSet<ExpressionVariableName> {
         &self.variables
     }
 
@@ -270,7 +248,7 @@ impl ParameterExpression {
         &self.instructions
     }
 
-    /// Evaluates the checked program through its explicit variable bindings.
+    /// Evaluates the checked program through a finite scalar variable resolver.
     ///
     /// # Errors
     ///
@@ -278,7 +256,7 @@ impl ParameterExpression {
     /// division by zero, or a nonfinite result.
     pub fn evaluate_with(
         &self,
-        mut resolve: impl FnMut(&ExpressionVariableName, &ParameterReference) -> Result<f64>,
+        mut resolve: impl FnMut(&ExpressionVariableName) -> Result<f64>,
     ) -> Result<f64> {
         let mut stack = Vec::with_capacity(self.instructions.len());
         for instruction in &self.instructions {
@@ -290,11 +268,7 @@ impl ParameterExpression {
                     stack.push(value);
                 }
                 ExpressionInstruction::Variable(name) => {
-                    let reference = self
-                        .variables
-                        .get(name)
-                        .expect("compiled expression variable remains bound");
-                    let value = resolve(name, reference)?;
+                    let value = resolve(name)?;
                     if !value.is_finite() {
                         return Err(expression_error(
                             "evaluate",
@@ -303,8 +277,7 @@ impl ParameterExpression {
                         )
                         .with_context(
                             ErrorContext::new(COMPONENT, "evaluate")
-                                .with_field("variable", name.as_str())
-                                .with_field("parameter", reference.address().to_string()),
+                                .with_field("variable", name.as_str()),
                         ));
                     }
                     stack.push(value);
@@ -349,6 +322,115 @@ impl ParameterExpression {
             return Err(invalid_program_error());
         }
         Ok(stack[0])
+    }
+}
+
+/// Editable source plus its checked deterministic expression program.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ParameterExpression {
+    program: ScalarExpression,
+    variables: BTreeMap<ExpressionVariableName, ParameterReference>,
+}
+
+impl ParameterExpression {
+    /// Compiles a bounded pure arithmetic expression with explicit typed variables.
+    ///
+    /// The language supports finite decimal constants, variables, parentheses, unary negation,
+    /// addition, subtraction, multiplication, and division. Every referenced variable must have
+    /// exactly one binding, and unused bindings are rejected so dependency inspection is complete.
+    ///
+    /// # Errors
+    ///
+    /// Returns user-correctable invalid input for syntax, bounds, duplicate bindings, missing
+    /// bindings, unused bindings, or nonfinite constants.
+    pub fn compile(
+        source: &str,
+        variables: impl IntoIterator<Item = (ExpressionVariableName, ParameterReference)>,
+    ) -> Result<Self> {
+        validate_expression_source(source.trim())?;
+        let mut bindings = BTreeMap::new();
+        for (name, reference) in variables {
+            if bindings.insert(name.clone(), reference).is_some() {
+                return Err(expression_error(
+                    "compile",
+                    "duplicate_variable_binding",
+                    "parameter expression variable is bound more than once",
+                )
+                .with_context(
+                    ErrorContext::new(COMPONENT, "compile").with_field("variable", name.as_str()),
+                ));
+            }
+        }
+
+        let program = ScalarExpression::compile(source, bindings.keys().cloned())?;
+        if let Some(unused) = bindings
+            .keys()
+            .find(|name| !program.variables().contains(*name))
+        {
+            return Err(expression_error(
+                "compile",
+                "unused_variable_binding",
+                "parameter expression binding is not used by the source",
+            )
+            .with_context(
+                ErrorContext::new(COMPONENT, "compile").with_field("variable", unused.as_str()),
+            ));
+        }
+
+        Ok(Self {
+            program,
+            variables: bindings,
+        })
+    }
+
+    /// Returns the editable source exactly after outer whitespace trimming.
+    #[must_use]
+    pub fn source(&self) -> &str {
+        self.program.source()
+    }
+
+    /// Returns explicit variables in canonical name order.
+    #[must_use]
+    pub const fn variables(&self) -> &BTreeMap<ExpressionVariableName, ParameterReference> {
+        &self.variables
+    }
+
+    /// Returns the checked postfix program in execution order.
+    #[must_use]
+    pub fn instructions(&self) -> &[ExpressionInstruction] {
+        self.program.instructions()
+    }
+
+    /// Evaluates the checked program through its explicit variable bindings.
+    ///
+    /// # Errors
+    ///
+    /// Returns the resolver's error, or user-correctable invalid input for nonfinite inputs,
+    /// division by zero, or a nonfinite result.
+    pub fn evaluate_with(
+        &self,
+        mut resolve: impl FnMut(&ExpressionVariableName, &ParameterReference) -> Result<f64>,
+    ) -> Result<f64> {
+        self.program.evaluate_with(|name| {
+            let reference = self
+                .variables
+                .get(name)
+                .expect("compiled expression variable remains bound");
+            let value = resolve(name, reference)?;
+            if !value.is_finite() {
+                return Err(expression_error(
+                    "evaluate",
+                    "nonfinite_variable_value",
+                    "expression variable resolved to a nonfinite value",
+                )
+                .with_context(
+                    ErrorContext::new(COMPONENT, "evaluate")
+                        .with_field("variable", name.as_str())
+                        .with_field("parameter", reference.address().to_string()),
+                ));
+            }
+            Ok(value)
+        })
     }
 }
 
@@ -437,20 +519,17 @@ pub trait ExpressionParameterValue: Clone {
 
 struct Parser<'a> {
     source: &'a str,
-    bindings: &'a BTreeMap<ExpressionVariableName, ParameterReference>,
+    allowed_variables: &'a BTreeSet<ExpressionVariableName>,
     position: usize,
     instructions: Vec<ExpressionInstruction>,
     referenced: BTreeSet<ExpressionVariableName>,
 }
 
 impl<'a> Parser<'a> {
-    fn new(
-        source: &'a str,
-        bindings: &'a BTreeMap<ExpressionVariableName, ParameterReference>,
-    ) -> Self {
+    fn new(source: &'a str, allowed_variables: &'a BTreeSet<ExpressionVariableName>) -> Self {
         Self {
             source,
-            bindings,
+            allowed_variables,
             position: 0,
             instructions: Vec::new(),
             referenced: BTreeSet::new(),
@@ -598,7 +677,7 @@ impl<'a> Parser<'a> {
         }
         let spelling = self.source[start..self.position].to_owned();
         let name = ExpressionVariableName::new(spelling)?;
-        if !self.bindings.contains_key(&name) {
+        if !self.allowed_variables.contains(&name) {
             return Err(expression_error(
                 "compile",
                 "missing_variable_binding",
@@ -683,6 +762,24 @@ fn expression_error(operation: &'static str, reason: &'static str, message: &'st
         message,
     )
     .with_context(ErrorContext::new(COMPONENT, operation).with_field("reason", reason))
+}
+
+fn validate_expression_source(source: &str) -> Result<()> {
+    if source.is_empty() {
+        return Err(expression_error(
+            "compile",
+            "empty_expression",
+            "parameter expression cannot be empty",
+        ));
+    }
+    if source.len() > MAX_SOURCE_BYTES {
+        return Err(expression_error(
+            "compile",
+            "expression_source_too_long",
+            "parameter expression exceeds the supported source length",
+        ));
+    }
+    Ok(())
 }
 
 const fn is_identifier_start(byte: u8) -> bool {

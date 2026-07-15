@@ -8,7 +8,7 @@ use superi_core::error::{ErrorCategory, Recoverability, Result};
 use superi_core::settings::{CapabilitySet, SemanticVersion};
 use superi_graph::expr::{
     ExpressionInstruction, ExpressionParameterValue, ExpressionVariableName, ParameterAddress,
-    ParameterDriver, ParameterExpression, ParameterReference,
+    ParameterDriver, ParameterExpression, ParameterReference, ScalarExpression,
 };
 use superi_graph::ids::{GraphId, NodeId, ParameterId};
 use superi_graph::mutate::{
@@ -134,6 +134,50 @@ fn expression() -> ParameterExpression {
         ],
     )
     .expect("valid expression")
+}
+
+#[test]
+fn scalar_expression_reuses_the_bounded_language_without_graph_bindings() {
+    let expression =
+        ScalarExpression::compile("value + time * 2", [variable("time"), variable("value")])
+            .expect("valid scalar expression");
+
+    assert_eq!(expression.source(), "value + time * 2");
+    assert_eq!(
+        expression
+            .variables()
+            .iter()
+            .map(ExpressionVariableName::as_str)
+            .collect::<Vec<_>>(),
+        ["time", "value"]
+    );
+    assert_eq!(
+        expression
+            .evaluate_with(|name| match name.as_str() {
+                "time" => Ok(1.5),
+                "value" => Ok(4.0),
+                _ => unreachable!("compiled expression exposes only allowed variables"),
+            })
+            .unwrap(),
+        7.0
+    );
+
+    let value_only =
+        ScalarExpression::compile("value * 3", [variable("time"), variable("value")]).unwrap();
+    assert_eq!(
+        value_only
+            .variables()
+            .iter()
+            .map(ExpressionVariableName::as_str)
+            .collect::<Vec<_>>(),
+        ["value"]
+    );
+
+    let missing = ScalarExpression::compile("other + 1", [variable("value")]).unwrap_err();
+    assert_eq!(
+        missing.contexts()[0].field("reason"),
+        Some("missing_variable_binding")
+    );
 }
 
 #[test]

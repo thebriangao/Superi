@@ -2,35 +2,44 @@
 module_id: superi-effects
 source_paths:
   - open/crates/superi-effects
-source_hash: 4fbc860bf7df2ed555448aefe9f2152032a05705d6f745322aa488ab97c60ebb
-source_files: 10
+source_hash: c54ef5bf6af803a69396286d7c07e33b5c4f71d08d70fee97104f3f02a0eb069
+source_files: 11
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
-`superi-effects` owns the higher-tier internal visual effect and node authoring SDK above the
-generic graph. It defines inspectable effect presentation and defaults, exact graph-native
-instantiation, deterministic definition discovery, and exact-schema runtime factory translation.
-The generic graph remains authoritative for schema identity, stable instance identities, typed
-editable values, transactions, parameter drivers, immutable snapshots, topology, and evaluation.
+`superi-effects` owns the higher-tier open visual effect authoring and animation layer above the
+generic graph. Its graph-native authoring SDK provides inspectable presentation and defaults,
+ordinary editable node instantiation, deterministic definition discovery, and exact-schema runtime
+factory translation. Its animation substrate provides exact directly editable keyframes, fixed and
+roving timing, linear, cubic, and hold interpolation, inspectable easing and value tangents, bounded
+time expressions, immutable edits, exact retiming, and strict persistence.
 
-The crate also reserves animation, mask and rotoscoping, transitions, text, tracking, and future OFX
-compatibility modules. Those six feature modules remain explicit skeletons. No built-in visual node,
-pixel algorithm, GPU kernel, keyframe model, mask, transition, text object, tracking solver, plugin
-host, persistence adapter, or engine playback path is implemented here yet.
+The generic graph remains authoritative for schema identity, instance identities, typed editable
+values, transactions, parameter drivers, immutable snapshots, topology, serialization, and
+evaluation. Core remains authoritative for exact time and errors. Effects adds domain meaning around
+those contracts and never creates a competing graph, time, expression, or persistence model.
+
+Mask and rotoscoping behavior, transitions, text and motion-design primitives, tracking, and OFX
+compatibility remain explicit placeholders. No built-in visual node, pixel algorithm, GPU kernel,
+mask renderer, transition implementation, tracker, text engine, plugin host, engine playback path,
+or rendered effect output is implemented here yet.
 
 ## Source inventory
 
-- `open/crates/superi-effects/Cargo.toml`: Declares the approved downward dependencies on
-  `superi-core`, `superi-gpu`, `superi-image`, and `superi-graph`. Core and graph are active authoring
-  dependencies; image and GPU remain declared boundaries for later visual execution work.
+- `open/crates/superi-effects/Cargo.toml`: Declares approved downward dependencies on `superi-core`,
+  `superi-gpu`, `superi-image`, and `superi-graph`, adds workspace Serde for the animation wire, and
+  uses workspace JSON only in tests.
 - `open/crates/superi-effects/src/authoring.rs`: Implements typed inspectable definitions,
   graph-native instance construction, atomic catalog snapshots, classified validation, runtime
   factories, and the graph `NodeCompiler` adapter.
-- `open/crates/superi-effects/src/keyframe.rs`: Placeholder for parameters that vary over time.
-- `open/crates/superi-effects/src/lib.rs`: Documents the implemented authoring boundary, the staged
-  compositing features, and publicly exports all seven subsystem modules.
+- `open/crates/superi-effects/src/keyframe.rs`: Implements checked animation values, independent
+  value tangents, fixed and roving timing, segment interpolation, cubic Bezier easing, bounded time
+  expressions, immutable curve editing, exact uniform retiming, deterministic evaluation, and the
+  revisioned standalone wire.
+- `open/crates/superi-effects/src/lib.rs`: Documents both implemented foundations and publicly
+  exports authoring, animation, and five staged visual feature modules.
 - `open/crates/superi-effects/src/mask.rs`: Placeholder for mask and rotoscoping data and rendering.
 - `open/crates/superi-effects/src/ofx.rs`: Placeholder for an additive OFX-compatible plugin surface.
 - `open/crates/superi-effects/src/text.rs`: Placeholder for additive text and motion-design
@@ -38,12 +47,16 @@ host, persistence adapter, or engine playback path is implemented here yet.
 - `open/crates/superi-effects/src/tracking.rs`: Placeholder for motion-tracking data and solving.
 - `open/crates/superi-effects/src/transition.rs`: Placeholder for transition definitions and
   execution.
-- `open/crates/superi-effects/tests/authoring_contract.rs`: Public integration contract for typed
-  discovery, immutable snapshots, workflow-neutral editable instances, graph mutation, exact
-  runtime compilation, atomic failures, schema drift rejection, and thread-safe sharing.
+- `open/crates/superi-effects/tests/authoring_contract.rs`: Proves typed discovery, immutable
+  snapshots, workflow-neutral editable instances, graph mutation, exact runtime compilation, atomic
+  failures, schema drift rejection, and thread-safe sharing.
+- `open/crates/superi-effects/tests/keyframe_contract.rs`: Proves exact evaluation, interpolation,
+  easing, tangents, holds, roving allocation, expressions, immutable edits, retiming, invalid state,
+  strict standalone persistence, authoring-SDK instantiation, and real generic graph reload.
 
 ## Public surface
 
+The library exports `authoring`, `keyframe`, `mask`, `ofx`, `text`, `tracking`, and `transition`.
 `authoring` exposes the following implemented SDK layers:
 
 - `ParameterControl` is a nonexhaustive presentation hint. Automatic, toggle, slider, angle,
@@ -64,142 +77,199 @@ host, persistence adapter, or engine playback path is implemented here yet.
   `NodeRegistry`. `EffectCatalogSnapshot<T>` retains immutable definition and schema maps, one exact
   registration revision, exact-ID lookup, and canonical node-type and semantic-version iteration.
 - `EffectNodeFactory<T, N>` receives the exact immutable `GraphSnapshot<T>`, `NodeId`, and
-  `EditableNode<T>` for one runtime translation. Closures with the same contract implement the trait.
+  `EditableNode<T>` for one runtime translation. Closures with the same contract implement the
+  trait.
 - `EffectNodeCompiler<T, N>` owns exact factories over one immutable catalog snapshot, rejects
   unknown or duplicate registration, implements graph `NodeCompiler`, rejects unregistered nodes,
   unavailable implementations, and same-ID schema drift, and preserves factory errors with effect
   context.
 
-The library also exports `keyframe`, `mask`, `ofx`, `text`, `tracking`, and `transition`, but those
-modules still expose no implemented types or behavior.
+`keyframe` exposes the following implemented animation contracts:
+
+- `AnimationValue` is a finite, nonempty, bounded multi-component property value. `new`, `scalar`,
+  `components`, and `component_count` expose checked construction and stable inspection.
+- `ValueTangent` stores finite component slopes in value units per second and exposes them in
+  stable property order.
+- `KeyframeTiming` distinguishes exact fixed `RationalTime` from authored interior `Roving` intent.
+  `Interpolation` selects `Linear`, cubic Hermite `Cubic`, or outgoing `Hold` behavior. `Easing`
+  selects direct segment progress or one inspectable `CubicEasing`.
+- `CubicEasing::new`, `control_points`, and `map` expose a finite cubic Bezier time map. The x
+  controls are restricted to zero through one, y overshoot remains legal, endpoints are exact, and
+  interior inversion uses a fixed iteration count.
+- `Keyframe::new` binds timing, value, outgoing interpolation and easing, and independent incoming
+  and outgoing tangents. Read methods expose every authored field without exposing unchecked
+  mutation.
+- `TimeExpression::compile`, `source`, and `variables` expose editable bounded arithmetic over only
+  `time` and interpolated `value`. The implementation reuses `superi-graph::expr::ScalarExpression`
+  instead of embedding a second parser or host scripting runtime.
+- `AnimationCurve::new` checks complete authored state and derives roving times. `timebase`,
+  `keyframes`, `resolved_times`, and `expression` expose authored intent and computed timing.
+  `evaluate` samples at an exact caller-provided physical time. `with_inserted`, `with_replaced`,
+  `without`, and `with_expression` return revalidated immutable edits, while `retimed` maps the
+  complete curve onto exact new endpoints.
+- `ANIMATION_CURVE_SCHEMA_REVISION` identifies the current incompatible standalone curve wire.
+  `AnimationCurve` and `TimeExpression` implement Serde through private checked wire types.
+
+The five remaining feature modules expose no substantive public types or behavior.
 
 ## Architecture and data flow
 
-Authoring begins with existing graph value types, port and parameter names, an exact
-`NodeSchemaId`, `NodeBehavior`, and required `CapabilitySet`. A caller supplies required
-presentation plus typed defaults. `EffectNodeDefinition::new` first collects each description
-namespace in a `BTreeMap`, rejects duplicates, then constructs the canonical `NodeSchema`. The
-result is immutable and contains no instance or workflow-specific state.
+The graph-native authoring flow is:
 
-For an instance, the timeline, node editor, script, or other caller supplies stable input, output,
-and parameter identities. `instantiate` validates every override name and type, copies defaults for
-unoverridden parameters, constructs normal `EditableParameter<T>` values, and delegates complete
-binding validation to `EditableNode::new`. The returned node enters `EditableGraph<T>` through the
-same atomic mutations as every other graph node. No effect-only transaction or hidden parameter
-store exists.
+1. A caller supplies existing graph value types, port and parameter names, an exact `NodeSchemaId`,
+   `NodeBehavior`, required capabilities, inspectable presentation, and exactly typed defaults.
+2. `EffectNodeDefinition::new` canonicalizes each description namespace, rejects duplicates, and
+   constructs the authoritative immutable `NodeSchema` without instance or workflow-specific state.
+3. A timeline, node editor, script, or other owner supplies stable instance identities.
+   `instantiate` validates override names and types, fills omitted values from typed defaults, and
+   delegates complete binding validation to `EditableNode::new`. The node enters `EditableGraph`
+   through ordinary atomic transactions.
+4. Catalog registration stages definitions in exact schema-ID order, updates a cloned graph
+   registry, and publishes both maps atomically. Immutable snapshots preserve earlier revisions.
+5. Runtime preparation binds exact factories to one catalog snapshot. During
+   `GraphEvaluationSnapshot::compile`, `EffectNodeCompiler` confirms the authored node's complete
+   schema, resolves its exact factory, and passes through the original graph snapshot and node.
+   This crate currently supplies no concrete visual runtime factory.
 
-Catalog registration stages definitions in canonical exact schema-ID order and rejects any current
-or batch duplicate before changing state. It registers cloned schemas into a cloned `NodeRegistry`,
-then publishes both definition and graph-schema maps together. Snapshots share immutable maps, so a
-later successful registration advances the mutable catalog without changing an earlier reader.
+The authored animation and evaluation flow is:
 
-Runtime preparation begins from one catalog snapshot. Higher-tier built-in, extension, or engine
-code registers a factory for each exact definition it can execute. During
-`GraphEvaluationSnapshot::compile`, the compiler finds the authored node's exact definition,
-compares the full schema with the catalog copy, resolves the factory, and passes the original graph
-snapshot and node state through. Timeline and node-graph roles therefore use one definition,
-editable payload, compiler, and runtime translation path rather than workflow-specific copies.
+1. The caller creates finite property values, optional component tangents, inspectable easing, and
+   fixed or roving keyframes on one core-owned `Timebase`.
+2. `AnimationCurve::new` validates complete component and timing state. It requires fixed endpoints,
+   strictly increasing fixed anchors, one component width, matching tangent dimensions, and enough
+   integer ticks to place every interior key distinctly.
+3. Fixed times remain authored state. Each roving group derives integer-tick positions between fixed
+   anchors from cumulative L1 component distance, with even index spacing when all adjacent value
+   distances are zero. Derived times are inspectable but never serialized as a second source of
+   truth.
+4. `evaluate` compares one exact caller `RationalTime` against resolved key times. Exact keys and
+   clamped endpoints retain authored values; an interior segment uses outgoing linear, hold, or
+   cubic Hermite interpolation after its outgoing easing map. Missing cubic tangents default to the
+   segment secant.
+5. An optional time expression runs component by component after base interpolation. `time` is the
+   exact evaluation instant converted to physical seconds, while `value` is the component's base
+   sample. The shared bounded graph evaluator rejects division by zero and nonfinite results.
+6. Immutable edits reconstruct the complete curve. Uniform retiming exactly maps every fixed key,
+   retains roving intent, recomputes derived times, and inversely scales value-per-second tangents so
+   the normalized value graph remains stable.
+7. Standalone serialization records an explicit schema revision, timebase, authored keyframes, and
+   optional expression source. Deserialization rejects unknown fields and unsupported revisions,
+   recompiles expressions, rebuilds value and tangent types, and reuses `AnimationCurve::new`.
 
-This checkpoint stops at runtime translation. Factories may later construct executable visual nodes,
-but no factory supplied by this crate currently reads or writes image bytes, allocates GPU resources,
-executes a shader, schedules graph work, or produces a rendered frame.
+The two foundations compose without another ownership layer. The animation integration builds an
+animatable `EffectParameterDefinition<AnimationCurve>`, inspects that declaration, instantiates an
+ordinary effect-authored `EditableNode`, and stores it in `EditableGraph`. Generic graph
+serialization preserves the curve payload, while checked graph reload reconstructs it through the
+strict effects wire and produces identical samples and canonical graph bytes. Graph remains unaware
+of effect metadata, keyframes, interpolation, and time-expression variable meaning.
 
 ## Dependencies and consumers
 
-- `superi-core` supplies classified `Error`, deterministic `ErrorContext`, recoverability, results,
-  `CapabilitySet`, and semantic versions embedded by graph schema identities.
-- `superi-graph` supplies `NodeSchema`, `NodeRegistry`, names and behavior declarations,
-  `TypedParameterValue<T>`, instance bindings, `EditableNode<T>`, `GraphSnapshot<T>`, and the
-  `NodeCompiler` seam. Effects depends on graph; graph never depends on effects.
-- `superi-image` and `superi-gpu` remain direct manifest dependencies for the later visual runtime,
-  but current effect source imports neither crate and owns no image or GPU resource.
-- `superi-engine` declares `superi-effects` as a dependency, but current engine source still has no
-  effect authoring, catalog, compiler, playback, or rendering call site.
-- `superi-timeline` has no dependency on effects. Its existing compile-to-graph path demonstrates the
-  host-owned editable graph model that this generic SDK is designed to join, but no production
-  timeline object attaches an effect definition yet.
-- The public integration contract is the current direct consumer. It labels two independent editable
-  graphs as timeline and node-graph roles and proves the same definition, edits, and factory path in
-  both without introducing another runtime module.
+- `superi-core` supplies classified errors, deterministic context, recoverability, capability sets,
+  semantic versions, `RationalTime`, `Timebase`, exact rescaling, and stable time serialization.
+- `superi-graph` supplies schemas, registries, names, behavior declarations, typed parameter values,
+  instance bindings, editable nodes and snapshots, the `NodeCompiler` seam, generic graph
+  serialization, and the bounded scalar-expression language. Effects depends downward on graph;
+  graph never depends on effects.
+- Serde owns the strict curve and expression records. JSON is test-only and proves standalone and
+  generic graph document behavior. Both packages were already resolved in the workspace lock graph.
+- `superi-image` and `superi-gpu` remain direct manifest dependencies for later visual execution,
+  but current effect source imports neither and owns no image or GPU resource.
+- `superi-engine` declares `superi-effects` as a dependency, but current engine source has no effect
+  catalog, compiler, animation evaluator, playback, or rendering call site.
+- `superi-timeline` has no dependency on effects. Its existing graph compiler demonstrates the
+  host-owned editable model this SDK is designed to join, but no production timeline object attaches
+  an effect definition or evaluates an animation curve yet.
+- Public integration contracts are the current direct consumers. Authoring tests label independent
+  editable graphs as timeline and node-graph roles; the animation test composes the authoring SDK,
+  strict curve payload, and graph document reload without introducing a runtime module.
 
 ## Invariants and operational boundaries
 
 - Effect authoring composes the canonical graph. It does not own a competing schema, DAG, parameter
-  driver, transaction, snapshot, identity, evaluator, or scheduler.
-- Definitions are immutable after construction. Exact schema identity includes node type and semantic
-  version, and full schema equality is checked again before runtime factory use.
+  driver, transaction, snapshot, identity, evaluator, scheduler, or serialization envelope.
+- Definitions are immutable after construction. Exact schema identity includes node type and
+  semantic version, and full schema equality is checked again before runtime factory use.
 - Labels, summaries, and categories cannot be blank. Defaults and overrides must match their exact
   graph `ValueTypeId`; unknown and duplicate authoring state is rejected with classified context.
 - Every instance identity belongs to the caller and is validated against every schema declaration.
-  Defaults become ordinary editable parameter payloads, and runtime factories own no hidden authored
-  state.
-- Definition, port, parameter, catalog, and schema iteration is deterministic through `BTreeMap` and
-  the graph registry's semantic-version ordering.
-- Batch catalog registration is atomic. Immutable snapshots cannot observe partial definitions or a
-  schema revision that differs from their effect definition revision.
-- Runtime factory registration is bound to one immutable catalog snapshot and one exact schema
-  version. Missing factories degrade explicitly rather than pretending the node executed.
-- Catalogs and compilers are shareable when their caller-owned payload and runtime types are
-  `Send + Sync`. A runtime factory itself must be `Send + Sync`.
+  Defaults become ordinary editable parameter payloads, and runtime factories own no hidden state.
+- Definition, port, parameter, catalog, and schema iteration is deterministic. Batch registration is
+  atomic, immutable snapshots cannot observe partial state, and exact missing factories degrade
+  explicitly rather than pretending execution occurred.
 - Workflow parity is structural: timeline and node-graph roles receive no role flag or private state
-  branch. Later timeline attachment code must retain this single authored meaning.
-- GPU residency, ROI execution, time sampling, color pixels, caching, serialization, keyframes,
-  masks, plugin containment, and text fidelity remain owned by later code and are not implied by
-  schema declarations alone.
+  branch. A parameter's animatable schema declaration does not alter its value type or storage.
+- Authored animation time is exact. Fixed keys use one curve clock, fixed anchors increase strictly,
+  and the first and last keys cannot rove.
+- Values and tangents are finite and bounded to 64 components. Curves are nonempty and bounded to
+  100,000 keys. Every key uses one component width and every tangent matches it.
+- Roving keys retain authored roving identity, receive distinct deterministic integer ticks, and
+  recompute after every edit, retime, and reload. Resolved times are derived data only.
+- Interpolation belongs to the key leaving a segment. Hold retains the left value until the exact
+  right key, cubic tangents are independent and measured per second, and easing changes normalized
+  segment time separately from value-graph slopes.
+- Expression source is editable and bounded, and only `time` and `value` may be referenced. There is
+  no I/O, mutation, function call, loop, recursion, dynamic lookup, or host script escape.
+- Public animation edits never mutate an existing curve or publish partially checked state. Exact
+  retiming rejects inexact fixed-key maps, unrepresentable endpoints, overflow, and invalid ranges.
+- Curve serialization records authored state only, denies unknown fields, checks its schema
+  revision, and routes every decoded value through public validation before publication.
+- Current code performs no pixel processing, GPU submission, ROI execution, cache integration,
+  spatial path geometry, timeline sampling, engine playback, project autosave, mask behavior,
+  plugin containment, or text rendering.
 
 ## Tests and verification
 
-`authoring_contract` contains six public tests:
+Six authoring integration tests construct and inspect one typed animatable definition, prove
+canonical discovery and immutable earlier snapshots, instantiate the same definition in independent
+timeline-role and node-graph-role `EditableGraph` values, mutate ordinary parameters, and observe
+equal results. They compile both snapshots through one exact `Send + Sync` factory, reject missing
+factories and same-ID schema drift, and prove metadata, type, binding, override, registration, and
+factory failures leave authoritative state unchanged.
 
-- It constructs one image-to-image definition with an animatable scalar parameter, inspects exact
-  metadata, presentation, graph types, defaults, and synchronized schema discovery, and proves
-  canonical definition ordering plus immutable earlier snapshots after later registration.
-- It instantiates the same definition in independent timeline-role and node-graph-role
-  `EditableGraph` values, reads the same typed default, applies normal `SetParameter` transactions,
-  and observes equal typed results.
-- It binds one exact `Send + Sync` closure factory and compiles both immutable graph snapshots through
-  `GraphEvaluationSnapshot`, recording both graph and node identities.
-- It proves an authored node with no runtime factory fails as `Unavailable` and a different full
-  schema under the same exact ID fails as invalid input before factory execution.
-- It proves blank metadata, mistyped defaults, duplicate batch and later registration, missing
-  bindings, unknown overrides, and unknown or duplicate factories fail without changing catalog
-  revision or membership.
-- Compile-time bounds prove `EffectCatalog<AuthorValue>` and
-  `EffectNodeCompiler<AuthorValue, ()>` are `Send + Sync` for a shareable payload.
+Eight animation integration tests prove exact scalar and vector linear sampling, outgoing holds,
+cubic Hermite tangents, cubic Bezier mapping and y overshoot, endpoint clamping, interior roving
+allocation, stable zero-distance fallback, narrow-span rejection, bounded time expressions, source
+and variable inspection, syntax and runtime failures, and host-escape rejection. They also prove
+immutable insert, replace, remove, and expression edits, exact retiming and tangent scaling,
+inexact-map rejection, invalid authored state, strict standalone schema behavior, unknown-field
+rejection, and checked reconstruction.
 
-Fresh focused proof passed `cargo test -p superi-effects`, six public integration tests,
-documentation tests, and `cargo clippy -p superi-effects --all-targets -- -D warnings`. Cargo emitted
-only the existing future-incompatibility notice for transitive `block v0.1.6`; it was not a test or
-lint failure. Broader graph, timeline, engine, formatting, map, and checkpoint verifier results are
-recorded in the ignored checkpoint execution log.
+The animation consumer proof creates the payload through a real animatable authoring definition,
+stores the resulting node in `EditableGraph`, serializes the complete graph document, reloads it
+through graph validation, compares canonical bytes, and obtains identical samples. A separate graph
+integration test proves `ScalarExpression` independently of graph parameter bindings. Focused and
+crate-wide tests, warnings-denied Clippy, rustdoc, complete workspace tests, the full repository
+verifier, map validation, dependency checks, fixtures, platform codec consumers, and frontend gates
+are the delivery floor.
 
 ## Current status and risks
 
-The internal authoring SDK is substantive and test-backed. The rest of the crate remains skeleton
-code. There are no concrete effect definitions or runtime factories in production source, so the
-SDK can author and translate caller-supplied definitions but does not yet render a visual result.
+The authoring SDK and keyframe animation module are substantive and test-backed. Effects can define,
+discover, instantiate, and translate caller-supplied graph-native definitions, and an animatable
+parameter can retain a strict curve payload across generic graph reload. There are still no built-in
+effect definitions or production runtime factories, so this work does not render a visual result.
 
-The generic payload is intentional and preserves compatibility with the graph host, but a later
-shared visual value contract must be chosen by the real built-in and timeline consumer. The control
-enum is presentation only and does not yet carry slider bounds, choice options, units, grouping,
-conditional visibility, or accessibility policy. Definition metadata is in-memory and has no
-serialization or migration contract. Runtime factories are exact-version bound but have no plugin
-discovery, missing-node placeholder, GPU device, cache, or lifecycle integration.
+Animation curves lack stable project-level property identities, spatial motion paths, a graph-editor
+UI, a production timeline consumer, and an engine evaluation context. Authoring metadata remains
+in-memory and has no independent serialization contract. Control hints do not yet carry bounds,
+choice options, units, grouping, conditional visibility, or accessibility policy. Runtime factories
+are exact-version bound but have no plugin discovery, GPU device, cache, or lifecycle integration.
 
-The current timeline-role proof uses a normal editable graph rather than a production
-`superi-timeline` effect attachment because that model does not exist. The engine still has no
-effect catalog or compiler call site. Those absences must remain explicit until later checkpoints
-add real callers and rendered behavior.
+Mask, transition, text, tracking, and OFX modules remain skeletons. The timeline-role authoring proof
+uses an ordinary graph because production effect attachment does not exist. The generic graph reload
+proves persistence and editability, not project autosave, rendered pixels, or engine playback.
 
 ## Maintenance notes
 
-Refresh this map whenever effect authoring metadata, graph composition, catalog registration,
-instance defaults, runtime factory translation, or any staged feature module changes. Preserve the
-one-way effect-to-graph dependency and keep all authored values in ordinary graph state.
+Preserve the one-way effects-to-graph dependency and keep authored values in ordinary graph state.
+Keep animation property meaning with node schemas and exact time ownership in core. Preserve checked
+immutable editing, the authored-versus-derived timing split, bounded expressions, exact schema
+matching, atomic catalog publication, and workflow-neutral instances.
 
-When concrete nodes arrive, record their exact schemas, types, presentation, time and ROI behavior,
-color requirements, capabilities, factory implementations, GPU or CPU resource ownership, cache
-identity, and real timeline, engine, headless, and rendered consumers. Update the graph consumer map
-and global index whenever this higher-tier catalog uses another graph surface. Do not report a
-registered schema or successful runtime translation as pixel execution without an exercised
-factory and real output proof.
+When concrete nodes or production consumers arrive, record their schemas, types, presentation,
+property identities, caller-time path, ROI and color behavior, factory implementations, GPU or CPU
+resource ownership, cache identity, serialization owner, migration and reload behavior, and real
+timeline, engine, headless, UI, project, and rendered consumers. Update the graph consumer map and
+global index whenever effects uses another graph surface. Never report registered schemas, factory
+translation, or graph reload as pixel execution without an exercised implementation and real output.

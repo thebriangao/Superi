@@ -24,10 +24,10 @@ against raw source before changing code.
 | `superi-color` | [module map](modules/superi-color.md) | `open/crates/superi-color` | Versioned configuration, project working spaces, color math, CPU input and output transforms, GPU wide-gamut transforms, tone mapping, legal-range RGB encoding, LUTs, ICC discovery, and presentation profile guards | Substantial but partial: project-pinned configuration, CPU transforms, and managed GPU wide-gamut transforms are implemented; ICC evaluation and engine integration remain absent |
 | `superi-concurrency` | [module map](modules/superi-concurrency.md) | `open/crates/superi-concurrency` | Execution domains, jobs, clocks, handoffs, shared snapshots, lifecycle, liveness, and derived-media selection | Substantial; audio enforces its domain, engine proxy resolution consumes selection, and engine playback consumes domains, workers, priority, cancellation, progress, and nonblocking polling; broader composition and GPU submission remain incomplete |
 | `superi-core` | [module map](modules/superi-core.md) | `open/crates/superi-core` | Tier-zero values, validation, exact time, identifiers, errors, diagnostics, and stable serialization | Implemented and broadly consumed; crate-level skeleton wording is stale |
-| `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Graph-native visual effect definitions, editable defaults and instances, deterministic catalog discovery, exact-schema runtime factory translation, and staged animation, mask, transition, text, tracking, and OFX boundaries | Partial: typed authoring SDK and public workflow-parity contract implemented; built-in nodes, visual execution, animation, masks, transitions, text, tracking, hosting, timeline attachment, and engine integration absent |
+| `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Graph-native visual definitions, editable defaults and instances, deterministic discovery, exact-schema factory translation, and exact editable keyframe animation with interpolation, easing, tangents, holds, roving timing, expressions, retiming, and strict persistence | Partial: typed authoring SDK, animation substrate, workflow-parity contracts, and authoring-to-graph reload proof implemented; built-in nodes, visual execution, masks, transitions, text, tracking, OFX, timeline attachment, and engine integration absent |
 | `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: canonical command state, registry, capability introspection, CPU-frame GPU upload, color metadata branching, complete proxy or optimized-media packet generation, transparent proxy resolution, predictive playback cache population, and atomic timeline plus clip-mix edits implemented |
 | `superi-gpu` | [module map](modules/superi-gpu.md) | `open/crates/superi-gpu` | wgpu device, resource, upload, conversion, pass, submission, presentation, and recovery substrate | Implemented substrate with explicit application-level integration gaps |
-| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, typed parameter links and expressions, derived missing-node resolution, dependency and semantic edit invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, graph and revision cache lineage, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, typed driver state, bounded expressions, parameter-cycle protection, fail-closed missing-node placeholders, exact region and edit invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic graph cache inspection, final and intermediate retained-work pruning, run-local timing, and role-neutral editable-to-runtime evaluation implemented; effects now consumes the authoring and compiler seams, while executable built-in catalogs, plugin binding, project persistence, cache resource policy, and rendered integration remain absent |
+| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, reusable scalar expressions, typed parameter links and expressions, derived missing-node resolution, dependency and semantic edit invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, graph and revision cache lineage, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, shared bounded scalar programs, typed driver state, parameter-cycle protection, fail-closed missing-node placeholders, exact region and edit invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic graph cache inspection, final and intermediate retained-work pruning, run-local timing, and role-neutral editable-to-runtime evaluation implemented; effects consumes authoring, compiler, scalar-expression, and payload-persistence seams, while executable built-in catalogs, plugin binding, project persistence, cache resource policy, and rendered integration remain absent |
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; production source registration and muxing absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
@@ -125,11 +125,14 @@ object identifiers and core semantic contracts for schema definitions, and it ow
 deterministic DAG storage, opaque typed bindings, deterministic request-scoped scheduling and
 evaluation, typed parameter drivers and bounded expressions, derived exact-schema availability, and
 structured validation errors. Effects now implements the first higher-tier typed authoring catalog,
-editable instance builder, and exact-schema compiler adapter over those graph surfaces. Most other
-catalog relationships still exist only in manifests or have no production graph call site. Timeline
-and cache consume the graph-owned color metadata wrapper. Timeline compilation also consumes
-schemas, editable storage, atomic mutations, and immutable snapshots, but no timeline path consumes
-graph evaluation, documents, the effects catalog, or a production runtime factory.
+editable instance builder, and exact-schema compiler adapter over those graph surfaces. It also
+reuses the bounded scalar program for time expressions and proves its strict animation payload
+through an authoring-SDK node and generic graph persistence without adding effects types to graph.
+Most other catalog relationships still exist only in manifests or have no production graph call
+site. Timeline and cache consume the graph-owned color metadata wrapper. Timeline compilation also
+consumes schemas, editable storage, atomic mutations, and immutable snapshots, but no timeline path
+consumes graph evaluation, documents, the effects catalog, animation curves, or a production runtime
+factory.
 
 Codec implementations depend down on the codec-neutral `superi-media-io` interface. Media I/O does
 not depend on a concrete codec, engine, or registry assembler. The engine owns the current assembly
@@ -254,15 +257,15 @@ The independent audio processing graph is implemented below engine orchestration
    discrete matrix. Direct graph edges remain exact-layout only, and consecutive block timing is
    unchanged through the explicit converter node.
 6. `ClipMixState` publishes complete controls and identity changes transactionally. Preparation
-  resolves snapshot-wide solo and precomputes semantic routing and phase coefficients before the
-  callback applies gain, exact linear fades, equal-power stereo pan, mute, solo, and phase.
+   resolves snapshot-wide solo and precomputes semantic routing and phase coefficients before the
+   callback applies gain, exact linear fades, equal-power stereo pan, mute, solo, and phase.
 7. Public crate integration tests use unity `SummingBus` processors to prove dry submix, parallel
    auxiliary send and return, stable identity-ordered summing, and one terminal master over
    consecutive 48 kHz stereo blocks.
-7. `superi-engine::audio_mix` consumes real timeline edit outcomes against cloned project and mix
-  state. It inherits right-fragment intent, transfers replacements, removes deleted identities,
-  and publishes both revisions only after both validate.
-8. Public audio and engine contracts consume exact consecutive blocks and a real razor edit. No
+8. `superi-engine::audio_mix` consumes real timeline edit outcomes against cloned project and mix
+   state. It inherits right-fragment intent, transfers replacements, removes deleted identities,
+   and publishes both revisions only after both validate.
+9. Public audio and engine contracts consume exact consecutive blocks and a real razor edit. No
    decoder, resampler, meter, plugin host, or engine playback owner feeds the complete routing path.
 
 Generic graph storage is implemented independently of that reference path:
@@ -322,6 +325,25 @@ evaluator:
    are real consumers. Effects instantiates ordinary typed nodes and applies normal parameter
    mutations in two role-labeled graphs. Engine, API, CLI, project, and product runtime paths do not
    yet import this effect transaction path, so no runtime stage label changes.
+
+Editable property animation now composes with that neutral state boundary:
+
+1. `superi-effects` authors one checked `AnimationCurve` over core-owned exact time. Fixed and
+   roving keys retain inspectable timing intent beside outgoing linear, cubic, or hold interpolation,
+   cubic Bezier easing, independent value tangents, and optional bounded expression source.
+2. Curve construction derives distinct integer-tick roving times between fixed anchors. Exact
+   evaluation clamps endpoints, preserves exact key values, interpolates the active segment, and
+   then applies a shared scalar expression over only `time` and base `value`.
+3. Immutable insert, replace, remove, expression, and uniform retime operations reconstruct checked
+   authored state. Retime requires exact fixed-key mappings, recomputes roving positions, and
+   inversely rescales per-second tangents.
+4. The strict revisioned curve wire serializes authored state, not derived roving times, and routes
+   reload through public validation. A real integration test declares the curve as an animatable
+   effect parameter, instantiates the effect-authored `EditableNode`, serializes and reloads its
+   graph, and proves canonical bytes plus identical samples.
+5. This is a substantive editable artifact and graph persistence consumer, not a production effect
+   node, spatial path, UI, timeline evaluator, engine playback path, project document, or rendered
+   output.
 
 Versioned graph documents preserve that same editable state without claiming project persistence:
 
@@ -591,7 +613,10 @@ No implemented engine path sends `UploadedVideoFrame` into graph evaluation, pix
 cache storage, playback, display, or encode. Official graph identifiers, schema registration, immutable
 discovery, generic graph topology storage, typed input and output bindings, and schema-level
 connection compatibility, a schema-bound editable graph, atomic mutation, and a caller-owned lazy
-evaluator plus snapshot-owned typed parameter links and bounded expressions exist. A role-neutral
+evaluator plus snapshot-owned typed parameter links and bounded expressions exist. Effects also
+owns an exact editable animation curve that reuses the bounded scalar language and survives generic
+graph parameter serialization through an animatable authoring definition, but it is not connected
+to a production runtime node. A role-neutral
 evaluation snapshot compiles editable instances into caller-owned evaluator payloads without
 changing topology, but no production catalog implements that seam or connects it to a production
 schema or GPU value. Color input, output, LUT, and rule transforms remain CPU implementations and
@@ -1016,11 +1041,12 @@ encodes and muxes output, persists a project, and drives the flow through the pu
 
 Entire crate skeletons are `superi-ai` and `superi-project`. Their manifests establish intended
 dependency direction, but their public modules expose no substantive types or operations.
-`superi-effects` now has a substantive graph-native authoring SDK and public contract while all
-concrete visual feature modules remain skeletons. `superi-audio` now has a substantive independent
-processing graph, typed bus routing, sample-accurate scheduler, production device output, clip-mix
-processor, and prepared sample-rate converter, while metering, hosting, decoded-sample binding, and
-complete engine composition remain absent.
+`superi-effects` now has a substantive graph-native authoring SDK and exact keyframe animation
+module, while built-in visual nodes, masks, transitions, text, tracking, OFX, production runtime
+factories, and execution remain placeholders or absent. `superi-audio` now has a substantive
+independent processing graph, typed bus routing, sample-accurate scheduler, production device output,
+clip-mix processor, and prepared sample-rate converter, while metering, hosting, decoded-sample
+binding, and complete engine composition remain absent.
 `superi-cache` now has substantive composite identity, budgeted memory retention, hierarchical
 memory policy, priority-aware LRU eviction, precise edit invalidation, persistent storage, color
 metadata, replaceable proxy or optimized-media publication, deterministic inspection and clearing,
@@ -1046,10 +1072,11 @@ Partial modules contain these explicit placeholder areas:
   lifecycle, nodes, plugins, resources, and validation; playback remains partial beyond prefetch.
   Clip-mix edit orchestration is implemented separately.
 - `superi-effects`: built-in visual definitions and runtime factories, image and GPU execution,
-  keyframes, reusable control drivers, masks, roto, transitions, text, tracking, OFX hosting,
-  serialization, production timeline attachment, engine orchestration, and rendered consumers beyond
-  its typed inspectable definitions, editable graph instantiation, deterministic catalog snapshots,
-  and exact-schema compiler adapter.
+  spatial motion paths, reusable rigging and control drivers beyond bounded time expressions, masks,
+  roto, transitions, text, tracking, OFX hosting, production timeline attachment, engine
+  orchestration, and rendered consumers beyond its typed inspectable definitions, editable graph
+  instantiation, deterministic catalog snapshots, exact-schema compiler adapter, and strict exact
+  keyframe animation payload.
 - `superi-graph`: invalidation and ROI render orchestration, outer job dispatch, project persistence,
   undo ownership, engine coordination, cache invalidation invocation and resource policy,
   executable built-in node catalogs, and rendered runtime consumers beyond its implemented

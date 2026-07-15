@@ -2,7 +2,7 @@
 module_id: superi-graph
 source_paths:
   - open/crates/superi-graph
-source_hash: d584dcfd61a681cc12ba5d7db3592110a5fbf8bf7fbb11d2b3b0e0c05606f218
+source_hash: 421dbdb1ca7440b71c8fd930d00f88256e6514a9919e2f872a93f6248867981d
 source_files: 30
 mapped_at_commit: working-tree
 ---
@@ -18,7 +18,8 @@ validation, schema-level connection compatibility, editable node instances, runt
 state, atomic revisioned mutation transactions, exact dirty-region algebra, deterministic
 dependency invalidation planning, snapshot-bound region-of-interest propagation, exact
 requested-versus-dirty work intersection, lazy request-scoped evaluation, deterministic work
-scheduling, typed parameter links, bounded pure expressions, parameter dependency-cycle
+scheduling, reusable bounded scalar expression programs, typed parameter links, graph-bound pure
+expressions, parameter dependency-cycle
 protection, deterministic parameter evaluation, and derived missing-node resolution against an
 immutable schema registry are implemented. Deterministic pre-execution node introspection,
 policy-scoped cache keys, actionable non-cacheable decisions, run-local evaluator timing, and a
@@ -72,10 +73,11 @@ The module owns 30 text files:
   with stable graph and optional published-revision lineage,
   the `EvaluationValueCache<V>` adapter, final-frame short circuiting, intermediate-node dependency
   pruning, cacheable insertion, and structured failure context.
-- `open/crates/superi-graph/src/expr.rs`: Owns graph-local parameter addresses, exact typed
-  references, direct and expression drivers, bounded ASCII expression compilation, editable source
-  plus checked postfix instructions, finite deterministic arithmetic, and the domain-owned payload
-  conversion seam.
+- `open/crates/superi-graph/src/expr.rs`: Owns the reusable `ScalarExpression` bounded ASCII program,
+  graph-local parameter addresses and exact typed references, direct and expression drivers,
+  editable source plus checked postfix instructions, finite deterministic arithmetic, and the
+  domain-owned payload conversion seam. The scalar layer accepts an explicit variable allowlist;
+  `ParameterExpression` adds complete graph binding validation without duplicating the parser.
 - `open/crates/superi-graph/src/headless.rs`: Owns the caller-supplied runtime node compiler seam
   and immutable `GraphEvaluationSnapshot<T, N>`. Compilation retains the exact editable snapshot,
   exposes that full snapshot to every node compilation so authored parameter drivers remain
@@ -134,11 +136,12 @@ The module owns 30 text files:
   and exact-region request identity, at-most-once request-local work, canonical dependency order,
   deterministic ready batches, distinct-edge input meaning, exact invalidated request clipping,
   temporal requests, caller parity, and structured evaluator failures.
-- `open/crates/superi-graph/tests/expression_contract.rs`: Proves checked inspectable expression
-  source, canonical instructions and variables, language bounds, finite arithmetic, typed links and
-  expressions, deterministic transitive results, driver replacement and clearing, immutable
-  snapshots, cycle and dependency rejection, explicit node-removal cleanup, transaction rollback,
-  and editor-script-headless parameter parity.
+- `open/crates/superi-graph/tests/expression_contract.rs`: Proves the reusable scalar language
+  independently of graph bindings, checked inspectable expression source, canonical instructions
+  and variables, language bounds, finite arithmetic, typed links and expressions, deterministic
+  transitive results, driver replacement and clearing, immutable snapshots, cycle and dependency
+  rejection, explicit node-removal cleanup, transaction rollback, and editor-script-headless
+  parameter parity.
 - `open/crates/superi-graph/tests/headless_contract.rs`: Proves one `Send + Sync` role-neutral
   evaluation snapshot, snapshot-owned linked parameter compilation, exact invalidated lazy work,
   skipped unused failure branches, equal editor, script, and headless schedules, inspections,
@@ -320,10 +323,13 @@ use a schema identity or a separate payload without coupling the DAG algorithm t
   `ParameterReference` adds the exact source `ValueTypeId` expected by the author.
 - `ParameterDriver` stores either one lossless typed direct link or one `ParameterExpression`, and
   exposes dependencies in canonical parameter-address and type order.
-- `ParameterExpression::compile` accepts editable ASCII source and explicit named typed bindings.
-  Its bounded pure language supports finite decimal constants, parentheses, unary negation, and
-  addition, subtraction, multiplication, and division, with no I/O, mutation, functions, loops,
-  recursion, or host script escape.
+- `ScalarExpression::compile` accepts editable ASCII source plus an explicit allowed-variable set.
+  It retains only referenced variables in canonical order and exposes checked postfix instructions
+  and resolver-based finite evaluation for higher domain owners that do not need graph addresses.
+- `ParameterExpression::compile` adds explicit named typed graph bindings around that scalar
+  program. Its bounded pure language supports finite decimal constants, parentheses, unary
+  negation, and addition, subtraction, multiplication, and division, with no I/O, mutation,
+  functions, loops, recursion, or host script escape.
 - A successful expression retains trimmed editable source, variables in canonical name order, and
   checked postfix `ExpressionInstruction` values. Missing, duplicate, and unused bindings, invalid
   syntax, excessive source, instruction count, or nesting, and nonfinite constants fail before
@@ -624,6 +630,12 @@ The parameter evaluation flow is:
    defensive terminal invariant check for corrupted future deserialization rather than permitting
    recursive execution.
 
+Higher domain owners may reuse the same checked scalar program without manufacturing graph
+addresses. They provide one explicit allowed-variable set at compile time and one resolver at
+evaluation time. `superi-effects::keyframe::TimeExpression` is the first real consumer, permitting
+only `time` and `value`; this preserves the downward effects-to-graph dependency and does not add an
+effects concept to the graph crate.
+
 The graph document flow is:
 
 1. A caller snapshots one checked `EditableGraph<T>` and serializes its complete definition and
@@ -728,6 +740,10 @@ graph evaluation or runtime integration.
   render coordinators and `superi-concurrency`.
 - Direct manifest consumers are `superi-ai`, `superi-cache`, `superi-color`, `superi-effects`,
   `superi-timeline`, `superi-project`, and `superi-engine`.
+- Effects consumes `ScalarExpression` for bounded animation time expressions and stores its strict
+  curve payload through an animatable authoring definition in generic editable graph state for
+  reload proof. Graph remains unaware of effect presentation, curve types, interpolation,
+  keyframes, and time-expression variable meaning.
 - Cache consumes `EvaluationValueCache`, `EvaluationCacheEntryKind`, `EvaluationCacheIdentity`,
   `EvaluationCacheKey`, `GraphEditInvalidation`, and `GraphColorMetadata`; its scoped adapter
   composes graph lineage and work time with outer result identity before concrete retention, applies
@@ -945,12 +961,13 @@ topological order separation, stale revision handling, immutable old snapshots, 
 script, and headless sharing, equivalent deterministic state, cycle safety, and full rollback after
 failures in the middle of a candidate batch.
 
-Eight expression tests prove editable source and checked postfix inspection, canonical named
-variables, syntax and resource bounds, duplicate, missing, and unused binding rejection, finite
-arithmetic, direct links, transitive expressions, exact driver typing, deterministic dependency
-completion, replacement and clearing, immutable old snapshots, missing references, direct and
-multi-hop cycle rejection, full candidate rollback, explicit driver cleanup before node removal,
-lossless versioned document round trips, and equal editor-script-headless parameter results.
+Nine expression tests prove the shared allowed-variable scalar program, editable source and checked
+postfix inspection, canonical named variables, syntax and resource bounds, duplicate, missing, and
+unused binding rejection, finite arithmetic, direct links, transitive expressions, exact driver
+typing, deterministic dependency completion, replacement and clearing, immutable old snapshots,
+missing references, direct and multi-hop cycle rejection, full candidate rollback, explicit driver
+cleanup before node removal, lossless versioned document round trips, and equal
+editor-script-headless parameter results.
 
 Nine invalidation tests prove exact dirty-region union decomposition, clean-gap preservation,
 full-frame subsumption, empty-region handling, requested-work clipping, stable topological
@@ -1053,10 +1070,10 @@ evaluation result until exact schemas return. Exact schemas then enable the shar
 headless evaluation snapshot without a graph rewrite. The crate cannot store a project atomically,
 own concrete cached values, persist cache data, bind
 plugin implementations, or render production values. Timeline compilation and memory cache
-retention are real downstream consumers. Effects is now a real authoring catalog consumer of
-schema, registry, node, mutation, immutable snapshot, and compiler surfaces, but no production
-catalog consumes complete invalidation, ROI, serialization, scheduling, expression, diagnostics,
-evaluation, or missing-node behavior to render a visual value.
+retention are real downstream consumers. Effects is now a real authoring and animation consumer of
+schema, registry, node, mutation, immutable snapshot, compiler, scalar-expression, and generic
+serialization surfaces, but no production catalog consumes complete invalidation, ROI, scheduling,
+diagnostics, evaluation, or missing-node behavior to render a visual value.
 
 The latest-version rule deterministically selects the lexically highest build-metadata variant when
 SemVer precedence ties. Consumers that require one deployment-specific build must request its exact
@@ -1071,11 +1088,13 @@ creating competing topology, identity, schema, validation, revision, or caller-s
 systems.
 
 The expression language is intentionally a bounded numeric foundation rather than a general script
-runtime. It supports explicit typed parameter variables and basic finite arithmetic only. Node
-catalogs must implement `ExpressionParameterValue` for their actual payload representation, and
-later keyframing or rigging work must extend this same authored driver state rather than storing
-editor-only formulas. Persistence must serialize editable source, exact typed bindings, and checked
-meaning or deterministically recompile and validate the source during migration.
+runtime. Its reusable scalar layer supports an explicit variable vocabulary and basic finite
+arithmetic only. Graph parameter expressions add exact typed bindings, while effects time
+expressions prove that higher domains can reuse the program without inventing graph identities.
+Node catalogs must implement `ExpressionParameterValue` for their actual graph payload
+representation, and later rigging work must extend the same authored driver state rather than
+storing editor-only formulas. Persistence must serialize editable source, exact typed bindings when
+present, and checked meaning or deterministically recompile and validate source during migration.
 
 Public request-local value and inspection lookup remains linear and bounded by reached work.
 Planning and execution indexes use `BTreeMap` keys whose total order matches endpoint,
