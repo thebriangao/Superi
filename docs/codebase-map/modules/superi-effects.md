@@ -2,14 +2,15 @@
 module_id: superi-effects
 source_paths:
   - open/crates/superi-effects
-source_hash: 45f4db66d49319466b514275eb626bd3b0896e0c27b0bea5d00cc350a3d15756
-source_files: 31
+source_hash: 919b9821fd01e046bef9db05adbebc1b09b67296a505c9fb287b7ae9b179d7ed
+source_files: 33
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
-`superi-effects` owns the higher-tier open visual effect authoring, animation, reusable control,
+`superi-effects` owns the higher-tier open visual effect authoring, reusable presets, explicit schema
+migration, animation, reusable control,
 visual and spatial composition, vector shape, mask, rotoscoping, motion tracking, text, transition, built-in
 operation, and bounded reference-evaluation layer above the generic graph. It provides inspectable typed definitions,
 ordinary editable graph-node instantiation, deterministic discovery, exact-schema runtime factory
@@ -59,10 +60,10 @@ absent or staged in their owning modules.
 
 - `open/crates/superi-effects/Cargo.toml`: Declares approved downward dependencies on
   `superi-core`, `superi-gpu`, `superi-image`, and `superi-graph`. It uses workspace Serde for the
-  animation, composition, spatial, vector shape, mask, rotoscope, tracking, and text wires, `half`
-  for checked binary16 reference
+  animation, composition, spatial, vector shape, mask, rotoscope, tracking, text, and preset wires,
+  runtime JSON and SHA-256 for strict preset documents, and `half` for checked binary16 reference
   conversion, Swash and pinned Skrifa for offline OpenType shaping, Unicode Bidi and Unicode
-  Linebreak for layout, and JSON only in tests.
+  Linebreak for layout.
 - `open/crates/superi-effects/src/authoring.rs`: Implements presentation metadata, typed effect
   definitions, graph-native instance construction, atomic generic catalog snapshots, classified
   validation, runtime factories, the shared presentation-text validator, and the graph
@@ -84,7 +85,7 @@ absent or staged in their owning modules.
   value tangents, fixed and roving timing, linear, cubic, and hold interpolation, cubic Bezier
   easing, bounded time expressions, immutable curve editing, exact uniform retiming, deterministic
   evaluation, and the revisioned standalone wire.
-- `open/crates/superi-effects/src/lib.rs`: Documents the implemented authoring, animation,
+- `open/crates/superi-effects/src/lib.rs`: Documents the implemented authoring, preset, animation,
   composition, spatial, control, vector shape, mask, rotoscope, tracking, text, transition, and
   OpenFX foundations and publicly exports them with the built-in catalog and reference evaluator.
 - `open/crates/superi-effects/src/mask.rs`: Implements animated closed cubic mask paths, fill rules,
@@ -95,6 +96,10 @@ absent or staged in their owning modules.
   graph-native clip and finite parameter projection, discovered and active catalogs, explicit-time
   timeline projection before graph expression evaluation, bounded opaque image resources, explicit
   permission grants, instance state, structured adapter failures, restart, and quarantine.
+- `open/crates/superi-effects/src/preset.rs`: Implements complete immutable effect presets,
+  graph-native fresh instance creation, deterministic integrity-protected current documents,
+  revision-zero document migration, and explicit transactional schema-migration chains while
+  leaving plugin availability with the graph resolver.
 - `open/crates/superi-effects/src/reference.rs`: Implements immutable effect and transition state,
   conservative ROI mapping, canonical image and shared transition-window validation, bounded
   binary16 and binary32 CPU pixel operations, editable-snapshot runtime compilation, graph
@@ -162,6 +167,10 @@ absent or staged in their owning modules.
   permission denial, discovered versus active catalogs, timeline projection before graph
   expressions, bounded clip access, canonical graph reload, retained missing-node state, structured
   worker failure, panic containment, recovery, and repeated-failure quarantine.
+- `open/crates/superi-effects/tests/preset_contract.rs`: Proves complete reusable preset capture,
+  independent ordinary graph instances, animatable editing, deterministic current and legacy
+  documents, corruption and future-state rejection, explicit checked schema migrations, and exact
+  missing-plugin placeholder editing, resave, and recovery through the public graph resolver.
 - `open/crates/superi-effects/tests/reference_contract.rs`: Exercises real pixels for every
   operation category, binary16 and binary32 retention, extended RGB, metadata, premultiplied
   algebra, ROI, monotonic distortion, unsupported image meaning, invalid state, and final plus
@@ -197,7 +206,7 @@ absent or staged in their owning modules.
 ## Public surface
 
 The library exports `authoring`, `catalog`, `composition`, `control`, `keyframe`, `mask`, `ofx`,
-`reference`, `rotoscope`, `shape`, `spatial`, `text`, `tracking`, and `transition`.
+`preset`, `reference`, `rotoscope`, `shape`, `spatial`, `text`, `tracking`, and `transition`.
 
 `authoring` exposes the workflow-neutral authoring foundation:
 
@@ -314,6 +323,22 @@ The library exports `authoring`, `catalog`, `composition`, `control`, `keyframe`
   edits.
 - `ANIMATION_CURVE_SCHEMA_REVISION` identifies the strict standalone wire. Deserialization denies
   unknown fields, recompiles expressions, and reconstructs through the public checked boundary.
+
+`preset` exposes reusable complete effect meaning without taking graph or project ownership:
+
+- `EffectPreset<T>` retains one bounded user-facing label, the complete immutable `NodeSchema`, and
+  exactly one typed literal for every declared parameter in canonical schema-local order. Capture
+  excludes graph-owned instance identities, topology, and parameter drivers.
+- `EffectPreset::instantiate` combines that saved schema and literal state with fresh caller-owned
+  `EffectInstanceBindings` and returns an ordinary checked `EditableNode<T>` without a catalog or
+  plugin lookup.
+- `serialize_effect_preset`, `deserialize_effect_preset`, `EffectPresetLoad`, and
+  `EFFECT_PRESET_DOCUMENT_FORMAT_REVISION` define deterministic bounded JSON with a canonical
+  payload checksum, strict current revision, revision-zero migration, checked schema
+  reconstruction, and canonical upgraded bytes.
+- `EffectPresetMigrations<T>` registers one exact strictly forward same-family successor for each
+  source schema. `migrate_to` applies only explicit bounded chains, validates every complete target
+  parameter set before publication, and leaves the source preset immutable on every failure.
 
 `mask` exposes the following implemented authoring and composition contracts:
 
@@ -521,6 +546,25 @@ The OpenFX flow reuses that graph authority behind a native isolation seam:
 6. An adapter error or panic marks all worker instances failed and records action, category,
    recovery, and diagnostic context. Explicit restart retains the consecutive count; the configured
    threshold quarantines repeated failures until the user acknowledges and restarts the worker.
+
+The reusable preset and recovery flow is:
+
+1. `EffectPreset::capture` copies one ordinary editable node's complete schema and every schema-local
+   literal value while intentionally omitting instance IDs, graph topology, and parameter drivers.
+2. Serialization canonicalizes the complete schema and typed values, binds them to the stable
+   primitive revision, and protects the payload with SHA-256. Loading bounds the document before
+   allocation, rejects unknown or future state, verifies current integrity, migrates revision zero,
+   and reconstructs through graph-owned checked schema and value constructors.
+3. A caller supplies fresh identities for each use. Instantiation creates an ordinary
+   `EditableNode<T>`, so timeline-role and node-graph-role graphs edit, animate, link, serialize, and
+   inspect the same canonical state without a preset-only runtime branch.
+4. Schema upgrades occur only through a caller-registered exact forward chain. Each transform must
+   return the complete target parameter set, and every intermediate preset is fully validated before
+   the next step can observe it.
+5. Plugin availability remains derived by `superi_graph::missing::resolve_graph` from the saved
+   schema and one immutable registry snapshot. Unregistered or incompatible implementations expose
+   typed placeholders while the original graph and preset bytes remain editable and resavable; an
+   exact restored schema makes that same authored graph evaluable again.
 
 The animation flow is:
 
@@ -765,16 +809,17 @@ The vector shape authoring flow is:
 - `superi-graph` supplies schemas, registries, neutral `GraphValue<T>`, typed editable state,
   mutation, parameter evaluation and projected literal evaluation, typed parameter drivers,
   bounded scalar expressions, immutable runtime compilation, lazy evaluation, diagnostics, cache
-  identity, and generic graph persistence. Graph never depends on effects.
+  identity, generic graph persistence, and exact-schema missing-node resolution. Graph never depends
+  on effects.
 - `superi-image` supplies immutable image artifacts, metadata, exact crop and transform operations,
   sample representations, and finite limits. Tracking deliberately accepts explicit checked luma
   instead of inventing an implicit image color conversion or residency route.
 - `superi-gpu` is a declared production capability dependency. Current effects source uploads,
   owns, and evaluates no GPU resource.
 - Serde owns strict animation, visual-composition, spatial-composition, vector-shape, mask-stack,
-  rotoscope, tracking, and text
-  records. JSON and
-  the reviewed Tinos subset are test-only. `half` performs checked reference conversion to and from
+  rotoscope, tracking, text, and preset records. JSON and SHA-256 are runtime dependencies for the
+  deterministic integrity-protected preset document, while the reviewed Tinos subset is test-only.
+  `half` performs checked reference conversion to and from
   binary16. Swash 0.2.9 and Skrifa 0.31.1 parse and shape caller-resolved local font bytes; Unicode
   Bidi 0.3.18 and Unicode Linebreak 0.1.5 provide deterministic Unicode layout data without a host
   or network API.
@@ -807,6 +852,12 @@ The vector shape authoring flow is:
   graph `ValueTypeId`; unknown and duplicate authoring state is rejected with classified context.
 - Every instance identity belongs to the caller and is validated against every schema declaration.
   Defaults become ordinary editable parameter payloads, and runtime factories own no hidden state.
+- Presets retain complete exact schemas and exactly one type-matched literal for every declaration.
+  They never persist instance identities, graph topology, parameter drivers, catalog availability,
+  or plugin discovery state, and every reuse receives fresh caller-owned bindings.
+- Preset documents are bounded, strict, canonical, integrity-protected, and reconstructed through
+  checked owners. Schema migration is explicit, same-family, strictly forward, deterministic, and
+  transactional; no latest-version guess or partially validated parameter set may publish.
 - Discovery, definition, port, parameter, catalog, and schema iteration is deterministic. Batch
   registration is atomic, earlier snapshots remain immutable, and failures cannot publish partial
   state.
@@ -984,6 +1035,13 @@ prove exact scalar and vector sampling, linear, hold, and cubic behavior, easing
 allocation, bounded expressions, immutable editing, exact retiming, strict persistence, and generic
 graph reload.
 
+Four preset tests prove complete exact-schema capture, independent editable and animatable ordinary
+instances across timeline-role and node-graph-role graphs, deterministic current documents,
+revision-zero migration, canonical upgraded bytes, checksum, truncation, unknown-field, and future
+revision rejection, chained transactional schema migrations, immutable failure rollback, and real
+unregistered plus incompatible plugin placeholders that survive editing and canonical resave until
+the exact saved schema returns.
+
 Five catalog tests cover all eleven operations, full schema behavior, authoring metadata and control
 integration, caller-owned identities, typed defaults, atomic registration, ordinary graph
 publication, and invalid bindings. Five reference tests exercise every operation category through
@@ -1078,7 +1136,8 @@ graphs.
 
 ## Current status and risks
 
-The authoring SDK, exact keyframe animation, reusable graph-native control rigs, strict visual
+The authoring SDK, complete reusable effect presets, explicit transactional schema migration, exact
+keyframe animation, reusable graph-native control rigs, strict visual
 composition artifacts, same-composition parenting, reusable precompositions, explicit collapse
 boundaries, exact time remapping, strict spatial composition artifacts, editable 2D and 3D
 transforms, cameras, lights, depth ordering, exact motion sampling, editable vector shape documents, animated mask authoring and
@@ -1092,7 +1151,9 @@ and test-backed. The OpenFX 1.5.1 effect-side host, isolated adapter contract, g
 explicit-time sampling, permissions, lifecycle, structured failure, recovery, and quarantine are
 also substantive and test-backed. Strict curve, visual-composition, spatial-composition,
 vector-shape, mask-stack, rotoscope, tracking, and text
-payloads retain authored state across generic graph reload. The reference and text layout
+payloads retain authored state across generic graph reload. Preset documents retain complete saved
+schemas and literal parameter meaning through strict save, legacy upgrade, corruption rejection, and
+missing-plugin recovery. The reference and text layout
 implementations are scalar, allocation-bounded CPU proofs, not performance production render code,
 and vector shapes, masks, and text have no rasterizer or rendered consumer.
 
@@ -1122,8 +1183,11 @@ provider, engine scheduler, UI, viewport, cache, or GPU consumer exists.
 Reusable control presentation and rig definitions remain in-memory authoring descriptions, while
 their applied driver meaning is persisted by graph. Parent expressions are scalar only. Spatial
 matrix composition is planar and effects-local, with no material, shadow, volumetric, mesh, or GPU
-runtime contract. Runtime factories are exact-version bound but have no plugin discovery, GPU
-device, cache, or lifecycle integration.
+runtime contract. Presets exercise graph-derived unregistered and incompatible availability without
+persisting lifecycle state. The effect-side OpenFX host discovers validated descriptions and controls
+an isolated adapter lifecycle, while engine-owned native bundle discovery, worker transport, process
+supervision, and production factories remain absent. Runtime factories remain exact-version bound
+with no GPU device or cache integration.
 
 The CPU evaluator proves implementation semantics and graph integration but does not close a
 production import-to-render path. The `superi.render.gpu` requirement deliberately prevents it from
@@ -1148,6 +1212,10 @@ production effect attachment does not exist.
 ## Maintenance notes
 
 Preserve the one-way effects-to-graph dependency and keep authored values in ordinary graph state.
+Keep presets complete and schema-exact, allocate fresh instance identities on reuse, keep plugin
+availability derived rather than persisted, and require explicit checked forward migrations. Do not
+turn the preset document into a project container or let missing implementations erase saved schema,
+typed values, drivers, edges, or editable graph meaning.
 Keep animation property meaning with node schemas and exact time ownership in core. Preserve checked
 immutable editing, the authored-versus-derived timing split, bounded expressions, exact schema
 matching, atomic catalog publication, workflow-neutral instances, request-local literal sampling,

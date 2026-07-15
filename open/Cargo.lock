@@ -2963,6 +2963,7 @@ dependencies = [
  "half",
  "serde",
  "serde_json",
+ "sha2",
  "skrifa",
  "superi-core",
  "superi-gpu",

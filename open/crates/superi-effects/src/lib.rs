@@ -10,6 +10,9 @@
 //! remapping, and complete nested visual paths. The rotoscope module keeps exact authored corrections
 //! separate from revision-fenced propagation. The tracking module retains editable point, planar,
 //! object, and calibrated camera state with manual corrections and bounded CPU reference solvers.
+//! The preset module captures complete graph-native effect schemas and literal parameters, provides
+//! strict integrity-checked documents, and applies explicit transactional schema migrations while
+//! missing implementations remain ordinary graph placeholders.
 //! The shape module provides editable cubic vector paths and exact-time visual-operation sampling.
 //! The transition module provides reusable cross-dissolve and directional-wipe schemas, exact
 //! handle-to-progress timing, and graph-native parameterization.
@@ -32,6 +35,7 @@ pub mod control;
 pub mod keyframe;
 pub mod mask;
 pub mod ofx;
+pub mod preset;
 pub mod reference;
 pub mod rotoscope;
 pub mod shape;

@@ -567,16 +567,18 @@ The shared interactive and headless evaluation flow is:
    layered memory and disk adapters, and stages background inserts until cooperative completion.
    `superi-effects` now implements a higher-tier authoring catalog, exact-schema `NodeCompiler`
    adapter, strict animation, visual and spatial composition, vector shape, animated mask-stack,
-   rotoscope, motion-tracking, and text-layer payloads over this snapshot, plus versioned built-in
-   effect and transition definitions, exact transition timing, an isolated OpenFX host, and bounded
-   CPU reference factories. The OpenFX host uses projected
+   rotoscope, motion-tracking, text-layer payloads, complete reusable effect presets, and an isolated
+   OpenFX host over this snapshot, plus versioned built-in effect and transition definitions, exact
+   transition timing, and bounded CPU reference factories. Preset tests instantiate ordinary
+   editable nodes from complete saved schemas and exercise this module's canonical serialization and
+   missing-node resolver without adding preset state to graph. The OpenFX host uses projected
    parameter evaluation for explicit-time samples and exact registry snapshots for discovered versus
-   active plugin availability. Transition tests use the same snapshot for two semantic image
-   inputs, animatable parameters, diagnostics, cache identity, and old-revision isolation. Effects
-   supplies no production GPU runtime factory, spatial GPU renderer, vector, mask, or text
-   rasterizer, production tracking accelerator, native OpenFX transport, propagation solver,
-   timeline transition binder, or rendered application value. No current color, engine, API, CLI,
-   or GPU owner supplies the missing production runtime, so the
+   active plugin availability. Transition tests use the same snapshot for two semantic image inputs,
+   animatable parameters, diagnostics, cache identity, and old-revision isolation. Effects supplies
+   no production GPU runtime factory, spatial GPU renderer, vector, mask, or text rasterizer,
+   production tracking accelerator, native OpenFX transport, propagation solver, timeline transition
+   binder, or rendered application value. No current color, engine, API, CLI, or GPU owner supplies
+   the missing production runtime, so the
    canonical `graph.evaluate` stage remains an honest stub even though the generic interactive,
    playback, headless, and cache boundaries are explicit and test-backed. Engine playback now
    accepts an externally prepared snapshot and runs exact predicted frames through this cached path.
@@ -801,7 +803,8 @@ graph evaluation or runtime integration.
   `superi-timeline`, `superi-project`, and `superi-engine`.
 - Effects consumes `ScalarExpression` for bounded animation time and parent expressions, stores its
   strict curve, visual composition, spatial composition, vector shape document, animated mask-stack,
-  rotoscope, motion-tracking, and text-layer payloads through animatable authoring definitions,
+  rotoscope, motion-tracking, text-layer payloads, and complete reusable preset state through
+  animatable authoring definitions,
   compiles reusable controls including lossless complete-mask links into ordinary typed drivers, and
   uses `evaluate_parameter_with` to sample only literal curves before graph driver resolution.
   Its OpenFX host also projects explicit-time literals through that same evaluator, publishes scanned
@@ -809,7 +812,9 @@ graph evaluation or runtime integration.
   `resolve_graph` retains authored unavailable operations without a graph rewrite.
   It also declares transition nodes with ordinary typed image ports and animatable scalar or choice
   parameters, registers them through `NodeRegistry`, mutates them through `EditableGraph`, and
-  compiles them through `GraphEvaluationSnapshot`. Graph remains unaware of effect presentation,
+  compiles them through `GraphEvaluationSnapshot`. Preset instances use fresh graph-owned IDs and
+  retain exact schemas plus typed literals, while `resolve_graph` derives absent or incompatible
+  availability without changing the editable node or document. Graph remains unaware of effect presentation,
   control rigs, curve, composition, spatial layer, camera, light, depth, motion, vector shape, mask,
   rotoscope, tracking, and text types, interpolation,
   keyframes, path geometry, paints, strokes, repeaters, mask controls, boolean operations,
@@ -829,7 +834,7 @@ graph evaluation or runtime integration.
   nodes and values, instance bindings, immutable snapshots, bounded scalar expressions,
   `NodeCompiler`, parameter evaluation, diagnostics, and evaluator seams. It uses those neutral
   contracts for workflow-neutral authoring, exact keyframe, visual composition, spatial composition,
-  vector shape, mask-stack, rotoscope, motion-tracking, and text-layer
+  vector shape, mask-stack, rotoscope, motion-tracking, text-layer, and preset
   payload reload, a versioned built-in effect and transition catalog, and bounded reference pixels
   without reversing the dependency. The composition, spatial, shape, mask, and text contracts
   mutate, link, and reload
@@ -848,8 +853,9 @@ graph evaluation or runtime integration.
   diagnostics, ordinary and cached evaluation, shared evaluation-snapshot, missing-node, and
   neutral value APIs. The effects authoring contract composes schema discovery, editable instances,
   graph mutation, and evaluation-snapshot compilation into one higher-tier SDK.
-  Its animation, composition, spatial, shape, mask, rotoscope, tracking, and text contracts are direct
-  consumers of generic parameter serialization and checked graph reload.
+  Its animation, composition, spatial, shape, mask, rotoscope, tracking, text, and preset contracts
+  are direct consumers of generic parameter serialization and checked graph reload. The preset
+  contract also consumes exact-schema missing-node resolution and recovery.
 
 ## Invariants and operational boundaries
 
@@ -1114,6 +1120,11 @@ continued checked editing, stable placeholder order and diagnostics, fail-closed
 same-identity registration, recovery when the exact saved schema returns, and identical editor,
 script, and headless state plus evaluation results through the shared evaluation snapshot.
 
+Four downstream effects preset tests now provide a second public consumer of these contracts. They
+capture complete schemas and typed literals, instantiate fresh ordinary graph nodes in independent
+workflow-role graphs, serialize and reload them canonically, edit and resave them while unregistered
+or incompatible, and recover the same authored meaning when the exact saved schema returns.
+
 Four neutral-value tests prove exact finite binary64 retention including signed zero, checked
 construction and deserialization, lossless serialization of every processing variant and an owned
 domain payload, bounded discrete choices, and scalar-only expression conversion without coercion.
@@ -1181,13 +1192,15 @@ retention are now real downstream consumers. Effects is a concrete downstream sc
 diagnostics, evaluator, immutable compiler, generic serialization, authoring, and animation consumer
 with strict visual composition, spatial composition, vector shape, mask, rotoscope, motion-tracking,
 and text payloads, inspectable glyph layout, ordinary transition nodes, isolated OpenFX definitions
-and lifecycle catalogs, and bounded reference pixels. Effects also consumes projected parameter evaluation
-and typed drivers for exact-time links, reusable controls, and parent expressions, including ordinary
-`GraphValue<T>` built-in state. Its OpenFX contract now consumes missing-node resolution for
-disabled, faulted, and quarantined plugins, but it does not yet connect native plugin transport,
-production spatial GPU execution, vector, mask, or text rasterization, glyph atlases, production
-tracking pyramids and GPU acceleration, propagation solvers, timeline tracking or transition
-attachment, invalidation, GPU execution, or production engine orchestration into a complete render path.
+and lifecycle catalogs, complete reusable preset instances, and bounded reference pixels. Effects
+also consumes canonical graph documents, exact-schema missing-node resolution, projected parameter
+evaluation, and typed drivers for exact-time links, reusable controls, and parent expressions,
+including ordinary `GraphValue<T>` built-in state. Its preset and OpenFX contracts consume
+missing-node resolution for absent, incompatible, disabled, faulted, and quarantined operations, but
+it does not yet connect native plugin transport, production spatial GPU execution, vector, mask, or
+text rasterization, glyph atlases, production tracking pyramids and GPU acceleration, propagation
+solvers, timeline tracking or transition attachment, invalidation orchestration, production plugin
+binding, GPU execution, or production engine orchestration into a complete render path.
 
 The latest-version rule deterministically selects the lexically highest build-metadata variant when
 SemVer precedence ties. Consumers that require one deployment-specific build must request its exact
@@ -1311,6 +1324,10 @@ shared degraded evaluation gate together. The effects OpenFX host now registers 
 schemas and derives active availability from plugin lifecycle. A future engine adapter may add
 explicitly supported historical schemas and implementation factories above this crate, but neither
 layer may teach the neutral resolver to guess compatibility or persist discovery state.
+
+Recheck the effects preset consumer whenever preset capture, schema migration, document recovery, or
+fresh instance binding changes. Presets must remain higher-tier users of ordinary editable nodes and
+derived availability, never another graph document, identity system, or persisted plugin-state owner.
 
 Update this map when mutation, invalidation, ROI, serialization, expressions, diagnostics, and
 evaluation integrate further, concrete retention or eviction behavior changes, or cache revision

@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 0c683e8eb852e0d70e41e5be49eedd840e3fbf32c9b5a82bdbd07e546e2c6f76
+source_hash: 47615b80116cc115591f318709bfb1aec6387f8bf27a339529b42edaa1687391
 source_files: 137
 mapped_at_commit: working-tree
 ---
@@ -25,7 +25,7 @@ a single checkpoint through mapping, planning, and execution, and routes multipl
 separate Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers
 but obeys an explicit positive user concurrency value. The file is ignored by Git and copied into
 managed worktrees through `.worktreeinclude`, so the mapping script does not include it in this
-module's 136-file inventory or source hash. It must still be reread independently before repository
+module's 137-file inventory or source hash. It must still be reread independently before repository
 work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
@@ -378,8 +378,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   directly consumes the already-resolved `serde`, `serde_json`, and `sha2` packages, while
   `superi-cache` directly consumes the same pinned `sha2` package and now records its reviewed
   internal dependency on `superi-concurrency` for bounded background rendering. `superi-effects`
-  directly consumes Serde for animation, mask, rotoscope, and text wires and records `serde_json`
-  only for strict persistence and graph-reload tests. Text layout adds exact Swash 0.2.9, Skrifa
+  directly consumes Serde for its strict authored wires and now directly consumes the existing
+  `serde_json` and `sha2` resolutions at runtime for canonical integrity-protected effect preset
+  documents. Text layout adds exact Swash 0.2.9, Skrifa
   0.31.1, Unicode Bidi 0.3.18, and Unicode Linebreak 0.1.5 runtime packages plus test-only Font Test
   Data 0.5.0. The locked Indexmap resolution is 2.11.4 so the declared Rust 1.80 compiler can parse
   and build the affected graph and GPU dependency path. Audio output adds exact CPAL
@@ -662,8 +663,10 @@ present for core and graph contracts. This changes the direct package edges reco
 `superi-timeline` but does not change crate-tier direction, introduce a network path, or transfer
 SQLite and autosave ownership away from `superi-project`.
 
-The effects animation, mask, rotoscope, and text wires reuse the same workspace Serde and JSON pins,
-while the built-in visual catalog reuses the workspace `half` pin for bounded binary16 reference
+The effects animation, mask, rotoscope, text, and preset wires reuse the same workspace Serde pin.
+Effect presets additionally reuse the workspace JSON and SHA-256 pins at runtime for strict
+canonical documents, legacy upgrade, and corruption detection, while the built-in visual catalog
+reuses the workspace `half` pin for bounded binary16 reference
 pixels. Text adds Swash and a direct exact Skrifa constraint for real OpenType shaping, Unicode Bidi
 and Unicode Linebreak for deterministic paragraph layout, and reviewed test-only font bytes. Every
 package is permissively licensed, caller font resolution remains offline, and the direct Skrifa and
@@ -810,6 +813,11 @@ runner and each future production subsystem consume the stable scenario state, s
 boundary, and stage instrumentation contract. `superi-cli` consumes the pinned, system-only
 `sysinfo` dependency for portable current-process resident-memory samples.
 
+The effects preset codec is the current direct consumer added by this lockfile change. It uses only
+already-resolved permissive serialization and hashing packages, remains offline, preserves the
+effects-to-graph dependency direction, and does not move atomic project storage or plugin hosting
+into the workspace layer.
+
 The documents deliberately point into other modules:
 
 - `superi-core` owns shared identifiers, time, geometry, errors, diagnostics, and serializable base
@@ -893,6 +901,11 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   semantics, timeline coexistence, research sources, and focused through full verification. It is
   evidence for a deterministic headless reference path, not production GPU, engine, viewport,
   playback, persistence, or export integration.
+
+- The focused effects preset contract verifies the runtime JSON and SHA-256 edges through canonical
+  current documents, legacy migration, integrity rejection, and exact graph reload. Crate-wide
+  effects and graph suites prove downstream compatibility; dependency and boundary gates remain the
+  repository proof for approved direction and offline behavior.
 
 - `.github/workflows/dependency-policy.yml` runs on pushes, pull requests, and manual dispatch. Its
   Ubuntu 24.04 job first runs `.github/scripts/check-dependency-policy.sh`, then checks approved
@@ -1015,10 +1028,12 @@ updated consistently. Fresh Cargo metadata expands the member globs to 24 packag
 lockfile includes a substantial
 GPU, image, codec, serialization, platform, and native-build dependency graph, and current codec,
 image, platform, and unsafe documents describe implemented contracts rather than empty placeholders.
-The effects crate now owns a substantive graph-native authoring SDK plus an exact animation curve
-and strict Serde wire. Its animation lockfile change records only direct use of already-resolved
-serialization packages, while built-in visual nodes, the remaining feature modules, and engine
-integration remain incomplete.
+The effects crate now owns a substantive graph-native authoring SDK, exact animation curves,
+complete reusable presets, explicit checked schema migration, and strict authored wires. Its preset
+lockfile change records direct runtime use of already-resolved JSON and SHA-256 packages for
+canonical integrity-protected documents, while atomic project persistence, production plugin
+binding, and engine integration remain incomplete. The effects-side isolated OpenFX contract is implemented, but
+native bundle discovery, worker transport, and production plugin binding remain outside that crate.
 The synchronized remote revision before this checkpoint is
 `38543db1006c164abad03d189817aa7174779bb8`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
@@ -1158,7 +1173,7 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`be7d756` when the map was refreshed. Its hash describes the exact 136 discovered source files,
+`75bea4e` when the map was refreshed. Its hash describes the exact 137 discovered source files,
 including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes

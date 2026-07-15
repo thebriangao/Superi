@@ -24,10 +24,10 @@ against raw source before changing code.
 | `superi-color` | [module map](modules/superi-color.md) | `open/crates/superi-color` | Versioned configuration, project working spaces, color math, CPU input and output transforms, GPU wide-gamut transforms, tone mapping, legal-range RGB encoding, LUTs, ICC discovery, and presentation profile guards | Substantial but partial: project-pinned configuration, CPU transforms, and managed GPU wide-gamut transforms are implemented; ICC evaluation and engine integration remain absent |
 | `superi-concurrency` | [module map](modules/superi-concurrency.md) | `open/crates/superi-concurrency` | Execution domains, jobs, clocks, handoffs, shared snapshots, lifecycle, liveness, and derived-media selection | Substantial; audio enforces its domain, engine proxy resolution consumes selection, and engine playback consumes domains, workers, priority, cancellation, progress, and nonblocking polling; broader composition and GPU submission remain incomplete |
 | `superi-core` | [module map](modules/superi-core.md) | `open/crates/superi-core` | Tier-zero values, validation, exact time, identifiers, errors, diagnostics, and stable serialization | Implemented and broadly consumed; crate-level skeleton wording is stale |
-| `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Graph-native visual definitions, editable defaults and instances, exact editable keyframe animation, reusable typed control rigs, strict visual composition artifacts with layer parenting, reusable precompositions, collapse boundaries and time remapping, editable 2D and 3D spatial layers with cameras, lights, depth ordering and exact motion sampling, editable cubic vector shapes with fills, strokes, gradients, repeaters, and path animation, animated cubic mask paths with ordered boolean alpha composition, editable rotoscope artifacts and propagation hooks, editable point, planar, object, and calibrated camera tracking with manual corrections and bounded CPU reference solvers, styled text authoring, offline OpenType shaping, Unicode paragraph layout, versioned built-in visual nodes and transitions, exact handle-to-progress timing, isolated OpenFX effect hosting, and bounded CPU reference evaluation | Substantive but partial: typed authoring, animation, graph-native links and parent controls, strict visual and spatial composition state, local and nested DAG validation, exact time maps, reusable collapsed or isolated precompositions, complete resolved layer paths, binary64 transform composition, perspective and orthographic cameras, ambient, directional and point lights, stable depth order, exact shutter sampling, vector shape documents, mask controls, rotoscope spans and corrections, revision-fenced propagation, stable tracking selections, observations, transformed regions, camera poses, revision-fenced tracking results, typography, paragraph controls, glyph layout, transform, crop, opacity, blend, composite, blur, sharpen, distortion, keying, invert, grade, cross dissolve, directional wipe, isolated OFX adapter validation, graph projection, permissions, exact-time sampling, lifecycle, recovery, quarantine, workflow parity, strict reload, and real pixel proof are implemented; production spatial GPU execution, engine, UI, vector, mask, and text rasterization, glyph atlases, propagation solvers, pyramid and GPU tracking acceleration, production tracking attachment, native OFX discovery and worker transport, production transition attachment, and complete timeline attachment remain absent |
+| `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Graph-native visual definitions, editable defaults and instances, complete reusable effect presets with explicit schema migration and missing-plugin recovery, exact editable keyframe animation, reusable typed control rigs, strict visual composition artifacts with layer parenting, reusable precompositions, collapse boundaries and time remapping, editable 2D and 3D spatial layers with cameras, lights, depth ordering and exact motion sampling, editable cubic vector shapes with fills, strokes, gradients, repeaters, and path animation, animated cubic mask paths with ordered boolean alpha composition, editable rotoscope artifacts and propagation hooks, editable point, planar, object, and calibrated camera tracking with manual corrections and bounded CPU reference solvers, styled text authoring, offline OpenType shaping, Unicode paragraph layout, versioned built-in visual nodes and transitions, exact handle-to-progress timing, isolated OpenFX effect hosting, and bounded CPU reference evaluation | Substantive but partial: typed authoring, presets, deterministic integrity-protected preset documents, revision-zero document migration, explicit transactional schema migration, graph-native missing-plugin placeholder editing and recovery, animation, graph-native links and parent controls, strict visual and spatial composition state, local and nested DAG validation, exact time maps, reusable collapsed or isolated precompositions, complete resolved layer paths, binary64 transform composition, perspective and orthographic cameras, ambient, directional and point lights, stable depth order, exact shutter sampling, vector shape documents, mask controls, rotoscope spans and corrections, revision-fenced propagation, stable tracking selections, observations, transformed regions, camera poses, revision-fenced tracking results, typography, paragraph controls, glyph layout, transform, crop, opacity, blend, composite, blur, sharpen, distortion, keying, invert, grade, cross dissolve, directional wipe, isolated OFX adapter validation, graph projection, permissions, exact-time sampling, lifecycle, recovery, quarantine, workflow parity, strict reload, and real pixel proof are implemented; project persistence, production plugin binding, production spatial GPU execution, engine, UI, vector, mask, and text rasterization, glyph atlases, propagation solvers, pyramid and GPU tracking acceleration, production tracking attachment, native OFX discovery and worker transport, production transition attachment, and complete timeline attachment remain absent |
 | `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: canonical command state, registry, capability introspection, CPU-frame GPU upload, color metadata branching, complete proxy or optimized-media packet generation, transparent proxy resolution, predictive playback cache population, and atomic timeline plus clip-mix edits implemented; native plugin discovery, isolated OFX adapter transport, and worker supervision remain absent |
 | `superi-gpu` | [module map](modules/superi-gpu.md) | `open/crates/superi-gpu` | wgpu device, resource, upload, conversion, pass, submission, presentation, and recovery substrate | Implemented substrate with explicit application-level integration gaps |
-| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers and shared typed values, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, reusable scalar expressions, typed parameter links and expressions, caller-projected literal evaluation, derived missing-node resolution, dependency and semantic edit invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, graph and revision cache lineage, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, exact neutral domain and processing values, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, shared bounded scalar programs, typed driver state, parameter-cycle protection, literal-only projected evaluation, fail-closed missing-node placeholders, exact region and edit invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic graph cache inspection, final and intermediate retained-work pruning, run-local timing, and role-neutral editable-to-runtime evaluation implemented; effects consumes authoring, animation, compiler, expression, projected evaluation, drivers, diagnostics, evaluator, strict keyframe, composition, spatial composition, vector shape, mask, rotoscope, tracking, and text payload persistence seams, graph-native transition and OpenFX schemas, explicit-time OpenFX sampling, missing-node availability, and reference evaluation, while production engine catalog and plugin binding, project persistence, cache resource policy, and rendered integration remain absent |
+| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers and shared typed values, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, reusable scalar expressions, typed parameter links and expressions, caller-projected literal evaluation, derived missing-node resolution, dependency and semantic edit invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, graph and revision cache lineage, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, exact neutral domain and processing values, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, shared bounded scalar programs, typed driver state, parameter-cycle protection, literal-only projected evaluation, fail-closed missing-node placeholders, exact region and edit invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic graph cache inspection, final and intermediate retained-work pruning, run-local timing, and role-neutral editable-to-runtime evaluation implemented; effects consumes authoring, presets with fresh ordinary instances, animation, compiler, expression, projected evaluation, drivers, diagnostics, evaluator, strict keyframe, composition, spatial composition, vector shape, mask, rotoscope, tracking, text payload persistence, canonical documents, exact-schema missing-node recovery, graph-native transition and OpenFX schemas, explicit-time OpenFX sampling, missing-node availability, and reference evaluation, while production engine catalog and plugin binding, project persistence, cache resource policy, and rendered integration remain absent |
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; production source registration and muxing absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
@@ -128,7 +128,11 @@ structured validation errors. Graph also owns a catalog-neutral value payload th
 domain state beside finite processing values without naming an effect. Effects is the first
 higher-tier authoring, animation, concrete schema, expression, diagnostics, compiler, generic
 persistence, and reference-evaluation consumer above that boundary. Its strict keyframe payload and
-built-in visual definitions remain ordinary editable graph state. It also reuses the bounded scalar
+built-in visual definitions remain ordinary editable graph state. Effects presets retain one
+complete saved schema and every typed literal, instantiate fresh ordinary graph nodes, and use
+graph-derived missing availability plus canonical documents without adding preset or plugin state to
+graph. Explicit effects-owned schema migrations transform complete preset parameter sets through
+checked forward steps rather than changing graph's schema resolver. Effects also reuses the bounded scalar
 program for time and parent expressions, compiles reusable controls into ordinary typed drivers,
 and projects literal curves into exact-time samples through the graph-owned evaluator without adding
 effect types to graph. The visual composition, spatial composition, vector-shape, mask, rotoscope,
@@ -574,9 +578,12 @@ Missing plugin schemas now degrade that same editable state without creating a s
    exact schema for editing, while its active catalog publishes schemas only when the isolated
    plugin is Ready; disabled, faulted, and quarantined operations therefore use this unchanged
    missing-node path.
-6. A future engine adapter still owns native discovery, worker containment, bounded IPC, deadlines,
-   GPU-handle transport, version compatibility policy, and production compilation above the safe
-   effects-side `IsolatedOfxAdapter` contract.
+6. Public graph integration tests and the effects preset contract are also current consumers. Presets
+   instantiate and resave the unchanged editable state while implementations are absent or
+   incompatible, then recover when the exact saved schema returns.
+7. A future engine adapter still owns native discovery, worker containment, bounded IPC, deadlines,
+   GPU-handle transport, version compatibility policy, implementation factories, and production
+   compilation above the safe effects-side `IsolatedOfxAdapter` and node-neutral graph contracts.
 
 Deterministic graph scheduling and lazy evaluation are implemented over caller-owned DAG payloads
 with a bounded effects reference consumer but without a production engine catalog:
@@ -1045,6 +1052,12 @@ evaluator and bounded memory cache, then proves demand reuse, source-fingerprint
 unchanged recomputation after pressure. It does not claim a production editor, playback, engine,
 API, UI, decoder, or proxy consumer.
 
+The effects preset contract exercises the public effects and graph seams together. It proves
+complete exact-schema capture, fresh workflow-neutral instances, deterministic current and legacy
+documents, transactional explicit schema migration, and edit plus resave continuity through real
+unregistered and incompatible graph placeholders before exact-schema recovery. It does not claim a
+project container, atomic project save, autosave journal, plugin host, or production engine binder.
+
 Repository checkpoint execution also has a deterministic local selector at
 `.agents/skills/superi-execution/scripts/verify_checkpoint.py`. Given a recorded base revision, it
 collects committed, staged, unstaged, and untracked changes, validates changed Python and JSON,
@@ -1241,7 +1254,11 @@ resident-memory records, the observed-boundary maximum, and deterministic conten
 run-specific measurements and paths. Both hosted Rust build jobs now validate the fixture root and
 run the same portable eight-stage contract as a first-class development baseline. Independent
 expected data now exists, and native timeline compilation produces generic editable graph state,
-and effects provides typed catalog state plus real headless reference pixels. Engine graph
+and effects provides typed catalog state plus real headless reference pixels. Effects now also
+preserves reusable complete preset schemas, typed literals, explicit migrations, and editable
+missing-plugin placeholders through strict standalone documents and ordinary graph reload. Atomic
+project save, autosave, interruption
+selection, and recovery journals remain with the unimplemented project owner. Engine graph
 evaluation, GPU effect and transition execution, production timeline-to-transition binding,
 rendered comparison, color delivery, and muxing are not
 integrated. The new encoder path begins from caller-prepared frames and ends at elementary derived
@@ -1255,6 +1272,8 @@ encodes and muxes output, persists a project, and drives the flow through the pu
 Entire crate skeletons are `superi-ai` and `superi-project`. Their manifests establish intended
 dependency direction, but their public modules expose no substantive types or operations.
 `superi-effects` now has substantive graph-native authoring, exact keyframe animation, strict visual
+effect presets with complete schemas and typed literals, deterministic integrity-protected preset
+documents, explicit schema migration, missing-plugin editing and exact-schema recovery,
 composition artifacts with layer parenting, reusable precompositions, collapse boundaries, exact
 time remapping and complete resolved paths, strict editable 2D and 3D spatial layers with cameras,
 lights, stable depth ordering, exact motion sampling, graph reload, and bounded real pixels, editable cubic vector shapes with fills, strokes,
@@ -1302,14 +1321,17 @@ Partial modules contain these explicit placeholder areas:
   lifecycle, nodes, plugins, resources, and validation; playback remains partial beyond prefetch.
   Clip-mix edit orchestration is implemented separately.
 - `superi-effects`: production GPU node implementations, engine registration, playback, viewport,
-  export, project persistence, UI, production spatial transform, camera, light, and motion-blur
+  export, project persistence, autosave and recovery orchestration, production native plugin binding, UI,
+  production spatial transform, camera, light, and motion-blur
   execution, vector shape and mask rasterization, reusable rigging beyond bounded time and scalar parent
   expressions, persistent rig presentation, feather and expansion filtering, propagation solvers,
   production transition binding and GPU parity, text rasterization, glyph atlases, production
   tracking attachment plus pyramid and GPU acceleration, native OpenFX bundle discovery, isolated
-  worker IPC, and adapter implementation, beyond its implemented
-  safe OpenFX host contract, graph-native authoring, exact keyframe curves, versioned built-in
-  effect and transition schemas, exact transition timing, reusable control drivers, strict visual
+  worker IPC, and adapter implementation, beyond its implemented safe OpenFX host contract,
+  graph-native authoring, complete reusable presets, strict current
+  and legacy preset documents, explicit transactional schema migrations, graph-native missing-plugin
+  recovery, exact keyframe curves, versioned built-in effect and transition schemas, exact transition
+  timing, reusable control drivers, strict visual
   composition, strict spatial composition, vector shape, and animated mask-stack payloads, editable
   rotoscope artifacts and hooks, editable point, planar, object, and calibrated camera tracking artifacts with bounded CPU
   reference solvers, strict styled text, real shaping and paragraph layout, bounded CPU reference
@@ -1381,6 +1403,10 @@ For common concerns, begin at these owners:
   evaluation, pre-execution node introspection, graph and revision lineage plus retained-value
   adapter, run-local timing, and shared interactive and headless evaluation:
   `superi-graph`, with value identity, rational time, and pixel bounds owned by `superi-core`.
+- Visual definitions, complete reusable effect presets, explicit preset schema migration, editable
+  animation, controls, visual composition, tracking, text, transitions, and bounded reference
+  evaluation: `superi-effects`. Presets use graph-owned documents and derived missing-node
+  availability while project persistence and plugin hosting remain separate owners.
 - Complete reusable-result identity, budgeted final-frame and intermediate-node memory retention,
   exact total, project, and device admission, priority-aware LRU eviction, precise revision-safe
   graph edit invalidation, versioned bounded disk persistence with corruption recovery, cache color
