@@ -29,7 +29,8 @@ pub const MAX_LAYERS_PER_COMPOSITION: usize = 65_536;
 pub const MAX_TIME_REMAP_KEYFRAMES: usize = 16_384;
 
 /// Stable identity for one reusable visual composition.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
 pub struct CompositionId(u64);
 
 impl CompositionId {
@@ -53,7 +54,8 @@ impl fmt::Display for CompositionId {
 }
 
 /// Stable identity for one layer inside one composition.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
 pub struct CompositionLayerId(u64);
 
 impl CompositionLayerId {
@@ -957,6 +959,7 @@ pub enum ResolvedLayerKind {
 pub struct ResolvedLayerStep<'a, T> {
     composition_id: CompositionId,
     layer: &'a CompositionLayer<T>,
+    composition_time: RationalTime,
     source_time: RationalTime,
     parent_chain: Vec<CompositionLayerId>,
 }
@@ -966,6 +969,7 @@ impl<T> Clone for ResolvedLayerStep<'_, T> {
         Self {
             composition_id: self.composition_id,
             layer: self.layer,
+            composition_time: self.composition_time,
             source_time: self.source_time,
             parent_chain: self.parent_chain.clone(),
         }
@@ -983,6 +987,12 @@ impl<'a, T> ResolvedLayerStep<'a, T> {
     #[must_use]
     pub const fn layer(&self) -> &'a CompositionLayer<T> {
         self.layer
+    }
+
+    /// Returns the exact owning-composition coordinate used for layer-property sampling.
+    #[must_use]
+    pub const fn composition_time(&self) -> RationalTime {
+        self.composition_time
     }
 
     /// Returns the exact source coordinate mapped at this nesting step.
@@ -1212,6 +1222,7 @@ impl<T> CompositionArtifact<T> {
             path.push(ResolvedLayerStep {
                 composition_id: composition.id,
                 layer,
+                composition_time: time,
                 source_time: sample.source_time,
                 parent_chain: composition.parent_chain(layer.id)?,
             });

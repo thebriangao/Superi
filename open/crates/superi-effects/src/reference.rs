@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::mem::size_of;
 
 use half::f16;
+use serde::{Deserialize, Serialize};
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_core::geometry::{Matrix3, PixelBounds, Rect};
 use superi_core::pixel::{AlphaMode, PixelFormat};
@@ -29,7 +30,8 @@ use crate::transition::{TransitionCatalog, TransitionKind, WipeDirection};
 const COMPONENT: &str = "superi-effects.reference";
 
 /// Reconstruction used by the transform reference operation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum ReferenceSampling {
     /// Copy the closest source pixel.

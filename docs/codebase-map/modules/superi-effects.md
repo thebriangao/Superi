@@ -2,8 +2,8 @@
 module_id: superi-effects
 source_paths:
   - open/crates/superi-effects
-source_hash: 38611d5e1566a946c87511adf12b6037ef5cc31df59e2a7939d7d33744fb058a
-source_files: 27
+source_hash: 099dbfbe0eadf5a8bb8554332111e550adbf517c8e3e4ef70ea6811bc6d84717
+source_files: 29
 mapped_at_commit: working-tree
 ---
 
@@ -17,14 +17,17 @@ translation, exact keyframe animation, graph-native links and parent controls, b
 open and closed cubic vector paths with fills, strokes, gradients, and repeaters, bounded animated
 closed cubic masks with complete controls and ordered soft-alpha composition, strict reusable
 composition artifacts with same-composition layer parenting, exact time remapping, reusable
-precompositions, explicit collapse boundaries, and complete resolved visual paths, and editable
-exact-frame rotoscope artifacts with solver-independent propagation hooks. It provides strict
+precompositions, explicit collapse boundaries, and complete resolved visual paths. It composes
+those owners into strict editable 2D and 3D spatial layers with animated transforms, cameras,
+ambient, directional, and point lights, deterministic depth ordering, exact shutter sampling, and
+a bounded real-pixel spatial oracle. It also owns editable exact-frame rotoscope artifacts with
+solver-independent propagation hooks and provides strict
 styled UTF-8 authoring, animated typography and paragraph controls, caller-resolved offline fonts,
 OpenType shaping, Unicode line breaking and bidi reordering, and inspectable positioned glyphs for
 a later raster owner. It also provides reusable cross-dissolve and directional-wipe schemas with
 exact handle-to-progress conversion, concrete schemas, and real reference pixels
 for transform, crop, opacity, blend, composite, Gaussian blur, sharpen, radial distortion, chroma
-key, invert, grade, cross dissolves, and directional wipes.
+key, invert, grade, cross dissolves, directional wipes, and complete planar spatial compositions.
 
 The generic graph remains authoritative for schema identity, instance identities, typed editable
 values, transactions, parameter drivers, immutable snapshots, topology, serialization, evaluation,
@@ -38,7 +41,7 @@ language, or project persistence envelope.
 The built-in schemas require the production `superi.render.gpu` capability, but this crate currently
 implements only a deterministic bounded CPU oracle and headless proof. Production GPU kernels,
 engine catalog registration, timeline effect attachment, playback, viewport, export, project
-persistence, UI, spatial transform application, vector shape rasterization, mask rasterization,
+persistence, UI, production spatial GPU execution, vector shape rasterization, mask rasterization,
 feather and expansion
 filtering, propagation solvers, production transition attachment and GPU execution, text
 rasterization and GPU atlases, tracking, and OFX hosting remain absent or staged in their owning
@@ -48,7 +51,7 @@ modules.
 
 - `open/crates/superi-effects/Cargo.toml`: Declares approved downward dependencies on
   `superi-core`, `superi-gpu`, `superi-image`, and `superi-graph`. It uses workspace Serde for the
-  animation, composition, vector shape, mask, rotoscope, and text wires, `half` for checked binary16 reference
+  animation, composition, spatial, vector shape, mask, rotoscope, and text wires, `half` for checked binary16 reference
   conversion, Swash and pinned Skrifa for offline OpenType shaping, Unicode Bidi and Unicode
   Linebreak for layout, and JSON only in tests.
 - `open/crates/superi-effects/src/authoring.rs`: Implements presentation metadata, typed effect
@@ -62,7 +65,8 @@ modules.
 - `open/crates/superi-effects/src/composition.rs`: Implements exact layer-to-source time maps,
   same-composition parent DAGs, generic visual and precomposition layers, explicit collapse and
   isolation controls, immutable composition and artifact editing, reusable nesting validation,
-  complete structural frame resolution, and a strict bounded revisioned wire.
+  complete structural frame resolution with both owning-composition and mapped-source time, and a
+  strict bounded revisioned wire.
 - `open/crates/superi-effects/src/control.rs`: Implements the host animation-value projection seam,
   exact-time parameter evaluation, scalar animation expression conversion, inspectable reusable
   controls, checked parent expressions, canonical control relationships, and revision-bound rig
@@ -72,8 +76,9 @@ modules.
   easing, bounded time expressions, immutable curve editing, exact uniform retiming, deterministic
   evaluation, and the revisioned standalone wire.
 - `open/crates/superi-effects/src/lib.rs`: Documents the implemented authoring, animation,
-  composition, control, vector shape, mask, rotoscope, text, and transition foundations and publicly exports them
-  with the built-in catalog, reference evaluator, and staged visual feature modules.
+  composition, spatial, control, vector shape, mask, rotoscope, text, and transition foundations and
+  publicly exports them with the built-in catalog, reference evaluator, and staged visual feature
+  modules.
 - `open/crates/superi-effects/src/mask.rs`: Implements animated closed cubic mask paths, fill rules,
   complete checked controls, immutable topology, control, and stack edits, exact-time sampling,
   deterministic soft-coverage boolean composition, and the strict revisioned mask-stack wire.
@@ -82,7 +87,8 @@ modules.
 - `open/crates/superi-effects/src/reference.rs`: Implements immutable effect and transition state,
   conservative ROI mapping, canonical image and shared transition-window validation, bounded
   binary16 and binary32 CPU pixel operations, editable-snapshot runtime compilation, graph
-  evaluation, deterministic introspection, and cache fingerprints.
+  evaluation, deterministic introspection, cache fingerprints, and serializable reconstruction
+  choices reused by spatial layer state.
 - `open/crates/superi-effects/src/rotoscope.rs`: Implements bounded exact-frame span identities,
   generic authored base masks and corrections, inspectable derived propagation, directional request
   construction, revision-fenced solver hooks, immutable editing and invalidation, strict versioned
@@ -91,6 +97,12 @@ modules.
   scene-linear solid and gradient fills, complete stroke geometry and dash state, bounded virtual
   repeaters, immutable edits, exact retiming, renderer-ready sampling, and strict revisioned vector
   shape document persistence.
+- `open/crates/superi-effects/src/spatial.rs`: Implements strict reusable spatial composition state
+  over `CompositionArtifact<SpatialLayer>`, animated 2D and 3D transforms, right-handed perspective
+  and orthographic cameras, ambient, directional, and point lights, layer-stack or camera-depth
+  ordering, exact bounded shutter samples, parent and precomposition matrix composition on each
+  owning clock, immutable retiming, strict reload, one graph-native definition, and a bounded
+  real-pixel CPU oracle built from existing reference image operations.
 - `open/crates/superi-effects/src/text.rs`: Implements bounded styled UTF-8 ranges, persistent font
   asset references, OpenType features and animated axes, continuous and hold-discrete typography
   and paragraph controls, immutable text and style edits, exact whole-layer retiming, strict
@@ -149,11 +161,16 @@ modules.
 - `open/crates/superi-effects/tests/shape_contract.rs`: Proves path topology, fills, gradients,
   strokes, dash phase, virtual repeater transforms, direct immutable edits, exact retiming, strict
   standalone persistence, and reusable timeline-role plus node-graph-role graph reload.
+- `open/crates/superi-effects/tests/spatial_contract.rs`: Proves strict editable state, exact
+  sampling and retiming, 2D and 3D transform composition, parent and precomposition clocks,
+  perspective and orthographic cameras, all three light families, deterministic depth overlap,
+  exact motion pixels, bounded failures, strict wire validation, and identical sampled plus rendered
+  results through independent ordinary graph reloads.
 
 ## Public surface
 
 The library exports `authoring`, `catalog`, `composition`, `control`, `keyframe`, `mask`, `ofx`,
-`reference`, `rotoscope`, `shape`, `text`, `tracking`, and `transition`.
+`reference`, `rotoscope`, `shape`, `spatial`, `text`, `tracking`, and `transition`.
 
 `authoring` exposes the workflow-neutral authoring foundation:
 
@@ -189,9 +206,10 @@ The library exports `authoring`, `catalog`, `composition`, `control`, `keyframe`
   checked content revision for immutable add, replace, remove, and root edits.
 - `resolve_frame` returns `ResolvedCompositionFrame`, `ResolvedLayer`, and `ResolvedLayerStep`
   values in deterministic bottom-to-top order. Every output retains its complete root-to-leaf
-  layer path, generic payloads, mapped source coordinates, and local parent chains. A preserved or
-  isolation-forced precomposition remains an explicit boundary; a pass-through collapsed instance
-  expands the referenced composition without discarding ancestor state.
+  layer path, generic payloads, exact owning-composition coordinates, mapped source coordinates,
+  and local parent chains. A preserved or isolation-forced precomposition remains an explicit
+  boundary; a pass-through collapsed instance expands the referenced composition without
+  discarding ancestor state.
 - `COMPOSITION_ARTIFACT_SCHEMA_REVISION` identifies the strict standalone wire. All records deny
   unknown fields, bound compositions, layers, and remap keys before allocation, use canonical
   integer identities, and reconstruct every local plus nested relationship through checked owners.
@@ -306,6 +324,34 @@ The library exports `authoring`, `catalog`, `composition`, `control`, `keyframe`
   coordinates. It retains the cut plus from and to offsets, exposes the exact half-open range from
   `cut - from_offset` through `cut + to_offset`, and maps caller time to clamped progress.
 
+`spatial` exposes editable planar 2D and 3D composition state plus bounded executable proof:
+
+- `SpatialSourceId`, `LayerSpace`, `LayerTransform`, and `SpatialLayer` retain stable source
+  references, 2D or 3D interpretation, independently inspectable anchor, position, XYZ Euler
+  rotation, scale, opacity curves, and nearest or bilinear sampling. Every curve uses the owning
+  composition clock and is revalidated after interpolation.
+- `SpatialCamera` composes animated position, XYZ Euler rotation, near and far clipping, and a
+  `CameraProjection` with animated perspective vertical field of view or orthographic vertical
+  extent. The camera is right handed, looks down local negative Z, and publishes its sampled view
+  matrix and projection without hiding authored state.
+- `SpatialLight` supports animated ambient, directional, and point color plus linear intensity.
+  Directional orientation and point position and attenuation range remain animated and inspectable.
+- `SpatialScene` assigns exactly one camera, bounded light list, `DepthOrdering`, and `MotionBlur`
+  record to each reusable composition. Shutter endpoints and samples use exact project-clock ticks,
+  include both endpoints, and require an exactly divisible interval.
+- `SpatialCompositionArtifact` wraps the canonical `CompositionArtifact<SpatialLayer>`, requires
+  exactly one scene per composition, samples every same-composition parent and collapsed nested path
+  step on its owning composition coordinate, composes binary64 matrices root to leaf, sorts camera
+  depth far to near with stable ties, retimes every ranged spatial curve, and reconstructs the strict
+  revisioned wire through checked owners.
+- `spatial_node_definition` exposes one variadic image input, one image result, and one animatable
+  `GraphValue::Domain` spatial parameter under the production GPU capability. It declares unbounded
+  time because authored shutter endpoints can request times beyond the current frame.
+- `render_spatial_reference` projects planar layers through perspective or orthographic homographies,
+  applies deterministic diffuse light gain and opacity, composites in layer-stack or camera-depth
+  order, and averages exact shutter samples in premultiplied space. Fixed layer, light, shutter, and
+  total-evaluation ceilings combine with `ImageLimits`; this CPU path is an oracle, not playback.
+
 `text` exposes editable typography and real layout without claiming rasterization:
 
 - `TextRange`, `FontFace`, `OpenTypeFeature`, `VariationAxis`, `TextStyle`, `TextStyleSpan`,
@@ -410,10 +456,34 @@ The visual composition flow retains reusable layer state without copying timelin
    `RequiresIntermediateSurface` overrides collapse for layer-level masks or effects.
 5. A collapsed pass-through precomposition resolves child layers in their authored bottom-to-top
    order. Each output retains the complete nested `ResolvedLayerStep` path, including every generic
-   payload, mapped source time, and root-to-direct local parent chain, so no editable state is lost.
+   payload, owning-composition time, mapped source time, and root-to-direct local parent chain, so no
+   editable state is lost.
 6. The strict standalone wire and ordinary generic graph document both preserve authored state.
    Independent ordinary graphs labeled as timeline-role and node-graph-role consumers reload
    canonical bytes and produce equal structural resolution without a role flag or timeline import.
+
+The spatial composition flow executes that structural state without creating another layer owner:
+
+1. Each existing `CompositionLayerId` carries one `SpatialLayer` payload. The payload adds only a
+   source image identity, 2D or 3D transform curves, opacity, and sampling; composition remains the
+   owner of order, parenting, active range, nesting, collapse, and time remapping.
+2. `SpatialCompositionArtifact::new` validates every payload against its composition clock and
+   requires one canonical `SpatialScene` per composition. Strict reload routes nested composition,
+   layer, curve, camera, light, depth, and shutter state through the same checked boundaries.
+3. Sampling first asks `CompositionArtifact::resolve_frame` for structural outputs. For each step it
+   samples the root-to-direct same-composition parent chain and the step transform at that step's
+   owning composition time, then multiplies every retained precomposition and leaf transform root to
+   leaf. Camera, lights, world anchors, normals, opacity, and camera depth remain inspectable.
+4. Stack mode preserves authored bottom-to-top order. Camera-depth mode sorts far to near, then uses
+   authored stack position and source identity for stable ties. Exact shutter offsets resample the
+   entire artifact, including animated camera and light state.
+5. The graph-native definition stores the complete artifact as one animatable domain parameter with
+   variadic source images and one result. Two independent ordinary graphs serialize, reload, sample,
+   and render equal state without workflow branches.
+6. The CPU oracle validates fixed work ceilings before pixel loops, projects each source plane with a
+   private binary64 view and model homography, reuses the canonical reference transform, grade,
+   opacity, and Porter-Duff operations, and incrementally averages shutter frames. The declared GPU
+   capability preserves production playback and export ownership outside this path.
 
 The rotoscope flow is:
 
@@ -573,7 +643,7 @@ The vector shape authoring flow is:
   sample representations, and finite limits.
 - `superi-gpu` is a declared production capability dependency. Current effects source uploads,
   owns, and evaluates no GPU resource.
-- Serde owns strict animation, visual-composition, vector-shape, mask-stack, rotoscope, and text
+- Serde owns strict animation, visual-composition, spatial-composition, vector-shape, mask-stack, rotoscope, and text
   records. JSON and
   the reviewed Tinos subset are test-only. `half` performs checked reference conversion to and from
   binary16. Swash 0.2.9 and Skrifa 0.31.1 parse and shape caller-resolved local font bytes; Unicode
@@ -589,10 +659,10 @@ The vector shape authoring flow is:
 - `superi-engine` declares `superi-effects` but has no production catalog, animation, evaluator,
   playback, viewport, or export call site. Current real consumers are the role-neutral authoring,
   generic graph reload, reusable controls over shared processing payloads, strict animation,
-  visual-composition, vector-shape, mask, rotoscope, and text payloads, inspectable glyph layout,
-  transition authoring and timing, and bounded headless graph-evaluation contracts. Composition,
-  shape, mask, text, and transition tests label independent ordinary graphs as timeline and
-  node-graph roles without claiming production timeline attachment.
+  visual-composition, spatial-composition, vector-shape, mask, rotoscope, and text payloads,
+  inspectable glyph layout, transition authoring and timing, and bounded headless graph-evaluation
+  contracts. Composition, spatial, shape, mask, text, and transition tests label independent ordinary
+  graphs as timeline and node-graph roles without claiming production timeline attachment.
 
 ## Invariants and operational boundaries
 
@@ -637,12 +707,28 @@ The vector shape authoring flow is:
   every instance without copying it. Collapse expands only a `PassThrough` instance; authored
   boundary preservation or `RequiresIntermediateSurface` retains an inspectable nested boundary.
 - Structural resolution preserves deterministic bottom-to-top order and every nested ancestor
-  payload, mapped source coordinate, and root-to-direct parent chain. It performs no matrix
+  payload, owning-composition coordinate, mapped source coordinate, and root-to-direct parent chain.
+  The generic composition owner performs no matrix
   composition, camera or light evaluation, mask rasterization, pixel processing, GPU work, or
   editorial sequence compilation.
 - Composition edits are immutable and revisioned. The standalone wire denies unknown fields,
   checks its schema revision, bounds compositions, layers, and remap keys before publication, and
   reconstructs every local plus nested relationship through the checked artifact boundary.
+- Spatial state never duplicates composition identity, order, parenting, nesting, collapse, or time
+  remapping. Every parent and nested transform samples on the exact owning-composition coordinate;
+  mapped source time remains separately inspectable.
+- Spatial curves share their composition clock and expected component width. Authored values and
+  interpolated samples must retain finite nonzero scales, normalized opacity, valid camera field of
+  view and clipping, nonnegative light color and intensity, and positive point-light range.
+- Spatial matrix evaluation is private binary64 state. A 2D layer ignores X and Y rotation plus Z
+  anchor and scale while retaining explicit Z depth; a 3D layer evaluates every component. The
+  right-handed camera looks down negative Z, and image Y is inverted only by viewport projection.
+- Spatial stack ordering is deterministic. Camera-depth mode is far to near with authored stack and
+  source identity tie breakers. Motion sampling includes exact endpoints at an integer interval and
+  rejects zero, excessive, reversed, single-sample spans, inexact intervals, and coordinate overflow.
+- The spatial CPU oracle requires every resolved source, enforces fixed per-frame and total layer
+  evaluation ceilings before pixel work, reuses canonical ACEScg premultiplied image operations, and
+  applies `ImageLimits` to every intermediate and final image. It is not an engine fallback.
 - Production schemas require `superi.render.gpu`. CPU evaluation is an oracle and headless proof,
   not an engine fallback or production render route.
 - Blend and composite algebra uses premultiplied alpha. Straight-color pointwise operations
@@ -718,8 +804,8 @@ The vector shape authoring flow is:
 - Vector document edits are immutable, exact retiming reaches every nested curve, strict persistence
   rejects unknown or future state, and sampled geometry remains allocation-free authoring output for
   a caller-owned rasterizer.
-- Current code performs bounded reference pixel processing and ROI calculation, but no production
-  GPU submission, cache integration, mask path rasterization, feather or expansion filtering,
+- Current code performs bounded reference pixel processing, spatial composition proof, and ROI
+  calculation, but no production GPU submission, cache integration, mask path rasterization, feather or expansion filtering,
   production timeline sampling or transition attachment, engine playback, project autosave, propagation solver, plugin
   containment, text rasterization, glyph atlas, or rendered text composition. The reference oracle
   and text layout engine are not production render routes.
@@ -763,6 +849,15 @@ payload and order edits; local and nested cycle rejection; strict schema, unknow
 parent, revision, and sequence-bound handling; animatable `GraphValue::Domain` storage; canonical
 graph reload; and equal resolution in independent timeline-role and node-graph-role consumers.
 
+Eight spatial composition tests prove directly inspectable and retimable 2D and 3D transform state,
+strict standalone reconstruction, perspective and orthographic cameras, ambient, directional, and
+point lights, far-to-near depth overlap on real pixels, exact three-sample motion pixels, complete
+same-composition parent and collapsed precomposition transform paths on each owning clock, one
+unbounded-time graph-native definition, canonical reload in independent workflow-role graphs,
+identical sampled and rendered results after reload, invalid curve widths and clocks, missing scene
+coverage and sources, oversized scene and light wire arrays, inexact or excessive shutter samples,
+and image resource ceilings.
+
 The animation consumer proof creates the payload through a real animatable authoring definition,
 stores the resulting node in `EditableGraph`, serializes the complete graph document, reloads it
 through graph validation, compares canonical bytes, and obtains identical samples. A separate graph
@@ -805,32 +900,36 @@ graphs.
 
 The authoring SDK, exact keyframe animation, reusable graph-native control rigs, strict visual
 composition artifacts, same-composition parenting, reusable precompositions, explicit collapse
-boundaries, exact time remapping, editable vector shape documents, animated mask authoring and
+boundaries, exact time remapping, strict spatial composition artifacts, editable 2D and 3D
+transforms, cameras, lights, depth ordering, exact motion sampling, editable vector shape documents, animated mask authoring and
 composition, editable rotoscope artifacts and propagation hooks, styled text authoring and real
 glyph layout, built-in definitions, generic editable instantiation, deterministic CPU reference
-pixels, ROI mapping, immutable graph compilation, introspection, reusable transition definitions,
+pixels including bounded spatial composition, ROI mapping, immutable graph compilation,
+introspection, reusable transition definitions,
 exact transition timing, bounded transition pixels, and role-neutral graph proofs are substantive
-and test-backed. Strict curve, visual-composition, vector-shape, mask-stack, rotoscope, and text
+and test-backed. Strict curve, visual-composition, spatial-composition, vector-shape, mask-stack, rotoscope, and text
 payloads retain authored state across generic graph reload. The reference and text layout
 implementations are scalar, allocation-bounded CPU proofs, not performance production render code,
 and vector shapes, masks, and text have no rasterizer or rendered consumer.
 
 There is no GPU shader parity, engine registry, production runtime catalog, timeline attachment,
-playback, viewport, export, project persistence, UI, spatial transform application, camera or light
-evaluation, spatial motion path beyond mask contours, vector shape rasterization, mask rasterization,
+playback, viewport, export, project persistence, UI, production spatial transform, camera, light, or
+motion-blur execution, vector shape rasterization, mask rasterization,
 propagation solver, text rasterization or glyph atlas, tracking solver, production transition
 attachment, or OFX host. Rotoscope mask payloads are generic and have no production mask-type
 consumer yet. Authoring metadata is in memory and has no independent wire. Control hints do not yet
 encode enforceable numeric bounds, choice option vocabularies, grouping, conditional visibility, or
 accessibility policy; transition domains and wipe choices are therefore validated by the reference
 compiler. Animation has no stable project-level property identity or production caller-time context.
-Visual composition resolution is structural and has no production graph compiler, rendered consumer,
-or project-level document owner yet.
+Visual composition resolution is structural, and the spatial module is its effects-owned reference
+consumer. Neither has a production engine compiler, GPU renderer, timeline attachment, or
+project-level document owner yet.
 
 Reusable control presentation and rig definitions remain in-memory authoring descriptions, while
-their applied driver meaning is persisted by graph. Parent expressions are scalar only; transform
-matrix composition and spatial paths remain later domain work. Runtime factories are exact-version
-bound but have no plugin discovery, GPU device, cache, or lifecycle integration.
+their applied driver meaning is persisted by graph. Parent expressions are scalar only. Spatial
+matrix composition is planar and effects-local, with no material, shadow, volumetric, mesh, or GPU
+runtime contract. Runtime factories are exact-version bound but have no plugin discovery, GPU
+device, cache, or lifecycle integration.
 
 The CPU evaluator proves implementation semantics and graph integration but does not close a
 production import-to-render path. The `superi.render.gpu` requirement deliberately prevents it from
@@ -886,10 +985,17 @@ and boolean ordering without hiding edits or claiming a new persistence or graph
 Keep visual composition identity, parenting, collapse intent, layer isolation, time remaps, and
 generic visual payloads in the checked effects artifact. Preserve bottom-to-top order, exact clocks,
 local and nested DAG validation, immutable revisions, bounded strict persistence, and complete
-resolved ancestor paths. Do not move editorial nested-sequence identity or clip retiming out of
-timeline, add a timeline dependency to effects, flatten payload state during collapse, or treat the
-structural resolver as matrix, mask, pixel, GPU, or production graph execution. Future spatial and
-render consumers must apply every retained path step through their owning contracts.
+resolved ancestor paths with separate owning-composition and mapped-source coordinates. Do not move
+editorial nested-sequence identity or clip retiming out of timeline, add a timeline dependency to
+effects, flatten payload state during collapse, or make the generic structural resolver own matrix,
+mask, pixel, GPU, or production graph execution.
+
+Keep spatial layer payloads inside the generic composition owner, sample every same-composition
+parent and nested step at its owning coordinate, and preserve root-to-leaf matrix order. Retain strict
+scene coverage, exact shutter ticks, stable depth ties, finite sampled-domain checks, fixed CPU work
+ceilings, canonical premultiplied image semantics, and the unbounded graph time declaration. Future
+GPU implementations must consume the same artifact and match the bounded oracle without turning the
+oracle into a fallback or adding workflow-specific state.
 
 Keep transition schemas versioned, workflow-neutral, and limited to visual parameter meaning. Do
 not move timeline identity, adjacency, handles, record placement, grouping, synchronization,

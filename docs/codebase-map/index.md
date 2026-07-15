@@ -24,10 +24,10 @@ against raw source before changing code.
 | `superi-color` | [module map](modules/superi-color.md) | `open/crates/superi-color` | Versioned configuration, project working spaces, color math, CPU input and output transforms, GPU wide-gamut transforms, tone mapping, legal-range RGB encoding, LUTs, ICC discovery, and presentation profile guards | Substantial but partial: project-pinned configuration, CPU transforms, and managed GPU wide-gamut transforms are implemented; ICC evaluation and engine integration remain absent |
 | `superi-concurrency` | [module map](modules/superi-concurrency.md) | `open/crates/superi-concurrency` | Execution domains, jobs, clocks, handoffs, shared snapshots, lifecycle, liveness, and derived-media selection | Substantial; audio enforces its domain, engine proxy resolution consumes selection, and engine playback consumes domains, workers, priority, cancellation, progress, and nonblocking polling; broader composition and GPU submission remain incomplete |
 | `superi-core` | [module map](modules/superi-core.md) | `open/crates/superi-core` | Tier-zero values, validation, exact time, identifiers, errors, diagnostics, and stable serialization | Implemented and broadly consumed; crate-level skeleton wording is stale |
-| `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Graph-native visual definitions, editable defaults and instances, exact editable keyframe animation, reusable typed control rigs, strict visual composition artifacts with layer parenting, reusable precompositions, collapse boundaries and time remapping, editable cubic vector shapes with fills, strokes, gradients, repeaters, and path animation, animated cubic mask paths with ordered boolean alpha composition, editable rotoscope artifacts and propagation hooks, styled text authoring, offline OpenType shaping, Unicode paragraph layout, versioned built-in visual nodes and transitions, exact handle-to-progress timing, and bounded CPU reference evaluation | Substantive but partial: typed authoring, animation, graph-native links and parent controls, strict visual composition state, local and nested DAG validation, exact time maps, reusable collapsed or isolated precompositions, complete resolved layer paths, vector shape documents, mask controls, rotoscope spans and corrections, revision-fenced propagation, typography, paragraph controls, glyph layout, transform, crop, opacity, blend, composite, blur, sharpen, distortion, keying, invert, grade, cross dissolve, directional wipe, workflow parity, strict reload, and real pixel proof are implemented; spatial transform application, production GPU, engine, UI, vector, mask, and text rasterization, glyph atlases, propagation solvers, tracking, OFX, production transition attachment, and complete timeline attachment remain absent |
+| `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Graph-native visual definitions, editable defaults and instances, exact editable keyframe animation, reusable typed control rigs, strict visual composition artifacts with layer parenting, reusable precompositions, collapse boundaries and time remapping, editable 2D and 3D spatial layers with cameras, lights, depth ordering and exact motion sampling, editable cubic vector shapes with fills, strokes, gradients, repeaters, and path animation, animated cubic mask paths with ordered boolean alpha composition, editable rotoscope artifacts and propagation hooks, styled text authoring, offline OpenType shaping, Unicode paragraph layout, versioned built-in visual nodes and transitions, exact handle-to-progress timing, and bounded CPU reference evaluation | Substantive but partial: typed authoring, animation, graph-native links and parent controls, strict visual and spatial composition state, local and nested DAG validation, exact time maps, reusable collapsed or isolated precompositions, complete resolved layer paths, binary64 transform composition, perspective and orthographic cameras, ambient, directional and point lights, stable depth order, exact shutter sampling, vector shape documents, mask controls, rotoscope spans and corrections, revision-fenced propagation, typography, paragraph controls, glyph layout, transform, crop, opacity, blend, composite, blur, sharpen, distortion, keying, invert, grade, cross dissolve, directional wipe, workflow parity, strict reload, and real pixel proof are implemented; production spatial GPU execution, engine, UI, vector, mask, and text rasterization, glyph atlases, propagation solvers, tracking, OFX, production transition attachment, and complete timeline attachment remain absent |
 | `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: canonical command state, registry, capability introspection, CPU-frame GPU upload, color metadata branching, complete proxy or optimized-media packet generation, transparent proxy resolution, predictive playback cache population, and atomic timeline plus clip-mix edits implemented |
 | `superi-gpu` | [module map](modules/superi-gpu.md) | `open/crates/superi-gpu` | wgpu device, resource, upload, conversion, pass, submission, presentation, and recovery substrate | Implemented substrate with explicit application-level integration gaps |
-| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers and shared typed values, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, reusable scalar expressions, typed parameter links and expressions, caller-projected literal evaluation, derived missing-node resolution, dependency and semantic edit invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, graph and revision cache lineage, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, exact neutral domain and processing values, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, shared bounded scalar programs, typed driver state, parameter-cycle protection, literal-only projected evaluation, fail-closed missing-node placeholders, exact region and edit invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic graph cache inspection, final and intermediate retained-work pruning, run-local timing, and role-neutral editable-to-runtime evaluation implemented; effects consumes authoring, animation, compiler, expression, projected evaluation, drivers, diagnostics, evaluator, strict keyframe, composition, vector shape, mask, rotoscope, and text payload persistence seams, and graph-native transition schemas plus reference evaluation, while production engine catalog and plugin binding, project persistence, cache resource policy, and rendered integration remain absent |
+| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers and shared typed values, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, reusable scalar expressions, typed parameter links and expressions, caller-projected literal evaluation, derived missing-node resolution, dependency and semantic edit invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, graph and revision cache lineage, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, exact neutral domain and processing values, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, shared bounded scalar programs, typed driver state, parameter-cycle protection, literal-only projected evaluation, fail-closed missing-node placeholders, exact region and edit invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic graph cache inspection, final and intermediate retained-work pruning, run-local timing, and role-neutral editable-to-runtime evaluation implemented; effects consumes authoring, animation, compiler, expression, projected evaluation, drivers, diagnostics, evaluator, strict keyframe, composition, spatial composition, vector shape, mask, rotoscope, and text payload persistence seams, and graph-native transition schemas plus reference evaluation, while production engine catalog and plugin binding, project persistence, cache resource policy, and rendered integration remain absent |
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; production source registration and muxing absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
@@ -131,10 +131,11 @@ persistence, and reference-evaluation consumer above that boundary. Its strict k
 built-in visual definitions remain ordinary editable graph state. It also reuses the bounded scalar
 program for time and parent expressions, compiles reusable controls into ordinary typed drivers,
 and projects literal curves into exact-time samples through the graph-owned evaluator without adding
-effect types to graph. The composition, vector-shape, mask, rotoscope, and text contracts likewise
-persist strict visual layers, editable shape documents, animated mask stacks, exact-frame artifacts,
-and styled text domain state through the neutral value payload and generic graph documents without
-adding composition, shape, path, propagation, font, shaping, or paragraph meaning to graph.
+effect types to graph. The visual composition, spatial composition, vector-shape, mask, rotoscope,
+and text contracts likewise persist strict visual layers, animated transforms, cameras, lights,
+depth and shutter state, editable shape documents, animated mask stacks, exact-frame artifacts, and
+styled text domain state through the neutral value payload and generic graph documents without
+adding composition, spatial, shape, path, propagation, font, shaping, or paragraph meaning to graph.
 Effects-owned compositions retain visual parenting, precomposition collapse, and layer-to-source
 time maps, while timeline remains authoritative for editorial nested sequences, clip retiming, and
 edit policy.
@@ -371,7 +372,7 @@ Editable property animation now composes with that neutral state boundary:
    editor-script-headless samples, reload complete driver state through the graph document, and
    prove graph-owned cycle rollback. The same rig also compiles through a real built-in opacity
    state across two shared host payloads. These are substantive editable artifacts and graph
-   persistence consumers, not a production timeline attachment, spatial path, UI, engine playback
+   persistence consumers, not a production timeline attachment, production spatial path, UI, engine playback
    path, project document, GPU execution, or rendered output.
 
 Editable visual compositions now preserve layering and nested relationships on that neutral state
@@ -387,15 +388,39 @@ boundary without copying editorial timeline ownership:
 3. `resolve_frame` emits deterministic bottom-to-top structural outputs. Pass-through collapse
    expands reusable child layers, while authored boundary preservation or a mask or effect
    `RequiresIntermediateSurface` rule retains one explicit nested boundary. Every output preserves
-   its complete ancestor payload path, mapped source times, and root-to-direct parent chains.
+   its complete ancestor payload path, owning-composition times, mapped source times, and
+   root-to-direct parent chains.
 4. Immutable artifact edits advance a checked content revision. Its standalone revisioned wire
    rejects unknown fields, unsupported revisions, unbounded composition, layer, and remap sequences,
    invalid parents, and recursive nesting before publication.
 5. A real animatable effect parameter and `GraphValue::Domain` consumer persist the same artifact in
    independent ordinary graphs labeled as timeline-role and node-graph-role workflows, reload
    canonical bytes, and produce equal structural frames. This is reusable visual composition state,
-   not editorial nested-sequence mutation, spatial transform evaluation, a production graph
-   compiler, GPU execution, or rendered pixels.
+   not editorial nested-sequence mutation, a production graph compiler, GPU execution, or rendered
+   pixels.
+
+Editable spatial compositions now consume that structural owner without duplicating it:
+
+1. Each visual composition layer carries one strict `SpatialLayer` payload with stable source image
+   identity, 2D or 3D interpretation, animated anchor, position, XYZ Euler rotation, scale, opacity,
+   and reconstruction choice. Composition remains authoritative for IDs, order, parenting, ranges,
+   precompositions, collapse, and exact time remapping.
+2. One `SpatialScene` per reusable composition retains an animated right-handed perspective or
+   orthographic camera, bounded ambient, directional, and point lights, layer-stack or camera-depth
+   ordering, and exact shutter endpoints plus sample count. Construction and reload reject missing
+   scene coverage, mixed clocks, wrong component widths, invalid domains, and excessive collections.
+3. Exact sampling starts from `resolve_frame`, samples every same-composition parent and nested step
+   at its owning composition coordinate, multiplies private binary64 matrices root to leaf, and
+   publishes inspectable world transforms, anchors, normals, camera depth, camera, lights, opacity,
+   and shutter offsets. Camera-depth order is far to near with stable authored ties.
+4. One graph-native definition exposes variadic image sources, one image result, and the complete
+   artifact as one animatable domain parameter. Its unbounded time declaration is honest about
+   authored shutter endpoints. Independent timeline-role and node-graph-role graphs reload canonical
+   bytes and produce identical sampled and rendered results without graph learning spatial meaning.
+5. A bounded CPU oracle projects source planes through perspective or orthographic homographies,
+   applies deterministic diffuse lighting and opacity, composites premultiplied ACEScg pixels, and
+   incrementally averages exact shutter samples. Fixed layer and total-evaluation ceilings plus
+   `ImageLimits` bound work before pixels; production GPU playback, viewport, and export remain absent.
 
 Editable animated masks now compose with the same effect and graph foundations:
 
@@ -1203,13 +1228,14 @@ Entire crate skeletons are `superi-ai` and `superi-project`. Their manifests est
 dependency direction, but their public modules expose no substantive types or operations.
 `superi-effects` now has substantive graph-native authoring, exact keyframe animation, strict visual
 composition artifacts with layer parenting, reusable precompositions, collapse boundaries, exact
-time remapping and complete resolved paths, editable cubic vector shapes with fills, strokes,
+time remapping and complete resolved paths, strict editable 2D and 3D spatial layers with cameras,
+lights, stable depth ordering, exact motion sampling, graph reload, and bounded real pixels, editable cubic vector shapes with fills, strokes,
 gradients, repeaters, and path animation, animated cubic mask authoring plus soft-coverage
 composition, editable rotoscope spans, corrections, and propagation hooks, styled text authoring
 plus offline OpenType shaping and Unicode paragraph layout, reusable typed control rigs, built-in
 visual nodes, and bounded CPU reference execution. It also has reusable cross-dissolve and
 directional-wipe schemas, exact handle timing, animatable transition parameters, and bounded
-reference pixels, while spatial transform application, production GPU factories, vector, mask, and
+reference pixels, while production spatial GPU execution, production GPU factories, vector, mask, and
 text rasterization, glyph atlases, propagation solvers, tracking, OFX, production transition and
 timeline attachment, and engine execution remain absent.
 `superi-audio` now has a substantive
@@ -1243,14 +1269,15 @@ Partial modules contain these explicit placeholder areas:
   lifecycle, nodes, plugins, resources, and validation; playback remains partial beyond prefetch.
   Clip-mix edit orchestration is implemented separately.
 - `superi-effects`: production GPU node implementations, engine registration, playback, viewport,
-  export, project persistence, UI, spatial transform application, cameras, lights, spatial motion
-  paths, vector shape and mask rasterization, reusable rigging beyond bounded time and scalar parent
+  export, project persistence, UI, production spatial transform, camera, light, and motion-blur
+  execution, vector shape and mask rasterization, reusable rigging beyond bounded time and scalar parent
   expressions, persistent rig presentation, feather and expansion filtering, propagation solvers,
   production transition binding and GPU parity, text rasterization, glyph atlases, tracking, and OFX
   hosting, beyond its implemented graph-native authoring, exact keyframe curves, versioned built-in
   effect and transition schemas, exact transition timing, reusable control drivers, strict visual
-  composition, vector shape, and animated mask-stack payloads, editable rotoscope artifacts and
-  hooks, strict styled text, real shaping and paragraph layout, bounded CPU reference, ROI,
+  composition, strict spatial composition, vector shape, and animated mask-stack payloads, editable
+  rotoscope artifacts and hooks, strict styled text, real shaping and paragraph layout, bounded CPU
+  reference including spatial real pixels, ROI,
   diagnostics, strict reload, and immutable real-pixel graph contracts.
 - `superi-graph`: invalidation and ROI render orchestration, outer job dispatch, project persistence,
   undo ownership, engine coordination, cache invalidation invocation and resource policy,
