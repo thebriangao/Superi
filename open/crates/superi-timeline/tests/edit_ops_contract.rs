@@ -47,13 +47,16 @@ fn video_semantics() -> TrackSemantics {
 }
 
 fn media_clip(id: ClipId, name: &str, source_start: i64, record: TimeRange) -> TrackItem {
-    TrackItem::Clip(Clip::new(
-        id,
-        name,
-        ClipSource::Media(MEDIA),
-        range(source_start, record.duration().value() * 2, source_rate()),
-        record,
-    ))
+    TrackItem::Clip(
+        Clip::new(
+            id,
+            name,
+            ClipSource::Media(MEDIA),
+            range(source_start, record.duration().value() * 2, source_rate()),
+            record,
+        )
+        .unwrap(),
+    )
 }
 
 fn project_fixture() -> EditorialProject {
@@ -141,13 +144,16 @@ fn timed_ids(track: &Track) -> Vec<EditorialObjectId> {
 #[test]
 fn insert_splits_exact_source_ranges_and_preserves_nested_material() {
     let mut project = project_fixture();
-    let nested = TrackItem::Clip(Clip::new(
-        ClipId::from_raw(50),
-        "nested insert",
-        ClipSource::Timeline(SUB_TIMELINE),
-        range(2, 4, edit_rate()),
-        range(99, 4, edit_rate()),
-    ));
+    let nested = TrackItem::Clip(
+        Clip::new(
+            ClipId::from_raw(50),
+            "nested insert",
+            ClipSource::Timeline(SUB_TIMELINE),
+            range(2, 4, edit_rate()),
+            range(99, 4, edit_rate()),
+        )
+        .unwrap(),
+    );
     let operation = EditOperation::insert(
         MAIN_TIMELINE,
         V1,

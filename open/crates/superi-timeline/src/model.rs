@@ -1091,14 +1091,208 @@ pub enum ClipSource {
     Timeline(TimelineId),
 }
 
+/// One exact, synchronized mapping between source and record coordinates.
+///
+/// Source and record ranges retain their own clocks. Their physical durations
+/// must be equal, and coordinate conversion never rounds implicitly.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ClipRangeMap {
+    source_range: TimeRange,
+    record_range: TimeRange,
+}
+
+impl ClipRangeMap {
+    /// Creates a nonempty synchronized source-to-record mapping.
+    pub fn new(source_range: TimeRange, record_range: TimeRange) -> Result<Self> {
+        if source_range.is_empty() || record_range.is_empty() {
+            return Err(invalid(
+                "create_clip_range_map",
+                "clip source and record ranges must both be nonempty",
+            ));
+        }
+        if source_range.duration().rational_time() != record_range.duration().rational_time() {
+            return Err(invalid(
+                "create_clip_range_map",
+                "clip source and record durations must represent equal rational time",
+            ));
+        }
+        Ok(Self {
+            source_range,
+            record_range,
+        })
+    }
+
+    /// Returns the selected interval in source coordinates.
+    #[must_use]
+    pub const fn source_range(self) -> TimeRange {
+        self.source_range
+    }
+
+    /// Returns the placement interval in record coordinates.
+    #[must_use]
+    pub const fn record_range(self) -> TimeRange {
+        self.record_range
+    }
+
+    /// Maps one source coordinate to the record clock without rounding.
+    pub fn source_time_to_record(self, time: RationalTime) -> Result<RationalTime> {
+        map_clip_time(
+            self.source_range,
+            self.record_range,
+            time,
+            "map_clip_source_time",
+        )
+    }
+
+    /// Maps one record coordinate to the source clock without rounding.
+    pub fn record_time_to_source(self, time: RationalTime) -> Result<RationalTime> {
+        map_clip_time(
+            self.record_range,
+            self.source_range,
+            time,
+            "map_clip_record_time",
+        )
+    }
+
+    /// Maps a source subrange to record coordinates without rounding.
+    pub fn source_range_to_record(self, range: TimeRange) -> Result<TimeRange> {
+        map_clip_subrange(
+            self.source_range,
+            self.record_range,
+            range,
+            "map_clip_source_range",
+        )
+    }
+
+    /// Maps a record subrange to source coordinates without rounding.
+    pub fn record_range_to_source(self, range: TimeRange) -> Result<TimeRange> {
+        map_clip_subrange(
+            self.record_range,
+            self.source_range,
+            range,
+            "map_clip_record_range",
+        )
+    }
+}
+
+fn map_clip_time(
+    from: TimeRange,
+    to: TimeRange,
+    time: RationalTime,
+    operation: &'static str,
+) -> Result<RationalTime> {
+    if !from.contains(time)? {
+        return Err(invalid(
+            operation,
+            "mapped time must lie inside the half-open clip range",
+        ));
+    }
+    map_clip_endpoint(from, to, time)
+}
+
+fn map_clip_subrange(
+    from: TimeRange,
+    to: TimeRange,
+    range: TimeRange,
+    operation: &'static str,
+) -> Result<TimeRange> {
+    let range_end = range.end_exclusive()?;
+    if range.start() < from.start() || range_end > from.end_exclusive()? {
+        return Err(invalid(
+            operation,
+            "mapped range must lie inside the clip range",
+        ));
+    }
+    let start = map_clip_endpoint(from, to, range.start())?;
+    let end = map_clip_endpoint(from, to, range_end)?;
+    TimeRange::from_start_end(start, end)
+}
+
+fn map_clip_endpoint(from: TimeRange, to: TimeRange, time: RationalTime) -> Result<RationalTime> {
+    let offset = time.checked_sub_at(from.start(), from.timebase(), TimeRounding::Exact)?;
+    let offset = offset.checked_rescale(to.timebase(), TimeRounding::Exact)?;
+    to.start()
+        .checked_add_at(offset, to.timebase(), TimeRounding::Exact)
+}
+
+/// How a selected source interval relates to known source availability.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum RangeAvailability {
+    /// The source extent has not been discovered or supplied.
+    Unknown,
+    /// Every selected source coordinate is currently available.
+    FullyAvailable,
+    /// Some, but not all, selected source coordinates are currently available.
+    PartiallyAvailable,
+    /// No selected source coordinate is currently available.
+    Unavailable,
+}
+
+/// Resolved range meaning for one clip and its linked source.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ClipRangeContext {
+    source: ClipSource,
+    ranges: ClipRangeMap,
+    available_range: Option<TimeRange>,
+}
+
+impl ClipRangeContext {
+    /// Returns the linked media or nested timeline identity.
+    #[must_use]
+    pub const fn source(self) -> ClipSource {
+        self.source
+    }
+
+    /// Returns the synchronized source-to-record mapping.
+    #[must_use]
+    pub const fn ranges(self) -> ClipRangeMap {
+        self.ranges
+    }
+
+    /// Returns the selected interval in source coordinates.
+    #[must_use]
+    pub const fn source_range(self) -> TimeRange {
+        self.ranges.source_range()
+    }
+
+    /// Returns the placement interval in record coordinates.
+    #[must_use]
+    pub const fn record_range(self) -> TimeRange {
+        self.ranges.record_range()
+    }
+
+    /// Returns known media or nested-timeline availability.
+    #[must_use]
+    pub const fn available_range(self) -> Option<TimeRange> {
+        self.available_range
+    }
+
+    /// Classifies the selected source interval without changing either range.
+    pub fn availability(self) -> Result<RangeAvailability> {
+        let Some(available) = self.available_range else {
+            return Ok(RangeAvailability::Unknown);
+        };
+        let source = self.source_range();
+        if available.start() <= source.start()
+            && available.end_exclusive()? >= source.end_exclusive()?
+        {
+            return Ok(RangeAvailability::FullyAvailable);
+        }
+        if available.intersects(source)? {
+            return Ok(RangeAvailability::PartiallyAvailable);
+        }
+        Ok(RangeAvailability::Unavailable)
+    }
+}
+
 /// A source-bearing clip instance with explicit source and record mappings.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Clip {
     id: ClipId,
     name: String,
     source: ClipSource,
-    source_range: TimeRange,
-    record_range: TimeRange,
+    ranges: ClipRangeMap,
 }
 
 impl Clip {
@@ -1109,14 +1303,13 @@ impl Clip {
         source: ClipSource,
         source_range: TimeRange,
         record_range: TimeRange,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        Ok(Self {
             id,
             name: name.into(),
             source,
-            source_range,
-            record_range,
-        }
+            ranges: ClipRangeMap::new(source_range, record_range)?,
+        })
     }
 
     /// Returns the clip identity.
@@ -1140,13 +1333,19 @@ impl Clip {
     /// Returns the selected interval in source coordinates.
     #[must_use]
     pub const fn source_range(&self) -> TimeRange {
-        self.source_range
+        self.ranges.source_range()
     }
 
     /// Returns the placement interval in timeline coordinates.
     #[must_use]
     pub const fn record_range(&self) -> TimeRange {
-        self.record_range
+        self.ranges.record_range()
+    }
+
+    /// Returns the complete synchronized source-to-record mapping.
+    #[must_use]
+    pub const fn ranges(&self) -> ClipRangeMap {
+        self.ranges
     }
 
     /// Replaces the source relationship inside an unpublished draft.
@@ -1160,13 +1359,21 @@ impl Clip {
     }
 
     /// Replaces the selected source interval inside an unpublished draft.
-    pub fn set_source_range(&mut self, source_range: TimeRange) {
-        self.source_range = source_range;
+    pub fn set_source_range(&mut self, source_range: TimeRange) -> Result<()> {
+        self.ranges = ClipRangeMap::new(source_range, self.record_range())?;
+        Ok(())
     }
 
     /// Replaces the timeline placement inside an unpublished draft.
-    pub fn set_record_range(&mut self, record_range: TimeRange) {
-        self.record_range = record_range;
+    pub fn set_record_range(&mut self, record_range: TimeRange) -> Result<()> {
+        self.ranges = ClipRangeMap::new(self.source_range(), record_range)?;
+        Ok(())
+    }
+
+    /// Replaces source selection and record placement as one checked operation.
+    pub fn set_ranges(&mut self, source_range: TimeRange, record_range: TimeRange) -> Result<()> {
+        self.ranges = ClipRangeMap::new(source_range, record_range)?;
+        Ok(())
     }
 }
 
@@ -1953,6 +2160,61 @@ impl EditorialProject {
         self.timelines.values()
     }
 
+    /// Resolves one clip's source, record, and available ranges.
+    ///
+    /// Media availability remains optional. A nested timeline always exposes
+    /// its current complete duration as a source range starting at zero.
+    pub fn clip_range_context(&self, id: ClipId) -> Result<ClipRangeContext> {
+        let clip = self
+            .timelines
+            .values()
+            .flat_map(Timeline::tracks)
+            .flat_map(Track::items)
+            .filter_map(TrackItem::as_clip)
+            .find(|clip| clip.id() == id)
+            .ok_or_else(|| {
+                not_found(
+                    "find_clip_ranges",
+                    "editorial clip was not found",
+                    "clip",
+                    id,
+                )
+            })?;
+        let available_range = match clip.source() {
+            ClipSource::Media(media_id) => self
+                .media_references
+                .get(&media_id)
+                .ok_or_else(|| {
+                    not_found(
+                        "resolve_clip_ranges",
+                        "clip references missing linked media",
+                        "media",
+                        media_id,
+                    )
+                })?
+                .available_range(),
+            ClipSource::Timeline(timeline_id) => {
+                let timeline = self.timelines.get(&timeline_id).ok_or_else(|| {
+                    not_found(
+                        "resolve_clip_ranges",
+                        "clip references missing nested timeline",
+                        "timeline",
+                        timeline_id,
+                    )
+                })?;
+                Some(TimeRange::new(
+                    RationalTime::zero(timeline.edit_rate()),
+                    timeline.duration()?,
+                )?)
+            }
+        };
+        Ok(ClipRangeContext {
+            source: clip.source(),
+            ranges: clip.ranges(),
+            available_range,
+        })
+    }
+
     /// Applies one atomic edit against an expected project revision.
     ///
     /// The closure mutates only a private clone. The complete candidate is
@@ -2121,17 +2383,16 @@ impl EditorialProject {
         for timeline in self.timelines.values() {
             for track in timeline.tracks() {
                 for item in track.items() {
-                    let Some(Clip {
-                        source: ClipSource::Timeline(source_timeline),
-                        source_range,
-                        ..
-                    }) = item.as_clip()
-                    else {
+                    let Some(clip) = item.as_clip() else {
                         continue;
                     };
+                    let ClipSource::Timeline(source_timeline) = clip.source() else {
+                        continue;
+                    };
+                    let source_range = clip.source_range();
                     let nested = self
                         .timelines
-                        .get(source_timeline)
+                        .get(&source_timeline)
                         .expect("source links validated");
                     if source_range.timebase() != nested.edit_rate() {
                         return Err(invalid(

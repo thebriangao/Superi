@@ -1034,9 +1034,10 @@ fn slice_item(
         )?;
         let source_duration =
             exact_duration_at(new_range.duration(), old_source.timebase(), operation)?;
-        clip.set_source_range(TimeRange::new(source_start, source_duration)?);
+        clip.set_ranges(TimeRange::new(source_start, source_duration)?, new_range)?;
+    } else {
+        set_record_range(&mut sliced, new_range, operation)?;
     }
-    set_record_range(&mut sliced, new_range, operation)?;
     Ok(sliced)
 }
 
@@ -1080,7 +1081,7 @@ fn shift_item_left(
 
 fn set_record_range(item: &mut TrackItem, range: TimeRange, operation: &'static str) -> Result<()> {
     match item {
-        TrackItem::Clip(value) => value.set_record_range(range),
+        TrackItem::Clip(value) => value.set_record_range(range)?,
         TrackItem::Gap(value) => value.set_record_range(range),
         TrackItem::Generator(value) => value.set_record_range(range),
         TrackItem::Caption(value) => value.set_record_range(range),
@@ -1106,7 +1107,7 @@ fn clone_with_id(
             value.source(),
             value.source_range(),
             value.record_range(),
-        )),
+        )?),
         (TrackItem::Gap(value), EditorialObjectId::Gap(id)) => {
             TrackItem::Gap(Gap::new(id, value.name(), value.record_range()))
         }

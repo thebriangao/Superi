@@ -2,8 +2,8 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: a1de5c2be2b5413eabc6753cb5b50f4e3d8667290231267311e3440e76cf70c2
-source_files: 16
+source_hash: a7a3cd5056d1e756e336e01c2f9faf81a3530a98cc2906f8fafcde1985cbb979
+source_files: 17
 mapped_at_commit: working-tree
 ---
 
@@ -14,11 +14,13 @@ semantics. It represents linked media, timelines, ordered tracks, clips, explici
 transitions, generators, captions, and nested timeline sources with core-owned identities and
 exact rational timing. It also owns authoritative timeline selection, track targeting, sync locks,
 linked selection, and clip grouping. Video, audio, caption, and timed-data tracks carry their
-explicit clock and media behavior. Foundational insert, overwrite, append, replace, lift, and
-extract commands reshape those objects while reporting every inserted, removed, modified, split,
-or invalidated relationship. Whole-project validation and revision-checked atomic batches keep
-linked objects, timing,
-synchronization, nesting, and direct edits valid at publication boundaries.
+explicit clock and media behavior. Clip range maps keep source and record clocks synchronized,
+while resolved range contexts expose known media availability or derived nested-timeline
+availability without destroying overscan. Foundational insert, overwrite, append, replace, lift,
+and extract commands reshape those objects while reporting every inserted, removed, modified,
+split, or invalidated relationship. Whole-project validation and revision-checked atomic batches
+keep linked objects, user intent, timing, synchronization, nesting, and direct edits valid at
+publication boundaries.
 
 The crate continues to reserve advanced trim operations, markers, multicam behavior, OTIO-compatible
 interchange, and deterministic timeline-to-graph compilation. Those surfaces are not implemented.
@@ -43,8 +45,9 @@ than a production reader or writer.
 - `open/crates/superi-timeline/src/markers.rs`: Placeholder for markers, metadata, bins, and media
   management.
 - `open/crates/superi-timeline/src/model.rs`: Implements four track kinds, track-specific timing and
-  media semantics, linked media, every foundational editorial object, ordered tracks, timelines,
-  validated project snapshots, and atomic revision-checked editing.
+  media semantics, exact clip range maps, linked availability context, every foundational
+  editorial object, ordered tracks, timelines, validated project snapshots, and atomic
+  revision-checked editing.
 - `open/crates/superi-timeline/src/multicam.rs`: Placeholder for a multicam data model.
 - `open/crates/superi-timeline/src/nested.rs`: Placeholder for higher-level compound clip and
   nested sequence operations. The foundational model already supports clips sourced from another
@@ -63,6 +66,9 @@ than a production reader or writer.
   transition removal, lift gaps, synchronized multi-track publication, and failed-batch rollback.
 - `open/crates/superi-timeline/tests/otio_fixture_contract.rs`: Proves canonical OTIO schema,
   hierarchy, identity, timing, relationships, opaque retention, and unsupported diagnostics.
+- `open/crates/superi-timeline/tests/range_contract.rs`: Proves exact cross-clock point and subrange
+  mapping, fallible atomic range replacement, media overscan classification, unknown availability,
+  and derived nested-timeline availability.
 - `open/crates/superi-timeline/tests/track_semantics_contract.rs`: Proves all four track kinds,
   exact clocks, channel routing, linked audio reshaping, continuity, and bounded validation.
 
@@ -92,6 +98,10 @@ The editorial state surface includes:
 - `LinkedMediaReference`, including stable media identity, display name, target locator, and an
   optional available source range.
 - `ClipSource`, which links a clip to either media or another timeline.
+- `ClipRangeMap` for nonempty equal-duration source and record ranges plus checked exact point and
+  subrange translation in both directions.
+- `ClipRangeContext` and `RangeAvailability` for resolving a clip's typed source, synchronized
+  ranges, optional availability, and unknown, full, partial, or unavailable status.
 - `Clip`, `Gap`, `Transition`, `Generator`, and `Caption`, each with typed identity and direct
   mutation inside unpublished state.
 - `TrackItem` and `Track`, preserving ordered editorial membership, complete `TrackSemantics`, and
@@ -141,15 +151,20 @@ Editorial construction and validation then proceed as follows:
 
 1. Callers construct media references and timeline objects using canonical identities, exact
    `TimeRange` values, and `TrackSemantics` embedded in each track.
-2. `EditorialProject::new` indexes media and timelines, rejects duplicate identities, and validates
+2. `ClipRangeMap::new` requires nonempty source and record ranges with equal physical rational
+   duration. Exact point and subrange mapping uses checked core arithmetic and never rounds.
+3. `EditorialProject::new` indexes media and timelines, rejects duplicate identities, and validates
    the complete candidate graph before publishing it.
-3. Validation walks every timeline and ordered track using that track's edit clock. It verifies
+4. Validation walks every timeline and ordered track using that track's edit clock. It verifies
    local timing and object uniqueness, resolves clip sources, validates transitions against
    adjacent timed items, and follows nested timeline links to reject cycles.
-4. A timeline compares track endpoints in physical rational time and exactly rescales the longest
+5. `EditorialProject::clip_range_context` resolves media availability directly and derives nested
+   availability from `[0, nested duration)` at the nested edit rate. Classification reports
+   overscan without snapping or rejecting a media-linked clip.
+6. A timeline compares track endpoints in physical rational time and exactly rescales the longest
    endpoint to its primary edit rate. This preserves synchronization across clocks such as frames,
    milliseconds, and audio samples without implicit rounding.
-5. Read-only accessors expose the published project, while timeline, track, and object lookup keeps
+7. Read-only accessors expose the published project, while timeline, track, and object lookup keeps
    each relationship understandable by identity and order.
 
 Direct edits use a copy-validate-publish transaction. `EditorialProject::edit` checks the expected
@@ -228,7 +243,11 @@ assertions. It does not enter the native model yet.
 - A timeline duration is the longest physical track endpoint exactly represented at the timeline's
   primary edit rate. Unrepresentable synchronization is rejected rather than rounded.
 - Clips preserve physical duration between source and record ranges even when their timebases
-  differ. Media source ranges may exceed an optional available range so overscan is not destroyed.
+  differ. Construction and direct replacement validate before mutation, so a clip cannot publish a
+  desynchronized range map. Point and subrange mapping rejects out-of-range and inexact conversion.
+- Media source ranges may exceed an optional available range so overscan and relink intent are not
+  destroyed. Availability remains inspectable as unknown, fully available, partially available, or
+  unavailable.
 - Nested clip source ranges use the target timeline's primary edit rate, stay within its duration,
   and may not form a direct or indirect cycle.
 - A transition names the timed item immediately before and after it. Its offsets use the track edit
@@ -284,21 +303,25 @@ transition invalidation, unchanged and changed duration reports, synchronized tw
 stale revisions, wrong clocks, transition material, overwrite bounds, and complete rollback after a
 later command fails.
 
+Four range tests prove exact cross-clock point and subrange translation, half-open and inexact
+failure paths, atomic direct replacement, all four availability classifications, editable media
+overscan, and nested source resolution.
+
 Workspace tests, warnings-denied Clippy, formatting, dependency direction, the offline boundary
 scan, and codebase-map validation are required delivery gates.
 
 ## Current status and risks
 
-The foundational project model, typed track semantics, authoritative timeline edit state, and six
-primary editorial operations are substantive and test-backed. Production OTIO reading and writing,
-graph compilation, advanced trim transforms, undo ownership, markers, multicam, persistence, and
-engine or API integration remain absent.
+The foundational project model, rational range mapping, linked availability context, typed track
+semantics, authoritative timeline edit state, and six primary editorial operations are substantive
+and test-backed. Production OTIO reading and writing, graph compilation, advanced trim transforms,
+undo ownership, markers, multicam, persistence, and engine or API integration remain absent.
 
 The model requires equal physical source and record duration for clips. Future time-warp support
-must introduce explicit retime state rather than weakening that invariant. Direct setters permit
-temporarily invalid unpublished state; callers must use `EditorialProject::edit` or
-`apply_edit_batch` for atomic publication. Selection is authoritative command intent, not hover,
-focus, marquee geometry, or optimistic UI presentation state. Sync resolution identifies
+must introduce explicit retime state rather than weakening that invariant. Clip range setters
+validate before mutation, while callers use `EditorialProject::edit` or `apply_edit_batch` for
+atomic publication of broader project changes. Selection is authoritative command intent, not
+hover, focus, marquee geometry, or optimistic UI presentation state. Sync resolution identifies
 participating tracks but performs no transform on its own. Links and groups are timeline-local and
 have no independent durable ID. Edit material is currently one timed object per command;
 multi-object source sequences and link-group targeting belong to later command and orchestration

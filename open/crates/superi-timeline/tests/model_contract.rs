@@ -62,7 +62,8 @@ fn project_fixture() -> EditorialProject {
         ClipSource::Media(MEDIA),
         range(48, 96, source_rate),
         range(0, 48, edit_rate),
-    );
+    )
+    .unwrap();
     let generator = Generator::new(
         GENERATOR,
         "solid black",
@@ -115,7 +116,8 @@ fn project_fixture() -> EditorialProject {
         ClipSource::Timeline(SUB_TIMELINE),
         range(0, 84, edit_rate),
         range(0, 84, edit_rate),
-    );
+    )
+    .unwrap();
     let main = Timeline::new(
         MAIN_TIMELINE,
         "main",
@@ -211,7 +213,7 @@ fn validated_edits_are_atomic_revisioned_and_direct() {
                 .item_mut(EditorialObjectId::Clip(CLIP))?
                 .as_clip_mut()
                 .expect("clip identity resolves to a clip");
-            clip.set_source_range(range(96, 96, source_rate));
+            clip.set_source_range(range(96, 96, source_rate))?;
 
             let caption = draft
                 .timeline_mut(SUB_TIMELINE)?
@@ -251,7 +253,7 @@ fn validated_edits_are_atomic_revisioned_and_direct() {
                 .item_mut(EditorialObjectId::Clip(CLIP))?
                 .as_clip_mut()
                 .unwrap()
-                .set_record_range(range(0, 47, edit_rate));
+                .set_record_range(range(0, 47, edit_rate))?;
             Ok(())
         })
         .unwrap_err();
@@ -278,13 +280,16 @@ fn construction_rejects_missing_links_and_discontinuous_tracks() {
             TrackId::from_raw(201),
             "V1",
             video_semantics(),
-            vec![TrackItem::Clip(Clip::new(
-                ClipId::from_raw(202),
-                "missing",
-                ClipSource::Media(MediaId::from_raw(999)),
-                range(0, 24, edit_rate),
-                range(0, 24, edit_rate),
-            ))],
+            vec![TrackItem::Clip(
+                Clip::new(
+                    ClipId::from_raw(202),
+                    "missing",
+                    ClipSource::Media(MediaId::from_raw(999)),
+                    range(0, 24, edit_rate),
+                    range(0, 24, edit_rate),
+                )
+                .unwrap(),
+            )],
         )],
     );
     let error =
@@ -360,13 +365,16 @@ fn construction_rejects_invalid_transitions_and_nesting_cycles() {
             TrackId::from_raw(311),
             "V1",
             video_semantics(),
-            vec![TrackItem::Clip(Clip::new(
-                ClipId::from_raw(312),
-                "a to b",
-                ClipSource::Timeline(TimelineId::from_raw(320)),
-                range(0, 24, edit_rate),
-                range(0, 24, edit_rate),
-            ))],
+            vec![TrackItem::Clip(
+                Clip::new(
+                    ClipId::from_raw(312),
+                    "a to b",
+                    ClipSource::Timeline(TimelineId::from_raw(320)),
+                    range(0, 24, edit_rate),
+                    range(0, 24, edit_rate),
+                )
+                .unwrap(),
+            )],
         )],
     );
     let timeline_b = Timeline::new(
@@ -378,13 +386,16 @@ fn construction_rejects_invalid_transitions_and_nesting_cycles() {
             TrackId::from_raw(321),
             "V1",
             video_semantics(),
-            vec![TrackItem::Clip(Clip::new(
-                ClipId::from_raw(322),
-                "b to a",
-                ClipSource::Timeline(TimelineId::from_raw(310)),
-                range(0, 24, edit_rate),
-                range(0, 24, edit_rate),
-            ))],
+            vec![TrackItem::Clip(
+                Clip::new(
+                    ClipId::from_raw(322),
+                    "b to a",
+                    ClipSource::Timeline(TimelineId::from_raw(310)),
+                    range(0, 24, edit_rate),
+                    range(0, 24, edit_rate),
+                )
+                .unwrap(),
+            )],
         )],
     );
     let error = EditorialProject::new(

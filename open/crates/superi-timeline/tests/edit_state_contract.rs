@@ -70,21 +70,24 @@ fn project_fixture() -> EditorialProject {
         ClipSource::Media(MEDIA),
         range(48, 48, source_rate),
         range(0, 24, video_rate),
-    );
+    )
+    .unwrap();
     let sound = Clip::new(
         SOUND,
         "production sound",
         ClipSource::Media(MEDIA),
         range(48_000, 48_000, audio_rate),
         range(0, 48_000, audio_rate),
-    );
+    )
+    .unwrap();
     let broll = Clip::new(
         BROLL,
         "b roll",
         ClipSource::Media(MEDIA),
         range(96, 48, source_rate),
         range(0, 24, video_rate),
-    );
+    )
+    .unwrap();
     let timeline = Timeline::new(
         TIMELINE,
         "main edit",
