@@ -2465,24 +2465,17 @@ fn slice_item(
         ));
     }
     let new_range = TimeRange::from_start_end(start, end)?;
-    let mut sliced = clone_with_id(item, id, operation)?;
-    if let TrackItem::Clip(clip) = &mut sliced {
-        let old_source = clip.source_range();
-        let record_offset =
-            start.checked_sub_at(old_range.start(), old_range.timebase(), TimeRounding::Exact)?;
-        let source_offset =
-            record_offset.checked_rescale(old_source.timebase(), TimeRounding::Exact)?;
-        let source_start = old_source.start().checked_add_at(
-            source_offset,
-            old_source.timebase(),
-            TimeRounding::Exact,
-        )?;
-        let source_duration =
-            exact_duration_at(new_range.duration(), old_source.timebase(), operation)?;
-        clip.set_ranges(TimeRange::new(source_start, source_duration)?, new_range)?;
-    } else {
-        set_record_range(&mut sliced, new_range, operation)?;
+    if let TrackItem::Clip(clip) = item {
+        let EditorialObjectId::Clip(id) = id else {
+            return Err(invalid_edit(
+                operation,
+                "fragment identity must have the same typed domain as its original object",
+            ));
+        };
+        return clip.slice_with_id(id, new_range).map(TrackItem::Clip);
     }
+    let mut sliced = clone_with_id(item, id, operation)?;
+    set_record_range(&mut sliced, new_range, operation)?;
     Ok(sliced)
 }
 
@@ -2597,13 +2590,9 @@ fn clone_with_id(
     operation: &'static str,
 ) -> Result<TrackItem> {
     let value = match (item, id) {
-        (TrackItem::Clip(value), EditorialObjectId::Clip(id)) => TrackItem::Clip(Clip::new(
-            id,
-            value.name(),
-            value.source(),
-            value.source_range(),
-            value.record_range(),
-        )?),
+        (TrackItem::Clip(value), EditorialObjectId::Clip(id)) => {
+            TrackItem::Clip(value.clone_with_id(id))
+        }
         (TrackItem::Gap(value), EditorialObjectId::Gap(id)) => {
             TrackItem::Gap(Gap::new(id, value.name(), value.record_range()))
         }

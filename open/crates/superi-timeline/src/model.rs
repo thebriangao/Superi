@@ -22,6 +22,7 @@ use crate::edit_state::{SelectionExpansion, SelectionUpdate, TimelineEditState};
 use crate::markers::{
     Marker, MetadataOwner, SnapMatch, SnapRequest, TimelineAnnotations, TimelineMetadata,
 };
+use crate::retime::{ClipTimeMap, MappedSourceTime, RetimeMode, RetimeResolution};
 
 /// The semantic media class of an editorial track.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -1235,46 +1236,53 @@ pub enum RangeAvailability {
 }
 
 /// Resolved range meaning for one clip and its linked source.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClipRangeContext {
     source: ClipSource,
     ranges: ClipRangeMap,
+    time_map: ClipTimeMap,
     available_range: Option<TimeRange>,
 }
 
 impl ClipRangeContext {
     /// Returns the linked media or nested timeline identity.
     #[must_use]
-    pub const fn source(self) -> ClipSource {
+    pub const fn source(&self) -> ClipSource {
         self.source
     }
 
     /// Returns the synchronized source-to-record mapping.
     #[must_use]
-    pub const fn ranges(self) -> ClipRangeMap {
+    pub const fn ranges(&self) -> ClipRangeMap {
         self.ranges
     }
 
     /// Returns the selected interval in source coordinates.
     #[must_use]
-    pub const fn source_range(self) -> TimeRange {
+    pub const fn source_range(&self) -> TimeRange {
         self.ranges.source_range()
     }
 
     /// Returns the placement interval in record coordinates.
     #[must_use]
-    pub const fn record_range(self) -> TimeRange {
+    pub const fn record_range(&self) -> TimeRange {
         self.ranges.record_range()
+    }
+
+    /// Returns the complete clip-local record-to-source timing map.
+    #[must_use]
+    pub const fn time_map(&self) -> &ClipTimeMap {
+        &self.time_map
     }
 
     /// Returns known media or nested-timeline availability.
     #[must_use]
-    pub const fn available_range(self) -> Option<TimeRange> {
+    pub const fn available_range(&self) -> Option<TimeRange> {
         self.available_range
     }
 
     /// Classifies the selected source interval without changing either range.
-    pub fn availability(self) -> Result<RangeAvailability> {
+    pub fn availability(&self) -> Result<RangeAvailability> {
         let Some(available) = self.available_range else {
             return Ok(RangeAvailability::Unknown);
         };
@@ -1289,6 +1297,80 @@ impl ClipRangeContext {
         }
         Ok(RangeAvailability::Unavailable)
     }
+
+    /// Resolves one absolute record coordinate for immediate transport use.
+    pub fn playback_sample(
+        &self,
+        record_time: RationalTime,
+        rounding: TimeRounding,
+    ) -> Result<ClipPlaybackSample> {
+        if !self.record_range().contains(record_time)? {
+            return Err(invalid(
+                "resolve_clip_playback_sample",
+                "playback query must lie inside the half-open clip record range",
+            ));
+        }
+        let local_time = record_time.checked_sub_at(
+            self.record_range().start(),
+            self.record_range().timebase(),
+            TimeRounding::Exact,
+        )?;
+        let mapped = self.time_map.source_time_at(local_time, rounding)?;
+        let availability = match self.available_range {
+            None => SampleAvailability::Unknown,
+            Some(available) if available.contains(mapped.time())? => SampleAvailability::Available,
+            Some(_) => SampleAvailability::Unavailable,
+        };
+        Ok(ClipPlaybackSample {
+            mapped,
+            availability,
+        })
+    }
+}
+
+/// Known source availability for one resolved playback sample.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum SampleAvailability {
+    /// Source extent discovery has not supplied an answer.
+    Unknown,
+    /// The selected source coordinate is available.
+    Available,
+    /// The selected source coordinate lies outside known availability.
+    Unavailable,
+}
+
+/// One transport-ready source coordinate with visible degraded behavior.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ClipPlaybackSample {
+    mapped: MappedSourceTime,
+    availability: SampleAvailability,
+}
+
+impl ClipPlaybackSample {
+    /// Returns the selected source coordinate.
+    #[must_use]
+    pub const fn source_time(self) -> RationalTime {
+        self.mapped.time()
+    }
+
+    /// Returns exact, held, or explicitly rounded resolution.
+    #[must_use]
+    pub const fn resolution(self) -> RetimeResolution {
+        self.mapped.resolution()
+    }
+
+    /// Returns the directly inspectable time-map segment index.
+    #[must_use]
+    pub const fn segment_index(self) -> usize {
+        self.mapped.segment_index()
+    }
+
+    /// Returns known, unknown, or unavailable source state.
+    #[must_use]
+    pub const fn availability(self) -> SampleAvailability {
+        self.availability
+    }
 }
 
 /// A source-bearing clip instance with explicit source and record mappings.
@@ -1298,6 +1380,7 @@ pub struct Clip {
     name: String,
     source: ClipSource,
     ranges: ClipRangeMap,
+    time_map: ClipTimeMap,
 }
 
 impl Clip {
@@ -1309,11 +1392,14 @@ impl Clip {
         source_range: TimeRange,
         record_range: TimeRange,
     ) -> Result<Self> {
+        let ranges = ClipRangeMap::new(source_range, record_range)?;
+        let time_map = ClipTimeMap::identity(record_range.duration(), source_range.start())?;
         Ok(Self {
             id,
             name: name.into(),
             source,
-            ranges: ClipRangeMap::new(source_range, record_range)?,
+            ranges,
+            time_map,
         })
     }
 
@@ -1353,6 +1439,32 @@ impl Clip {
         self.ranges
     }
 
+    /// Returns the complete clip-local record-to-source timing map.
+    #[must_use]
+    pub const fn time_map(&self) -> &ClipTimeMap {
+        &self.time_map
+    }
+
+    /// Resolves one absolute record coordinate through this clip's time map.
+    pub fn source_time_at(
+        &self,
+        record_time: RationalTime,
+        rounding: TimeRounding,
+    ) -> Result<MappedSourceTime> {
+        if !self.record_range().contains(record_time)? {
+            return Err(invalid(
+                "resolve_clip_source_time",
+                "playback query must lie inside the half-open clip record range",
+            ));
+        }
+        let local_time = record_time.checked_sub_at(
+            self.record_range().start(),
+            self.record_range().timebase(),
+            TimeRounding::Exact,
+        )?;
+        self.time_map.source_time_at(local_time, rounding)
+    }
+
     /// Replaces the source relationship inside an unpublished draft.
     pub fn set_source(&mut self, source: ClipSource) {
         self.source = source;
@@ -1365,20 +1477,78 @@ impl Clip {
 
     /// Replaces the selected source interval inside an unpublished draft.
     pub fn set_source_range(&mut self, source_range: TimeRange) -> Result<()> {
-        self.ranges = ClipRangeMap::new(source_range, self.record_range())?;
+        let ranges = ClipRangeMap::new(source_range, self.record_range())?;
+        let time_map = self
+            .time_map
+            .translate_source(self.source_range().start(), source_range.start())?;
+        self.ranges = ranges;
+        self.time_map = time_map;
         Ok(())
     }
 
     /// Replaces the timeline placement inside an unpublished draft.
     pub fn set_record_range(&mut self, record_range: TimeRange) -> Result<()> {
-        self.ranges = ClipRangeMap::new(self.source_range(), record_range)?;
+        let ranges = ClipRangeMap::new(self.source_range(), record_range)?;
+        let time_map = self
+            .time_map
+            .rescale_record_clock(record_range.duration())?;
+        self.ranges = ranges;
+        self.time_map = time_map;
         Ok(())
     }
 
     /// Replaces source selection and record placement as one checked operation.
     pub fn set_ranges(&mut self, source_range: TimeRange, record_range: TimeRange) -> Result<()> {
-        self.ranges = ClipRangeMap::new(source_range, record_range)?;
+        let ranges = ClipRangeMap::new(source_range, record_range)?;
+        let time_map = if self.record_range().duration() == record_range.duration() {
+            self.time_map
+                .rescale_record_clock(record_range.duration())?
+                .translate_source(self.source_range().start(), source_range.start())?
+        } else if self.time_map.mode() == RetimeMode::Identity {
+            ClipTimeMap::identity(record_range.duration(), source_range.start())?
+        } else {
+            return Err(invalid(
+                "replace_clip_ranges",
+                "retimed range replacement must preserve the clip duration or supply a new time map",
+            ));
+        };
+        self.ranges = ranges;
+        self.time_map = time_map;
         Ok(())
+    }
+
+    /// Replaces the complete playback timing as one checked operation.
+    pub fn set_time_map(&mut self, time_map: ClipTimeMap) -> Result<()> {
+        time_map.validate_binding(
+            self.record_range().duration(),
+            self.source_range().timebase(),
+        )?;
+        self.time_map = time_map;
+        Ok(())
+    }
+
+    pub(crate) fn clone_with_id(&self, id: ClipId) -> Self {
+        let mut cloned = self.clone();
+        cloned.id = id;
+        cloned
+    }
+
+    pub(crate) fn slice_with_id(&self, id: ClipId, record_range: TimeRange) -> Result<Self> {
+        let source_range = self.ranges.record_range_to_source(record_range)?;
+        let local_start = record_range.start().checked_sub_at(
+            self.record_range().start(),
+            self.record_range().timebase(),
+            TimeRounding::Exact,
+        )?;
+        let local_range = TimeRange::new(local_start, record_range.duration())?;
+        let time_map = self.time_map.slice(local_range)?;
+        Ok(Self {
+            id,
+            name: self.name.clone(),
+            source: self.source,
+            ranges: ClipRangeMap::new(source_range, record_range)?,
+            time_map,
+        })
     }
 }
 
@@ -2290,6 +2460,7 @@ impl EditorialProject {
         Ok(ClipRangeContext {
             source: clip.source(),
             ranges: clip.ranges(),
+            time_map: clip.time_map().clone(),
             available_range,
         })
     }

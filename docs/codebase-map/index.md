@@ -31,7 +31,7 @@ against raw source before changing code.
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; production source registration and muxing absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
-| `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Native editorial project state, rational range maps and availability, typed tracks, exact timing, authoritative edit intent, markers, deterministic metadata, exact snapping, clip relationships, atomic foundational, advanced, and nested operations, color metadata propagation, and staged OTIO and graph compilation | Foundational model, exact range resolution, track clocks, linked sample reshaping, selection, targeting, synchronization, clip relationships, three-class marker ownership, metadata, snapping, six primary operations, nine advanced edit families, nested placement, compound creation, shared child editing, recursive inspection, and the graph color metadata seam are test-backed; interchange, retiming, compilation, persistence, and runtime integration absent |
+| `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Native editorial project state, rational range maps and availability, exact clip retiming, typed tracks, authoritative edit intent, markers, deterministic metadata, exact snapping, clip relationships, atomic foundational, advanced, and nested operations, color metadata propagation, and staged OTIO and graph compilation | Foundational model, exact range and retime resolution, speed changes, reverse, freeze, piecewise time remapping, track clocks, linked sample reshaping, selection, targeting, synchronization, clip relationships, three-class marker ownership, metadata, snapping, six primary operations, nine advanced edit families, nested placement, compound creation, shared child editing, recursive inspection, and the graph color metadata seam are test-backed; interchange, fit-to-fill, grouped-source compound synthesis, compilation, persistence, and runtime integration absent |
 | `tool-superi-dependency-check` | [module map](modules/tool-superi-dependency-check.md) | `open/tools/superi-dependency-check` | Offline executable policy for the open runtime dependency graph | Implemented exact runtime, build, dev, and new-crate checks |
 | `tool-superi-boundary-tool` | [module map](modules/tool-superi-boundary-tool.md) | `open/tools/superi-boundary-tool` | Offline scanner for network-client and open-to-closed policy | Implemented library, CLI, workspace gate, and hosted-build command |
 | `tool-superi-bench` | [module map](modules/tool-superi-bench.md) | `open/tools/superi-bench` | Stable benchmark harnesses and reproducible stage reporting | Implemented seven-stage runner with real graph evaluation and explicit gaps |
@@ -291,8 +291,9 @@ project, timeline, graph, caches, undo, persistence, lifecycle, playback, render
 publication. Bulk frames, audio, packets, and GPU resources are intended to stay behind that seam.
 
 That target must not be read as current behavior. Timeline now owns foundational validated
-editorial state plus selection, targeting, sync locks, linked selection, clip groups, six primary
-operations, and ripple, roll, slip, slide, razor, trim, extend, three-point, and four-point edits.
+editorial state plus selection, targeting, sync locks, linked selection, clip groups, exact clip
+retiming, six primary operations, and ripple, roll, slip, slide, razor, trim, extend, three-point,
+and four-point edits.
 Graph owns a substantive generic DAG and evaluator, but the two are not
 integrated. Project, cache, audio,
 effects, and most engine orchestration remain placeholders, so no complete edit, playback, render,
@@ -779,7 +780,7 @@ Partial modules contain these explicit placeholder areas:
   availability, exact dirty regions, dependency invalidation, snapshot-bound ROI planning,
   deterministic request-scoped scheduling, node introspection, versioned cache identity, run-local
   timing, and shared interactive and headless evaluation surfaces.
-- `superi-timeline`: OTIO reading and writing, deterministic graph compilation, retiming,
+- `superi-timeline`: OTIO reading and writing, deterministic graph compilation, fit-to-fill,
   grouped-source compound synthesis and higher-level edit orchestration, undo ownership, multicam,
   persistence, and production consumers beyond its native model, authoritative edit state, marker
   and metadata state, exact snapping, foundational, advanced, and nested edit operations, and contract
@@ -827,11 +828,11 @@ For common concerns, begin at these owners:
   pre-execution node introspection, cache identity, run-local timing, and shared interactive and
   headless evaluation:
   `superi-graph`, with value identity, rational time, and pixel bounds owned by `superi-core`.
-- Native editorial objects, typed track semantics, exact timing, selection, track targeting, sync
-  locks, linked selection, clip grouping, markers, deterministic metadata, exact snapping, and
-  foundational insert, overwrite, append, replace, lift, and extract operations plus advanced
-  ripple, roll, slip, slide, razor, trim, extend, three-point, and four-point operations, plus nested
-  placement, compound creation, shared child editing, and recursive nesting inspection:
+- Native editorial objects, typed track semantics, exact timing and clip retiming, selection, track
+  targeting, sync locks, linked selection, clip grouping, markers, deterministic metadata, exact
+  snapping, and foundational insert, overwrite, append, replace, lift, and extract operations plus
+  advanced ripple, roll, slip, slide, razor, trim, extend, three-point, and four-point operations,
+  plus nested placement, compound creation, shared child editing, and recursive nesting inspection:
   `superi-timeline`.
 - Current assembly and public capability flow: `superi-engine` then `superi-api`.
 - Product law, open and closed boundaries, CI, fixtures, and maintenance workflow: `workspace`.

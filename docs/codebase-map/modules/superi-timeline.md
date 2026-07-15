@@ -2,8 +2,8 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: f578d4264e7dd657c54a00580b2c1ec7656a5305ce3f5aff781ba7f002eec943
-source_files: 20
+source_hash: dc29966adac23b170c288ea66db403c56bb171f4e4283e248202d906be0a9496
+source_files: 22
 mapped_at_commit: working-tree
 ---
 
@@ -25,6 +25,10 @@ extend, and exact three-point and four-point commands on one typed batch surface
 report every inserted, removed, modified, split, synchronized, or invalidated relationship.
 Whole-project validation and revision-checked atomic batches keep linked objects, annotations, user
 intent, timing, synchronization, nesting, and direct edits valid at publication boundaries.
+Clip-owned exact time maps add rational speed changes, reverse playback, freeze frames, and
+continuous piecewise-linear time remapping without weakening nominal range invariants. Immutable
+segment storage and binary-search record-to-source queries expose exact, held, explicitly rounded,
+known, unknown, and unavailable transport behavior directly.
 
 Nested-sequence operations place an existing child timeline or create a new compound timeline and
 its parent clip in the same project revision. They reuse foundational insert, overwrite, append,
@@ -34,8 +38,8 @@ child through any stable instance while reporting every current instance.
 The model also owns a narrow immutable color metadata seam that retains graph color state through
 the future compilation boundary without changing source meaning.
 
-The crate continues to reserve retiming, multicam behavior, OTIO-compatible interchange,
-and deterministic timeline-to-graph compilation. Those surfaces are not implemented.
+The crate continues to reserve multicam behavior, OTIO-compatible interchange, and deterministic
+timeline-to-graph compilation. Those surfaces are not implemented.
 The canonical OTIO 0.18.1 fixture remains executable evidence for future interchange work rather
 than a production reader or writer.
 
@@ -45,25 +49,25 @@ than a production reader or writer.
   `superi-graph`, plus development-only `serde_json` for canonical OTIO fixture contracts.
 - `open/crates/superi-timeline/src/compile.rs`: Placeholder for timeline-to-graph compilation.
 - `open/crates/superi-timeline/src/edit_ops.rs`: Implements directly inspectable foundational and
-  advanced commands, exact source-aware trimming and splitting, deterministic fragment identities,
-  explicit sync-locked ripple plans, transition reconciliation, result reports, and atomic
-  multi-track batches.
+  advanced commands, exact source-aware and retime-aware trimming and splitting, deterministic
+  fragment identities, explicit sync-locked ripple plans, transition reconciliation, result
+  reports, and atomic multi-track batches.
 - `open/crates/superi-timeline/src/edit_state.rs`: Implements exact and relationship-expanded
   selection, per-track targeting and sync-lock intent, canonical clip links and groups, stable
   introspection, and structural reconciliation.
 - `open/crates/superi-timeline/src/ids.rs`: Re-exports the canonical project and editorial object
   identities owned by `superi-core`.
 - `open/crates/superi-timeline/src/lib.rs`: Exports the implemented identity, edit-state, edit
-  operation, and model modules plus the staged editorial namespaces.
+  operation, model, and retime modules plus the staged editorial namespaces.
 - `open/crates/superi-timeline/src/markers.rs`: Implements stable timeline, track, and object marker
   ownership, visible labels, flags, notes, recursively nested ordered metadata, owner-relative range
   resolution, dangling-owner reconciliation, persistent snapping state, exact candidate projection,
   target filters, exclusions, and deterministic tie resolution.
 - `open/crates/superi-timeline/src/model.rs`: Implements four track kinds, track-specific timing and
-  media semantics, exact clip range maps, linked availability context, every foundational
-  editorial object, ordered tracks, timelines, annotation integration, validated project snapshots,
-  atomic revision-checked editing, and `TimelineColorMetadata`, which retains exact graph color
-  metadata through compilation.
+  media semantics, exact clip range maps, clip-owned time maps, linked range and playback
+  availability context, every foundational editorial object, ordered tracks, timelines, annotation
+  integration, validated project snapshots, atomic revision-checked editing, and
+  `TimelineColorMetadata`, which retains exact graph color metadata through compilation.
 - `open/crates/superi-timeline/src/multicam.rs`: Placeholder for a multicam data model.
 - `open/crates/superi-timeline/src/nested.rs`: Implements exact nested placement, atomic compound
   timeline creation, direct child editing by stable instance identity, shared-instance inspection,
@@ -71,6 +75,10 @@ than a production reader or writer.
 - `open/crates/superi-timeline/src/otio.rs`: Reserves the ratified OTIO-compatible serialization
   boundary and points to the shared 0.18.1 fixtures. The production reader and writer remain
   staged.
+- `open/crates/superi-timeline/src/retime.rs`: Implements reduced signed playback rates,
+  continuous clip-local retime segments, immutable complete time maps, exact and explicitly
+  rounded record-to-source queries, reverse and freeze constructors, direct mode inspection,
+  retime slicing, clock replacement, and source translation.
 - `open/crates/superi-timeline/tests/edit_state_contract.rs`: Proves linked and grouped selection,
   direct member control, target and sync-lock ordering, link and group independence, state
   reconciliation, identity and timing retention, revision conflicts, and atomic rollback.
@@ -97,6 +105,9 @@ than a production reader or writer.
 - `open/crates/superi-timeline/tests/range_contract.rs`: Proves exact cross-clock point and subrange
   mapping, fallible atomic range replacement, media overscan classification, unknown availability,
   and derived nested-timeline availability.
+- `open/crates/superi-timeline/tests/retime_contract.rs`: Proves speed changes, reverse, freeze,
+  piecewise time remapping, exact seams, explicit quantization, point availability, atomic binding,
+  identity resize compatibility, linked intent, and retime preservation through edit splitting.
 - `open/crates/superi-timeline/tests/track_semantics_contract.rs`: Proves all four track kinds,
   exact clocks, channel routing, linked audio reshaping, continuity, and bounded validation.
 
@@ -129,7 +140,9 @@ The editorial state surface includes:
 - `ClipRangeMap` for nonempty equal-duration source and record ranges plus checked exact point and
   subrange translation in both directions.
 - `ClipRangeContext` and `RangeAvailability` for resolving a clip's typed source, synchronized
-  ranges, optional availability, and unknown, full, partial, or unavailable status.
+  ranges, optional availability, and unknown, full, partial, or unavailable range status.
+- `SampleAvailability` and `ClipPlaybackSample` for transport-ready point resolution with visible
+  exact, held, explicitly rounded, known, unknown, or unavailable behavior.
 - `Clip`, `Gap`, `Transition`, `Generator`, and `Caption`, each with typed identity and direct
   mutation inside unpublished state.
 - `TrackItem` and `Track`, preserving ordered editorial membership, complete `TrackSemantics`, and
@@ -167,6 +180,18 @@ The annotation and snapping surface includes:
 - `SnapRequest`, `SnapTargetKind`, `SnapTarget`, and `SnapMatch` for persistent, exact, nonmutating
   snap queries over timeline zero, a caller playhead, item boundaries, and visible marker boundaries.
   Requests can include target classes and exclude moving objects or markers.
+
+The retime surface includes:
+
+- `PlaybackRate`, a reduced signed rational source-to-record ratio with explicit normal, reverse,
+  and freeze constants.
+- `RetimeSegment`, a nonempty clip-local record range with one absolute source start and exact rate.
+- `ClipTimeMap`, an immutable complete segment set with constant speed, reverse, freeze, custom
+  remap construction, direct mode and segment inspection, and allocation-free binary-search lookup.
+- `RetimeMode`, `MappedSourceTime`, and `RetimeResolution` for identity, speed, reverse, freeze, and
+  remap classification plus exact, held, or caller-selected rounded sample results.
+- `Clip::time_map`, `Clip::set_time_map`, and `Clip::source_time_at` for direct checked timing edits
+  and absolute record-to-source transport queries without replacing clip identity.
 
 The editorial operation surface includes:
 
@@ -228,10 +253,16 @@ Editorial construction and validation then proceed as follows:
 5. `EditorialProject::clip_range_context` resolves media availability directly and derives nested
    availability from `[0, nested duration)` at the nested edit rate. Classification reports
    overscan without snapping or rejecting a media-linked clip.
-6. A timeline compares track endpoints in physical rational time and exactly rescales the longest
+6. Each clip begins with a separate identity `ClipTimeMap`. Direct retime replacement validates
+   complete record coverage and source clock binding before mutation, while point queries convert
+   absolute record time to clip-local time and resolve one immutable segment by binary search.
+7. `ClipRangeContext::playback_sample` combines exact map resolution with known source availability
+   without changing the nominal selected range. Inexact source samples require an explicit rounding
+   policy and report that policy in the result.
+8. A timeline compares track endpoints in physical rational time and exactly rescales the longest
    endpoint to its primary edit rate. This preserves synchronization across clocks such as frames,
    milliseconds, and audio samples without implicit rounding.
-7. Read-only accessors expose the published project, while timeline, track, and object lookup keeps
+9. Read-only accessors expose the published project, while timeline, track, and object lookup keeps
    each relationship understandable by identity and order.
 
 Direct edits use a copy-validate-publish transaction. `EditorialProject::edit` checks the expected
@@ -277,8 +308,9 @@ Editorial operation flow extends that transaction without creating another state
 2. Each operation validates that record points and ranges use the target track clock. Material
    duration is rescaled only when exact, and transitions are rejected as timed material.
 3. A boundary inside a clip, gap, generator, or caption slices the object. Clip slicing adjusts the
-   source start and duration with exact rational conversion, while other object payloads remain
-   unchanged. Caller-supplied typed IDs identify right fragments deterministically.
+   nominal source range and rebases every intersecting retime segment without changing its exact
+   record-to-source behavior, while other object payloads remain unchanged. Caller-supplied typed
+   IDs identify right fragments deterministically.
 4. Insert shifts later items right, overwrite changes an equal-duration interval in place, append
    uses the exact current end, replace preserves target placement and duration, lift creates an
    explicit caller-owned gap, and extract shifts later items left.
@@ -363,6 +395,17 @@ assertions. It does not enter the native model yet.
 - Clips preserve physical duration between source and record ranges even when their timebases
   differ. Construction and direct replacement validate before mutation, so a clip cannot publish a
   desynchronized range map. Point and subrange mapping rejects out-of-range and inexact conversion.
+- Clip time maps remain separate from nominal equal-duration ranges. Their nonempty segments use one
+  record clock and one source clock, start at clip-local zero, provide gapless nonoverlapping full
+  coverage, and meet at exactly representable continuous source seams.
+- Playback rates are reduced signed rational values. Zero holds one source sample, negative values
+  run in reverse, and non-unit positive values change speed without changing record duration.
+- Transport queries select immutable segments by binary search and never round implicitly. Exact,
+  held, and caller-selected rounded resolution remains inspectable beside known, unknown, or
+  unavailable source state.
+- Record repositioning preserves clip-local time maps. Exact clip splitting rebases intersecting
+  segments, source-range replacement translates source anchors, and retimed duration replacement
+  requires a new time map instead of discarding timing intent.
 - Media source ranges may exceed an optional available range so overscan and relink intent are not
   destroyed. Availability remains inspectable as unknown, fully available, partially available, or
   unavailable.
@@ -394,7 +437,7 @@ assertions. It does not enter the native model yet.
   Append and insert report exact extension, while extract reports exact shortening.
 - A transition is never silently redirected. It survives only with its original adjacent endpoints
   and valid nonoverlapping handles; otherwise its typed identity appears in the outcome.
-- Speed changes, reverse playback, freeze frames, time remapping, fit-to-fill, production OTIO
+- Fit-to-fill, production OTIO
   preservation, deterministic graph compilation, undo-history ownership, multicam, and
   higher-level editorial commands remain outside this state.
 - The timeline color seam preserves exact graph metadata and performs no transform, inference,
@@ -453,42 +496,50 @@ four-point placement, explicit retime rejection, cross-rate derivation, transiti
 sync-locked two-track contraction, selection and relationship inheritance, stable track intent,
 object annotation retention, role-neutral deterministic results, and complete failed-batch rollback.
 
+Six retime tests prove exact 2x speed, rational slow motion, reverse, freeze, custom piecewise maps,
+continuous seams, complete coverage, half-open bounds, explicit rounding, point availability,
+atomic clip binding, identity resize compatibility, link retention, and retime-preserving split and
+record-shift behavior through a real insert operation.
+
 Workspace tests, warnings-denied Clippy, formatting, dependency direction, the offline boundary
 scan, and codebase-map validation are required delivery gates.
 
 ## Current status and risks
 
 The foundational project model, rational range mapping, linked availability context, typed track
-semantics, authoritative timeline edit state, markers, deterministic metadata, exact snapping, six
-primary operations, nine advanced edit families, nested placement, compound creation, shared child
-editing, and recursive inspection are substantive and test-backed. Production OTIO reading and
-writing, graph compilation, retiming, grouped-source compound synthesis, undo ownership, multicam,
-persistence, and engine or API integration remain absent.
+semantics, authoritative timeline edit state, markers, deterministic metadata, exact snapping,
+exact clip retiming, six primary operations, nine advanced edit families, nested placement,
+compound creation, shared child editing, and recursive inspection are substantive and test-backed.
+Production OTIO reading and writing, graph compilation, fit-to-fill, grouped-source compound
+synthesis, undo ownership, multicam, persistence, and engine or API integration remain absent.
 
-The model requires equal physical source and record duration for clips. Future time-warp support
-must introduce explicit retime state rather than weakening that invariant. Clip range setters
-validate before mutation, while callers use `EditorialProject::edit` or `apply_edit_batch` for
-atomic publication of broader project changes. Selection is authoritative command intent, not
-hover, focus, marquee geometry, or optimistic UI presentation state. Advanced ripple and
-ripple-mode extend consume sync resolution with explicit per-track identity material; the resolver
-alone remains a pure projection. Links and groups are timeline-local and have no independent
-durable ID. Edit material is currently one timed object per command;
-multi-object source sequences and link-group targeting belong to later command and orchestration
-layers. Audio continuity is structural evidence rather than signal analysis or playback. The model
-has no stable Serde schema, hostile-input collection bounds, or production consumer outside its
-contract tests. The engine color propagation contract consumes only the narrow metadata
-seam and does not make timeline-to-graph compilation operational.
+The model retains equal physical source and record duration for nominal clip ranges, while separate
+time maps may sample beyond that selection and report known unavailable points. Exact seam and slice
+requirements reject a custom remap whose discrete source boundaries cannot be represented. Reverse
+construction requires the explicit first sampled source coordinate, avoiding a hidden end-minus-one
+assumption across arbitrary clocks. Clip range and time-map setters validate before mutation, while
+callers use `EditorialProject::edit` or `apply_edit_batch` for atomic publication of broader project
+changes. Selection is authoritative command intent, not hover, focus, marquee geometry, or
+optimistic UI presentation state. Advanced ripple and ripple-mode extend consume sync resolution
+with explicit per-track identity material; the resolver alone remains a pure projection. Links and
+groups are timeline-local and have no independent durable ID. Edit material is currently one timed
+object per command; multi-object source sequences and link-group targeting belong to later command
+and orchestration layers. Audio continuity is structural evidence rather than signal analysis or
+playback. The model has no stable Serde schema, hostile-input collection bounds, or production
+consumer outside its contract tests. The engine color propagation contract consumes only the
+narrow metadata seam and does not make timeline-to-graph compilation operational.
 
 ## Maintenance notes
 
 Treat track clocks and semantics, object identity, continuity, physical-time equality, source-aware
-fragmentation, explicit transition invalidation, result reporting, marker ownership, exact snapping,
-metadata ordering, source-link resolution,
-selection expansion, track intent, clip relationship partitions, reconciliation, transition
-adjacency, nesting acyclicity, exact nested placement, shared-instance reporting, and atomic
-publication as public contracts. Extend tests before changing them. Later higher-level and
-grouped-source compound operations must consume `tracks_affected_by_sync` and exact selection state
-instead of recreating those policies. Add retiming, interchange, and graph compilation only through
-their owning modules, and update project, engine, API, CLI, persistence, and fixture maps when those
-paths begin consuming native timeline state. Preserve the OTIO fixture's versioned semantics rather
-than inferring interchange behavior from the native model alone.
+and retime-aware fragmentation, exact time-map seams, explicit transport resolution, explicit
+transition invalidation, result reporting, marker ownership, exact snapping, metadata ordering,
+source-link resolution, selection expansion, track intent, clip relationship partitions,
+reconciliation, transition adjacency, nesting acyclicity, exact nested placement, shared-instance
+reporting, and atomic publication as public contracts. Extend tests before changing them. Later
+higher-level and grouped-source compound operations must consume `tracks_affected_by_sync`, exact
+selection state, and clip-owned time maps instead of recreating those policies. Add higher-level
+edit commands, interchange, and graph compilation only through their owning modules, and update
+project, engine, API, CLI, persistence, and fixture maps when those paths begin consuming native
+timeline state. Preserve the OTIO fixture's versioned semantics rather than inferring interchange
+behavior from the native model alone.

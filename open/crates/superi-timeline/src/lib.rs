@@ -14,3 +14,4 @@ pub mod model;
 pub mod multicam;
 pub mod nested;
 pub mod otio;
+pub mod retime;
