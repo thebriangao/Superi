@@ -2,24 +2,25 @@
 module_id: superi-effects
 source_paths:
   - open/crates/superi-effects
-source_hash: 1bd285abd48dd5f550b99043d5d1be6d1b386f1eaab423ae50aedd568cc84b73
-source_files: 23
+source_hash: 734d62445da8f366389961c45f0350369b0d9e05b4e1beeefa00daca8b5ffecf
+source_files: 25
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
 `superi-effects` owns the higher-tier open visual effect authoring, animation, reusable control,
-mask, rotoscoping, text, transition, built-in operation, and bounded reference-evaluation layer above the generic
-graph. It provides inspectable typed definitions, ordinary editable graph-node instantiation,
-deterministic discovery, exact-schema runtime factory translation, exact keyframe animation,
-graph-native links and parent controls, bounded animated closed cubic masks with complete controls
-and ordered soft-alpha composition, and editable exact-frame rotoscope artifacts with
-solver-independent propagation hooks. It provides strict styled UTF-8 authoring, animated
-typography and paragraph controls, caller-resolved offline fonts, OpenType shaping, Unicode line
-breaking and bidi reordering, and inspectable positioned glyphs for a later raster owner. It also
-provides reusable cross-dissolve and directional-wipe schemas with exact handle-to-progress
-conversion, concrete schemas, and real reference pixels
+vector shape, mask, rotoscoping, text, transition, built-in operation, and bounded reference-evaluation
+layer above the generic graph. It provides inspectable typed definitions, ordinary editable
+graph-node instantiation, deterministic discovery, exact-schema runtime factory translation, exact
+keyframe animation, graph-native links and parent controls, bounded animated open and closed cubic
+vector paths with fills, strokes, gradients, and repeaters, bounded animated closed cubic masks with
+complete controls and ordered soft-alpha composition, editable exact-frame rotoscope artifacts with
+solver-independent propagation hooks, strict styled UTF-8 authoring, animated typography and
+paragraph controls, caller-resolved offline fonts, OpenType shaping, Unicode line breaking and bidi
+reordering, and inspectable positioned glyphs for a later raster owner. It also provides reusable
+cross-dissolve and directional-wipe schemas with exact handle-to-progress conversion, concrete
+schemas, and real reference pixels
 for transform, crop, opacity, blend, composite, Gaussian blur, sharpen, radial distortion, chroma
 key, invert, grade, cross dissolves, and directional wipes.
 
@@ -34,15 +35,15 @@ envelope.
 The built-in schemas require the production `superi.render.gpu` capability, but this crate currently
 implements only a deterministic bounded CPU oracle and headless proof. Production GPU kernels,
 engine catalog registration, timeline effect attachment, playback, viewport, export, project
-persistence, UI, mask rasterization, feather and expansion filtering, propagation solvers,
-production transition attachment and GPU execution, text rasterization and GPU atlases, tracking,
-and OFX hosting remain absent or staged in their owning modules.
+persistence, UI, vector shape rasterization, mask rasterization, feather and expansion filtering,
+propagation solvers, production transition attachment and GPU execution, text rasterization and GPU
+atlases, tracking, and OFX hosting remain absent or staged in their owning modules.
 
 ## Source inventory
 
 - `open/crates/superi-effects/Cargo.toml`: Declares approved downward dependencies on
   `superi-core`, `superi-gpu`, `superi-image`, and `superi-graph`. It uses workspace Serde for the
-  animation, mask, rotoscope, and text wires, `half` for checked binary16 reference conversion,
+  animation, vector shape, mask, rotoscope, and text wires, `half` for checked binary16 reference conversion,
   Swash and pinned Skrifa for offline OpenType shaping, Unicode Bidi and Unicode Linebreak for
   layout, and JSON only in tests.
 - `open/crates/superi-effects/src/authoring.rs`: Implements presentation metadata, typed effect
@@ -62,8 +63,8 @@ and OFX hosting remain absent or staged in their owning modules.
   easing, bounded time expressions, immutable curve editing, exact uniform retiming, deterministic
   evaluation, and the revisioned standalone wire.
 - `open/crates/superi-effects/src/lib.rs`: Documents the implemented authoring, animation,
-  control, mask, rotoscope, text, and transition foundations and publicly exports them with the built-in
-  catalog, reference evaluator, and staged visual feature modules.
+  control, vector shape, mask, rotoscope, text, and transition foundations and publicly exports them with
+  the built-in catalog, reference evaluator, and staged visual feature modules.
 - `open/crates/superi-effects/src/mask.rs`: Implements animated closed cubic mask paths, fill rules,
   complete checked controls, immutable topology, control, and stack edits, exact-time sampling,
   deterministic soft-coverage boolean composition, and the strict revisioned mask-stack wire.
@@ -77,6 +78,10 @@ and OFX hosting remain absent or staged in their owning modules.
   generic authored base masks and corrections, inspectable derived propagation, directional request
   construction, revision-fenced solver hooks, immutable editing and invalidation, strict versioned
   persistence, and checked reconstruction.
+- `open/crates/superi-effects/src/shape.rs`: Implements stable animated open and closed cubic paths,
+  scene-linear solid and gradient fills, complete stroke geometry and dash state, bounded virtual
+  repeaters, immutable edits, exact retiming, renderer-ready sampling, and strict revisioned vector
+  shape document persistence.
 - `open/crates/superi-effects/src/text.rs`: Implements bounded styled UTF-8 ranges, persistent font
   asset references, OpenType features and animated axes, continuous and hold-discrete typography
   and paragraph controls, immutable text and style edits, exact whole-layer retiming, strict
@@ -127,11 +132,14 @@ and OFX hosting remain absent or staged in their owning modules.
   reviewed font bytes, mixed bidi runs, animated wrapping, alignment and typography, exact retiming,
   immutable UTF-8 and style edits, strict bounded reload, classified failures, reusable complete
   payload links, two workflow-role graphs, and canonical graph reload.
+- `open/crates/superi-effects/tests/shape_contract.rs`: Proves path topology, fills, gradients,
+  strokes, dash phase, virtual repeater transforms, direct immutable edits, exact retiming, strict
+  standalone persistence, and reusable timeline-role plus node-graph-role graph reload.
 
 ## Public surface
 
 The library exports `authoring`, `catalog`, `control`, `keyframe`, `mask`, `ofx`, `reference`,
-`rotoscope`, `text`, `tracking`, and `transition`.
+`rotoscope`, `shape`, `text`, `tracking`, and `transition`.
 
 `authoring` exposes the workflow-neutral authoring foundation:
 
@@ -277,6 +285,26 @@ The library exports `authoring`, `catalog`, `control`, `keyframe`, `mask`, `ofx`
   ranges, paragraph and style identity, direction, sampled appearance, metrics, glyph IDs, positions,
   and advances for a later raster and GPU owner.
 
+`shape` exposes editable vector shape authoring and renderer-ready sampling:
+
+- `PathVertexAnimation` stores anchor and relative cubic handles in one six-component
+  `AnimationCurve`. `PathAnimation` retains stable vertex slots, explicit open or closed topology,
+  bounded immutable vertex edits, exact sampling, and exact retiming.
+- `ShapeColorAnimation`, `GradientStopAnimation`, `GradientGeometry`, `GradientPaint`, `Paint`, and
+  `FillStyle` retain straight scene-linear ACEScg color, animated ordered stops, linear or radial
+  geometry, pad, repeat, or reflect spread, nonzero or evenodd fill, and animated opacity.
+- `StrokeStyle` retains animated paint, opacity, width, miter limit, dash values, and dash offset
+  beside explicit cap and join choices. Sampling normalizes odd dash arrays and exposes executable
+  phase inspection without rasterizing a path.
+- `ShapeRepeater` retains a held bounded integer copy count, fractional offset, animated anchor,
+  position, positive scale, rotation, start and end opacity, and above or below composition. Sampling
+  emits deterministic virtual copies with explicit affine transforms.
+- `VectorShape` and `VectorShapeDocument` combine these operation families on one exact clock,
+  provide immutable replacement and whole-document retiming, and publish complete sampled artifacts
+  without allocating an image or GPU resource.
+- `VECTOR_SHAPE_DOCUMENT_SCHEMA_REVISION` identifies the strict standalone wire. Unknown fields and
+  future revisions fail, and deserialization rebuilds every nested operation through checked public
+  constructors.
 `reference` exposes bounded executable proof:
 
 - `ReferenceEffectState` plus sampling, blend, and Porter-Duff enums retain exact compiled effect
@@ -291,7 +319,7 @@ The library exports `authoring`, `catalog`, `control`, `keyframe`, `mask`, `ofx`
   `IntrospectNode` behavior. Transitions require a shared display window, fingerprint resolved
   progress and discrete choices, and blend premultiplied channels with exact endpoint behavior.
 
-The three remaining feature modules expose no substantive public types or behavior.
+The two remaining feature modules expose no substantive public types or behavior.
 
 ## Architecture and data flow
 
@@ -456,6 +484,22 @@ The mask authoring and composition flow is:
    exact-time samples and canonical bytes prove workflow reuse without adding mask knowledge to
    graph.
 
+The vector shape authoring flow is:
+
+1. A caller creates stable open or closed cubic path slots from six-component curves and composes
+   them with optional fill, stroke, and repeater state on one exact `Timebase`.
+2. Paint sampling resolves straight scene-linear solid color or ordered linear and radial gradient
+   stops with explicit spread. Stroke sampling retains cap, join, miter, normalized dash pattern,
+   and phase, while repeater sampling produces bounded virtual affine copies and opacity.
+3. Every path and visual operation provides immutable checked replacement. Whole-document retiming
+   maps every nested curve exactly and preserves stable topology, interpolation, and editable state.
+4. The strict revisioned document wire reconstructs all nested curves and operations through checked
+   constructors. Sampling returns renderer-ready geometry and style state, not an image, GPU resource,
+   ROI, cache entry, or production render result.
+5. A real integration test stores `GraphValue<VectorShapeDocument>` in ordinary effect-authored
+   nodes, mutates and links one complete document in separate timeline-role and node-graph-role
+   graphs, then proves equal exact-time samples and canonical graph bytes after reload.
+
 ## Dependencies and consumers
 
 - `superi-core` supplies errors, diagnostics context, finite geometry, color and alpha semantics,
@@ -469,7 +513,7 @@ The mask authoring and composition flow is:
   sample representations, and finite limits.
 - `superi-gpu` is a declared production capability dependency. Current effects source uploads,
   owns, and evaluates no GPU resource.
-- Serde owns strict animation, mask-stack, rotoscope, and text records. JSON and the reviewed Tinos
+- Serde owns strict animation, vector shape, mask-stack, rotoscope, and text records. JSON and the reviewed Tinos
   subset are test-only. `half` performs checked reference conversion to and from binary16. Swash
   0.2.9 and Skrifa 0.31.1 parse and shape caller-resolved local font bytes; Unicode Bidi 0.3.18 and
   Unicode Linebreak 0.1.5 provide deterministic Unicode layout data without a host or network API.
@@ -479,11 +523,11 @@ The mask authoring and composition flow is:
   transition definitions without reversing the dependency or copying timeline mutation policy.
 - `superi-engine` declares `superi-effects` but has no production catalog, animation, evaluator,
   playback, viewport, or export call site. Current real consumers are the role-neutral authoring,
-  generic graph reload, reusable controls over shared processing payloads, strict animation and
-  mask payloads, strict rotoscope artifacts, strict text layers and inspectable glyph layout, and
-  transition authoring and timing, plus bounded headless graph-evaluation contracts. Mask, text, and
-  transition tests label independent ordinary graphs as timeline and node-graph roles without
-  claiming production timeline attachment.
+  generic graph reload, reusable controls over shared processing payloads, strict animation, vector
+  shape and mask payloads, strict rotoscope artifacts, strict text layers and inspectable glyph
+  layout, transition authoring and timing, and bounded headless graph-evaluation contracts. Shape,
+  mask, text, and transition tests label independent ordinary graphs as timeline and node-graph roles
+  without claiming production timeline attachment.
 
 ## Invariants and operational boundaries
 
@@ -580,6 +624,15 @@ The mask authoring and composition flow is:
 - Shaping items preserve logical source ranges across style, script, and bidi boundaries. Line
   breaking never splits a shaped cluster. Visual bidi ordering reverses clusters, never glyphs
   within one cluster, and output remains bounded owned metadata rather than pixels or GPU resources.
+- Vector path topology is explicit and bounded. Open paths have at least two vertices, closed paths
+  have at least three, every vertex retains one six-component curve, and all nested state shares one
+  exact clock.
+- Vector fills, strokes, gradients, and repeaters retain complete inspectable animation. Gradient
+  geometry and stops, alpha, stroke widths and dashes, repeater scales and copy counts, and every
+  sampled result are checked before publication.
+- Vector document edits are immutable, exact retiming reaches every nested curve, strict persistence
+  rejects unknown or future state, and sampled geometry remains allocation-free authoring output for
+  a caller-owned rasterizer.
 - Current code performs bounded reference pixel processing and ROI calculation, but no production
   GPU submission, cache integration, mask path rasterization, feather or expansion filtering,
   production timeline sampling or transition attachment, engine playback, project autosave, propagation solver, plugin
@@ -635,6 +688,11 @@ font and invalid-state failure before publication, lossless reusable control lin
 workflow-role graphs, canonical graph reload, and equal layout after reload. The focused contract,
 complete crate suite, warnings-denied all-target Clippy, rustdoc, and a Rust 1.80 check and focused
 test pass freshly on the locked dependency graph.
+Seven vector shape tests prove stable open and closed cubic topology, exact sampling and retiming,
+scene-linear solid and gradient fills, spread and duplicate-stop behavior, complete stroke and dash
+semantics, bounded fractional repeaters, direct immutable edits across every visual operation,
+strict standalone persistence, and one reusable complete document through canonical timeline-role
+and node-graph-role graph reload.
 
 Focused tests, crate-wide tests, warnings-denied Clippy, rustdoc, formatting, dependency and offline
 boundary checks, map validation, complete workspace tests, fixtures, platform codec consumers,
@@ -652,22 +710,22 @@ graphs.
 
 ## Current status and risks
 
-The authoring SDK, exact keyframe animation, reusable graph-native control rigs, animated mask
-authoring and composition, editable rotoscope artifacts and propagation hooks, styled text authoring
-and real glyph layout, built-in definitions, generic editable instantiation, deterministic CPU
-reference pixels, ROI mapping, immutable graph compilation, introspection, reusable transition
-definitions, exact transition timing, bounded transition pixels, and role-neutral graph proofs are
-substantive and test-backed. Strict curve, mask-stack, rotoscope, and text payloads retain authored
-state across generic graph reload. The reference and text layout implementations are
-allocation-bounded CPU proofs, not performance production render code, and masks and text have no
-rasterizer or rendered consumer.
+The authoring SDK, exact keyframe animation, reusable graph-native control rigs, editable vector shape
+documents, animated mask authoring and composition, editable rotoscope artifacts and propagation
+hooks, styled text authoring and real glyph layout, built-in definitions, generic editable
+instantiation, deterministic CPU reference pixels, ROI mapping, immutable graph compilation,
+introspection, reusable transition definitions, exact transition timing, bounded transition pixels,
+and role-neutral graph proofs are substantive and test-backed. Strict curve, vector shape,
+mask-stack, rotoscope, and text payloads retain authored state across generic graph reload. The
+reference and text layout implementations are allocation-bounded CPU proofs, not performance
+production render code, and vector shapes, masks, and text have no rasterizer or rendered consumer.
 
 There is no GPU shader parity, engine registry, production runtime catalog, timeline attachment,
-playback, viewport, export, project persistence, UI, spatial motion path beyond mask contours, mask
-rasterization, propagation solver, text rasterization or glyph atlas, tracking solver, production
-transition attachment, or OFX host.
-Rotoscope mask payloads are generic and have no production mask-type consumer yet. Authoring
-metadata is in memory and has no independent wire. Control hints do not yet contain numeric bounds,
+playback, viewport, export, project persistence, UI, vector shape rasterization, mask rasterization,
+propagation solver, text rasterization or glyph atlas, tracking solver, production transition
+attachment, or OFX host. Rotoscope mask payloads are generic and have no production mask-type
+consumer yet. Authoring metadata is in memory and has no independent wire. Control hints do not yet
+encode enforceable numeric bounds,
 choice option vocabularies, grouping, conditional visibility, or accessibility policy; transition
 domains and wipe choices are therefore validated by the reference compiler. Animation has no stable
 project-level property identity or production caller-time context.
@@ -690,6 +748,12 @@ Transition definitions likewise have no standalone wire or production timeline b
 already preserves editorial transition state and compiles neutral graph parameters, while the
 effects contract proves reusable visual nodes in ordinary graphs; the higher integration that maps
 between those contracts is intentionally still absent.
+
+Vector shape documents likewise use canonical shape and vertex indexes rather than future
+project-stable property identities. Topology changes are discrete, gradient interpolation is linear
+in the stored scene-linear components, and a later runtime still owns tessellation, rasterization,
+ROI, GPU resources, caching, and pixels. The timeline-role shape proof uses an ordinary graph because
+production effect attachment does not exist.
 
 ## Maintenance notes
 
@@ -728,6 +792,12 @@ serialization, or edit reconciliation into effects. Preserve exact-clock handle 
 closed progress domains, stable wipe choice codes, common display-window coordinates, exact
 endpoints, premultiplied interpolation, same-region dependencies, semantic fingerprints, and tiled
 parity. Future GPU implementations must match the bounded oracle and use the same graph parameters.
+
+Keep vector paths in core points and vectors, retain relative handles and explicit open or closed
+topology, and reconstruct every immutable style, repeater, retime, and wire operation through checked
+owners. Future rasterizers must consume the sampled fill rule, paint, stroke geometry, dash phase,
+and virtual copy transforms without moving pixels, GPU allocation, cache policy, or persistence into
+the authoring artifact.
 
 When production consumers arrive, record property identities, caller-time flow, GPU resource
 ownership, cache behavior, serialization and migration ownership, timeline attachment, project
