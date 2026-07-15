@@ -344,16 +344,18 @@ Production dependencies and internal relationships are:
   handoff preservation tests.
 
 Direct workspace consumers declared in manifests are `superi-graph`, `superi-audio`, and
-`superi-engine`. `superi-graph` and `superi-audio` describe themselves as skeletons, and none of the
-three currently imports `superi_concurrency` in production Rust source. Their downstream graph
+`superi-engine`. `superi-graph` and `superi-audio` describe themselves as skeletons.
+`superi-engine::proxy_substitution` is the first production consumer, limited to
+`DerivedQuality`, `DerivedFallbackPolicy`, `DerivedMediaCandidate`, `DerivedMediaRequest`, and
+`DerivedMediaSelection`; it does not construct the concurrency runtime. Their downstream graph
 places concurrency contracts transitively beneath graph-dependent cache, color, effects, timeline,
 AI, and project crates, then beneath engine, API, and CLI. This is a crate-graph relationship, not
 evidence that those transitive crates currently call the runtime surfaces.
 
-The ten integration-test files are the only concrete in-repository Rust consumers at this commit.
-They exercise the public crate paths directly. No public API crate currently reexports these types,
-and no engine module composes worker pools, lifecycle participants, clocks, handoffs, liveness, or
-GPU submission into an end-to-end runtime.
+The ten integration-test files exercise the public crate paths directly, and the engine substitution
+contract drives the derived selector over real generated proxy artifacts. No public API crate
+currently reexports these types, and no engine module composes worker pools, lifecycle participants,
+clocks, handoffs, liveness, or GPU submission into an end-to-end runtime.
 
 ## Invariants and operational boundaries
 
@@ -442,9 +444,9 @@ incomplete:
 
 - `submit` is an explicit placeholder. The crate-level description promises GPU coordination, but
   current implementation stops at domain ownership and a test-hosted `superi-gpu` queue.
-- Graph, audio, and engine declare this dependency without using it in production source. As a
-  result, thread roles, lifecycle acknowledgement, worker scheduling, A/V decisions, backpressure,
-  and liveness are not yet exercised by a real application flow.
+- Graph and audio declare this dependency without production use. Engine now consumes only the
+  derived-media selection policy. Thread roles, lifecycle acknowledgement, worker scheduling, A/V
+  decisions, backpressure, and liveness are not yet exercised by a real application flow.
 - Dependency tracking is passive. The worker pool does not delay a job until prerequisites are
   ready, propagate terminal states, create `DependencyFailed`, or detect cycles across submitted
   jobs. Callers must provide all of that orchestration.
@@ -492,8 +494,9 @@ incomplete:
   updates all callers and tests.
 - When `submit` becomes substantive, map the real command ownership, queue admission, fence and
   retirement flow, device-loss recovery, and its relationship to `ExecutionDomain::GpuSubmission`.
-- When graph, audio, engine, API, or CLI begins using these surfaces, replace the declared-consumer
-  description with the exact construction and event paths and update the relevant consumer maps.
+- When graph, audio, engine, API, or CLI begins using more of these surfaces, replace the
+  declared-consumer description with the exact construction and event paths and update the relevant
+  consumer maps. Keep the engine's derived-selection-only use distinct from runtime composition.
 - If job dependencies become scheduler-owned, document admission, cycle detection, cancellation
   propagation, terminal result publication, identity lifetime, and how they interact with weighted
   queues and shutdown.

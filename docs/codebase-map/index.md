@@ -16,16 +16,16 @@ against raw source before changing code.
 | `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
 | `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade for capabilities and canonical editorial state | Partial: capability and canonical scenario controls implemented; transport, general API, and scripting absent |
 | `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Reserved audio graph, playback, mixing, resampling, metering, and plugin boundary | Skeleton: public module names only |
-| `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, precise graph edit invalidation, versioned corruption-recovering disk persistence, and replaceable derived-media publication, plus reserved render and prefetch policy | Complete identity feeds independent memory and disk tiers with exact admission, revision fencing, bounded envelopes, atomic publication, schema isolation, and corruption quarantine, while source, revision, purpose, quality, and settings bind complete proxy or optimized artifacts; cache lifecycle, quality substitution, render caching, and prefetch remain |
+| `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, precise graph edit invalidation, versioned corruption-recovering disk persistence, and replaceable derived-media publication, plus reserved render and prefetch policy | Complete identity feeds independent memory and disk tiers with exact admission, revision fencing, bounded envelopes, atomic publication, schema isolation, and corruption quarantine, while source, revision, purpose, quality, and settings bind complete proxy or optimized artifacts; engine and scheduler now own quality substitution, while cache lifecycle, render caching, and prefetch remain |
 | `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario consumer | Implemented portable expectation verifier and eight instrumented contract stages; rendered media flow absent |
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
 | `superi-codecs-rs` | [module map](modules/superi-codecs-rs.md) | `open/crates/superi-codecs-rs` | Default permissive software codec implementations | Implemented: AV1, FLAC, MP3, Opus, PCM, Vorbis, VP8, and VP9 decode and encode |
 | `superi-codecs-vendor` | [module map](modules/superi-codecs-vendor.md) | `open/crates/superi-codecs-vendor` | Explicit process adapter for separately installed vendor RAW workers | Implemented first revision: decode-only, CPU-only, JSON and hexadecimal IPC |
 | `superi-color` | [module map](modules/superi-color.md) | `open/crates/superi-color` | Versioned configuration, project working spaces, color math, CPU input and output transforms, GPU wide-gamut transforms, tone mapping, legal-range RGB encoding, LUTs, ICC discovery, and presentation profile guards | Substantial but partial: project-pinned configuration, CPU transforms, and managed GPU wide-gamut transforms are implemented; ICC evaluation and engine integration remain absent |
-| `superi-concurrency` | [module map](modules/superi-concurrency.md) | `open/crates/superi-concurrency` | Execution domains, jobs, clocks, handoffs, shared snapshots, lifecycle, and liveness | Substantial but not engine-integrated; GPU submission module is a placeholder |
+| `superi-concurrency` | [module map](modules/superi-concurrency.md) | `open/crates/superi-concurrency` | Execution domains, jobs, clocks, handoffs, shared snapshots, lifecycle, liveness, and derived-media selection | Substantial; engine proxy resolution consumes derived-media selection, while runtime composition remains absent and GPU submission is a placeholder |
 | `superi-core` | [module map](modules/superi-core.md) | `open/crates/superi-core` | Tier-zero values, validation, exact time, identifiers, errors, diagnostics, and stable serialization | Implemented and broadly consumed; crate-level skeleton wording is stale |
 | `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Reserved effect-node catalog, animation, mask, transition, text, tracking, and OFX boundary | Skeleton: public module names only |
-| `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: canonical command state, registry, capability introspection, CPU-frame GPU upload, viewport or export color metadata branching, and complete proxy or optimized-media packet generation implemented |
+| `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: canonical command state, registry, capability introspection, CPU-frame GPU upload, viewport or export color metadata branching, complete proxy or optimized-media packet generation, and transparent proxy or original-source resolution implemented |
 | `superi-gpu` | [module map](modules/superi-gpu.md) | `open/crates/superi-gpu` | wgpu device, resource, upload, conversion, pass, submission, presentation, and recovery substrate | Implemented substrate with explicit application-level integration gaps |
 | `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, typed parameter links and expressions, derived missing-node resolution, dependency and semantic edit invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, graph and revision cache lineage, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, typed driver state, bounded expressions, parameter-cycle protection, fail-closed missing-node placeholders, exact region and edit invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic graph cache inspection, final and intermediate retained-work pruning, run-local timing, and role-neutral editable-to-runtime evaluation implemented; production catalog and plugin binding, project persistence, cache resource policy, and rendered integration absent |
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
@@ -93,8 +93,9 @@ superi-engine
   -> superi-media-io
   -> superi-gpu
   -> superi-core
-  -> superi-cache                  derived publication and color metadata
-  -> image, concurrency, graph, color, effects, timeline, audio, ai,
+  -> superi-cache                  derived publication, substitution input, and color metadata
+  -> superi-concurrency            derived quality and fallback selection
+  -> image, graph, color, effects, timeline, audio, ai,
      and project                   mostly manifest-only today
 
 superi-project -> superi-timeline -> superi-graph -> superi-image
@@ -167,6 +168,27 @@ Proxy and optimized-media generation is implemented at an engine-private bulk-me
 The real default AV1 backend consumes this path in engine integration proof. The path does not
 render or resize input, mux or persist output, choose playback proxies, mutate projects, or enter the
 transport-neutral API.
+
+Transparent proxy substitution is implemented at the same private bulk-media boundary:
+
+1. The caller supplies the complete authoritative `SourceIdentity`, exact source revision,
+   requested scheduler quality, fallback policy, immutable derived artifacts, and a lazy original
+   opener.
+2. `superi-engine::resolve_proxy_source` admits only proxy-purpose artifacts with exact source ID,
+   source fingerprint, revision, known quality, complete packet stream and timebase, timing, and
+   keyframe access.
+3. The engine translates cache qualities one for one and delegates exact, lower-quality, stable
+   cache-ID tie, unavailable, and source-only decisions to
+   `superi-concurrency::DerivedMediaRequest::select`.
+4. A selected artifact becomes a packet-backed `MediaSource` that retains the immutable artifact,
+   preserves generated packet bytes and timing, supports deterministic keyframe-bounded seek, and
+   exposes the authoritative original identity.
+5. Source selection opens the original only then and rejects any identity mismatch. Source-only
+   delivery therefore ignores even a valid proxy, while stale, mismatched, malformed, optimized,
+   missing, or higher-only candidates fall back without changing authored meaning.
+
+The real default AV1 generation path feeds this substitution contract in engine integration proof.
+No production playback clock, export queue, project owner, or public API invokes the resolver yet.
 
 The API-local revision begins at zero and increments only on a changed snapshot. The public schema
 version is `2.0.0`; the permanent method and event names are
@@ -405,6 +427,9 @@ optimized-media generation. It validates exact purpose, quality, codec, timebase
 color or channel meaning against the cache request, reaches real default AV1 encoding, and publishes
 only complete elementary packets after end of stream. Cache identity preserves authoritative
 source ID, content, and revision, and a missing or failed generation leaves that source as fallback.
+The engine also adapts a selected complete proxy artifact to `MediaSource`, preserving packets and
+authoritative source identity, or lazily returns a verified original source under deterministic
+scheduler policy.
 
 ### Integration gaps
 
@@ -415,7 +440,8 @@ tests, not in an engine playback or import path.
 
 There is no muxer, export container writer, production image-sequence backend, multiple-stem stream
 selector, source-to-generation decoder, or source-to-playback coordinator. Derived generation does
-not render or resize its caller-prepared inputs, persist its packets, or select them for playback.
+not render or resize its caller-prepared inputs or persist its packets. Proxy resolution is
+caller-owned and is not wired to playback or export orchestration.
 Platform and vendor frames can be external or
 backend-owned, but the engine upload path currently accepts CPU frames only. Higher-level decode
 selection is expected to request a CPU fallback, yet that selection flow is not implemented.
@@ -530,9 +556,10 @@ loops. Concurrency jobs use their own `JobControl` and require the job closure t
 Both models are cooperative. Neither can preempt a blocking operating-system call, native codec
 call, or closure that omits checkpoints.
 
-These mechanisms are not yet a composed runtime. Graph, audio, and engine declare concurrency
-dependencies but do not construct worker pools, clocks, handoffs, lifecycle participants, or
-liveness monitors in production source. The `submit` module is a placeholder. A contract test hosts
+These mechanisms are not yet a composed runtime. Engine proxy resolution consumes only the
+derived-media selection policy; graph and audio have no production concurrency consumer. No owner
+constructs worker pools, clocks, handoffs, lifecycle participants, or liveness monitors in
+production source. The `submit` module is a placeholder. A contract test hosts
 the real non-Send `GpuSubmissionQueue` inside the GPU submission domain, but no engine owner wires
 that pattern into playback or render.
 
@@ -540,8 +567,9 @@ that pattern into playback or render.
 
 `superi-engine` is the intended integration owner. It implements fixed canonical command state,
 full-state undo plus redo, codec registry assembly, deterministic capability introspection, and
-CPU-decoded frame upload, plus codec-neutral proxy and optimized-media packet generation. The
-command model is a reference boundary, not production project,
+CPU-decoded frame upload, plus codec-neutral proxy and optimized-media packet generation and
+transparent proxy or original-source resolution. The command model is a reference boundary, not
+production project,
 timeline, or graph ownership. Lifecycle, playback, A/V sync, render, export queues, resources,
 plugins, nodes, validation, and cross-subsystem recovery remain explicit placeholders.
 
@@ -681,9 +709,11 @@ application tests. `superi-core`, `superi-graph`, `superi-image`, `superi-media-
 `superi-codecs-vendor`, `superi-color`, `superi-concurrency`, `superi-gpu`, and the implemented
 engine and API slices all have focused contracts around their public values and lifecycles.
 Container-to-codec tests and engine capability tests provide selected cross-crate composition. The
-derived-media engine contract additionally drives the real default AV1 encoder through complete
-packet publication, deterministic reuse, and cancelled original-source fallback, without claiming
-rendering, muxing, persistence, or playback substitution.
+derived-media engine contracts additionally drive the real default AV1 encoder through complete
+packet publication and deterministic reuse, then exercise exact or lower-quality transparent
+substitution, replacement, generated packet reads, keyframe seek, strict freshness, and verified
+original or source-only fallback. They do not claim rendering, muxing, persistence, playback-clock
+integration, or container delivery.
 
 Repository checkpoint execution also has a deterministic local selector at
 `.agents/skills/superi-execution/scripts/verify_checkpoint.py`. Given a recorded base revision, it
@@ -884,7 +914,7 @@ expected data now exists, and native timeline compilation produces generic edita
 but graph evaluation, effect execution, rendered comparison, color delivery, and muxing are not
 integrated. The new encoder path begins from caller-prepared frames and ends at elementary derived
 packets, so it does not close that slice. There is no
-current test or runtime that imports through the engine, selects and decodes media,
+current test or runtime that imports through the engine, selects and decodes original media,
 edits a timeline, evaluates a graph, applies input and output color, renders through the GPU,
 encodes and muxes output, persists a project, and drives the flow through the public API.
 
@@ -895,8 +925,8 @@ Their manifests establish intended dependency direction, but their public module
 substantive types or operations. `superi-cache` now has substantive composite identity, budgeted
 memory retention, hierarchical memory policy, priority-aware LRU eviction, precise edit
 invalidation, persistent storage, color metadata, and replaceable proxy or optimized-media
-publication, while prefetch, render caching, quality substitution, and lifecycle policy remain
-incomplete.
+publication, while prefetch, render caching, and lifecycle policy remain incomplete. Engine now
+performs substitution using concurrency-owned selection, but no playback or export owner invokes it.
 
 Partial modules contain these explicit placeholder areas:
 
@@ -904,8 +934,9 @@ Partial modules contain these explicit placeholder areas:
   transaction path beyond capabilities and the fixed canonical scenario.
 - `superi-color`: broader config-persisted rule graphs, ICC transform evaluation, GPU output
   conversion, and production viewport or export integration.
-- `superi-concurrency`: GPU submission coordination module and all production engine composition.
-- `superi-engine`: ten orchestration modules covering A/V sync, errors, export, lifecycle, nodes,
+- `superi-concurrency`: GPU submission coordination module and production engine composition beyond
+  derived-media selection.
+- `superi-engine`: nine orchestration modules covering A/V sync, errors, export, lifecycle, nodes,
   playback, plugins, render, resources, and validation.
 - `superi-graph`: invalidation and ROI render orchestration, outer job dispatch, project persistence,
   undo ownership, engine coordination, cache invalidation invocation and resource policy,
@@ -971,7 +1002,7 @@ For common concerns, begin at these owners:
   exact total, project, and device admission, priority-aware LRU eviction, precise revision-safe
   graph edit invalidation, versioned bounded disk persistence with corruption recovery, cache color
   identity, and complete derived-media publication: `superi-cache`, followed by `superi-engine` for
-  codec generation.
+  codec generation and transparent substitution and `superi-concurrency` for quality choice.
 - Native editorial objects, typed track semantics, exact timing and clip retiming, selection, track
   targeting, sync locks, linked selection, clip grouping, markers, deterministic metadata, exact
   snapping, and foundational insert, overwrite, append, replace, lift, and extract operations plus

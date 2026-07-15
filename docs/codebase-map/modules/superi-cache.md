@@ -14,7 +14,8 @@ intermediate-node memory retention, exact global, project, and device cache acco
 priority-aware least-recently-used eviction policy, precise graph edit invalidation, and versioned
 persistent final-frame and intermediate-node value storage. It also owns the media-neutral identity
 and complete-only publication contract for replaceable proxy and optimized media. Background-render,
-prefetch, quality substitution, and lifecycle systems remain planned. Composite keys join identities
+prefetch, and lifecycle systems remain planned; cross-quality substitution is scheduler-owned and
+engine-integrated. Composite keys join identities
 owned by media, graph, parameter, image-color, time, and render-setting boundaries without taking
 ownership of those source models. One atomic memory state retains cloneable
 evaluator values in separate final and intermediate LRU tiers only while exact byte and frame
@@ -23,7 +24,7 @@ lineage, and fences late work from invalidated revisions. A caller-versioned dis
 encoded values across cache reconstruction. Exact cached color metadata remains implemented beside
 both retained-value paths. A separate ordered derived-media catalog binds every
 published payload to source identity, source revision, purpose, quality, and complete render
-settings while leaving codec execution in the engine.
+settings while leaving codec execution and cross-quality selection in the engine and scheduler.
 
 ## Source inventory
 
@@ -210,10 +211,13 @@ of stream, and returns complete packet media through this publication boundary.
   and export color branches.
 - `superi-engine::derived_media` consumes the derived request and catalog, validates exact encoder
   settings, and publishes complete packet output from the selected codec-neutral backend.
+- `superi-engine::proxy_substitution` filters exact fresh proxy artifacts, translates their quality
+  values to scheduler-owned selection inputs, and retains a selected immutable artifact for the
+  lifetime of its packet-backed media source.
 - Cache integration contracts are the first concrete consumers of retained graph evaluation,
   persistent graph reuse, and budgeted GPU cache memory. No production engine node catalog,
-  playback, render, export, or GPU value path uses either retained-value adapter or selects derived
-  media yet. Engine generation is the first cross-crate derived-media consumer.
+  playback clock, render, export queue, or GPU value path uses either retained-value adapter.
+  Engine generation and substitution are the cross-crate derived-media consumers.
 
 ## Invariants and operational boundaries
 
@@ -270,11 +274,11 @@ of stream, and returns complete packet media through this publication boundary.
   cancelled replacement cannot remove a prior artifact, and absence deterministically exposes the
   authoritative original source.
 - A derived artifact is replaceable and owns no project mutation. It cannot change source identity,
-  graph meaning, or final-render settings, and full-quality delivery remains an independent exact
-  request rather than an implicit proxy reuse.
+  graph meaning, or final-render settings. Cache does not choose among qualities, and explicit
+  source-only delivery remains outside this crate rather than becoming implicit proxy reuse.
 - Driver allocation overhead and physical residency remain outside managed-payload accounting.
-  Invalidation invocation, generation scheduling, cache management, quality substitution, and
-  prefetch remain later concerns.
+  Invalidation invocation, generation scheduling, cache management, and prefetch remain later
+  concerns. Cross-quality substitution is scheduler-owned and engine-integrated.
 - Persistent storage has no automatic cleanup, relocation, cross-process single-flight lock, or
   default root or capacity. Callers own the directory lifecycle and value schema evolution.
 
@@ -327,8 +331,8 @@ after the integrated budget, LRU, invalidation, persistence, and generation impl
 cache integration tests across seven files prove bounded retained evaluator values, shared managed
 GPU accounting, exact eviction, precise revision-safe cleanup, process-restart reuse, corruption
 recovery, and complete-only derived publication through public adapters. The engine contract adds
-real AV1 packet generation, but these tests do not prove playback substitution, muxing, or physical
-GPU residency.
+real AV1 packet generation and packet-backed transparent substitution with strict fallback. These
+tests do not prove playback-clock integration, muxing, or physical GPU residency.
 
 ## Current status and risks
 
@@ -341,9 +345,9 @@ remain exact, automatic or explicit victims recompute with unchanged result mean
 remove only affected older lineage, and disk corruption falls back to exact fresh evaluation.
 Device entries share the existing GPU cache class, and eviction or invalidation releases matching
 reservations outside the cache state lock. The engine generates real complete AV1 packet artifacts
-through the proxy module, while prefetch and render remain placeholders and quality substitution is
-deferred. No production frame pixels are selected or reclaimed by playback, export encoding, or GPU
-upload.
+through the proxy module and selects exact or lower-quality fresh proxies through the scheduler.
+Prefetch and render remain placeholders, and cache itself owns no quality-selection policy. No
+production frame pixels are selected or reclaimed by a playback clock, export encoder, or GPU upload.
 
 The main correctness risk is each caller's canonical parameter and render-settings encoding.
 Omitting one output-affecting byte can cause false reuse even though composition and storage are
@@ -355,7 +359,8 @@ which may change cache contents but cannot change semantic results. Explicit vic
 the retained tier during pressure handling, so measured production scale may justify an equivalent
 indexed implementation later. Derived-media cleanup, persistence, and management are absent, so the
 catalog remains externally synchronized and has no single-flight generation, eviction, persistence,
-or management. Quality choice must match the caller-prepared frames and canonical engine settings.
+or management. Generated quality must match the caller-prepared frames and canonical engine
+settings; substitution admits only exact request identity and revision before scheduler choice.
 Persistent value callers must version codec meaning correctly, choose bounded entry sizes, and
 provide cleanup and relocation policy. Independently opened cache instances can duplicate
 deterministic work and last-writer publication, but immutable complete keys keep the published
@@ -372,7 +377,7 @@ must report managed payload bytes rather than driver or allocator estimates. Evi
 entries before retrying the same serialized admission path and must not hold the state lock while GPU
 pressure cooperators execute. Preserve the single-source access stamp, shared invalidation lock,
 and rule that no affected value may be admitted below its graph and node revision fence. Keep these
-boundaries when adding disk lifecycle policy, proxy substitution, engine consumers, and broader
+boundaries when adding disk lifecycle policy, production playback consumers, and broader
 diagnostics in their assigned checkpoints. Never weaken the disk envelope bounds, complete identity
 checks, schema
 partition, synchronization sequence, corruption revalidation, or fallback-to-fresh behavior.

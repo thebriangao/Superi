@@ -160,7 +160,10 @@ Waveform preview begins after audio decode. The adapter checks one stable audio 
 - `superi-codecs-rs` implements permissive AV1, linear PCM, MP3, FLAC, Vorbis, Opus, VP8, and VP9 backends against the registry, capability, packet, frame, audio, decode, encode, and operation contracts. Its default registration function populates an external `BackendRegistry` atomically.
 - `superi-codecs-platform` implements host-dependent VideoToolbox, Media Foundation, and VA-API registrations behind the same public contracts. Registration is opt-in through the engine's `os-codecs` feature and includes only host-discovered operations.
 - `superi-codecs-vendor` adapts explicitly configured external RAW workers into `MediaBackend` implementations and uses operation, packet, decoder, encoder, corruption, and frame-conversion contracts. It does not alter this crate's discovery policy.
-- `superi-engine` constructs registries from Rust codecs and optional platform or vendor backends, converts declarations into deterministic capability snapshots, and consumes `VideoFrame`, `MediaMetadata`, and the complete color pipeline at its CPU-frame-to-GPU upload boundary.
+- `superi-engine` constructs registries from Rust codecs and optional platform or vendor backends,
+  converts declarations into deterministic capability snapshots, consumes `VideoFrame`,
+  `MediaMetadata`, and the complete color pipeline at its CPU-frame-to-GPU upload boundary, and
+  adapts complete generated proxy packets or a verified original source behind one `MediaSource`.
 - `superi-api` has a test-only direct dependency for public capability fixtures; its production path consumes engine-owned projections rather than media-I/O types directly.
 - `superi-concurrency` has a test-only direct dependency used to prove backpressure with decoded frame, audio block, and media metadata payloads.
 - Codec integration tests in `superi-codecs-rs` directly connect `MkvWebmBackend` packets to AV1, VP8/VP9, Opus, and FLAC codec implementations, proving selected cross-crate compositions beyond the media-I/O fake backend tests.
@@ -173,7 +176,14 @@ Waveform preview begins after audio decode. The adapter checks one stable audio 
   partially readable cases through `PcmContainerSource` and the shared error and corruption
   vocabulary.
 
-No production Rust source outside this crate constructs `MkvWebmBackend`, `Mp4MovBackend`, `MxfBackend`, or `PcmContainerBackend`; those concrete source adapters are registered or constructed only in tests. The current `superi-engine::media` registry assembly adds codec backends but not these four container backends. Engine `nodes`, playback, render, and export orchestration are placeholders, so there is not yet a production source-to-decode-to-playback or encode-to-mux flow. Repository search likewise finds no production consumer for paired selection, source timecode tracks, image-sequence traits, or waveform generation.
+No production Rust source outside this crate constructs `MkvWebmBackend`, `Mp4MovBackend`,
+`MxfBackend`, or `PcmContainerBackend`; those concrete source adapters are registered or constructed
+only in tests. The current `superi-engine::media` registry assembly adds codec backends but not these
+four container backends. Engine proxy substitution provides a production `MediaSource` adapter over
+generated packets and a verified lazy original-source seam, but `nodes`, playback, render, and export
+orchestration are placeholders. There is still no production source-to-decode-to-playback or
+encode-to-mux flow. Repository search likewise finds no production consumer for paired selection,
+source timecode tracks, image-sequence traits, or waveform generation.
 
 ## Invariants and operational boundaries
 
@@ -246,7 +256,10 @@ The other fixtures prove implemented contracts, not broad real-world compatibili
 
 ## Current status and risks
 
-The module is substantive and test-rich at the value, probing, demux, timing, selection, interruption, PCM, and waveform-adapter layers. It provides four real source backends and exact contracts consumed by three codec families and engine introspection/upload. It is not merely a scaffold.
+The module is substantive and test-rich at the value, probing, demux, timing, selection,
+interruption, PCM, and waveform-adapter layers. It provides four real source backends and exact
+contracts consumed by three codec families plus engine introspection, upload, generation, and
+transparent proxy or original-source resolution. It is not merely a scaffold.
 
 Its canonical fixture consumers now cover the complete current raw pixel-format and
 standard-video-rate matrix, synchronized multichannel PCM at three common audio rates, exact timing
@@ -290,6 +303,11 @@ immutable fixture version and matching generator and consumer evidence.
 
 Preserve the distinction among decode order, presentation order, edited presentation time, source timecode, and sample-clock coordinates. Changes to `StreamEdit`, timestamp normalization, VFR mapping, or timecode metadata require reviewing MP4/MOV seek and duration behavior plus selection and downstream codec expectations.
 
-When production ingest is wired, add the four source backends through one explicit registry owner and document tier, priority, conflict behavior, and tests through `superi-engine`. Do not make the registry auto-discover implementations or silently execute fallback candidates. Add real consumers before treating paired selection, image sequences, timecode metadata, waveform generation, or muxing as integrated engine flows.
+When production ingest is wired, add the four source backends through one explicit registry owner
+and document tier, priority, conflict behavior, and tests through `superi-engine`. Do not make the
+registry auto-discover implementations or silently execute fallback candidates. Preserve complete
+`SourceIdentity` equality at the proxy or original seam. Add real consumers before treating paired
+selection, image sequences, timecode metadata, waveform generation, or muxing as integrated engine
+flows.
 
 After source edits, regenerate this module's file inventory, source count, and hash, then reconcile every affected statement rather than updating metadata alone. Update maps for `superi-core`, `superi-image`, codec implementers, `superi-engine`, or public API consumers whenever their interface or dependency relationship changes.
