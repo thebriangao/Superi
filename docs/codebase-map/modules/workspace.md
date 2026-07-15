@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: a56be5f8d00004b3feba3e57e4ca9f4d8f98d0abd7a23ee619e099bd02bd9905
-source_files: 135
+source_hash: 53d57983705224806d05e8e407df300085d6cd690929058f4f2836dc45e53abb
+source_files: 136
 mapped_at_commit: working-tree
 ---
 
@@ -25,7 +25,7 @@ a single checkpoint through mapping, planning, and execution, and routes multipl
 separate Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers
 but obeys an explicit positive user concurrency value. The file is ignored by Git and copied into
 managed worktrees through `.worktreeinclude`, so the mapping script does not include it in this
-module's 133-file inventory or source hash. It must still be reread independently before repository
+module's 136-file inventory or source hash. It must still be reread independently before repository
 work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
@@ -281,6 +281,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   linked compression and limiting, fixed delay, and saturation. It records graph integration,
   exact timing and channel behavior, adjacent-block continuity, finite failure boundaries, focused
   proof, delivery context, and later automation and engine composition ownership.
+- `docs/checkpoints/P2.W05.C002.md`: Durable implementation evidence for the typed transform, crop,
+  opacity, blend, composite, blur, sharpen, distortion, keying, and utility node catalog. It records
+  the neutral shared graph payload, timeline coexistence, schema and authoring contracts, bounded
+  CPU reference semantics, research basis, real pixel and immutable graph proof, and intentionally
+  separate GPU, engine, UI, persistence, playback, and export integration.
 - `docs/checkpoints/P1.W07.C025.md`: Durable implementation evidence for bounded timing and process
   resident-memory instrumentation across all eight canonical slice stages. It records the private
   sampler boundary, schema 1.1.0 report contract, dependency decision, red-to-green proof,
@@ -650,9 +655,12 @@ present for core and graph contracts. This changes the direct package edges reco
 `superi-timeline` but does not change crate-tier direction, introduce a network path, or transfer
 SQLite and autosave ownership away from `superi-project`.
 
-The effects animation wire reuses the same workspace Serde and JSON pins. The lockfile change only
-records direct dependencies on packages already resolved elsewhere in the workspace; it introduces
-no registry package, network behavior, runtime tier reversal, or persistence ownership transfer.
+The effects animation wire reuses the same workspace Serde and JSON pins, while the built-in visual
+catalog reuses the workspace `half` pin for bounded binary16 reference pixels. The lockfile records
+those direct `superi-effects` package edges to packages already resolved elsewhere in the workspace.
+Effects and timeline consume the neutral graph payload independently, timeline does not depend on
+effects, and no new registry package, network path, runtime tier reversal, or persistence ownership
+transfer is introduced.
 
 The deterministic cache-key contract reuses the same resolved `sha2` pin. Its lockfile change adds
 one direct external package edge to `superi-cache` without changing the reviewed internal runtime
@@ -871,6 +879,12 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   Hosted CI status is not a general completion gate unless the assigned checkpoint explicitly
   requires hosted CI behavior.
 
+- `docs/checkpoints/P2.W05.C002.md` records the shared typed graph payload, concrete built-in effect
+  schemas, caller-owned graph authoring, bounded CPU reference behavior, exact ROI and pixel
+  semantics, timeline coexistence, research sources, and focused through full verification. It is
+  evidence for a deterministic headless reference path, not production GPU, engine, viewport,
+  playback, persistence, or export integration.
+
 - `.github/workflows/dependency-policy.yml` runs on pushes, pull requests, and manual dispatch. Its
   Ubuntu 24.04 job first runs `.github/scripts/check-dependency-policy.sh`, then checks approved
   licenses and sources with cargo-deny against `open/Cargo.toml` using all features. This is
@@ -997,7 +1011,7 @@ and strict Serde wire. Its animation lockfile change records only direct use of 
 serialization packages, while built-in visual nodes, the remaining feature modules, and engine
 integration remain incomplete.
 The synchronized remote revision before this checkpoint is
-`5649d9075b29eef79b181caa880a650a59786ae1`.
+`38543db1006c164abad03d189817aa7174779bb8`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
 root README, deny policy, and structure guide with license-audit CI. Commit
 `e0b3af9f099f527a8544d1b0317896640969903b` added the executable dependency-policy contract and its
@@ -1045,16 +1059,23 @@ and its public contract proves the same definition and typed edit path in timeli
 node-graph-role graphs. Built-in effects, image or GPU execution, timeline attachment, engine
 integration, persistence, and rendered output remain absent.
 
+The effects crate now provides the first concrete built-in visual node catalog, generic graph
+authoring, bounded CPU reference evaluation, and real immutable graph workflow proof. The timeline
+compiler admits the same neutral processing payload while retaining every editorial value exactly.
+Production GPU implementations, engine registration, playback, viewport, persistence, UI, and
+export remain absent and cannot be inferred from the reference path.
+
 The largest current risk is cross-document drift:
 
 - The canonical fixture, independent expected contract, reference project and graph state, strict
   API projection, and contract runner now exist, and every stage reports bounded timing and
   resident-memory boundary evidence. The hosted workflow directly runs fixture validation and the
   portable eight-stage contract, and expectation version 2 removes checkout location from project
-  identity. Generic typed DAG storage, cycle prevention, schema-bound editable nodes, and atomic
-  graph mutation transactions and native timeline-to-graph compilation now exist, while graph
-  evaluation and orchestration, rendered comparison, color and render integration, muxing,
-  playable output, and all-runtime execution remain future work. The current contract-conformant
+  identity. Generic typed DAG storage, cycle prevention, schema-bound editable nodes, atomic graph
+  mutation transactions, native timeline-to-graph compilation, a shared typed processing payload,
+  and a deterministic CPU reference effect catalog now exist. Production GPU effect evaluation,
+  engine orchestration, rendered comparison, color and render integration, muxing, playable output,
+  and all-runtime execution remain future work. The current contract-conformant
   run must not be reported as product or runtime conformance.
   Boundary samples are not continuous intra-stage peaks, constrained-device thresholds, or
   long-session soak proof.
@@ -1126,8 +1147,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`41ad83bf61b2cecb5690bd7df792b585d2f6f24c` when the map was refreshed. Its hash describes the exact
-134 discovered source files, including twelve generated binary payloads, layered on that revision.
+`be7d756` when the map was refreshed. Its hash describes the exact 136 discovered source files,
+including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 

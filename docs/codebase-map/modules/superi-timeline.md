@@ -2,7 +2,7 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: 9af9cc5c41d1b78782c0e4a5c277a18a139f0850dbcda1f27a9e5662277eed33
+source_hash: 584881a944d7c0af59a944af67717f70eecd507cb8385c2a3307a9540c4bac41
 source_files: 30
 mapped_at_commit: working-tree
 ---
@@ -65,8 +65,10 @@ editable `superi-graph` document. Stable domain-separated identifiers preserve g
 across semantic edits, while a bidirectional provenance index keeps every timeline, track, and
 editorial object understandable and directly controllable. Timeline outputs, ordered tracks,
 clips, gaps, transitions, generators, captions, and nested-sequence routing remain ordinary typed
-graph state. Native multicam source catalogs, synchronization provenance, switching, and audio
-intent remain ordinary typed graph parameters.
+graph state wrapped losslessly in the shared graph payload. Native multicam source catalogs,
+synchronization provenance, switching, and audio intent remain ordinary typed graph parameters,
+while catalog-owned processing values can coexist in the same editable graph without a timeline
+dependency on an effects catalog.
 
 The crate also owns offline OTIO 0.18.1 JSON interchange. Import maps root and nested stacks,
 tracks, clips, gaps, transitions, markers, media references, metadata, and linear time warps into
@@ -83,7 +85,8 @@ with stable warnings.
 - `open/crates/superi-timeline/src/compile.rs`: Compiles validated root and nested timelines into
   one typed editable graph transaction with stable graph, node, port, parameter, and edge IDs,
   explicit stream routing, authored track and item order, complete object and multicam parameters,
-  and bidirectional editorial provenance.
+  bidirectional editorial provenance, and a shared graph payload that retains all native values as
+  exact domain variants beside catalog-neutral processing values.
 - `open/crates/superi-timeline/examples/otio_roundtrip.rs`: Imports one OTIO document through the
   public native boundary, reports stable diagnostics, and writes deterministic OTIO 0.18.1 JSON.
 - `open/crates/superi-timeline/src/edit_ops.rs`: Implements directly inspectable foundational and
@@ -161,7 +164,8 @@ with stable warnings.
 - `open/crates/superi-timeline/tests/compile_contract.rs`: Proves deterministic typed graph state,
   exact nested and transition routing, stable addresses across source-range edits, bidirectional
   provenance, unchanged processing state after a selection-only edit, direct graph parameter
-  editing, typed multicam source, switch, and audio intent, and missing-root failure.
+  editing, coexistence with a linked shared scalar processing node, typed multicam source, switch,
+  and audio intent, and missing-root failure.
 - `open/crates/superi-timeline/tests/otio_fixture_contract.rs`: Proves canonical OTIO schema,
   hierarchy, identity, timing, relationships, opaque retention, and unsupported diagnostics.
 - `open/crates/superi-timeline/tests/otio_interchange_contract.rs`: Proves production fixture
@@ -331,10 +335,13 @@ The nested operation surface includes:
   foundational placement outcome, edited child identity, and affected shared instances.
 
 The compilation surface includes `compile_timeline`, `TimelineGraphCompilation`,
-`TimelineGraphValue`, `TimelineGraphOrigin`, and `TimelineGraphIndex`. It captures the source
-project and revision, exposes the editable graph and immutable snapshots, resolves timeline,
-track, and object origins in both directions, and allows later checked graph transactions without
-inventing a second topology.
+`TimelineGraphValue`, `CompiledTimelineGraphValue`, `TimelineGraphOrigin`, and
+`TimelineGraphIndex`. `CompiledTimelineGraphValue` is
+`GraphValue<TimelineGraphValue>`: every existing editorial value is retained as an exact `Domain`
+variant, while shared scalar, vector, color, matrix, Boolean, and choice processing values can be
+authored through the same graph. The compilation captures the source project and revision, exposes
+the editable graph and immutable snapshots, resolves timeline, track, and object origins in both
+directions, and allows later checked graph transactions without inventing a second topology.
 
 The OTIO interchange surface includes:
 
@@ -506,7 +513,8 @@ Timeline compilation consumes the validated result without changing authoring st
 2. One timeline output node, one node per track, and one node per editorial object retain complete
    typed IDs, names, sources, ranges, time maps, semantics, authored order, transition intent,
    generator parameters, caption data, multicam source catalogs, synchronization provenance,
-   switch partitions, and audio policy.
+   switch partitions, and audio policy. Every native value enters `GraphValue::Domain` without
+   conversion.
 3. Typed video, audio, caption, and data ports connect items to tracks and tracks to timeline
    outputs. Transition endpoints and nested child outputs remain explicit graph edges.
 4. Graph, node, port, parameter, and edge identities use length-framed domain-separated SHA-256
@@ -518,6 +526,9 @@ Timeline compilation consumes the validated result without changing authoring st
 6. The bidirectional index resolves every reachable timeline, track, and object to its node and
    every compiled node back to its editorial owner. UI-only selection, targeting, sync locks,
    links, groups, annotations, and caches do not become hidden processing inputs.
+7. A higher-tier catalog may add shared processing nodes and typed values through ordinary checked
+   graph transactions. The timeline crate neither imports that catalog nor interprets its values,
+   and existing native state remains editable under the same stable identities.
 
 OTIO interchange composes the same native owners:
 
@@ -564,8 +575,9 @@ Timeline document flow preserves those owners without becoming a project contain
   media identity, all typed editorial identities, and the stable `MulticamAngleId` used by
   production source.
 - `superi-graph` supplies `GraphColorMetadata` to the narrow color propagation seam and owns the
-  schema, typed DAG, port validation, editable node, snapshot, and atomic mutation contracts used
-  by timeline compilation.
+  neutral `GraphValue` payload, schema, typed DAG, port validation, editable node, snapshot, and
+  atomic mutation contracts used by timeline compilation. Timeline depends on no concrete effect
+  catalog.
 - The workspace-pinned `sha2` 0.10.9 implementation derives stable graph-facing identifiers from
   domain-separated, length-framed editorial identity inputs and protects canonical timeline payload
   meaning without adding a network path.
@@ -695,6 +707,9 @@ Timeline document flow preserves those owners without becoming a project contain
   schema, identity, and JSON pointer values.
 - Generic OTIO audio lacks complete native semantics, so sample rate and channel layout are explicit
   import options and routing is deterministic. Original audio metadata remains opaque and preserved.
+- Compiled editorial parameters remain exact `GraphValue::Domain(TimelineGraphValue)` variants.
+  Shared processing variants may coexist but cannot rewrite, coerce, or replace native domain state,
+  and their presence does not change stable editorial-to-graph identities.
 - Fit-to-fill, arbitrary vendor-effect interpretation, graph evaluation, undo-history ownership,
   multicam playback and mixing, and higher-level editorial commands remain outside this state.
 - The timeline color seam preserves exact graph metadata and performs no transform, inference,
@@ -779,12 +794,13 @@ source clip, range switching, movable cuts, fixed and all-angle audio intent, ta
 fragment inheritance, target and source replacement inheritance, missing coverage and disabled
 angle rejection, stale revisions, and complete atomic rollback.
 
-Six compilation tests prove identical graph snapshots from identical project state, one atomic
+Seven compilation tests prove identical graph snapshots from identical project state, one atomic
 revision with twelve typed nodes and fourteen checked edges, two instances sharing one nested
 timeline output, explicit transition routing, retained bottom-to-top track order, caption parameter
 inspection, bidirectional provenance, stable graph and node addresses across a source-range edit,
 identical graph state after a selection-only project revision, directly editable graph parameters,
-typed multicam source, switching, and audio intent, and classified missing-root failure.
+one linked shared scalar processing node beside native domain values, typed multicam source,
+switching, and audio intent, and classified missing-root failure.
 
 Three serialization tests prove deterministic complete project equality, revision 1 envelope and
 primitive revision identity, SHA-256 integrity, revision 0 migration, canonical current output,
@@ -802,7 +818,8 @@ timeline edit state, markers, deterministic metadata, exact snapping,
 exact clip retiming, six primary operations, nine advanced edit families, nested placement,
 compound creation, shared child editing, recursive inspection, and native multicam angle,
 synchronization, switching, audio-intent, structural inheritance, and exact resolution are
-substantive and test-backed. Deterministic graph compilation and production OTIO 0.18.1 reading,
+substantive and test-backed. Deterministic graph compilation with lossless native domain values and
+shared processing-value coexistence, plus production OTIO 0.18.1 reading,
 writing, opaque preservation, stable diagnostics, and a headless consumer are also test-backed.
 Strict canonical timeline documents, revision 0 migration, checked recovery, and continued editing
 after load are test-backed. Graph evaluation, fit-to-fill, grouped-source compound synthesis, undo
@@ -827,8 +844,8 @@ independently of process memory. Nested component collection counts are validate
 construction after JSON allocation rather than by a streaming preallocation quota. The
 `otio_roundtrip` example is the first production consumer outside contract tests. The engine color
 propagation contract consumes only the narrow metadata seam. Timeline compilation now produces real
-generic editable graph state, but no engine, API, CLI, evaluator catalog, playback, or render owner
-consumes that result yet.
+generic editable graph state that can admit a higher-tier effects catalog, but no engine, API, CLI,
+playback, or production render owner consumes that result yet.
 
 ## Maintenance notes
 
@@ -849,6 +866,10 @@ higher-level and grouped-source compound operations must consume `tracks_affecte
 selection state, and clip-owned time maps instead of recreating those policies. Add higher-level
 edit commands and graph evaluation only through their owning modules, and update project, engine,
 API, CLI, persistence, and fixture maps when those paths begin consuming native timeline state.
+Keep every compiled editorial value wrapped in `GraphValue::Domain`, preserve
+`CompiledTimelineGraphValue` as the shared public payload, and let higher-tier catalogs add only
+their own processing nodes and schemas. Timeline must not import effects or translate catalog
+choices into a competing native representation.
 Extend OTIO only through `OtioDocument` and the pinned schema target, preserve unknown source
 templates and stable diagnostics, and prove emitted files through an official compatible reader
 before expanding the supported subset. Keep file I/O, SQLite schema, autosave, replacement, and

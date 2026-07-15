@@ -1,12 +1,23 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use superi_core::error::ErrorCategory;
 use superi_core::ids::{
     CaptionId, ClipId, GapId, GeneratorId, MediaId, MulticamAngleId, ProjectId, TimelineId,
     TrackId, TransitionId,
 };
+use superi_core::settings::{CapabilitySet, SemanticVersion};
 use superi_core::time::{Duration, FrameRate, RationalTime, TimeRange, Timebase};
-use superi_graph::mutate::{GraphMutation, GraphTransaction, TypedParameterValue};
+use superi_graph::ids::{NodeId, ParameterId};
+use superi_graph::mutate::{
+    EditableGraph, EditableNode, EditableParameter, GraphMutation, GraphTransaction,
+    TypedParameterValue,
+};
+use superi_graph::node::{
+    CachePolicy, ColorRequirements, Determinism, NodeBehavior, NodeSchema, NodeSchemaId,
+    NodeTypeId, ParameterName, ParameterSchema, RoiBehavior, TimeBehavior, ValueTypeId,
+};
+use superi_graph::value::GraphValue;
 use superi_timeline::compile::{compile_timeline, TimelineGraphOrigin, TimelineGraphValue};
 use superi_timeline::edit_state::{SelectionExpansion, SelectionUpdate};
 use superi_timeline::model::{
@@ -172,6 +183,8 @@ fn parameter_value(
         .unwrap()
         .value()
         .payload()
+        .as_domain()
+        .unwrap()
         .clone()
 }
 
@@ -424,7 +437,7 @@ fn compiled_parameters_remain_directly_editable_graph_state() {
                 parameter_id,
                 value: TypedParameterValue::new(
                     value_type,
-                    TimelineGraphValue::Text("direct graph edit".to_owned()),
+                    GraphValue::domain(TimelineGraphValue::Text("direct graph edit".to_owned())),
                 ),
             }],
         ))
@@ -439,7 +452,89 @@ fn compiled_parameters_remain_directly_editable_graph_state() {
             .unwrap()
             .value()
             .payload(),
-        &TimelineGraphValue::Text("direct graph edit".to_owned())
+        &GraphValue::domain(TimelineGraphValue::Text("direct graph edit".to_owned()))
+    );
+}
+
+#[test]
+fn compiled_timeline_graph_accepts_shared_processing_state() {
+    let project = project_fixture();
+    let mut compilation = compile_timeline(&project, ROOT).unwrap();
+
+    fn assert_shared_graph(_graph: &EditableGraph<GraphValue<TimelineGraphValue>>) {}
+    assert_shared_graph(compilation.graph());
+
+    let node_id = NodeId::from_raw(9_000);
+    let parameter_id = ParameterId::from_raw(9_001);
+    let parameter_name = ParameterName::new("opacity").unwrap();
+    let value_type = ValueTypeId::new("superi.value.effect.scalar").unwrap();
+    let schema = Arc::new(
+        NodeSchema::new(
+            NodeSchemaId::new(
+                NodeTypeId::new("superi.effect.test").unwrap(),
+                SemanticVersion::new(1, 0, 0),
+            ),
+            [],
+            [],
+            [ParameterSchema::new(
+                parameter_name.clone(),
+                value_type.clone(),
+                true,
+            )],
+            NodeBehavior::new(
+                TimeBehavior::CurrentFrame,
+                RoiBehavior::InputBounds,
+                ColorRequirements::Tagged,
+                Determinism::Deterministic,
+                CachePolicy::PerRegion,
+            ),
+            CapabilitySet::default(),
+        )
+        .unwrap(),
+    );
+    let node = EditableNode::new(
+        schema,
+        [],
+        [],
+        [EditableParameter::new(
+            parameter_id,
+            parameter_name,
+            TypedParameterValue::new(value_type, GraphValue::scalar(0.75).unwrap()),
+        )],
+    )
+    .unwrap();
+
+    let snapshot = compilation
+        .graph_mut()
+        .apply(GraphTransaction::with_mutations(
+            1,
+            [GraphMutation::Add {
+                node_id,
+                node,
+                position: 12,
+            }],
+        ))
+        .unwrap();
+
+    assert_eq!(snapshot.revision(), 2);
+    assert_eq!(
+        snapshot
+            .node(node_id)
+            .unwrap()
+            .parameter(parameter_id)
+            .unwrap()
+            .value()
+            .payload()
+            .as_scalar(),
+        Some(0.75)
+    );
+    assert_eq!(
+        parameter_value(
+            &compilation,
+            TimelineGraphOrigin::Object(EditorialObjectId::Clip(CLIP)),
+            "name",
+        ),
+        TimelineGraphValue::Text("shot a".to_owned())
     );
 }
 

@@ -24,3 +24,4 @@ pub mod node;
 pub mod roi;
 pub mod serialize;
 pub mod validation;
+pub mod value;

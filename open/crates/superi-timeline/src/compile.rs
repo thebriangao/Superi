@@ -24,6 +24,7 @@ use superi_graph::node::{
     NodeTypeId, ParameterName, ParameterSchema, PortCardinality, PortName, PortSchema, RoiBehavior,
     TimeBehavior, ValueTypeId,
 };
+use superi_graph::value::GraphValue;
 
 use crate::model::{
     ClipSource, EditorialObjectId, EditorialProject, Timeline, Track, TrackItem, TrackKind,
@@ -101,6 +102,12 @@ impl TimelineGraphValue {
         }
     }
 }
+
+/// Shared processing payload used by every compiled timeline graph.
+///
+/// Existing editorial values remain exact [`TimelineGraphValue`] domain variants, while concrete
+/// processing catalogs can add ordinary graph parameters without depending on this crate.
+pub type CompiledTimelineGraphValue = GraphValue<TimelineGraphValue>;
 
 /// The editorial owner represented by one compiled node.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -195,7 +202,7 @@ pub struct TimelineGraphCompilation {
     project_id: ProjectId,
     root_timeline_id: TimelineId,
     project_revision: u64,
-    graph: EditableGraph<TimelineGraphValue>,
+    graph: EditableGraph<CompiledTimelineGraphValue>,
     index: TimelineGraphIndex,
 }
 
@@ -220,18 +227,18 @@ impl TimelineGraphCompilation {
 
     /// Returns the editable graph document.
     #[must_use]
-    pub const fn graph(&self) -> &EditableGraph<TimelineGraphValue> {
+    pub const fn graph(&self) -> &EditableGraph<CompiledTimelineGraphValue> {
         &self.graph
     }
 
     /// Returns mutable access for ordinary checked graph transactions.
-    pub fn graph_mut(&mut self) -> &mut EditableGraph<TimelineGraphValue> {
+    pub fn graph_mut(&mut self) -> &mut EditableGraph<CompiledTimelineGraphValue> {
         &mut self.graph
     }
 
     /// Captures an immutable graph snapshot for inspection or evaluation.
     #[must_use]
-    pub fn snapshot(&self) -> GraphSnapshot<TimelineGraphValue> {
+    pub fn snapshot(&self) -> GraphSnapshot<CompiledTimelineGraphValue> {
         self.graph.snapshot()
     }
 
@@ -243,7 +250,7 @@ impl TimelineGraphCompilation {
 
     /// Consumes the compilation and returns its editable graph document.
     #[must_use]
-    pub fn into_graph(self) -> EditableGraph<TimelineGraphValue> {
+    pub fn into_graph(self) -> EditableGraph<CompiledTimelineGraphValue> {
         self.graph
     }
 }
@@ -352,8 +359,8 @@ fn collect_reachable_timelines(
 struct Compiler<'a> {
     project: &'a EditorialProject,
     root_timeline_id: TimelineId,
-    node_mutations: Vec<GraphMutation<TimelineGraphValue>>,
-    edge_mutations: Vec<GraphMutation<TimelineGraphValue>>,
+    node_mutations: Vec<GraphMutation<CompiledTimelineGraphValue>>,
+    edge_mutations: Vec<GraphMutation<CompiledTimelineGraphValue>>,
     index: TimelineGraphIndex,
 }
 
@@ -453,7 +460,7 @@ impl<'a> Compiler<'a> {
         Ok(())
     }
 
-    fn add_node(&mut self, node_id: NodeId, node: EditableNode<TimelineGraphValue>) {
+    fn add_node(&mut self, node_id: NodeId, node: EditableNode<CompiledTimelineGraphValue>) {
         let position = self.node_mutations.len();
         self.node_mutations.push(GraphMutation::Add {
             node_id,
@@ -508,7 +515,7 @@ fn timeline_output_node(
     project: &EditorialProject,
     timeline: &Timeline,
     node_id: NodeId,
-) -> Result<EditableNode<TimelineGraphValue>> {
+) -> Result<EditableNode<CompiledTimelineGraphValue>> {
     let ports = all_stream_ports(PortCardinality::Variadic);
     let outputs = all_stream_ports(PortCardinality::Single);
     editable_node(
@@ -541,7 +548,7 @@ fn timeline_output_node(
     )
 }
 
-fn track_node(track: &Track, node_id: NodeId) -> Result<EditableNode<TimelineGraphValue>> {
+fn track_node(track: &Track, node_id: NodeId) -> Result<EditableNode<CompiledTimelineGraphValue>> {
     editable_node(
         node_id,
         &format!("superi.timeline.{}.track", kind_code(track.kind())),
@@ -576,7 +583,7 @@ fn item_node(
     kind: TrackKind,
     item: &TrackItem,
     node_id: NodeId,
-) -> Result<EditableNode<TimelineGraphValue>> {
+) -> Result<EditableNode<CompiledTimelineGraphValue>> {
     let output = [PortSpec::new("content", kind, PortCardinality::Single)];
     match item {
         TrackItem::Clip(clip) => editable_node(
@@ -754,7 +761,7 @@ fn editable_node(
     outputs: &[PortSpec],
     parameters: Vec<ParameterSpec>,
     color_bearing: bool,
-) -> Result<EditableNode<TimelineGraphValue>> {
+) -> Result<EditableNode<CompiledTimelineGraphValue>> {
     let input_schema = inputs
         .iter()
         .map(|spec| {
@@ -788,7 +795,7 @@ fn editable_node(
         parameter_instances.push(EditableParameter::new(
             parameter_id(node_id, spec.name),
             name,
-            TypedParameterValue::new(value_type, spec.value),
+            TypedParameterValue::new(value_type, GraphValue::domain(spec.value)),
         ));
     }
     let schema = Arc::new(NodeSchema::new(

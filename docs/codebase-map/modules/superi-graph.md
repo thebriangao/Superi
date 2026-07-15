@@ -2,8 +2,8 @@
 module_id: superi-graph
 source_paths:
   - open/crates/superi-graph
-source_hash: 421dbdb1ca7440b71c8fd930d00f88256e6514a9919e2f872a93f6248867981d
-source_files: 30
+source_hash: 797abd7a841405b58561058d2704a33c7a0b886b8ce9093e9b84079f49370153
+source_files: 32
 mapped_at_commit: working-tree
 ---
 
@@ -12,6 +12,8 @@ mapped_at_commit: working-tree
 `superi-graph` owns the node-type-neutral graph boundary for official graph-facing identifiers,
 versioned node schemas, deterministic DAG storage, typed connections, lazy evaluation, mutation,
 serialization, ROI propagation, expressions, and deterministic headless execution. Official
+graph values retain exact domain-owned payloads beside finite scalar, vector, color, matrix,
+Boolean, and bounded choice processing state without importing a concrete catalog. Official
 instance identifiers, node registration, schema discovery, graph membership, typed port endpoints,
 cycle prevention, stable inspection, topological ordering, typed input and output binding
 validation, schema-level connection compatibility, editable node instances, runtime parameter
@@ -54,7 +56,7 @@ project save system.
 
 ## Source inventory
 
-The module owns 30 text files:
+The module owns 32 text files:
 
 - `open/crates/superi-graph/Cargo.toml`: Declares dependencies on `superi-core`, `superi-gpu`,
   `superi-image`, `superi-concurrency`, Serde, JSON, and SHA-256 hashing.
@@ -93,8 +95,8 @@ The module owns 30 text files:
   structured failure context.
 - `open/crates/superi-graph/src/lib.rs`: Documents the partial implementation and exports the
   identifier, node-schema, DAG, diagnostics, validation, mutation, invalidation, evaluator, ROI,
-  parameter link, expression, shared evaluation snapshot, missing-node resolution, and graph
-  document surfaces beside the remaining module tree.
+  parameter link, expression, neutral graph value, shared evaluation snapshot, missing-node
+  resolution, and graph document surfaces beside the remaining module tree.
 - `open/crates/superi-graph/src/missing.rs`: Derives exact schema availability from one immutable
   editable graph snapshot and one registry snapshot, retains unavailable nodes as inspectable
   placeholders over their original typed state, rejects incompatible same-identity definitions,
@@ -116,6 +118,10 @@ The module owns 30 text files:
 - `open/crates/superi-graph/src/validation.rs`: Implements pure typed input and output binding
   validation, canonical binding snapshots, structured diagnostics, and exact output-to-input schema
   compatibility without inspecting evaluator-owned payloads.
+- `open/crates/superi-graph/src/value.rs`: Owns exact finite binary64 values, bounded discrete
+  choices, and the neutral generic `GraphValue<T>` payload. Domain values remain lossless, typed
+  processing variants remain inspectable and serializable, and expressions accept only explicit
+  scalar values without coercion.
 - `open/crates/superi-graph/tests/dag_contract.rs`: Proves typed deterministic storage, shared
   routing, stable topological order, direct and transitive cycle rejection, atomic failures, and
   consistent removal.
@@ -176,6 +182,9 @@ The module owns 30 text files:
   rejection, checked semantic reconstruction, interrupted-document rejection, and equal editor,
   script, and headless evaluation from independently loaded graph documents through the public
   graph evaluation snapshot rather than a private executable DAG bridge.
+- `open/crates/superi-graph/tests/value_contract.rs`: Proves exact finite binary64 retention,
+  validated serialization for every neutral variant, bounded choices, lossless domain payloads,
+  and scalar-only expression conversion without implicit coercion.
 
 ## Public surface
 
@@ -183,6 +192,17 @@ The module owns 30 text files:
 `ResourceId`. Each is the same sealed 128-bit type exported by `superi_core::ids`, with canonical
 lowercase `kind:32hex` text, platform-independent big-endian bytes, strict parsing, and core-owned
 Serde behavior. Graph does not wrap or alias those values into a second runtime identity system.
+
+`superi_graph::value` exposes the catalog-neutral editable payload contract:
+
+- `FiniteF64` rejects nonfinite state and retains exact binary64 bits, including signed zero,
+  through equality and serialization.
+- `ChoiceValue` retains one nonempty UTF-8 choice bounded to 256 bytes and validates decoded state.
+- `GraphValue<T>` preserves exact domain-owned state in `Domain(T)` beside scalar, vector, color,
+  matrix, Boolean, and choice processing variants. Checked constructors, accessors, and stable
+  value-kind inspection keep variants explicit.
+- `ExpressionParameterValue` is implemented only for the scalar variant. Boolean, choice, color,
+  vector, matrix, and domain values never acquire numeric meaning through implicit conversion.
 
 `superi_graph::node` exposes the schema-discovery contract:
 
@@ -458,6 +478,20 @@ The instance identity and storage flow is:
    same indexes, and connected nodes must be explicitly disconnected before removal.
 6. Inspection reads ordered maps and sets directly. Deterministic Kahn ordering selects the smallest
    ready `NodeId`, independent of insertion order.
+
+The shared editable-value flow is:
+
+1. A graph-owning domain selects `GraphValue<T>` as its one editable payload and wraps all existing
+   domain state in `Domain(T)` without translation.
+2. Higher-tier processing catalogs instantiate schema parameters with explicit scalar, vector,
+   color, matrix, Boolean, or bounded choice variants while topology and mutation remain generic.
+3. Finite numeric constructors preserve exact binary64 bits and reject NaN or infinity before state
+   can enter a snapshot or serialized document. Choice construction applies its byte bound at the
+   same boundary.
+4. Parameter links retain the exact variant. Expression evaluation accepts and produces only
+   `Scalar`, so no other processing or domain value is silently coerced.
+5. Timeline compilation uses this neutral wrapper to retain native editorial values and admit
+   shared processing nodes in the same graph. Effects remains the catalog owner above graph.
 
 The lazy evaluation flow is:
 
@@ -754,19 +788,19 @@ graph evaluation or runtime integration.
   `superi-engine::playback` consumes `GraphEvaluationSnapshot` and
   `EvaluationRequest` to populate predicted frames through the cache-owned host adapter, without
   adding mode-specific evaluation behavior. The engine color propagation contract exercises
-  metadata. Effects authoring consumes versioned schemas, schema registration snapshots, typed
-  editable nodes and values, instance bindings, immutable graph snapshots, and `NodeCompiler` to
-  publish a workflow-neutral catalog and exact runtime factory adapter. Its public contract proves
-  ordinary graph mutation and role-neutral snapshot compilation without executing pixels. Timeline
-  compilation consumes versioned
-  schemas, typed ports, complete editable nodes, atomic graph transactions, DAG validation, and
-  immutable snapshots to publish generic processing intent from native editorial state. Other
-  declared domain consumers still have no production graph call site.
-- The fifteen graph integration test targets remain the direct consumers of identifier,
+  metadata. Effects consumes versioned schemas, schema registration snapshots, typed editable
+  nodes and values, instance bindings, immutable snapshots, bounded scalar expressions,
+  `NodeCompiler`, parameter evaluation, diagnostics, and evaluator seams. It uses those neutral
+  contracts for workflow-neutral authoring, exact keyframe payload reload, a versioned built-in
+  visual catalog, and bounded reference pixels without reversing the dependency. Timeline consumes
+  versioned schemas, typed ports, complete editable nodes, atomic graph transactions, DAG
+  validation, immutable snapshots, and `GraphValue` to publish native editorial state beside
+  shared processing intent without importing effects. Other declared domain consumers still have
+  no production graph call site.
+- The sixteen graph integration test targets remain the direct consumers of identifier,
   schema-discovery, DAG, validation, mutation, invalidation, ROI, serialization, expression,
-  diagnostics, ordinary and cached evaluation, shared evaluation-snapshot, and missing-node APIs.
-  The effects authoring contract is the first downstream catalog test to compose schema discovery,
-  editable instances, graph mutation, and evaluation-snapshot compilation into one higher-tier SDK.
+  diagnostics, ordinary and cached evaluation, shared evaluation-snapshot, missing-node, and
+  neutral value APIs.
 
 ## Invariants and operational boundaries
 
@@ -775,8 +809,13 @@ graph evaluation or runtime integration.
 - Identifier values are opaque. Callers own allocation, deterministic derivation, uniqueness scope,
   and any meaning assigned to zero; each graph enforces node and edge uniqueness within itself.
 - Graph remains below color, effects, timeline, cache, AI, project, and engine catalogs. The neutral
-  identifier, schema, DAG, validation, mutation, invalidation, evaluator, diagnostics, and ROI APIs
-  import no domain catalog and introduce no new dependency edge.
+  identifier, value, schema, DAG, validation, mutation, invalidation, evaluator, diagnostics, and
+  ROI APIs import no domain catalog and introduce no new dependency edge.
+- Neutral numeric values are always finite and preserve their exact binary64 bits. Choices are
+  nonempty and bounded to 256 UTF-8 bytes, and validated deserialization cannot bypass either rule.
+- `GraphValue<T>` never changes or interprets `Domain(T)`. Processing variants remain distinct, and
+  expression evaluation accepts only `Scalar` without Boolean, choice, color, vector, matrix, or
+  domain coercion.
 - Graph color metadata preserves the complete image-owned pipeline exactly and does not execute,
   infer, normalize, or reorder color transforms.
 - Node type and value type definition identities are strict namespaced values. Port and parameter
@@ -927,7 +966,7 @@ graph evaluation or runtime integration.
 
 ## Tests and verification
 
-The graph crate owns 83 integration tests across fifteen files. The two identifier tests prove all
+The graph crate owns 87 integration tests across sixteen files. The two identifier tests prove all
 six public domains are distinct, each canonical text value parses back exactly, and every graph
 export has the same Rust `TypeId` as its official core owner.
 
@@ -1021,11 +1060,17 @@ continued checked editing, stable placeholder order and diagnostics, fail-closed
 same-identity registration, recovery when the exact saved schema returns, and identical editor,
 script, and headless state plus evaluation results through the shared evaluation snapshot.
 
-Focused verification runs all fifteen integration targets through the crate's public API. Crate-wide
+Four neutral-value tests prove exact finite binary64 retention including signed zero, checked
+construction and deserialization, lossless serialization of every processing variant and an owned
+domain payload, bounded discrete choices, and scalar-only expression conversion without coercion.
+
+Focused verification runs all sixteen integration targets through the crate's public API. Crate-wide
 tests, strict Clippy, and rustdoc cover the library and integration targets. The complete workspace
 suite exercises downstream compatibility. The repository map validator checks the source inventory
-and hash, while dependency and boundary tools enforce the one-way open architecture. No test yet
-connects evaluation to a production node catalog, GPU value, engine, CLI, or rendered artifact.
+and hash, while dependency and boundary tools enforce the one-way open architecture. Effects tests
+now connect the neutral value and evaluation contracts to a concrete visual catalog and bounded CPU
+reference implementation. No test yet connects that catalog to the production engine, GPU value,
+CLI, or import-to-export rendered artifact.
 
 ## Current status and risks
 
@@ -1035,7 +1080,8 @@ instances, editable parameters, typed parameter drivers, immutable snapshots, an
 mutation transactions
 are implemented and test-backed beside exact dirty-region sets, deterministic dependency
 invalidation planning, semantic revision-to-revision edit invalidation, and snapshot-bound ROI
-propagation. Registered definitions can be
+propagation. Neutral graph values now retain exact domain state and finite typed processing state in
+one payload without catalog dependencies. Registered definitions can be
 instantiated, topology, visual order, literal parameters, typed links, and expressions can be
 edited, exact state can be shared across reader roles, and callers can derive both dirty and
 requested work plus deterministic parameter results from the same published DAG snapshot.
@@ -1070,10 +1116,10 @@ evaluation result until exact schemas return. Exact schemas then enable the shar
 headless evaluation snapshot without a graph rewrite. The crate cannot store a project atomically,
 own concrete cached values, persist cache data, bind
 plugin implementations, or render production values. Timeline compilation and memory cache
-retention are real downstream consumers. Effects is now a real authoring and animation consumer of
-schema, registry, node, mutation, immutable snapshot, compiler, scalar-expression, and generic
-serialization surfaces, but no production catalog consumes complete invalidation, ROI, scheduling,
-diagnostics, evaluation, or missing-node behavior to render a visual value.
+retention are now real downstream consumers. Effects is a concrete downstream schema, expression,
+diagnostics, evaluator, immutable compiler, generic serialization, authoring, and animation consumer
+with bounded reference pixels. It does not yet connect invalidation, missing-node resolution, GPU
+execution, or production engine orchestration into a complete render path.
 
 The latest-version rule deterministically selects the lexically highest build-metadata variant when
 SemVer precedence ties. Consumers that require one deployment-specific build must request its exact
@@ -1167,6 +1213,11 @@ address order, mutation-time cycle rejection, and request-local evaluation toget
 implicit catalog lookup, host scripting, caller-specific formulas, or cached results without graph
 revision ownership and invalidation proof.
 
+Keep `GraphValue<T>` neutral and lossless. Add variants only for shared representation needs with
+checked construction, validated serialization, exact equality, and explicit expression behavior.
+Do not move effect names, option vocabularies, defaults, parameter schemas, or pixel algorithms into
+graph, and do not coerce a non-scalar variant merely to make an expression compile.
+
 Keep interactive and headless evaluation on `GraphEvaluationSnapshot<T, N>`. Higher-tier catalogs
 must compile every runtime node from the complete retained editable state, preserve compiler failure
 classification, and create a new evaluation snapshot for each new editable revision. Do not expose
@@ -1192,6 +1243,7 @@ Update this map when mutation, invalidation, ROI, serialization, expressions, di
 evaluation integrate further, concrete retention or eviction behavior changes, or cache revision
 and resource policies change the adapter contract,
 ROI-to-evaluator binding, project storage, undo ownership, engine coordination,
-plugin implementation lookup, the effects catalog gains executable nodes, or another downstream
-catalog becomes real. Recheck direct consumer maps whenever they begin importing any public graph
-contract.
+plugin implementation lookup, the effects catalog gains production executable nodes, or another
+downstream catalog becomes real. Recheck direct consumer maps whenever they begin importing any
+public graph contract, and recheck value consumers whenever the neutral payload or scalar expression
+boundary changes.

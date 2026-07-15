@@ -2927,6 +2927,7 @@ dependencies = [
 name = "superi-effects"
 version = "0.0.0"
 dependencies = [
+ "half",
  "serde",
  "serde_json",
  "superi-core",
