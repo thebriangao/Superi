@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: e519efc0b45875405248c32c3a1e1b37f60c4cfb8976fe8a59860f70ad1c646c
-source_files: 132
+source_hash: 6adcf1b40d1e547cbe10127b781fb59d97ddd2cfe5efe3b8e0ef98c28a1ec295
+source_files: 133
 mapped_at_commit: working-tree
 ---
 
@@ -270,6 +270,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   effect authoring SDK. It records typed inspectable definitions and defaults, workflow-neutral
   editable graph instances, deterministic catalog discovery, exact-schema runtime factories,
   OpenFX-informed design, red-to-green proof, delivery context, and deferred visual execution.
+- `docs/checkpoints/P2.W04.C007.md`: Durable implementation evidence for canonical common channel
+  layouts and explicit speaker or discrete conversion. It records prepared callback-safe matrices,
+  fail-closed undefined speaker conversions, graph timing proof, and physical device limitations.
 - `docs/checkpoints/P1.W07.C025.md`: Durable implementation evidence for bounded timing and process
   resident-memory instrumentation across all eight canonical slice stages. It records the private
   sampler boundary, schema 1.1.0 report contract, dependency decision, red-to-green proof,
@@ -1012,7 +1015,9 @@ processing on the concurrency-owned audio domain, and typed submix, auxiliary, s
 single-master routing. Borrowed prepared input views and stable route-ID summing preserve channel
 meaning and avoid callback allocation. Public consumers prove both a source-to-gain chain and a
 dry-submix plus auxiliary-return path, including atomic topology rejection and order-sensitive
-floating-point behavior. Gain, pan, fader, metering, resampling, plugin hosting, decoded-sample
+floating-point behavior. Explicit prepared channel nodes now convert canonical mono through 7.1
+layouts using documented speaker rules or caller-selected discrete order without changing sample
+time. Gain, pan, fader, metering, resampling, plugin hosting, decoded-sample
 binding, and engine composition remain absent; production device output and sample-accurate
 scheduling are implemented in the same audio crate but are not yet assembled by the engine.
 

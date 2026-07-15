@@ -8,6 +8,7 @@
 //! source and device sample clocks is implemented in [`resample`]. Metering and plugin hosting
 //! remain separate staged owners.
 
+pub mod channels;
 pub mod graph;
 pub mod hosting;
 pub mod metering;

@@ -250,10 +250,13 @@ The independent audio processing graph is implemented below engine orchestration
 4. `PreparedAudioGraph::process` requires `ExecutionDomain::Audio`, rejects rate, size, output,
    overflow, and continuity mismatches before running processors, then advances the next exact
    sample only after complete success.
-5. `ClipMixState` publishes complete controls and identity changes transactionally. Preparation
+5. `PreparedChannelMixer` converts explicit canonical layouts with a precomputed speaker or
+   discrete matrix. Direct graph edges remain exact-layout only, and consecutive block timing is
+   unchanged through the explicit converter node.
+6. `ClipMixState` publishes complete controls and identity changes transactionally. Preparation
   resolves snapshot-wide solo and precomputes semantic routing and phase coefficients before the
   callback applies gain, exact linear fades, equal-power stereo pan, mute, solo, and phase.
-6. Public crate integration tests use unity `SummingBus` processors to prove dry submix, parallel
+7. Public crate integration tests use unity `SummingBus` processors to prove dry submix, parallel
    auxiliary send and return, stable identity-ordered summing, and one terminal master over
    consecutive 48 kHz stereo blocks.
 7. `superi-engine::audio_mix` consumes real timeline edit outcomes against cloned project and mix
