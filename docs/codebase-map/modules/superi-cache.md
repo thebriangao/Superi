@@ -2,8 +2,8 @@
 module_id: superi-cache
 source_paths:
   - open/crates/superi-cache
-source_hash: 0b746fce8fd484151f3e6989fe5edb8697127e0d009c41987ec330aeef5b5015
-source_files: 15
+source_hash: fa17b28ec890311bd9e794d5e79a8ea514f95068d4f31b0d92df9bbd3e52f343
+source_files: 16
 mapped_at_commit: working-tree
 ---
 
@@ -12,15 +12,18 @@ mapped_at_commit: working-tree
 `superi-cache` owns deterministic reusable-result identity, budgeted final-frame and
 intermediate-node memory retention, exact global, project, and device cache accounting, and the
 priority-aware least-recently-used eviction policy, precise graph edit invalidation, and versioned
-persistent final-frame and intermediate-node value storage. Proxy, background-render, and prefetch
-systems remain planned. Composite keys join identities owned by media, graph, parameter,
-image-color, time, and render-setting boundaries
-without taking ownership of those source models. One atomic memory state retains cloneable
+persistent final-frame and intermediate-node value storage. It also owns the media-neutral identity
+and complete-only publication contract for replaceable proxy and optimized media. Background-render,
+prefetch, quality substitution, and lifecycle systems remain planned. Composite keys join identities
+owned by media, graph, parameter, image-color, time, and render-setting boundaries without taking
+ownership of those source models. One atomic memory state retains cloneable
 evaluator values in separate final and intermediate LRU tiers only while exact byte and frame
 reservations remain live, reclaims lower-priority work under pressure, removes precise graph edit
 lineage, and fences late work from invalidated revisions. A caller-versioned disk adapter retains
 encoded values across cache reconstruction. Exact cached color metadata remains implemented beside
-both retained-value paths.
+both retained-value paths. A separate ordered derived-media catalog binds every
+published payload to source identity, source revision, purpose, quality, and complete render
+settings while leaving codec execution in the engine.
 
 ## Source inventory
 
@@ -47,10 +50,13 @@ both retained-value paths.
   canonicalization, and the composite frame or intermediate-output cache key.
 - `open/crates/superi-cache/src/lib.rs`: Documents implemented composite identity, budgeted memory
   retention, hierarchical accounting, deterministic eviction, precise edit invalidation, and
-  versioned corruption-recovering disk persistence, and exports the seven owned modules.
+  versioned corruption-recovering disk persistence, media-neutral derived generation publication,
+  and exports the seven owned modules.
 - `open/crates/superi-cache/src/prefetch.rs`: Placeholder for playback prediction and prefetch.
-- `open/crates/superi-cache/src/proxy.rs`: Placeholder for proxy or optimized-media generation and
-  substitution.
+- `open/crates/superi-cache/src/proxy.rs`: Defines proxy and optimized purpose and quality values,
+  complete source and render-setting generation requests, deterministic derived and artifact
+  identities, immutable complete payloads, exact lookup with original-source fallback, reuse, and
+  replacement that publishes only after a fallible producer succeeds.
 - `open/crates/superi-cache/src/render.rs`: Placeholder for render and background-render caching.
 - `open/crates/superi-cache/tests/cache_key_contract.rs`: Proves every required invalidation axis,
   canonical media sets and physical time, complete color meaning and order, proxy and precision
@@ -73,6 +79,9 @@ both retained-value paths.
 - `open/crates/superi-cache/tests/memory_budget_contract.rs`: Proves checked configuration, exact
   byte and frame admission, global, project, and device isolation, deterministic classified
   refusal, usage and peak diagnostics, GPU rollback, RAII cleanup, and concurrent hard-limit safety.
+- `open/crates/superi-cache/tests/proxy_generation_contract.rs`: Proves every derived identity axis,
+  exact reuse, explicit replaceability, source freshness, complete-only publication, failure
+  preservation, and deterministic original-source fallback.
 
 ## Public surface
 
@@ -83,6 +92,14 @@ The `key` module exposes `MediaCacheIdentity`, `ParameterStateFingerprint`,
 `RenderSettingsFingerprint`, `ColorPipelineFingerprint`, `FrameCacheKeyInputs`, and
 `FrameCacheKey`. Together they compose media content, graph lineage, evaluated parameters, exact
 color meaning, physical time, and render settings into one versioned SHA-256 digest.
+
+`proxy` exposes `DerivedMediaPurpose`, `DerivedMediaQuality`, `DerivedMediaRequest`,
+`DerivedMediaKey`, `GeneratedMedia<T>`, `DerivedMediaArtifact<T>`, `DerivedMediaLookup<T>`, and
+`DerivedMediaCatalog<T>`. The request composes one authoritative `MediaCacheIdentity`, exact source
+revision, purpose, quality, and caller-owned `RenderSettingsFingerprint`. The catalog reuses only
+the exact request key, publishes one immutable `Arc` artifact after successful complete generation,
+permits explicit replacement, and returns the authoritative original source when no exact result
+exists.
 
 `frame::FrameMemoryCache<V>` creates empty final and intermediate tiers, reports each tier's entry
 count, returns each tier's `FrameCacheKey` inventory in deterministic order, publishes one
@@ -170,6 +187,15 @@ categories use stable domain-separated digests. The existing metadata seam indep
 `GraphColorMetadata` into a cache-owned immutable value and requires complete
 `ColorPipelineMetadata` equality for a match.
 
+Derived generation is separate from retained graph values. `DerivedMediaKey` hashes the complete
+request with a versioned domain. A generated payload carries its producer-computed content digest
+and nonzero byte length. The catalog invokes a fallible producer before touching its ordered map,
+derives one stable `CacheId` from request and output content only after success, then replaces the
+exact key in one insertion. Failure leaves a prior exact artifact untouched, and a miss returns the
+request's source identity rather than choosing a different quality or revision. The engine is the
+first real producer: it validates canonical encoder settings, drives a codec-neutral encoder to end
+of stream, and returns complete packet media through this publication boundary.
+
 ## Dependencies and consumers
 
 - Declared internal dependencies are `superi-core`, `superi-gpu`, `superi-image`, and
@@ -182,9 +208,12 @@ categories use stable domain-separated digests. The existing metadata seam indep
   render identity.
 - `superi-engine::render` consumes `CachedFrameColorMetadata` when deriving independent viewport
   and export color branches.
+- `superi-engine::derived_media` consumes the derived request and catalog, validates exact encoder
+  settings, and publishes complete packet output from the selected codec-neutral backend.
 - Cache integration contracts are the first concrete consumers of retained graph evaluation,
   persistent graph reuse, and budgeted GPU cache memory. No production engine node catalog,
-  playback, render, export, or GPU value path uses either cache adapter yet.
+  playback, render, export, or GPU value path uses either retained-value adapter or selects derived
+  media yet. Engine generation is the first cross-crate derived-media consumer.
 
 ## Invariants and operational boundaries
 
@@ -234,9 +263,18 @@ categories use stable domain-separated digests. The existing metadata seam indep
 - An edit plan advances every affected graph and node fence under the same lock as both value tiers,
   removes only superseded affected lineage, and prevents late old or unversioned repopulation.
 - Complete color-pipeline equality is required before cached color metadata matches a request.
+- Derived-media reuse requires exact source `MediaId`, source-content fingerprint, source revision,
+  purpose, quality, and render-settings identity. It never chooses a stale revision or another
+  quality.
+- Derived payloads have nonzero encoded length and remain private until producer success. Failed or
+  cancelled replacement cannot remove a prior artifact, and absence deterministically exposes the
+  authoritative original source.
+- A derived artifact is replaceable and owns no project mutation. It cannot change source identity,
+  graph meaning, or final-render settings, and full-quality delivery remains an independent exact
+  request rather than an implicit proxy reuse.
 - Driver allocation overhead and physical residency remain outside managed-payload accounting.
-  Invalidation invocation, generation ownership, cache management, proxy substitution, and prefetch
-  remain later concerns.
+  Invalidation invocation, generation scheduling, cache management, quality substitution, and
+  prefetch remain later concerns.
 - Persistent storage has no automatic cleanup, relocation, cross-process single-flight lock, or
   default root or capacity. Callers own the directory lifecycle and value schema evolution.
 
@@ -278,24 +316,34 @@ and the concrete invalidation API. It proves exact removed-key reports, released
 unaffected upstream and unrelated reuse, current-revision recomputation, and rejection of repeated
 old-snapshot repopulation.
 
-Focused package tests, graph and engine contract closure, warnings-denied Clippy, rustdoc, and
-formatting cover the integrated budget, LRU, invalidation, and persistent storage implementation.
-The 29 cache integration tests across six files prove bounded retained evaluator values, shared
-managed GPU accounting, exact eviction, precise revision-safe cleanup, process-restart reuse, and
-corruption recovery through public adapters, not production pixels, playback integration, or
-physical GPU residency.
+`proxy_generation_contract.rs` runs three contracts over the public media-neutral generation
+surface. It proves changes to source ID, content, revision, purpose, quality, or render settings
+change the key; exact complete artifacts reuse; regeneration replaces one exact key; freshness is
+strict; failed generation retains prior complete media; empty payloads fail; and a missing or stale
+request returns the original source.
+
+Focused package tests, graph and engine contract closure, warnings-denied Clippy, and rustdoc pass
+after the integrated budget, LRU, invalidation, persistence, and generation implementation. The 32
+cache integration tests across seven files prove bounded retained evaluator values, shared managed
+GPU accounting, exact eviction, precise revision-safe cleanup, process-restart reuse, corruption
+recovery, and complete-only derived publication through public adapters. The engine contract adds
+real AV1 packet generation, but these tests do not prove playback substitution, muxing, or physical
+GPU residency.
 
 ## Current status and risks
 
 Deterministic composite key derivation, exact cached color metadata, hierarchical budgets, budgeted
 two-tier retained evaluation, priority-aware strict per-tier LRU eviction, precise revision-safe
-edit invalidation, and versioned two-tier disk persistence are substantive and test-backed. Final
+edit invalidation, versioned two-tier disk persistence, and proxy or optimized-media identity and
+atomic publication are substantive and test-backed. Final
 hits stop the complete graph pull, intermediate hits stop their prerequisite subtree, hard caps
 remain exact, automatic or explicit victims recompute with unchanged result meaning, edit plans
 remove only affected older lineage, and disk corruption falls back to exact fresh evaluation.
 Device entries share the existing GPU cache class, and eviction or invalidation releases matching
-reservations outside the cache state lock. Prefetch, proxy, and render remain explicit placeholders.
-No production frame pixels are reused or reclaimed by playback, export encoding, or GPU upload.
+reservations outside the cache state lock. The engine generates real complete AV1 packet artifacts
+through the proxy module, while prefetch and render remain placeholders and quality substitution is
+deferred. No production frame pixels are selected or reclaimed by playback, export encoding, or GPU
+upload.
 
 The main correctness risk is each caller's canonical parameter and render-settings encoding.
 Omitting one output-affecting byte can cause false reuse even though composition and storage are
@@ -305,11 +353,13 @@ misses may perform duplicate deterministic work because single-flight coordinati
 implemented. Concurrent lock acquisition defines the observed access order,
 which may change cache contents but cannot change semantic results. Explicit victim selection sorts
 the retained tier during pressure handling, so measured production scale may justify an equivalent
-indexed implementation later. Generation cleanup and management are absent, so the crate is not yet
-a complete cache subsystem. Persistent callers must version codec meaning correctly, choose bounded
-entry sizes, and provide cleanup and relocation policy. Independently opened cache instances can
-duplicate deterministic work and last-writer publication, but immutable complete keys keep the
-published meaning equal.
+indexed implementation later. Derived-media cleanup, persistence, and management are absent, so the
+catalog remains externally synchronized and has no single-flight generation, eviction, persistence,
+or management. Quality choice must match the caller-prepared frames and canonical engine settings.
+Persistent value callers must version codec meaning correctly, choose bounded entry sizes, and
+provide cleanup and relocation policy. Independently opened cache instances can duplicate
+deterministic work and last-writer publication, but immutable complete keys keep the published
+meaning equal. The crate is not yet a complete cache subsystem.
 
 ## Maintenance notes
 
@@ -326,3 +376,5 @@ boundaries when adding disk lifecycle policy, proxy substitution, engine consume
 diagnostics in their assigned checkpoints. Never weaken the disk envelope bounds, complete identity
 checks, schema
 partition, synchronization sequence, corruption revalidation, or fallback-to-fresh behavior.
+Derived-media producers must compute complete output identity before publication, never mutate
+source state, and keep media or codec dependencies above this crate.

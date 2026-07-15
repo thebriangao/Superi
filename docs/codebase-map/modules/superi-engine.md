@@ -2,17 +2,18 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 92b2175ace8d0e0aabf95dfb6dd9e8731afa514cbab25a896f9cccbf16e86d90
-source_files: 24
+source_hash: cad828eb60bfcfb6224089c24ebb8ab8d667aade6425cd41794a0e14a86d624d
+source_files: 26
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
-`superi-engine` is the open orchestration layer. Four paths are currently substantive: canonical
+`superi-engine` is the open orchestration layer. Six paths are currently substantive: canonical
 editorial command state, media backend registry assembly, declaration-based capability
 introspection, CPU-decoded frame upload into GPU allocations, and exact viewport and export color
-metadata branching. Playback, rendered color execution, export encoding, broad
+metadata branching, plus codec-neutral proxy and optimized-media packet generation. Playback,
+rendered color execution, export muxing, broad
 transactions, lifecycle, resources, plugins, nodes, A/V sync, and validation remain incomplete.
 
 The command path is a bounded reference owner for contract conformance. It does not claim to replace
@@ -26,13 +27,17 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 - `open/crates/superi-engine/src/command.rs`: Implements canonical fixture identity, named timeline
   and trim state, complete mirror graph control state, typed operation evidence, bounded source
   validation, monotonic revisions, and full-state undo plus redo.
+- `open/crates/superi-engine/src/derived_media.rs`: Canonicalizes complete video or audio encoder
+  settings, validates cache request identity, selects one explicit primary encoder, drives its
+  nonblocking lifecycle to end of stream, hashes complete packet semantics, and publishes only a
+  complete proxy or optimized-media payload through `superi-cache`.
 - `open/crates/superi-engine/src/error.rs`: Placeholder for cross-subsystem recovery.
 - `open/crates/superi-engine/src/export_queue.rs`: Placeholder for render and export queues.
 - `open/crates/superi-engine/src/frame_upload.rs`: Implements the media-I/O-to-GPU upload boundary
   for CPU-addressable decoded video and retains the frame's complete color pipeline beside the GPU owner.
 - `open/crates/superi-engine/src/introspection.rs`: Implements deterministic API-neutral backend and
   codec capability snapshots.
-- `open/crates/superi-engine/src/lib.rs`: Exposes fourteen engine modules.
+- `open/crates/superi-engine/src/lib.rs`: Exposes fifteen engine modules.
 - `open/crates/superi-engine/src/lifecycle.rs`: Placeholder for subsystem lifecycle.
 - `open/crates/superi-engine/src/media.rs`: Builds default and feature-gated media registries.
 - `open/crates/superi-engine/src/nodes.rs`: Placeholder for media and graph nodes.
@@ -43,6 +48,9 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 - `open/crates/superi-engine/src/validation.rs`: Placeholder for real-condition validation.
 - `open/crates/superi-engine/tests/av1_capability_contract.rs`: Default AV1 selection proof.
 - `open/crates/superi-engine/tests/color_metadata_propagation_contract.rs`: Proves exact source interpretation, ordered transform history, cache identity, independent viewport and export intent, and invalid-order rejection across media, graph, timeline, cache, and engine boundaries.
+- `open/crates/superi-engine/tests/derived_media_generation_contract.rs`: Proves complete and
+  deterministic real AV1 generation, exact cache reuse, quality identity, settings mismatch
+  rejection, cooperative cancellation, and original-source fallback.
 - `open/crates/superi-engine/tests/frame_upload_contract.rs`: Upload, ownership, storage, and budget
   proof.
 - `open/crates/superi-engine/tests/opus_capability_contract.rs`: Default Opus selection proof.
@@ -67,6 +75,12 @@ and `ExportColorMetadata`, which clone cached scene metadata and append a correc
 stage without transforming pixels. `introspection` exposes engine-owned media backend, operation, codec,
 constraint, and hardware records through `MediaCapabilities::from_registry`. `media` exposes the
 default registry and the feature-gated explicitly configured vendor constructor.
+
+`derived_media` exposes `EncodedDerivedMedia`, `derived_media_render_settings`, and
+`generate_derived_media`. Settings derive from purpose, quality, stream, codec, timebase, complete
+video representation and color or alpha meaning, or complete audio representation and channel
+order. Generation accepts caller-prepared codec-neutral inputs and an external cache catalog,
+returns immutable complete packets, and never exposes an encoder implementation type.
 
 The other public modules currently contain documentation only.
 
@@ -104,16 +118,34 @@ branch validates its terminal stage kind and leaves the cached scene state uncha
 path yet executes those transforms, connects uploaded textures to graph evaluation, monitors a
 viewport, or encodes an export.
 
+### Derived-media generation
+
+The caller prepares decoded frames or audio blocks, one exact `EncoderConfig`, and a matching
+cache-owned `DerivedMediaRequest`. The engine derives canonical settings again and rejects a
+mismatch before cache lookup. On an exact catalog hit it returns the immutable prior artifact
+without constructing a codec. On a miss it selects the primary registered encoder with fallback
+disabled, sends each input with cooperative operation checks, drains packets, flushes once, and
+requires end of stream.
+
+Packets remain local until the complete lifecycle succeeds and a final cancellation check passes.
+The engine hashes stream identity, payload bytes, exact timing, keyframe state, and deterministically
+ordered typed metadata, then returns the complete packet payload, digest, and nonzero encoded byte
+length to the cache catalog for one exact publication. A failure publishes nothing, so a prior
+artifact remains live or the authoritative original source remains the cache-declared fallback.
+This path generates elementary packet media only. It does not render inputs, rescale quality, mux a
+container, persist files, select proxies for playback, or mutate project state.
+
 ## Dependencies and consumers
 
 - `superi-core` supplies errors, identifiers, and exact time used directly by canonical commands,
   introspection, and upload.
-- `sha2` supplies bounded fixture payload identity.
-- `superi-media-io`, `superi-gpu`, and `superi-codecs-rs` support registry, declaration, and upload
-  paths.
+- `sha2` supplies bounded fixture payload identity and complete packet-content fingerprinting.
+- `superi-media-io`, `superi-gpu`, and `superi-codecs-rs` support registry, declaration, upload, and
+  codec-neutral derived generation paths.
 - Platform and vendor codec crates are feature-gated.
-- Image, graph, cache, and timeline now support the color metadata integration contract. Concurrency,
-  color execution, effects, audio, AI, and project remain declared dependencies without production command integration.
+- Cache now supplies both color metadata and media-neutral derived publication. Image, graph, and
+  timeline support the color metadata integration contract. Concurrency, color execution, effects,
+  audio, AI, and project remain declared dependencies without production command integration.
 - `superi-api` consumes command snapshots and capability snapshots, preserving the public seam.
 - `superi-cli` reaches this module only through `superi-api`.
 
@@ -129,6 +161,14 @@ viewport, or encodes an export.
 - Upload preserves source representation and supports CPU-addressable buffers only.
 - Upload preserves exact color-pipeline metadata, and viewport or export intent branches cannot mutate cached scene state.
 - A viewport terminal stage must be `Display`; an export terminal stage must be `Output`.
+- Derived generation rederives and matches exact encoder settings before reuse or codec creation.
+  Source identity, revision, purpose, and quality remain cache-owned request inputs.
+- Codec fallback is disallowed, input and output loops poll cooperative cancellation, and no packet
+  is published until flush reaches end of stream and complete packet hashing succeeds.
+- Packet identity covers bytes, stream, timing, keyframe state, and every known typed metadata value
+  in stable key order. Unknown future media formats or metadata variants fail closed.
+- Derived packet media is replaceable and cannot mutate project, source, graph, or final-render
+  meaning. Rendering, scaling, muxing, persistence, and playback substitution remain separate owners.
 - GPU ownership and pool lifetime remain tied to the originating device.
 - Placeholder modules do not imply whole-engine transaction, render, or lifecycle behavior.
 
@@ -147,6 +187,12 @@ source continuity, cache mismatch rejection, independent display and delivery in
 stage ordering. GPU tests may skip without an adapter; capability tests prove declarations, not codec
 execution.
 
+The two derived-media contracts run through the default registry and real Rust AV1 encoder. They
+prove complete packet timing and metadata, deterministic content and artifact identity across
+independent catalogs, exact reuse that skips different input, explicit quality identity, settings
+mismatch rejection, cancellation before publication, and original-source fallback. This is a real
+encoder consumer but not a render, resize, mux, persistence, playback, or delivery proof.
+
 ## Current status and risks
 
 Canonical command state is substantive and test-backed, but it is a reference boundary whose
@@ -155,13 +201,17 @@ container or decoding frames. Timeline and graph state are exact control models 
 production timeline owner or the generic `superi-graph` DAG store.
 
 Nine orchestration files remain documentation-only placeholders. There is no coherent source
-registry integration, playback clock, audio flow, cache storage, rendered color execution,
-encoder-to-mux path, project persistence, lifecycle, plugin host, or real-condition validator.
+registry integration, playback clock, audio flow, persistent cache owner, rendered color execution,
+encoder-to-mux path, project persistence, lifecycle, plugin host, or real-condition validator. The
+derived-media driver is synchronous and caller-owned, and no production playback or API path invokes
+it yet.
 
 ## Maintenance notes
 
 Keep fixed canonical state synchronized with `docs/vertical-slice.md`, the strict API projection,
 CLI runner, and operation contracts. A new production owner should replace the corresponding stub
 through its real crate rather than growing this reference model into a competing system. Registry
-or upload changes require updating their actual consumers and tests independently. Remove a
-placeholder label only after substantive behavior and consumer proof exist.
+or upload changes require updating their actual consumers and tests independently. Keep derived
+request canonicalization synchronized with every media format field that can change encoder output,
+and keep codec selection, cancellation, complete publication, and source fallback explicit. Remove
+a placeholder label only after substantive behavior and consumer proof exist.

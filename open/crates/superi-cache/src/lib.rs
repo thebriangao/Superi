@@ -3,8 +3,9 @@
 //! § 5.6 in `docs/architecture.md`. Depends on: superi-core, superi-gpu, superi-image, superi-graph.
 //! Status: composite result identity, budgeted final-frame and intermediate-node memory retention,
 //! exact global, project, device, and GPU accounting, deterministic priority-aware LRU eviction,
-//! precise graph edit invalidation, and versioned corruption-recovering disk persistence are
-//! implemented; proxies, render caching, and prefetch remain.
+//! precise graph edit invalidation, versioned corruption-recovering disk persistence, and
+//! media-neutral proxy or optimized-media generation identity and publication are implemented;
+//! quality substitution, render caching, and prefetch remain.
 
 pub mod disk;
 pub mod eviction;
