@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: bb1a7ac74ab6e938b334e14f8d81941c346befbcd0d072100c2865ab56510568
+source_hash: 0c683e8eb852e0d70e41e5be49eedd840e3fbf32c9b5a82bdbd07e546e2c6f76
 source_files: 137
 mapped_at_commit: working-tree
 ---
@@ -378,15 +378,18 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   directly consumes the already-resolved `serde`, `serde_json`, and `sha2` packages, while
   `superi-cache` directly consumes the same pinned `sha2` package and now records its reviewed
   internal dependency on `superi-concurrency` for bounded background rendering. `superi-effects`
-  now directly consumes the already-resolved `serde` package for its animation wire and records
-  `serde_json` only for strict persistence and graph-reload tests. Audio output adds exact CPAL
+  directly consumes Serde for animation, mask, rotoscope, and text wires and records `serde_json`
+  only for strict persistence and graph-reload tests. Text layout adds exact Swash 0.2.9, Skrifa
+  0.31.1, Unicode Bidi 0.3.18, and Unicode Linebreak 0.1.5 runtime packages plus test-only Font Test
+  Data 0.5.0. The locked Indexmap resolution is 2.11.4 so the declared Rust 1.80 compiler can parse
+  and build the affected graph and GPU dependency path. Audio output adds exact CPAL
   0.17.3 and ringbuf 0.4.8 plus their target-specific backend dependency trees. The lockfile is
   generated resolution evidence and is not hand-edited policy.
 - `open/Cargo.toml`: Root Cargo workspace manifest using resolver 2 and glob members under
   `crates/*` and `tools/*`. It centralizes version `0.0.0`, Rust 2021, MIT, Rust 1.80, repository
   metadata, deny-by-default unsafe lints, and shared dependencies for error handling, serialization,
-  images, GPU, codecs, hashes, process instrumentation, platform APIs, native build support, and
-  reviewed audio device and ring-buffer primitives.
+  images, GPU, codecs, hashes, process instrumentation, platform APIs, native build support,
+  reviewed audio device and ring-buffer primitives, and offline font shaping plus Unicode layout.
 - `open/README.md`: Compact open-tree orientation and build commands. It records the 19 runtime
   crates plus repository tools, the exact canonical runner command, contract-only status, and
   the remaining production integration boundary.
@@ -645,7 +648,8 @@ integration or rebase, and before delivery. A passing hash never excuses stale p
 
 The build control plane begins at `open/Cargo.toml`. Cargo expands `crates/*` and `tools/*`, applies
 shared package metadata and lint defaults, resolves member and external dependencies into
-`open/Cargo.lock`, including the pinned MIT rubato 0.16.2 sample-rate converter, and writes
+`open/Cargo.lock`, including the pinned MIT rubato 0.16.2 sample-rate converter and the exact
+Rust-1.80-compatible text shaping stack, and writes
 generated build output under the ignored `open/target/`. Runtime
 dependency direction is downward through the crate tiers: core and representation types support
 GPU, concurrency, media, graph, and codecs; feature catalogs and timeline build on those; engine
@@ -658,12 +662,14 @@ present for core and graph contracts. This changes the direct package edges reco
 `superi-timeline` but does not change crate-tier direction, introduce a network path, or transfer
 SQLite and autosave ownership away from `superi-project`.
 
-The effects animation wire reuses the same workspace Serde and JSON pins, while the built-in visual
-catalog reuses the workspace `half` pin for bounded binary16 reference pixels. The lockfile records
-those direct `superi-effects` package edges to packages already resolved elsewhere in the workspace.
-Effects and timeline consume the neutral graph payload independently, timeline does not depend on
-effects, and no new registry package, network path, runtime tier reversal, or persistence ownership
-transfer is introduced.
+The effects animation, mask, rotoscope, and text wires reuse the same workspace Serde and JSON pins,
+while the built-in visual catalog reuses the workspace `half` pin for bounded binary16 reference
+pixels. Text adds Swash and a direct exact Skrifa constraint for real OpenType shaping, Unicode Bidi
+and Unicode Linebreak for deterministic paragraph layout, and reviewed test-only font bytes. Every
+package is permissively licensed, caller font resolution remains offline, and the direct Skrifa and
+locked Indexmap versions keep the affected crate graph buildable on Rust 1.80. Effects and timeline
+consume the neutral graph payload independently, timeline does not depend on effects, and no network
+path, runtime tier reversal, or persistence ownership transfer is introduced.
 
 The deterministic cache-key contract reuses the same resolved `sha2` pin. Its lockfile change adds
 one direct external package edge to `superi-cache` without changing the reviewed internal runtime
@@ -1102,8 +1108,10 @@ The largest current risk is cross-document drift:
   including dependencies pulled by wgpu and winit. Lockfile presence does not imply that Android,
   WebAssembly, or other targets are supported products.
 - `open/rust-toolchain.toml` follows floating `stable`, while workspace package metadata promises a
-  Rust 1.80 floor. The hosted workflow also installs floating stable, and the recorded local build
-  used Rust 1.97.0, so neither proves the minimum compiler until a Rust 1.80 lane runs.
+  Rust 1.80 floor. The hosted workflow still installs floating stable and there is no recurring
+  Rust 1.80 lane. The text checkpoint freshly checks the affected `superi-effects` all-target graph
+  and runs its focused contract with Cargo and Rust 1.80 against the locked compatible dependency
+  resolution, but that focused local proof is not a recurring whole-workspace hosted guarantee.
 - The dependency-policy workflow uses third-party actions by major version tags rather than commit
   digests. It grants only read access, but action-version immutability is not enforced by this file.
 - The shell contract check is intentionally exact-line based. It catches deletion or textual drift

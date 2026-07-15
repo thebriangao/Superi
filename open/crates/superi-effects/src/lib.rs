@@ -8,9 +8,12 @@
 //! cubic paths, complete controls, strict persistence, and soft-coverage composition. The rotoscope
 //! module keeps exact authored corrections separate from revision-fenced propagation. The transition
 //! module provides reusable cross-dissolve and directional-wipe schemas, exact handle-to-progress
-//! timing, and graph-native parameterization. The built-in catalog and bounded CPU reference cover
-//! common visual operations and transition semantics, while mask rasterization, propagation solvers,
-//! text, tracking, OFX hosting, and production GPU integration remain staged in their owning modules.
+//! timing, and graph-native parameterization. The text module provides editable typography,
+//! paragraph controls, exact animation, offline OpenType shaping, Unicode line breaking and bidi
+//! layout, strict persistence, and inspectable positioned glyphs. The built-in catalog and bounded
+//! CPU reference cover common visual operations and transition semantics, while mask rasterization,
+//! propagation solvers, text rasterization and GPU atlases, tracking, OFX hosting, and production GPU
+//! integration remain staged in their owning modules.
 
 pub mod authoring;
 pub mod catalog;

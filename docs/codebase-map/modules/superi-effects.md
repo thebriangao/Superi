@@ -2,21 +2,24 @@
 module_id: superi-effects
 source_paths:
   - open/crates/superi-effects
-source_hash: 797aad844fd82b11bb646d153d8e6632f6d749165cafff994e33f02f8d7e672c
-source_files: 22
+source_hash: 1bd285abd48dd5f550b99043d5d1be6d1b386f1eaab423ae50aedd568cc84b73
+source_files: 23
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
 `superi-effects` owns the higher-tier open visual effect authoring, animation, reusable control,
-mask, rotoscoping, transition, built-in operation, and bounded reference-evaluation layer above the
-generic graph. It provides inspectable typed definitions, ordinary editable graph-node
-instantiation, deterministic discovery, exact-schema runtime factory translation, exact keyframe
-animation, graph-native links and parent controls, bounded animated closed cubic masks with complete
-controls and ordered soft-alpha composition, editable exact-frame rotoscope artifacts with
-solver-independent propagation hooks, and reusable cross-dissolve and directional-wipe schemas with
-exact handle-to-progress conversion. It also provides concrete schemas plus real reference pixels
+mask, rotoscoping, text, transition, built-in operation, and bounded reference-evaluation layer above the generic
+graph. It provides inspectable typed definitions, ordinary editable graph-node instantiation,
+deterministic discovery, exact-schema runtime factory translation, exact keyframe animation,
+graph-native links and parent controls, bounded animated closed cubic masks with complete controls
+and ordered soft-alpha composition, and editable exact-frame rotoscope artifacts with
+solver-independent propagation hooks. It provides strict styled UTF-8 authoring, animated
+typography and paragraph controls, caller-resolved offline fonts, OpenType shaping, Unicode line
+breaking and bidi reordering, and inspectable positioned glyphs for a later raster owner. It also
+provides reusable cross-dissolve and directional-wipe schemas with exact handle-to-progress
+conversion, concrete schemas, and real reference pixels
 for transform, crop, opacity, blend, composite, Gaussian blur, sharpen, radial distortion, chroma
 key, invert, grade, cross dissolves, and directional wipes.
 
@@ -32,15 +35,16 @@ The built-in schemas require the production `superi.render.gpu` capability, but 
 implements only a deterministic bounded CPU oracle and headless proof. Production GPU kernels,
 engine catalog registration, timeline effect attachment, playback, viewport, export, project
 persistence, UI, mask rasterization, feather and expansion filtering, propagation solvers,
-production transition attachment and GPU execution, text, tracking, and OFX hosting remain absent
-or staged in their owning modules.
+production transition attachment and GPU execution, text rasterization and GPU atlases, tracking,
+and OFX hosting remain absent or staged in their owning modules.
 
 ## Source inventory
 
 - `open/crates/superi-effects/Cargo.toml`: Declares approved downward dependencies on
   `superi-core`, `superi-gpu`, `superi-image`, and `superi-graph`. It uses workspace Serde for the
-  animation, mask, and rotoscope wires, `half` for checked binary16 reference conversion, and JSON
-  only in tests.
+  animation, mask, rotoscope, and text wires, `half` for checked binary16 reference conversion,
+  Swash and pinned Skrifa for offline OpenType shaping, Unicode Bidi and Unicode Linebreak for
+  layout, and JSON only in tests.
 - `open/crates/superi-effects/src/authoring.rs`: Implements presentation metadata, typed effect
   definitions, graph-native instance construction, atomic generic catalog snapshots, classified
   validation, runtime factories, the shared presentation-text validator, and the graph
@@ -58,7 +62,7 @@ or staged in their owning modules.
   easing, bounded time expressions, immutable curve editing, exact uniform retiming, deterministic
   evaluation, and the revisioned standalone wire.
 - `open/crates/superi-effects/src/lib.rs`: Documents the implemented authoring, animation,
-  control, mask, rotoscope, and transition foundations and publicly exports them with the built-in
+  control, mask, rotoscope, text, and transition foundations and publicly exports them with the built-in
   catalog, reference evaluator, and staged visual feature modules.
 - `open/crates/superi-effects/src/mask.rs`: Implements animated closed cubic mask paths, fill rules,
   complete checked controls, immutable topology, control, and stack edits, exact-time sampling,
@@ -73,8 +77,11 @@ or staged in their owning modules.
   generic authored base masks and corrections, inspectable derived propagation, directional request
   construction, revision-fenced solver hooks, immutable editing and invalidation, strict versioned
   persistence, and checked reconstruction.
-- `open/crates/superi-effects/src/text.rs`: Placeholder for additive text and motion-design
-  primitives.
+- `open/crates/superi-effects/src/text.rs`: Implements bounded styled UTF-8 ranges, persistent font
+  asset references, OpenType features and animated axes, continuous and hold-discrete typography
+  and paragraph controls, immutable text and style edits, exact whole-layer retiming, strict
+  versioned persistence, caller-owned offline font resolution, Swash shaping, Unicode line breaks,
+  bidi visual ordering, wrapping, indents, alignment, justification, and owned positioned glyphs.
 - `open/crates/superi-effects/src/tracking.rs`: Placeholder for motion-tracking data and solving.
 - `open/crates/superi-effects/src/transition.rs`: Implements stable cross-dissolve and
   directional-wipe kinds, exact versioned definitions and graph schemas, caller-owned instance
@@ -116,6 +123,10 @@ or staged in their owning modules.
   premultiplied dissolve and four-direction wipe pixels, soft edges, common display windows, ROI and
   tile stability, real graph evaluation, introspection, cache identity, immutable revisions,
   cross-workflow reuse, and invalid choice rejection.
+- `open/crates/superi-effects/tests/text_contract.rs`: Proves real deterministic shaping from
+  reviewed font bytes, mixed bidi runs, animated wrapping, alignment and typography, exact retiming,
+  immutable UTF-8 and style edits, strict bounded reload, classified failures, reusable complete
+  payload links, two workflow-role graphs, and canonical graph reload.
 
 ## Public surface
 
@@ -248,6 +259,24 @@ The library exports `authoring`, `catalog`, `control`, `keyframe`, `mask`, `ofx`
   coordinates. It retains the cut plus from and to offsets, exposes the exact half-open range from
   `cut - from_offset` through `cut + to_offset`, and maps caller time to clamped progress.
 
+`text` exposes editable typography and real layout without claiming rasterization:
+
+- `TextRange`, `FontFace`, `OpenTypeFeature`, `VariationAxis`, `TextStyle`, `TextStyleSpan`,
+  `ParagraphStyle`, and `ParagraphSpan` retain exact UTF-8 byte coverage, caller asset identity,
+  collection face, features, animated axes, RGBA fill, opacity, tracking, baseline shift, measure,
+  line height, indents, spacing, alignment, direction, and wrapping.
+- `TextLayer` requires complete canonical style and paragraph coverage, one exact animation clock and
+  authored interval, valid paragraph boundaries, bounded collections, and checked visual domains.
+  Immutable text, style, paragraph, and whole-layer retime operations reconstruct through the same
+  boundary. `TEXT_LAYER_SCHEMA_REVISION` identifies the strict bounded wire.
+- `FontResolver` supplies exact bytes for a stable `FontFace` without host discovery or network
+  access. `TextLayoutEngine` validates the persisted face with pinned Skrifa, itemizes by style,
+  script, and Unicode bidi level, shapes with Swash, accepts only cluster-safe Unicode line breaks,
+  wraps and visually reorders clusters, then applies paragraph geometry.
+- `TextLayout`, `TextLayoutLine`, `TextLayoutRun`, and `PositionedGlyph` own inspectable source
+  ranges, paragraph and style identity, direction, sampled appearance, metrics, glyph IDs, positions,
+  and advances for a later raster and GPU owner.
+
 `reference` exposes bounded executable proof:
 
 - `ReferenceEffectState` plus sampling, blend, and Porter-Duff enums retain exact compiled effect
@@ -317,6 +346,26 @@ The rotoscope flow is:
    derived state. The real consumer test stores the artifact in an animatable effect parameter and
    `GraphValue::Domain`, reloads the graph document, and obtains canonical bytes and equal resolved
    frames.
+
+The text layout flow is:
+
+1. A caller builds one `TextLayer` whose adjacent style and paragraph spans cover the complete UTF-8
+   text exactly once. Every continuous and discrete visual control composes the existing
+   `AnimationCurve`, shares one exact clock and interval, and remains directly inspectable.
+2. At one exact time, layout samples every reached style and paragraph control and rejects
+   interpolation or expression output outside its supported finite domain before publishing output.
+3. The caller resolves stable font asset IDs to exact local bytes. Skrifa and Swash reject a missing
+   collection face; the module never enumerates host fonts or reaches a network.
+4. Unicode bidi levels, style boundaries, and scripts produce logical shaping items. Swash emits
+   glyph clusters and metrics, Unicode Linebreak supplies opportunities, and wrapping accepts only
+   shaped cluster boundaries. Visual ordering reverses bidi clusters without reversing glyphs inside
+   a cluster.
+5. Paragraph measure, first, start, and end indents, spacing, line height, start, center, end, and
+   justify alignment position owned runs and glyphs. The result remains CPU layout metadata for a
+   later rasterizer, not a pixel or GPU resource.
+6. The strict text wire and ordinary graph document retain only authored state. Complete text
+   payloads link losslessly across independent timeline-role and node-graph-role graphs, reload
+   canonically, and lay out identically from the same font bytes.
 
 The built-in evaluation flow is:
 
@@ -420,8 +469,10 @@ The mask authoring and composition flow is:
   sample representations, and finite limits.
 - `superi-gpu` is a declared production capability dependency. Current effects source uploads,
   owns, and evaluates no GPU resource.
-- Serde owns strict animation, mask-stack, and rotoscope records. JSON is test-only. `half` performs
-  checked reference conversion to and from binary16.
+- Serde owns strict animation, mask-stack, rotoscope, and text records. JSON and the reviewed Tinos
+  subset are test-only. `half` performs checked reference conversion to and from binary16. Swash
+  0.2.9 and Skrifa 0.31.1 parse and shape caller-resolved local font bytes; Unicode Bidi 0.3.18 and
+  Unicode Linebreak 0.1.5 provide deterministic Unicode layout data without a host or network API.
 - `superi-timeline` does not depend on effects. It compiles native state into graph-owned
   `GraphValue<TimelineGraphValue>`, including stable transition endpoint, identity, and handle
   parameters. A higher integration owner can pair that editorial projection with the effects-owned
@@ -429,10 +480,10 @@ The mask authoring and composition flow is:
 - `superi-engine` declares `superi-effects` but has no production catalog, animation, evaluator,
   playback, viewport, or export call site. Current real consumers are the role-neutral authoring,
   generic graph reload, reusable controls over shared processing payloads, strict animation and
-  mask payloads, strict rotoscope artifacts, transition authoring and timing, and bounded headless
-  graph-evaluation contracts.
-  Mask and transition tests label independent ordinary graphs as timeline and node-graph roles
-  without claiming production timeline attachment.
+  mask payloads, strict rotoscope artifacts, strict text layers and inspectable glyph layout, and
+  transition authoring and timing, plus bounded headless graph-evaluation contracts. Mask, text, and
+  transition tests label independent ordinary graphs as timeline and node-graph roles without
+  claiming production timeline attachment.
 
 ## Invariants and operational boundaries
 
@@ -519,11 +570,21 @@ The mask authoring and composition flow is:
   therefore full coverage.
 - Mask serialization records authored state only, denies unknown fields, checks its schema
   revision, and rebuilds all nested state through checked constructors before publication.
+- Text style and paragraph spans cover complete UTF-8 state exactly once and stay aligned to scalar
+  and logical paragraph boundaries. All continuous and discrete controls share one exact timebase
+  and authored interval; discrete changes use hold interpolation, and all sampled values are checked
+  again before layout publication.
+- Font identity is persistent caller-owned asset identity plus a collection index. Resolution is an
+  explicit offline byte seam; system font enumeration, fallback substitution, and network lookup are
+  absent. Features and animated axes are unique, bounded, and use exact printable OpenType tags.
+- Shaping items preserve logical source ranges across style, script, and bidi boundaries. Line
+  breaking never splits a shaped cluster. Visual bidi ordering reverses clusters, never glyphs
+  within one cluster, and output remains bounded owned metadata rather than pixels or GPU resources.
 - Current code performs bounded reference pixel processing and ROI calculation, but no production
   GPU submission, cache integration, mask path rasterization, feather or expansion filtering,
-  production timeline sampling or transition attachment, engine playback, project autosave,
-  propagation solver, plugin containment, or text rendering. The reference oracle is not a
-  production route.
+  production timeline sampling or transition attachment, engine playback, project autosave, propagation solver, plugin
+  containment, text rasterization, glyph atlas, or rendered text composition. The reference oracle
+  and text layout engine are not production render routes.
 
 ## Tests and verification
 
@@ -567,6 +628,14 @@ editing, propagation clearing, stale and malformed output rejection, bounded con
 wire reconstruction, generic mask payload retention, animatable effect authoring, `GraphValue`
 reuse, and canonical graph reload.
 
+Seven text tests prove deterministic real OpenType shaping from reviewed local bytes, Unicode LTR
+and RTL run ordering, animated wrapping, paragraph alignment and typography, exact whole-layer
+retiming, immutable UTF-8, style and paragraph edits, strict bounded wire reconstruction, missing
+font and invalid-state failure before publication, lossless reusable control links, equal independent
+workflow-role graphs, canonical graph reload, and equal layout after reload. The focused contract,
+complete crate suite, warnings-denied all-target Clippy, rustdoc, and a Rust 1.80 check and focused
+test pass freshly on the locked dependency graph.
+
 Focused tests, crate-wide tests, warnings-denied Clippy, rustdoc, formatting, dependency and offline
 boundary checks, map validation, complete workspace tests, fixtures, platform codec consumers,
 frontend gates, and the full repository checkpoint verifier form the delivery floor.
@@ -584,23 +653,24 @@ graphs.
 ## Current status and risks
 
 The authoring SDK, exact keyframe animation, reusable graph-native control rigs, animated mask
-authoring and composition, editable rotoscope artifacts and propagation hooks, built-in definitions,
-generic editable instantiation, deterministic CPU reference pixels, ROI mapping, immutable graph
-compilation, introspection, animated mask authoring and composition, reusable transition definitions,
-exact transition timing, bounded transition pixels, and role-neutral graph proofs are substantive and
-test-backed. Strict curve, mask-stack, and rotoscope payloads retain authored state across generic
-graph reload.
-The reference implementation is scalar and allocation-bounded, not performance production code,
-and masks have no rasterizer or rendered consumer.
+authoring and composition, editable rotoscope artifacts and propagation hooks, styled text authoring
+and real glyph layout, built-in definitions, generic editable instantiation, deterministic CPU
+reference pixels, ROI mapping, immutable graph compilation, introspection, reusable transition
+definitions, exact transition timing, bounded transition pixels, and role-neutral graph proofs are
+substantive and test-backed. Strict curve, mask-stack, rotoscope, and text payloads retain authored
+state across generic graph reload. The reference and text layout implementations are
+allocation-bounded CPU proofs, not performance production render code, and masks and text have no
+rasterizer or rendered consumer.
 
 There is no GPU shader parity, engine registry, production runtime catalog, timeline attachment,
 playback, viewport, export, project persistence, UI, spatial motion path beyond mask contours, mask
-rasterization, propagation solver, text, tracking solver, production transition attachment, or OFX
-host. Rotoscope mask payloads are generic and have no production mask-type consumer yet. Authoring
-metadata is in memory and has no independent wire. Control hints do not yet encode enforceable
-numeric bounds, choice option vocabularies, grouping, conditional visibility, or accessibility
-policy; transition domains and wipe choices are therefore validated by the reference compiler.
-Animation has no stable project-level property identity or production caller-time context.
+rasterization, propagation solver, text rasterization or glyph atlas, tracking solver, production
+transition attachment, or OFX host.
+Rotoscope mask payloads are generic and have no production mask-type consumer yet. Authoring
+metadata is in memory and has no independent wire. Control hints do not yet contain numeric bounds,
+choice option vocabularies, grouping, conditional visibility, or accessibility policy; transition
+domains and wipe choices are therefore validated by the reference compiler. Animation has no stable
+project-level property identity or production caller-time context.
 
 Reusable control presentation and rig definitions remain in-memory authoring descriptions, while
 their applied driver meaning is persisted by graph. Parent expressions are scalar only; transform
@@ -632,6 +702,13 @@ allocation. Keep rotoscope bases and corrections canonical, propagation derived,
 wire collection bounded, revisions fenced, exact clocks unchanged, and generic mask payloads
 uninterpreted by the temporal layer. Never store a second effects-only dependency graph, evaluated
 control cache, or solver-owned rotoscope state.
+
+Keep text fonts caller-resolved and offline, authored spans canonical, curve clocks and intervals
+identical, discrete changes hold-interpolated, nested wires reconstructed through checked owners,
+and layout results derived and bounded. Preserve the split between logical shaping clusters and
+visual bidi ordering, accept line breaks only at cluster boundaries, and leave rasterization, atlas,
+GPU residency, timeline attachment, engine registration, viewport, and export ownership outside
+this module.
 
 Add built-in kinds only through one versioned authoring definition with typed defaults, presentation,
 complete caller-owned binding validation, state compilation, ROI mapping, reference pixels,

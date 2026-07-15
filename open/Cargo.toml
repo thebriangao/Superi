@@ -38,6 +38,12 @@ wgpu = "23"
 raw-window-handle = "=0.6.2"
 winit = { version = "=0.30.13", default-features = false }
 sha2 = "=0.10.9"
+swash = { version = "=0.2.9", default-features = false, features = ["std"] }
+# Swash permits newer skrifa releases whose compiler floor exceeds this workspace's Rust 1.80 floor.
+skrifa = { version = "=0.31.1", default-features = false, features = ["std"] }
+unicode-bidi = { version = "=0.3.18", default-features = false, features = ["hardcoded-data", "std"] }
+unicode-linebreak = "=0.1.5"
+font-test-data = "=0.5.0"
 oxideav-core = "=0.1.29"
 oxideav-mp3 = { git = "https://github.com/OxideAV/oxideav-mp3.git", rev = "f37901b5d9c691b113e96a3bb95645c67af1a046" }
 claxon = "=0.4.3"
