@@ -1,8 +1,9 @@
 //! `superi-cache`, frame + intermediate cache, proxy/optimized media.
 //!
 //! § 5.6 in `docs/architecture.md`. Depends on: superi-core, superi-gpu, superi-image, superi-graph.
-//! Status: composite result identity plus final-frame and intermediate-node memory retention are
-//! implemented; budgets, eviction, persistence, proxies, render caching, and prefetch remain.
+//! Status: composite result identity, budgeted final-frame and intermediate-node memory retention,
+//! and exact global, project, and device accounting are implemented; eviction order, persistence,
+//! proxies, render caching, and prefetch remain.
 
 pub mod disk;
 pub mod eviction;

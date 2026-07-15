@@ -38,13 +38,13 @@ owner, while graph state owns payload and connection membership. Schema type ide
 schema-local names are definition metadata, separate from the core object identifiers that address
 editable graph instances.
 
-Concrete cache storage remains owned by `superi-cache`; generation invalidation, ROI-plan evaluator
-orchestration, outer job dispatch, project storage, and a production runtime node catalog remain
-absent or placeholders. The
+Concrete cache storage and its exact byte and frame admission remain owned by `superi-cache`;
+generation invalidation, ROI-plan evaluator orchestration, outer job dispatch, project storage, and
+a production runtime node catalog remain absent or placeholders. The
 implemented storage, schema, validation, mutation, invalidation, ROI planning, scheduling, cache
 identity, diagnostics, document, parameter evaluator, compiler seam, and shared interactive and
-headless evaluator surfaces must not be interpreted as a working production render path, cache
-resource policy, or atomic project save system.
+headless evaluator surfaces must not be interpreted as a working production render path or atomic
+project save system.
 
 ## Source inventory
 
@@ -822,8 +822,9 @@ graph evaluation or runtime integration.
   nondeterministic, or dependency-blocked work always executes.
 - Graph owns its lineage component and the storage-neutral adapter, not complete outer result
   identity, concrete storage, synchronization, invalidation cleanup, eviction, budgets, or
-  persistence. `superi-cache` owns complete composite identity and the first two-tier memory
-  implementation, and later checkpoints own the remaining policies.
+  persistence. `superi-cache` owns complete composite identity, exact hierarchical admission, and
+  the first budgeted two-tier memory implementation; later checkpoints own generation cleanup,
+  victim selection, and persistence.
 - ROI validates all authored requests before custom mapping, walks nodes and edges deterministically,
   and records only nonempty connected work. Unrelated graph branches cannot enter the plan.
 - Full-frame ROI resolves each connected source's declared output domain. Input-bound and expanded
@@ -953,8 +954,10 @@ returns the same result beside run-local planning, execution, and node timing. T
 evaluation snapshot compiles one exact editable revision into caller-owned evaluator payloads,
 retains the source state for every reader, and delegates scheduling and execution to that same
 evaluator. Cached evaluation accepts caller-owned storage, stops at exact final and intermediate
-hits, and inserts only successful cacheable values. `superi-cache` supplies a scoped composite-key
-memory consumer that binds graph identity to authoritative outer result context. No production
+hits, and offers only successful cacheable values for retention. `superi-cache` supplies a scoped
+composite-key memory consumer that binds graph identity to authoritative outer result context and
+retains each admitted value with exact total, project, and optional device accounting. A budget
+refusal remains an ordinary skipped insertion and cannot change the evaluator result. No production
 catalog implements that compiler or connects complete ROI and invalidation
 plans to render orchestration yet.
 The versioned graph document codec now preserves and validates that complete editable state,

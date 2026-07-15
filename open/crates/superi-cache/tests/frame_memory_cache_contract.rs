@@ -2,16 +2,21 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use superi_cache::frame::{FrameMemoryCache, FrameMemoryCacheContext};
+use superi_cache::eviction::{CacheBudgetLimit, CacheBudgetManager, CacheCost, CacheMemoryBudgets};
+use superi_cache::frame::{CacheMemoryPlacement, FrameMemoryCache, FrameMemoryCacheContext};
 use superi_cache::key::{ParameterStateFingerprint, RenderSettingsFingerprint};
 use superi_core::color_space::ColorSpace;
 use superi_core::error::Result;
 use superi_core::geometry::PixelBounds;
+use superi_core::ids::{DeviceId, ProjectId};
 use superi_core::settings::SemanticVersion;
 use superi_core::time::{RationalTime, Timebase};
+use superi_gpu::pool::{GpuMemoryPool, MemoryBudget, MemoryClass};
 use superi_graph::dag::{DirectedAcyclicGraph, GraphEdge, GraphEndpoint};
 use superi_graph::diagnostics::{IntrospectNode, NodeIntrospection, NodeStateFingerprint};
-use superi_graph::eval::{EvaluateNode, EvaluationContext, EvaluationRequest, LazyEvaluator};
+use superi_graph::eval::{
+    EvaluateNode, EvaluationCacheEntryKind, EvaluationContext, EvaluationRequest, LazyEvaluator,
+};
 use superi_graph::ids::{EdgeId, GraphId, NodeId, PortId};
 use superi_graph::node::{
     CachePolicy, ColorRequirements, Determinism, NodeBehavior, NodeSchemaId, NodeTypeId,
@@ -77,11 +82,26 @@ fn color_pipeline() -> ColorPipelineMetadata {
     ColorPipelineMetadata::new(ImageColorTags::new(ColorSpace::UNSPECIFIED)).unwrap()
 }
 
+fn budgets(bytes: u64, frames: u64) -> CacheMemoryBudgets {
+    let limit = CacheBudgetLimit::new(bytes, frames).unwrap();
+    CacheMemoryBudgets::new(limit, limit, limit).unwrap()
+}
+
+fn value_cost(_kind: EvaluationCacheEntryKind, _value: &i64) -> CacheCost {
+    CacheCost::new(8, 1).unwrap()
+}
+
+fn cache() -> FrameMemoryCache<i64> {
+    FrameMemoryCache::new(CacheBudgetManager::new(budgets(1_024, 128)), value_cost)
+}
+
 fn context<'a>(
     color: &'a ColorPipelineMetadata,
     render_settings: &[u8],
 ) -> FrameMemoryCacheContext<'a> {
     FrameMemoryCacheContext::new(
+        ProjectId::from_raw(1),
+        CacheMemoryPlacement::Host,
         &[],
         ParameterStateFingerprint::from_canonical_bytes(b"memory-cache-test-parameters-v1"),
         color,
@@ -107,7 +127,7 @@ fn concrete_final_frame_cache_reuses_the_exact_evaluator_value() {
             },
         )
         .unwrap();
-    let cache = FrameMemoryCache::new();
+    let cache = cache();
     let color = color_pipeline();
     let scope = cache.scope(context(&color, b"memory-cache-test-render-v1"));
 
@@ -157,7 +177,7 @@ fn concrete_intermediate_cache_prunes_the_retained_nodes_upstream_work() {
             GraphEndpoint::new(NodeId::from_raw(2), PortId::from_raw(201)),
         ))
         .unwrap();
-    let cache = FrameMemoryCache::new();
+    let cache = cache();
     let color = color_pipeline();
     let scope = cache.scope(context(&color, b"memory-cache-test-render-v1"));
 
@@ -176,7 +196,7 @@ fn concrete_intermediate_cache_prunes_the_retained_nodes_upstream_work() {
 
 #[test]
 fn changed_editable_state_never_reuses_a_stale_final_value() {
-    let cache = FrameMemoryCache::new();
+    let cache = cache();
     let color = color_pipeline();
     let scope = cache.scope(context(&color, b"memory-cache-test-render-v1"));
     let first_calls = Arc::new(AtomicUsize::new(0));
@@ -242,7 +262,7 @@ fn changed_outer_render_identity_never_reuses_the_same_graph_value() {
             },
         )
         .unwrap();
-    let cache = FrameMemoryCache::new();
+    let cache = cache();
     let color = color_pipeline();
 
     {
@@ -260,4 +280,165 @@ fn changed_outer_render_identity_never_reuses_the_same_graph_value() {
         .final_frame_keys()
         .windows(2)
         .all(|keys| keys[0] < keys[1]));
+}
+
+#[test]
+fn real_frame_retention_stays_bounded_without_changing_fresh_results() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut graph = DirectedAcyclicGraph::new(GraphId::from_raw(95));
+    graph
+        .insert_node(
+            NodeId::from_raw(1),
+            ValueNode {
+                node_type: "superi.test.budgeted-memory-cache",
+                value: 41,
+                policy: CachePolicy::PerRegion,
+                calls: calls.clone(),
+            },
+        )
+        .unwrap();
+    let manager = CacheBudgetManager::new(budgets(8, 1));
+    let cache = FrameMemoryCache::new(manager.clone(), value_cost);
+    let color = color_pipeline();
+    let scope = cache.scope(context(&color, b"budgeted-memory-cache-test-v1"));
+    let first_request = request_for(1, 101, 0, 64);
+    let denied_request = request_for(1, 101, 64, 128);
+
+    assert_eq!(
+        *LazyEvaluator::evaluate_with_cache(&graph, first_request, &scope)
+            .unwrap()
+            .value(),
+        41
+    );
+    assert_eq!(
+        *LazyEvaluator::evaluate_with_cache(&graph, denied_request, &scope)
+            .unwrap()
+            .value(),
+        41
+    );
+    assert_eq!(
+        *LazyEvaluator::evaluate_with_cache(&graph, denied_request, &scope)
+            .unwrap()
+            .value(),
+        41
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 3);
+    assert_eq!(cache.final_frame_len(), 1);
+    let stats = cache.budget_stats().unwrap();
+    assert_eq!(stats.total_usage().bytes(), 8);
+    assert_eq!(stats.total_usage().frames(), 1);
+    assert_eq!(stats.denied_reservations(), 2);
+
+    drop(cache);
+    assert_eq!(manager.stats().unwrap().total_usage().bytes(), 0);
+    assert_eq!(manager.stats().unwrap().active_reservations(), 0);
+}
+
+#[test]
+fn identical_results_are_retained_under_their_exact_project_scope() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut graph = DirectedAcyclicGraph::new(GraphId::from_raw(97));
+    graph
+        .insert_node(
+            NodeId::from_raw(1),
+            ValueNode {
+                node_type: "superi.test.project-memory-cache",
+                value: 47,
+                policy: CachePolicy::PerRegion,
+                calls: calls.clone(),
+            },
+        )
+        .unwrap();
+    let total = CacheBudgetLimit::new(16, 2).unwrap();
+    let project = CacheBudgetLimit::new(8, 1).unwrap();
+    let manager = CacheBudgetManager::new(CacheMemoryBudgets::new(total, project, total).unwrap());
+    let cache = FrameMemoryCache::new(manager.clone(), value_cost);
+    let color = color_pipeline();
+    let first_context = FrameMemoryCacheContext::new(
+        ProjectId::from_raw(10),
+        CacheMemoryPlacement::Host,
+        &[],
+        ParameterStateFingerprint::from_canonical_bytes(b"project-cache-parameters-v1"),
+        &color,
+        RenderSettingsFingerprint::from_canonical_bytes(b"project-cache-render-v1"),
+    );
+    let second_context = FrameMemoryCacheContext::new(
+        ProjectId::from_raw(11),
+        CacheMemoryPlacement::Host,
+        &[],
+        ParameterStateFingerprint::from_canonical_bytes(b"project-cache-parameters-v1"),
+        &color,
+        RenderSettingsFingerprint::from_canonical_bytes(b"project-cache-render-v1"),
+    );
+    let first_scope = cache.scope(first_context);
+    let second_scope = cache.scope(second_context);
+
+    LazyEvaluator::evaluate_with_cache(&graph, request(), &first_scope).unwrap();
+    LazyEvaluator::evaluate_with_cache(&graph, request(), &second_scope).unwrap();
+    LazyEvaluator::evaluate_with_cache(&graph, request(), &second_scope).unwrap();
+
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    assert_eq!(cache.final_frame_len(), 2);
+    let stats = manager.stats().unwrap();
+    assert_eq!(stats.project_usage(ProjectId::from_raw(10)).bytes(), 8);
+    assert_eq!(stats.project_usage(ProjectId::from_raw(11)).bytes(), 8);
+    assert_eq!(stats.active_projects(), 2);
+}
+
+#[test]
+fn device_frame_retention_uses_and_releases_the_shared_gpu_cache_class() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut graph = DirectedAcyclicGraph::new(GraphId::from_raw(96));
+    graph
+        .insert_node(
+            NodeId::from_raw(1),
+            ValueNode {
+                node_type: "superi.test.device-memory-cache",
+                value: 43,
+                policy: CachePolicy::PerRegion,
+                calls,
+            },
+        )
+        .unwrap();
+    let manager = CacheBudgetManager::new(budgets(64, 8));
+    let cache = FrameMemoryCache::new(manager.clone(), value_cost);
+    let gpu = GpuMemoryPool::new(MemoryBudget::new(64, 64).unwrap());
+    let color = color_pipeline();
+    let context = FrameMemoryCacheContext::new(
+        ProjectId::from_raw(2),
+        CacheMemoryPlacement::Device {
+            device_id: DeviceId::from_raw(3),
+            gpu_memory: &gpu,
+            evictors: &[],
+        },
+        &[],
+        ParameterStateFingerprint::from_canonical_bytes(b"device-cache-parameters-v1"),
+        &color,
+        RenderSettingsFingerprint::from_canonical_bytes(b"device-cache-render-v1"),
+    );
+    let scope = cache.scope(context);
+
+    assert_eq!(
+        *LazyEvaluator::evaluate_with_cache(&graph, request(), &scope)
+            .unwrap()
+            .value(),
+        43
+    );
+    assert_eq!(
+        gpu.stats().unwrap().resident_bytes_for(MemoryClass::Cache),
+        8
+    );
+    assert_eq!(
+        manager
+            .stats()
+            .unwrap()
+            .device_usage(DeviceId::from_raw(3))
+            .bytes(),
+        8
+    );
+
+    cache.clear();
+    assert_eq!(gpu.stats().unwrap().resident_bytes(), 0);
+    assert_eq!(manager.stats().unwrap().total_usage().bytes(), 0);
+    assert_eq!(manager.stats().unwrap().active_devices(), 0);
 }

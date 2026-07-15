@@ -16,7 +16,7 @@ against raw source before changing code.
 | `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
 | `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade for capabilities and canonical editorial state | Partial: capability and canonical scenario controls implemented; transport, general API, and scripting absent |
 | `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Reserved audio graph, playback, mixing, resampling, metering, and plugin boundary | Skeleton: public module names only |
-| `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, final-frame and intermediate-node memory retention, plus reserved proxy, render, prefetch, eviction, and disk cache policy | Complete media, graph, parameter, color, time, and render identity feeds two independent thread-safe value tiers; budgets, eviction, invalidation cleanup, persistence, proxies, render caching, and prefetch remain |
+| `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, plus reserved proxy, render, prefetch, eviction-order, and disk cache policy | Complete identity feeds two independent value tiers with exact total, project, device, byte, and frame admission; victim selection, invalidation cleanup, persistence, proxies, render caching, and prefetch remain |
 | `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario consumer | Implemented portable expectation verifier and eight instrumented contract stages; rendered media flow absent |
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
 | `superi-codecs-rs` | [module map](modules/superi-codecs-rs.md) | `open/crates/superi-codecs-rs` | Default permissive software codec implementations | Implemented: AV1, FLAC, MP3, Opus, PCM, Vorbis, VP8, and VP9 decode and encode |
@@ -280,9 +280,11 @@ without a production catalog:
 6. Cached evaluation accepts one caller-owned `EvaluationValueCache<V>`, checks the final key before
    node execution, and recursively stops at retained intermediate keys. Every adapter call receives
    graph lineage and exact work identity. `superi-cache::FrameMemoryCacheContext` adds authoritative
-   media, parameter, color, and render context, and the scoped adapter derives a complete
-   `FrameCacheKey` before either concrete tier is consulted. Only successful cacheable work enters
-   storage.
+   project, host or device placement, media, parameter, color, and render context, and the scoped
+   adapter derives a complete `FrameCacheKey` before either concrete tier is consulted. Only
+   successful cacheable work is offered for retention. Each admitted entry owns an exact total and
+   project byte and frame reservation, device entries also hold the shared GPU cache reservation,
+   and a refusal stores nothing without changing the fresh evaluator result.
 7. `GraphEvaluationSnapshot<T, N>` retains one exact editable snapshot and uses a higher-tier
    `NodeCompiler<T, N>` to replace only node payloads while preserving graph identity, node IDs,
    edge routes, and checked topology. Each compilation receives the full snapshot, so authored
@@ -296,8 +298,8 @@ without a production catalog:
    render stage calls this path yet, so the canonical `graph.evaluate` stage remains a disclosed
    stub.
 9. Invalidation-to-render orchestration, ROI-plan-to-evaluator binding, outer job dispatch, cache
-   generations, budgets, eviction, persistence, and production catalog wiring remain separate later
-   checkpoints.
+   generations, eviction victim selection, persistence, and production catalog wiring remain
+   separate later checkpoints.
 
 No transport, request envelope, dispatcher, event channel, subscription, broad public transaction,
 script runtime, or UI is implemented. There is no shell, extension, automation, or closed-tier
@@ -832,9 +834,9 @@ encodes and muxes output, persists a project, and drives the flow through the pu
 
 Entire crate skeletons are `superi-ai`, `superi-audio`, `superi-effects`, and `superi-project`.
 Their manifests establish intended dependency direction, but their public modules expose no
-substantive types or operations. `superi-cache` now has substantive composite identity, memory
-retention, and color metadata, while its five policy and storage-extension modules remain
-placeholders.
+substantive types or operations. `superi-cache` now has substantive composite identity, budgeted
+memory retention, hierarchical memory policy, and color metadata, while its four remaining storage
+and scheduling-extension modules remain placeholders.
 
 Partial modules contain these explicit placeholder areas:
 
@@ -905,8 +907,8 @@ For common concerns, begin at these owners:
   pre-execution node introspection, graph-lineage identity and retained-value adapter, run-local timing, and
   shared interactive and headless evaluation:
   `superi-graph`, with value identity, rational time, and pixel bounds owned by `superi-core`.
-- Complete reusable-result identity, final-frame and intermediate-node memory retention, and cache
-  color identity: `superi-cache`.
+- Complete reusable-result identity, budgeted final-frame and intermediate-node memory retention,
+  exact total, project, and device admission, and cache color identity: `superi-cache`.
 - Native editorial objects, typed track semantics, exact timing and clip retiming, selection, track
   targeting, sync locks, linked selection, clip grouping, markers, deterministic metadata, exact
   snapping, and foundational insert, overwrite, append, replace, lift, and extract operations plus

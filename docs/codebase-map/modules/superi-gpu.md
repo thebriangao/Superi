@@ -369,12 +369,15 @@ which must be performed by `superi-color`.
   contract constructs the real non-Send `GpuSubmissionQueue`, submits, and waits inside that owned
   thread. The GPU crate documents this placement but does not itself enforce the execution-domain
   enum at construction time.
+- `superi-cache` uses `GpuMemoryPool`, `MemoryClass::Cache`, `MemoryEvictor`, and the non-cloneable
+  memory reservation inside its device-resident frame-cache entries. It admits the same exact
+  managed payload bytes through cache total, project, and device limits before GPU cooperation,
+  rolls local scopes back after GPU refusal, and releases both owners with the retained entry.
 
 ### Declared and prospective consumers
 
-- `superi-cache`, `superi-effects`, and `superi-graph` declare `superi-gpu` dependencies and name it
-  in their crate ownership docs, but their current public modules are skeletons and contain no
-  concrete GPU call sites.
+- `superi-effects` and `superi-graph` declare `superi-gpu` dependencies and name it in their crate
+  ownership docs, but their current public modules contain no concrete GPU call sites.
 - `TextureReadbackManager`, GPU timing, and aggregate snapshots have strong public contract tests,
   but workspace search finds no non-test export, thumbnail, or telemetry integration yet.
 - Application render and conversion coordinators must retain every owner referenced by arbitrary
@@ -536,8 +539,9 @@ path, but several boundaries intentionally stop short of application policy or f
 - Surface automation is mostly handle-level. Real AppKit, Win32, WinRT, X11, XCB, and Wayland
   configure, acquire, resize, present, and loss behavior needs platform hardware coverage.
 - Public readback, timing, and snapshot APIs are contract-tested but not yet connected to non-test
-  workspace export, thumbnail, or telemetry consumers. Declared GPU dependencies in cache, effects,
-  and graph also remain skeleton relationships.
+  workspace export, thumbnail, or telemetry consumers. Cache now consumes portable memory
+  accounting for budgeted retained values, while declared GPU dependencies in effects and graph
+  remain skeleton relationships.
 - Diagnostic snapshots and timing reports are explicitly user-safe, but shader and general error
   context can contain caller labels. Those errors require a separate redaction decision before
   entering user-safe telemetry.
@@ -566,6 +570,9 @@ path, but several boundaries intentionally stop short of application policy or f
 - Surface changes must be reconciled with `superi-color/src/view.rs`; upload changes with
   `superi-engine/src/frame_upload.rs`; queue placement and blocking guidance with
   `superi-concurrency/src/threads.rs` and its GPU integration contract.
+- Memory-pool and reservation changes must be reconciled with `superi-cache::eviction` and
+  `CacheMemoryPlacement::Device`, preserving exact managed-byte equality, rollback after refusal,
+  and lock-free pressure cooperation across the cache tier boundary.
 - Run the crate's contract suite on a real adapter and the manual native viewport smoke when changes
   touch backend execution or presentation. Record skipped GPU sections separately from passing CPU
   validation so adapterless runs are not overstated.
