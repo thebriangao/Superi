@@ -16,7 +16,7 @@ against raw source before changing code.
 | `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
 | `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade for capabilities and canonical editorial state | Partial: capability and canonical scenario controls implemented; transport, general API, and scripting absent |
 | `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Independent editable and prepared audio graph plus reserved playback, mixing, resampling, metering, sync, and plugin boundaries | Partial: deterministic exact-layout DAG and bounded sample-continuous processing implemented; engine, device, mixing, sync, resampling, metering, and hosting absent |
-| `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, precise graph edit invalidation, versioned corruption-recovering disk persistence, and replaceable derived-media publication, plus reserved render and prefetch policy | Complete identity feeds independent memory and disk tiers with exact admission, revision fencing, bounded envelopes, atomic publication, schema isolation, and corruption quarantine, while source, revision, purpose, quality, and settings bind complete proxy or optimized artifacts; engine and scheduler now own quality substitution, while cache lifecycle, render caching, and prefetch remain |
+| `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, precise graph edit invalidation, versioned corruption-recovering disk persistence, replaceable derived-media publication, layered render reuse, and bounded background population, plus reserved prefetch policy | Complete identity feeds independent memory and disk tiers with exact admission, revision fencing, bounded envelopes, atomic publication, schema isolation, and corruption quarantine, while render jobs add memory-first persistent fallback, promotion, queue-local exact-frame single-flight, staged publication, cancellation, and deterministic active-work inspection; engine and scheduler own quality substitution, while cache lifecycle and prefetch remain |
 | `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario consumer | Implemented portable expectation verifier and eight instrumented contract stages; rendered media flow absent |
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
 | `superi-codecs-rs` | [module map](modules/superi-codecs-rs.md) | `open/crates/superi-codecs-rs` | Default permissive software codec implementations | Implemented: AV1, FLAC, MP3, Opus, PCM, Vorbis, VP8, and VP9 decode and encode |
@@ -100,6 +100,7 @@ superi-engine
 
 superi-project -> superi-timeline -> superi-graph -> superi-image
 superi-color, superi-effects, superi-cache, superi-ai -> lower graph/image/GPU/core layers
+superi-cache -> superi-concurrency        bounded background render jobs
 superi-audio -> superi-concurrency -> superi-core
 superi-graph -> superi-gpu, superi-image, superi-concurrency, superi-core
 
@@ -355,7 +356,11 @@ without a production catalog:
    versioned envelopes, caller-owned
    schema revisions, and payload digests before decode, publish through synchronized same-directory
    renames, and quarantine invalid bytes. A budget or persistence failure stores nothing or becomes
-   a miss without changing the fresh evaluator result.
+   a miss without changing the fresh evaluator result. Cache render orchestration derives the exact
+   target frame key before dispatch, checks memory before persistent storage, promotes disk hits,
+   and uses the same graph path for fresh work. Its bounded worker queue single-flights active exact
+   frames and stages newly evaluated values until final cooperative cancellation, deadline, and
+   progress checks pass.
 7. `GraphEvaluationSnapshot<T, N>` retains one exact editable snapshot and uses a higher-tier
    `NodeCompiler<T, N>` to replace only node payloads while preserving graph identity, node IDs,
    edge routes, and checked topology. Each compilation receives the full snapshot, so authored
@@ -366,12 +371,13 @@ without a production catalog:
    work, equal role schedules, semantic inspection, cache keys, exact retained results, final-hit
    short circuiting, intermediate subtree pruning, immutable old revisions, fresh edited results,
    driver-expanded edit roots, selective two-tier cleanup, stale revision fencing, and contextual
-   atomic compiler failure. No production node catalog, engine, API, CLI, GPU, or
-   render stage calls this path yet, so the canonical `graph.evaluate` stage remains a disclosed
-   stub.
-9. Invalidation-to-render orchestration, ROI-plan-to-evaluator binding, outer job dispatch, cache
-   invalidation invocation, generation cleanup, persistent-directory lifecycle, and production
-   catalog wiring remain separate later checkpoints.
+   atomic compiler failure. Cache render orchestration is the first production caller of the
+   snapshot evaluation path, but no production node catalog, engine, API, CLI, GPU, or rendered
+   frame stage calls it yet, so the canonical `graph.evaluate` stage remains a disclosed stub.
+9. Invalidation-to-render orchestration, ROI-plan-to-evaluator binding, cache invalidation
+   invocation, generation cleanup, persistent-directory lifecycle, and production catalog wiring
+   remain separate later checkpoints. Cache now owns bounded outer job dispatch for background
+   population without moving priority or worker ownership into graph.
 
 No transport, request envelope, dispatcher, event channel, subscription, broad public transaction,
 script runtime, or UI is implemented. There is no shell, extension, automation, or closed-tier
@@ -571,13 +577,15 @@ loops. Concurrency jobs use their own `JobControl` and require the job closure t
 Both models are cooperative. Neither can preempt a blocking operating-system call, native codec
 call, or closure that omits checkpoints.
 
-These mechanisms are not yet a composed runtime. The audio graph now enforces the platform-owned
-audio domain for fixed prepared block processing, and engine proxy resolution consumes only the
-derived-media selection policy. Graph has no production concurrency consumer, and no owner
-constructs worker pools, clocks, handoffs, lifecycle participants, or liveness monitors in
-production source. The `submit` module is a placeholder. A contract test hosts
-the real non-Send `GpuSubmissionQueue` inside the GPU submission domain, but no engine owner wires
-that pattern into playback or render.
+These mechanisms are not yet an engine-composed runtime. Engine proxy resolution consumes the
+derived-media selection policy. The audio graph enforces the platform-owned audio domain for fixed
+prepared block processing. Cache is the first worker-pool consumer: its background render queue
+constructs a bounded pool, submits cache-kind work at background priority, carries `JobControl`,
+exposes typed completion and snapshots, and layers exact-frame single-flight over dispatch. Graph
+has no production concurrency consumer, and engine does not construct worker pools, clocks,
+handoffs, lifecycle participants, or liveness monitors in production source. The `submit` module is
+a placeholder. A contract test hosts the real non-Send `GpuSubmissionQueue` inside the GPU
+submission domain, but no engine owner wires that pattern into playback or render.
 
 ## Engine, API, CLI, and tool roles
 
@@ -684,6 +692,10 @@ The following constraints cross multiple modules and should be preserved togethe
   final and intermediate hits cannot change authored state or result meaning. Cache-local LRU
   eviction changes only retained availability, so victims deterministically recompute without
   changing project or output meaning.
+- Cache render jobs derive the complete requested frame identity before bounded dispatch. Memory
+  and persistent hits retain exact meaning, persistent promotion changes only availability, one
+  queue single-flights each active exact frame, and cancelled or timed-out fresh work publishes no
+  staged final or intermediate values.
 - Semantic edit invalidation compares immutable revisions, expands changed parameters through both
   driver graphs, and propagates roots through both pixel topologies. The cache applies that plan to
   both tiers under one lock, preserves unaffected semantic keys, and rejects affected work older
@@ -942,9 +954,11 @@ substantive types or operations. `superi-audio` now has a substantive independen
 while its playback, mixing, sync, resample, metering, and hosting modules remain placeholders.
 `superi-cache` now has substantive composite identity, budgeted memory retention, hierarchical
 memory policy, priority-aware LRU eviction, precise edit invalidation, persistent storage, color
-metadata, and replaceable proxy or optimized-media publication, while prefetch, render caching, and
-lifecycle policy remain incomplete. Engine now performs substitution using concurrency-owned
-selection, but no playback or export owner invokes it.
+metadata, replaceable proxy or optimized-media publication,
+layered render reuse, and bounded background population, while prefetch and lifecycle policy remain
+incomplete. Engine now performs substitution using concurrency-owned selection, but no playback or
+export owner invokes it. The render queue still lacks a production engine node catalog, ROI and
+invalidation orchestration, and a rendered frame consumer.
 
 Partial modules contain these explicit placeholder areas:
 
@@ -1019,8 +1033,9 @@ For common concerns, begin at these owners:
 - Complete reusable-result identity, budgeted final-frame and intermediate-node memory retention,
   exact total, project, and device admission, priority-aware LRU eviction, precise revision-safe
   graph edit invalidation, versioned bounded disk persistence with corruption recovery, cache color
-  identity, and complete derived-media publication: `superi-cache`, followed by `superi-engine` for
-  codec generation and transparent substitution and `superi-concurrency` for quality choice.
+  identity, complete derived-media publication, layered render reuse, and bounded background
+  population: `superi-cache`, followed by `superi-engine` for codec generation and transparent
+  substitution and `superi-concurrency` for quality choice and background job execution.
 - Native editorial objects, typed track semantics, exact timing and clip retiming, selection, track
   targeting, sync locks, linked selection, clip grouping, markers, deterministic metadata, exact
   snapping, and foundational insert, overwrite, append, replace, lift, and extract operations plus

@@ -2609,6 +2609,7 @@ name = "superi-cache"
 version = "0.0.0"
 dependencies = [
  "sha2",
+ "superi-concurrency",
  "superi-core",
  "superi-gpu",
  "superi-graph",

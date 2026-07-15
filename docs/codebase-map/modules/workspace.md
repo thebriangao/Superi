@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 73bce4fa3c9aaa24ad4927b8dfac7434cca31c1027ee62411bb6adebe7d4e608
+source_hash: 49b52190de50de9373feb2e88f1205dbb38b17bb63dbd72b99b730b18a5604da
 source_files: 126
 mapped_at_commit: working-tree
 ---
@@ -332,8 +332,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and process-instrumentation dependency edges, graph and timeline document serialization and
   integrity edges, cache-key hashing, and the exact `oxideav-mp3` Git revision. Timeline state
   directly consumes the already-resolved `serde`, `serde_json`, and `sha2` packages, while
-  `superi-cache` now directly consumes the same pinned `sha2` package. Neither edge adds a new
-  registry package. The lockfile is generated resolution evidence and is not hand-edited policy.
+  `superi-cache` directly consumes the same pinned `sha2` package and now records its reviewed
+  internal dependency on `superi-concurrency` for bounded background rendering. These edges add no
+  new registry package. The lockfile is generated resolution evidence and is not hand-edited policy.
 - `open/Cargo.toml`: Root Cargo workspace manifest using resolver 2 and glob members under
   `crates/*` and `tools/*`. It centralizes version `0.0.0`, Rust 2021, MIT, Rust 1.80, repository
   metadata, deny-by-default unsafe lints, and shared dependencies for error handling, serialization,
@@ -356,6 +357,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `open/docs/STRUCTURE.md`: Compact dependency-tier map, codec placement, suggested human ownership,
   crate-boundary working rules, repository-tool placement, fixture-tool responsibility including
   OTIO baseline generation, structured test-report responsibility, and deferred production work.
+  Its cache tier now records the reviewed downward dependency on concurrency used by render jobs.
 - `open/rust-toolchain.toml`: Selects the floating stable Rust channel with `rustfmt` and Clippy.
   Package metadata separately declares Rust 1.80 as the minimum supported version.
 - `open/rustfmt.toml`: Sets Rust 2021 formatting and a 100-column maximum width.
@@ -610,6 +612,11 @@ SQLite and autosave ownership away from `superi-project`.
 The deterministic cache-key contract reuses the same resolved `sha2` pin. Its lockfile change adds
 one direct external package edge to `superi-cache` without changing the reviewed internal runtime
 dependency graph or introducing another registry package.
+
+The cache render path adds one reviewed downward edge from `superi-cache` to
+`superi-concurrency`. The dependency-direction policy and `open/docs/STRUCTURE.md` authorize that
+edge explicitly, while worker priority, cancellation, deadlines, and pool ownership remain outside
+the graph crate.
 
 The dependency-direction path is a separate local architecture gate. `superi-dependency-check`
 reads locked offline Cargo metadata, classifies all 19 runtime crates, and checks internal normal,

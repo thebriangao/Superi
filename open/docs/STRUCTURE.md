@@ -21,7 +21,7 @@ rule, and the codec boundary are enforced by the Rust compiler, not by conventio
 | T1b | `superi-codecs-platform` (opt-in, `os-codecs`) | core, image, media-io |
 | T1b | `superi-codecs-vendor` (opt-in host, `vendor-codecs`) | core, image, media-io |
 | T2 | `superi-graph` (node-agnostic) | core, gpu, image, concurrency |
-| T2 | `superi-cache` | core, gpu, image, graph |
+| T2 | `superi-cache` | core, gpu, image, graph, concurrency |
 | T3 | `superi-color` | core, gpu, image, graph |
 | T3 | `superi-effects` | core, gpu, image, graph |
 | T3 | `superi-timeline` | core, graph |

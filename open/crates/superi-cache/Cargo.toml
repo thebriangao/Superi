@@ -10,6 +10,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+superi-concurrency = { path = "../superi-concurrency" }
 superi-core = { path = "../superi-core" }
 superi-gpu = { path = "../superi-gpu" }
 superi-image = { path = "../superi-image" }

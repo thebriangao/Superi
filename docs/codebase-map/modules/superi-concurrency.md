@@ -343,17 +343,17 @@ Production dependencies and internal relationships are:
   setup in a synchronous contract test. The latter supplies real video and audio payloads for
   handoff preservation tests.
 
-Direct workspace consumers declared in manifests are `superi-graph`, `superi-audio`, and
-`superi-engine`. `superi-graph` and `superi-audio` describe themselves as skeletons.
-`superi-engine::proxy_substitution` is the first production consumer, limited to
-`DerivedQuality`, `DerivedFallbackPolicy`, `DerivedMediaCandidate`, `DerivedMediaRequest`, and
-`DerivedMediaSelection`; it does not construct the concurrency runtime. Their downstream graph
-places concurrency contracts transitively beneath graph-dependent cache, color, effects, timeline,
-AI, and project crates, then beneath engine, API, and CLI. This is a crate-graph relationship, not
-evidence that those transitive crates currently call the runtime surfaces.
+Direct workspace consumers declared in manifests are `superi-graph`, `superi-audio`,
+`superi-cache`, and `superi-engine`. Cache is the first downstream production consumer: its render
+module owns a `BoundedWorkerPool`, submits exact `JobKind::Cache` work at
+`JobPriority::Background` with `JobControl`, exposes typed task completion and worker snapshots,
+and composes queue-local exact-frame single-flight over the generic pool. Engine proxy substitution
+consumes `DerivedQuality`, `DerivedFallbackPolicy`, `DerivedMediaCandidate`,
+`DerivedMediaRequest`, and `DerivedMediaSelection`, but does not construct the concurrency runtime.
+Graph and audio still do not import `superi_concurrency` in production Rust source.
 
-The ten integration-test files exercise the public crate paths directly, and the engine substitution
-contract drives the derived selector over real generated proxy artifacts. No public API crate
+The ten integration-test files exercise the public crate paths directly, and the cache render
+contract and engine substitution contract drive both production consumers. No public API crate
 currently reexports these types, and no engine module composes worker pools, lifecycle participants,
 clocks, handoffs, liveness, or GPU submission into an end-to-end runtime.
 
@@ -444,9 +444,10 @@ incomplete:
 
 - `submit` is an explicit placeholder. The crate-level description promises GPU coordination, but
   current implementation stops at domain ownership and a test-hosted `superi-gpu` queue.
-- Graph and audio declare this dependency without production use. Engine now consumes only the
-  derived-media selection policy. Thread roles, lifecycle acknowledgement, worker scheduling, A/V
-  decisions, backpressure, and liveness are not yet exercised by a real application flow.
+- Cache now uses worker scheduling, typed completion, cancellation, deadlines, and progress for
+  bounded background rendering. Engine consumes derived-media selection only, while graph and audio
+  still declare this dependency without production use. Thread roles, lifecycle acknowledgement,
+  A/V decisions, backpressure, and liveness are not yet exercised by a real application flow.
 - Dependency tracking is passive. The worker pool does not delay a job until prerequisites are
   ready, propagate terminal states, create `DependencyFailed`, or detect cycles across submitted
   jobs. Callers must provide all of that orchestration.

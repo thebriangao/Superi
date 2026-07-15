@@ -2,7 +2,7 @@
 module_id: tool-superi-dependency-check
 source_paths:
   - open/tools/superi-dependency-check
-source_hash: e7818d5c52d22a6d9429eed57f97e797b4271e743aed085258beaa2b38027403
+source_hash: bd884e561d1c04a1a670ad48f9c5d74025a1d152f79d767a03ee5fcf3706d78c
 source_files: 4
 mapped_at_commit: working-tree
 ---
@@ -18,7 +18,8 @@ the reviewed architecture documented in `open/docs/STRUCTURE.md`.
 - `open/tools/superi-dependency-check/Cargo.toml`: Declares the workspace package, Serde dependencies,
   shared lint policy, library target, and command target.
 - `open/tools/superi-dependency-check/src/lib.rs`: Runs locked offline Cargo metadata, parses the
-  workspace package graph, applies exact runtime and dev policies, and reports deterministic errors.
+  workspace package graph, applies exact runtime and dev policies including cache consumption of
+  concurrency, and reports deterministic errors.
 - `open/tools/superi-dependency-check/src/main.rs`: Runs the library against the containing workspace,
   prints a successful package and edge summary, and returns a failing process status on violations.
 - `open/tools/superi-dependency-check/tests/dependency_direction_contract.rs`: Covers the checked-in
@@ -70,7 +71,8 @@ Four integration contracts exercise the current workspace and synthetic metadata
 checkpoint proof passed the focused contracts, package tests, strict package and all-target workspace
 Clippy, workspace documentation tests, locked default and all-feature builds, the workspace test
 suite excluding the host codec package, and a Rust 1.80 package check. The direct command validated
-19 runtime crates and 64 internal edges.
+19 runtime crates and 65 internal edges, including the reviewed `superi-cache` to
+`superi-concurrency` production edge for bounded background rendering.
 
 ## Current status and risks
 

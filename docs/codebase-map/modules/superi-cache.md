@@ -2,8 +2,8 @@
 module_id: superi-cache
 source_paths:
   - open/crates/superi-cache
-source_hash: fa17b28ec890311bd9e794d5e79a8ea514f95068d4f31b0d92df9bbd3e52f343
-source_files: 16
+source_hash: bda3eaf4bd399e06d76862d2f6f064528edee6e78fda01fd6326e13c76d8348f
+source_files: 17
 mapped_at_commit: working-tree
 ---
 
@@ -13,9 +13,10 @@ mapped_at_commit: working-tree
 intermediate-node memory retention, exact global, project, and device cache accounting, and the
 priority-aware least-recently-used eviction policy, precise graph edit invalidation, and versioned
 persistent final-frame and intermediate-node value storage. It also owns the media-neutral identity
-and complete-only publication contract for replaceable proxy and optimized media. Background-render,
-prefetch, and lifecycle systems remain planned; cross-quality substitution is scheduler-owned and
-engine-integrated. Composite keys join identities
+and complete-only publication contract for replaceable proxy and optimized media, plus layered
+memory and persistent render reuse and bounded background population. Prefetch and lifecycle
+systems remain planned; cross-quality substitution is scheduler-owned and engine-integrated.
+Composite keys join identities
 owned by media, graph, parameter, image-color, time, and render-setting boundaries without taking
 ownership of those source models. One atomic memory state retains cloneable
 evaluator values in separate final and intermediate LRU tiers only while exact byte and frame
@@ -29,7 +30,7 @@ settings while leaving codec execution and cross-quality selection in the engine
 ## Source inventory
 
 - `open/crates/superi-cache/Cargo.toml`: Declares dependencies on `superi-core`, `superi-gpu`,
-  `superi-image`, `superi-graph`, and the pinned workspace `sha2` package.
+  `superi-image`, `superi-graph`, `superi-concurrency`, and the pinned workspace `sha2` package.
 - `open/crates/superi-cache/src/disk.rs`: Defines validated disk configuration and value schemas,
   caller-owned value codecs, complete outer identity scopes, separate final and intermediate entry
   namespaces, bounded versioned envelopes, synchronized atomic publication, corruption quarantine,
@@ -58,7 +59,10 @@ settings while leaving codec execution and cross-quality selection in the engine
   complete source and render-setting generation requests, deterministic derived and artifact
   identities, immutable complete payloads, exact lookup with original-source fallback, reuse, and
   replacement that publishes only after a fallible producer succeeds.
-- `open/crates/superi-cache/src/render.rs`: Placeholder for render and background-render caching.
+- `open/crates/superi-cache/src/render.rs`: Defines owned host or device render context, exact
+  graph-derived frame keys, memory-first and persistent-fallback reuse, disk-hit promotion,
+  cancellation-safe staged cache publication, bounded background jobs, exact-frame single-flight,
+  deterministic active-work inspection, and explicit task, frame, queue, and shutdown controls.
 - `open/crates/superi-cache/tests/cache_key_contract.rs`: Proves every required invalidation axis,
   canonical media sets and physical time, complete color meaning and order, proxy and precision
   separation, stable vectors, invalid media input, domain separation, and thread-safe key values.
@@ -83,6 +87,10 @@ settings while leaving codec execution and cross-quality selection in the engine
 - `open/crates/superi-cache/tests/proxy_generation_contract.rs`: Proves every derived identity axis,
   exact reuse, explicit replaceability, source freshness, complete-only publication, failure
   preservation, and deterministic original-source fallback.
+- `open/crates/superi-cache/tests/render_cache_contract.rs`: Proves persistent-to-memory promotion,
+  quality and proxy identity separation, owned device accounting, bounded background population,
+  exact foreground reuse, duplicate rejection, cooperative cancellation without new publication,
+  deterministic active-key cleanup, and pre-queue rejection of noncacheable graph work.
 
 ## Public surface
 
@@ -117,6 +125,18 @@ advances every affected graph and node revision fence, removes superseded or unv
 from both tiers, and returns a deterministic `CacheInvalidationReport` with exact removed keys.
 `CachedFrameColorMetadata::from_graph`, `matches`, and `pipeline` preserve exact source tags,
 ordered transforms, and output intent.
+
+`render::RenderCacheContext` owns one complete outer result context and a host or device
+`RenderCachePlacement`. `RenderCache<V>` derives the exact target `FrameCacheKey`, layers the
+budgeted memory adapter over an optional persistent adapter, promotes persistent hits to memory,
+and evaluates fresh work through the same graph snapshot on a complete miss.
+`BackgroundRenderQueue<T, N, V>` binds one immutable `GraphEvaluationSnapshot` and render cache to
+one bounded `BoundedWorkerPool`. `submit` returns a typed `BackgroundRenderTask`, rejects an active
+duplicate exact frame, and publishes staged values only after the job's final cancellation,
+deadline, and progress checks pass. Tasks expose exact frame identity, cooperative cancellation,
+job identity, and typed completion with terminal progress; the queue exposes frame cancellation,
+deterministic active keys, worker snapshots, and shutdown. Submission accepts caller-prepared
+cooperative cancellation and deadline controls.
 
 `disk::DiskCacheConfig` validates a caller-selected root and per-entry byte bound.
 `DiskCacheValueSchema` gives one caller-owned value family a stable identifier, revision, and digest,
@@ -197,13 +217,24 @@ request's source identity rather than choosing a different quality or revision. 
 first real producer: it validates canonical encoder settings, drives a codec-neutral encoder to end
 of stream, and returns complete packet media through this publication boundary.
 
+Render reuse composes an owned outer context with the graph snapshot's inspected target identity
+before dispatch. A foreground evaluation checks memory first, then persistent storage, promoting an
+exact disk hit to memory, and finally runs the real graph evaluator through a layered adapter that
+writes successful values to both tiers. Background work uses the same path through a staged adapter:
+lookups remain real, but new final and intermediate inserts remain private until the worker reaches
+its final cooperative checkpoint. Exact frame keys single-flight within one queue, and an RAII
+active-work guard removes ownership after success, error, cancellation, timeout, or panic.
+
 ## Dependencies and consumers
 
-- Declared internal dependencies are `superi-core`, `superi-gpu`, `superi-image`, and
-  `superi-graph`; `sha2` is the only direct external dependency. Composite identity consumes core
-  IDs and time, graph lineage and work identity, and image color metadata. Budget policy consumes
+- Declared internal dependencies are `superi-core`, `superi-gpu`, `superi-image`, `superi-graph`,
+  and `superi-concurrency`; `sha2` is the only direct external dependency. Composite identity
+  consumes core IDs and time, graph lineage and work identity, and image color metadata. Budget policy consumes
   core `ProjectId` and `DeviceId` plus the GPU pool's `MemoryClass::Cache`, pressure cooperators,
   and RAII reservation boundary.
+- `superi-concurrency` supplies the bounded worker pool, `JobKind::Cache`,
+  `JobPriority::Background`, typed job completion, cooperative cancellation and deadlines,
+  progress, panic containment, and worker snapshots used by the background render queue.
 - `superi-graph` owns evaluation, cacheability decisions, graph lineage, and the node-neutral
   retained-value adapter. It does not depend upward on concrete storage, memory policy, or outer
   render identity.
@@ -214,10 +245,11 @@ of stream, and returns complete packet media through this publication boundary.
 - `superi-engine::proxy_substitution` filters exact fresh proxy artifacts, translates their quality
   values to scheduler-owned selection inputs, and retains a selected immutable artifact for the
   lifetime of its packet-backed media source.
-- Cache integration contracts are the first concrete consumers of retained graph evaluation,
-  persistent graph reuse, and budgeted GPU cache memory. No production engine node catalog,
-  playback clock, render, export queue, or GPU value path uses either retained-value adapter.
-  Engine generation and substitution are the cross-crate derived-media consumers.
+- The render adapter is the first production cache surface to compose retained graph evaluation,
+  layered persistent reuse, and bounded background jobs. Cache integration contracts remain the
+  first executable consumers of that surface and of budgeted GPU cache memory. No production engine
+  node catalog, playback, export, or GPU value path invokes the render queue. Engine generation and
+  substitution are the cross-crate derived-media consumers.
 
 ## Invariants and operational boundaries
 
@@ -227,6 +259,12 @@ of stream, and returns complete packet media through this publication boundary.
   policy, or other canonical render settings change identity.
 - Only graph work with an available deterministic cache identity reaches retained storage.
   Policy-disabled, nondeterministic, and dependency-blocked work bypasses both tiers.
+- Render dispatch derives one complete final-frame key before queue admission. One queue never
+  accepts two simultaneously active tasks for the same key, and active ownership is removed on
+  every terminal path, including panic containment.
+- Background evaluation may reuse complete memory or persistent values immediately, but all newly
+  evaluated final and intermediate inserts remain staged until the final cooperative job checks
+  pass. Cancellation or timeout before that boundary publishes none of those new values.
 - Final-frame and intermediate-node entries never share one tier. Both maps use ordered composite
   keys, and both maps and all revision fences change under one lock. No node evaluation,
   caller-defined clone, value-cost function, GPU cooperation, reservation release, or retained-value
@@ -326,9 +364,18 @@ change the key; exact complete artifacts reuse; regeneration replaces one exact 
 strict; failed generation retains prior complete media; empty payloads fail; and a missing or stale
 request returns the original source.
 
-Focused package tests, graph and engine contract closure, warnings-denied Clippy, and rustdoc pass
+`render_cache_contract.rs` runs five contracts through real editable graph snapshots, the graph
+  evaluation cache seam, the memory and disk implementations, GPU cache accounting, and the bounded
+  worker pool. It proves layered promotion, exact quality identity, owned device placement and
+  release, bounded background-to-foreground reuse, active duplicate rejection, queued and running
+  cancellation with terminal active-key cleanup and no new publication, and noncacheable rejection
+  before dispatch.
+
+Focused package tests, graph, concurrency, dependency, and engine contract closure,
+warnings-denied Clippy, and rustdoc pass
 after the integrated budget, LRU, invalidation, persistence, and generation implementation. The 32
-cache integration tests across seven files prove bounded retained evaluator values, shared managed
+cache integration tests plus five render contracts across eight files prove bounded retained
+evaluator values, shared managed
 GPU accounting, exact eviction, precise revision-safe cleanup, process-restart reuse, corruption
 recovery, and complete-only derived publication through public adapters. The engine contract adds
 real AV1 packet generation and packet-backed transparent substitution with strict fallback. These
@@ -338,23 +385,27 @@ tests do not prove playback-clock integration, muxing, or physical GPU residency
 
 Deterministic composite key derivation, exact cached color metadata, hierarchical budgets, budgeted
 two-tier retained evaluation, priority-aware strict per-tier LRU eviction, precise revision-safe
-edit invalidation, versioned two-tier disk persistence, and proxy or optimized-media identity and
-atomic publication are substantive and test-backed. Final
+edit invalidation, versioned two-tier disk persistence, proxy or optimized-media identity and
+atomic publication, layered render reuse, and bounded background population are substantive and
+test-backed. Final
 hits stop the complete graph pull, intermediate hits stop their prerequisite subtree, hard caps
 remain exact, automatic or explicit victims recompute with unchanged result meaning, edit plans
 remove only affected older lineage, and disk corruption falls back to exact fresh evaluation.
 Device entries share the existing GPU cache class, and eviction or invalidation releases matching
-reservations outside the cache state lock. The engine generates real complete AV1 packet artifacts
-through the proxy module and selects exact or lower-quality fresh proxies through the scheduler.
-Prefetch and render remain placeholders, and cache itself owns no quality-selection policy. No
-production frame pixels are selected or reclaimed by a playback clock, export encoder, or GPU upload.
+reservations outside the cache state lock. Background jobs single-flight exact frame keys within
+one immutable snapshot and outer render context, stage newly evaluated values until final job
+checks pass, and expose deterministic active-work inspection. The engine generates real complete
+AV1 packet artifacts through the proxy module and selects exact or lower-quality fresh proxies
+through the scheduler. Prefetch remains a placeholder, and cache itself owns no quality-selection
+policy. No production frame pixels are selected or reclaimed by playback, export encoding, or GPU
+upload.
 
 The main correctness risk is each caller's canonical parameter and render-settings encoding.
 Omitting one output-affecting byte can cause false reuse even though composition and storage are
 stable. Future schema changes must bump the affected domain rather than silently changing a key
-contract. The main budget risk is inaccurate caller-owned managed-payload cost. Concurrent identical
-misses may perform duplicate deterministic work because single-flight coordination is not
-implemented. Concurrent lock acquisition defines the observed access order,
+contract. The main budget risk is inaccurate caller-owned managed-payload cost. Separate queues or
+foreground callers may still perform duplicate deterministic work because single-flight ownership
+is queue-local. Concurrent lock acquisition defines the observed access order,
 which may change cache contents but cannot change semantic results. Explicit victim selection sorts
 the retained tier during pressure handling, so measured production scale may justify an equivalent
 indexed implementation later. Derived-media cleanup, persistence, and management are absent, so the

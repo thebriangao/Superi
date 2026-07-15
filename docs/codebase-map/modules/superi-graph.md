@@ -42,9 +42,10 @@ owner, while graph state owns payload and connection membership. Schema type ide
 schema-local names are definition metadata, separate from the core object identifiers that address
 editable graph instances.
 
-Concrete cache storage, exact byte and frame admission, and precise edit cleanup remain owned by
-`superi-cache`; invalidation invocation, ROI-plan evaluator orchestration, outer job dispatch,
-project storage, and a production runtime node catalog remain absent or placeholders. The
+Concrete cache storage, exact byte and frame admission, precise edit cleanup, and bounded
+background render dispatch remain owned by `superi-cache`; invalidation invocation,
+ROI-plan evaluator orchestration, project storage, and a production runtime node catalog remain
+absent or placeholders. The
 implemented storage, schema, validation, mutation, invalidation, ROI planning, scheduling, cache
 identity, diagnostics, document, parameter evaluator, compiler seam, and shared interactive and
 headless evaluator surfaces must not be interpreted as a working production render path or atomic
@@ -515,7 +516,10 @@ The shared interactive and headless evaluation flow is:
 6. `superi-cache` implements memory and persistent retained-value adapters for separate final and
    intermediate tiers, plus strict memory LRU reclamation and precise edit invalidation. Eviction,
    invalidation, and persistence failures remain transparent to graph: removed or unavailable
-   values become ordinary misses and recompute through this same evaluator. No current effects,
+   values become ordinary misses and recompute through this same evaluator. Cache render
+   orchestration now inspects target identity before bounded dispatch, drives this snapshot through
+   layered memory and disk adapters, and stages background inserts until cooperative completion.
+   No current effects,
    color, engine, API, CLI, or GPU owner implements the compiler in production, so the canonical
    `graph.evaluate` stage remains an honest stub even though the generic interactive, headless, and
    cache boundaries are explicit and test-backed.
@@ -724,7 +728,8 @@ graph evaluation or runtime integration.
   composes graph lineage and work time with outer result identity before concrete retention, applies
   edit plans atomically to both tiers, and participates in precise revision fencing. Successful hits
   promote cache-local recency, and automatic or explicit cache-local victim removal does not change
-  this graph contract. The engine
+  this graph contract. Cache render orchestration composes immutable evaluation snapshots with
+  layered reuse and bounded background jobs without moving worker policy into graph. The engine
   color propagation contract exercises metadata. Timeline compilation consumes versioned
   schemas, typed ports, complete editable nodes, atomic graph transactions, DAG validation, and
   immutable snapshots to publish generic processing intent from native editorial state. Other
@@ -1013,14 +1018,15 @@ retains the source state for every reader, and delegates scheduling and executio
 evaluator. Cached evaluation accepts caller-owned storage, stops at exact final and intermediate
 hits, inserts only successful cacheable values, and carries snapshot graph and revision lineage.
 `superi-cache` supplies scoped composite-key memory and disk consumers that bind graph identity to
-authoritative outer result context. Memory retains each admitted value with exact total, project,
+authoritative outer result context, plus a bounded background render consumer over immutable
+evaluation snapshots. Memory retains each admitted value with exact total, project,
 and optional device accounting, applies graph edit invalidation atomically, promotes hits and
 insertions, and reclaims eligible LRU values under budget or GPU pressure. Disk validates bounded
 versioned envelopes, isolates invalid entries, and records classified failures. Reclamation,
 budget refusal, or persistence failure remains an ordinary miss or skipped insertion and cannot
-change the evaluator result. No production
-catalog implements that compiler or connects complete ROI and invalidation
-plans to render orchestration yet.
+change the evaluator result. Cache can dispatch caller-compiled snapshots, but no production
+catalog implements that compiler or connects complete ROI and invalidation plans to rendered frame
+or engine orchestration yet.
 The versioned graph document codec now preserves and validates that complete editable state,
 migrates the supported legacy envelope, returns canonical upgraded bytes, and retains typed links
 and editable expression source through save and load. Missing-node resolution now derives exact
@@ -1028,7 +1034,7 @@ current schema availability without changing those bytes or that editable state,
 incompatible nodes as typed placeholders, and gives every caller one deterministic degraded
 evaluation result until exact schemas return. Exact schemas then enable the shared interactive and
 headless evaluation snapshot without a graph rewrite. The crate cannot store a project atomically,
-own concrete cached values, persist cache data, dispatch work through an outer job system, bind
+own concrete cached values, persist cache data, bind
 plugin implementations, or render production values. Timeline compilation and memory cache
 retention are now real downstream consumers, but no production node catalog consumes the
 invalidation, ROI, serialization, scheduling, expression, diagnostics, evaluation, or missing-node
@@ -1148,6 +1154,6 @@ resolver to guess compatibility or persist discovery state.
 Update this map when mutation, invalidation, ROI, serialization, expressions, diagnostics, and
 evaluation integrate further, concrete retention or eviction behavior changes, or cache revision
 and resource policies change the adapter contract,
-ROI-to-evaluator binding, outer job dispatch, project storage, undo ownership, engine coordination,
+ROI-to-evaluator binding, project storage, undo ownership, engine coordination,
 plugin implementation lookup, or a downstream catalog becomes real. Recheck direct consumer maps
 whenever they begin importing any public graph contract.

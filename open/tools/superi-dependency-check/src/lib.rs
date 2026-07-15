@@ -177,7 +177,13 @@ fn policy_for(package: &str) -> Option<Policy> {
             &[],
         ),
         "superi-cache" => Policy::new(
-            &["superi-core", "superi-gpu", "superi-image", "superi-graph"],
+            &[
+                "superi-core",
+                "superi-gpu",
+                "superi-image",
+                "superi-graph",
+                "superi-concurrency",
+            ],
             &[],
         ),
         "superi-color" | "superi-effects" => Policy::new(
