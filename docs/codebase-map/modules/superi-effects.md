@@ -2,21 +2,22 @@
 module_id: superi-effects
 source_paths:
   - open/crates/superi-effects
-source_hash: 40e6c1e7ff2894bbf7598d84677d809e99b6a2b4a0a7cc8f22ad18a7dc3ea17c
-source_files: 19
+source_hash: 52cda14022d63108e3904ea4fa5fcaa642f4beeecca2cb6f5276fbac1ebe2ff9
+source_files: 21
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
 `superi-effects` owns the higher-tier open visual effect authoring, animation, reusable control,
-mask, built-in operation, and bounded reference-evaluation layer above the generic graph. It
-provides inspectable typed definitions, ordinary editable graph-node instantiation, deterministic
-discovery, exact-schema runtime factory translation, exact keyframe animation, graph-native links
-and parent controls, and bounded animated closed cubic masks with complete controls and ordered
-soft-alpha composition. It also provides concrete schemas plus real reference pixels for transform,
-crop, opacity, blend, composite, Gaussian blur, sharpen, radial distortion, chroma key, invert, and
-grade.
+mask, rotoscoping, built-in operation, and bounded reference-evaluation layer above the generic
+graph. It provides inspectable typed definitions, ordinary editable graph-node instantiation,
+deterministic discovery, exact-schema runtime factory translation, exact keyframe animation,
+graph-native links and parent controls, bounded animated closed cubic masks with complete controls
+and ordered soft-alpha composition, and editable exact-frame rotoscope artifacts with
+solver-independent propagation hooks. It also provides concrete schemas plus real reference pixels
+for transform, crop, opacity, blend, composite, Gaussian blur, sharpen, radial distortion, chroma
+key, invert, and grade.
 
 The generic graph remains authoritative for schema identity, instance identities, typed editable
 values, transactions, parameter drivers, immutable snapshots, topology, serialization, evaluation,
@@ -29,7 +30,7 @@ envelope.
 The built-in schemas require the production `superi.render.gpu` capability, but this crate currently
 implements only a deterministic bounded CPU oracle and headless proof. Production GPU kernels,
 engine catalog registration, timeline effect attachment, playback, viewport, export, project
-persistence, UI, mask rasterization, feather and expansion filtering, rotoscoping propagation,
+persistence, UI, mask rasterization, feather and expansion filtering, propagation solvers,
 transitions beyond the explicit composite operation, text, tracking, and OFX hosting remain absent
 or staged in their owning modules.
 
@@ -37,7 +38,8 @@ or staged in their owning modules.
 
 - `open/crates/superi-effects/Cargo.toml`: Declares approved downward dependencies on
   `superi-core`, `superi-gpu`, `superi-image`, and `superi-graph`. It uses workspace Serde for the
-  animation wire, `half` for checked binary16 reference conversion, and JSON only in tests.
+  animation, mask, and rotoscope wires, `half` for checked binary16 reference conversion, and JSON
+  only in tests.
 - `open/crates/superi-effects/src/authoring.rs`: Implements presentation metadata, typed effect
   definitions, graph-native instance construction, atomic generic catalog snapshots, classified
   validation, runtime factories, the shared presentation-text validator, and the graph
@@ -55,8 +57,8 @@ or staged in their owning modules.
   easing, bounded time expressions, immutable curve editing, exact uniform retiming, deterministic
   evaluation, and the revisioned standalone wire.
 - `open/crates/superi-effects/src/lib.rs`: Documents the implemented authoring, animation,
-  control, and mask foundations and publicly exports them with the built-in catalog, reference
-  evaluator, and staged visual feature modules.
+  control, mask, and rotoscope foundations and publicly exports them with the built-in catalog,
+  reference evaluator, and staged visual feature modules.
 - `open/crates/superi-effects/src/mask.rs`: Implements animated closed cubic mask paths, fill rules,
   complete checked controls, immutable topology, control, and stack edits, exact-time sampling,
   deterministic soft-coverage boolean composition, and the strict revisioned mask-stack wire.
@@ -66,6 +68,10 @@ or staged in their owning modules.
   ROI mapping, canonical image validation, bounded binary16 and binary32 CPU pixel operations,
   editable-snapshot runtime compilation, graph evaluation, deterministic introspection, and cache
   fingerprints.
+- `open/crates/superi-effects/src/rotoscope.rs`: Implements bounded exact-frame span identities,
+  generic authored base masks and corrections, inspectable derived propagation, directional request
+  construction, revision-fenced solver hooks, immutable editing and invalidation, strict versioned
+  persistence, and checked reconstruction.
 - `open/crates/superi-effects/src/text.rs`: Placeholder for additive text and motion-design
   primitives.
 - `open/crates/superi-effects/src/tracking.rs`: Placeholder for motion-tracking data and solving.
@@ -96,11 +102,15 @@ or staged in their owning modules.
   operation category, binary16 and binary32 retention, extended RGB, metadata, premultiplied
   algebra, ROI, monotonic distortion, unsupported image meaning, invalid state, and final plus
   temporary resource ceilings.
+- `open/crates/superi-effects/tests/rotoscope_contract.rs`: Proves forward and backward propagation
+  targets, directional anchors, injected hook execution, source provenance, correction precedence,
+  immutable span and base editing, exact invalidation, stale and malformed result rejection, bounded
+  state, strict persistence, `GraphValue::Domain`, and real editable graph reload.
 
 ## Public surface
 
 The library exports `authoring`, `catalog`, `control`, `keyframe`, `mask`, `ofx`, `reference`,
-`text`, `tracking`, and `transition`.
+`rotoscope`, `text`, `tracking`, and `transition`.
 
 `authoring` exposes the workflow-neutral authoring foundation:
 
@@ -195,6 +205,23 @@ The library exports `authoring`, `catalog`, `control`, `keyframe`, `mask`, `ofx`
   deny unknown fields and reconstruct every nested curve, vertex animation, path, mask, and stack
   through checked public constructors.
 
+`rotoscope` exposes editable exact-frame mask propagation state:
+
+- `RotoscopeSpanId`, `RotoscopeFrame<T>`, and `RotoscopeSpan<T>` retain stable identities, one
+  half-open exact-time range, a complete generic authored base payload, strictly ordered corrections,
+  and separately inspectable derived samples without owning mask geometry.
+- `RotoscopeArtifact<T>` canonicalizes non-overlapping spans on one core-owned `Timebase`, advances a
+  monotonic content revision, resolves base and corrections above propagation, and provides immutable
+  add, replace, remove, base, correction, and derived-result clearing operations.
+- `PropagationRequest<T>` exposes the base plus directional correction anchors and every exact
+  non-authored target in traversal order. `RotoscopePropagator<T>` is the engine-neutral hook, while
+  `PropagationResult<T>` requires complete ordered coverage and retains the source revision, span,
+  direction, range, anchors, and targets for atomic application.
+- `RotoscopeFrameSource` and `ResolvedRotoscopeFrame<T>` preserve visible provenance. The strict
+  `ROTOSCOPE_ARTIFACT_SCHEMA_REVISION` wire denies unknown fields, bounds span and frame collection
+  decoding, and reconstructs all state through checked ranges, clocks, ordering, overlap, and size
+  validation.
+
 `reference` exposes bounded executable proof:
 
 - `ReferenceEffectState`, sampling, blend, and Porter-Duff enums retain exact compiled operation
@@ -240,6 +267,26 @@ The animation flow is:
 6. Strict standalone and generic graph reload preserve authored intent. Effects tests instantiate an
    animatable definition, store its curve in `EditableGraph`, reload canonical graph bytes, and
    obtain identical samples.
+
+The rotoscope flow is:
+
+1. A caller creates generic complete mask payloads at one exact frame clock, assigns each independent
+   non-overlapping span a stable ID and base frame, then stores corrections as canonical authored
+   state separate from derived propagation.
+2. Forward requests traverse increasing coordinates and backward requests traverse decreasing
+   coordinates. Both expose the base followed by same-direction corrections as anchors and omit
+   authored frames from the exact target sequence.
+3. A tracking or local inference implementation receives only the immutable bounded
+   `PropagationRequest<T>` and returns a complete `PropagationResult<T>`. Application rejects stale
+   revisions, absent spans, changed ranges or anchors, partial, duplicate, reordered, or wrong-clock
+   output before publishing any change.
+4. Correction edits invalidate only their directional tail. Repropagation replaces only derived
+   samples on that side, while the base, all corrections, opposite-direction samples, generic mask
+   layering, and composition payload remain intact and inspectable.
+5. The strict standalone artifact wire and ordinary generic graph persistence preserve authored and
+   derived state. The real consumer test stores the artifact in an animatable effect parameter and
+   `GraphValue::Domain`, reloads the graph document, and obtains canonical bytes and equal resolved
+   frames.
 
 The built-in evaluation flow is:
 
@@ -322,16 +369,17 @@ The mask authoring and composition flow is:
   sample representations, and finite limits.
 - `superi-gpu` is a declared production capability dependency. Current effects source uploads,
   owns, and evaluates no GPU resource.
-- Serde owns strict animation and mask-stack records. JSON is test-only. `half` performs checked
-  reference conversion to and from binary16.
+- Serde owns strict animation, mask-stack, and rotoscope records. JSON is test-only. `half` performs
+  checked reference conversion to and from binary16.
 - `superi-timeline` does not depend on effects. It compiles native state into graph-owned
   `GraphValue<TimelineGraphValue>`, the neutral payload shape that a higher integration owner can
   share with built-in processing values.
 - `superi-engine` declares `superi-effects` but has no production catalog, animation, evaluator,
   playback, viewport, or export call site. Current real consumers are the role-neutral authoring,
   generic graph reload, reusable controls over shared processing payloads, strict animation and
-  mask payloads, and bounded headless graph-evaluation contracts. Mask tests label independent
-  ordinary graphs as timeline and node-graph roles without claiming production timeline attachment.
+  mask payloads, strict rotoscope artifacts, and bounded headless graph-evaluation contracts. Mask
+  tests label independent ordinary graphs as timeline and node-graph roles without claiming
+  production timeline attachment.
 
 ## Invariants and operational boundaries
 
@@ -363,6 +411,12 @@ The mask authoring and composition flow is:
   are finite and bounded, roving times are derived and distinct, and exact retiming rejects inexact
   maps. Expression source is editable and bounded to `time` and `value` without I/O, mutation,
   loops, recursion, calls, or dynamic lookup.
+- Rotoscope spans are nonempty, bounded, uniquely identified, non-overlapping, and use one exact
+  artifact timebase. Base, correction, and propagation coordinates are in range; correction and
+  propagation sequences are unique and increasing; authored frames never overlap derived samples.
+- Propagation is replaceable derived state. Requests are bounded and directionally ordered, results
+  cover the target sequence exactly, revision and request identity are checked atomically, and manual
+  corrections always resolve above propagated samples and survive repropagation.
 - Workflow parity is structural. Timeline and node-graph roles receive no role flag or hidden state
   branch, and old immutable graph revisions cannot observe later direct edits.
 - Reusable controls are typed references to ordinary animatable parameters. Control and relationship
@@ -401,7 +455,7 @@ The mask authoring and composition flow is:
   revision, and rebuilds all nested state through checked constructors before publication.
 - Current code performs bounded reference pixel processing and ROI calculation, but no production
   GPU submission, cache integration, mask path rasterization, feather or expansion filtering,
-  production timeline sampling, engine playback, project autosave, rotoscoping propagation, plugin
+  production timeline sampling, engine playback, project autosave, propagation solver, plugin
   containment, or text rendering. The reference oracle is not a production route.
 
 ## Tests and verification
@@ -432,6 +486,12 @@ stores the resulting node in `EditableGraph`, serializes the complete graph docu
 through graph validation, compares canonical bytes, and obtains identical samples. A separate graph
 integration test proves projected literal evaluation without copying driver traversal.
 
+Seven rotoscope tests prove exact forward and backward requests, ordered anchors, real hook
+execution, provenance, correction precedence and directional invalidation, immutable span and base
+editing, propagation clearing, stale and malformed output rejection, bounded construction, strict
+wire reconstruction, generic mask payload retention, animatable effect authoring, `GraphValue`
+reuse, and canonical graph reload.
+
 Focused tests, crate-wide tests, warnings-denied Clippy, rustdoc, formatting, dependency and offline
 boundary checks, map validation, complete workspace tests, fixtures, platform codec consumers,
 frontend gates, and the full repository checkpoint verifier form the delivery floor.
@@ -448,20 +508,21 @@ graphs.
 
 ## Current status and risks
 
-The authoring SDK, exact keyframe animation, reusable typed control rigs, built-in definitions,
+The authoring SDK, exact keyframe animation, reusable graph-native control rigs, animated mask
+authoring and composition, editable rotoscope artifacts and propagation hooks, built-in definitions,
 generic editable instantiation, deterministic CPU reference pixels, ROI mapping, immutable graph
-compilation, introspection, animated mask authoring and composition, and role-neutral graph proofs
-are substantive and test-backed. Strict curve and mask-stack payloads retain authored state across
-generic graph reload.
-The reference implementation is scalar and allocation-bounded, not performance production code,
-and masks have no rasterizer or rendered consumer.
+compilation, introspection, and role-neutral graph proofs are substantive and test-backed. Strict
+curve, mask-stack, and rotoscope payloads retain authored state across generic graph reload. The
+reference implementation is scalar and allocation-bounded, not performance production code, and
+masks have no rasterizer or rendered consumer.
 
 There is no GPU shader parity, engine registry, production runtime catalog, timeline attachment,
 playback, viewport, export, project persistence, UI, spatial motion path beyond mask contours, mask
-rasterization, text, tracking, higher transition authoring, or OFX host. Authoring metadata is in
-memory and has no independent wire. Control hints do not yet contain numeric bounds, choice option
-vocabularies, grouping, conditional visibility, or accessibility policy. Animation has no stable
-project-level property identity or production caller-time context.
+rasterization, propagation solver, text, tracking solver, higher transition authoring, or OFX host.
+Rotoscope mask payloads are generic and have no production mask-type consumer yet. Authoring
+metadata is in memory and has no independent wire. Control hints do not yet contain numeric bounds,
+choice option vocabularies, grouping, conditional visibility, or accessibility policy. Animation
+has no stable project-level property identity or production caller-time context.
 
 Reusable control presentation and rig definitions remain in-memory authoring descriptions, while
 their applied driver meaning is persisted by graph. Parent expressions are scalar only; transform
@@ -485,7 +546,10 @@ Keep animation property meaning with node schemas and exact time ownership in co
 immutable editing, the authored-versus-derived timing split, bounded expressions, exact schema
 matching, atomic catalog publication, workflow-neutral instances, request-local literal sampling,
 canonical rig ordering, graph-owned driver state, canonical image meaning, and bounded reference
-allocation. Never store a second effects-only dependency graph or evaluated control cache.
+allocation. Keep rotoscope bases and corrections canonical, propagation derived, every request and
+wire collection bounded, revisions fenced, exact clocks unchanged, and generic mask payloads
+uninterpreted by the temporal layer. Never store a second effects-only dependency graph, evaluated
+control cache, or solver-owned rotoscope state.
 
 Add built-in kinds only through one versioned authoring definition with typed defaults, presentation,
 complete caller-owned binding validation, state compilation, ROI mapping, reference pixels,
