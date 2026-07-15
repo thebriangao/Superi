@@ -492,6 +492,10 @@ pub enum EngineHealth {
 pub enum EngineSubsystem {
     /// Authoritative shared engine state.
     SharedState,
+    /// Authoritative project state and mutation coordination.
+    Projects,
+    /// Volatile audio and graphics device coordination.
+    Devices,
     /// Interactive playback ownership.
     Playback,
     /// Frame rendering ownership.
@@ -517,6 +521,12 @@ pub enum EngineSubsystemState {
     Degraded,
     /// Resources are being revalidated or reacquired.
     Recovering,
+    /// Work is quiescing and volatile resources are being released for sleep.
+    PreparingSleep,
+    /// The subsystem is quiescent with its retention policy applied.
+    Sleeping,
+    /// Retained state is being revalidated or volatile resources are being reacquired.
+    Waking,
     /// Resources are being released.
     Stopping,
     /// The subsystem has an unresolved failure.
@@ -1101,7 +1111,7 @@ impl EngineIntrospectionApi {
     }
 }
 
-fn public_engine_snapshot(
+pub(crate) fn public_engine_snapshot(
     engine: &InternalIntrospectionSnapshot,
     revision: u64,
     media_revision: u64,
@@ -1201,7 +1211,7 @@ fn public_resource_class_status(value: &InternalResourceClassStatus) -> EngineRe
     }
 }
 
-fn public_lifecycle_phase(value: InternalLifecyclePhase) -> EngineLifecyclePhase {
+pub(crate) fn public_lifecycle_phase(value: InternalLifecyclePhase) -> EngineLifecyclePhase {
     match value {
         InternalLifecyclePhase::Starting => EngineLifecyclePhase::Starting,
         InternalLifecyclePhase::Running => EngineLifecyclePhase::Running,
@@ -1228,9 +1238,11 @@ fn public_health(value: InternalHealth) -> EngineHealth {
     }
 }
 
-fn public_subsystem(value: InternalSubsystem) -> EngineSubsystem {
+pub(crate) fn public_subsystem(value: InternalSubsystem) -> EngineSubsystem {
     match value {
         InternalSubsystem::SharedState => EngineSubsystem::SharedState,
+        InternalSubsystem::Projects => EngineSubsystem::Projects,
+        InternalSubsystem::Devices => EngineSubsystem::Devices,
         InternalSubsystem::Playback => EngineSubsystem::Playback,
         InternalSubsystem::Rendering => EngineSubsystem::Rendering,
         InternalSubsystem::Export => EngineSubsystem::Export,
@@ -1245,13 +1257,16 @@ fn public_subsystem_state(value: InternalSubsystemState) -> EngineSubsystemState
         InternalSubsystemState::Ready => EngineSubsystemState::Ready,
         InternalSubsystemState::Degraded => EngineSubsystemState::Degraded,
         InternalSubsystemState::Recovering => EngineSubsystemState::Recovering,
+        InternalSubsystemState::PreparingSleep => EngineSubsystemState::PreparingSleep,
+        InternalSubsystemState::Sleeping => EngineSubsystemState::Sleeping,
+        InternalSubsystemState::Waking => EngineSubsystemState::Waking,
         InternalSubsystemState::Stopping => EngineSubsystemState::Stopping,
         InternalSubsystemState::Failed => EngineSubsystemState::Failed,
         _ => EngineSubsystemState::Unknown,
     }
 }
 
-fn public_workflow(value: InternalWorkflow) -> EngineWorkflow {
+pub(crate) fn public_workflow(value: InternalWorkflow) -> EngineWorkflow {
     match value {
         InternalWorkflow::Playback => EngineWorkflow::Playback,
         InternalWorkflow::Rendering => EngineWorkflow::Rendering,
@@ -1272,7 +1287,7 @@ fn public_failure_disposition(value: InternalFailureDisposition) -> EngineFailur
     }
 }
 
-fn public_recovery_request(value: InternalRecoveryRequest) -> EngineRecoveryRequest {
+pub(crate) fn public_recovery_request(value: InternalRecoveryRequest) -> EngineRecoveryRequest {
     match value {
         InternalRecoveryRequest::RetryOperation => EngineRecoveryRequest::RetryOperation,
         InternalRecoveryRequest::RestoreSubsystem => EngineRecoveryRequest::RestoreSubsystem,

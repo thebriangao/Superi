@@ -4,9 +4,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::{EngineIntrospectionSnapshot, MediaCapabilitiesSnapshot};
 use crate::scenario::{ScenarioActionResult, ScenarioTransactionResult, SliceAction};
+use crate::validation::IntegrationValidationSnapshot;
 use crate::version::{
     EXECUTE_SCENARIO_ACTION_METHOD, EXECUTE_SCENARIO_TRANSACTION_METHOD,
-    GET_ENGINE_INTROSPECTION_METHOD, GET_MEDIA_CAPABILITIES_METHOD,
+    GET_ENGINE_INTEGRATION_VALIDATION_METHOD, GET_ENGINE_INTROSPECTION_METHOD,
+    GET_MEDIA_CAPABILITIES_METHOD,
 };
 
 /// One typed public API command and its response contract.
@@ -35,6 +37,44 @@ impl ApiCommand for GetMediaCapabilities {
     type Response = GetMediaCapabilitiesResult;
 
     const METHOD: &'static str = GET_MEDIA_CAPABILITIES_METHOD;
+}
+
+/// Typed request for one coherent engine integration validation snapshot.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GetEngineIntegrationValidation {}
+
+impl GetEngineIntegrationValidation {
+    /// Creates an unfiltered integration validation query.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {}
+    }
+}
+
+impl ApiCommand for GetEngineIntegrationValidation {
+    type Response = GetEngineIntegrationValidationResult;
+
+    const METHOD: &'static str = GET_ENGINE_INTEGRATION_VALIDATION_METHOD;
+}
+
+/// Successful coherent engine integration validation query.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GetEngineIntegrationValidationResult {
+    snapshot: IntegrationValidationSnapshot,
+}
+
+impl GetEngineIntegrationValidationResult {
+    pub(crate) const fn new(snapshot: IntegrationValidationSnapshot) -> Self {
+        Self { snapshot }
+    }
+
+    /// Returns the complete strict integration validation state.
+    #[must_use]
+    pub const fn snapshot(&self) -> &IntegrationValidationSnapshot {
+        &self.snapshot
+    }
 }
 
 /// Successful response to [`GetMediaCapabilities`].

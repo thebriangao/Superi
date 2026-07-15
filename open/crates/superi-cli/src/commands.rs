@@ -13,8 +13,9 @@ use crate::instrumentation::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use superi_api::commands::ExecuteScenarioTransaction;
+use superi_api::commands::{ExecuteScenarioTransaction, GetEngineIntegrationValidation};
 use superi_api::scenario::{ExactFrameRate, ScenarioApi, SliceAction, SliceGraphEffect};
+use superi_api::validation::IntegrationValidationApi;
 
 use crate::expectations::{resolve_expectations, ContractObservations, ExpectationFailureKind};
 
@@ -28,7 +29,7 @@ const MAX_PAYLOAD_BYTES: u64 = 64 * 1024 * 1024;
 const EXIT_INVALID_INPUT: i32 = 2;
 const EXIT_UNAVAILABLE: i32 = 3;
 const EXIT_STAGE_FAILURE: i32 = 4;
-const USAGE: &str = "Usage:\n  superi-cli slice run --scenario superi.slice.canonical.v1 --artifact-dir <EMPTY_DIRECTORY> --report <REPORT_JSON>\n  superi-cli --help\n  superi-cli --version\n";
+const USAGE: &str = "Usage:\n  superi-cli slice run --scenario superi.slice.canonical.v1 --artifact-dir <EMPTY_DIRECTORY> --report <REPORT_JSON>\n  superi-cli engine validate\n  superi-cli --help\n  superi-cli --version\n";
 const STUB_ARTIFACT_NAME: &str = "canonical.webm.contract-stub";
 static TEMPORARY_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -37,6 +38,7 @@ enum Command {
         artifact_dir: PathBuf,
         report: PathBuf,
     },
+    ValidateEngine,
     Help,
     Version,
 }
@@ -191,6 +193,16 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
             }
             Err(failure) => emit_failure(failure),
         },
+        Command::ValidateEngine => match run_engine_validation() {
+            Ok(report) => {
+                println!(
+                    "{}",
+                    serde_json::to_string(&report).expect("validation report is serializable")
+                );
+                0
+            }
+            Err(failure) => emit_failure(failure),
+        },
     }
 }
 
@@ -199,6 +211,9 @@ fn parse_command(arguments: &[OsString]) -> Result<Command, CliFailure> {
         [] => Ok(Command::Help),
         [argument] if argument == "--help" || argument == "help" => Ok(Command::Help),
         [argument] if argument == "--version" => Ok(Command::Version),
+        [engine, validate] if engine == "engine" && validate == "validate" => {
+            Ok(Command::ValidateEngine)
+        }
         [slice, run, scenario_option, scenario, artifact_option, artifact_dir, report_option, report]
             if slice == "slice"
                 && run == "run"
@@ -218,9 +233,31 @@ fn parse_command(arguments: &[OsString]) -> Result<Command, CliFailure> {
             })
         }
         _ => Err(CliFailure::invalid(
-            "expected the normalized `slice run` invocation, `--help`, or `--version`",
+            "expected `engine validate`, the normalized `slice run` invocation, `--help`, or `--version`",
         )),
     }
+}
+
+fn run_engine_validation(
+) -> Result<superi_api::commands::GetEngineIntegrationValidationResult, CliFailure> {
+    let api = IntegrationValidationApi::from_fresh_engine().map_err(|failure| {
+        CliFailure::stage(
+            "engine.validate",
+            failure_category(failure.category()),
+            failure_recoverability(failure.recoverability()),
+            failure.message().to_owned(),
+        )
+    })?;
+    let result = api.execute(GetEngineIntegrationValidation::new());
+    if !result.snapshot().is_coherent() {
+        return Err(CliFailure::stage(
+            "engine.validate",
+            "internal",
+            "terminal",
+            "engine integration validation reported incoherent state",
+        ));
+    }
+    Ok(result)
 }
 
 fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailure> {

@@ -33,6 +33,7 @@ use crate::lifecycle::{
 };
 use crate::resource_arbitration::ResourceArbitrationSnapshot;
 use crate::transport::{PlaybackTransport, PlaybackTransportCommand, PlaybackTransportSnapshot};
+use crate::validation::EngineIntegrationValidationSnapshot;
 
 const COMPONENT: &str = "superi-engine.dispatcher";
 
@@ -726,8 +727,10 @@ pub struct EngineCommandDispatcher {
     events: VecDeque<EngineEventEnvelope>,
     playback_bridge: Option<PlaybackCommandBridge>,
     pending_playback: Option<PendingPlaybackCommand>,
+    latest_playback: Option<(PlaybackTransportSnapshot, Option<EngineReportedFailure>)>,
     export_jobs: Option<Box<dyn ErasedExportJobController>>,
     export_state_revision: u64,
+    latest_export: Option<EngineExportJobState>,
 }
 
 impl EngineCommandDispatcher {
@@ -752,8 +755,10 @@ impl EngineCommandDispatcher {
             events: VecDeque::with_capacity(MAX_PENDING_ENGINE_EVENTS),
             playback_bridge: None,
             pending_playback: None,
+            latest_playback: None,
             export_jobs: None,
             export_state_revision: 0,
+            latest_export: None,
         })
     }
 
@@ -795,8 +800,10 @@ impl EngineCommandDispatcher {
             events: VecDeque::with_capacity(MAX_PENDING_ENGINE_EVENTS),
             playback_bridge: None,
             pending_playback: None,
+            latest_playback: None,
             export_jobs: None,
             export_state_revision: 0,
+            latest_export: None,
         }
     }
 
@@ -856,6 +863,49 @@ impl EngineCommandDispatcher {
             resources,
             &self.recovery_snapshot()?,
         )
+    }
+
+    /// Returns one read-only integration validation snapshot over the same introspection state.
+    ///
+    /// The caller supplies the capability and optional resource observations used by canonical
+    /// engine introspection. This method adds exact lifecycle and recovery actions, scenario
+    /// reversal state, and retained playback and export observations without dispatching a command,
+    /// advancing a sequence, emitting an event, polling a worker, or mutating engine state.
+    pub fn integration_validation_snapshot(
+        &self,
+        media_capabilities: &MediaCapabilities,
+        resources: Option<&ResourceArbitrationSnapshot>,
+    ) -> Result<EngineIntegrationValidationSnapshot> {
+        self.require_owner()?;
+        let recovery = self.recovery_snapshot()?;
+        let lifecycle = recovery.lifecycle().clone();
+        let introspection =
+            EngineIntrospectionSnapshot::from_state(media_capabilities, resources, &recovery)?;
+        Ok(EngineIntegrationValidationSnapshot::new(
+            introspection,
+            self.scenario.snapshot(),
+            lifecycle,
+            recovery,
+            self.playback_bridge.is_some(),
+            self.pending_playback.is_some(),
+            self.latest_playback.clone(),
+            self.export_jobs.is_some(),
+            self.latest_export.clone(),
+        ))
+    }
+
+    /// Builds one fresh default engine validation snapshot for standalone public clients.
+    ///
+    /// The helper owns its temporary EngineControl domain and default declaration-only media
+    /// registry. Live application and test hosts should call [`Self::integration_validation_snapshot`]
+    /// on their existing dispatcher instead.
+    pub fn standalone_integration_validation_snapshot(
+    ) -> Result<EngineIntegrationValidationSnapshot> {
+        let _domain = ExecutionDomain::EngineControl.enter_current()?;
+        let dispatcher = Self::new()?;
+        let capabilities =
+            MediaCapabilities::from_registry(&crate::media::media_backend_registry()?)?;
+        dispatcher.integration_validation_snapshot(&capabilities, None)
     }
 
     /// Executes one command and publishes at most one state event.
@@ -1066,6 +1116,7 @@ impl EngineCommandDispatcher {
             ));
         }
         let snapshot = completion.snapshot;
+        self.latest_playback = Some((snapshot, completion.failure.clone()));
         self.events.push_back(EngineEventEnvelope {
             sequence: completion.event_sequence,
             command_sequence: completion.command_sequence,
@@ -1274,6 +1325,7 @@ impl EngineCommandDispatcher {
             self.export_state_revision
         };
         let state = EngineExportJobState::new(revision, execution.jobs);
+        self.latest_export = Some(state.clone());
         Ok(CommandExecution {
             result: EngineCommandResult::ExportJobs(Box::new(state.clone())),
             event: execution

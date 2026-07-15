@@ -25,7 +25,7 @@ a single checkpoint through mapping, planning, and execution, and routes multipl
 separate Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers
 but obeys an explicit positive user concurrency value. The file is ignored by Git and copied into
 managed worktrees through `.worktreeinclude`, so the mapping script does not include it in this
-module's 141-file inventory or source hash. It must still be reread independently before repository
+module's 143-file inventory or source hash. It must still be reread independently before repository
 work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
@@ -399,8 +399,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 
 - `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 24 local
   workspace packages, registry dependencies, target-support dependency trees, scenario digest
-  and process-instrumentation dependency edges, graph and timeline document serialization and
-  integrity edges, cache-key hashing, and the exact `oxideav-mp3` Git revision. Timeline state
+  and process-instrumentation dependency edges, the API introspection and validation contracts'
+  test edge to `superi-concurrency`, graph and timeline document serialization and integrity edges,
+  cache-key hashing, and the exact `oxideav-mp3` Git revision. Timeline state
   directly consumes the already-resolved `serde`, `serde_json`, and `sha2` packages, while
   `superi-cache` directly consumes the same pinned `sha2` package and now records its reviewed
   internal dependency on `superi-concurrency` for bounded background rendering. `superi-effects`
@@ -858,10 +859,10 @@ already-resolved permissive serialization and hashing packages, remains offline,
 effects-to-graph dependency direction, and does not move atomic project storage or plugin hosting
 into the workspace layer.
 
-The API engine-introspection integration test is the current test-only consumer added to the
-lockfile. It enters the concurrency-owned EngineControl domain to prove the real dispatcher seam;
-production API code does not import that crate, and no runtime ownership moves into the workspace
-layer.
+The API engine-introspection and integration-validation tests are the current test-only consumers
+recorded by that edge. They enter the concurrency-owned EngineControl domain to prove the real
+dispatcher seam; production API code does not import that crate, and no runtime ownership moves
+into the workspace layer.
 
 The documents deliberately point into other modules:
 

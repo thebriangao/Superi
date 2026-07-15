@@ -31,3 +31,11 @@ pub const EXECUTE_SCENARIO_TRANSACTION_METHOD: &str = "superi.slice.scenario.tra
 
 /// Ordered event name for complete scenario state changes.
 pub const SCENARIO_STATE_CHANGED_EVENT: &str = "superi.slice.scenario.state.changed";
+
+/// Schema version for coherent engine integration validation snapshots.
+pub const ENGINE_INTEGRATION_VALIDATION_SCHEMA_VERSION: SemanticVersion =
+    SemanticVersion::new(1, 0, 0);
+
+/// JSON-RPC method for querying coherent engine integration state.
+pub const GET_ENGINE_INTEGRATION_VALIDATION_METHOD: &str =
+    "superi.engine.integration.validation.get";

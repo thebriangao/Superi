@@ -2,38 +2,44 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: 77c1a5425f43086f0f38544f3f847c178e98fbabc48750fb893cf069a279b4f2
-source_files: 12
+source_hash: caf4fccb308f1c0195ecd375dc4e969a3d684f08c6292a63e9df554994ce4f9d
+source_files: 14
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
 `superi-api` owns the transport-neutral public boundary for UI, scripting, extension, CLI, and
-automation clients. Three public slices are implemented: media capability introspection, complete
-engine capability and health introspection for adaptive clients, and canonical editorial scenario
-control through revision-fenced typed transactions and ordered full-state events. Wire transport,
-subscriptions, scripting, cancellation, persistence, and broad editor operations remain absent.
+automation clients. Four public slices are implemented: media capability introspection, complete
+engine capability and health introspection for adaptive clients, canonical editorial scenario
+control through revision-fenced typed transactions and ordered full-state events, and coherent
+read-only integration validation. Wire transport, subscriptions, scripting, cancellation,
+persistence, and broad editor operations remain absent.
 
 ## Source inventory
 
 - `open/crates/superi-api/Cargo.toml`: Declares production `serde`, `superi-core`, and
   `superi-engine` dependencies plus test-only `serde_json`, `sha2`, `superi-media-io`, and
-  `superi-concurrency` for the real EngineControl integration contract.
+  `superi-concurrency` for the real EngineControl introspection and validation contracts.
 - `open/crates/superi-api/src/api.rs`: Implements public media and complete engine introspection
-  snapshots, strict engine-neutral projection, independent revisions, query state, and
-  full-replacement change events.
-- `open/crates/superi-api/src/commands.rs`: Defines `ApiCommand`, media and engine introspection
-  query types, and typed one-action and ordered transaction scenario commands.
+  snapshots, strict engine-neutral projection including project, device, sleep, and wake state,
+  independent revisions, query state, and full-replacement change events.
+- `open/crates/superi-api/src/commands.rs`: Defines `ApiCommand`, media, engine introspection, and
+  integration validation query types, plus typed one-action and ordered transaction scenario
+  commands.
 - `open/crates/superi-api/src/events.rs`: Defines `ApiEvent`, media and engine introspection change
   events, and the ordered full-replacement scenario state event.
-- `open/crates/superi-api/src/lib.rs`: Exposes API, command, event, scenario, scripting, and version
-  modules.
+- `open/crates/superi-api/src/lib.rs`: Exposes API, command, event, scenario, scripting, validation,
+  and version modules.
 - `open/crates/superi-api/src/scenario.rs`: Implements strict canonical action documents, public
   editorial state and graph projections, reversible operation evidence, structured failures, and
   the mutable dispatcher-backed `ScenarioApi` facade with optimistic transactions and event drain.
 - `open/crates/superi-api/src/scripting.rs`: Placeholder for a scripting runtime.
-- `open/crates/superi-api/src/version.rs`: Owns all three schema revisions and permanent method and
+- `open/crates/superi-api/src/validation.rs`: Strictly projects canonical engine integration state,
+  nested introspection, exact lifecycle and recovery actions, workflow permits or denials, scenario
+  reversal capacity, endpoint replacement state, and coherence findings through typed read-only
+  accessors. It also provides the standalone starting-engine query owner used by the CLI.
+- `open/crates/superi-api/src/version.rs`: Owns all four schema revisions and permanent method and
   event names.
 - `open/crates/superi-api/tests/media_capabilities_contract.rs`: Covers deterministic capability
   projection, strict serialization, change events, codec rows, and default registry integration.
@@ -44,6 +50,9 @@ subscriptions, scripting, cancellation, persistence, and broad editor operations
   dispatcher, lifecycle, error coordinator, and resource arbiter through strict public query and
   replacement-event projection, independent revisions, degradation, recovery, and safe diagnostic
   serialization.
+- `open/crates/superi-api/tests/integration_validation_contract.rs`: Covers strict versioned JSON,
+  nested canonical introspection, exact startup, sleep, wake, and recovery action projection,
+  coherent degraded workflow admission, and user-safe active failure state.
 - `open/crates/superi-api/tests/scenario_contract.rs`: Covers the strict canonical schema, complete
   state projection, exact undo plus redo evidence, and structured last-valid-state failures.
 
@@ -77,6 +86,15 @@ action lists.
 typed timeline state, complete graph nodes, ports, edges, transform parameters, implementation
 identity, the active four-entry operation log, and history depths. `ScenarioFailure` serializes
 category, recoverability, message, context frames, and the boxed last valid complete state.
+
+The coherent engine integration validation surface is schema `1.0.0` and method
+`superi.engine.integration.validation.get`. `GetEngineIntegrationValidation` is an unfiltered
+read-only query whose result carries one complete `IntegrationValidationSnapshot`. The snapshot
+nests the existing strict `EngineIntrospectionSnapshot`, then adds condition, coherence, canonical
+scenario reversal, exact lifecycle and recovery action tokens, revision-scoped workflow admission,
+playback transport, export queue, and finding state. `IntegrationValidationApi` owns only that
+immutable public observation. Live UI and test hosts construct it from their dispatcher snapshot,
+while `from_fresh_engine` provides the standalone starting-engine observation used by the CLI.
 
 ## Architecture and data flow
 
@@ -122,16 +140,32 @@ track identity, half-open ranges, full image-port graph topology, row-major bina
 sampling and edge behavior, and original mutation revisions. Unknown future engine enum variants
 map to explicit public `Unknown` values instead of being silently interpreted.
 
+The validation query follows a separate read-only path:
+
+```text
+GetEngineIntegrationValidation
+  -> EngineCommandDispatcher integration_validation_snapshot
+  -> canonical EngineIntrospectionSnapshot plus exact validation extensions
+  -> IntegrationValidationApi
+  -> strict API-owned IntegrationValidationSnapshot
+```
+
+The facade retains one immutable public snapshot, not a mutable lifecycle, recovery, playback, or
+export owner, and does not poll an endpoint. It preserves the canonical introspection projection,
+exact action and recovery tokens, full replacement endpoint observations, stable unknown fallbacks,
+and deterministic coherence findings from the engine result.
+
 ## Dependencies and consumers
 
 - `serde` supplies strict snake-case and tagged serialized shapes with unknown-field rejection.
 - `superi-core` supplies semantic versions, exact frame rates, and the classified error model.
 - `superi-engine` supplies capability declarations, complete immutable health and readiness state,
-  canonical transactional state, typed dispatch, and ordered replacement events.
+  canonical transactional state, typed dispatch, ordered replacement events, and integration
+  validation observations.
 - `serde_json`, `sha2`, `superi-media-io`, and `superi-concurrency` are test dependencies for wire,
   digest, registry, and EngineControl ownership contracts.
-- `superi-cli` is the first production Rust consumer of `ScenarioApi`; it never reaches engine
-  scenario state directly.
+- `superi-cli` is the first production Rust consumer of both `ScenarioApi` and
+  `IntegrationValidationApi`. It never projects engine state directly.
 
 No transport, UI, shell, scripting runtime, extension host, or closed-tier client is present.
 
@@ -159,6 +193,12 @@ No transport, UI, shell, scripting runtime, extension host, or closed-tier clien
   behavior.
 - Scenario engine revisions advance on every successful mutation, undo, or redo; the operation log
   retains original mutation revisions.
+- Integration validation is read-only. Snapshot construction and query execution advance no
+  dispatcher command or event sequence and cannot change scenario, lifecycle, recovery, playback,
+  export, capability, or resource state.
+- Workflow permit or denial state, lifecycle actions, recovery tokens, and endpoint observations are
+  projected exactly beside the nested canonical introspection state. Unknown future variants remain
+  explicit.
 - `os-codecs` changes engine registry assembly but not either public schema.
 
 ## Tests and verification
@@ -187,19 +227,32 @@ same dispatcher.
 These tests do not prove wire delivery ordering, scripting, UI integration, media decoding, graph
 pixel evaluation, native presentation, or runtime export publication.
 
+Three integration validation contracts prove schema `1.0.0`, the permanent method name, strict
+request and nested result decoding, canonical capability and health reuse, all six subsystem
+projections, startup, sleep, wake, and recovery action state, denied transitional workflows,
+coherent rendering degradation, unaffected playback, dependent rendering and export denial, and
+safe active failure projection through the same typed accessors available to UI and test clients.
+They do not claim a wire server, production UI, worker polling, platform rendering, or long-session
+recovery soak.
+
 ## Current status and risks
 
-The API now has three substantive control surfaces, but it is still far from the promised unified
+The API now has four substantive surfaces, but it is still far from the promised unified
 editor API. Engine introspection gives clients a coherent adaptation view without adding mutation
-authority. Scenario schema 1 is deliberately narrow and fixed to one canonical edit. Its reference
+authority, and integration validation extends that same state with precise action and endpoint
+evidence. Scenario schema 1 is deliberately narrow and fixed to one canonical edit. Its reference
 state proves transactional control semantics, not production timeline, graph, or media ownership.
 
-The separate media, engine introspection, and scenario schema versions are correct for independent
-surfaces, and the first scenario dispatcher is now implemented. The engine host still must supply
-fresh dispatcher and optional arbiter observations to the public introspection owner. Wire framing,
-version negotiation, authentication, subscription delivery, retry and idempotency policy, and
-cancellation remain required before remote clients exist. Public scenario failure state is boxed
-to keep result errors bounded while preserving the same serialized shape.
+Integration validation schema 1 provides one coherent read-only state for CLI, UI, and tests, but
+it remains an in-process snapshot facade. The standalone helper creates a fresh starting engine for
+the CLI; a production UI must supply fresh observations from its live dispatcher. Validation does
+not supply transport, subscription delivery, endpoint mutation, or background polling.
+
+The separate media, engine introspection, integration validation, and scenario schema versions are
+correct for independent surfaces. Wire framing, version negotiation, authentication, subscription
+delivery, retry and idempotency policy, and cancellation remain required before remote clients
+exist. Public scenario failure state is boxed to keep result errors bounded while preserving the
+same serialized shape.
 
 ## Maintenance notes
 

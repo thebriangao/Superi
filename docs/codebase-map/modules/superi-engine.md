@@ -2,8 +2,8 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 7ec14358cf5c5a13a8d7ae663bcbe3aa37f24b5be5fca57abcfa4cd26cc68d0c
-source_files: 51
+source_hash: 458f99a701b46423fc5f12193c265f8d2717e3a01519278af24cf979ff579fee
+source_files: 52
 mapped_at_commit: working-tree
 ---
 
@@ -24,9 +24,12 @@ and recovery, shared finite-resource arbitration across decode, GPU, cache, audi
 work, and atomic timeline plus clip-mix edits. An engine-wide typed command dispatcher
 coordinates canonical scenario transactions, lifecycle state changes, failure and recovery control,
 coherent work admission, bounded cross-domain playback control, canonical logical export-job
-control, read-only whole-engine observations, and ordered replacement events.
+control, read-only whole-engine introspection and integration validation, and ordered replacement
+events. Validation composes the canonical introspection snapshot with exact lifecycle, recovery,
+scenario, playback, and export evidence without polling a runtime owner or creating a second mutable
+state model.
 Native GPU presentation, timeline-owned decoded-audio rendering, export muxing and publication,
-general project transactions, plugins, nodes, and validation remain incomplete.
+general project transactions and nodes remain incomplete.
 
 The command path is a bounded reference owner for contract conformance. It does not claim to replace
 the production project, timeline, graph, media, color, render, or muxing owners.
@@ -55,10 +58,11 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   scenario, lifecycle, classified recovery, playback, and logical export events with
   originating-command correlation, canonical error-coordinator ownership, exact recovery tokens,
   lifecycle action routing, acknowledged sleep and wake commands, shutdown, restart, coherent work
-  admission, plus a one-command
-  nonblocking bridge from EngineControl to the playback owner. It also composes declaration-only
-  media state, optional exact resource accounting, and dispatcher-owned lifecycle and recovery
-  state into one read-only introspection snapshot without advancing a sequence or event.
+  admission, retained latest playback and export replacement state, plus a one-command nonblocking
+  bridge from EngineControl to the playback owner. It composes declaration-only media state,
+  optional exact resource accounting, and dispatcher-owned lifecycle and recovery state into
+  read-only introspection and integration validation snapshots without advancing a command or event
+  sequence.
 - `open/crates/superi-engine/src/error.rs`: Implements EngineControl-owned classified failure
   propagation, immutable actionable records, bounded diagnostic history, exact recovery-intent
   validation, failed-recovery reclassification, and coherent lifecycle routing without copying
@@ -121,7 +125,11 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   clock cadence, prediction replanning, protected discontinuities, bounded ordinary late-frame
   dropping, explicit audio degradation, immutable transport observations, and the stable typed
   command vocabulary consumed by the engine bridge.
-- `open/crates/superi-engine/src/validation.rs`: Placeholder for real-condition validation.
+- `open/crates/superi-engine/src/validation.rs`: Projects immutable engine integration validation
+  from canonical scenario, lifecycle, recovery, playback, and export state. It exposes precise
+  condition, per-workflow permit or denial, endpoint attachment, latest replacement state,
+  reversibility, and deterministic coherence findings without locks, waits, or duplicated mutable
+  ownership.
 - `open/crates/superi-engine/tests/av1_capability_contract.rs`: Default AV1 selection proof.
 - `open/crates/superi-engine/tests/audio_editorial_mix_contract.rs`: Proves atomic timeline and
   clip-mix publication plus complete audio intent, source, record, identity, grouping, linking, and
@@ -163,6 +171,9 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   details.
 - `open/crates/superi-engine/tests/frame_upload_contract.rs`: Upload, ownership, storage, and budget
   proof.
+- `open/crates/superi-engine/tests/integration_validation_contract.rs`: Proves coherent normal,
+  degraded, recovering, and recovered projections, exact playback, rendering, and export admission,
+  preserved scenario reversal evidence, rendering-only degradation, and retained export queue state.
 - `open/crates/superi-engine/tests/lifecycle_contract.rs`: Proves deterministic startup and reverse
   teardown, generated shared snapshots, coherent workflow admission, retained project state,
   volatile device and workflow release, forward wake revalidation, critical wake, superseded power
@@ -206,7 +217,8 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   supersession, pause and resume, frame stepping, fractional cadence, reverse looping, stale-work
   exclusion, bounded drops, protected intent, audio discontinuity, foreground and prediction
   degradation, viewport backpressure, recovery through the real playback owners, and bounded
-  EngineControl-to-Playback command and event dispatch.
+  EngineControl-to-Playback command and event dispatch, plus retained latest playback replacement
+  and failure state after ordered events are drained.
 - `open/crates/superi-engine/tests/scenario_contract.rs`: Exact canonical state, atomicity, bounds,
   operation log, and reversal proof.
 - `open/crates/superi-engine/tests/vendor_codec_registry_contract.rs`: Explicit vendor registry
@@ -230,9 +242,20 @@ executor for the real playback owner, `attach_export_jobs` installs the canonica
 queue behind a type-erased controller, and `scenario_only` is the explicit compatibility owner used
 by the narrow public reference API. `introspection_snapshot` composes current declaration-only
 media capabilities, optional exact shared-resource accounting, and dispatcher-owned lifecycle and
-recovery state without dispatching a command or publishing an event. Successful command and event sequences are independently
+recovery state without dispatching a command or publishing an event.
+`integration_validation_snapshot` composes that exact introspection state with scenario reversal,
+exact action and admission tokens, endpoint attachment, and retained replacement observations.
+`standalone_integration_validation_snapshot` owns a temporary EngineControl domain and default
+registry for the CLI, while application and test hosts use their existing dispatcher. Successful command and event sequences are independently
 monotonic, each event identifies its originating command sequence, and event draining returns
 complete ordered replacement state with scenario, lifecycle, playback, or export correlation.
+
+`validation` exposes `EngineIntegrationCondition`, stable coherence finding codes,
+`EngineWorkflowValidation`, endpoint-specific playback and export validation state, and
+`EngineIntegrationValidationSnapshot`. Each snapshot carries the canonical
+`EngineIntrospectionSnapshot`, scenario, lifecycle, and recovery state, three exact workflow
+admission results, latest retained endpoint replacement state, attachment evidence, and
+deterministic agreement and ownership findings.
 
 `export_dispatch` exposes the bounded `EngineExportJobSubmission` and
 `EngineExportJobCommand` vocabulary, `EngineExportJobSnapshot` and revisioned full
@@ -362,7 +385,7 @@ degradation, reclaim, and snapshot evidence. The six stable classes are decoded 
 memory, cache, audio, AI, and export. Lower subsystem allocators remain authoritative and callers
 charge the same declared managed payload into this higher shared envelope.
 
-The three remaining placeholder modules contain documentation only.
+The remaining placeholder module contains documentation only.
 
 ## Architecture and data flow
 
@@ -424,6 +447,23 @@ fresh worker attempt. Poll compares complete state around the canonical queue re
 revisioned full replacement event for observed progress, status, dependency, result, or failure
 changes. Inspection has no event, while pause, cancel, and removal remain available during
 degradation. Executor closures and typed artifacts never enter the command or event stream.
+
+### Coherent integration validation
+
+The dispatcher retains the latest completed playback replacement, bounded playback failure, and
+complete export queue replacement state as ordinary immutable observations. The playback bridge
+updates that cache before publishing its ordered event, and export commands replace the cache only
+after the canonical queue returns complete state. Event draining therefore cannot erase the latest
+validation evidence.
+
+`integration_validation_snapshot` starts with the exact canonical introspection projection, then
+adds current scenario, lifecycle, error coordinator, playback, and export observations in one
+EngineControl call. It derives the overall condition from the canonical lifecycle phase and active
+recovery action, asks the lifecycle snapshot for each playback, rendering, and export admission
+result, and reports exact permit or denial evidence. Deterministic findings reject introspection
+state that disagrees with lifecycle, recovery, or workflow state, recovery state that disagrees with
+the lifecycle action, and endpoint state that disagrees with attachment state. The inspector never
+polls a worker, acquires a new runtime lock, mutates a revision, or creates a parallel health owner.
 
 ### Registry, introspection, and upload
 
@@ -784,15 +824,16 @@ audio mutation, so their user intent remains attached without synthesis.
   production command integration. Project remains a skeleton; engine names only its quiescence and
   retained authoritative-state lifecycle boundary, not persistence or a project command model.
 - `superi-api` consumes dispatcher transactions and events plus command, media capability, and
-  complete engine introspection snapshots, preserving public adaptation and scenario seams without
-  exposing engine-private owners. The broader Rust
-  engine vocabulary includes playback and logical export dispatch, while their wire projection
-  remains with the future unified protocol host.
+  complete engine introspection and integration validation snapshots, preserving public adaptation,
+  validation, and scenario seams without exposing engine-private owners. Playback and logical export
+  mutation remain outside the public protocol, while their latest replacement state is visible
+  through the read-only validation query.
 - Cache and GPU retain their own exact local budget enforcement, audio retains its preallocated
   callback-safe queue, media I/O retains decoded value and lifecycle ownership, and export retains
   logical job and publication ownership. The engine arbiter composes a higher shared managed-byte
   envelope without replacing or weakening any of those local owners.
-- `superi-cli` reaches this module only through `superi-api`.
+- `superi-cli` reaches engine validation only through `superi-api`; the engine-owned standalone
+  helper hosts its temporary EngineControl dispatcher without widening the CLI dependency tier.
 
 ## Invariants and operational boundaries
 
@@ -977,8 +1018,14 @@ audio mutation, so their user intent remains attached without synthesis.
   active failure.
 - Successful recovery clears the subsystem's active failure and restores admission without erasing
   the latest reported failure evidence from the current lifetime snapshot.
-- Remaining placeholder modules do not imply whole-engine transport, node registration, concrete
-  native OFX ABI transport, or real-condition validation behavior.
+- Integration validation is a read-only projection of canonical owners. It never polls endpoint
+  workers, waits for progress, creates a second lifecycle or recovery state, or changes any command,
+  event, lifecycle, scenario, playback, or export revision.
+- Endpoint attachment and retained replacement state must agree. Recovery action state must agree
+  with the lifecycle action token, and every workflow permit or denial comes directly from the same
+  immutable lifecycle snapshot included in the result.
+- The remaining placeholder module does not imply whole-engine transport, node registration, or
+  concrete native OFX ABI transport.
 
 ## Tests and verification
 
@@ -999,6 +1046,15 @@ and resource arbiter. They prove read-only ownership, exact optional accounting,
 healthy admission, playback-only, rendering-plus-export, and export-only degradation, active
 recovery visibility, restored readiness, and safe failure projection without private messages,
 contexts, or paths.
+
+Three integration validation contracts drive the lifecycle-attached dispatcher through startup,
+sleep, wake, playback degradation, recovery start, recovery completion, rendering degradation, and
+a committed scenario transaction followed by undo and redo. They prove exact condition changes,
+canonical introspection, lifecycle, and recovery agreement, independent playback, rendering, and
+export permits or denials, complete scenario reversal capacity, endpoint attachment, retained export
+queue replacement state, and an empty finding set for coherent state. The playback transport bridge
+contract additionally proves that draining its event does not erase the latest replacement snapshot
+or bounded failure retained for validation.
 
 Two error dispatcher contracts run the canonical coordinator through the full engine command owner.
 They prove retryable and degraded failure state, unrelated-work admission, independent recovery
@@ -1138,22 +1194,25 @@ production timeline owner or the generic `superi-graph` DAG store.
 
 The typed dispatcher is the substantive engine-wide control seam for current scenario, lifecycle,
 classified failure and recovery, sleep, wake, shutdown, restart, work admission, capability and
-health observation, interactive transport, and logical export operations. Its read-only
-introspection snapshot exposes one coherent adaptation view without making project or engine state
-editable through that surface. Playback crosses
+health observation, interactive transport, logical export, and read-only integration validation
+operations. Its introspection and validation snapshots expose coherent adaptation and action
+evidence without making project or engine state editable through either surface. Playback crosses
 one bounded nonblocking bridge to its real domain owner. Logical export state remains in the
 canonical queue behind a type-erased dispatcher controller, while prepared executors receive fresh
 revision-scoped permits and render-export revalidates one before publication. The public JSON
-scenario projection remains intentionally narrower than the full Rust engine vocabulary.
+scenario projection remains intentionally narrower than the full Rust engine vocabulary, while the
+strict validation projection exposes the coherent state needed by public clients without opening a
+mutation path.
 
-Two orchestration files remain documentation-only placeholders. Source registration, timeline
+One orchestration file remains a documentation-only placeholder. Source registration, timeline
 media preparation, deterministic lifecycle, classified failure propagation and recovery,
 shared finite-resource arbitration, foreground playback, interactive transport, render-export
 execution, and bounded logical export scheduling are coherent and test-backed, but there is no
 timeline-owned decoded-audio graph
 renderer, persistent cache lifecycle owner, native GPU viewport or export submission, packet muxer,
 output publisher, project persistence, concrete platform OpenFX worker launchers, native OFX ABI
-adapters, GPU-handle transport, or real-condition validator. The effects-side OpenFX host contract
+adapters, or GPU-handle transport. The integration validator is substantive but observes only
+canonical cached state and cannot replace a production soak, platform lane, or wire client. The effects-side OpenFX host contract
 and engine-side bundle discovery, launch coordination, active registry rebuilding, containment,
 recovery, and quarantine are substantive.
 Playback prediction, foreground orchestration, and transport control are substantive, but they

@@ -21,7 +21,9 @@ use superi_engine::dispatcher::{
     EngineCommand, EngineCommandDispatcher, EngineCommandRequest, EngineCommandResult, EngineEvent,
     EngineTransactionId,
 };
+use superi_engine::introspection::MediaCapabilities;
 use superi_engine::lifecycle::{EngineSubsystem, EngineWorkKind};
+use superi_engine::media::media_backend_registry;
 use superi_engine::playback::{
     PlaybackAudioOutput, PlaybackFrameEvaluator, PlaybackOrchestrator, PlaybackPoll,
     PlaybackPrefetchEvaluator, PlaybackPrefetcher, PlaybackViewportFrame,
@@ -666,6 +668,24 @@ fn engine_dispatcher_routes_transport_commands_across_domains_with_ordered_state
         }
         event => panic!("unexpected playback event: {event:?}"),
     }
+    let capabilities =
+        MediaCapabilities::from_registry(&media_backend_registry().unwrap()).unwrap();
+    let validation = dispatcher
+        .integration_validation_snapshot(&capabilities, None)
+        .unwrap();
+    assert!(validation.playback().is_attached());
+    assert!(!validation.playback().command_pending());
+    assert_eq!(
+        validation
+            .playback()
+            .latest_snapshot()
+            .unwrap()
+            .playhead()
+            .value(),
+        5
+    );
+    assert!(validation.playback().latest_failure().is_none());
+    assert!(dispatcher.drain_events().unwrap().is_empty());
 
     dispatcher
         .dispatch(EngineCommandRequest::new(
@@ -741,6 +761,13 @@ fn engine_dispatcher_routes_transport_commands_across_domains_with_ordered_state
         }
         event => panic!("unexpected playback failure event: {event:?}"),
     }
+    let validation = dispatcher
+        .integration_validation_snapshot(&capabilities, None)
+        .unwrap();
+    assert_eq!(
+        validation.playback().latest_failure().unwrap().category(),
+        ErrorCategory::InvalidInput
+    );
     drop(engine_domain);
 
     drop(playback_executor);

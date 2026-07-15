@@ -2,8 +2,8 @@
 module_id: superi-cli
 source_paths:
   - open/crates/superi-cli
-source_hash: a11b56ec2a66de6b0f372ffc6571287a5da46a27043d653a2d72b5a2d3cd6c0b
-source_files: 6
+source_hash: 4ce9235f4165e00407d294b9d01449b5d128c7b2b1d46f195415f4e4673a98f1
+source_files: 7
 mapped_at_commit: working-tree
 ---
 
@@ -18,6 +18,10 @@ Each mutation uses one optimistic typed transaction and consumes one matching or
 event before the next stage proceeds.
 Its portable project-state observation removes checkout location from the canonical digest without
 weakening the exact undo and redo comparison or changing the path reported to clients.
+The exact `engine validate` command is a second public API consumer. It asks the API-owned
+standalone validation helper for one fresh starting-engine observation and prints a strict
+deterministic JSON snapshot containing canonical introspection, scenario reversal, lifecycle and
+recovery actions, workflow admission, playback, and export state.
 
 The current runner satisfies contract conformance only. It does not open or decode media, evaluate
 pixels, apply production color, encode AV1, mux WebM, or claim a working editor export. Every absent
@@ -32,7 +36,8 @@ production owner is explicit in stage diagnostics and the artifact name.
   digest reporting, instrumentation integration, undo plus redo proof, expectation observation
   wiring, active-feature reporting, checkout-independent project-state normalization,
   revision-fenced transaction and event agreement, collision-safe publication, structured exit
-  errors, and focused portable-digest and dispatcher-consumer contracts.
+  errors, exact `engine validate` dispatch and strict JSON output, and focused portable-digest and
+  dispatcher-consumer contracts.
 - `open/crates/superi-cli/src/expectations.rs`: Strictly resolves the derived slice expectation
   fixture, validates both parent identities, reference frames, synchronized PCM samples,
   timestamps, project states, and export metadata, then returns stable contract evidence. Focused
@@ -46,6 +51,9 @@ production owner is explicit in stage diagnostics and the artifact name.
   resident-memory evidence, exact expectation evidence, honest stub evidence, collision
   preservation, hosted workflow baseline command coverage, help, version, usage, and status 2
   invalid input.
+- `open/crates/superi-cli/tests/integration_validation_cli_contract.rs`: Proves deterministic exact
+  `engine validate` output, strict public schema identity, coherent startup action and three workflow
+  denials, unattached endpoint state, empty findings, help coverage, and invalid usage status.
 
 ## Public surface
 
@@ -55,6 +63,16 @@ This crate produces a binary, not a library. Its normalized scenario invocation 
 superi-cli slice run --scenario superi.slice.canonical.v1 \
   --artifact-dir <EMPTY_DIRECTORY> --report <REPORT_JSON>
 ```
+
+Its normalized engine integration validation invocation is:
+
+```text
+superi-cli engine validate
+```
+
+Validation success prints exactly one strict `GetEngineIntegrationValidationResult` JSON value to
+stdout. Incoherent validation or query failure is one structured `engine.validate` stage error and
+does not print a success snapshot.
 
 The artifact directory may be absent or empty, must not be a symlink, and receives
 `canonical.webm.contract-stub`. The report path must not exist. Both files use create-only temporary
@@ -87,6 +105,19 @@ fixture.resolve
   -> media.export
   -> slice.verify
 ```
+
+The independent validation process path uses the public validation facade:
+
+```text
+IntegrationValidationApi from_fresh_engine
+  -> engine-owned temporary EngineControl dispatcher and default registry
+  -> GetEngineIntegrationValidationResult
+  -> strict JSON stdout
+```
+
+The CLI imports only `superi-api` for this path. The engine owns its legal execution domain and
+canonical temporary dispatcher behind that public facade, so the CLI does not project engine state,
+poll playback or export workers, or create another lifecycle, recovery, or endpoint owner.
 
 The API receives exact import, placement, trim, and mirror actions. Each helper call snapshots the
 current revision, creates one caller-identified single-action transaction, dispatches it, drains
@@ -128,7 +159,8 @@ success.
 
 ## Dependencies and consumers
 
-- `superi-api` supplies the only editorial control boundary used by the runner.
+- `superi-api` supplies both public control boundaries used by the binary: revisioned scenario
+  transactions and immutable coherent integration validation.
 - `serde` and `serde_json` parse strict manifests and serialize state, stages, reports, artifacts,
   summaries, and failures.
 - `sha2` computes manifest, payload, semantic state, timeline, graph, operation log, and artifact
@@ -177,6 +209,9 @@ harness are its current consumers.
   memory peak.
 - The runner initiates no network operation and executes with default features in the isolated CI
   path.
+- `engine validate` accepts no options, initializes no subsystem action, polls no endpoint, and
+  changes no scenario, lifecycle, recovery, playback, or export state. It succeeds only when the
+  strict public snapshot reports coherent state.
 
 ## Tests and verification
 
@@ -206,12 +241,23 @@ directory, preservation of an existing report, exact status 2, and help, version
 The focused test does not prove Linux namespace isolation, production media behavior, real output
 decoding, or expected pixel comparison. Those remain widening or future-owner evidence.
 
+Two engine validation process contracts prove deterministic semantics across separate invocations,
+schema and result identity, nested canonical capability and health state, the exact starting
+shared-state initialization action, three explicit workflow denials, endpoint attachment state,
+empty coherence findings, help coverage, and precise invalid usage. They do not prove a running
+application session, UI rendering, endpoint polling, or long-session recovery.
+
 ## Current status and risks
 
-The CLI is now a substantive API consumer and canonical contract runner. Its strongest limitation
-is intentional: six stages model typed boundaries without production execution. The fixture payload
-is digest-validated but its decoded traits are reported as expected contract values because the
-current media stage does not open it.
+The CLI is now a substantive API consumer, canonical contract runner, and deterministic engine
+integration validation client. Its strongest slice limitation is intentional: six stages model
+typed boundaries without production execution. The fixture payload is digest-validated but its
+decoded traits are reported as expected contract values because the current media stage does not
+open it.
+
+`engine validate` currently constructs a fresh starting engine, so it proves the shared public
+query and strict state projection rather than attaching to an already running application process.
+The same facade is ready for a UI or test host that owns a live canonical dispatcher.
 
 Boundary samples do not continuously observe allocations inside a stage and are not a peak-memory,
 constrained-device, or long-session soak result. They provide a portable stage-local signal for the
