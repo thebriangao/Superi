@@ -90,6 +90,14 @@ grep -Fq 'shasum --algorithm 256 --check' "$workflow" ||
     fail "workflow must verify the libvpx source digest"
 grep -Fq 'SUPERI_LIBVPX_PATH=$SUPERI_LIBVPX_PATH' "$workflow" ||
     fail "workflow must transfer the approved libvpx path into isolation"
+grep -Fq 'CROS_LIBVA_H_PATH=$CROS_LIBVA_H_PATH' "$workflow" ||
+    fail "workflow must transfer the reviewed libva header path into isolation"
+grep -Fq 'PKG_CONFIG_PATH=$PKG_CONFIG_PATH' "$workflow" ||
+    fail "workflow must transfer the private libva pkg-config path into isolation"
+grep -Fq 'LIBRARY_PATH=$LIBRARY_PATH' "$workflow" ||
+    fail "workflow must transfer the private libva native linker path into isolation"
+grep -Fq 'LD_LIBRARY_PATH=$LD_LIBRARY_PATH' "$workflow" ||
+    fail "workflow must transfer the private libva runtime linker path into isolation"
 grep -Fq 'timeout-minutes:' "$workflow" || fail "workflow must have a timeout"
 grep -Fq 'cancel-in-progress: true' "$workflow" || fail "workflow must cancel superseded work"
 grep -Fq 'unshare --net' "$workflow" || fail "workflow must enter a network namespace"

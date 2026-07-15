@@ -92,6 +92,10 @@ jobs:
             "CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/open/target}" \
             "GITHUB_WORKSPACE=$GITHUB_WORKSPACE" \
             "CARGO_NET_OFFLINE=$CARGO_NET_OFFLINE" \
+            "CROS_LIBVA_H_PATH=$CROS_LIBVA_H_PATH" \
+            "PKG_CONFIG_PATH=$PKG_CONFIG_PATH" \
+            "LIBRARY_PATH=$LIBRARY_PATH" \
+            "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" \
             "SUPERI_LIBVPX_PATH=$SUPERI_LIBVPX_PATH" \
             "SUPERI_HOST_NETNS=$SUPERI_HOST_NETNS" \
             unshare --net -- ./ci/run-network-isolated.sh

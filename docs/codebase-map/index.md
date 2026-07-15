@@ -674,8 +674,10 @@ This proves the native host toolchain boundary, not the deferred Phase 3 applica
 behavior.
 
 The dedicated network-isolated workflow prepares locked Cargo artifacts, checksum-pinned libva 2.22
-and libvpx 1.16 runtimes, and nasm on Ubuntu 24.04 while online, then runs workspace tests, canonical
-fixture validation, and the canonical headless slice inside a distinct Linux network namespace with only
+and libvpx 1.16 runtimes, and nasm on Ubuntu 24.04 while online. It transfers the private libva
+header, pkg-config, native linker, and runtime linker paths plus the approved libvpx path through
+the privileged namespace boundary, then runs workspace tests, canonical fixture validation, and the
+canonical headless slice inside a distinct Linux network namespace with only
 loopback as verified through the namespace-aware procfs network view, no IPv4 route, a failed
 numeric outbound probe, and Cargo offline mode. Hosted run
 `29308007012` stopped before namespace entry because distribution libva API 1.20 could not satisfy

@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 246d7fd41aeaa0b942b3e525c2e8d50885b39eb128b0a88eac88f953e3a03cdf
+source_hash: 9ecac603c2bf71f4eb79c1058e0bb0a5664046fa8ab034132857db7104feb09c
 source_files: 124
 mapped_at_commit: working-tree
 ---
@@ -623,8 +623,9 @@ The network-isolated path begins on pull requests, pushes to `main`, or manual d
 checkout, disables persisted credentials, installs stable Rust, runs the shared checksum-pinned
 libva 2.22 provisioner, builds the approved libvpx 1.16 runtime, fetches locked dependencies, and
 builds the workspace and test executables while online. It records the host namespace and uses
-privileged `unshare --net` to enter a new namespace, carrying only the required Rust environment and
-approved libva and libvpx paths. The harness rejects the host namespace, any non-loopback interface,
+privileged `unshare --net` to enter a new namespace, carrying only the required Rust environment,
+the private libva header, pkg-config, native linker, and runtime linker paths, and the approved
+libvpx path. The harness rejects the host namespace, any non-loopback interface,
 any IPv4 route, or a successful numeric outbound connection before forcing Cargo offline and
 running workspace tests, fixture validation, and the CLI. Interface discovery uses the current
 namespace's procfs network view rather than a sysfs mount that can retain the host namespace view.
