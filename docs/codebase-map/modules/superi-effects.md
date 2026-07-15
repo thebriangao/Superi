@@ -2,16 +2,16 @@
 module_id: superi-effects
 source_paths:
   - open/crates/superi-effects
-source_hash: 099dbfbe0eadf5a8bb8554332111e550adbf517c8e3e4ef70ea6811bc6d84717
-source_files: 29
+source_hash: bf1fb9ad3199d558f86b0d97a946e4076813ee7f0167a98bc77db170d565e9e9
+source_files: 30
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
 `superi-effects` owns the higher-tier open visual effect authoring, animation, reusable control,
-visual composition, vector shape, mask, rotoscoping, text, transition, built-in operation, and bounded
-reference-evaluation layer above the generic graph. It provides inspectable typed definitions,
+visual and spatial composition, vector shape, mask, rotoscoping, motion tracking, text, transition, built-in
+operation, and bounded reference-evaluation layer above the generic graph. It provides inspectable typed definitions,
 ordinary editable graph-node instantiation, deterministic discovery, exact-schema runtime factory
 translation, exact keyframe animation, graph-native links and parent controls, bounded animated
 open and closed cubic vector paths with fills, strokes, gradients, and repeaters, bounded animated
@@ -21,7 +21,10 @@ precompositions, explicit collapse boundaries, and complete resolved visual path
 those owners into strict editable 2D and 3D spatial layers with animated transforms, cameras,
 ambient, directional, and point lights, deterministic depth ordering, exact shutter sampling, and
 a bounded real-pixel spatial oracle. It also owns editable exact-frame rotoscope artifacts with
-solver-independent propagation hooks and provides strict
+solver-independent propagation hooks and strict point,
+planar, object, and calibrated known-landmark camera tracking artifacts with manual corrections,
+tracked observations, transformed regions, revision-fenced solver results, and deterministic bounded
+CPU reference solving. It provides strict
 styled UTF-8 authoring, animated typography and paragraph controls, caller-resolved offline fonts,
 OpenType shaping, Unicode line breaking and bidi reordering, and inspectable positioned glyphs for
 a later raster owner. It also provides reusable cross-dissolve and directional-wipe schemas with
@@ -44,14 +47,15 @@ engine catalog registration, timeline effect attachment, playback, viewport, exp
 persistence, UI, production spatial GPU execution, vector shape rasterization, mask rasterization,
 feather and expansion
 filtering, propagation solvers, production transition attachment and GPU execution, text
-rasterization and GPU atlases, tracking, and OFX hosting remain absent or staged in their owning
-modules.
+rasterization and GPU atlases, pyramidal or GPU tracking acceleration, production tracking
+attachment, and OFX hosting remain absent or staged in their owning modules.
 
 ## Source inventory
 
 - `open/crates/superi-effects/Cargo.toml`: Declares approved downward dependencies on
   `superi-core`, `superi-gpu`, `superi-image`, and `superi-graph`. It uses workspace Serde for the
-  animation, composition, spatial, vector shape, mask, rotoscope, and text wires, `half` for checked binary16 reference
+  animation, composition, spatial, vector shape, mask, rotoscope, tracking, and text wires, `half`
+  for checked binary16 reference
   conversion, Swash and pinned Skrifa for offline OpenType shaping, Unicode Bidi and Unicode
   Linebreak for layout, and JSON only in tests.
 - `open/crates/superi-effects/src/authoring.rs`: Implements presentation metadata, typed effect
@@ -76,9 +80,9 @@ modules.
   easing, bounded time expressions, immutable curve editing, exact uniform retiming, deterministic
   evaluation, and the revisioned standalone wire.
 - `open/crates/superi-effects/src/lib.rs`: Documents the implemented authoring, animation,
-  composition, spatial, control, vector shape, mask, rotoscope, text, and transition foundations and
-  publicly exports them with the built-in catalog, reference evaluator, and staged visual feature
-  modules.
+  composition, spatial, control, vector shape, mask, rotoscope, tracking, text, and transition
+  foundations and publicly exports them
+  with the built-in catalog, reference evaluator, and staged visual feature modules.
 - `open/crates/superi-effects/src/mask.rs`: Implements animated closed cubic mask paths, fill rules,
   complete checked controls, immutable topology, control, and stack edits, exact-time sampling,
   deterministic soft-coverage boolean composition, and the strict revisioned mask-stack wire.
@@ -108,7 +112,12 @@ modules.
   and paragraph controls, immutable text and style edits, exact whole-layer retiming, strict
   versioned persistence, caller-owned offline font resolution, Swash shaping, Unicode line breaks,
   bidi visual ordering, wrapping, indents, alignment, justification, and owned positioned glyphs.
-- `open/crates/superi-effects/src/tracking.rs`: Placeholder for motion-tracking data and solving.
+- `open/crates/superi-effects/src/tracking.rs`: Implements exact-bit persisted tracking geometry,
+  stable track and feature identities, point, planar-region, object-region, and calibrated
+  known-landmark camera selections, authored corrections, revision-fenced derived samples,
+  strict bounded persistence, checked transient luma frames, iterative local point registration,
+  normalized residual-consensus homography fitting, 2D similarity fitting, and iterative camera
+  pose refinement.
 - `open/crates/superi-effects/src/transition.rs`: Implements stable cross-dissolve and
   directional-wipe kinds, exact versioned definitions and graph schemas, caller-owned instance
   construction, animatable progress, direction, and softness parameters, atomic registration,
@@ -149,6 +158,12 @@ modules.
   targets, directional anchors, injected hook execution, source provenance, correction precedence,
   immutable span and base editing, exact invalidation, stale and malformed result rejection, bounded
   state, strict persistence, `GraphValue::Domain`, and real editable graph reload.
+- `open/crates/superi-effects/tests/tracking_contract.rs`: Proves real luma-driven point, planar,
+  object, and calibrated camera solving, dominant planar residual consensus, transformed regions,
+  authored correction precedence and invalidation, nearest coherent temporal sources, stale and
+  malformed result rejection, shared core geometry conversion, strict bounded persistence,
+  animatable authoring, `GraphValue::Domain`, and canonical reuse across independent workflow-role
+  graphs.
 - `open/crates/superi-effects/tests/transition_contract.rs`: Proves exact handle timing, stable
   transition discovery, typed animatable parameters, atomic registration, caller-owned bindings,
   premultiplied dissolve and four-direction wipe pixels, soft edges, common display windows, ROI and
@@ -308,6 +323,35 @@ The library exports `authoring`, `catalog`, `composition`, `control`, `keyframe`
   decoding, and reconstructs all state through checked ranges, clocks, ordering, overlap, and size
   validation.
 
+`tracking` exposes editable motion state and bounded deterministic reference solvers:
+
+- `TrackId`, `FeatureId`, `TrackedFeature`, and `CameraLandmark` retain stable artifact-local
+  identities. `TrackingPoint`, `TrackingMatrix3`, and `TrackingRect` persist exact finite binary64
+  bits and convert explicitly to and from core-owned `Point2`, `Matrix3`, and `Rect`; `TrackingPoint3`
+  represents the camera solver's known world landmarks.
+- `TrackingSelection` stores point, planar region, object region, or calibrated camera intent.
+  Planar selections require at least four unique image features, object selections require at least
+  two, and camera selections require at least six unique noncoplanar known landmarks, positive
+  `CameraIntrinsics`, and an inspectable prior `CameraPose`.
+- `TrackingModel`, `TrackingObservation`, and `TrackingSample` expose the solved point, homography,
+  similarity transform, transformed region, camera pose, feature positions, confidence, and exact
+  integer frame coordinate. `TrackingTrack` keeps its authored reference and manual corrections
+  separate from replaceable derived samples.
+- `TrackingArtifact` canonicalizes tracks on one core-owned `Timebase`, advances immutable content
+  revisions, supports complete selection replacement and manual correction edits, resolves authored
+  state above derived samples, invalidates only the affected authored segment, and creates requests
+  from the nearest coherent available sample.
+- `TrackingRequest` and public checked `TrackingResult::new` form the engine-neutral solver seam.
+  Application rechecks artifact revision, track, source sample, target frame, model kind, feature
+  identity, transformed region, and observation residual before publishing atomically.
+- `TrackingFrame` accepts bounded explicit dense finite luma with no hidden image conversion.
+  `CpuTrackingSolver` applies iterative Lucas-Kanade point registration with a minimum-eigenvalue
+  texture gate, normalized bounded residual-consensus homography fitting, least-squares 2D
+  similarity fitting, and bounded Gauss-Newton calibrated pose refinement from known 3D landmarks.
+- `TRACKING_ARTIFACT_SCHEMA_REVISION` identifies the strict standalone wire. Unknown and future
+  state fail, every nested collection is bounded during decoding, finite bits are rechecked, and
+  complete state reconstructs through artifact validation before publication.
+
 `transition` exposes reusable graph-native visual transitions without duplicating editorial state:
 
 - `TransitionKind` discovers exact `1.0.0` cross-dissolve and directional-wipe schemas in stable
@@ -404,7 +448,7 @@ The library exports `authoring`, `catalog`, `composition`, `control`, `keyframe`
   `IntrospectNode` behavior. Transitions require a shared display window, fingerprint resolved
   progress and discrete choices, and blend premultiplied channels with exact endpoint behavior.
 
-The two remaining feature modules expose no substantive public types or behavior.
+The remaining OFX feature module exposes no substantive public types or behavior.
 
 ## Architecture and data flow
 
@@ -504,6 +548,34 @@ The rotoscope flow is:
    derived state. The real consumer test stores the artifact in an animatable effect parameter and
    `GraphValue::Domain`, reloads the graph document, and obtains canonical bytes and equal resolved
    frames.
+
+The motion-tracking flow is:
+
+1. A caller defines one stable track as a point, planar selected region, object region, or calibrated
+   camera with known noncoplanar world landmarks. Every feature, exact frame coordinate, reference
+   model, manual correction, solved model, observation, confidence, and transformed region remains
+   directly inspectable ordinary state on one artifact clock.
+2. `TrackingArtifact::solve_request` selects the nearest exact authored or derived sample and stamps
+   the current content revision, complete selection, source sample, and target frame. Manual
+   corrections resolve above solver output and invalidate derived samples only between adjacent
+   authored anchors.
+3. A solver receives that immutable request plus explicit checked source and target luma frames.
+   The public result constructor rejects a wrong frame, model kind, or feature identity, and atomic
+   application rejects stale revision, changed source state, authored target replacement, invalid
+   region geometry, and unexplained observations.
+4. The CPU reference uses bounded local gradient registration for each selected feature. Point
+   tracks publish direct positions; planar tracks normalize coordinates, score a bounded deterministic
+   set of homography candidates, and refit the dominant residual consensus; object tracks fit one
+   least-squares rotation, translation, and uniform scale; calibrated camera tracks minimize
+   landmark reprojection error from the prior world-to-camera pose.
+5. The strict wire stores no luma frame or solver cache. It bounds tracks, features, landmarks,
+   observations, and samples during decode and reconstructs the complete artifact through checked
+   selection, model, ordering, revision, and residual validation.
+6. The real consumer declares the complete artifact as one animatable effect parameter, wraps it as
+   `GraphValue::Domain`, reloads canonical graph documents in two independent workflow-role graphs,
+   and obtains equal inspectable state. This proves reusable editable persistence, not production
+   timeline attachment, project autosave, image decode, color conversion, pyramid tracking, GPU
+   acceleration, camera calibration, structure from motion, bundle adjustment, or rendered pixels.
 
 The text layout flow is:
 
@@ -633,17 +705,19 @@ The vector shape authoring flow is:
 ## Dependencies and consumers
 
 - `superi-core` supplies errors, diagnostics context, finite geometry, color and alpha semantics,
-  capability sets, semantic versions, `Point2`, `Vector2`, `RationalTime`, `Timebase`, exact
+  capability sets, semantic versions, `Point2`, `Vector2`, `Matrix3`, `Rect`, `RationalTime`, `Timebase`, exact
   rescaling, and stable primitive serialization.
 - `superi-graph` supplies schemas, registries, neutral `GraphValue<T>`, typed editable state,
   mutation, parameter evaluation and projected literal evaluation, typed parameter drivers,
   bounded scalar expressions, immutable runtime compilation, lazy evaluation, diagnostics, cache
   identity, and generic graph persistence. Graph never depends on effects.
 - `superi-image` supplies immutable image artifacts, metadata, exact crop and transform operations,
-  sample representations, and finite limits.
+  sample representations, and finite limits. Tracking deliberately accepts explicit checked luma
+  instead of inventing an implicit image color conversion or residency route.
 - `superi-gpu` is a declared production capability dependency. Current effects source uploads,
   owns, and evaluates no GPU resource.
-- Serde owns strict animation, visual-composition, spatial-composition, vector-shape, mask-stack, rotoscope, and text
+- Serde owns strict animation, visual-composition, spatial-composition, vector-shape, mask-stack,
+  rotoscope, tracking, and text
   records. JSON and
   the reviewed Tinos subset are test-only. `half` performs checked reference conversion to and from
   binary16. Swash 0.2.9 and Skrifa 0.31.1 parse and shape caller-resolved local font bytes; Unicode
@@ -659,10 +733,11 @@ The vector shape authoring flow is:
 - `superi-engine` declares `superi-effects` but has no production catalog, animation, evaluator,
   playback, viewport, or export call site. Current real consumers are the role-neutral authoring,
   generic graph reload, reusable controls over shared processing payloads, strict animation,
-  visual-composition, spatial-composition, vector-shape, mask, rotoscope, and text payloads,
+  visual-composition, spatial-composition, vector-shape, mask, rotoscope, tracking, and text payloads,
   inspectable glyph layout, transition authoring and timing, and bounded headless graph-evaluation
-  contracts. Composition, spatial, shape, mask, text, and transition tests label independent ordinary
-  graphs as timeline and node-graph roles without claiming production timeline attachment.
+  contracts. Composition, spatial, shape, mask, tracking, text, and transition tests label independent
+  ordinary graphs as timeline and
+  node-graph roles without claiming production timeline attachment.
 
 ## Invariants and operational boundaries
 
@@ -749,6 +824,25 @@ The vector shape authoring flow is:
 - Propagation is replaceable derived state. Requests are bounded and directionally ordered, results
   cover the target sequence exactly, revision and request identity are checked atomically, and manual
   corrections always resolve above propagated samples and survive repropagation.
+- Tracking selections, tracks, features, landmarks, observations, corrections, and derived samples
+  are bounded and canonical. Every artifact uses one exact core timebase, integer frame coordinates,
+  exact finite geometry bits, stable identities, and immutable revisioned edits.
+- Authored reference state and manual corrections always resolve above solver output. Correction
+  changes invalidate only the segment between adjacent authored anchors, requests select the nearest
+  coherent exact sample, and result application rechecks revision, source state, track, target,
+  model kind, feature identity, region geometry, and observation residual atomically.
+- Tracking frame luma is explicit transient input and never enters the artifact wire. Dimensions,
+  sample count, finite values, patch radius, iterations, displacement, tracks, features, landmarks,
+  observations, samples, and deterministic homography candidates are all hard bounded before their
+  work or allocation boundary.
+- Point registration rejects border, texture, displacement, and residual failures. Planar fitting
+  normalizes coordinates and uses bounded deterministic residual consensus; object fitting rejects
+  insufficient spatial spread; camera fitting requires positive calibrated intrinsics, noncoplanar
+  known landmarks, positive depth, a prior pose, a nonsingular system, and bounded reprojection
+  residual.
+- Camera tracking owns only calibrated known-landmark pose refinement. It does not calibrate lenses,
+  infer scene structure, run bundle adjustment, model rolling shutter, or create a camera, project,
+  image, timeline, GPU, or render owner.
 - Workflow parity is structural. Timeline and node-graph roles receive no role flag or hidden state
   branch, and old immutable graph revisions cannot observe later direct edits.
 - Reusable controls are typed references to ordinary animatable parameters. Control and relationship
@@ -807,8 +901,9 @@ The vector shape authoring flow is:
 - Current code performs bounded reference pixel processing, spatial composition proof, and ROI
   calculation, but no production GPU submission, cache integration, mask path rasterization, feather or expansion filtering,
   production timeline sampling or transition attachment, engine playback, project autosave, propagation solver, plugin
-  containment, text rasterization, glyph atlas, or rendered text composition. The reference oracle
-  and text layout engine are not production render routes.
+  containment, text rasterization, glyph atlas, production tracking attachment or acceleration, or
+  rendered text composition. The reference oracle, tracking solver, and text layout engine are not
+  production render routes.
 
 ## Tests and verification
 
@@ -869,6 +964,13 @@ editing, propagation clearing, stale and malformed output rejection, bounded con
 wire reconstruction, generic mask payload retention, animatable effect authoring, `GraphValue`
 reuse, and canonical graph reload.
 
+Nine tracking tests prove shared core geometry conversion, real point registration, dominant-motion
+planar homography recovery with a coherent outlier, object similarity motion and transformed bounds,
+calibrated known-landmark camera pose refinement, exact temporal source selection, correction
+precedence and segment invalidation, stale and malformed external result rejection, strict bounded
+wire reconstruction, all four selection kinds in ordinary state, animatable effect authoring,
+`GraphValue::Domain`, and canonical reload in independent timeline-role and node-graph-role graphs.
+
 Seven text tests prove deterministic real OpenType shaping from reviewed local bytes, Unicode LTR
 and RTL run ordering, animated wrapping, paragraph alignment and typography, exact whole-layer
 retiming, immutable UTF-8, style and paragraph edits, strict bounded wire reconstruction, missing
@@ -903,11 +1005,13 @@ composition artifacts, same-composition parenting, reusable precompositions, exp
 boundaries, exact time remapping, strict spatial composition artifacts, editable 2D and 3D
 transforms, cameras, lights, depth ordering, exact motion sampling, editable vector shape documents, animated mask authoring and
 composition, editable rotoscope artifacts and propagation hooks, styled text authoring and real
-glyph layout, built-in definitions, generic editable instantiation, deterministic CPU reference
+glyph layout, editable point, planar, object, and calibrated camera tracking with bounded CPU
+reference solvers, built-in definitions, generic editable instantiation, deterministic CPU reference
 pixels including bounded spatial composition, ROI mapping, immutable graph compilation,
 introspection, reusable transition definitions,
 exact transition timing, bounded transition pixels, and role-neutral graph proofs are substantive
-and test-backed. Strict curve, visual-composition, spatial-composition, vector-shape, mask-stack, rotoscope, and text
+and test-backed. Strict curve, visual-composition, spatial-composition, vector-shape, mask-stack,
+rotoscope, tracking, and text
 payloads retain authored state across generic graph reload. The reference and text layout
 implementations are scalar, allocation-bounded CPU proofs, not performance production render code,
 and vector shapes, masks, and text have no rasterizer or rendered consumer.
@@ -915,7 +1019,8 @@ and vector shapes, masks, and text have no rasterizer or rendered consumer.
 There is no GPU shader parity, engine registry, production runtime catalog, timeline attachment,
 playback, viewport, export, project persistence, UI, production spatial transform, camera, light, or
 motion-blur execution, vector shape rasterization, mask rasterization,
-propagation solver, text rasterization or glyph atlas, tracking solver, production transition
+propagation solver, text rasterization or glyph atlas, production tracking attachment, pyramid or GPU
+tracking acceleration, production transition
 attachment, or OFX host. Rotoscope mask payloads are generic and have no production mask-type
 consumer yet. Authoring metadata is in memory and has no independent wire. Control hints do not yet
 encode enforceable numeric bounds, choice option vocabularies, grouping, conditional visibility, or
@@ -924,6 +1029,14 @@ compiler. Animation has no stable project-level property identity or production 
 Visual composition resolution is structural, and the spatial module is its effects-owned reference
 consumer. Neither has a production engine compiler, GPU renderer, timeline attachment, or
 project-level document owner yet.
+
+Tracking is a bounded scalar CPU reference over caller-supplied luma, not a production optical-flow
+engine. Local registration has no pyramid and intentionally rejects large displacement, border,
+texture-degenerate, or high-residual patches. Camera tracking assumes caller-calibrated intrinsics,
+known noncoplanar landmarks, and a close prior pose; it does not perform calibration, structure from
+motion, rolling-shutter estimation, scene reconstruction, or bundle adjustment. The timeline-role
+tracking proof uses ordinary graphs because no production effect attachment, project owner, frame
+provider, engine scheduler, UI, viewport, cache, or GPU consumer exists.
 
 Reusable control presentation and rig definitions remain in-memory authoring descriptions, while
 their applied driver meaning is persisted by graph. Parent expressions are scalar only. Spatial
@@ -962,6 +1075,14 @@ allocation. Keep rotoscope bases and corrections canonical, propagation derived,
 wire collection bounded, revisions fenced, exact clocks unchanged, and generic mask payloads
 uninterpreted by the temporal layer. Never store a second effects-only dependency graph, evaluated
 control cache, or solver-owned rotoscope state.
+
+Keep tracking selections, authored references, and corrections canonical, derived samples
+replaceable, exact clocks and identities unchanged, external solver results request-bound, and every
+wire plus work collection bounded. Preserve explicit luma ownership and core geometry conversions.
+Future pyramid, GPU, frame-provider, cache, timeline, UI, project, and engine integration must
+consume the same artifact without hiding observations, overwriting corrections, weakening revision
+fences, changing deterministic CPU meaning, or treating known-landmark pose refinement as camera
+calibration or scene reconstruction.
 
 Keep text fonts caller-resolved and offline, authored spans canonical, curve clocks and intervals
 identical, discrete changes hold-interpolated, nested wires reconstructed through checked owners,
