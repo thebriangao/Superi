@@ -48,6 +48,7 @@ const TEMP_ATTEMPTS: usize = 64;
 
 static NEXT_TEMP_FILE: AtomicU64 = AtomicU64::new(1);
 static NEXT_QUARANTINE_FILE: AtomicU64 = AtomicU64::new(1);
+static NEXT_LIFECYCLE_PATH: AtomicU64 = AtomicU64::new(1);
 
 /// Filesystem root and per-entry allocation bound for one persistent cache.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -212,6 +213,186 @@ impl<'a> FrameDiskCacheContext<'a> {
     }
 }
 
+/// Immutable deterministic inventory of one persistent schema namespace.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DiskCacheInspection {
+    root: PathBuf,
+    final_entry_count: usize,
+    intermediate_entry_count: usize,
+    quarantined_file_count: usize,
+    temporary_file_count: usize,
+    unknown_file_count: usize,
+    managed_bytes: u128,
+    total_bytes: u128,
+    diagnostic_count: usize,
+}
+
+impl DiskCacheInspection {
+    /// Returns the concrete format and value-schema namespace inspected.
+    #[must_use]
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Returns complete final-frame entry files.
+    #[must_use]
+    pub const fn final_entry_count(&self) -> usize {
+        self.final_entry_count
+    }
+
+    /// Returns complete intermediate-node entry files.
+    #[must_use]
+    pub const fn intermediate_entry_count(&self) -> usize {
+        self.intermediate_entry_count
+    }
+
+    /// Returns isolated corruption artifacts retained for diagnosis.
+    #[must_use]
+    pub const fn quarantined_file_count(&self) -> usize {
+        self.quarantined_file_count
+    }
+
+    /// Returns unpublished temporary entry files.
+    #[must_use]
+    pub const fn temporary_file_count(&self) -> usize {
+        self.temporary_file_count
+    }
+
+    /// Returns regular files outside recognized entry and recovery namespaces.
+    #[must_use]
+    pub const fn unknown_file_count(&self) -> usize {
+        self.unknown_file_count
+    }
+
+    /// Returns exact bytes occupied by complete final and intermediate entries.
+    #[must_use]
+    pub const fn managed_bytes(&self) -> u128 {
+        self.managed_bytes
+    }
+
+    /// Returns exact bytes occupied by every regular file in the namespace.
+    #[must_use]
+    pub const fn total_bytes(&self) -> u128 {
+        self.total_bytes
+    }
+
+    /// Returns persistence diagnostics queued when this inspection began.
+    #[must_use]
+    pub const fn diagnostic_count(&self) -> usize {
+        self.diagnostic_count
+    }
+}
+
+/// Deterministic evidence from publishing an empty persistent namespace.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DiskCacheClearReport {
+    removed: DiskCacheInspection,
+    cleanup_pending: bool,
+}
+
+impl DiskCacheClearReport {
+    /// Returns the complete detached namespace inventory.
+    #[must_use]
+    pub const fn removed_inspection(&self) -> &DiskCacheInspection {
+        &self.removed
+    }
+
+    /// Returns removed final-frame entry count.
+    #[must_use]
+    pub const fn removed_final_entries(&self) -> usize {
+        self.removed.final_entry_count
+    }
+
+    /// Returns removed intermediate-node entry count.
+    #[must_use]
+    pub const fn removed_intermediate_entries(&self) -> usize {
+        self.removed.intermediate_entry_count
+    }
+
+    /// Returns all regular bytes detached from the active namespace.
+    #[must_use]
+    pub const fn removed_bytes(&self) -> u128 {
+        self.removed.total_bytes
+    }
+
+    /// Returns whether detached cleanup degraded after the empty namespace became authoritative.
+    #[must_use]
+    pub const fn cleanup_pending(&self) -> bool {
+        self.cleanup_pending
+    }
+}
+
+/// Filesystem strategy that published one relocation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DiskCacheRelocationMethod {
+    /// Source and destination already denoted the same namespace.
+    Unchanged,
+    /// The complete namespace moved through one filesystem rename.
+    Renamed,
+    /// A synchronized destination-local copy was published before source cleanup.
+    Copied,
+}
+
+/// Deterministic evidence from relocating one complete persistent namespace.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DiskCacheRelocationReport {
+    source: PathBuf,
+    destination: PathBuf,
+    method: DiskCacheRelocationMethod,
+    moved: DiskCacheInspection,
+    source_cleanup_pending: bool,
+}
+
+impl DiskCacheRelocationReport {
+    /// Returns the publication strategy.
+    #[must_use]
+    pub const fn method(&self) -> DiskCacheRelocationMethod {
+        self.method
+    }
+
+    /// Returns the former concrete namespace.
+    #[must_use]
+    pub fn source(&self) -> &Path {
+        &self.source
+    }
+
+    /// Returns the new concrete namespace.
+    #[must_use]
+    pub fn destination(&self) -> &Path {
+        &self.destination
+    }
+
+    /// Returns the complete namespace inventory observed before relocation.
+    #[must_use]
+    pub const fn moved_inspection(&self) -> &DiskCacheInspection {
+        &self.moved
+    }
+
+    /// Returns the relocated final-frame entry count.
+    #[must_use]
+    pub const fn moved_final_entries(&self) -> usize {
+        self.moved.final_entry_count
+    }
+
+    /// Returns the relocated intermediate-node entry count.
+    #[must_use]
+    pub const fn moved_intermediate_entries(&self) -> usize {
+        self.moved.intermediate_entry_count
+    }
+
+    /// Returns all regular bytes published at the destination.
+    #[must_use]
+    pub const fn moved_bytes(&self) -> u128 {
+        self.moved.total_bytes
+    }
+
+    /// Returns whether the old copied namespace could not be removed after publication.
+    #[must_use]
+    pub const fn source_cleanup_pending(&self) -> bool {
+        self.source_cleanup_pending
+    }
+}
+
 /// Thread-safe persistent final-frame and intermediate-node value storage.
 ///
 /// Graph-facing lookup and insertion never return persistence failures to evaluation. Instead, the
@@ -280,6 +461,205 @@ impl<V> FrameDiskCache<V> {
         std::mem::take(&mut *lock_or_recover(&self.diagnostics))
     }
 
+    /// Inspects the complete schema namespace without following filesystem links.
+    pub fn inspect(&self) -> Result<DiskCacheInspection> {
+        let _guard = lock_or_recover(&self.io_lock);
+        inspect_namespace(&self.root, self.diagnostic_len())
+    }
+
+    /// Atomically publishes an empty active namespace, then removes detached cache bytes.
+    ///
+    /// Inspection fails closed on links or special files. A failure before the empty namespace is
+    /// synchronized restores the prior namespace. Cleanup failure after publication is reported as
+    /// degraded diagnostic state while the empty namespace remains authoritative.
+    pub fn clear(&self) -> Result<DiskCacheClearReport> {
+        let _guard = lock_or_recover(&self.io_lock);
+        let removed = inspect_namespace(&self.root, self.diagnostic_len())?;
+        let tombstone = unique_sibling(&self.root, "clear")?;
+        fs::rename(&self.root, &tombstone).map_err(|source| {
+            lifecycle_io_error(
+                "detach_namespace_for_clear",
+                "could not detach the persistent cache namespace for clearing",
+                &self.root,
+                source,
+            )
+        })?;
+
+        if let Err(source) = fs::create_dir(&self.root) {
+            return Err(restore_clear_failure(
+                &self.root,
+                &tombstone,
+                "could not publish an empty persistent cache namespace",
+                source,
+            ));
+        }
+        if let Err(source) = sync_parent(self.root.expect_parent()) {
+            return Err(restore_clear_failure(
+                &self.root,
+                &tombstone,
+                "could not synchronize the empty persistent cache namespace",
+                source,
+            ));
+        }
+
+        let cleanup_pending = match fs::remove_dir_all(&tombstone) {
+            Ok(()) => {
+                self.record_sync_degradation(
+                    "sync_cleared_namespace_parent",
+                    self.root.expect_parent(),
+                );
+                false
+            }
+            Err(source) => {
+                self.record(lifecycle_io_error(
+                    "remove_cleared_namespace",
+                    "the empty cache namespace is active but detached bytes could not be removed",
+                    &tombstone,
+                    source,
+                ));
+                true
+            }
+        };
+        Ok(DiskCacheClearReport {
+            removed,
+            cleanup_pending,
+        })
+    }
+
+    /// Relocates the complete schema namespace while preserving the old source until publication.
+    ///
+    /// The destination is the caller-selected cache root before format and schema partitioning.
+    /// Same-filesystem relocation uses one directory rename. Otherwise a deterministic no-follow
+    /// copy is synchronized and renamed into place before source cleanup begins.
+    pub fn relocate(
+        &mut self,
+        destination_root: impl AsRef<Path>,
+    ) -> Result<DiskCacheRelocationReport> {
+        let source = self.root.clone();
+        let destination = namespace_root(destination_root.as_ref(), &self.schema);
+        if destination == source {
+            return Ok(DiskCacheRelocationReport {
+                source: source.clone(),
+                destination,
+                method: DiskCacheRelocationMethod::Unchanged,
+                moved: self.inspect()?,
+                source_cleanup_pending: false,
+            });
+        }
+        if destination.starts_with(&source) {
+            return Err(lifecycle_error(
+                ErrorCategory::InvalidInput,
+                Recoverability::UserCorrectable,
+                "persistent cache destination must not be inside the active namespace",
+                "relocate_namespace",
+                &destination,
+                "destination_inside_source",
+            ));
+        }
+
+        let guard = lock_or_recover(&self.io_lock);
+        let moved = inspect_namespace(&source, self.diagnostic_len())?;
+        match fs::symlink_metadata(&destination) {
+            Ok(_) => {
+                return Err(lifecycle_error(
+                    ErrorCategory::Conflict,
+                    Recoverability::UserCorrectable,
+                    "persistent cache relocation destination is already occupied",
+                    "relocate_namespace",
+                    &destination,
+                    "destination_occupied",
+                ));
+            }
+            Err(source) if source.kind() == io::ErrorKind::NotFound => {}
+            Err(source) => {
+                return Err(lifecycle_io_error(
+                    "inspect_relocation_destination",
+                    "could not inspect the persistent cache relocation destination",
+                    &destination,
+                    source,
+                ));
+            }
+        }
+        let destination_parent = destination.expect_parent();
+        fs::create_dir_all(destination_parent).map_err(|source| {
+            lifecycle_io_error(
+                "create_relocation_parent",
+                "could not create the persistent cache relocation parent",
+                destination_parent,
+                source,
+            )
+        })?;
+
+        let (method, source_cleanup_pending) = match fs::rename(&source, &destination) {
+            Ok(()) => {
+                self.record_sync_degradation(
+                    "sync_relocated_source_parent",
+                    source.expect_parent(),
+                );
+                if destination_parent != source.expect_parent() {
+                    self.record_sync_degradation(
+                        "sync_relocated_destination_parent",
+                        destination_parent,
+                    );
+                }
+                (DiskCacheRelocationMethod::Renamed, false)
+            }
+            Err(_rename_source) => {
+                let staging = unique_sibling(&destination, "relocate")?;
+                if let Err(source_error) = copy_namespace(&source, &staging) {
+                    let _ = fs::remove_dir_all(&staging);
+                    return Err(lifecycle_io_error(
+                        "copy_relocation_namespace",
+                        "could not stage a complete persistent cache namespace",
+                        &staging,
+                        source_error,
+                    ));
+                }
+                if let Err(source_error) = fs::rename(&staging, &destination) {
+                    let _ = fs::remove_dir_all(&staging);
+                    return Err(lifecycle_io_error(
+                        "publish_relocation_namespace",
+                        "could not publish the staged persistent cache namespace",
+                        &destination,
+                        source_error,
+                    ));
+                }
+                self.record_sync_degradation(
+                    "sync_relocated_destination_parent",
+                    destination_parent,
+                );
+                let cleanup_pending = match fs::remove_dir_all(&source) {
+                    Ok(()) => {
+                        self.record_sync_degradation(
+                            "sync_relocated_source_parent",
+                            source.expect_parent(),
+                        );
+                        false
+                    }
+                    Err(source_error) => {
+                        self.record(lifecycle_io_error(
+                            "remove_relocated_source",
+                            "the relocated cache is active but its source copy could not be removed",
+                            &source,
+                            source_error,
+                        ));
+                        true
+                    }
+                };
+                (DiskCacheRelocationMethod::Copied, cleanup_pending)
+            }
+        };
+        drop(guard);
+        self.root = destination.clone();
+        Ok(DiskCacheRelocationReport {
+            source,
+            destination,
+            method,
+            moved,
+            source_cleanup_pending,
+        })
+    }
+
     /// Binds one project and complete outer result identity to graph-driven disk reuse.
     #[must_use]
     pub const fn scope<'cache, 'context>(
@@ -294,6 +674,17 @@ impl<V> FrameDiskCache<V> {
 
     fn record(&self, error: Error) {
         lock_or_recover(&self.diagnostics).push(error);
+    }
+
+    fn record_sync_degradation(&self, operation: &'static str, directory: &Path) {
+        if let Err(source) = sync_parent(directory) {
+            self.record(lifecycle_io_error(
+                operation,
+                "persistent cache directory publication could not be synchronized",
+                directory,
+                source,
+            ));
+        }
     }
 
     fn load(&self, kind: EvaluationCacheEntryKind, key: DiskEntryKey) -> Result<Option<V>> {
@@ -959,6 +1350,262 @@ fn recover_entry(path: &Path) -> Recovery {
     }
 }
 
+#[derive(Default)]
+struct NamespaceInspectionState {
+    final_entry_count: usize,
+    intermediate_entry_count: usize,
+    quarantined_file_count: usize,
+    temporary_file_count: usize,
+    unknown_file_count: usize,
+    managed_bytes: u128,
+    total_bytes: u128,
+}
+
+fn inspect_namespace(root: &Path, diagnostic_count: usize) -> Result<DiskCacheInspection> {
+    let metadata = fs::symlink_metadata(root).map_err(|source| {
+        lifecycle_io_error(
+            "inspect_namespace",
+            "could not inspect the persistent cache namespace",
+            root,
+            source,
+        )
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(lifecycle_error(
+            ErrorCategory::CorruptData,
+            Recoverability::UserCorrectable,
+            "persistent cache namespace must be a real directory",
+            "inspect_namespace",
+            root,
+            "unsafe_namespace_type",
+        ));
+    }
+    let mut state = NamespaceInspectionState::default();
+    inspect_namespace_directory(root, root, &mut state)?;
+    Ok(DiskCacheInspection {
+        root: root.to_path_buf(),
+        final_entry_count: state.final_entry_count,
+        intermediate_entry_count: state.intermediate_entry_count,
+        quarantined_file_count: state.quarantined_file_count,
+        temporary_file_count: state.temporary_file_count,
+        unknown_file_count: state.unknown_file_count,
+        managed_bytes: state.managed_bytes,
+        total_bytes: state.total_bytes,
+        diagnostic_count,
+    })
+}
+
+fn inspect_namespace_directory(
+    root: &Path,
+    directory: &Path,
+    state: &mut NamespaceInspectionState,
+) -> Result<()> {
+    let mut entries = fs::read_dir(directory)
+        .map_err(|source| {
+            lifecycle_io_error(
+                "inspect_namespace",
+                "could not enumerate the persistent cache namespace",
+                directory,
+                source,
+            )
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(|source| {
+            lifecycle_io_error(
+                "inspect_namespace",
+                "could not enumerate a persistent cache namespace entry",
+                directory,
+                source,
+            )
+        })?;
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path).map_err(|source| {
+            lifecycle_io_error(
+                "inspect_namespace",
+                "could not inspect a persistent cache namespace entry",
+                &path,
+                source,
+            )
+        })?;
+        let file_type = metadata.file_type();
+        if file_type.is_symlink() {
+            return Err(lifecycle_error(
+                ErrorCategory::CorruptData,
+                Recoverability::UserCorrectable,
+                "persistent cache lifecycle operations do not follow symbolic links",
+                "inspect_namespace",
+                &path,
+                "symbolic_link_rejected",
+            ));
+        }
+        if file_type.is_dir() {
+            inspect_namespace_directory(root, &path, state)?;
+            continue;
+        }
+        if !file_type.is_file() {
+            return Err(lifecycle_error(
+                ErrorCategory::CorruptData,
+                Recoverability::UserCorrectable,
+                "persistent cache lifecycle operations reject special files",
+                "inspect_namespace",
+                &path,
+                "special_file_rejected",
+            ));
+        }
+
+        let bytes = u128::from(metadata.len());
+        state.total_bytes += bytes;
+        let name = path
+            .file_name()
+            .expect("inspected cache file owns a name")
+            .to_string_lossy();
+        if name.contains(".corrupt-") {
+            state.quarantined_file_count += 1;
+        } else if name.contains(".tmp-") {
+            state.temporary_file_count += 1;
+        } else {
+            match managed_entry_tier(root, &path) {
+                Some(EvaluationCacheEntryKind::FinalFrame) => {
+                    state.final_entry_count += 1;
+                    state.managed_bytes += bytes;
+                }
+                Some(EvaluationCacheEntryKind::IntermediateNode) => {
+                    state.intermediate_entry_count += 1;
+                    state.managed_bytes += bytes;
+                }
+                None => state.unknown_file_count += 1,
+            }
+        }
+    }
+    Ok(())
+}
+
+fn managed_entry_tier(root: &Path, path: &Path) -> Option<EvaluationCacheEntryKind> {
+    let relative = path.strip_prefix(root).ok()?;
+    let parts = relative.components().collect::<Vec<_>>();
+    if parts.len() != 3 || path.extension()? != "scache" {
+        return None;
+    }
+    match parts[1].as_os_str().to_str()? {
+        "final" => Some(EvaluationCacheEntryKind::FinalFrame),
+        "intermediate" => Some(EvaluationCacheEntryKind::IntermediateNode),
+        _ => None,
+    }
+}
+
+fn unique_sibling(path: &Path, purpose: &str) -> Result<PathBuf> {
+    let parent = path.expect_parent();
+    let name = path
+        .file_name()
+        .expect("persistent cache namespace owns a directory name")
+        .to_string_lossy();
+    for _ in 0..TEMP_ATTEMPTS {
+        let nonce = NEXT_LIFECYCLE_PATH.fetch_add(1, Ordering::Relaxed);
+        let candidate = parent.join(format!(".{name}.{purpose}-{}-{nonce}", std::process::id()));
+        match fs::symlink_metadata(&candidate) {
+            Err(source) if source.kind() == io::ErrorKind::NotFound => return Ok(candidate),
+            Ok(_) => continue,
+            Err(source) => {
+                return Err(lifecycle_io_error(
+                    "reserve_lifecycle_path",
+                    "could not inspect a persistent cache lifecycle path",
+                    &candidate,
+                    source,
+                ));
+            }
+        }
+    }
+    Err(lifecycle_error(
+        ErrorCategory::Conflict,
+        Recoverability::Retryable,
+        "could not reserve a unique persistent cache lifecycle path",
+        "reserve_lifecycle_path",
+        path,
+        "lifecycle_name_exhausted",
+    ))
+}
+
+fn copy_namespace(source: &Path, destination: &Path) -> io::Result<()> {
+    let metadata = fs::symlink_metadata(source)?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "persistent cache copy source is not a real directory",
+        ));
+    }
+    fs::create_dir(destination)?;
+    let mut entries = fs::read_dir(source)?.collect::<std::result::Result<Vec<_>, _>>()?;
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        let metadata = fs::symlink_metadata(&source_path)?;
+        let file_type = metadata.file_type();
+        if file_type.is_symlink() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "persistent cache copy rejected a symbolic link",
+            ));
+        }
+        if file_type.is_dir() {
+            copy_namespace(&source_path, &destination_path)?;
+        } else if file_type.is_file() {
+            let mut input = File::open(&source_path)?;
+            let mut options = OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            options.mode(0o600);
+            let mut output = options.open(&destination_path)?;
+            io::copy(&mut input, &mut output)?;
+            output.sync_all()?;
+        } else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "persistent cache copy rejected a special file",
+            ));
+        }
+    }
+    sync_parent(destination)
+}
+
+fn restore_clear_failure(
+    root: &Path,
+    tombstone: &Path,
+    message: &'static str,
+    source: io::Error,
+) -> Error {
+    let original = lifecycle_io_error("publish_empty_namespace", message, root, source);
+    let removal = fs::remove_dir(root);
+    if let Err(restore_source) = removal.and_then(|()| fs::rename(tombstone, root)) {
+        return lifecycle_io_error(
+            "restore_namespace_after_clear_failure",
+            "persistent cache clear failed and its detached namespace could not be restored",
+            tombstone,
+            restore_source,
+        )
+        .with_context(
+            ErrorContext::new(COMPONENT, "restore_namespace_after_clear_failure")
+                .with_field("active_root", root.to_string_lossy())
+                .with_field("original_error", original.to_string()),
+        );
+    }
+    if let Err(restore_source) = sync_parent(root.expect_parent()) {
+        return lifecycle_io_error(
+            "sync_restored_namespace",
+            "persistent cache namespace was restored but its parent could not be synchronized",
+            root,
+            restore_source,
+        )
+        .with_context(
+            ErrorContext::new(COMPONENT, "sync_restored_namespace")
+                .with_field("original_error", original.to_string()),
+        );
+    }
+    original
+}
+
 #[cfg(unix)]
 fn sync_parent(parent: &Path) -> io::Result<()> {
     File::open(parent)?.sync_all()
@@ -1024,6 +1671,35 @@ fn config_error(
             .with_field("max_entry_bytes", max_entry_bytes.to_string())
             .with_field("reason", reason)
             .with_field("root", root.to_string_lossy()),
+    )
+}
+
+fn lifecycle_error(
+    category: ErrorCategory,
+    recoverability: Recoverability,
+    message: &'static str,
+    operation: &'static str,
+    path: &Path,
+    reason: &'static str,
+) -> Error {
+    Error::new(category, recoverability, message).with_context(
+        ErrorContext::new(COMPONENT, operation)
+            .with_field("path", path.to_string_lossy())
+            .with_field("reason", reason),
+    )
+}
+
+fn lifecycle_io_error(
+    operation: &'static str,
+    message: &'static str,
+    path: &Path,
+    source: io::Error,
+) -> Error {
+    let (category, recoverability) = classify_io(source.kind());
+    Error::with_source(category, recoverability, message, source).with_context(
+        ErrorContext::new(COMPONENT, operation)
+            .with_field("path", path.to_string_lossy())
+            .with_field("reason", "filesystem_operation_failed"),
     )
 }
 

@@ -16,7 +16,7 @@ against raw source before changing code.
 | `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
 | `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade for capabilities and canonical editorial state | Partial: capability and canonical scenario controls implemented; transport, general API, and scripting absent |
 | `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Independent editable and prepared audio graph, sample-accurate timeline schedule, stable output-device discovery, and bounded sample-clocked playback | Partial: graph processing, immutable callback scheduling, audio-master publication, and production device output implemented; engine binding, decoded-sample binding, mixing, resampling, metering, and hosting absent |
-| `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, precise graph edit invalidation, versioned corruption-recovering disk persistence, replaceable derived-media publication, layered render reuse, bounded background population, bounded playback prediction, and bounded edit and scrub warming | Complete identity feeds independent memory and disk tiers with exact admission, revision fencing, bounded envelopes, atomic publication, schema isolation, and corruption quarantine; render jobs add persistent fallback, promotion, exact-frame single-flight, staged publication, and cancellation, prediction supplies finite signed frame plans and an owned host adapter, warming is deterministic and hard bounded, and cache lifecycle remains |
+| `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, precise graph edit invalidation, versioned corruption-recovering disk persistence, replaceable derived-media publication, layered render reuse, bounded background population, bounded playback prediction, bounded edit and scrub warming, and deterministic lifecycle management | Complete identity feeds independent memory and disk tiers with exact admission, revision fencing, bounded envelopes, atomic publication, schema isolation, and corruption quarantine; memory, persistent, and derived owners expose inspection and exact clearing, persistent namespaces relocate through rename or synchronized staged copy, render jobs add cancellation-safe layered reuse, prediction supplies finite signed frame plans and an owned host adapter, and warming is deterministic and hard bounded; engine and scheduler own quality substitution and lifecycle policy remains caller-owned |
 | `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario consumer | Implemented portable expectation verifier and eight instrumented contract stages; rendered media flow absent |
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
 | `superi-codecs-rs` | [module map](modules/superi-codecs-rs.md) | `open/crates/superi-codecs-rs` | Default permissive software codec implementations | Implemented: AV1, FLAC, MP3, Opus, PCM, Vorbis, VP8, and VP9 decode and encode |
@@ -380,6 +380,12 @@ without a production catalog:
    and uses the same graph path for fresh work. Its bounded worker queue single-flights active exact
    frames and stages newly evaluated values until final cooperative cancellation, deadline, and
    progress checks pass.
+   Memory inspection reports deterministic tier keys plus budget evidence, and exact clearing
+   preserves graph revision fences. Persistent inspection classifies managed, quarantined,
+   temporary, and unknown files without following links; clearing publishes an empty namespace
+   before cleanup, and relocation publishes a complete renamed or destination-local staged copy
+   before source removal. Derived inspection and clearing retain source, revision, purpose, quality,
+   content, and byte evidence, after which exact lookup returns the authoritative original source.
 7. `GraphEvaluationSnapshot<T, N>` retains one exact editable snapshot and uses a higher-tier
    `NodeCompiler<T, N>` to replace only node payloads while preserving graph identity, node IDs,
    edge routes, and checked topology. Each compilation receives the full snapshot, so authored
@@ -401,8 +407,8 @@ without a production catalog:
    the same snapshot and owned host cache identity. Polling exposes success, cancellation, or
    degraded evaluator failure without changing transport or final output.
 10. Invalidation-to-render orchestration, ROI-plan-to-evaluator binding, cache invalidation
-    invocation, generation cleanup, persistent-directory lifecycle, and production catalog wiring
-    remain separate later checkpoints. Cache owns bounded outer job dispatch for background
+    invocation, automatic capacity policy, external directory coordination, and production catalog
+    wiring remain separate later checkpoints. Cache owns bounded outer job dispatch for background
     population without moving priority or worker ownership into graph.
 
 No transport, request envelope, dispatcher, event channel, subscription, broad public transaction,
@@ -995,12 +1001,13 @@ sample-accurate scheduler, and production device output, while mixing, resample,
 hosting remain placeholders.
 `superi-cache` now has substantive composite identity, budgeted memory retention, hierarchical
 memory policy, priority-aware LRU eviction, precise edit invalidation, persistent storage, color
-metadata, replaceable proxy or optimized-media publication, layered render reuse, bounded
-background population, bounded playback prediction, owned asynchronous host retention, and bounded
-edit and scrub warming, while lifecycle policy remains incomplete. Engine performs substitution
-using concurrency-owned selection and consumes predictive prefetch, but no transport or export
-owner invokes those cache paths. The render queue still lacks a production engine node catalog, ROI
-and invalidation orchestration, and a rendered frame consumer, and no production editor or playback
+metadata, replaceable proxy or optimized-media publication, deterministic inspection and clearing,
+safe persistent relocation, layered render reuse, bounded background population, bounded playback
+prediction, owned asynchronous host retention, and bounded edit and scrub warming, while automatic
+capacity and external-directory policy remain caller-owned. Engine performs substitution using
+concurrency-owned selection and consumes predictive prefetch, but no transport or export owner
+invokes those cache paths. The render queue still lacks a production engine node catalog, ROI and
+invalidation orchestration, and a rendered frame consumer, and no production editor or playback
 owner invokes warming.
 
 Partial modules contain these explicit placeholder areas:
@@ -1080,10 +1087,11 @@ For common concerns, begin at these owners:
 - Complete reusable-result identity, budgeted final-frame and intermediate-node memory retention,
   exact total, project, and device admission, priority-aware LRU eviction, precise revision-safe
   graph edit invalidation, versioned bounded disk persistence with corruption recovery, cache color
-  identity, complete derived-media publication, layered render reuse, bounded background
-  population, and bounded exact-frame edit and scrub warming: `superi-cache`, followed by
-  `superi-engine` for codec generation and transparent substitution and `superi-concurrency` for
-  quality choice and background job execution.
+  identity, complete derived-media publication, deterministic inspection and clearing, safe
+  persistent relocation, layered render reuse, bounded background population, and bounded
+  exact-frame edit and scrub warming: `superi-cache`, followed by `superi-engine` for codec
+  generation and transparent substitution and `superi-concurrency` for quality choice and
+  background job execution.
 - Native editorial objects, typed track semantics, exact timing and clip retiming, selection, track
   targeting, sync locks, linked selection, clip grouping, markers, deterministic metadata, exact
   snapping, and foundational insert, overwrite, append, replace, lift, and extract operations plus

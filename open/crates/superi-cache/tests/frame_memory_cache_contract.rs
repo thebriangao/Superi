@@ -184,6 +184,57 @@ fn owned_host_adapter_is_send_sync_and_reuses_the_exact_evaluator_value() {
 }
 
 #[test]
+fn inspection_and_clear_report_exact_shared_cache_contents() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let graph = single_value_graph_for_management(calls.clone());
+    let cache = cache();
+    let color = color_pipeline();
+    let scope = cache.scope(context(&color, b"memory-cache-management-v1"));
+
+    LazyEvaluator::evaluate_with_cache(&graph, request(), &scope).unwrap();
+    let inspection = cache.inspect().unwrap();
+    assert_eq!(inspection.final_frame_keys().len(), 1);
+    assert!(inspection.intermediate_node_keys().is_empty());
+    assert_eq!(inspection.budget_stats().total_usage().bytes(), 8);
+    assert_eq!(inspection.budget_stats().active_reservations(), 1);
+
+    let report = cache.clear();
+    assert_eq!(
+        report.removed_final_frame_keys(),
+        inspection.final_frame_keys()
+    );
+    assert!(report.removed_intermediate_node_keys().is_empty());
+    assert_eq!(
+        cache
+            .inspect()
+            .unwrap()
+            .budget_stats()
+            .total_usage()
+            .bytes(),
+        0
+    );
+
+    LazyEvaluator::evaluate_with_cache(&graph, request(), &scope).unwrap();
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
+
+fn single_value_graph_for_management(calls: Arc<AtomicUsize>) -> DirectedAcyclicGraph<ValueNode> {
+    let mut graph = DirectedAcyclicGraph::new(GraphId::from_raw(99));
+    graph
+        .insert_node(
+            NodeId::from_raw(1),
+            ValueNode {
+                node_type: "superi.test.memory-cache-management",
+                value: 59,
+                policy: CachePolicy::PerRegion,
+                calls,
+            },
+        )
+        .unwrap();
+    graph
+}
+
+#[test]
 fn concrete_intermediate_cache_prunes_the_retained_nodes_upstream_work() {
     let source_calls = Arc::new(AtomicUsize::new(0));
     let output_calls = Arc::new(AtomicUsize::new(0));

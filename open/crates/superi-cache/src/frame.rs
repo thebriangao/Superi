@@ -38,6 +38,61 @@ pub struct FrameMemoryCache<V> {
     value_cost: fn(EvaluationCacheEntryKind, &V) -> CacheCost,
 }
 
+/// Immutable management view of retained identities and hierarchical accounting.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FrameMemoryCacheInspection {
+    final_frame_keys: Vec<FrameCacheKey>,
+    intermediate_node_keys: Vec<FrameCacheKey>,
+    budget_stats: CacheBudgetStats,
+}
+
+impl FrameMemoryCacheInspection {
+    /// Returns final-frame identities in deterministic order.
+    #[must_use]
+    pub fn final_frame_keys(&self) -> &[FrameCacheKey] {
+        &self.final_frame_keys
+    }
+
+    /// Returns intermediate-node identities in deterministic order.
+    #[must_use]
+    pub fn intermediate_node_keys(&self) -> &[FrameCacheKey] {
+        &self.intermediate_node_keys
+    }
+
+    /// Returns the accounting snapshot observed after the retained-key snapshot.
+    #[must_use]
+    pub const fn budget_stats(&self) -> &CacheBudgetStats {
+        &self.budget_stats
+    }
+}
+
+/// Deterministic evidence from releasing every retained memory value.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FrameMemoryCacheClearReport {
+    removed_final_frame_keys: Vec<FrameCacheKey>,
+    removed_intermediate_node_keys: Vec<FrameCacheKey>,
+}
+
+impl FrameMemoryCacheClearReport {
+    /// Returns removed final-frame identities in deterministic order.
+    #[must_use]
+    pub fn removed_final_frame_keys(&self) -> &[FrameCacheKey] {
+        &self.removed_final_frame_keys
+    }
+
+    /// Returns removed intermediate-node identities in deterministic order.
+    #[must_use]
+    pub fn removed_intermediate_node_keys(&self) -> &[FrameCacheKey] {
+        &self.removed_intermediate_node_keys
+    }
+
+    /// Returns whether no retained value was present.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.removed_final_frame_keys.is_empty() && self.removed_intermediate_node_keys.is_empty()
+    }
+}
+
 struct FrameMemoryCacheState<V> {
     final_frames: CacheEntries<V>,
     intermediate_nodes: CacheEntries<V>,
@@ -189,13 +244,53 @@ impl<V> FrameMemoryCache<V> {
         keys
     }
 
-    /// Releases every final and intermediate value and its matching reservation.
-    pub fn clear(&self) {
+    /// Captures deterministic retained identities and one accounting snapshot.
+    ///
+    /// Key inventory and budget accounting have independent locks. Concurrent mutation may occur
+    /// between those observations, so this value is diagnostic rather than a transaction fence.
+    pub fn inspect(&self) -> Result<FrameMemoryCacheInspection> {
+        let state = lock_state(&self.state);
+        let mut final_frame_keys = state
+            .final_frames
+            .keys()
+            .map(|key| key.frame_key)
+            .collect::<Vec<_>>();
+        let mut intermediate_node_keys = state
+            .intermediate_nodes
+            .keys()
+            .map(|key| key.frame_key)
+            .collect::<Vec<_>>();
+        final_frame_keys.sort_unstable();
+        intermediate_node_keys.sort_unstable();
+        drop(state);
+        Ok(FrameMemoryCacheInspection {
+            final_frame_keys,
+            intermediate_node_keys,
+            budget_stats: self.budgets.stats()?,
+        })
+    }
+
+    /// Releases every final and intermediate value and reports exact removed identities.
+    pub fn clear(&self) -> FrameMemoryCacheClearReport {
         let mut state = lock_state(&self.state);
         let final_frames = std::mem::take(&mut state.final_frames);
         let intermediate_nodes = std::mem::take(&mut state.intermediate_nodes);
         drop(state);
+        let mut removed_final_frame_keys = final_frames
+            .keys()
+            .map(|key| key.frame_key)
+            .collect::<Vec<_>>();
+        let mut removed_intermediate_node_keys = intermediate_nodes
+            .keys()
+            .map(|key| key.frame_key)
+            .collect::<Vec<_>>();
+        removed_final_frame_keys.sort_unstable();
+        removed_intermediate_node_keys.sort_unstable();
         drop((final_frames, intermediate_nodes));
+        FrameMemoryCacheClearReport {
+            removed_final_frame_keys,
+            removed_intermediate_node_keys,
+        }
     }
 
     /// Atomically removes affected older values from both tiers and advances revision fences.

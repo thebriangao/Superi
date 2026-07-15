@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use superi_cache::disk::{
-    DiskCacheCodec, DiskCacheConfig, DiskCacheValueSchema, FrameDiskCache, FrameDiskCacheContext,
-    PERSISTENT_CACHE_FORMAT_REVISION,
+    DiskCacheCodec, DiskCacheConfig, DiskCacheRelocationMethod, DiskCacheValueSchema,
+    FrameDiskCache, FrameDiskCacheContext, PERSISTENT_CACHE_FORMAT_REVISION,
 };
 use superi_cache::key::{ParameterStateFingerprint, RenderSettingsFingerprint};
 use superi_core::color_space::ColorSpace;
@@ -328,6 +328,106 @@ fn exact_final_value_survives_cache_reconstruction_and_concurrent_reads() {
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert_eq!(cache_files(root.path()).len(), 1);
     assert!(reopened.take_diagnostics().is_empty());
+}
+
+#[test]
+fn inspection_clear_and_recompute_are_exact_and_semantically_transparent() {
+    let root = TempRoot::new("lifecycle-clear");
+    let calls = Arc::new(AtomicUsize::new(0));
+    let graph = single_node_graph(calls.clone(), 79);
+    let color = color_pipeline();
+    let disk = cache(root.path(), 1);
+    let scope = disk.scope(context(&color));
+
+    let first =
+        LazyEvaluator::evaluate_with_cache(&graph, request_for(1, 101, 0, 64), &scope).unwrap();
+    assert_eq!(*first.value(), 79);
+
+    let inspection = disk.inspect().unwrap();
+    assert_eq!(inspection.final_entry_count(), 1);
+    assert_eq!(inspection.intermediate_entry_count(), 0);
+    assert!(inspection.managed_bytes() > 8);
+    assert_eq!(inspection.diagnostic_count(), 0);
+
+    let cleared = disk.clear().unwrap();
+    assert_eq!(cleared.removed_final_entries(), 1);
+    assert_eq!(cleared.removed_intermediate_entries(), 0);
+    assert_eq!(cleared.removed_bytes(), inspection.managed_bytes());
+    assert_eq!(disk.inspect().unwrap().final_entry_count(), 0);
+
+    let recomputed =
+        LazyEvaluator::evaluate_with_cache(&graph, request_for(1, 101, 0, 64), &scope).unwrap();
+    assert_eq!(*recomputed.value(), 79);
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn relocation_reopens_exact_values_and_conflicts_preserve_the_source_namespace() {
+    let source = TempRoot::new("relocation-source");
+    let destination = TempRoot::new("relocation-destination");
+    let conflict = TempRoot::new("relocation-conflict");
+    let calls = Arc::new(AtomicUsize::new(0));
+    let graph = single_node_graph(calls.clone(), 83);
+    let color = color_pipeline();
+    let mut disk = cache(source.path(), 1);
+    let request = request_for(1, 101, 0, 64);
+
+    LazyEvaluator::evaluate_with_cache(&graph, request, &disk.scope(context(&color))).unwrap();
+    let relocation = disk.relocate(destination.path()).unwrap();
+    assert!(matches!(
+        relocation.method(),
+        DiskCacheRelocationMethod::Renamed | DiskCacheRelocationMethod::Copied
+    ));
+    assert_eq!(relocation.moved_final_entries(), 1);
+    assert!(disk.root().starts_with(destination.path()));
+    assert!(!relocation.source_cleanup_pending());
+
+    let reopened = cache(destination.path(), 1);
+    let reused =
+        LazyEvaluator::evaluate_with_cache(&graph, request, &reopened.scope(context(&color)))
+            .unwrap();
+    assert_eq!(*reused.value(), 83);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+    let _occupied = cache(conflict.path(), 1);
+    let live_root = disk.root().to_path_buf();
+    let error = disk.relocate(conflict.path()).unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::Conflict);
+    assert_eq!(disk.root(), live_root);
+    assert!(live_root.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn lifecycle_inspection_rejects_symbolic_links_without_following_them() {
+    let root = TempRoot::new("lifecycle-link");
+    let outside = TempRoot::new("lifecycle-link-outside");
+    let disk = cache(root.path(), 1);
+    std::os::unix::fs::symlink(outside.path(), disk.root().join("unexpected-link")).unwrap();
+
+    let error = disk.inspect().unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::CorruptData);
+    assert_eq!(error.recoverability(), Recoverability::UserCorrectable);
+    assert!(outside.path().exists());
+}
+
+#[test]
+fn inspection_classifies_recovery_temporary_and_unknown_files() {
+    let root = TempRoot::new("lifecycle-diagnostics");
+    let disk = cache(root.path(), 1);
+    fs::write(disk.root().join("entry.scache.corrupt-1-1"), b"corrupt").unwrap();
+    fs::write(disk.root().join(".entry.scache.tmp-1-1"), b"temporary").unwrap();
+    fs::write(disk.root().join("unknown.bin"), b"unknown").unwrap();
+
+    let inspection = disk.inspect().unwrap();
+    assert_eq!(inspection.quarantined_file_count(), 1);
+    assert_eq!(inspection.temporary_file_count(), 1);
+    assert_eq!(inspection.unknown_file_count(), 1);
+    assert_eq!(inspection.total_bytes(), 23);
+
+    let cleared = disk.clear().unwrap();
+    assert_eq!(cleared.removed_inspection(), &inspection);
+    assert_eq!(cleared.removed_bytes(), 23);
 }
 
 #[test]

@@ -295,6 +295,112 @@ pub struct DerivedMediaCatalog<T> {
     artifacts: BTreeMap<DerivedMediaKey, Arc<DerivedMediaArtifact<T>>>,
 }
 
+/// Immutable ordered management view of published derived artifacts.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DerivedMediaCatalogInspection {
+    keys: Vec<DerivedMediaKey>,
+    entries: Vec<DerivedMediaInspectionEntry>,
+    total_bytes: u128,
+}
+
+impl DerivedMediaCatalogInspection {
+    /// Returns exact request keys in deterministic order.
+    #[must_use]
+    pub fn keys(&self) -> &[DerivedMediaKey] {
+        &self.keys
+    }
+
+    /// Returns source, freshness, quality, content, and size evidence in key order.
+    #[must_use]
+    pub fn entries(&self) -> &[DerivedMediaInspectionEntry] {
+        &self.entries
+    }
+
+    /// Returns the exact sum of producer-declared complete artifact bytes.
+    #[must_use]
+    pub const fn total_bytes(&self) -> u128 {
+        self.total_bytes
+    }
+}
+
+/// Complete payload-neutral identity and freshness evidence for one derived artifact.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DerivedMediaInspectionEntry {
+    request: DerivedMediaRequest,
+    cache_id: CacheId,
+    content_fingerprint: [u8; 32],
+    byte_len: u64,
+}
+
+impl DerivedMediaInspectionEntry {
+    fn from_artifact<T>(artifact: &DerivedMediaArtifact<T>) -> Self {
+        Self {
+            request: artifact.request(),
+            cache_id: artifact.cache_id(),
+            content_fingerprint: *artifact.content_fingerprint(),
+            byte_len: artifact.byte_len(),
+        }
+    }
+
+    /// Returns the complete source, revision, purpose, quality, and render-settings request.
+    #[must_use]
+    pub const fn request(&self) -> DerivedMediaRequest {
+        self.request
+    }
+
+    /// Returns the stable identity of the exact published content.
+    #[must_use]
+    pub const fn cache_id(&self) -> CacheId {
+        self.cache_id
+    }
+
+    /// Returns the producer's exact generated-content digest.
+    #[must_use]
+    pub const fn content_fingerprint(&self) -> &[u8; 32] {
+        &self.content_fingerprint
+    }
+
+    /// Returns complete producer-declared bytes.
+    #[must_use]
+    pub const fn byte_len(&self) -> u64 {
+        self.byte_len
+    }
+}
+
+/// Deterministic evidence from removing every replaceable derived artifact.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DerivedMediaCatalogClearReport {
+    removed_keys: Vec<DerivedMediaKey>,
+    removed_entries: Vec<DerivedMediaInspectionEntry>,
+    removed_bytes: u128,
+}
+
+impl DerivedMediaCatalogClearReport {
+    /// Returns removed request keys in deterministic order.
+    #[must_use]
+    pub fn removed_keys(&self) -> &[DerivedMediaKey] {
+        &self.removed_keys
+    }
+
+    /// Returns complete payload-neutral evidence for every removed artifact.
+    #[must_use]
+    pub fn removed_entries(&self) -> &[DerivedMediaInspectionEntry] {
+        &self.removed_entries
+    }
+
+    /// Returns the exact sum of removed producer-declared bytes.
+    #[must_use]
+    pub const fn removed_bytes(&self) -> u128 {
+        self.removed_bytes
+    }
+
+    /// Returns whether the catalog was already empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.removed_keys.is_empty()
+    }
+}
+
 impl<T> DerivedMediaCatalog<T> {
     /// Creates an empty catalog.
     #[must_use]
@@ -314,6 +420,44 @@ impl<T> DerivedMediaCatalog<T> {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.artifacts.is_empty()
+    }
+
+    /// Captures exact request identities and complete artifact byte accounting.
+    #[must_use]
+    pub fn inspect(&self) -> DerivedMediaCatalogInspection {
+        DerivedMediaCatalogInspection {
+            keys: self.artifacts.keys().copied().collect(),
+            entries: self
+                .artifacts
+                .values()
+                .map(|artifact| DerivedMediaInspectionEntry::from_artifact(artifact))
+                .collect(),
+            total_bytes: self
+                .artifacts
+                .values()
+                .map(|artifact| u128::from(artifact.byte_len()))
+                .sum(),
+        }
+    }
+
+    /// Removes every replaceable artifact without changing source identity or fallback policy.
+    pub fn clear(&mut self) -> DerivedMediaCatalogClearReport {
+        let artifacts = std::mem::take(&mut self.artifacts);
+        let removed_keys = artifacts.keys().copied().collect();
+        let removed_entries = artifacts
+            .values()
+            .map(|artifact| DerivedMediaInspectionEntry::from_artifact(artifact))
+            .collect();
+        let removed_bytes = artifacts
+            .values()
+            .map(|artifact| u128::from(artifact.byte_len()))
+            .sum();
+        drop(artifacts);
+        DerivedMediaCatalogClearReport {
+            removed_keys,
+            removed_entries,
+            removed_bytes,
+        }
     }
 
     /// Resolves one exact request without selecting a different quality or stale revision.

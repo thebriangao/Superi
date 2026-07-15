@@ -201,3 +201,50 @@ fn failure_never_publishes_partial_output_or_discards_a_previous_artifact() {
     let empty = GeneratedMedia::new(String::new(), [0; 32], 0).unwrap_err();
     assert_eq!(empty.category(), ErrorCategory::InvalidInput);
 }
+
+#[test]
+fn catalog_inspection_and_clear_preserve_exact_identity_and_source_fallback() {
+    let source = media(31, "sha256:management-source");
+    let quarter = request(
+        source,
+        7,
+        DerivedMediaPurpose::Proxy,
+        DerivedMediaQuality::Quarter,
+        b"av1:yuv420p8:960x540",
+    );
+    let half = request(
+        source,
+        7,
+        DerivedMediaPurpose::Proxy,
+        DerivedMediaQuality::Half,
+        b"av1:yuv420p8:1920x1080",
+    );
+    let mut catalog = DerivedMediaCatalog::new();
+    catalog
+        .regenerate(half, || generated("half payload", 5))
+        .unwrap();
+    catalog
+        .regenerate(quarter, || generated("quarter payload", 4))
+        .unwrap();
+
+    let inspection = catalog.inspect();
+    assert_eq!(inspection.keys(), &[quarter.key(), half.key()]);
+    assert_eq!(inspection.total_bytes(), 27);
+    assert_eq!(inspection.entries()[0].request().media(), source);
+    assert_eq!(inspection.entries()[0].request().source_revision(), 7);
+    assert_eq!(
+        inspection.entries()[0].request().quality(),
+        DerivedMediaQuality::Quarter
+    );
+    assert_eq!(inspection.entries()[0].byte_len(), 15);
+
+    let cleared = catalog.clear();
+    assert_eq!(cleared.removed_keys(), inspection.keys());
+    assert_eq!(cleared.removed_entries(), inspection.entries());
+    assert_eq!(cleared.removed_bytes(), inspection.total_bytes());
+    assert!(catalog.is_empty());
+    match catalog.lookup(quarter) {
+        DerivedMediaLookup::OriginalSource(identity) => assert_eq!(identity, source),
+        DerivedMediaLookup::Generated(_) => panic!("cleared derived media remained reusable"),
+    }
+}
