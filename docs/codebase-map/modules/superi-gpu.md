@@ -372,7 +372,9 @@ which must be performed by `superi-color`.
 - `superi-cache` uses `GpuMemoryPool`, `MemoryClass::Cache`, `MemoryEvictor`, and the non-cloneable
   memory reservation inside its device-resident frame-cache entries. It admits the same exact
   managed payload bytes through cache total, project, and device limits before GPU cooperation,
-  rolls local scopes back after GPU refusal, and releases both owners with the retained entry.
+  rolls local scopes back after GPU refusal, and releases both owners with the retained entry. A
+  retryable GPU-only refusal can now make the cache release an eligible LRU entry from the matching
+  device before retrying the unchanged reservation path without a tier lock held.
 
 ### Declared and prospective consumers
 
@@ -572,7 +574,8 @@ path, but several boundaries intentionally stop short of application policy or f
   `superi-concurrency/src/threads.rs` and its GPU integration contract.
 - Memory-pool and reservation changes must be reconciled with `superi-cache::eviction` and
   `CacheMemoryPlacement::Device`, preserving exact managed-byte equality, rollback after refusal,
-  and lock-free pressure cooperation across the cache tier boundary.
+  matching-device LRU release before retry, and lock-free pressure cooperation across the cache tier
+  boundary.
 - Run the crate's contract suite on a real adapter and the manual native viewport smoke when changes
   touch backend execution or presentation. Record skipped GPU sections separately from passing CPU
   validation so adapterless runs are not overstated.

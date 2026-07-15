@@ -16,7 +16,7 @@ against raw source before changing code.
 | `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
 | `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade for capabilities and canonical editorial state | Partial: capability and canonical scenario controls implemented; transport, general API, and scripting absent |
 | `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Reserved audio graph, playback, mixing, resampling, metering, and plugin boundary | Skeleton: public module names only |
-| `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, plus reserved proxy, render, prefetch, eviction-order, and disk cache policy | Complete identity feeds two independent value tiers with exact total, project, device, byte, and frame admission; victim selection, invalidation cleanup, persistence, proxies, render caching, and prefetch remain |
+| `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, plus reserved proxy, render, prefetch, and disk cache policy | Complete identity feeds two independent value tiers with exact total, project, device, byte, and frame admission plus scoped automatic reclamation; invalidation cleanup, persistence, proxies, render caching, and prefetch remain |
 | `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario consumer | Implemented portable expectation verifier and eight instrumented contract stages; rendered media flow absent |
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
 | `superi-codecs-rs` | [module map](modules/superi-codecs-rs.md) | `open/crates/superi-codecs-rs` | Default permissive software codec implementations | Implemented: AV1, FLAC, MP3, Opus, PCM, Vorbis, VP8, and VP9 decode and encode |
@@ -284,7 +284,11 @@ without a production catalog:
    adapter derives a complete `FrameCacheKey` before either concrete tier is consulted. Only
    successful cacheable work is offered for retention. Each admitted entry owns an exact total and
    project byte and frame reservation, device entries also hold the shared GPU cache reservation,
-   and a refusal stores nothing without changing the fresh evaluator result.
+   and a refusal selects an eligible scoped victim without changing the fresh evaluator result.
+   Successful hits and insertions promote per-tier logical recency. Automatic pressure reclaims
+   intermediate values before final frames and chooses oldest access within a tier; explicit
+   management can also remove exact per-tier LRU victims. A later request recomputes the exact value
+   through the unchanged evaluator.
 7. `GraphEvaluationSnapshot<T, N>` retains one exact editable snapshot and uses a higher-tier
    `NodeCompiler<T, N>` to replace only node payloads while preserving graph identity, node IDs,
    edge routes, and checked topology. Each compilation receives the full snapshot, so authored
@@ -298,8 +302,7 @@ without a production catalog:
    render stage calls this path yet, so the canonical `graph.evaluate` stage remains a disclosed
    stub.
 9. Invalidation-to-render orchestration, ROI-plan-to-evaluator binding, outer job dispatch, cache
-   generations, eviction victim selection, persistence, and production catalog wiring remain
-   separate later checkpoints.
+   generations, persistence, and production catalog wiring remain separate later checkpoints.
 
 No transport, request envelope, dispatcher, event channel, subscription, broad public transaction,
 script runtime, or UI is implemented. There is no shell, extension, automation, or closed-tier
@@ -593,7 +596,9 @@ The following constraints cross multiple modules and should be preserved togethe
 - Runtime-node compilation receives that complete immutable graph snapshot, including parameter
   drivers, then preserves checked topology and delegates every caller role to one lazy evaluator.
   Retained evaluation uses one explicit caller-owned adapter and only complete semantic cache keys;
-  final and intermediate hits cannot change authored state or result meaning.
+  final and intermediate hits cannot change authored state or result meaning. Cache-local LRU
+  eviction changes only retained availability, so victims deterministically recompute without
+  changing project or output meaning.
 - Capability declarations are metadata, not proof that a factory or every declared format can run.
   Introspection must not instantiate codecs or sources.
 - Backend fallback is explicit. The registry, platform adapters, and vendor workers do not silently
@@ -835,8 +840,8 @@ encodes and muxes output, persists a project, and drives the flow through the pu
 Entire crate skeletons are `superi-ai`, `superi-audio`, `superi-effects`, and `superi-project`.
 Their manifests establish intended dependency direction, but their public modules expose no
 substantive types or operations. `superi-cache` now has substantive composite identity, budgeted
-memory retention, hierarchical memory policy, and color metadata, while its four remaining storage
-and scheduling-extension modules remain placeholders.
+memory retention, hierarchical memory policy, priority-aware LRU eviction, and color metadata, while
+its disk, prefetch, proxy, and render extension modules remain placeholders.
 
 Partial modules contain these explicit placeholder areas:
 
@@ -908,7 +913,8 @@ For common concerns, begin at these owners:
   shared interactive and headless evaluation:
   `superi-graph`, with value identity, rational time, and pixel bounds owned by `superi-core`.
 - Complete reusable-result identity, budgeted final-frame and intermediate-node memory retention,
-  exact total, project, and device admission, and cache color identity: `superi-cache`.
+  exact total, project, and device admission, priority-aware LRU eviction, and cache color identity:
+  `superi-cache`.
 - Native editorial objects, typed track semantics, exact timing and clip retiming, selection, track
   targeting, sync locks, linked selection, clip grouping, markers, deterministic metadata, exact
   snapping, and foundational insert, overwrite, append, replace, lift, and extract operations plus

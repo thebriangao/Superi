@@ -1,17 +1,19 @@
 //! Final-frame and intermediate-node memory caches with exact color identity.
 
-use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use superi_core::error::Result;
+use superi_core::error::{ErrorCategory, Result};
 use superi_core::ids::{DeviceId, ProjectId};
 use superi_gpu::pool::{GpuMemoryPool, MemoryEvictor};
 use superi_graph::eval::{EvaluationCacheEntryKind, EvaluationCacheIdentity, EvaluationValueCache};
 use superi_graph::node::GraphColorMetadata;
 use superi_image::metadata::ColorPipelineMetadata;
 
-use crate::eviction::{CacheBudgetManager, CacheBudgetReservation, CacheBudgetStats, CacheCost};
+use crate::eviction::{
+    CacheBudgetManager, CacheBudgetReservation, CacheBudgetStats, CacheCost, CachePressureScope,
+    LruMap, MemoryCacheTier,
+};
 use crate::key::{
     FrameCacheKey, FrameCacheKeyInputs, MediaCacheIdentity, ParameterStateFingerprint,
     RenderSettingsFingerprint,
@@ -19,11 +21,13 @@ use crate::key::{
 
 /// Thread-safe retained values for final frames and intermediate graph outputs.
 ///
-/// The two tiers are independent so later eviction policy can treat them separately. Every retained
-/// entry owns one exact cache-budget reservation, including a shared GPU-pool reservation for
-/// device values. Values remain caller-defined and are stored behind `Arc`; lookup clones the
-/// caller's handle only after releasing the cache lock. This cache does not invalidate generations,
-/// select eviction victims, or persist data.
+/// The two tiers are independent so pressure can reclaim intermediate outputs before final frames.
+/// Successful hits and insertions promote exact entries through strict LRU order inside each tier.
+/// Every retained entry owns one exact cache-budget reservation, including a shared GPU-pool
+/// reservation for device values. Values remain caller-defined and are stored behind `Arc`; lookup
+/// clones the caller's handle only after releasing the cache lock. Removed and replaced values
+/// release their reservations only after unlock. This cache does not invalidate generations or
+/// persist data.
 pub struct FrameMemoryCache<V> {
     final_frames: Mutex<CacheEntries<V>>,
     intermediate_nodes: Mutex<CacheEntries<V>>,
@@ -42,8 +46,8 @@ impl<V> FrameMemoryCache<V> {
         value_cost: fn(EvaluationCacheEntryKind, &V) -> CacheCost,
     ) -> Self {
         Self {
-            final_frames: Mutex::new(BTreeMap::new()),
-            intermediate_nodes: Mutex::new(BTreeMap::new()),
+            final_frames: Mutex::new(LruMap::default()),
+            intermediate_nodes: Mutex::new(LruMap::default()),
             budgets,
             value_cost,
         }
@@ -108,6 +112,50 @@ impl<V> FrameMemoryCache<V> {
         }
     }
 
+    fn tier(&self, tier: MemoryCacheTier) -> &Mutex<CacheEntries<V>> {
+        match tier {
+            MemoryCacheTier::FinalFrame => &self.final_frames,
+            MemoryCacheTier::IntermediateNode => &self.intermediate_nodes,
+        }
+    }
+
+    /// Removes up to `maximum` entries in strict least-recently-used order.
+    ///
+    /// Successful evaluator hits and insertions are accesses. Returned keys use exact victim order,
+    /// which lets management callers observe reclamation without owning a second recency model.
+    /// The selected tier is independent, and retained values are destroyed only after its lock is
+    /// released. Eviction is ordinary replacement behavior: a later request remains a cache miss and
+    /// recomputes through the unchanged graph evaluator.
+    #[must_use]
+    pub fn evict_lru(&self, tier: MemoryCacheTier, maximum: usize) -> Vec<FrameCacheKey> {
+        let removed = {
+            let mut entries = lock_entries(self.tier(tier));
+            entries.evict_lru(maximum)
+        };
+        let keys = removed.iter().map(|(key, _)| key.frame_key).collect();
+        drop(removed);
+        keys
+    }
+
+    fn evict_one_for_pressure(&self, pressure: CachePressureScope) -> bool {
+        for tier in [
+            MemoryCacheTier::IntermediateNode,
+            MemoryCacheTier::FinalFrame,
+        ] {
+            let removed = {
+                let mut entries = lock_entries(self.tier(tier));
+                entries
+                    .evict_lru_where(1, |key| key.matches_pressure(pressure))
+                    .pop()
+            };
+            if let Some((_key, value)) = removed {
+                drop(value);
+                return true;
+            }
+        }
+        false
+    }
+
     /// Binds caller-owned result identity to graph-driven lookup and insertion.
     #[must_use]
     pub const fn scope<'cache, 'context>(
@@ -133,13 +181,25 @@ struct CacheEntryKey {
     frame_key: FrameCacheKey,
 }
 
+impl CacheEntryKey {
+    fn matches_pressure(self, pressure: CachePressureScope) -> bool {
+        match pressure {
+            CachePressureScope::Total => true,
+            CachePressureScope::Project(project_id) => self.project_id == project_id,
+            CachePressureScope::Device(device_id) => {
+                matches!(self.placement, CachePlacementId::Device(id) if id == device_id)
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum CachePlacementId {
     Host,
     Device(DeviceId),
 }
 
-type CacheEntries<V> = BTreeMap<CacheEntryKey, RetainedCacheValue<V>>;
+type CacheEntries<V> = LruMap<CacheEntryKey, RetainedCacheValue<V>>;
 
 /// Host or processing-device placement charged for retained values in one scope.
 #[derive(Clone, Copy)]
@@ -174,6 +234,13 @@ impl CacheMemoryPlacement<'_> {
         match self {
             Self::Host => CachePlacementId::Host,
             Self::Device { device_id, .. } => CachePlacementId::Device(device_id),
+        }
+    }
+
+    const fn device_id(self) -> Option<DeviceId> {
+        match self {
+            Self::Host => None,
+            Self::Device { device_id, .. } => Some(device_id),
         }
     }
 
@@ -269,21 +336,49 @@ impl<V: Clone> EvaluationValueCache<V> for FrameMemoryCacheScope<'_, '_, V> {
         let cost = (self.cache.value_cost)(kind, &value);
         let entries = self.cache.entries(kind);
 
-        let replaced = lock_entries(entries).remove(&key);
+        let replaced = {
+            let mut entries = lock_entries(entries);
+            entries.remove(&key)
+        };
         drop(replaced);
 
-        let Ok(reservation) =
-            self.context
+        let reservation = loop {
+            match self
+                .context
                 .placement
                 .reserve(&self.cache.budgets, self.context.project_id, cost)
-        else {
-            return;
+            {
+                Ok(reservation) => break reservation,
+                Err(error) => {
+                    let pressure = match self.cache.budgets.pressure_scope(
+                        self.context.project_id,
+                        self.context.placement.device_id(),
+                        cost,
+                    ) {
+                        Ok(Some(pressure)) => pressure,
+                        Ok(None) if error.category() == ErrorCategory::ResourceExhausted => {
+                            match self.context.placement.device_id() {
+                                Some(device_id) => CachePressureScope::Device(device_id),
+                                None => return,
+                            }
+                        }
+                        Ok(None) => return,
+                        Err(_) => return,
+                    };
+                    if !self.cache.evict_one_for_pressure(pressure) {
+                        return;
+                    }
+                }
+            }
         };
         let retained = RetainedCacheValue {
             value: Arc::new(value),
             _reservation: reservation,
         };
-        let replaced = lock_entries(entries).insert(key, retained);
+        let replaced = {
+            let mut entries = lock_entries(self.cache.entries(kind));
+            entries.insert(key, retained)
+        };
         drop(replaced);
     }
 }

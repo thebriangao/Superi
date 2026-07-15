@@ -283,7 +283,7 @@ fn changed_outer_render_identity_never_reuses_the_same_graph_value() {
 }
 
 #[test]
-fn real_frame_retention_stays_bounded_without_changing_fresh_results() {
+fn real_frame_budget_pressure_evicts_and_recomputes_without_changing_fresh_results() {
     let calls = Arc::new(AtomicUsize::new(0));
     let mut graph = DirectedAcyclicGraph::new(GraphId::from_raw(95));
     graph
@@ -302,7 +302,7 @@ fn real_frame_retention_stays_bounded_without_changing_fresh_results() {
     let color = color_pipeline();
     let scope = cache.scope(context(&color, b"budgeted-memory-cache-test-v1"));
     let first_request = request_for(1, 101, 0, 64);
-    let denied_request = request_for(1, 101, 64, 128);
+    let second_request = request_for(1, 101, 64, 128);
 
     assert_eq!(
         *LazyEvaluator::evaluate_with_cache(&graph, first_request, &scope)
@@ -311,23 +311,33 @@ fn real_frame_retention_stays_bounded_without_changing_fresh_results() {
         41
     );
     assert_eq!(
-        *LazyEvaluator::evaluate_with_cache(&graph, denied_request, &scope)
+        *LazyEvaluator::evaluate_with_cache(&graph, second_request, &scope)
             .unwrap()
             .value(),
         41
     );
     assert_eq!(
-        *LazyEvaluator::evaluate_with_cache(&graph, denied_request, &scope)
+        *LazyEvaluator::evaluate_with_cache(&graph, second_request, &scope)
+            .unwrap()
+            .value(),
+        41
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    assert_eq!(cache.final_frame_len(), 1);
+    let stats = cache.budget_stats().unwrap();
+    assert_eq!(stats.total_usage().bytes(), 8);
+    assert_eq!(stats.total_usage().frames(), 1);
+    assert_eq!(stats.denied_reservations(), 1);
+
+    assert_eq!(
+        *LazyEvaluator::evaluate_with_cache(&graph, first_request, &scope)
             .unwrap()
             .value(),
         41
     );
     assert_eq!(calls.load(Ordering::SeqCst), 3);
     assert_eq!(cache.final_frame_len(), 1);
-    let stats = cache.budget_stats().unwrap();
-    assert_eq!(stats.total_usage().bytes(), 8);
-    assert_eq!(stats.total_usage().frames(), 1);
-    assert_eq!(stats.denied_reservations(), 2);
+    assert_eq!(cache.budget_stats().unwrap().denied_reservations(), 2);
 
     drop(cache);
     assert_eq!(manager.stats().unwrap().total_usage().bytes(), 0);
@@ -386,7 +396,7 @@ fn identical_results_are_retained_under_their_exact_project_scope() {
 }
 
 #[test]
-fn device_frame_retention_uses_and_releases_the_shared_gpu_cache_class() {
+fn device_gpu_pressure_evicts_and_releases_the_shared_cache_class() {
     let calls = Arc::new(AtomicUsize::new(0));
     let mut graph = DirectedAcyclicGraph::new(GraphId::from_raw(96));
     graph
@@ -396,13 +406,13 @@ fn device_frame_retention_uses_and_releases_the_shared_gpu_cache_class() {
                 node_type: "superi.test.device-memory-cache",
                 value: 43,
                 policy: CachePolicy::PerRegion,
-                calls,
+                calls: calls.clone(),
             },
         )
         .unwrap();
     let manager = CacheBudgetManager::new(budgets(64, 8));
     let cache = FrameMemoryCache::new(manager.clone(), value_cost);
-    let gpu = GpuMemoryPool::new(MemoryBudget::new(64, 64).unwrap());
+    let gpu = GpuMemoryPool::new(MemoryBudget::new(8, 8).unwrap());
     let color = color_pipeline();
     let context = FrameMemoryCacheContext::new(
         ProjectId::from_raw(2),
@@ -436,6 +446,25 @@ fn device_frame_retention_uses_and_releases_the_shared_gpu_cache_class() {
             .bytes(),
         8
     );
+
+    let second_request = request_for(1, 101, 0, 64);
+    assert_eq!(
+        *LazyEvaluator::evaluate_with_cache(&graph, second_request, &scope)
+            .unwrap()
+            .value(),
+        43
+    );
+    LazyEvaluator::evaluate_with_cache(&graph, second_request, &scope).unwrap();
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    assert_eq!(cache.final_frame_len(), 1);
+    assert_eq!(gpu.stats().unwrap().resident_bytes(), 8);
+    assert_eq!(gpu.stats().unwrap().denied_reservations(), 1);
+    assert_eq!(manager.stats().unwrap().denied_reservations(), 0);
+
+    LazyEvaluator::evaluate_with_cache(&graph, request(), &scope).unwrap();
+    assert_eq!(calls.load(Ordering::SeqCst), 3);
+    assert_eq!(cache.final_frame_len(), 1);
+    assert_eq!(gpu.stats().unwrap().resident_bytes(), 8);
 
     cache.clear();
     assert_eq!(gpu.stats().unwrap().resident_bytes(), 0);

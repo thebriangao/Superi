@@ -1,11 +1,11 @@
-//! Cache memory admission, accounting, and eviction-policy foundation.
+//! Cache memory admission, accounting, and deterministic eviction policy.
 //!
 //! This module enforces exact managed payload limits before cache values become
 //! resident. It owns global, per-project, and per-device byte and frame
 //! accounting. Device-resident values additionally hold a reservation from the
-//! shared GPU memory pool. Eviction order and victim selection remain the next
-//! policy layer; callers can release one reservation and retry admission without
-//! bypassing any limit.
+//! shared GPU memory pool. Budget pressure identifies the exact constrained
+//! scope so the frame cache can release an eligible least-recently-used value
+//! and retry admission without bypassing any limit.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -18,6 +18,14 @@ use superi_gpu::pool::{
 };
 
 const COMPONENT: &str = "superi-cache.memory-budget";
+
+/// Exact accounting scope that must be reduced before one reservation can fit.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CachePressureScope {
+    Total,
+    Project(ProjectId),
+    Device(DeviceId),
+}
 
 /// Hard byte and frame limits for one cache accounting scope.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -368,6 +376,31 @@ impl CacheBudgetManager {
         })
     }
 
+    /// Returns the first local accounting scope that prevents one reservation.
+    ///
+    /// This query does not mutate counters. Callers use it only after a refused
+    /// admission to select a victim that can actually relieve the constraint.
+    pub(crate) fn pressure_scope(
+        &self,
+        project_id: ProjectId,
+        device_id: Option<DeviceId>,
+        cost: CacheCost,
+    ) -> Result<Option<CachePressureScope>> {
+        let state = self.inner.lock_state("read_cache_pressure")?;
+        let project_usage = state.projects.get(&project_id).copied().unwrap_or_default();
+        let device_usage = device_id
+            .and_then(|id| state.devices.get(&id).copied())
+            .unwrap_or_default();
+        Ok(first_limit_failure(
+            self.inner.budgets,
+            state.total_usage,
+            project_usage,
+            device_id.map(|_| device_usage),
+            cost,
+        )
+        .map(|failure| failure.kind.scope(project_id, device_id)))
+    }
+
     fn reserve_local(
         &self,
         project_id: ProjectId,
@@ -539,6 +572,16 @@ impl LimitKind {
             Self::TotalFrames | Self::ProjectFrames | Self::DeviceFrames => cost.frames,
         }
     }
+
+    fn scope(self, project_id: ProjectId, device_id: Option<DeviceId>) -> CachePressureScope {
+        match self {
+            Self::TotalBytes | Self::TotalFrames => CachePressureScope::Total,
+            Self::ProjectBytes | Self::ProjectFrames => CachePressureScope::Project(project_id),
+            Self::DeviceBytes | Self::DeviceFrames => CachePressureScope::Device(
+                device_id.expect("device limit failures always carry a device identity"),
+            ),
+        }
+    }
 }
 
 fn first_limit_failure(
@@ -662,4 +705,139 @@ fn invalid(operation: &'static str, message: impl Into<String>) -> Error {
         message,
     )
     .with_context(ErrorContext::new(COMPONENT, operation))
+}
+
+/// One independently retained in-memory cache tier.
+///
+/// Final frames and intermediate node outputs remain separate so budget owners can reclaim from
+/// either class without collapsing their identities or retention meaning.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum MemoryCacheTier {
+    /// Exact top-level evaluator results.
+    FinalFrame,
+    /// Reusable prerequisite node results.
+    IntermediateNode,
+}
+
+struct LruEntry<V> {
+    value: V,
+    last_access: u64,
+}
+
+/// Ordered-key storage with exact logical access recency.
+///
+/// Access stamps live beside values as one source of truth. Normal lookup stays logarithmic;
+/// pressure or explicit eviction sorts one bounded victim snapshot by recency and then key, keeping
+/// policy deterministic without a second index that can diverge after poison recovery.
+pub(crate) struct LruMap<K, V> {
+    entries: BTreeMap<K, LruEntry<V>>,
+    next_access: u64,
+}
+
+impl<K, V> Default for LruMap<K, V> {
+    fn default() -> Self {
+        Self {
+            entries: BTreeMap::new(),
+            next_access: 0,
+        }
+    }
+}
+
+impl<K: Copy + Ord, V> LruMap<K, V> {
+    pub(crate) fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub(crate) fn keys(&self) -> impl ExactSizeIterator<Item = &K> {
+        self.entries.keys()
+    }
+
+    pub(crate) fn get(&mut self, key: &K) -> Option<&V> {
+        if !self.entries.contains_key(key) {
+            return None;
+        }
+        let access = self.take_access_stamp();
+        let entry = self
+            .entries
+            .get_mut(key)
+            .expect("cache entry existence checked before promotion");
+        entry.last_access = access;
+        Some(&entry.value)
+    }
+
+    pub(crate) fn insert(&mut self, key: K, value: V) -> Option<V> {
+        let last_access = self.take_access_stamp();
+        self.entries
+            .insert(key, LruEntry { value, last_access })
+            .map(|entry| entry.value)
+    }
+
+    pub(crate) fn remove(&mut self, key: &K) -> Option<V> {
+        self.entries.remove(key).map(|entry| entry.value)
+    }
+
+    pub(crate) fn evict_lru(&mut self, maximum: usize) -> Vec<(K, V)> {
+        self.evict_lru_where(maximum, |_| true)
+    }
+
+    pub(crate) fn evict_lru_where(
+        &mut self,
+        maximum: usize,
+        mut eligible: impl FnMut(&K) -> bool,
+    ) -> Vec<(K, V)> {
+        if maximum == 0 || self.entries.is_empty() {
+            return Vec::new();
+        }
+
+        let mut victims = self
+            .entries
+            .iter()
+            .filter(|(key, _)| eligible(key))
+            .map(|(key, entry)| (entry.last_access, *key))
+            .collect::<Vec<_>>();
+        victims.sort_unstable();
+        victims.truncate(maximum.min(victims.len()));
+
+        victims
+            .into_iter()
+            .map(|(_, key)| {
+                let entry = self
+                    .entries
+                    .remove(&key)
+                    .expect("selected LRU victim remains retained");
+                (key, entry.value)
+            })
+            .collect()
+    }
+
+    fn take_access_stamp(&mut self) -> u64 {
+        if self.next_access == u64::MAX {
+            self.normalize_access_stamps();
+        }
+        let access = self.next_access;
+        self.next_access = self
+            .next_access
+            .checked_add(1)
+            .expect("normalized cache access sequence has remaining capacity");
+        access
+    }
+
+    fn normalize_access_stamps(&mut self) {
+        let mut ordered = self
+            .entries
+            .iter()
+            .map(|(key, entry)| (entry.last_access, *key))
+            .collect::<Vec<_>>();
+        ordered.sort_unstable();
+
+        for (access, (_, key)) in ordered.into_iter().enumerate() {
+            self.entries
+                .get_mut(&key)
+                .expect("retained key remains present during access normalization")
+                .last_access = u64::try_from(access)
+                .expect("an in-memory cache cannot contain more than u64::MAX entries");
+        }
+        self.next_access = u64::try_from(self.entries.len())
+            .expect("an in-memory cache cannot contain more than u64::MAX entries");
+    }
 }

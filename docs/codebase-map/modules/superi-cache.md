@@ -2,8 +2,8 @@
 module_id: superi-cache
 source_paths:
   - open/crates/superi-cache
-source_hash: 3c4af6a5b133bfbae7d7487cee129ccbe07b32696796c51f9ddad148e07fd140
-source_files: 12
+source_hash: 4ef12e4532ff7d2b00ae1b02f74c1e58630d7fda15d28cefde966ee734894af3
+source_files: 13
 mapped_at_commit: working-tree
 ---
 
@@ -11,11 +11,14 @@ mapped_at_commit: working-tree
 
 `superi-cache` owns deterministic reusable-result identity, budgeted final-frame and
 intermediate-node memory retention, exact global, project, and device cache accounting, and the
-planned proxy, background-render, prefetch, eviction-order, and persistent-cache systems. Composite
+priority-aware least-recently-used eviction policy plus the planned proxy, background-render,
+prefetch, and persistent-cache systems. Composite
 keys join identities owned by media, graph, parameter, image-color, time, and render-setting
 boundaries without taking ownership of those source models. Two independent thread-safe memory
 tiers retain cloneable evaluator values only while exact byte and frame reservations remain live,
-and exact cached color metadata remains implemented beside the retained-value path.
+promote hits and insertions through strict per-tier recency, and reclaim eligible intermediate
+outputs before final frames under pressure. Exact cached color metadata remains implemented beside
+the retained-value path.
 
 ## Source inventory
 
@@ -24,17 +27,21 @@ and exact cached color metadata remains implemented beside the retained-value pa
 - `open/crates/superi-cache/src/disk.rs`: Placeholder for persistent on-disk caching.
 - `open/crates/superi-cache/src/eviction.rs`: Defines checked global, per-project, and per-device
   byte and frame limits, exact managed-payload costs and usage, serialized admission, immutable
-  diagnostics, classified refusal, host reservations, composite GPU reservations, and RAII release.
+  diagnostics, classified pressure scopes, host reservations, composite GPU reservations, RAII
+  release, the public tier selector, and a generic logical-stamp LRU map with deterministic victim
+  ordering and overflow normalization.
 - `open/crates/superi-cache/src/frame.rs`: Defines budgeted `FrameMemoryCache<V>`, its scoped graph
   adapter, complete caller-owned cache and placement context, independent final-frame and
-  intermediate-node stores, deterministic key inventories, exact cost callback, host or device
-  admission, explicit clearing, scoped locking, poison recovery, and caller-handle cloning outside
-  locks. It also defines immutable `CachedFrameColorMetadata` over exact graph color metadata.
+  intermediate-node LRU stores, deterministic key inventories, exact cost callback, host or device
+  admission, pressure-scoped automatic reclamation, explicit per-tier reclamation and clearing,
+  scoped locking, poison recovery, and caller-handle cloning or destruction outside locks. It also
+  defines immutable `CachedFrameColorMetadata` over exact graph color metadata.
 - `open/crates/superi-cache/src/key.rs`: Defines cache-local media identity, domain-separated
   parameter and render-settings fingerprints, complete color-pipeline fingerprinting, physical-time
   canonicalization, and the composite frame or intermediate-output cache key.
 - `open/crates/superi-cache/src/lib.rs`: Documents implemented composite identity, budgeted memory
-  retention, and hierarchical accounting and exports the seven owned modules.
+  retention, hierarchical accounting, and deterministic eviction and exports the seven owned
+  modules.
 - `open/crates/superi-cache/src/prefetch.rs`: Placeholder for playback prediction and prefetch.
 - `open/crates/superi-cache/src/proxy.rs`: Placeholder for proxy or optimized-media generation and
   substitution.
@@ -42,6 +49,9 @@ and exact cached color metadata remains implemented beside the retained-value pa
 - `open/crates/superi-cache/tests/cache_key_contract.rs`: Proves every required invalidation axis,
   canonical media sets and physical time, complete color meaning and order, proxy and precision
   separation, stable vectors, invalid media input, domain separation, and thread-safe key values.
+- `open/crates/superi-cache/tests/eviction_contract.rs`: Proves exact final-frame hit promotion,
+  least-recent victim order, oversized reclamation, tier isolation, intermediate removal, and
+  identical graph recomputation after evicted derived values are requested again.
 - `open/crates/superi-cache/tests/frame_memory_cache_contract.rs`: Proves concrete final-frame
   reuse, intermediate-node subtree pruning, graph-state and outer render-context freshness,
   deterministic composite key inventory, separate tier counts, bounded host retention, semantic
@@ -54,6 +64,8 @@ and exact cached color metadata remains implemented beside the retained-value pa
 ## Public surface
 
 The library publicly exports `disk`, `eviction`, `frame`, `key`, `prefetch`, `proxy`, and `render`.
+`eviction::MemoryCacheTier` selects final frames or intermediate nodes without importing graph-owned
+retention kinds into budget and management interfaces.
 The `key` module exposes `MediaCacheIdentity`, `ParameterStateFingerprint`,
 `RenderSettingsFingerprint`, `ColorPipelineFingerprint`, `FrameCacheKeyInputs`, and
 `FrameCacheKey`. Together they compose media content, graph lineage, evaluated parameters, exact
@@ -61,9 +73,11 @@ color meaning, physical time, and render settings into one versioned SHA-256 dig
 
 `frame::FrameMemoryCache<V>` creates empty final and intermediate tiers, reports each tier's entry
 count, returns each tier's `FrameCacheKey` inventory in deterministic order, publishes one
-consistent budget snapshot, and clears both tiers explicitly. Construction requires a shared
-`CacheBudgetManager` and exact caller-owned value-cost function. `FrameMemoryCacheContext` binds one
-project, host or device placement, media, parameter, color, and render identity for one evaluation.
+consistent budget snapshot, clears both tiers explicitly, and exposes
+`evict_lru`, which removes up to a requested count from one tier and returns exact victim keys in
+least-recent-first order. Construction requires a shared `CacheBudgetManager` and exact caller-owned
+value-cost function. `FrameMemoryCacheContext` binds one project, host or device placement, media,
+parameter, color, and render identity for one evaluation.
 `FrameMemoryCache::scope` returns `FrameMemoryCacheScope`, which implements
 `superi_graph::eval::EvaluationValueCache<V>` for cloneable caller values and composes each
 graph-supplied lineage and exact work time into a `FrameCacheKey` before lookup or insertion.
@@ -87,20 +101,25 @@ intermediate tier, and returns an owned clone on a hit.
 `LazyEvaluator::evaluate_with_cache` checks the final key before node execution and recursively
 stops at retained intermediate values. On a miss it executes through the ordinary immutable graph
 contract, then offers only successful work whose graph inspection produced an available identity.
-`FrameMemoryCache<V>` stores final-frame and intermediate-node values in separate ordered tiers.
+`FrameMemoryCache<V>` stores final-frame and intermediate-node values in separate ordered LRU tiers.
 Every entry is partitioned by project and host or device ownership, then pairs `Arc<V>` with one
 non-cloneable budget reservation. Lookup clones the retained `Arc` while holding the tier lock,
-releases the guard, and only then clones the caller-defined value handle. Insertion computes exact
-cost without a lock, releases any replaced entry, performs hierarchical and optional GPU admission
-without a tier lock, and publishes only an admitted entry.
-A refusal leaves the fresh evaluator result unchanged and stores nothing. Clearing or dropping the
-cache drops entries and releases every cache and GPU counter.
+releases the guard, and only then clones the caller-defined value handle. Successful lookup and
+insertion advance the tier's logical access stamp. Insertion computes exact cost without a lock,
+releases any replaced entry, and performs hierarchical and optional GPU admission without a tier
+lock. A refusal queries the exact constrained total, project, or device scope, removes one eligible
+LRU victim, releases its cache and optional GPU reservation after unlock, and retries the same
+admission path. Intermediate entries are lower priority than final frames, while victim choice inside
+each tier is oldest access then composite key. If no eligible victim can make room, the fresh result
+still returns and retention is skipped. Clearing or dropping the cache releases every counter.
 
 `CacheBudgetManager` serializes local admission through one state lock. It preflights total bytes,
 total frames, project bytes, project frames, device bytes, and device frames in deterministic order
 before counters change. Device admission releases that lock before the shared GPU pool is called;
 a GPU refusal drops the provisional local reservation and rolls back all cache scopes. Immutable
 stats copy current and independent peak usage plus active scope, reservation, and denial counts.
+Explicit eviction snapshots stamps, orders victims oldest first with key tie breaking, and reports
+exact keys. Stamp normalization preserves recency before integer overflow.
 
 Media order and duplicates are canonicalized, physical time is reduced exactly, and all identity
 categories use stable domain-separated digests. The existing metadata seam independently copies
@@ -132,8 +151,16 @@ categories use stable domain-separated digests. The existing metadata seam indep
 - Only graph work with an available deterministic cache identity reaches memory storage.
   Policy-disabled, nondeterministic, and dependency-blocked work bypasses both tiers.
 - Final-frame and intermediate-node entries never share one tier. Both maps use ordered composite
-  keys, and no node evaluation, caller-defined clone, value-cost function, or GPU cooperation runs
-  while a tier lock is held.
+  keys, and no node evaluation, caller-defined clone, value-cost function, GPU cooperation, or
+  retained-value destruction runs while a cache lock is held.
+- Successful hits, insertions, and replacements are exact LRU accesses. Victim order is the oldest
+  serialized tier access first with the full partitioned cache key as the deterministic tie break,
+  and an oversized request removes only the entries that exist.
+- Automatic pressure is priority-aware across tiers: eligible intermediate entries are reclaimed
+  before final frames, and total, project, or device pressure removes only entries that reduce the
+  constrained scope. GPU-only refusal reclaims from the matching device.
+- Eviction changes no graph state, identity, source media, quality choice, or fallback data. A later
+  request is an ordinary miss and recomputes through the same evaluator contract.
 - Equivalent rational coordinates share one physical-time identity. Media traversal order and exact
   duplicate references do not perturb a key; graph ordering remains represented by the graph key.
 - Parameter and render settings are separate domains even when their canonical payload bytes are
@@ -151,7 +178,7 @@ categories use stable domain-separated digests. The existing metadata seam indep
   cannot accumulate historical scope state. Peak usage remains a bounded scalar diagnostic.
 - Complete color-pipeline equality is required before cached color metadata matches a request.
 - Driver allocation overhead and physical residency remain outside managed-payload accounting.
-  Explicit invalidation cleanup, generation ownership, victim selection, persistence integrity,
+  Explicit invalidation cleanup, generation ownership, persistence integrity,
   cache management, proxy substitution, and prefetch remain later concerns.
 - There is no disk format, cache directory, automatic cleanup operation, or default capacity.
 
@@ -167,39 +194,46 @@ deduplication, invalid fingerprint rejection, domain separation, a locked digest
 `frame_memory_cache_contract.rs` runs seven contracts through the real graph cached-evaluation path.
 It proves exact final reuse, final and intermediate tier separation, an intermediate hit that skips
 upstream work, fresh results after graph state changes, fresh results after outer render identity
-changes, deterministic composite key order, exact host bounds, repeated fresh evaluation after
-denied retention, independent ownership of equal results by project, device accounting in the
-shared GPU cache class, explicit release, and a thread-safe cache type.
+changes, deterministic composite key order, exact host bounds, automatic replacement and fresh
+recomputation under pressure, independent ownership of equal results by project, device accounting
+and automatic GPU-only pressure replacement in the shared GPU cache class, explicit release, and a
+thread-safe cache type.
 `memory_budget_contract.rs` runs five contracts for configuration,
 hierarchical host and device admission, deterministic errors and stats, GPU rollback, cleanup, and
 eight-way concurrent admission. The graph package adds adapter, failure, disabled-policy, and
 role-neutral snapshot proof. The engine color propagation contract continues to exercise the
 metadata seam and independent viewport and export branches.
 
-Focused package tests and warnings-denied Clippy pass after the budgeted store integration. These
-tests prove bounded retained evaluator values and shared managed GPU accounting through public
-adapters, not production pixels, playback acceleration, physical residency, eviction order, or
-persistence.
+`eviction_contract.rs` runs four contracts through the same real graph cached-evaluation path. It
+proves final-frame hit promotion and exact victim order, scoped project pressure, intermediate-first
+automatic pressure, tier isolation, oversized reclamation, and unchanged graph results after both
+classes of derived work are recomputed.
+
+Focused package tests, graph and engine contract closure, warnings-denied Clippy, and rustdoc pass
+after the integrated budget and LRU implementation. These tests prove retained and evicted evaluator
+values through the public adapter, not production pixels, playback acceleration, persistence, or
+physical GPU residency.
 
 ## Current status and risks
 
-Deterministic composite key derivation, exact cached color metadata, exact hierarchical memory
-budgets, and budgeted two-tier retained evaluation are substantive and test-backed. Final hits stop
-the complete graph pull and intermediate hits stop their prerequisite subtree while preserving
-ordinary result meaning. Hard caps remain exact under concurrent load, and device entries share the
-existing GPU cache class. Disk, prefetch, proxy, and render modules remain explicit placeholders;
-`eviction.rs` implements admission and release but not victim order. No production frame pixels are
-reused by playback, export encoding, or GPU upload.
+Deterministic composite key derivation, exact cached color metadata, hierarchical budgets, budgeted
+two-tier retained evaluation, and priority-aware strict per-tier LRU eviction are substantive and
+test-backed. Final hits stop the complete graph pull, intermediate hits stop their prerequisite
+subtree, hard caps remain exact, and automatic or explicit victims recompute with unchanged result
+meaning. Device entries share the existing GPU cache class. Disk, prefetch, proxy, and render
+modules remain explicit placeholders. No production frame pixels are reused or reclaimed by
+playback, export encoding, or GPU upload.
 
-The main identity risk is each caller's canonical parameter and render-settings encoding. Omitting
-one output-affecting byte can cause false reuse even though composition and storage are stable.
-Future schema changes must bump the affected domain rather than silently changing a key contract.
-The main budget risk is inaccurate caller-owned managed-payload cost. Concurrent identical misses
-may perform duplicate deterministic work and reservations because single-flight coordination is not
-implemented, although every transient reservation remains within hard caps. A full cache refuses
-new retention until entries are replaced, cleared, invalidated, or later eviction policy selects
-victims. Eviction order, generation cleanup, persistence, and management are absent, so the crate is
-not yet a complete cache subsystem.
+The main correctness risk is each caller's canonical parameter and render-settings encoding.
+Omitting one output-affecting byte can cause false reuse even though composition and storage are
+stable. Future schema changes must bump the affected domain rather than silently changing a key
+contract. The main budget risk is inaccurate caller-owned managed-payload cost. Concurrent identical
+misses may perform duplicate deterministic work because single-flight coordination is not
+implemented. Concurrent lock acquisition defines the observed access order,
+which may change cache contents but cannot change semantic results. Explicit victim selection sorts
+the retained tier during pressure handling, so measured production scale may justify an equivalent
+indexed implementation later. Generation cleanup, persistence, and management are absent, so the
+crate is not yet a complete cache subsystem.
 
 ## Maintenance notes
 
@@ -208,8 +242,8 @@ Define and test canonical parameter and render-settings encodings at their ownin
 boundaries. Cached values should be cloneable resource handles, such as `Arc`-backed frame or GPU
 wrappers, rather than deep copies of texture contents. Preserve separate final and intermediate
 ownership and the invariant that every retained value owns its exact reservation. Cost functions
-must report managed payload bytes rather than driver or allocator estimates. Later eviction must
-release entries before retrying the same serialized admission path and must not hold a tier lock
-while GPU pressure cooperators execute. Preserve this boundary when adding explicit invalidation,
-disk lifecycle, proxy substitution, engine consumers, and broader diagnostics in their assigned
-checkpoints.
+must report managed payload bytes rather than driver or allocator estimates. Eviction must release
+entries before retrying the same serialized admission path and must not hold a tier lock while GPU
+pressure cooperators execute. Preserve the single-source access stamp and this boundary when adding
+explicit invalidation, disk lifecycle, proxy substitution, engine consumers, and broader diagnostics
+in their assigned checkpoints.
