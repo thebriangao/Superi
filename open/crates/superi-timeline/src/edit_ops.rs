@@ -905,7 +905,10 @@ pub fn apply_edit_batch(
     })
 }
 
-fn apply_operation(draft: &mut ProjectDraft, operation: &EditOperation) -> Result<EditOutcome> {
+pub(crate) fn apply_operation(
+    draft: &mut ProjectDraft,
+    operation: &EditOperation,
+) -> Result<EditOutcome> {
     let timeline_id = operation.timeline_id();
     let track_id = operation.track_id();
     let timeline = draft.timeline_mut(timeline_id)?;

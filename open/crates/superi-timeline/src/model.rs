@@ -2556,6 +2556,12 @@ impl ProjectDraft {
         })
     }
 
+    /// Looks up a timeline without exposing unpublished project storage.
+    #[must_use]
+    pub fn timeline(&self, id: TimelineId) -> Option<&Timeline> {
+        self.timelines.get(&id)
+    }
+
     /// Inserts or replaces a timeline by stable identity.
     pub fn upsert_timeline(&mut self, timeline: Timeline) -> Option<Timeline> {
         self.timelines.insert(timeline.id(), timeline)

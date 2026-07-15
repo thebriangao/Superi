@@ -2,8 +2,8 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: 122397a10fe7148f30f909120f0c4991b2ac485b2122c783ac766542c16325cb
-source_files: 19
+source_hash: f578d4264e7dd657c54a00580b2c1ec7656a5305ce3f5aff781ba7f002eec943
+source_files: 20
 mapped_at_commit: working-tree
 ---
 
@@ -25,6 +25,11 @@ extend, and exact three-point and four-point commands on one typed batch surface
 report every inserted, removed, modified, split, synchronized, or invalidated relationship.
 Whole-project validation and revision-checked atomic batches keep linked objects, annotations, user
 intent, timing, synchronization, nesting, and direct edits valid at publication boundaries.
+
+Nested-sequence operations place an existing child timeline or create a new compound timeline and
+its parent clip in the same project revision. They reuse foundational insert, overwrite, append,
+and replace semantics, expose exact parent-to-child links and recursive nesting, and edit a shared
+child through any stable instance while reporting every current instance.
 
 The model also owns a narrow immutable color metadata seam that retains graph color state through
 the future compilation boundary without changing source meaning.
@@ -60,9 +65,9 @@ than a production reader or writer.
   atomic revision-checked editing, and `TimelineColorMetadata`, which retains exact graph color
   metadata through compilation.
 - `open/crates/superi-timeline/src/multicam.rs`: Placeholder for a multicam data model.
-- `open/crates/superi-timeline/src/nested.rs`: Placeholder for higher-level compound clip and
-  nested sequence operations. The foundational model already supports clips sourced from another
-  timeline and rejects nesting cycles.
+- `open/crates/superi-timeline/src/nested.rs`: Implements exact nested placement, atomic compound
+  timeline creation, direct child editing by stable instance identity, shared-instance inspection,
+  recursive nesting inspection, and typed outcomes over the foundational edit owner.
 - `open/crates/superi-timeline/src/otio.rs`: Reserves the ratified OTIO-compatible serialization
   boundary and points to the shared 0.18.1 fixtures. The production reader and writer remain
   staged.
@@ -72,6 +77,9 @@ than a production reader or writer.
 - `open/crates/superi-timeline/tests/model_contract.rs`: Proves every foundational object,
   cross-rate and cross-track synchronization, linked media and nesting, direct edits, revision
   conflicts, atomic rollback, transition bounds, continuity, missing links, and nesting cycles.
+- `open/crates/superi-timeline/tests/nested_contract.rs`: Proves exact cross-clock nested placement,
+  retained child object and command state, compound creation, shared instances, recursive nesting,
+  direct child edits, stale revisions, and atomic range, identity, source, and cycle rejection.
 - `open/crates/superi-timeline/tests/edit_ops_contract.rs`: Proves all six foundational operations,
   exact cross-rate source slicing, nested source preservation, typed fragment identities, explicit
   transition removal, lift gaps, synchronized multi-track publication, and failed-batch rollback.
@@ -178,8 +186,22 @@ The editorial operation surface includes:
   transitions, synchronized companion tracks, and exact duration effects without reconstructing a
   diff from the final track.
 
-`compile`, `multicam`, `nested`, and `otio` remain public namespace reservations without production
-operations. `markers` and `edit_ops` are substantive public operation surfaces.
+The nested operation surface includes:
+
+- `NestedSequenceRequest` and `NestedSequencePlacement` for an explicit parent timeline, track,
+  clip identity, child source range, and insert, overwrite, append, or replace behavior.
+- `place_nested_sequence`, which instances an existing child timeline through the foundational
+  edit engine, and `create_compound_clip`, which adds a caller-authored child timeline and its
+  parent clip atomically without replacing an existing timeline identity.
+- `edit_nested_sequence`, which resolves a child through any stable parent clip, publishes one
+  validated child edit, and reports all current parent instances.
+- `nested_sequence_instances`, `nested_sequence_tree`, and `NestedSequenceLink`, which expose exact
+  parent timeline, track, clip, child timeline, source range, record range, and recursive depth.
+- `NestedSequenceResult` and `NestedSequenceEditResult`, which expose the published revision,
+  foundational placement outcome, edited child identity, and affected shared instances.
+
+`compile`, `multicam`, and `otio` remain public namespace reservations without production
+operations. `edit_ops`, `markers`, and `nested` are substantive public operation surfaces.
 
 `TimelineColorMetadata::from_graph` retains exact graph-owned color state, `graph` exposes it, and
 `compile` returns an unchanged clone for a later graph compiler.
@@ -279,6 +301,21 @@ Editorial operation flow extends that transaction without creating another state
    identity, track continuity, synchronization, and nesting cycles before one new revision is
    published. A failure in any command or final invariant discards every command in the batch.
 
+Nested operation flow composes those same owners:
+
+1. A request names the parent timeline and track, caller-owned compound clip identity, exact child
+   source range, and one foundational placement mode.
+2. Placement resolves the child and parent inside the unpublished draft, requires the source range
+   to use the child edit rate, and converts its duration to the parent track clock only when exact.
+3. Existing nested placement calls the shared single-operation executor. Compound creation first
+   adds one caller-authored child timeline after rejecting identity collisions, then places its
+   clip in the same private draft.
+4. The child timeline retains its own tracks, objects, selection, links, groups, targets, and sync
+   locks. Direct child editing resolves the source through a stable parent clip, while final project
+   validation checks every shared instance before publication.
+5. Instance and recursive-tree inspection walk the validated project in deterministic timeline,
+   track, and item order and return every typed source and record relationship without flattening.
+
 The separate fixture path reads checked-in OTIO JSON through development-only `serde_json::Value`
 assertions. It does not enter the native model yet.
 
@@ -331,6 +368,12 @@ assertions. It does not enter the native model yet.
   unavailable.
 - Nested clip source ranges use the target timeline's primary edit rate, stay within its duration,
   and may not form a direct or indirect cycle.
+- Nested placement derives parent duration only through exact clock conversion and reuses the
+  foundational edit outcome, fragment, transition, and rollback rules.
+- Compound creation never replaces an existing timeline identity. The caller-authored child and
+  parent clip publish together or neither publishes.
+- A shared child edit validates every current instance before publication. Instance and recursive
+  inspection preserve parent, track, clip, child, source-range, record-range, and depth identity.
 - A transition names the timed item immediately before and after it. Its offsets use the track edit
   clock, fit adjacent durations, do not overlap another transition on the same item, and do not add
   to track duration. Adjacent transitions are invalid.
@@ -387,6 +430,12 @@ transition invalidation, unchanged and changed duration reports, synchronized tw
 stale revisions, wrong clocks, transition material, overwrite bounds, and complete rollback after a
 later command fails.
 
+Five nested-operation tests prove existing child placement, atomic compound creation, preservation
+of child objects and selection, links, groups, targeting, and sync-lock state, exact 48-to-24 clock
+mapping, shared-instance reporting, direct child edits, recursive depth, caller-owned fragments,
+missing and duplicate identity rejection, stale revisions, source shrink rollback, inexact clock
+rejection, and cycle rollback.
+
 Four range tests prove exact cross-clock point and subrange translation, half-open and inexact
 failure paths, atomic direct replacement, all four availability classifications, editable media
 overscan, and nested source resolution.
@@ -410,9 +459,10 @@ scan, and codebase-map validation are required delivery gates.
 ## Current status and risks
 
 The foundational project model, rational range mapping, linked availability context, typed track
-semantics, authoritative timeline edit state, markers, deterministic metadata, exact snapping, and
-six primary operations, and nine advanced edit families are substantive and test-backed.
-Production OTIO reading and writing, graph compilation, retiming, undo ownership, multicam,
+semantics, authoritative timeline edit state, markers, deterministic metadata, exact snapping, six
+primary operations, nine advanced edit families, nested placement, compound creation, shared child
+editing, and recursive inspection are substantive and test-backed. Production OTIO reading and
+writing, graph compilation, retiming, grouped-source compound synthesis, undo ownership, multicam,
 persistence, and engine or API integration remain absent.
 
 The model requires equal physical source and record duration for clips. Future time-warp support
@@ -435,10 +485,10 @@ Treat track clocks and semantics, object identity, continuity, physical-time equ
 fragmentation, explicit transition invalidation, result reporting, marker ownership, exact snapping,
 metadata ordering, source-link resolution,
 selection expansion, track intent, clip relationship partitions, reconciliation, transition
-adjacency, nesting acyclicity, and atomic publication as public contracts. Extend tests before
-changing them. Later higher-level operations must consume `tracks_affected_by_sync` and exact
-selection state instead of recreating those policies. Add retiming, interchange, and graph
-compilation only through their owning modules, and update project, engine, API, CLI,
-persistence, and fixture maps when those paths begin consuming native timeline state. Preserve the
-OTIO fixture's versioned semantics rather than inferring interchange behavior from the native model
-alone.
+adjacency, nesting acyclicity, exact nested placement, shared-instance reporting, and atomic
+publication as public contracts. Extend tests before changing them. Later higher-level and
+grouped-source compound operations must consume `tracks_affected_by_sync` and exact selection state
+instead of recreating those policies. Add retiming, interchange, and graph compilation only through
+their owning modules, and update project, engine, API, CLI, persistence, and fixture maps when those
+paths begin consuming native timeline state. Preserve the OTIO fixture's versioned semantics rather
+than inferring interchange behavior from the native model alone.
