@@ -2,9 +2,10 @@
 //!
 //! Media backend construction, decoded-frame GPU upload, complete proxy or optimized-media packet
 //! generation, transparent proxy or original-source resolution, and playback-domain predictive
-//! cache population are integrated while the remaining orchestration modules advance through their
-//! focused checkpoints.
+//! cache population, plus atomic timeline and clip-mix edits, are integrated while the remaining
+//! orchestration modules advance through their focused checkpoints.
 
+pub mod audio_mix;
 pub mod av_sync;
 pub mod command;
 pub mod derived_media;

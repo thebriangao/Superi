@@ -2,7 +2,8 @@
 //!
 //! The foundational editable and prepared processing graph is implemented in [`graph`]. Exact
 //! timeline callback scheduling and audio-master publication are implemented in [`sync`]. Device
-//! discovery and bounded realtime playback are implemented in [`playback`]. Mixing, resampling,
+//! discovery and bounded realtime playback are implemented in [`playback`]. Sample-accurate clip
+//! controls and transactional mix intent are implemented in [`mixing`]. Buses, resampling,
 //! metering, and plugin hosting remain separate staged owners.
 
 pub mod graph;

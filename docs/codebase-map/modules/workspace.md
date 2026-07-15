@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: fe922e21958d3faf2697223828da08f3c3f2f69b0811dd40c19bce54ac6119af
-source_files: 128
+source_hash: e8ed9eed532c90e3791a0ddc29c657bf9cc489d6b0c50c6b8dad4e402ab95d19
+source_files: 129
 mapped_at_commit: working-tree
 ---
 
@@ -25,7 +25,7 @@ a single checkpoint through mapping, planning, and execution, and routes multipl
 separate Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers
 but obeys an explicit positive user concurrency value. The file is ignored by Git and copied into
 managed worktrees through `.worktreeinclude`, so the mapping script does not include it in this
-module's 126-file inventory or source hash. It must still be reread independently before repository
+module's 127-file inventory or source hash. It must still be reread independently before repository
 work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
@@ -254,6 +254,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   timeline scheduling. It records immutable placement snapshots, callback-safe exact mapping,
   audio-master publication, dependent A/V proof, delivery context, and intentionally separate
   decoded-sample binding, routing, mixing, and engine work.
+- `docs/checkpoints/P2.W04.C004.md`: Durable implementation evidence for clip gain, fades, pan,
+  mute, solo, phase, and semantic channel mapping. It records transactional audio intent,
+  allocation-free prepared DSP, atomic timeline identity reconciliation, real razor-edit proof,
+  delivery context, and the intentionally separate bus, device, automation, and export work.
 - `docs/checkpoints/P1.W07.C025.md`: Durable implementation evidence for bounded timing and process
   resident-memory instrumentation across all eight canonical slice stages. It records the private
   sampler boundary, schema 1.1.0 report contract, dependency decision, red-to-green proof,

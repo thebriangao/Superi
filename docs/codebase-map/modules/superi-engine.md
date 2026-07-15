@@ -2,8 +2,8 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: edd75d9d722f2e0c02f734eee6e6df2f91775b4b383efb239d76f7a226b0a570
-source_files: 30
+source_hash: d6769a2e26c798f4ed8d3def885e7510d65ea6e2badb43bc60a6e58215e324a0
+source_files: 32
 mapped_at_commit: working-tree
 ---
 
@@ -13,8 +13,8 @@ mapped_at_commit: working-tree
 editorial command state, media backend registry assembly, declaration-based capability
 introspection, CPU-decoded frame upload into GPU allocations, and exact viewport and export color
 metadata branching, plus codec-neutral proxy and optimized-media packet generation and transparent
-proxy or original-source resolution and predictive playback cache population. Full transport,
-rendered color execution, export muxing, broad
+proxy or original-source resolution, predictive playback cache population, and atomic timeline and
+clip-mix edit publication. Full transport, rendered color execution, export muxing, broad
 transactions, lifecycle, resources, plugins, nodes, A/V sync, and validation remain incomplete.
 
 The command path is a bounded reference owner for contract conformance. It does not claim to replace
@@ -24,6 +24,9 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 
 - `open/crates/superi-engine/Cargo.toml`: Declares subsystem dependencies, optional codec features,
   production `sha2`, and test-only `pollster`.
+- `open/crates/superi-engine/src/audio_mix.rs`: Applies timeline edit batches and audio clip-mix
+  identity reconciliation against cloned subsystem states, publishing both only after timeline and
+  mix revisions, fragment inheritance, replacement transfer, and removal all validate.
 - `open/crates/superi-engine/src/av_sync.rs`: Placeholder for A/V synchronization.
 - `open/crates/superi-engine/src/command.rs`: Implements canonical fixture identity, named timeline
   and trim state, complete mirror graph control state, typed operation evidence, bounded source
@@ -39,7 +42,7 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 - `open/crates/superi-engine/src/introspection.rs`: Implements deterministic API-neutral backend and
   codec capability snapshots.
 - `open/crates/superi-engine/src/lib.rs`: Documents the implemented orchestration boundaries and
-  exposes sixteen engine modules.
+  exposes seventeen engine modules.
 - `open/crates/superi-engine/src/lifecycle.rs`: Placeholder for subsystem lifecycle.
 - `open/crates/superi-engine/src/media.rs`: Builds default and feature-gated media registries.
 - `open/crates/superi-engine/src/nodes.rs`: Placeholder for media and graph nodes.
@@ -55,6 +58,9 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 - `open/crates/superi-engine/src/resources.rs`: Placeholder for resource arbitration.
 - `open/crates/superi-engine/src/validation.rs`: Placeholder for real-condition validation.
 - `open/crates/superi-engine/tests/av1_capability_contract.rs`: Default AV1 selection proof.
+- `open/crates/superi-engine/tests/audio_editorial_mix_contract.rs`: Proves atomic timeline and
+  clip-mix publication plus complete audio intent, source, record, identity, grouping, linking, and
+  synchronization preservation through a real razor edit.
 - `open/crates/superi-engine/tests/color_metadata_propagation_contract.rs`: Proves exact source interpretation, ordered transform history, cache identity, independent viewport and export intent, and invalid-order rejection across media, graph, timeline, cache, and engine boundaries.
 - `open/crates/superi-engine/tests/derived_media_generation_contract.rs`: Proves complete and
   deterministic real AV1 generation, exact cache reuse, quality identity, settings mismatch
@@ -112,7 +118,12 @@ cancels the previous generation, queues playback-priority cache work without wai
 the playback execution domain. Polling is also playback-owned and never blocks. An empty clipped
 plan cancels older work and publishes immediate successful no-work completion.
 
-The remaining placeholder public modules currently contain documentation only.
+`audio_mix` exposes `apply_edit_batch_with_clip_mix` for caller-owned `EditorialProject` and
+`ClipMixState` values, and the narrower `reconcile_clip_mix_edit_batch` for an already validated
+`EditBatchResult`. The combined operation returns the ordinary timeline result only after both
+cloned states validate and publish.
+
+The remaining public modules contain documentation only.
 
 ## Architecture and data flow
 
@@ -206,6 +217,15 @@ completion, and leaves transport, project meaning, source selection, and final-r
 unchanged. The controller stores a weak pool reference, so playback-thread destruction cannot own a
 blocking worker shutdown.
 
+### Editorial audio intent
+
+The engine applies a timeline edit batch to a cloned project, reads its typed fragment, inserted,
+and removed identities, and translates only clip identities that already own explicit audio
+intent. Right fragments inherit complete controls, replacements transfer them, and whole removals
+delete them. The same mutation batch is revision checked by `superi-audio`; only then does the
+engine replace both caller-owned states. Stable-identity trims, moves, slips, and rolls require no
+audio mutation, so their user intent remains attached without synthesis.
+
 ## Dependencies and consumers
 
 - `superi-core` supplies errors, identifiers, geometry, and exact time used directly by canonical
@@ -218,8 +238,9 @@ blocking worker shutdown.
   and an owned host evaluator adapter. Graph supplies the immutable evaluation snapshot.
   Concurrency supplies the production quality and fallback selector for proxy resolution plus
   playback ownership, worker priority, cancellation, progress, and nonblocking completion. Image
-  and timeline support the color metadata integration contract. Color execution, effects, audio,
-  AI, and project remain declared dependencies without production command integration.
+  and timeline support the color metadata integration contract. Timeline and audio are jointly
+  consumed by the clip-mix edit transaction. Color execution, effects, AI, and project remain
+  declared dependencies without production command integration.
 - `superi-api` consumes command snapshots and capability snapshots, preserving the public seam.
 - `superi-cli` reaches this module only through `superi-api`.
 
@@ -261,7 +282,9 @@ blocking worker shutdown.
 - Exact predicted frames use the shared graph snapshot and complete host cache identity. Reuse skips
   evaluator work but cannot change graph meaning, foreground frame value, or final-render output.
 - GPU ownership and pool lifetime remain tied to the originating device.
-- Placeholder modules do not imply whole-engine transaction, render, or lifecycle behavior.
+- Timeline and clip-mix publication is all-or-nothing across both expected revisions and typed edit
+  outcomes. It does not imply a general whole-engine transaction owner.
+- Placeholder modules do not imply whole-engine render or lifecycle behavior.
 
 ## Tests and verification
 
@@ -295,6 +318,11 @@ replacement job. The graph integration contract uses the real immutable snapshot
 cache to prove three exact predicted frames execute once, reuse without node calls, and return the
 same foreground evaluator value.
 
+The audio editorial contract drives a real `superi-timeline` razor operation through the combined
+engine transaction. It proves exact source and record subdivision, retained and new identities,
+group, link, and sync-lock inheritance, complete clip mix inheritance, and unchanged caller state
+when the mix revision conflicts.
+
 ## Current status and risks
 
 Canonical command state is substantive and test-backed, but it is a reference boundary whose
@@ -307,7 +335,8 @@ registry integration, playback clock, audio flow, persistent cache lifecycle own
 execution, encoder-to-mux path, project persistence, lifecycle, plugin host, or real-condition
 validator. Playback prefetch is substantive but is not a full transport or proxy selector. The
 derived-media driver and resolver are synchronous and caller-owned, and no production playback,
-export queue, or API path invokes them yet.
+export queue, or API path invokes them yet. Clip-mix reconciliation is substantive but currently
+entered by Rust callers rather than the public API or a playback controller.
 
 ## Maintenance notes
 

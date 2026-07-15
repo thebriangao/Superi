@@ -2,8 +2,8 @@
 module_id: superi-audio
 source_paths:
   - open/crates/superi-audio
-source_hash: 6aec10950469f952187476ae2e0a5ddf28c3c9c245074baae3dfa78da36a74d4
-source_files: 12
+source_hash: 14c0283d62ec817203e51158e436ce00abf5c4b0f020b8579618f123c77a45ec
+source_files: 13
 mapped_at_commit: working-tree
 ---
 
@@ -15,7 +15,8 @@ bounded interleaved f32 processing at exact sample coordinates. Its timeline sch
 immutable editorial placements into exact callback source slices and publishes completed device
 presentation to the shared audio master clock. Its playback slice discovers operating-system output
 devices and moves normalized interleaved samples through a fixed-capacity lock-free queue into typed
-platform callbacks.
+platform callbacks. Audio-owned clip mix state adds transactional gain,
+fades, pan, mute, solo, phase, and semantic channel mapping with immutable prepared snapshots.
 
 All three paths enforce the platform-owned audio execution domain, but their control-path owners
 remain separate. Graph editing and preparation allocate outside callbacks. Schedule construction and
@@ -35,7 +36,9 @@ plugins, and engine orchestration remain separate concerns.
 - `open/crates/superi-audio/src/lib.rs`: Documents the implemented graph and scheduling boundaries
   and exports the seven audio concern modules.
 - `open/crates/superi-audio/src/metering.rs`: Placeholder for metering and audio analysis.
-- `open/crates/superi-audio/src/mixing.rs`: Placeholder for buses, levels, fades, and mixing.
+- `open/crates/superi-audio/src/mixing.rs`: Implements validated clip controls, semantic channel
+  matrices, revisioned identity mutations, immutable solo-aware snapshots, bounded clip
+  preparation, and allocation-free gain, fade, pan, mute, solo, phase, and routing DSP.
 - `open/crates/superi-audio/src/playback.rs`: Implements stable device identity, capability
   discovery, exact configuration validation, bounded producer and callback endpoints, sample
   conversion, audio-clock publication, atomic telemetry, and production stream lifecycle.
@@ -51,6 +54,9 @@ plugins, and engine orchestration remain separate concerns.
 - `open/crates/superi-audio/tests/device_output_contract.rs`: Proves capability containment, bounded
   whole-frame admission, allocation ceilings, timed silence, clock progression, persisted device
   identities, domain-conflict behavior, telemetry, and real host discovery.
+- `open/crates/superi-audio/tests/clip_mixing_contract.rs`: Public consumer proof for every clip
+  control, exact multi-block envelopes, snapshot solo behavior, atomic identity mutations, invalid
+  layouts and values, clip bounds, and failure atomicity.
 
 ## Public surface
 
@@ -83,6 +89,11 @@ configurations, partial discovery failures, bounded `OutputProducer` and `Output
 clonable telemetry, and an owning `DeviceOutput`. `discover_output_devices` performs real host
 enumeration, `create_output_buffer` preallocates the engine-to-device handoff, and
 `start_device_output` revalidates and starts the selected stream.
+
+`mixing` exposes `ChannelMap`, complete inspectable `ClipMixControls`, revisioned `ClipMixState`,
+identity-preserving `ClipMixMutation` values, immutable `ClipMixSnapshot`, and prepared
+`ClipMixProcessor`. State mutations set, inherit, transfer, or remove complete intent atomically.
+Preparation binds one clip identity to an exact `SampleTime` interval and fixed layouts.
 
 ## Architecture and data flow
 
@@ -117,6 +128,13 @@ silence on starvation or a domain conflict, advances `AudioMasterClock` by every
 frame, and updates relaxed atomics. Device capabilities are re-read before stream construction, and
 portable speaker positions remain explicitly unknown when CPAL reports only channel count.
 
+Clip preparation validates that fades fit the exact clip duration and precomputes a dense
+destination-by-source routing matrix plus per-output phase coefficients. The processor validates
+the prepared clock, layouts, and half-open clip interval before touching output. It maps semantic
+channels, applies the W3C equal-power stereo equations, multiplies bounded linear gain and
+endpoint-inclusive sample fades, applies per-destination phase, and honors one snapshot-wide solo
+decision. Its successful callback path allocates nothing and takes no lock.
+
 ## Dependencies and consumers
 
 - `superi-core` supplies ordered `ChannelLayout`, exact `SampleTime`, and the shared classified
@@ -128,16 +146,16 @@ portable speaker positions remain explicitly unknown when CPAL reports only chan
 - CPAL 0.17.3 supplies CoreAudio, WASAPI, and ALSA discovery and output adapters while remaining
   compatible with the repository Rust declaration. ringbuf 0.4.8 supplies the preallocated SPSC
   sample queue. Linux CI installs ALSA development headers.
-- `superi-engine` declares `superi-audio` but has no production adapter from timeline and decoded
-  media state into the schedule or prepared graph.
+- `superi-engine::audio_mix` owns production timeline edit and clip-mix identity reconciliation.
+  No production adapter yet binds decoded media into the schedule or prepared graph.
 - `superi-timeline` remains upstream through future engine composition rather than a direct Rust
   dependency. Its sample-exact placements, track order, channel layout, and routing intent are
   adapter inputs.
 - `superi-media-io` remains the decoded sample owner and is not a direct dependency. No production
   decoder currently feeds a prepared graph from scheduled slices.
-- The three public integration contracts are the current real consumers. They process exact adjacent
-  blocks, publish scheduled presentation through actual concurrency clocks, and exercise bounded
-  device output.
+- The four public integration contracts are the current real consumers. They process exact adjacent
+  blocks, publish scheduled presentation through actual concurrency clocks, exercise bounded
+  device output, and prove clip DSP plus identity inheritance.
 
 ## Invariants and operational boundaries
 
@@ -146,7 +164,8 @@ portable speaker positions remain explicitly unknown when CPAL reports only chan
 - Graph nodes and edges are deterministically inspectable. Rejected mutations leave primary and
   adjacency collections unchanged.
 - A source has no input. A processing node has exactly one connected input in this foundational
-  graph. Multi-input summing, buses, channel maps, and automation belong to later mixing work.
+  graph. Clip channel mapping changes layout inside one processor; multi-input summing, buses, and
+  automation remain later mixing work.
 - Edges require exact ordered channel-layout equality. The graph performs no implicit upmix,
   downmix, remap, pan, or resample.
 - Prepared execution includes only the chosen destination and its connected ancestors. Its order
@@ -179,6 +198,10 @@ portable speaker positions remain explicitly unknown when CPAL reports only chan
   them to the graph.
 - All current implementation is safe Rust, offline, and open-tree only; native output is isolated
   behind CPAL.
+- Clip mix publication is revision checked and atomic. Complete controls follow a right fragment,
+  transfer to a replacement, and disappear with a removed clip through engine-owned reconciliation.
+- Nonzero pan requires canonical stereo output. Gain and route coefficients are finite and bounded;
+  fades use exact integer sample lengths and must fit the prepared clip interval.
 
 ## Tests and verification
 
@@ -202,12 +225,19 @@ buffer semantics, capacity and normalized-sample validation, whole-frame backpre
 telemetry, exact clock progression, persisted locators, domain-conflict degradation, production host
 discovery, endpoint thread transfer, and 5,120,000 simulated frames without accumulated drift.
 
+`clip_mixing_contract` has four public integration tests. It proves swapped channel routing, phase
+inversion, bounded gain, exact three-sample fade endpoints across adjacent callback blocks,
+hard-pan endpoint exactness, mute, snapshot-wide solo, transactional set/inherit/transfer/remove,
+stale revision and partial-batch rejection, invalid semantic routes and numeric controls, fade
+duration bounds, and out-of-clip processing rejection through the actual prepared graph processor.
+
 ## Current status and risks
 
-The independent audio graph, sample-accurate schedule, and production device-output substrate are
-substantive and publicly test-backed. Four sibling modules remain documentation-only placeholders.
-There is no production timeline adapter, decoded-audio fetch, scheduled-slice graph binding, mixing,
-routing execution, resampling, metering, plugin host, engine playback composition, or end-to-end
+The independent audio graph, sample-accurate schedule, production device-output substrate, and clip
+mix processor are substantive and publicly test-backed. Three sibling modules remain
+documentation-only placeholders. Engine consumes timeline edit outcomes for atomic clip identity
+reconciliation, but there is no decoded-audio fetch, scheduled-slice graph binding, bus mixing,
+resampling, metering, plugin host, engine playback composition, or end-to-end
 source-playback-final-mix path.
 
 The single-input shape is deliberately narrow to avoid inventing later bus semantics. Extending it
@@ -216,7 +246,8 @@ behavior. The schedule iterator is deterministic and allocation-free but scans p
 a future index must be prepared outside callbacks and preserve exact render order. Caller processors
 remain a trust boundary for real-time safety and error atomicity. Physical latency, semantic
 channel routing, hot-plug, constrained-device, and soak evidence remain
-owned by the platform audio and physical test lanes.
+owned by the platform audio and physical test lanes. Current gain is linear rather than
+decibel-addressed, fades are linear only, and pan is the canonical stereo equal-power model.
 
 ## Maintenance notes
 
