@@ -1,6 +1,7 @@
-//! `superi-audio`, audio processing graph, mixing, sample-accurate sync.
+//! `superi-audio`, independent audio processing, mixing, and sample-accurate sync.
 //!
-//! § 5.9 in `docs/architecture.md`. Depends on: superi-core, superi-concurrency. Status: skeleton.
+//! The foundational editable and prepared processing graph is implemented in [`graph`]. Playback,
+//! mixing, synchronization, resampling, metering, and plugin hosting remain separate staged owners.
 
 pub mod graph;
 pub mod hosting;

@@ -15,7 +15,7 @@ against raw source before changing code.
 | --- | --- | --- | --- | --- |
 | `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
 | `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade for capabilities and canonical editorial state | Partial: capability and canonical scenario controls implemented; transport, general API, and scripting absent |
-| `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Reserved audio graph, playback, mixing, resampling, metering, and plugin boundary | Skeleton: public module names only |
+| `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Independent editable and prepared audio graph plus reserved playback, mixing, resampling, metering, sync, and plugin boundaries | Partial: deterministic exact-layout DAG and bounded sample-continuous processing implemented; engine, device, mixing, sync, resampling, metering, and hosting absent |
 | `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, precise graph edit invalidation, versioned corruption-recovering disk persistence, and replaceable derived-media publication, plus reserved render and prefetch policy | Complete identity feeds independent memory and disk tiers with exact admission, revision fencing, bounded envelopes, atomic publication, schema isolation, and corruption quarantine, while source, revision, purpose, quality, and settings bind complete proxy or optimized artifacts; engine and scheduler now own quality substitution, while cache lifecycle, render caching, and prefetch remain |
 | `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario consumer | Implemented portable expectation verifier and eight instrumented contract stages; rendered media flow absent |
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
@@ -213,6 +213,21 @@ Canonical editorial control is also implemented at a bounded reference boundary:
    repository-relative identity before hashing, and both hosted Rust build jobs validate every
    fixture, compile and test the supported `os-codecs` configuration, and execute this same
    normalized consumer path with accurate active-feature identity.
+
+The independent audio processing graph is implemented below engine orchestration:
+
+1. `superi-audio::graph::AudioGraph` owns audio-specific graph, node, and edge identities, one
+   exact sample rate, one positive process-block bound, and ordered editable DAG storage.
+2. Edge insertion rejects missing endpoints, cycles, ambiguous inputs, and unequal ordered
+   `ChannelLayout` values before mutation. No implicit channel conversion or resampling occurs.
+3. Preparation selects one destination and its ancestors, computes stable processing order,
+   resolves inputs to earlier nodes, and fallibly preallocates every interleaved f32 buffer.
+4. `PreparedAudioGraph::process` requires `ExecutionDomain::Audio`, rejects rate, size, output,
+   overflow, and continuity mismatches before running processors, then advances the next exact
+   sample only after complete success.
+5. A public crate integration test consumes source and gain processors over consecutive 48 kHz
+   stereo blocks. No engine, decoder, playback device, bus mixer, resampler, meter, sync owner, or
+   plugin host consumes this substrate yet.
 
 Generic graph storage is implemented independently of that reference path:
 
@@ -556,8 +571,9 @@ loops. Concurrency jobs use their own `JobControl` and require the job closure t
 Both models are cooperative. Neither can preempt a blocking operating-system call, native codec
 call, or closure that omits checkpoints.
 
-These mechanisms are not yet a composed runtime. Engine proxy resolution consumes only the
-derived-media selection policy; graph and audio have no production concurrency consumer. No owner
+These mechanisms are not yet a composed runtime. The audio graph now enforces the platform-owned
+audio domain for fixed prepared block processing, and engine proxy resolution consumes only the
+derived-media selection policy. Graph has no production concurrency consumer, and no owner
 constructs worker pools, clocks, handoffs, lifecycle participants, or liveness monitors in
 production source. The `submit` module is a placeholder. A contract test hosts
 the real non-Send `GpuSubmissionQueue` inside the GPU submission domain, but no engine owner wires
@@ -920,13 +936,15 @@ encodes and muxes output, persists a project, and drives the flow through the pu
 
 ## Placeholders and incomplete integration
 
-Entire crate skeletons are `superi-ai`, `superi-audio`, `superi-effects`, and `superi-project`.
+Entire crate skeletons are `superi-ai`, `superi-effects`, and `superi-project`.
 Their manifests establish intended dependency direction, but their public modules expose no
-substantive types or operations. `superi-cache` now has substantive composite identity, budgeted
-memory retention, hierarchical memory policy, priority-aware LRU eviction, precise edit
-invalidation, persistent storage, color metadata, and replaceable proxy or optimized-media
-publication, while prefetch, render caching, and lifecycle policy remain incomplete. Engine now
-performs substitution using concurrency-owned selection, but no playback or export owner invokes it.
+substantive types or operations. `superi-audio` now has a substantive independent processing graph,
+while its playback, mixing, sync, resample, metering, and hosting modules remain placeholders.
+`superi-cache` now has substantive composite identity, budgeted memory retention, hierarchical
+memory policy, priority-aware LRU eviction, precise edit invalidation, persistent storage, color
+metadata, and replaceable proxy or optimized-media publication, while prefetch, render caching, and
+lifecycle policy remain incomplete. Engine now performs substitution using concurrency-owned
+selection, but no playback or export owner invokes it.
 
 Partial modules contain these explicit placeholder areas:
 

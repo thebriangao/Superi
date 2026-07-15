@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 9954484cefc713d49c8e9dbd4a52194134bd51927958a850e86227afd5ab4f34
-source_files: 125
+source_hash: 73bce4fa3c9aaa24ad4927b8dfac7434cca31c1027ee62411bb6adebe7d4e608
+source_files: 126
 mapped_at_commit: working-tree
 ---
 
@@ -25,7 +25,7 @@ a single checkpoint through mapping, planning, and execution, and routes multipl
 separate Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers
 but obeys an explicit positive user concurrency value. The file is ignored by Git and copied into
 managed worktrees through `.worktreeinclude`, so the mapping script does not include it in this
-module's 125-file inventory or source hash. It must still be reread independently before repository
+module's 126-file inventory or source hash. It must still be reread independently before repository
 work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
@@ -241,6 +241,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   import and export. It records the native mapping, opaque preservation, stable diagnostics,
   exact-clock policy, public headless consumer, Rust contract proof, and official reference
   validation of Rust-produced outputs.
+- `docs/checkpoints/P2.W04.C001.md`: Durable implementation evidence for the independent audio
+  processing graph. It records deterministic editable topology, separately prepared bounded block
+  execution, exact sample and ordered-channel contracts, audio-domain integration, red-to-green
+  proof, delivery context, and the intentionally separate mixing, device, sync, and hosting work.
 - `docs/checkpoints/P1.W07.C025.md`: Durable implementation evidence for bounded timing and process
   resident-memory instrumentation across all eight canonical slice stages. It records the private
   sampler boundary, schema 1.1.0 report contract, dependency decision, red-to-green proof,
@@ -967,6 +971,12 @@ record.
 Commit `5649d9075b29eef79b181caa880a650a59786ae1` added the independent canonical expectation fixture,
 strict CLI consumption, reference frames, audio and timing proof, and its durable checkpoint record.
 
+The independent audio processing graph now provides deterministic audio-owned topology,
+destination-scoped preparation with fixed intermediate buffers, and exact consecutive block
+processing on the concurrency-owned audio domain. Its current public consumer proves a
+source-to-gain-to-gain chain and atomic topology and block rejection, while engine playback,
+mixing, devices, resampling, A/V synchronization, metering, and plugin hosting remain absent.
+
 The largest current risk is cross-document drift:
 
 - The canonical fixture, independent expected contract, reference project and graph state, strict
@@ -1048,8 +1058,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`6d59f325c57539b50141b3e63b00dfde4b7ff516` when the map was refreshed. Its hash describes the exact
-125 discovered source files, including twelve generated binary payloads, layered on that revision.
+`f41619eee9fa3518e47ae4e40d6ff43f7816ad70` when the map was refreshed. Its hash describes the exact
+126 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 
