@@ -7,11 +7,11 @@ use superi_core::prelude::{
     ComponentId, CounterSnapshot, CounterUnit, DeviceId, DiagnosticEvent, DiagnosticSeverity,
     Duration, EdgeId, Error, ErrorCategory, ErrorContext, FeatureAvailability, FeatureDescriptor,
     FeatureDiscovery, FeatureId, FieldVisibility, FiniteF64, FrameRate, GapId, GeneratorId,
-    GraphId, IdentifierKind, JobId, Matrix3, MatrixCoefficients, MediaId, NodeId, ParameterId,
-    PerformanceCounter, PixelBounds, PixelFormat, PixelModel, PixelNumeric, PixelPacking, Point2,
-    PortId, ProjectId, RationalTime, Recoverability, Rect, ResourceId, Result, ResultExt,
-    SampleFormat, SampleNumeric, SampleTime, SemanticVersion, SettingKey, SettingValue,
-    SettingValueKind, SettingsSnapshot, TimeRange, TimeRounding, Timebase, Timecode,
+    GraphId, IdentifierKind, JobId, MarkerId, Matrix3, MatrixCoefficients, MediaId, NodeId,
+    ParameterId, PerformanceCounter, PixelBounds, PixelFormat, PixelModel, PixelNumeric,
+    PixelPacking, Point2, PortId, ProjectId, RationalTime, Recoverability, Rect, ResourceId,
+    Result, ResultExt, SampleFormat, SampleNumeric, SampleTime, SemanticVersion, SettingKey,
+    SettingValue, SettingValueKind, SettingsSnapshot, TimeRange, TimeRounding, Timebase, Timecode,
     TimecodeFormat, TimecodeMode, TimelineId, TraceField, TraceValue, TrackId, TransferFunction,
     TransitionId, TypedId, UserSafeError, Vector2, VersionIdentifier,
     STABLE_PRIMITIVE_SCHEMA_REVISION,
@@ -46,6 +46,7 @@ fn prelude_exposes_the_complete_curated_contract() {
     assert_stable_wire_type::<TransitionId>();
     assert_stable_wire_type::<GeneratorId>();
     assert_stable_wire_type::<CaptionId>();
+    assert_stable_wire_type::<MarkerId>();
     assert_stable_wire_type::<NodeId>();
     assert_stable_wire_type::<ParameterId>();
     assert_stable_wire_type::<JobId>();

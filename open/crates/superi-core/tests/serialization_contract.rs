@@ -15,8 +15,8 @@ use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability};
 use superi_core::geometry::{AspectRatio, Matrix3, PixelBounds, Point2, Rect, Vector2};
 use superi_core::ids::{
     CacheId, CaptionId, ClipId, DeviceId, EdgeId, GapId, GeneratorId, GraphId, IdentifierKind,
-    JobId, MediaId, NodeId, ParameterId, PortId, ProjectId, ResourceId, TimelineId, TrackId,
-    TransitionId,
+    JobId, MarkerId, MediaId, NodeId, ParameterId, PortId, ProjectId, ResourceId, TimelineId,
+    TrackId, TransitionId,
 };
 use superi_core::pixel::{
     AlphaMode, ChannelLayout, ChannelPosition, ChromaSubsampling, PixelFormat, PixelModel,
@@ -72,6 +72,7 @@ fn stable_public_types_implement_serde() {
     assert_stable_wire_type::<TransitionId>();
     assert_stable_wire_type::<GeneratorId>();
     assert_stable_wire_type::<CaptionId>();
+    assert_stable_wire_type::<MarkerId>();
     assert_stable_wire_type::<NodeId>();
     assert_stable_wire_type::<ParameterId>();
     assert_stable_wire_type::<JobId>();
@@ -215,6 +216,7 @@ fn permanent_codes_and_identifier_text_are_the_wire_identity() {
     assert_id!(TransitionId, "transition");
     assert_id!(GeneratorId, "generator");
     assert_id!(CaptionId, "caption");
+    assert_id!(MarkerId, "marker");
     assert_id!(NodeId, "node");
     assert_id!(ParameterId, "parameter");
     assert_id!(JobId, "job");

@@ -2,8 +2,8 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: 99f22af0cf32506c9d511269b5bead9957752ff4ff5f7b72837950c551011904
-source_files: 17
+source_hash: 01533bbc374dda81d25d3a6999f964234eab4fdefd83ff7de8ef47277fe4f6f4
+source_files: 18
 mapped_at_commit: working-tree
 ---
 
@@ -16,16 +16,19 @@ exact rational timing. It also owns authoritative timeline selection, track targ
 linked selection, and clip grouping. Video, audio, caption, and timed-data tracks carry their
 explicit clock and media behavior. Clip range maps keep source and record clocks synchronized,
 while resolved range contexts expose known media availability or derived nested-timeline
-availability without destroying overscan. Foundational insert, overwrite, append, replace, lift,
-and extract commands reshape those objects while reporting every inserted, removed, modified,
-split, or invalidated relationship. Whole-project validation and revision-checked atomic batches
-keep linked objects, user intent, timing, synchronization, nesting, and direct edits valid at
-publication boundaries.
+availability without destroying overscan. Timeline, track, and object markers preserve permanent
+identity, explicit ownership, owner-relative exact ranges, visible labels, flags, notes, and nested
+deterministic metadata. Persistent snapping resolves exact timeline, playhead, item, and visible
+marker boundaries with stable filters, exclusions, and tie ordering. Foundational insert,
+overwrite, append, replace, lift, and extract commands reshape those objects while reporting every
+inserted, removed, modified, split, or invalidated relationship. Whole-project validation and
+revision-checked atomic batches keep linked objects, annotations, user intent, timing,
+synchronization, nesting, and direct edits valid at publication boundaries.
 
 The model also owns a narrow immutable color metadata seam that retains graph color state through
 the future compilation boundary without changing source meaning.
 
-The crate continues to reserve advanced trim operations, markers, multicam behavior, OTIO-compatible
+The crate continues to reserve advanced trim operations, multicam behavior, OTIO-compatible
 interchange, and deterministic timeline-to-graph compilation. Those surfaces are not implemented.
 The canonical OTIO 0.18.1 fixture remains executable evidence for future interchange work rather
 than a production reader or writer.
@@ -45,12 +48,15 @@ than a production reader or writer.
   identities owned by `superi-core`.
 - `open/crates/superi-timeline/src/lib.rs`: Exports the implemented identity, edit-state, edit
   operation, and model modules plus the staged editorial namespaces.
-- `open/crates/superi-timeline/src/markers.rs`: Placeholder for markers, metadata, bins, and media
-  management.
+- `open/crates/superi-timeline/src/markers.rs`: Implements stable timeline, track, and object marker
+  ownership, visible labels, flags, notes, recursively nested ordered metadata, owner-relative range
+  resolution, dangling-owner reconciliation, persistent snapping state, exact candidate projection,
+  target filters, exclusions, and deterministic tie resolution.
 - `open/crates/superi-timeline/src/model.rs`: Implements four track kinds, track-specific timing and
   media semantics, exact clip range maps, linked availability context, every foundational
-  editorial object, ordered tracks, timelines, validated project snapshots, atomic revision-checked
-  editing, and `TimelineColorMetadata`, which retains exact graph color metadata through compilation.
+  editorial object, ordered tracks, timelines, annotation integration, validated project snapshots,
+  atomic revision-checked editing, and `TimelineColorMetadata`, which retains exact graph color
+  metadata through compilation.
 - `open/crates/superi-timeline/src/multicam.rs`: Placeholder for a multicam data model.
 - `open/crates/superi-timeline/src/nested.rs`: Placeholder for higher-level compound clip and
   nested sequence operations. The foundational model already supports clips sourced from another
@@ -67,6 +73,10 @@ than a production reader or writer.
 - `open/crates/superi-timeline/tests/edit_ops_contract.rs`: Proves all six foundational operations,
   exact cross-rate source slicing, nested source preservation, typed fragment identities, explicit
   transition removal, lift gaps, synchronized multi-track publication, and failed-batch rollback.
+- `open/crates/superi-timeline/tests/markers_contract.rs`: Proves stable marker identity, timeline,
+  track, and object ownership, visible semantics, nested metadata, direct mutation, owner-relative
+  resolution, preserved overscan, structural-edit survival, dangling-owner cleanup, exact snapping,
+  filters, exclusions, persistent disablement, stable ties, and atomic rollback.
 - `open/crates/superi-timeline/tests/otio_fixture_contract.rs`: Proves canonical OTIO schema,
   hierarchy, identity, timing, relationships, opaque retention, and unsupported diagnostics.
 - `open/crates/superi-timeline/tests/range_contract.rs`: Proves exact cross-clock point and subrange
@@ -78,8 +88,8 @@ than a production reader or writer.
 ## Public surface
 
 The `ids` module re-exports `ProjectId`, `MediaId`, `TimelineId`, `TrackId`, `ClipId`, `GapId`,
-`TransitionId`, `GeneratorId`, and `CaptionId`. These are the same sealed core identifier types used
-by every other subsystem.
+`TransitionId`, `GeneratorId`, `CaptionId`, and `MarkerId`. These are the same sealed core identifier
+types used by every other subsystem.
 
 The track semantics surface includes:
 
@@ -127,6 +137,22 @@ The timeline edit-state surface includes:
   intent, enumerate targeted tracks by timeline order and media kind, and resolve sync-affected
   tracks for later insert and ripple commands.
 
+The annotation and snapping surface includes:
+
+- `MarkerOwner` for explicit timeline, track, or stable editorial-object ownership, plus `Marker`
+  with core-owned `MarkerId`, an exact owner-relative `TimeRange`, and directly replaceable
+  `MarkerLabel`, `MarkerFlag`, `MarkerNote`, and marker metadata.
+- `MetadataKey`, `MetadataValue`, and `TimelineMetadata` for deterministic ordered state with null,
+  Boolean, signed and unsigned integer, finite floating-point, text, exact time, exact range, list,
+  and nested-map values.
+  `MetadataOwner` attaches maps directly to the timeline, a track, an editorial object, or a marker.
+- `Timeline` marker lookup, stable iteration, direct unpublished mutation, insert, remove, metadata,
+  and visible range resolution. Object-owned marker timing remains relative to the stable object's
+  record start, so structural shifts do not rewrite authored intent.
+- `SnapRequest`, `SnapTargetKind`, `SnapTarget`, and `SnapMatch` for persistent, exact, nonmutating
+  snap queries over timeline zero, a caller playhead, item boundaries, and visible marker boundaries.
+  Requests can include target classes and exclude moving objects or markers.
+
 The foundational operation surface includes:
 
 - `EditOperation` and `EditKind` for insert, overwrite, append, replace, lift, and extract commands
@@ -139,8 +165,8 @@ The foundational operation surface includes:
   inserted and removed objects, changed retained objects, created right fragments, removed
   transitions, and exact duration effects without reconstructing a diff from the final track.
 
-`compile`, `markers`, `multicam`, `nested`, and `otio` remain public namespace reservations without
-production operations. `edit_ops` is a substantive public operation surface.
+`compile`, `multicam`, `nested`, and `otio` remain public namespace reservations without production
+operations. `markers` and `edit_ops` are substantive public operation surfaces.
 
 `TimelineColorMetadata::from_graph` retains exact graph-owned color state, `graph` exposes it, and
 `compile` returns an unchanged clone for a later graph compiler.
@@ -194,6 +220,21 @@ new tracks, removes references to deleted objects, and dissolves relationship co
 than two surviving clips. The reconciled state and all clip source and record data publish in the
 same project revision or roll back together.
 
+Each `Timeline` also constructs annotation state in the same snapshot. Marker insertion validates
+that the explicit owner exists and that authored timing uses the owner's exact record clock.
+Timeline and track ranges are already record coordinates. Object ranges remain relative to the
+stable timed object's record start, resolve through its current placement, and stay authored when
+the object shifts. Object-relative ranges beyond the current owner duration remain stored as
+editable overscan but do not become visible marker or snap ranges. Reconciliation removes only
+markers and object metadata whose stable owner disappeared; timeline and surviving track state is
+unchanged.
+
+Snapping is a read-only query over the current validated snapshot. Candidate boundaries are exactly
+rescaled into the request clock and skipped when no exact representation exists. The request clock
+must match its tolerance clock. Persistent disablement returns no target, filters select target
+classes, exclusions prevent a moving object and its markers from snapping to themselves, and equal
+distances choose the smallest stable `SnapTarget` identity.
+
 Foundational operation flow extends that transaction without creating another state model:
 
 1. `apply_edit_batch` resolves each target timeline and track inside the unpublished
@@ -231,8 +272,17 @@ assertions. It does not enter the native model yet.
 
 ## Invariants and operational boundaries
 
-- Project, media, timeline, track, clip, gap, transition, generator, and caption identities are
-  permanent typed domains. Track and editorial object identities are unique across one project.
+- Project, media, timeline, track, clip, gap, transition, generator, caption, and marker identities
+  are permanent typed domains. Track, editorial object, and marker identities are unique across one
+  project.
+- Marker ranges use their explicit owner's exact clock and never start before owner zero. Timeline
+  and track markers use record coordinates. Object markers remain relative to a stable timed object,
+  preserve overscan across trims, resolve through current record placement, and disappear only when
+  their owner disappears.
+- Metadata keys are canonical nonblank ASCII without whitespace and maps retain stable key order.
+  Marker label, flag, and note semantics are explicit public fields rather than hidden key conventions.
+- Snapping never rounds a candidate. The request coordinate and tolerance use one clock, inexact
+  cross-clock candidates are skipped, exclusions are explicit, and stable target order breaks ties.
 - Timeline edit state references only tracks and objects owned by that timeline. Surviving stable
   identities retain their selection, targeting, synchronization, link, and group intent through
   structural project edits.
@@ -276,7 +326,7 @@ assertions. It does not enter the native model yet.
 - A transition is never silently redirected. It survives only with its original adjacent endpoints
   and valid nonoverlapping handles; otherwise its typed identity appears in the outcome.
 - Advanced retiming, ripple and roll trims, slip, slide, razor, three-point and four-point edits,
-  production OTIO preservation, deterministic graph compilation, undo-history ownership, markers,
+  production OTIO preservation, deterministic graph compilation, undo-history ownership,
   multicam, and higher-level editorial commands remain outside this state.
 - The timeline color seam preserves exact graph metadata and performs no transform, inference,
   normalization, or reordering.
@@ -315,15 +365,23 @@ Four range tests prove exact cross-clock point and subrange translation, half-op
 failure paths, atomic direct replacement, all four availability classifications, editable media
 overscan, and nested source resolution.
 
+Six marker tests prove all three owner classes, project-wide marker identity uniqueness, stable
+marker iteration, label, flag, note, nested
+metadata, direct mutation, object-relative placement, overscan suppression, exact cross-clock snap
+projection, target filters, object and marker exclusions, playhead candidates, stable ties,
+persistent disablement, atomic invalid-clock rollback, survival through a real insert, and selective
+cleanup through a real extract.
+
 Workspace tests, warnings-denied Clippy, formatting, dependency direction, the offline boundary
 scan, and codebase-map validation are required delivery gates.
 
 ## Current status and risks
 
 The foundational project model, rational range mapping, linked availability context, typed track
-semantics, authoritative timeline edit state, and six primary editorial operations are substantive
-and test-backed. Production OTIO reading and writing, graph compilation, advanced trim transforms,
-undo ownership, markers, multicam, persistence, and engine or API integration remain absent.
+semantics, authoritative timeline edit state, markers, deterministic metadata, exact snapping, and
+six primary editorial operations are substantive and test-backed. Production OTIO reading and
+writing, graph compilation, advanced trim transforms, undo ownership, multicam, persistence, and
+engine or API integration remain absent.
 
 The model requires equal physical source and record duration for clips. Future time-warp support
 must introduce explicit retime state rather than weakening that invariant. Clip range setters
@@ -341,7 +399,8 @@ seam and does not make timeline-to-graph compilation operational.
 ## Maintenance notes
 
 Treat track clocks and semantics, object identity, continuity, physical-time equality, source-aware
-fragmentation, explicit transition invalidation, result reporting, source-link resolution,
+fragmentation, explicit transition invalidation, result reporting, marker ownership, exact snapping,
+metadata ordering, source-link resolution,
 selection expansion, track intent, clip relationship partitions, reconciliation, transition
 adjacency, nesting acyclicity, and atomic publication as public contracts. Extend tests before
 changing them. Later higher-level operations must consume `tracks_affected_by_sync` and exact

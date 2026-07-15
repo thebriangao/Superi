@@ -44,6 +44,8 @@ pub enum IdentifierKind {
     Generator,
     /// An editable timed caption item.
     Caption,
+    /// An editorial marker attached to a timeline, track, or timed object.
+    Marker,
     /// A processing graph node.
     Node,
     /// An editable node or operation parameter.
@@ -76,6 +78,7 @@ impl IdentifierKind {
         Self::Transition,
         Self::Generator,
         Self::Caption,
+        Self::Marker,
         Self::Node,
         Self::Parameter,
         Self::Job,
@@ -100,6 +103,7 @@ impl IdentifierKind {
             Self::Transition => "transition",
             Self::Generator => "generator",
             Self::Caption => "caption",
+            Self::Marker => "marker",
             Self::Node => "node",
             Self::Parameter => "parameter",
             Self::Job => "job",
@@ -125,6 +129,7 @@ impl IdentifierKind {
             "transition" => Some(Self::Transition),
             "generator" => Some(Self::Generator),
             "caption" => Some(Self::Caption),
+            "marker" => Some(Self::Marker),
             "node" => Some(Self::Node),
             "parameter" => Some(Self::Parameter),
             "job" => Some(Self::Job),
@@ -368,6 +373,11 @@ define_identifier!(
     CaptionId,
     Caption,
     "A strongly typed timeline caption identifier."
+);
+define_identifier!(
+    MarkerId,
+    Marker,
+    "A strongly typed editorial marker identifier."
 );
 define_identifier!(NodeId, Node, "A strongly typed processing node identifier.");
 define_identifier!(

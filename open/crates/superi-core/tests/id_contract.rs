@@ -6,8 +6,8 @@ use std::str::FromStr;
 
 use superi_core::ids::{
     CacheId, CaptionId, ClipId, DeviceId, EdgeId, GapId, GeneratorId, GraphId, IdentifierKind,
-    JobId, MediaId, NodeId, ParameterId, ParseIdentifierError, PortId, ProjectId, ResourceId,
-    TimelineId, TrackId, TransitionId, TypedId,
+    JobId, MarkerId, MediaId, NodeId, ParameterId, ParseIdentifierError, PortId, ProjectId,
+    ResourceId, TimelineId, TrackId, TransitionId, TypedId,
 };
 
 const RAW: u128 = 0x0011_2233_4455_6677_8899_aabb_ccdd_eeff;
@@ -45,6 +45,7 @@ fn concrete_types_are_distinct_and_share_one_contract() {
     assert_common_traits::<TransitionId>();
     assert_common_traits::<GeneratorId>();
     assert_common_traits::<CaptionId>();
+    assert_common_traits::<MarkerId>();
     assert_common_traits::<NodeId>();
     assert_common_traits::<ParameterId>();
     assert_common_traits::<JobId>();
@@ -74,6 +75,7 @@ fn concrete_types_are_distinct_and_share_one_contract() {
     assert_contract::<TransitionId>(IdentifierKind::Transition, "TransitionId");
     assert_contract::<GeneratorId>(IdentifierKind::Generator, "GeneratorId");
     assert_contract::<CaptionId>(IdentifierKind::Caption, "CaptionId");
+    assert_contract::<MarkerId>(IdentifierKind::Marker, "MarkerId");
     assert_contract::<NodeId>(IdentifierKind::Node, "NodeId");
     assert_contract::<ParameterId>(IdentifierKind::Parameter, "ParameterId");
     assert_contract::<JobId>(IdentifierKind::Job, "JobId");
@@ -97,6 +99,7 @@ fn kind_codes_are_stable_and_discoverable() {
         "transition",
         "generator",
         "caption",
+        "marker",
         "node",
         "parameter",
         "job",

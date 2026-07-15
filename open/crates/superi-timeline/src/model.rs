@@ -9,7 +9,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 
 use superi_core::ids::{
-    CaptionId, ClipId, GapId, GeneratorId, MediaId, ProjectId, TimelineId, TrackId, TransitionId,
+    CaptionId, ClipId, GapId, GeneratorId, MarkerId, MediaId, ProjectId, TimelineId, TrackId,
+    TransitionId,
 };
 use superi_core::pixel::{ChannelLayout, ChannelPosition};
 use superi_core::time::{
@@ -18,6 +19,9 @@ use superi_core::time::{
 use superi_graph::node::GraphColorMetadata;
 
 use crate::edit_state::{SelectionExpansion, SelectionUpdate, TimelineEditState};
+use crate::markers::{
+    Marker, MetadataOwner, SnapMatch, SnapRequest, TimelineAnnotations, TimelineMetadata,
+};
 
 /// The semantic media class of an editorial track.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -1848,6 +1852,7 @@ pub struct Timeline {
     global_start: RationalTime,
     tracks: Vec<Track>,
     edit_state: TimelineEditState,
+    annotations: TimelineAnnotations,
 }
 
 impl Timeline {
@@ -1867,6 +1872,7 @@ impl Timeline {
             global_start,
             tracks,
             edit_state,
+            annotations: TimelineAnnotations::default(),
         }
     }
 
@@ -1904,6 +1910,78 @@ impl Timeline {
     #[must_use]
     pub const fn edit_state(&self) -> &TimelineEditState {
         &self.edit_state
+    }
+
+    /// Returns whether exact snapping is enabled for this timeline.
+    #[must_use]
+    pub const fn snapping_enabled(&self) -> bool {
+        self.annotations.snapping_enabled()
+    }
+
+    /// Sets the persistent timeline snapping preference.
+    pub fn set_snapping_enabled(&mut self, enabled: bool) {
+        self.annotations.set_snapping_enabled(enabled);
+    }
+
+    /// Looks up a marker by its stable identity.
+    #[must_use]
+    pub fn marker(&self, id: MarkerId) -> Option<&Marker> {
+        self.annotations.marker(id)
+    }
+
+    /// Mutably looks up a marker inside an unpublished draft.
+    pub fn marker_mut(&mut self, id: MarkerId) -> Result<&mut Marker> {
+        self.annotations.marker_mut(id)
+    }
+
+    /// Iterates markers in stable identity order.
+    pub fn markers(&self) -> impl ExactSizeIterator<Item = &Marker> {
+        self.annotations.markers()
+    }
+
+    /// Inserts or replaces one marker after validating its local owner and clock.
+    pub fn upsert_marker(&mut self, marker: Marker) -> Result<Option<Marker>> {
+        self.annotations
+            .upsert_marker(marker, self.edit_rate, &self.tracks)
+    }
+
+    /// Removes one marker and its attached metadata.
+    pub fn remove_marker(&mut self, id: MarkerId) -> Option<Marker> {
+        self.annotations.remove_marker(id)
+    }
+
+    /// Inserts or replaces deterministic metadata for one local owner.
+    pub fn set_metadata(
+        &mut self,
+        owner: MetadataOwner,
+        metadata: TimelineMetadata,
+    ) -> Result<Option<TimelineMetadata>> {
+        self.annotations.set_metadata(owner, metadata, &self.tracks)
+    }
+
+    /// Looks up deterministic metadata by local owner.
+    #[must_use]
+    pub fn metadata(&self, owner: MetadataOwner) -> Option<&TimelineMetadata> {
+        self.annotations.metadata(owner)
+    }
+
+    /// Removes one local owner's metadata.
+    pub fn remove_metadata(&mut self, owner: MetadataOwner) -> Option<TimelineMetadata> {
+        self.annotations.remove_metadata(owner)
+    }
+
+    /// Resolves one marker into visible record coordinates.
+    ///
+    /// An object-relative range outside the owner's current duration is preserved
+    /// but returns `None` until a later edit exposes it again.
+    pub fn resolved_marker_range(&self, id: MarkerId) -> Result<Option<TimeRange>> {
+        self.annotations
+            .resolved_marker_range(id, self.edit_rate, &self.tracks)
+    }
+
+    /// Resolves the nearest exact snap target under the timeline preference.
+    pub fn snap(&self, request: &SnapRequest) -> Result<Option<SnapMatch>> {
+        self.annotations.snap(request, self.edit_rate, &self.tracks)
     }
 
     /// Sets whether ordinary clip selection follows linked clip components.
@@ -2257,15 +2335,16 @@ impl EditorialProject {
             media_references: draft.media_references,
             timelines: draft.timelines,
         };
-        candidate.reconcile_edit_state();
+        candidate.reconcile_timeline_state();
         candidate.validate()?;
         *self = candidate;
         Ok(())
     }
 
-    fn reconcile_edit_state(&mut self) {
+    fn reconcile_timeline_state(&mut self) {
         for timeline in self.timelines.values_mut() {
             timeline.edit_state.reconcile(&timeline.tracks);
+            timeline.annotations.reconcile(&timeline.tracks);
         }
     }
 
@@ -2278,6 +2357,7 @@ impl EditorialProject {
 
         let mut track_ids = BTreeSet::new();
         let mut object_ids = BTreeSet::new();
+        let mut marker_ids = BTreeSet::new();
         for timeline in self.timelines.values() {
             require_text("validate_timeline", "timeline name", timeline.name())?;
             if timeline.global_start().timebase() != timeline.edit_rate() {
@@ -2298,6 +2378,11 @@ impl EditorialProject {
                 validate_track(track, &mut object_ids)?;
             }
             timeline.edit_state.validate(timeline.tracks())?;
+            timeline.annotations.validate(
+                timeline.edit_rate,
+                timeline.tracks(),
+                &mut marker_ids,
+            )?;
         }
         self.validate_source_links()?;
         self.validate_nesting_cycles()?;
