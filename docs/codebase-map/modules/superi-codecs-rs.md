@@ -174,7 +174,9 @@ capabilities.
 VPx backend, and checks both existing and intra-batch backend IDs before mutating the caller's
 registry. This makes duplicate-ID failure atomic, but also makes a compatible libvpx runtime a
 construction dependency of the whole default registry. `superi-engine::media_backend_registry` is
-the direct runtime consumer. Optional OS and vendor layers are added only after this default set.
+the direct runtime consumer. Engine timeline resource preparation now selects these registrations
+from opened stream codec IDs and constructs the selected decoder exactly once. Optional OS and
+vendor layers are added only after this default set.
 
 Upstream container implementations in `superi-media-io` map Matroska/WebM identities `V_AV1`,
 `V_VP8`, `V_VP9`, `A_MPEG/L3`, `A_FLAC`, `A_VORBIS`, and `A_OPUS`, and MP4/MOV `av01`, to the stable
@@ -296,11 +298,13 @@ compatibility and use `cc` to compile the VPx shim.
 Direct consumers and producers are:
 
 - `superi-engine` always calls `register_default_backends`; its optional codec features add other
-  layers afterward.
+  layers afterward. Resource preparation consumes decoder selection and factory lifecycles, and the
+  canonical WebM contract proves a live `rust-av1` decoder beside the retained timeline graph.
 - `superi-media-io` Matroska/WebM and MP4/MOV readers produce codec IDs, elementary packets,
   configuration, timing, trimming, color, and provenance metadata consumed here.
 - Registry and engine capability consumers inspect the detailed codec rows without invoking codec
-  construction directly.
+  construction. Engine resource preparation separately selects factories from coarse codec
+  capability and retains the exact `DecoderConfig` and backend evidence.
 - Playback, ingest, seek, relink, graph upload, and audio pipelines consume decoded `VideoFrame` and
   `AudioBlock` values through the neutral interface.
 - Mux and export paths consume encoded elementary `Packet` values and their configuration,

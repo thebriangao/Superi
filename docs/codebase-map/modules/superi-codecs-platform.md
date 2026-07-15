@@ -149,7 +149,8 @@ silently substitutes a different backend after native construction fails.
 ### Registration and capability publication
 
 1. `superi-engine::media::media_backend_registry` first registers the default permissive backends.
-   When `os-codecs` is enabled, it calls `register_platform_backends` on the same registry.
+   When `os-codecs` is enabled, it calls `register_platform_backends` on the same registry, then
+   appends the engine-owned in-tree container source registrations.
 2. macOS deterministically creates one primary registration at priority 200 with
    `PlatformManaged` acceleration. It declares decode and encode for H.264, HEVC, AAC, and five
    ProRes profiles. H.264, HEVC, and AAC dimensions are runtime-negotiated where appropriate;
@@ -341,7 +342,9 @@ Errors preserve `superi_core` category, recoverability, component, operation, an
   permissive set.
 - Engine capability introspection consumes the resulting `BackendRegistration` rows and preserves
   the explicit `Software`, `Hardware`, or `PlatformManaged` acceleration state. Engine selection
-  uses the shared registry's priority, tier, and explicit fallback policy.
+  uses the shared registry's priority, tier, and explicit fallback policy. Timeline resource
+  preparation now creates a selected platform decoder when one advertises the opened stream codec,
+  while native factory failure returns directly without switching implementations.
 - The crate's integration tests consume public configuration, registration, decoder, encoder,
   timing, metadata, and buffer contracts. `superi-engine/tests/os_codec_registry_contract.rs`
   checks that host-discovered platform registrations compose with the default registry under

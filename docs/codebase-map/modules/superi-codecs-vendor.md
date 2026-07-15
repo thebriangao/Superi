@@ -168,7 +168,10 @@ source uses it. Decoded worker frames cross through `superi-media-io::decode::Cp
 The sole runtime consumer is `superi-engine`. `open/crates/superi-engine/Cargo.toml` makes the crate
 optional behind `vendor-codecs`. `open/crates/superi-engine/src/media.rs` exposes
 `media_backend_registry_with_vendor_plugins`, which first builds the ordinary registry and then
-registers the caller's explicit workers. The default registry is vendor-free.
+registers the caller's explicit workers. The ordinary registry now includes all in-tree container
+sources, while the default remains vendor-free. Engine timeline resource preparation can select an
+explicit worker through the same source and decoder contracts, retains its selection evidence, and
+does not retry another backend after a selected worker operation fails.
 
 `open/crates/superi-engine/tests/vendor_codec_registry_contract.rs` is the downstream integration
 proof. It verifies that default capability introspection contains no vendor formats and that an

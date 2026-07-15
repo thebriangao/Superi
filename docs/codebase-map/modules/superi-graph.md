@@ -785,7 +785,9 @@ remain separate later owners.
 
 The disclosed canonical reference graph in `superi-engine` uses core `NodeId` but is not a consumer
 of this store and retains string ports and edges. It remains reference behavior, not production
-graph evaluation or runtime integration.
+graph evaluation or runtime integration. Separately, engine resource preparation retains the real
+`TimelineGraphCompilation` produced by `superi-timeline`; it does not translate that graph into the
+reference model.
 
 ## Dependencies and consumers
 
@@ -829,8 +831,10 @@ graph evaluation or runtime integration.
   layered reuse and bounded background jobs without moving worker policy into graph.
   `superi-engine::playback` consumes `GraphEvaluationSnapshot` and
   `EvaluationRequest` to populate predicted frames through the cache-owned host adapter, without
-  adding mode-specific evaluation behavior. The engine color propagation contract exercises
-  metadata. Effects consumes versioned schemas, schema registration snapshots, typed editable
+  adding mode-specific evaluation behavior. Engine resource preparation also retains one timeline
+  compilation and its editable graph beside exact opened media owners, without copying or
+  evaluating graph state. The engine color propagation contract exercises metadata. Effects
+  consumes versioned schemas, schema registration snapshots, typed editable
   nodes and values, instance bindings, immutable snapshots, bounded scalar expressions,
   `NodeCompiler`, parameter evaluation, diagnostics, and evaluator seams. It uses those neutral
   contracts for workflow-neutral authoring, exact keyframe, visual composition, spatial composition,
@@ -846,8 +850,8 @@ graph evaluation or runtime integration.
   node-graph-role graphs without adding selection, solver, correction, or pose behavior. Timeline
   consumes versioned schemas, typed ports, complete editable nodes, atomic graph transactions, DAG
   validation, immutable snapshots, and `GraphValue` to publish native editorial state beside shared
-  processing intent without importing effects. Other declared domain consumers still have no
-  production graph call site.
+  processing intent without importing effects. Engine consumes that compiled result at its
+  preparation boundary. Other declared domain consumers still have no production graph call site.
 - The sixteen graph integration test targets remain the direct consumers of identifier,
   schema-discovery, DAG, validation, mutation, invalidation, ROI, serialization, expression,
   diagnostics, ordinary and cached evaluation, shared evaluation-snapshot, missing-node, and
@@ -1176,9 +1180,10 @@ change the evaluator result. Cache can dispatch caller-compiled snapshots. Effec
 production definition catalog, exact-schema compiler adapter, graph-native transition catalog, and
 bounded CPU reference factory, but it has no production GPU runtime factory and does not connect
 complete ROI and invalidation plans or timeline-owned transitions to a rendered-frame application
-flow. Engine playback is the first production role consumer
-of an externally prepared evaluation snapshot, and its contract proves exact cached prediction does
-not change foreground evaluation meaning.
+flow. Engine playback is the first production role consumer of an externally prepared evaluation
+snapshot, and its contract proves exact cached prediction does not change foreground evaluation
+meaning. Engine resource preparation is the first owner to retain timeline's editable compilation
+with exact source and decoder lifetimes, but it does not compile runtime nodes or evaluate output.
 The versioned graph document codec now preserves and validates that complete editable state,
 migrates the supported legacy envelope, returns canonical upgraded bytes, and retains typed links
 and editable expression source through save and load. Missing-node resolution now derives exact
@@ -1187,8 +1192,8 @@ incompatible nodes as typed placeholders, and gives every caller one determinist
 evaluation result until exact schemas return. Exact schemas then enable the shared interactive and
 headless evaluation snapshot without a graph rewrite. The crate cannot store a project atomically,
 own concrete cached values, persist cache data, bind
-plugin implementations, or render production values. Timeline compilation and memory cache
-retention are now real downstream consumers. Effects is a concrete downstream schema, expression,
+plugin implementations, or render production values. Timeline compilation, engine preparation
+retention, and memory cache retention are now real downstream consumers. Effects is a concrete downstream schema, expression,
 diagnostics, evaluator, immutable compiler, generic serialization, authoring, and animation consumer
 with strict visual composition, spatial composition, vector shape, mask, rotoscope, motion-tracking,
 and text payloads, inspectable glyph layout, ordinary transition nodes, isolated OpenFX definitions

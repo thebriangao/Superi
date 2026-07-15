@@ -591,7 +591,9 @@ Timeline document flow preserves those owners without becoming a project contain
   offline OTIO JSON parsing and serialization. No OTIO library, Python package, network path,
   plugin host, or fixture-tool runtime dependency enters the crate.
 - `superi-project` and `superi-engine` declare `superi-timeline` as a dependency. Engine integration
-  tests consume the color metadata seam; neither source tree consumes the editorial model yet.
+  consumes the color metadata seam, calls `compile_timeline`, traverses reachable media and nested
+  timeline relationships, and retains the resulting `TimelineGraphCompilation` with prepared source
+  and decoder owners. Project remains a declaration-only consumer.
 - Public integration tests and the `otio_roundtrip` example are real consumers. No application API
   or editor surface exposes the general editorial model yet.
 
@@ -809,6 +811,11 @@ identical graph state after a selection-only project revision, directly editable
 one linked shared scalar processing node beside native domain values, typed multicam source,
 switching, and audio intent, and classified missing-root failure.
 
+The engine media resource contract is the first production crate consumer of compilation. It
+retains the canonical fixture's three-node, two-edge graph beside a fingerprint-verified WebM source
+and live AV1 decoder, and proves exact timing, precision, metadata, color, and alpha semantics without
+copying timeline graph or media identity into another owner.
+
 Three serialization tests prove deterministic complete project equality, revision 1 envelope and
 primitive revision identity, SHA-256 integrity, revision 0 migration, canonical current output,
 truncated and tampered recovery rejection, strict unknown and future state handling, invalid link
@@ -833,7 +840,9 @@ after load are test-backed. Effects now has compatible graph-native transition a
 bounded oracle, but the production binder from this timeline-owned state to those visual schemas is
 absent. Graph evaluation, fit-to-fill, grouped-source compound synthesis, undo ownership, multicam
 mixing and runtime playback, the owning SQLite project container, autosave and recovery
-orchestration, and engine or API integration remain absent.
+orchestration, and API integration remain absent. Engine preparation integration now consumes and
+retains the compiled graph, but it does not evaluate nodes, schedule playback, mix multicam sources,
+or render output.
 
 The model retains equal physical source and record duration for nominal clip ranges, while separate
 time maps may sample beyond that selection and report known unavailable points. Exact seam and slice
@@ -851,10 +860,10 @@ playback. The model now has a strict stable component schema, a 64 MiB document 
 collection and relationship reconstruction, while OTIO collection sizes are not yet bounded
 independently of process memory. Nested component collection counts are validated by domain
 construction after JSON allocation rather than by a streaming preallocation quota. The
-`otio_roundtrip` example is the first production consumer outside contract tests. The engine color
-propagation contract consumes only the narrow metadata seam. Timeline compilation now produces real
-generic editable graph state that can admit a higher-tier effects catalog, but no engine, API, CLI,
-playback, or production render owner consumes that result yet.
+`otio_roundtrip` example is the first production interchange consumer outside contract tests. The
+engine color propagation contract consumes the narrow metadata seam, and engine resource
+preparation now consumes and retains real generic editable graph state that can admit a higher-tier
+effects catalog. No API, CLI, playback, or production render owner evaluates that result yet.
 
 ## Maintenance notes
 
