@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 6fb9399d13373400d5ad7fc933a152d6419de5c7299caa635c25803579465d55
-source_files: 138
+source_hash: 42300dd817cf58ba906a2a8924403a950ae395df6b0475329b21ab7d16f8cf71
+source_files: 139
 mapped_at_commit: working-tree
 ---
 
@@ -25,7 +25,7 @@ a single checkpoint through mapping, planning, and execution, and routes multipl
 separate Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers
 but obeys an explicit positive user concurrency value. The file is ignored by Git and copied into
 managed worktrees through `.worktreeinclude`, so the mapping script does not include it in this
-module's 137-file inventory or source hash. It must still be reread independently before repository
+module's 139-file inventory or source hash. It must still be reread independently before repository
 work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
@@ -290,6 +290,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   orchestration across decoded provenance, immutable graph evaluation, complete cache identity,
   CPU display color execution, bounded audio admission, audio-master timing with monotonic fallback,
   lossless viewport backpressure, degraded scene rejection, and recovery.
+- `docs/checkpoints/P2.W06.C006.md`: Durable implementation evidence for engine-owned A/V
+  coordination over the actual audio clock, explicit nonblocking hold, correction, protected and
+  eligible-drop behavior, applied discontinuity recovery, immutable media timing, foreground
+  playback integration, research basis, deterministic proof, and physical-lane limitations.
 - `docs/checkpoints/P2.W04.C010.md`: Durable implementation evidence for production input-device
   discovery, atomic record arming and monitoring, bounded exact-timestamp capture, and the real
   monitoring bridge into existing output playback.
@@ -911,6 +915,12 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   proof covers normal, degraded, backpressured, and recovered operation, but does not claim source
   session preparation, transport controls, native GPU presentation, physical hardware, or export.
 
+- `docs/checkpoints/P2.W06.C006.md` records the concrete engine consumer of the shared A/V scheduler
+  and actual audio clock. Focused and foreground integration contracts prove bounded holds,
+  corrections, protected and eligible drops, applied rebases, exact timing preservation,
+  backpressure without duplicate decisions, and continuous clock recovery. This deterministic
+  evidence does not replace the platform matrix's physical audio, performance, or soak lanes.
+
 - The focused effects preset contract verifies the runtime JSON and SHA-256 edges through canonical
   current documents, legacy migration, integrity rejection, and exact graph reload. Crate-wide
   effects and graph suites prove downstream compatibility; dependency and boundary gates remain the
@@ -1084,8 +1094,9 @@ floating-point behavior. Explicit prepared channel nodes now convert canonical m
 layouts using documented speaker rules or caller-selected discrete order without changing sample
 time. Plugin hosting and decoded-sample binding remain absent. Production device output and
 sample-accurate scheduling are implemented in the same audio crate, and engine foreground playback
-now feeds its bounded producer and uses its actual presentation clock, but no engine owner yet
-renders prepared timeline audio through routing, effects, resampling, and device delivery.
+now feeds its bounded producer and coordinates video from its actual presentation clock with
+explicit hold, correction, drop, rebase, and recovery evidence. No engine owner yet renders prepared
+timeline audio through routing, effects, resampling, and device delivery.
 
 The effects crate now provides a substantive graph-native authoring SDK. It composes canonical graph
 schemas, editable nodes, deterministic registry snapshots, and snapshot-bound compiler translation,
@@ -1110,8 +1121,9 @@ The largest current risk is cross-document drift:
   and a deterministic CPU reference effect catalog now exist. Production GPU effect evaluation,
   source and timeline session preparation, native viewport integration, rendered comparison,
   muxing, playable output, and all-runtime execution remain future work. Foreground engine playback
-  now composes prepared graph, cache, CPU display color, bounded audio, clock, worker, and viewport
-  contracts, but does not close those broader paths. The current contract-conformant
+  now composes prepared graph, cache, CPU display color, bounded audio, audio-master A/V
+  coordination, worker, and viewport contracts, including deterministic late correction and
+  discontinuity recovery, but does not close those broader paths. The current contract-conformant
   run must not be reported as product or runtime conformance.
   Boundary samples are not continuous intra-stage peaks, constrained-device thresholds, or
   long-session soak proof.
@@ -1185,7 +1197,7 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`75bea4e` when the map was refreshed. Its hash describes the exact 137 discovered source files,
+`f35aa14` when the map was refreshed. Its hash describes the exact 139 discovered source files,
 including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes

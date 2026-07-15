@@ -13,7 +13,7 @@ use superi_color::working_space::{WorkingImage, WorkingSpace};
 use superi_concurrency::backpressure::{
     bounded_handoff, BackpressureConfig, PipelineRoute, PipelineStage,
 };
-use superi_concurrency::clock::PlaybackClockMode;
+use superi_concurrency::clock::{AvFrameCorrection, AvPresentationReason, PlaybackClockMode};
 use superi_concurrency::jobs::{BoundedWorkerPool, WorkerPoolConfig};
 use superi_concurrency::threads::ExecutionDomain;
 use superi_core::color_space::ColorSpace;
@@ -23,6 +23,7 @@ use superi_core::ids::{JobId, MediaId, ProjectId};
 use superi_core::pixel::{AlphaMode, PixelFormat};
 use superi_core::settings::{CapabilitySet, SemanticVersion};
 use superi_core::time::{Duration, RationalTime, Timebase};
+use superi_engine::av_sync::AvSyncOutcome;
 use superi_engine::playback::{
     CpuPlaybackDisplayTransform, GraphPlaybackFrameEvaluator, PlaybackAudioOutput,
     PlaybackCacheIdentity, PlaybackOrchestrator, PlaybackPoll, PlaybackSceneFrame,
@@ -123,6 +124,8 @@ fn playback_is_one_coherent_bounded_engine_across_normal_degraded_and_recovery_p
     let bad_time = RationalTime::new(4_000, timebase);
     let bad_alpha_time = RationalTime::new(5_000, timebase);
     let recovered_time = RationalTime::new(6_000, timebase);
+    let stressed_time = RationalTime::new(7_000, timebase);
+    let discontinuity_time = RationalTime::new(600_000, timebase);
     let scene_pipeline = decoded_pipeline();
     let bad_pipeline = scene_pipeline
         .clone()
@@ -138,6 +141,8 @@ fn playback_is_one_coherent_bounded_engine_across_normal_degraded_and_recovery_p
         scene_frame(bad_time, bad_pipeline),
         scene_frame_with_alpha(bad_alpha_time, scene_pipeline.clone(), AlphaMode::Straight),
         scene_frame(recovered_time, scene_pipeline.clone()),
+        scene_frame(stressed_time, scene_pipeline.clone()),
+        scene_frame(discontinuity_time, scene_pipeline.clone()),
     ]);
     let calls = Arc::new(AtomicUsize::new(0));
     let (snapshot, output) = evaluation_snapshot(frames, calls.clone());
@@ -206,20 +211,44 @@ fn playback_is_one_coherent_bounded_engine_across_normal_degraded_and_recovery_p
     playback
         .submit_frame(JobId::from_raw(901), first_time)
         .unwrap();
-    assert!(matches!(
-        poll_ready(&mut playback, Instant::now()),
-        PlaybackPoll::Waiting { frame, .. } if frame == first_time
-    ));
+    match poll_ready(&mut playback, Instant::now()) {
+        PlaybackPoll::Waiting { frame, clock, sync } => {
+            assert_eq!(frame, first_time);
+            assert_eq!(clock, RationalTime::new(0, timebase));
+            assert_eq!(sync.timing().presentation_time(), first_time);
+            assert_eq!(
+                sync.timing().duration(),
+                Duration::new(1_000, timebase).unwrap()
+            );
+            assert!(sync.drift().nanoseconds() > 0);
+            assert_eq!(sync.code(), "hold");
+        }
+        other => panic!("expected synchronized wait, received {other:?}"),
+    }
     assert_eq!(
         playback.queue_audio(&vec![0.0; 2_000]).unwrap().frames,
         2_000
     );
     let mut first_audio = vec![1.0; 2_000];
     assert_eq!(consumer.render_f32(&mut first_audio).unwrap().frames, 2_000);
-    assert!(matches!(
-        poll_ready(&mut playback, Instant::now()),
-        PlaybackPoll::Presented { frame } if frame == first_time
-    ));
+    match poll_ready(&mut playback, Instant::now()) {
+        PlaybackPoll::Presented {
+            frame,
+            sync:
+                AvSyncOutcome::Present {
+                    correction,
+                    reason,
+                    recovery,
+                    ..
+                },
+        } => {
+            assert_eq!(frame, first_time);
+            assert_eq!(correction, AvFrameCorrection::None);
+            assert_eq!(reason, AvPresentationReason::InTolerance);
+            assert_eq!(recovery, None);
+        }
+        other => panic!("expected synchronized presentation, received {other:?}"),
+    }
 
     let first = viewport_receiver.try_receive().unwrap();
     assert_eq!(first.timestamp(), first_time);
@@ -264,7 +293,7 @@ fn playback_is_one_coherent_bounded_engine_across_normal_degraded_and_recovery_p
         .unwrap();
     assert!(matches!(
         poll_ready(&mut playback, Instant::now()),
-        PlaybackPoll::Presented { frame } if frame == first_time
+        PlaybackPoll::Presented { frame, .. } if frame == first_time
     ));
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 
@@ -306,18 +335,30 @@ fn playback_is_one_coherent_bounded_engine_across_normal_degraded_and_recovery_p
         consumer.render_f32(&mut recovered_audio).unwrap().frames,
         4_000
     );
-    assert!(matches!(
-        poll_ready(&mut playback, Instant::now()),
-        PlaybackPoll::ViewportBackpressured { frame } if frame == recovered_time
-    ));
+    let backpressured_sync = match poll_ready(&mut playback, Instant::now()) {
+        PlaybackPoll::ViewportBackpressured { frame, sync } => {
+            assert_eq!(frame, recovered_time);
+            assert!(matches!(sync, AvSyncOutcome::Present { .. }));
+            sync
+        }
+        other => panic!("expected synchronized viewport backpressure, received {other:?}"),
+    };
+    let observations_before_retry = playback.av_sync_statistics().observations();
     assert_eq!(
         viewport_receiver.try_receive().unwrap().timestamp(),
         first_time
     );
-    assert!(matches!(
-        playback.poll_at(Instant::now()).unwrap(),
-        PlaybackPoll::Presented { frame } if frame == recovered_time
-    ));
+    match playback.poll_at(Instant::now()).unwrap() {
+        PlaybackPoll::Presented { frame, sync } => {
+            assert_eq!(frame, recovered_time);
+            assert_eq!(sync, backpressured_sync);
+        }
+        other => panic!("expected retained synchronized presentation, received {other:?}"),
+    }
+    assert_eq!(
+        playback.av_sync_statistics().observations(),
+        observations_before_retry
+    );
     assert_eq!(
         viewport_receiver.try_receive().unwrap().timestamp(),
         recovered_time
@@ -325,9 +366,78 @@ fn playback_is_one_coherent_bounded_engine_across_normal_degraded_and_recovery_p
     assert_eq!(calls.load(Ordering::SeqCst), 4);
     assert_eq!(retained.final_frame_len(), 2);
 
+    playback
+        .submit_frame(JobId::from_raw(907), stressed_time)
+        .unwrap();
     assert_eq!(
-        playback.queue_audio(&vec![0.0; 8_192]).unwrap().frames,
-        8_192
+        playback.queue_audio(&vec![0.0; 2_440]).unwrap().frames,
+        2_440
+    );
+    let mut stressed_audio = vec![1.0; 2_440];
+    assert_eq!(
+        consumer.render_f32(&mut stressed_audio).unwrap().frames,
+        2_440
+    );
+    match poll_ready(&mut playback, Instant::now()) {
+        PlaybackPoll::Presented {
+            frame,
+            sync:
+                AvSyncOutcome::Present {
+                    display_for,
+                    correction,
+                    reason,
+                    recovery,
+                    ..
+                },
+        } => {
+            assert_eq!(frame, stressed_time);
+            assert_eq!(display_for, MonotonicDuration::from_nanos(833_333));
+            assert_eq!(
+                correction,
+                AvFrameCorrection::ShortenBy(MonotonicDuration::from_millis(20))
+            );
+            assert_eq!(reason, AvPresentationReason::CorrectedLate);
+            assert_eq!(recovery, None);
+        }
+        other => panic!("expected corrected stressed presentation, received {other:?}"),
+    }
+    let stressed = viewport_receiver.try_receive().unwrap();
+    assert_eq!(stressed.timestamp(), stressed_time);
+    assert_eq!(stressed.duration(), Duration::new(1_000, timebase).unwrap());
+
+    playback
+        .submit_frame(JobId::from_raw(908), discontinuity_time)
+        .unwrap();
+    match poll_ready(&mut playback, Instant::now()) {
+        PlaybackPoll::Presented {
+            frame,
+            sync:
+                AvSyncOutcome::Present {
+                    correction,
+                    reason,
+                    recovery: Some(recovery),
+                    ..
+                },
+        } => {
+            assert_eq!(frame, discontinuity_time);
+            assert_eq!(correction, AvFrameCorrection::None);
+            assert_eq!(reason, AvPresentationReason::InTolerance);
+            assert_eq!(recovery.target_master_time(), discontinuity_time);
+            assert!(recovery.discontinuity().nanoseconds() > 10_000_000_000);
+        }
+        other => panic!("expected discontinuity recovery, received {other:?}"),
+    }
+    assert_eq!(
+        viewport_receiver.try_receive().unwrap().timestamp(),
+        discontinuity_time
+    );
+    assert_eq!(playback.av_sync_statistics().rebases(), 1);
+    assert_eq!(calls.load(Ordering::SeqCst), 6);
+    assert_eq!(retained.final_frame_len(), 4);
+
+    assert_eq!(
+        playback.queue_audio(&vec![0.0; 7_000]).unwrap().frames,
+        7_000
     );
     let saturated = playback.queue_audio(&vec![0.0; 8_192]).unwrap_err();
     assert_eq!(saturated.category(), ErrorCategory::ResourceExhausted);
@@ -335,14 +445,14 @@ fn playback_is_one_coherent_bounded_engine_across_normal_degraded_and_recovery_p
 
     let fallback_at = Instant::now();
     let fallback_position = playback.fallback_to_playback_at(fallback_at).unwrap();
-    assert_eq!(fallback_position, recovered_time);
+    assert_eq!(fallback_position, discontinuity_time);
     assert_eq!(playback.clock_mode(), PlaybackClockMode::Playback);
     assert_eq!(
         playback.clock_position_at(fallback_at).unwrap(),
-        recovered_time
+        discontinuity_time
     );
     let recovery_at = fallback_at + MonotonicDuration::from_millis(10);
-    let expected_recovery = RationalTime::new(6_480, timebase);
+    let expected_recovery = RationalTime::new(600_480, timebase);
     assert_eq!(
         playback.recover_audio_master_at(recovery_at).unwrap(),
         expected_recovery

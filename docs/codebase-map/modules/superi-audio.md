@@ -286,9 +286,11 @@ and spectrum values, and performs the two-stage integrated loudness gate without
 - `superi-engine::audio_mix` owns production timeline edit and clip-mix identity reconciliation.
   No production adapter yet binds decoded media into the schedule or prepared graph.
 - `superi-engine::playback` wraps the existing `OutputProducer`, accepts only whole borrowed sample
-  submissions, and uses the paired `AudioMasterClock` as its authoritative video pacing source with
-  continuity-preserving monotonic fallback. The device callback and `OutputConsumer` remain
-  audio-owned.
+  submissions, and passes the paired `AudioMasterClock` into its engine-owned A/V coordinator as
+  the authoritative video pacing source. That coordinator returns bounded wait, correction, drop,
+  and discontinuity recovery evidence and preserves continuity through monotonic fallback. The
+  device callback and `OutputConsumer` remain audio-owned, and engine never changes audio samples or
+  the physical counter.
 - `superi-timeline` remains upstream through future engine composition rather than a direct Rust
   dependency. Its sample-exact placements, track order, channel layout, and routing intent are
   adapter inputs.
@@ -297,7 +299,8 @@ and spectrum values, and performs the two-stage integrated loudness gate without
 - The ten public integration contracts and the engine foreground playback contract are current real
   consumers. They process exact adjacent
   blocks through clip DSP, dry, auxiliary, submix, and master paths, publish scheduled presentation
-  through actual concurrency clocks, exercise bounded device output, and prove clip identity
+  through actual concurrency clocks, exercise bounded device output, coordinate real foreground
+  video against that clock under normal, late, discontinuous, and recovered conditions, and prove clip identity
   inheritance while converting between independent source and device clocks and applying core
   effects through the prepared graph. The metering contract places a real meter between a source
   and master bus. Input proof
@@ -400,9 +403,11 @@ comes from stable edge identity. One proves duplicate masters, master outputs, w
 and return roles, layout mismatch, and cycles fail without mutating topology.
 
 Together these contracts prove the graph and scheduler coexist without changing exact timing or
-channel meaning. Dependent concurrency clock and A/V tests and timeline track-semantics tests guard
-the composed contracts. Deterministic local proof does not claim physical hardware latency,
-hot-plug behavior, decoded sample binding, engine-composed delivery, or hardware A/V behavior.
+channel meaning. Dependent concurrency clock and A/V tests, the engine coordinator and foreground
+playback contracts, and timeline track-semantics tests guard the composed contracts. The engine
+consumer proves actual sample-clock video decisions and exact timing preservation, but deterministic
+local proof does not claim physical hardware latency, hot-plug behavior, decoded sample binding,
+prepared graph delivery, or hardware A/V behavior.
 
 Two playback unit tests and ten public output contracts prove typed conversion, backend-default
 buffer semantics, capacity and normalized-sample validation, whole-frame backpressure, silence and
@@ -442,9 +447,10 @@ device-input and device-output substrates, clip mix processor, prepared sample-r
 core effects, and graph-native meter are
 substantive and publicly test-backed. Plugin hosting remains a documentation-only placeholder.
 Engine consumes timeline edit outcomes for atomic clip identity reconciliation and foreground
-playback feeds the bounded device producer while pacing video from the actual audio clock. There is
-still no decoded-audio fetch, scheduled-slice graph binding, plugin host, platform channel-layout
-negotiation, or end-to-end source-playback-final-mix path. Microphone permission, physical input latency, semantic input
+playback feeds the bounded device producer while coordinating video from the actual audio clock.
+That foreground path now exposes bounded video correction and applied discontinuity recovery without
+mutating audio timing. There is still no decoded-audio fetch, scheduled-slice graph binding, plugin
+host, platform channel-layout negotiation, or end-to-end source-playback-final-mix path. Microphone permission, physical input latency, semantic input
 layout, and hot-plug recovery remain platform-owned boundaries.
 
 Multi-input routing is deliberately unity-only to avoid claiming later control semantics. Prepared
@@ -476,11 +482,11 @@ Preserve capture's independent whole-frame rings, atomic callback-boundary contr
 sample continuation through dropped intervals, and channel-index meaning. Bridge monitoring into
 the existing output producer rather than adding a competing playback path.
 
-Extend the existing engine output and clock consumer by adapting immutable timeline and decoded
-audio owners into the existing schedule and graph types instead of adding upward dependencies. Keep
-channel layout and routing intent attached through that adapter, publish only completed audible
-windows, and add a real prepared-graph consumer before claiming source playback, mixing, or final
-delivery.
+Extend the existing engine output, clock, and A/V coordinator consumer by adapting immutable
+timeline and decoded audio owners into the existing schedule and graph types instead of adding
+upward dependencies. Keep channel layout and routing intent attached through that adapter, publish
+only completed audible windows, and add a real prepared-graph consumer before claiming source
+playback, mixing, or final delivery.
 
 After source changes, refresh this map's inventory, architecture, invariants, tests, hash, and file
 count from resulting behavior, then update consumer maps and validate the global map closure.

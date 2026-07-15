@@ -2,8 +2,8 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 3e3cff4c17dcbabcf1debbe6e196aeeafce1fb876af1eabb3e1cb9ee20162a39
-source_files: 35
+source_hash: ce2793c589d38376e2122797d653d05391edee5f55726eb5c34817e36b15313d
+source_files: 36
 mapped_at_commit: working-tree
 ---
 
@@ -14,10 +14,10 @@ command state, complete media backend registry assembly, transactional timeline 
 and decoder preparation, capability introspection, CPU-decoded frame upload, exact viewport and
 export color metadata branching, derived-media generation, transparent proxy resolution,
 predictive cache population, foreground graph and display-color execution, bounded audio admission,
-audio-master pacing with monotonic fallback, lossless viewport handoff, deterministic subsystem
-lifecycle, and atomic timeline plus clip-mix edits. Full transport policy, native GPU presentation,
-export muxing, broad transactions, plugins, nodes, A/V drift correction, and validation remain
-incomplete.
+audio-master A/V coordination with bounded video correction and discontinuity recovery, monotonic
+clock fallback, lossless viewport handoff, deterministic subsystem lifecycle, and atomic timeline
+plus clip-mix edits. Full transport queue policy, native GPU presentation, export muxing, broad
+transactions, plugins, nodes, and validation remain incomplete.
 
 The command path is a bounded reference owner for contract conformance. It does not claim to replace
 the production project, timeline, graph, media, color, render, or muxing owners.
@@ -29,7 +29,10 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 - `open/crates/superi-engine/src/audio_mix.rs`: Applies timeline edit batches and audio clip-mix
   identity reconciliation against cloned subsystem states, publishing both only after timeline and
   mix revisions, fragment inheritance, replacement transfer, and removal all validate.
-- `open/crates/superi-engine/src/av_sync.rs`: Placeholder for A/V synchronization.
+- `open/crates/superi-engine/src/av_sync.rs`: Composes the shared playback clock and A/V scheduler
+  into one playback-domain engine owner with an explicit interactive policy, immutable frame
+  timing, caller-owned drop readiness, nonblocking hold, present, drop, and recovery outcomes,
+  applied discontinuity rebases, clock fallback and restoration, and coherent diagnostics.
 - `open/crates/superi-engine/src/command.rs`: Implements canonical fixture identity, named timeline
   and trim state, complete mirror graph control state, typed operation evidence, bounded source
   validation, monotonic revisions, and full-state undo plus redo.
@@ -72,6 +75,10 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 - `open/crates/superi-engine/tests/audio_editorial_mix_contract.rs`: Proves atomic timeline and
   clip-mix publication plus complete audio intent, source, record, identity, grouping, linking, and
   synchronization preservation through a real razor edit.
+- `open/crates/superi-engine/tests/av_sync_coordination_contract.rs`: Proves the interactive
+  policy, playback-domain ownership, bounded hold and correction, protected and eligible-drop
+  behavior, discontinuity recovery, continuous clock fallback and restoration, exact timing, and
+  deterministic statistics.
 - `open/crates/superi-engine/tests/color_metadata_propagation_contract.rs`: Proves exact source interpretation, ordered transform history, cache identity, independent viewport and export intent, and invalid-order rejection across media, graph, timeline, cache, and engine boundaries.
 - `open/crates/superi-engine/tests/derived_media_generation_contract.rs`: Proves complete and
   deterministic real AV1 generation, exact cache reuse, quality identity, settings mismatch
@@ -99,7 +106,8 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   changing foreground evaluator output.
 - `open/crates/superi-engine/tests/playback_orchestration_contract.rs`: Proves one coherent decoded
   frame, graph, cache, color, audio, clock, worker, and viewport path across normal playback,
-  backpressure, invalid scene degradation, cache reuse, and recovery.
+  early waiting, late correction, discontinuity recovery, backpressure without duplicate sync
+  decisions, invalid scene degradation, cache reuse, and clock recovery.
 - `open/crates/superi-engine/tests/scenario_contract.rs`: Exact canonical state, atomicity, bounds,
   operation log, and reversal proof.
 - `open/crates/superi-engine/tests/vendor_codec_registry_contract.rs`: Explicit vendor registry
@@ -141,6 +149,13 @@ source revision, scheduler quality, and fallback policy. Resolution returns one 
 `MediaSource` plus explicit `DerivedMediaSelection` evidence, regardless of whether reads delegate
 to a generated packet adapter or the lazily opened original source.
 
+`av_sync` exposes the validated eight-millisecond `interactive_av_sync_policy`, immutable
+`AvSyncFrameTiming`, caller-owned `AvSyncFrameReadiness`, `AvSyncRecovery`, complete
+`AvSyncOutcome`, and playback-owned `AvSyncCoordinator`. The coordinator constructs with an audio
+master and either the engine policy or a caller-supplied validated policy. It exposes clock mode,
+policy, scheduler statistics, exact clock reads, monotonic fallback, audio-master restoration, and
+one nonblocking coordination call that applies discontinuity rebases through the concrete clock.
+
 `playback` exposes the `PlaybackPrefetchEvaluator` seam, concrete
 `GraphPlaybackPrefetchEvaluator`, playback-owned `PlaybackPrefetcher`, and structured prediction
 submission and completion reports. It also exposes `DecodedFrameMetadata`,
@@ -149,8 +164,11 @@ submission and completion reports. It also exposes `DecodedFrameMetadata`,
 `GraphPlaybackFrameEvaluator<T, N, V, D>`, `PlaybackAudioOutput`, `PlaybackPoll`, and
 `PlaybackOrchestrator<O>`. Foreground orchestration admits one exact frame at a time, executes it on
 a playback-priority worker, validates cache identity and scene meaning, applies display color,
-paces presentation from the shared clock, and retains a saturated viewport payload. Submission,
-polling, audio admission, and clock switching require the playback domain and never block.
+coordinates presentation from the shared audio-master clock, and retains both a saturated viewport
+payload and its resolved synchronization decision. Poll outcomes expose exact timing, master
+position, drift, live display interval, correction, reason, and recovery evidence. Submission,
+polling, audio admission, coordination, and clock switching require the playback domain and never
+block.
 
 `audio_mix` exposes `apply_edit_batch_with_clip_mix` for caller-owned `EditorialProject` and
 `ClipMixState` values, and the narrower `reconcile_clip_mix_edit_batch` for an already validated
@@ -166,7 +184,7 @@ on their legal domain. `EngineWorkKind` admission returns revision-scoped permit
 required subsystem is ready in the same running lifetime. The retained `LifecycleSignal` is the
 lock-free observation path for latency-sensitive consumers.
 
-The seven remaining placeholder modules contain documentation only.
+The five remaining placeholder modules contain documentation only.
 
 ## Architecture and data flow
 
@@ -330,12 +348,24 @@ terminal `ViewportColorMetadata` branch. The generic display seam preserves a fu
 payload without moving native presentation into the engine.
 
 The audio producer admits complete borrowed interleaved frames or rejects the submission. Its paired
-device consumer remains the only writer of `AudioMasterClock`, which paces the ready video frame.
-Polling returns rendering, clock waiting, presented, viewport-backpressured, or classified failed
-state without waiting. Viewport saturation returns and retains the exact payload. Invalid graph or
-color output is not cached, clears only that request, and permits later recovery. Explicit audio
-loss and restoration switch the existing `PlaybackClock` source while preserving the current
-timeline position.
+device consumer remains the only writer of `AudioMasterClock`. `AvSyncCoordinator` observes that
+clock and passes the ready frame's exact PTS, nominal duration, and caller-owned readiness to the
+shared `AvSyncScheduler`. The engine interactive policy uses an eight-millisecond tolerance,
+forty-millisecond drop threshold, ten-second discontinuity threshold, twenty-millisecond maximum
+video-only interval correction, and four-drop starvation cap. The lower-level reusable scheduler
+default is unchanged.
+
+Polling returns rendering, bounded clock hold, corrected or nominal presentation, explicit drop,
+viewport backpressure, or classified failure without waiting. A scheduler rebase request is
+rescaled exactly into the active clock timebase, applied once through `PlaybackClock::reanchor_at`,
+then scheduled once more to return an aligned presentation carrying the original discontinuity.
+Live display intervals never replace `PlaybackViewportFrame` PTS or nominal duration.
+
+The current single-ready-frame owner supplies conservative nondrop evidence. A resolved
+presentation is stored beside a frame returned by viewport backpressure, so retry cannot repeat a
+correction, rebase, or scheduler statistic. Invalid graph or color output is not cached, clears only
+that request, and permits later recovery. Explicit audio loss and restoration switch the concrete
+clock source while preserving the current timeline position and the existing scheduler owner.
 
 ### Editorial audio intent
 
@@ -360,8 +390,9 @@ audio mutation, so their user intent remains attached without synthesis.
   budgeted scene retention, and an owned host evaluator adapter. Graph supplies the immutable
   evaluation snapshot. Timeline supplies the retained editable graph compilation and reachable
   editorial source relationships for resource preparation. Concurrency supplies proxy selection,
-  playback ownership, worker priority, nonblocking completion, clocks, bounded handoffs, the shared
-  lifecycle coordinator and signal, EngineControl ownership, and immutable snapshot publication.
+  playback ownership, worker priority, nonblocking completion, the playback clock, A/V drift
+  measurement and scheduling policy, bounded handoffs, the shared lifecycle coordinator and
+  signal, EngineControl ownership, and immutable snapshot publication.
   Media I/O supplies exact decoded frame semantics, image supplies color and scene artifacts, color
   supplies CPU display execution, and audio supplies the bounded producer and actual presentation
   clock. Timeline and audio are also jointly consumed by the clip-mix edit transaction. Effects
@@ -423,8 +454,18 @@ audio mutation, so their user intent remains attached without synthesis.
   viewport progress, and never invents transport rate, seek, direction, step, or frame-drop policy.
 - Decoded timing, format, metadata, color history, and alpha meaning remain immutable provenance.
   Cache admission requires the exact requested timestamp and complete nonterminal scene pipeline.
-- Audio admission is all-or-nothing. The device-owned sample clock paces video, mode changes
-  preserve timeline position, and viewport saturation returns the exact frame for retry.
+- The device-owned sample clock is the normal master. Live A/V coordination occurs only on the
+  playback domain and returns rather than sleeping for early video.
+- Frame PTS and nominal duration remain immutable through hold, correction, drop, and rebase
+  outcomes. A corrected display interval is live presentation metadata and cannot alter render or
+  export timing.
+- A late drop requires both caller-owned semantic eligibility and an immediately ready successor.
+  The single-ready-frame foreground owner supplies neither and therefore preserves its frame.
+- Discontinuity recovery applies one exact clock reanchor and retains the triggering signed drift.
+  Mode changes preserve timeline position, and viewport saturation returns the exact frame plus its
+  resolved presentation for retry without another scheduler observation.
+- Audio admission is all-or-nothing and A/V coordination never changes audio samples or the
+  callback-owned clock counter.
 - GPU ownership and pool lifetime remain tied to the originating device.
 - Timeline and clip-mix publication is all-or-nothing across both expected revisions and typed edit
   outcomes. It does not imply a general whole-engine transaction owner.
@@ -482,12 +523,22 @@ replacement job. The graph integration contract uses the real immutable snapshot
 cache to prove three exact predicted frames execute once, reuse without node calls, and return the
 same foreground evaluator value.
 
+Five A/V coordination contracts prove the engine policy remains inside the product scheduling
+target, coordination rejects UI and unowned callers before statistics mutate, normal and early
+video return nominal presentation or a bounded hold, moderate lateness shortens only the live video
+interval, protected and last-ready frames remain visible, and explicit successor plus eligibility
+evidence permits dropping. They also prove a ten-second discontinuity reanchors once and presents
+the unchanged frame in the same call, and that monotonic fallback plus audio restoration preserves
+one continuous exact timeline.
+
 The foreground playback integration contract constructs a real high-precision decoded frame,
 immutable graph snapshot, budgeted scene cache, binary16 working image, CPU display transform,
 lock-free audio producer and consumer, audio master clock, bounded worker pool, and one-slot viewport
-handoff. It proves exact semantics through binary32 display output, clock waiting, cache reuse,
-audio saturation, lossless viewport retry, invalid scene rejection without cache poisoning, later
-frame recovery, and continuity across audio-clock loss and restoration.
+handoff. It proves exact semantics through binary32 display output, bounded clock waiting, nominal
+presentation, thirty-millisecond lateness correction, unchanged PTS and duration, cache reuse,
+audio saturation, lossless viewport retry without a duplicate scheduler observation, invalid scene
+rejection without cache poisoning, a greater-than-ten-second discontinuity recovery, later frame
+recovery, and continuity across audio-clock loss and restoration.
 
 The audio editorial contract drives a real `superi-timeline` razor operation through the combined
 engine transaction. It proves exact source and record subdivision, retained and new identities,
@@ -509,7 +560,7 @@ implementation identity is disclosed as such. It validates fixture bytes without
 container or decoding frames. Timeline and graph state are exact control models but do not use the
 production timeline owner or the generic `superi-graph` DAG store.
 
-Six orchestration files remain documentation-only placeholders. Source registration and timeline
+Five orchestration files remain documentation-only placeholders. Source registration and timeline
 media preparation, deterministic lifecycle, and foreground playback are coherent and test-backed,
 but there is no transport controller, decoded-audio graph renderer, persistent cache lifecycle
 owner, native GPU viewport submission, encoder-to-mux path, project persistence, native plugin
@@ -518,10 +569,11 @@ The effects-side
 OpenFX host contract is substantive, but `plugins.rs` remains the production supervisor placeholder.
 Playback prediction and foreground orchestration are substantive, but they accept caller-prepared
 graph, audio, cache, and viewport owners and are not a full transport, proxy selector, source
-session binder, A/V drift scheduler, or native presentation path. `TimelineResources` prepares the
-reachable sources, decoders, and graph but does not schedule packets, evaluate frames, or write
-outputs. The derived-media driver and resolver are synchronous and caller-owned, and no application,
-export queue, or API path invokes them yet.
+session binder, queue-based frame-drop owner, or native presentation path. Engine A/V coordination
+now consumes the shared scheduler and actual audio clock, but physical A/V latency and drift remain
+hardware-lane evidence. `TimelineResources` prepares the reachable sources, decoders, and graph but
+does not schedule packets, evaluate frames, or write outputs. The derived-media driver and resolver
+are synchronous and caller-owned, and no application, export queue, or API path invokes them yet.
 Clip-mix reconciliation is substantive but currently entered by Rust callers rather than the public
 API or playback controller. Lifecycle is a production control-plane contract, but later transport,
 render, export, resource-arbitration, and error owners still must perform concrete subsystem actions
@@ -544,7 +596,10 @@ cache identity. Keep lifecycle actions nonblocking on EngineControl, add new can
 only in dependency order, preserve exact token checks, update every work requirement that consumes
 them, and never release a dependency while an owned dependent remains. Keep foreground playback
 single-flight and nonblocking, retain exact sink payloads under backpressure, validate scene time,
-color, and alpha before retention, and preserve timeline position when changing clock sources.
+color, and alpha before retention, preserve immutable media timing through live corrections, cache
+one resolved presentation across viewport backpressure, require explicit readiness before dropping,
+apply discontinuity rebases only through the concrete clock, and preserve timeline position when
+changing clock sources.
 Remove a placeholder label only after substantive behavior and consumer proof exist.
 When implementing `plugins.rs`, consume `superi_effects::ofx::IsolatedOfxAdapter` and preserve its
 worker-process, bounded-message, deadline, permission, restart, and quarantine guarantees rather

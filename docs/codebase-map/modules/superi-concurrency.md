@@ -359,8 +359,10 @@ submits playback-priority cache closures to `BoundedWorkerPool`, cooperatively c
 generations, advances determinate progress, and polls `JobTaskHandle` without blocking. Its
 controller stores only a weak pool reference so a blocking-safe lifecycle owner remains responsible
 for shutdown. Foreground playback also submits one exact `JobKind::Frame`, paces its completed value
-with `PlaybackClock` in audio-master or monotonic mode, and publishes through `HandoffSender` while
-retaining the payload returned by backpressure. `superi-engine::lifecycle` composes
+through engine-owned `AvSyncCoordinator`, which composes `PlaybackClock` and `AvSyncScheduler`,
+applies a requested rebase to the concrete clock, exposes exact drift and statistics, and publishes
+through `HandoffSender` while retaining the payload and resolved presentation returned by
+backpressure. `superi-engine::lifecycle` composes
 `LifecycleCoordinator` as one engine participant, keeps authoritative state in `DomainOwned` on
 EngineControl, publishes every committed transition through `SnapshotPublisher`, and exposes the
 coordinator's lock-free `LifecycleSignal` to latency-sensitive consumers. The broader downstream
@@ -368,8 +370,9 @@ crate graph is not evidence that other transitive crates call these runtime surf
 The concurrency integration-test files, cache render contract, audio graph contract, engine
 substitution contract, engine playback contracts, and engine lifecycle contract exercise the public
 crate paths directly. No public API crate currently reexports these types. Engine composes lifecycle
-and foreground playback separately, but lifecycle does not yet own the clock or handoff and no
-end-to-end runtime composes A/V drift decisions, liveness, or GPU submission.
+and foreground playback separately. Foreground playback now consumes A/V drift decisions with the
+actual audio clock, graph result, and viewport handoff, but lifecycle does not yet own that flow and
+no end-to-end runtime composes it with liveness or native GPU submission.
 
 ## Invariants and operational boundaries
 
@@ -435,6 +438,9 @@ non-`Send` or non-`Sync` guards and owners. Test coverage is contract-oriented:
 - Clock and A/V tests prove exact sample timing, checked monotonic anchoring, mode continuity,
   signed cross-timebase drift, playback ownership, bounded correction, conservative dropping,
   forced visible progress, and resettable statistics.
+- Engine coordination tests additionally prove a concrete caller applies one rebase, preserves
+  immutable frame timing, exposes correction and recovery evidence, and does not reschedule a
+  resolved presentation after viewport backpressure.
 - Backpressure tests send real `VideoFrame` and `AudioBlock` values to prove metadata, timing,
   format, channel ordering, and shared-buffer identity survive. Concurrent producers prove each
   scalar payload is delivered once while respecting a hard capacity.
@@ -450,10 +456,11 @@ non-`Send` or non-`Sync` guards and owners. Test coverage is contract-oriented:
   projection, and public auto traits.
 
 There is no test for `submit` because it has no behavior. The engine foreground playback contract
-wires jobs, the audio-master and monotonic clock modes, and a bounded handoff around a real graph
-frame, but no end-to-end consumer yet adds lifecycle, A/V drift decisions, diagnostics, and GPU
-submission. Contract suites validate each mechanism and selected production combinations, not the
-future complete engine runtime.
+wires jobs, the audio-master and monotonic clock modes, A/V drift decisions and diagnostics, and a
+bounded handoff around a real graph frame. It proves bounded wait and correction plus applied
+discontinuity recovery, but no end-to-end consumer yet adds lifecycle or native GPU submission.
+Contract suites validate each mechanism and selected production combinations, not the future
+complete engine runtime.
 
 ## Current status and risks
 
@@ -470,8 +477,10 @@ incomplete:
   execution domain for prepared processing, exact scheduling, and device output and publishes the
   completed presentation clock. Engine also composes lifecycle acknowledgement and shared snapshot
   publication as a control plane, but it does not drive the prepared resource or foreground
-  playback owners through those actions. Decoded-sample scheduling, full A/V correction, GPU
-  submission, and liveness are not yet composed into one application flow.
+  playback owners through those actions. Foreground engine playback now composes A/V hold,
+  correction, eligible dropping, starvation protection, and rebase decisions with its actual clock
+  and viewport. Decoded-sample scheduling, prepared audio graph execution, GPU submission, and
+  liveness are not yet composed into one application flow.
 - Dependency tracking is passive. The worker pool does not delay a job until prerequisites are
   ready, propagate terminal states, create `DependencyFailed`, or detect cycles across submitted
   jobs. Callers must provide all of that orchestration.
@@ -500,9 +509,10 @@ incomplete:
   progress marks, waits, resources, or owners cause false negatives; inaccurate registration can
   produce misleading starvation or cycle findings. Findings are diagnostic observations, not
   recovery actions.
-- A/V `Wait` and `Rebase` are caller-applied instructions. Statistics can report decisions even if
-  the caller does not execute them, and the module cannot itself guarantee eventual presentation or
-  correct clock mutation.
+- A/V `Wait` and `Rebase` remain caller-applied instructions at this reusable boundary. The engine
+  foreground coordinator now applies rebases and retains resolved presentations correctly, but
+  another caller can still report decisions without executing them and this module cannot guarantee
+  every consumer's clock mutation or eventual presentation.
 - Snapshot publication clones `Arc` ownership and is intentionally unsuitable for hard real-time
   payload publication. Consumers must retain preallocated atomic or buffer paths for audio.
 - `superi-gpu` is a normal dependency despite being unused by production code in this crate. Until
@@ -521,8 +531,8 @@ incomplete:
   retirement flow, device-loss recovery, and its relationship to `ExecutionDomain::GpuSubmission`.
 - When graph, engine, API, or CLI begins using more of these surfaces, replace the declared-consumer
   description with the exact construction and event paths and update the relevant consumer maps.
-  Keep the engine's derived selection, playback worker, and lifecycle-control uses distinct from a
-  complete runtime composition.
+  Keep the engine's derived selection, playback worker, A/V coordinator, and lifecycle-control uses
+  distinct from a complete runtime composition.
   Keep the existing audio scheduler, device callback, and audio-master publication paths current as
   engine integration expands.
 - If job dependencies become scheduler-owned, document admission, cycle detection, cancellation

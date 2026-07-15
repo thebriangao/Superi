@@ -18,7 +18,9 @@ use superi_cache::prefetch::PlaybackPrefetchPlan;
 use superi_color::transform_out::{OutputColorTransform, OutputTargetKind};
 use superi_color::working_space::WorkingImage;
 use superi_concurrency::backpressure::HandoffSender;
-use superi_concurrency::clock::{AudioMasterClock, PlaybackClock, PlaybackClockMode};
+use superi_concurrency::clock::{
+    AudioMasterClock, AvSyncPolicy, AvSyncStatistics, PlaybackClockMode,
+};
 use superi_concurrency::jobs::{
     BoundedWorkerPool, JobCancellationToken, JobControl, JobKind, JobOutcome, JobPriority,
     JobProgress, JobTaskHandle, JobTerminalState, ScheduledJob,
@@ -42,6 +44,7 @@ use superi_image::value::Image;
 use superi_media_io::decode::{VideoFormat, VideoFrame};
 use superi_media_io::demux::MediaMetadata;
 
+use crate::av_sync::{AvSyncCoordinator, AvSyncFrameReadiness, AvSyncFrameTiming, AvSyncOutcome};
 use crate::render::ViewportColorMetadata;
 
 const COMPONENT: &str = "superi-engine.playback_prefetch";
@@ -631,16 +634,29 @@ pub enum PlaybackPoll {
         frame: RationalTime,
         /// Current shared clock position.
         clock: RationalTime,
+        /// Complete nonblocking synchronization decision.
+        sync: AvSyncOutcome,
     },
     /// A due frame remains owned by playback because the viewport queue is full.
     ViewportBackpressured {
         /// Exact retained frame coordinate.
         frame: RationalTime,
+        /// Resolved presentation retained without rescheduling on retry.
+        sync: AvSyncOutcome,
     },
     /// A due frame entered the viewport queue.
     Presented {
         /// Exact published frame coordinate.
         frame: RationalTime,
+        /// Complete presentation, correction, and recovery evidence.
+        sync: AvSyncOutcome,
+    },
+    /// An explicitly eligible late frame was discarded for its ready successor.
+    Dropped {
+        /// Exact discarded frame coordinate.
+        frame: RationalTime,
+        /// Complete late-drop evidence.
+        sync: AvSyncOutcome,
     },
     /// One frame failed without stopping audio, clock, or later requests.
     Failed {
@@ -658,6 +674,11 @@ struct PendingPlaybackFrame<O> {
     handle: JobTaskHandle<PlaybackViewportFrame<O>>,
 }
 
+struct ReadyPlaybackFrame<O> {
+    frame: PlaybackViewportFrame<O>,
+    presentation: Option<AvSyncOutcome>,
+}
+
 /// Playback-domain owner for one in-flight graph frame, audio admission, clock, and viewport handoff.
 ///
 /// Submission and polling never wait. Exactly one frame may be evaluating or retained, so transport
@@ -667,9 +688,9 @@ pub struct PlaybackOrchestrator<O> {
     evaluator: Arc<dyn PlaybackFrameEvaluator<O>>,
     viewport: HandoffSender<PlaybackViewportFrame<O>>,
     audio: PlaybackAudioOutput,
-    clock: PlaybackClock,
+    av_sync: AvSyncCoordinator,
     pending: Option<PendingPlaybackFrame<O>>,
-    ready: Option<PlaybackViewportFrame<O>>,
+    ready: Option<ReadyPlaybackFrame<O>>,
 }
 
 impl<O: Send + 'static> PlaybackOrchestrator<O> {
@@ -681,13 +702,38 @@ impl<O: Send + 'static> PlaybackOrchestrator<O> {
         audio: PlaybackAudioOutput,
         timeline_anchor: RationalTime,
     ) -> Result<Self> {
-        let clock = PlaybackClock::audio_master(timeline_anchor, audio.clock().clone())?;
+        let av_sync = AvSyncCoordinator::audio_master(timeline_anchor, audio.clock().clone())?;
         Ok(Self {
             pool: Arc::downgrade(pool),
             evaluator,
             viewport,
             audio,
-            clock,
+            av_sync,
+            pending: None,
+            ready: None,
+        })
+    }
+
+    /// Creates an audio-master playback owner with an explicit A/V policy.
+    pub fn audio_master_with_policy(
+        pool: &Arc<BoundedWorkerPool>,
+        evaluator: Arc<dyn PlaybackFrameEvaluator<O>>,
+        viewport: HandoffSender<PlaybackViewportFrame<O>>,
+        audio: PlaybackAudioOutput,
+        timeline_anchor: RationalTime,
+        policy: AvSyncPolicy,
+    ) -> Result<Self> {
+        let av_sync = AvSyncCoordinator::audio_master_with_policy(
+            timeline_anchor,
+            audio.clock().clone(),
+            policy,
+        )?;
+        Ok(Self {
+            pool: Arc::downgrade(pool),
+            evaluator,
+            viewport,
+            audio,
+            av_sync,
             pending: None,
             ready: None,
         })
@@ -762,7 +808,10 @@ impl<O: Send + 'static> PlaybackOrchestrator<O> {
                         ),
                     });
                 }
-                self.ready = Some(output);
+                self.ready = Some(ReadyPlaybackFrame {
+                    frame: output,
+                    presentation: None,
+                });
                 self.present_ready(now)
             }
             JobOutcome::Failed(error) => Ok(PlaybackPoll::Failed {
@@ -822,53 +871,96 @@ impl<O: Send + 'static> PlaybackOrchestrator<O> {
     /// Returns the active shared clock source.
     #[must_use]
     pub const fn clock_mode(&self) -> PlaybackClockMode {
-        self.clock.mode()
+        self.av_sync.clock_mode()
+    }
+
+    /// Returns the immutable live A/V scheduling policy.
+    #[must_use]
+    pub const fn av_sync_policy(&self) -> AvSyncPolicy {
+        self.av_sync.policy()
+    }
+
+    /// Returns a coherent copy of live A/V scheduling diagnostics.
+    #[must_use]
+    pub const fn av_sync_statistics(&self) -> AvSyncStatistics {
+        self.av_sync.statistics()
     }
 
     /// Reads the shared timeline clock at an explicit process-local instant.
     pub fn clock_position_at(&self, now: Instant) -> Result<RationalTime> {
         ExecutionDomain::Playback.require_current()?;
-        self.clock.position_at(now)
+        self.av_sync.clock_position_at(now)
     }
 
     /// Falls back from a lost audio clock to monotonic time without a timeline jump.
     pub fn fallback_to_playback_at(&mut self, now: Instant) -> Result<RationalTime> {
         ExecutionDomain::Playback.require_current()?;
-        self.clock.switch_to_playback_at(now)
+        self.av_sync.fallback_to_playback_at(now)
     }
 
     /// Restores the paired audio device clock without a timeline jump.
     pub fn recover_audio_master_at(&mut self, now: Instant) -> Result<RationalTime> {
         ExecutionDomain::Playback.require_current()?;
-        self.clock
-            .switch_to_audio_master_at(self.audio.clock().clone(), now)
+        self.av_sync
+            .recover_audio_master_at(self.audio.clock().clone(), now)
     }
 
     fn present_ready(&mut self, now: Instant) -> Result<PlaybackPoll> {
-        let frame = self
+        let mut ready = self
             .ready
             .take()
             .expect("present_ready is called only with one retained frame");
-        let timestamp = frame.timestamp();
-        let clock = match self.clock.position_at(now) {
-            Ok(clock) => clock,
-            Err(error) => {
-                self.ready = Some(frame);
-                return Err(error);
-            }
+        let timestamp = ready.frame.timestamp();
+        let sync = match ready.presentation {
+            Some(sync) => sync,
+            None => match self.av_sync.coordinate_at(
+                AvSyncFrameTiming::new(ready.frame.timestamp(), ready.frame.duration()),
+                AvSyncFrameReadiness::last_ready(),
+                now,
+            ) {
+                Ok(sync) => sync,
+                Err(error) => {
+                    self.ready = Some(ready);
+                    return Err(error);
+                }
+            },
         };
-        if timestamp > clock {
-            self.ready = Some(frame);
-            return Ok(PlaybackPoll::Waiting {
-                frame: timestamp,
-                clock,
-            });
+
+        match sync {
+            AvSyncOutcome::Hold { master_time, .. } => {
+                ready.presentation = None;
+                self.ready = Some(ready);
+                return Ok(PlaybackPoll::Waiting {
+                    frame: timestamp,
+                    clock: master_time,
+                    sync,
+                });
+            }
+            AvSyncOutcome::Drop { .. } => {
+                return Ok(PlaybackPoll::Dropped {
+                    frame: timestamp,
+                    sync,
+                });
+            }
+            AvSyncOutcome::Present { .. } => {
+                ready.presentation = Some(sync);
+            }
         }
-        match self.viewport.try_send(frame) {
-            Ok(()) => Ok(PlaybackPoll::Presented { frame: timestamp }),
+
+        match self.viewport.try_send(ready.frame) {
+            Ok(()) => Ok(PlaybackPoll::Presented {
+                frame: timestamp,
+                sync,
+            }),
             Err(backpressure) => {
-                self.ready = Some(backpressure.into_item());
-                Ok(PlaybackPoll::ViewportBackpressured { frame: timestamp })
+                self.ready = Some(ReadyPlaybackFrame {
+                    frame: backpressure.into_item(),
+                    presentation: Some(sync),
+                });
+                Ok(PlaybackPoll::ViewportBackpressured {
+                    frame: timestamp,
+                    sync,
+                })
             }
         }
     }
