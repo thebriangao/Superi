@@ -2,41 +2,47 @@
 module_id: superi-project
 source_paths:
   - open/crates/superi-project
-source_hash: 52aee870902e9505b12355befe2715fa6debc35dc4315bed7d687672bf615dad
-source_files: 8
+source_hash: 739499cf71fa14aaa35c198c21d365e70b72137fb5adc4148222a2cff5993cb8
+source_files: 10
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
-`superi-project` owns the coherent whole-project aggregate and the stable schema-1 SQLite
-serialization boundary. One `ProjectDocument` combines the validated editorial project, selected
-root timeline, retained compiled timeline graphs, optional named standalone editable graphs, and
-one optimistic document revision. Immutable `ProjectSnapshot` values give editor, script,
-headless, persistence, and engine consumers one equal published state.
+`superi-project` owns the coherent whole-project aggregate, stable schema-1 SQLite serialization,
+and ordered forward migration from supported older project schemas. One `ProjectDocument` combines
+the validated editorial project, selected root timeline, retained compiled timeline graphs,
+optional named standalone editable graphs, and one optimistic document revision. Immutable
+`ProjectSnapshot` values give editor, script, headless, persistence, and engine consumers one equal
+published state.
 
 `ProjectDatabase` is the only public whole-project database authority. It creates a new
-nonoverwriting `.superi` database or secured in-memory database, opens an existing database
-read-only, replaces all semantic rows in one checked transaction, and reconstructs one complete
-`ProjectDocument`. The schema persists canonical timeline and graph component documents instead of
-copying their domain models into competing SQL fields.
+nonoverwriting `.superi` database or secured in-memory database, opens exact current state
+read-only, opens current or supported legacy state with write authority, replaces all semantic rows
+in one checked transaction, and reconstructs one complete `ProjectDocument`. Writable open reports
+its source schema and migrates exact schema 0 to schema 1 in one immediate transaction. The schema
+persists canonical timeline and graph component documents instead of copying their domain models
+into competing SQL fields.
 
-This module does not yet own migrations between project schema revisions, temporary save
-publication, filesystem synchronization, atomic destination replacement, save-as, copy, backup,
-settings, history, autosave, recovery journals, unknown extension preservation, modified-since-open
-policy, or public API and CLI commands. Those remain assigned to later project checkpoints.
+This module does not yet own temporary save publication, filesystem synchronization, atomic
+destination replacement, save-as, copy, backup, settings, history, autosave, recovery journals,
+unknown extension preservation, modified-since-open policy, or public API and CLI commands. Those
+remain assigned to later project checkpoints.
 
 ## Source inventory
 
 - `open/crates/superi-project/Cargo.toml`: Declares core, graph, timeline, exact workspace
-  `rusqlite`, and workspace SHA-256 dependencies.
+  `rusqlite`, workspace SHA-256, and test-only JSON fixture dependencies.
 - `open/crates/superi-project/src/autosave.rs`: Placeholder for autosave policy and execution.
 - `open/crates/superi-project/src/document.rs`: Implements `ProjectDocument`, immutable snapshots,
   private edit candidates, retained timeline compilations, named standalone graphs, revision
   fencing, checked reconstruction, and complete relationship validation.
-- `open/crates/superi-project/src/lib.rs`: Documents the implemented aggregate and schema-1
-  persistence boundary, exports project modules, and re-exports `ProjectDatabase` plus stable format
-  constants.
+- `open/crates/superi-project/src/lib.rs`: Documents the implemented aggregate, schema-1
+  persistence, and migration boundary, exports public project modules, keeps migration private, and
+  re-exports `ProjectDatabase` plus stable format constants.
+- `open/crates/superi-project/src/migrate.rs`: Owns the exact schema-0 contract, contiguous migration
+  registry, secured compatibility decoding, checked aggregate reconstruction, single-transaction
+  canonical schema-1 rewrite, full integrity checks, and precommit rollback proof.
 - `open/crates/superi-project/src/persist.rs`: Implements secured SQLite connections, schema 1,
   deterministic component records and manifest evidence, transactional replacement, strict
   interpretation, bounded decoding, and checked aggregate reconstruction.
@@ -44,6 +50,10 @@ policy, or public API and CLI commands. Those remain assigned to later project c
 - `open/crates/superi-project/tests/document_contract.rs`: Proves coherent construction, immutable
   concurrent snapshots, ordinary graph editing, atomic failure behavior, compilation freshness,
   standalone graph identity, explicit revision restoration, and graph identity checks.
+- `open/crates/superi-project/tests/migration_contract.rs`: Proves public supported legacy open,
+  legacy timeline and graph component migration, exact editable-state preservation, canonical
+  current reopen, continued editing and replacement, current byte stability, read-only legacy
+  refusal, future nonmutation, and malformed legacy rollback.
 - `open/crates/superi-project/tests/persistence_contract.rs`: Proves durable create and read-only
   reopen, exact schema identity, deterministic semantic rows, complete timeline, media, relink,
   graph, and revision preservation, rollback, read-only enforcement, and corruption rejection.
@@ -73,16 +83,23 @@ persistence authority and constants.
 - `ProjectDatabase::create` reserves a new path without overwriting an existing file, secures the
   connection, creates exact schema 1, and records the Superi application and schema identities.
 - `ProjectDatabase::memory` creates the same secured schema without filesystem state.
+- `ProjectDatabase::open` opens an existing database with write authority. Current schema 1 is
+  validated without mutation, while exact supported schema 0 is upgraded transactionally to schema
+  1 before the database is returned.
 - `ProjectDatabase::open_read_only` opens existing state without write authority and validates
-  database integrity, application identity, schema revision, and exact schema objects.
+  database integrity, application identity, current schema revision, and exact schema objects.
+  Supported legacy state is refused with a classified requirement for writable migration.
+- `ProjectDatabase::source_schema_revision` reports the revision observed at open, and
+  `ProjectDatabase::was_migrated` distinguishes a completed upgrade from current-schema open.
 - `ProjectDatabase::replace` pre-encodes one immutable snapshot, bounds all content, writes every
   row in one immediate transaction, reloads the candidate through public component decoders,
   compares the exact snapshot, and commits only after equality.
 - `ProjectDatabase::load` verifies the database, metadata, component lengths and SHA-256 values,
   project manifest, canonical component bytes, graph ownership, and revisions inside one read
   transaction before returning one checked document.
-- `PROJECT_APPLICATION_ID`, `PROJECT_SCHEMA_REVISION`, `PROJECT_FORMAT`, and
-  `PROJECT_FORMAT_VERSION` identify application `SUPR`, schema `1`, `superi.project`, and `1.0.0`.
+- `PROJECT_APPLICATION_ID`, `PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION`,
+  `PROJECT_SCHEMA_REVISION`, `PROJECT_FORMAT`, and `PROJECT_FORMAT_VERSION` identify application
+  `SUPR`, supported source schema `0`, current schema `1`, `superi.project`, and `1.0.0`.
 
 ## Architecture and data flow
 
@@ -120,10 +137,31 @@ Timeline bytes reconstruct the validated `EditorialProject`. Each timeline graph
 are never replaced by recompilation; compilation supplies only trusted provenance around the
 decoded graph.
 
+Writable open adds one explicit compatibility path:
+
+1. Connection-level application identity and `user_version` dispatch before mutation. Current
+   schema 1 runs the existing exact validator only; a future schema, wrong application, or
+   unrepresentable revision fails without a write transaction.
+2. Exact schema 0 is the supported `superi.project` version `0.9.0` predecessor. Its three strict
+   tables retain project, document, graph ownership, graph revision, and component-document meaning
+   but predate schema 1's component lengths, component digests, and project manifest.
+3. One immediate transaction repeats the identity and exact schema check, runs full SQLite and
+   foreign-key integrity checks, bounds every row, and decodes declared timeline and graph component
+   revisions 0 or 1 through their existing checked owners.
+4. The migration reconstructs the complete document through `ProjectGraph::restore_timeline`,
+   `StandaloneProjectGraph::new`, and `ProjectDocument::from_parts` before dropping any legacy
+   table. It then serializes that snapshot through the current canonical serializers, creates the
+   immutable schema-1 tables, writes current integrity evidence, reloads through the schema-1
+   loader, and requires exact snapshot equality.
+5. The migration registry contains the sole contiguous 0-to-1 step and ends at the current schema
+   constant. A failure at any point, including after the schema rewrite but before commit, drops the
+   borrowed transaction and restores the complete schema-0 database.
+
 Connections enable SQLite defensive mode, foreign keys, cell-size checks, and a finite busy
 timeout. They disable triggers, views, trusted schema, double-quoted string literals, and memory
 mapping. Read-only connections also enable query-only mode. Schema 1 contains no trigger, view,
-extension, network, process, device, or GPU behavior.
+extension, network, process, device, or GPU behavior. Migration never opens a second connection and
+never owns commit authority outside the one outer transaction.
 
 `superi-engine::resources::acquire_project_resources` remains the real downstream consumer. It
 clones the exact selected compilation from `ProjectSnapshot`, including reloaded direct graph
@@ -141,6 +179,8 @@ edits, then acquires the exact reachable source and decoder set before one resou
   connection type leakage. Its bundled feature also exposes modern defensive configuration.
 - Exact `sha2` 0.10.9 supplies component and project manifest integrity without defining the later
   public dirty-state hash.
+- Test-only `serde_json` builds exact legacy revision-0 component fixtures from current canonical
+  payloads without entering the runtime dependency surface.
 - `superi-engine` consumes immutable snapshots for transactional resource acquisition.
 - API and CLI do not yet expose database or document commands. Later public commands must wrap this
   owner instead of creating another project or database authority.
@@ -149,24 +189,29 @@ edits, then acquires the exact reachable source and decoder set before one resou
 
 - The selected root exists and has exactly one retained timeline compilation at the current
   editorial revision. Every retained graph identity is unique and equals its ordered map key.
-- Document edits and database replacement are all-or-nothing. Stale revisions, failed closures,
-  invalid candidates, preflight bounds, SQL failures, failed reload, or snapshot inequality publish
-  nothing.
+- Document edits, database replacement, and schema migration are all-or-nothing. Stale revisions,
+  failed closures, invalid candidates, preflight bounds, SQL failures, failed reload, snapshot
+  inequality, or precommit interruption publish nothing.
 - Schema identity is explicit at three levels: SQLite application ID, monotonic schema revision,
   and semantic format plus version. The stable primitive and component revisions are recorded too.
 - Schema 1 has exactly three strict tables, one metadata singleton, one timeline singleton, and
   bounded graph rows. Extra user tables, indexes, views, or triggers are corruption.
+- Supported schema 0 also has exactly three strict tables and retains every semantic field needed
+  for lossless reconstruction. It may carry declared timeline or graph component revision 0 or 1,
+  both of which are checked and canonicalized by their owning codec during migration.
 - Project and graph revisions use canonical decimal text so every `u64` revision is preserved.
   Typed IDs use fixed 16-byte big-endian blobs.
 - Canonical component bytes remain owned by timeline and graph. Project stores them with exact
   length and SHA-256 evidence and does not duplicate their semantic fields.
 - The project manifest is private integrity evidence. It is not C014's public dirty-state hash.
-- Wrong application identity and future schema or format versions are unsupported. Malformed,
-  noncanonical, tampered, missing, extra, or inconsistent stored state is corrupt data.
+- Wrong application identity, future schema or format versions, and read-only legacy open are
+  unsupported. Malformed, noncanonical current state, tampered, missing, extra, or inconsistent
+  stored state is corrupt data.
 - Semantic row order, component bytes, and manifest digest are deterministic. SQLite page layout is
   not a public deterministic contract.
-- `create` does not overwrite an existing path. Atomic destination replacement, save-as, copy,
-  backup, migration, autosave, and recovery remain outside C002.
+- `create` does not overwrite an existing path. Migration changes only the already opened source
+  database after the complete legacy document is checked and only at commit. Atomic destination
+  replacement, save-as, copy, backup, autosave, and recovery remain later concerns.
 
 ## Tests and verification
 
@@ -182,23 +227,32 @@ and revision preservation, post-load conflict fencing and editing, preflight rol
 denial, and rejection of wrong application identity, future revisions, corrupt components, altered
 manifest evidence, missing rows, and extra views.
 
+`migration_contract.rs` contains three public database tests. They prove exact schema-0 and legacy
+component compatibility, current canonical rewrite, source-revision reporting, complete snapshot
+equality, post-migration edit and resave, read-only legacy refusal, byte-stable current open, future
+schema nonmutation, and malformed legacy logical rollback. The private migration unit contract
+forces a classified failure after the schema-1 rewrite and before commit, verifies exact schema-0
+reconstruction after rollback, then runs the production migration successfully on the same state.
+
 Timeline's serialization contract independently round trips a real compiled multicam graph through
 the public graph codec and rejects unknown `TimelineGraphValue` fields and tags. The engine resource
-contract proves that exact project-retained graph state reaches a real media preparation consumer.
+contract opens an exact schema-0 fixture through the public database owner and proves that the
+migrated retained graph and real media stream reach resource acquisition unchanged.
 Rust 1.80.1 check, strict Clippy, dependency direction, policy, formatting, map validation, and the
 repository verifier remain required delivery gates.
 
 ## Current status and risks
 
 The coherent in-memory document owner, schema-1 SQLite application format, deterministic component
-records, integrity manifest, transactional replacement, checked reconstruction, durable create and
-read-only reopen, and engine snapshot consumer are substantive and test-backed.
+records, integrity manifest, transactional replacement, exact schema-0 compatibility, ordered
+forward migration, checked reconstruction, durable create and read-only reopen, writable current or
+legacy open, and engine snapshot consumer are substantive and test-backed.
 
-Project schema migrations, synchronized temporary save publication, atomic destination replacement,
-save-as, copy, backup, settings, history, autosave, recovery, unknown extension preservation,
-modified-since-open policy, dirty-state hashing, public API adaptation, CLI, and scripting remain
-absent. Schema 1 intentionally rejects older, future, or extended layouts until their owning
-checkpoints provide an explicit migration or preservation contract.
+Additional schema revisions, synchronized temporary save publication, atomic destination
+replacement, save-as, copy, backup, settings, history, autosave, recovery, unknown extension
+preservation, modified-since-open policy, dirty-state hashing, public API adaptation, CLI, and
+scripting remain absent. Exact schema 0 is the only supported predecessor. Future, older unknown,
+or extended layouts remain rejected until an explicit migration or preservation contract exists.
 
 Bundled SQLite increases the locked build graph and must remain pinned to the Rust 1.80-compatible
 rusqlite 0.32.1 path unless a separately verified upgrade changes that decision. Integrity digests
@@ -213,9 +267,10 @@ round-trip comparison, tests, and maps together. Do not add hidden intelligent-r
 second editorial owner, unchecked graph mutation, or a second persistence model.
 
 Preserve timeline and graph component ownership. Incompatible project layout changes require a new
-monotonic schema revision, semantic version decision, and explicit C003 migration. Do not change
-schema 1 in place after release. Keep filesystem publication, replacement, backups, autosave, and
-recovery behavior in their assigned modules and checkpoints.
+monotonic schema revision, semantic version decision, and one exact successor step appended to the
+contiguous migration registry. Do not change schema 0 or schema 1 in place after release. Keep
+filesystem publication, replacement, backups, autosave, and recovery behavior in their assigned
+modules and checkpoints.
 
 Refresh this map after any project source, manifest, public consumer, schema, or test change. Reread
 every changed file and relevant component interface through EOF, reconcile prose before recomputing

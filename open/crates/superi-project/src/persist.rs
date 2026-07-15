@@ -1,8 +1,9 @@
 //! Stable, explicitly versioned whole-project SQLite serialization.
 //!
 //! This module owns the schema and connection-level interpretation of one
-//! `.superi` application database. Destination publication, migration,
-//! autosave, and recovery policy remain separate project concerns.
+//! `.superi` application database. Migration policy is implemented by the
+//! private sibling module. Destination publication, autosave, and recovery
+//! policy remain separate project concerns.
 
 use std::fmt;
 use std::fs::OpenOptions;
@@ -22,15 +23,18 @@ use superi_timeline::serialize::{
 };
 
 use crate::document::{ProjectDocument, ProjectGraph, ProjectSnapshot, StandaloneProjectGraph};
+use crate::migrate::migrate_connection;
 
 const COMPONENT: &str = "superi-project.persistence";
 const MANIFEST_DOMAIN: &[u8] = b"superi.project.manifest.v1";
-const MAX_COMPONENT_BYTES: usize = 64 * 1024 * 1024;
-const MAX_GRAPH_COUNT: usize = 4096;
-const MAX_STANDALONE_NAME_BYTES: usize = 16 * 1024;
+pub(crate) const MAX_COMPONENT_BYTES: usize = 64 * 1024 * 1024;
+pub(crate) const MAX_GRAPH_COUNT: usize = 4096;
+pub(crate) const MAX_STANDALONE_NAME_BYTES: usize = 16 * 1024;
 
 /// SQLite application identity stored in every `.superi` database (`SUPR`).
 pub const PROJECT_APPLICATION_ID: u32 = 0x5355_5052;
+/// Oldest project database schema with a registered lossless forward migration.
+pub const PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION: u32 = 0;
 /// Current monotonic project database schema revision.
 pub const PROJECT_SCHEMA_REVISION: u32 = 1;
 /// Stable semantic identity of the whole-project format.
@@ -38,14 +42,15 @@ pub const PROJECT_FORMAT: &str = "superi.project";
 /// Current semantic project format version.
 pub const PROJECT_FORMAT_VERSION: &str = "1.0.0";
 
-const PROJECT_METADATA_SCHEMA: &str = "CREATE TABLE project_metadata (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format TEXT NOT NULL CHECK (format = 'superi.project'), format_version TEXT NOT NULL, primitive_schema_revision INTEGER NOT NULL CHECK (primitive_schema_revision > 0), project_id BLOB NOT NULL CHECK (length(project_id) = 16), document_revision TEXT NOT NULL, root_timeline_id BLOB NOT NULL CHECK (length(root_timeline_id) = 16), manifest_sha256 BLOB NOT NULL CHECK (length(manifest_sha256) = 32)) STRICT";
-const TIMELINE_COMPONENT_SCHEMA: &str = "CREATE TABLE timeline_component (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format_revision INTEGER NOT NULL CHECK (format_revision > 0), byte_length INTEGER NOT NULL CHECK (byte_length >= 0 AND byte_length <= 67108864), sha256 BLOB NOT NULL CHECK (length(sha256) = 32), document BLOB NOT NULL CHECK (length(document) = byte_length)) STRICT";
-const GRAPH_COMPONENTS_SCHEMA: &str = "CREATE TABLE graph_components (graph_id BLOB PRIMARY KEY CHECK (length(graph_id) = 16), graph_kind TEXT NOT NULL CHECK (graph_kind IN ('timeline', 'standalone')), root_timeline_id BLOB CHECK (root_timeline_id IS NULL OR length(root_timeline_id) = 16), name TEXT, graph_revision TEXT NOT NULL, format_revision INTEGER NOT NULL CHECK (format_revision > 0), byte_length INTEGER NOT NULL CHECK (byte_length >= 0 AND byte_length <= 67108864), sha256 BLOB NOT NULL CHECK (length(sha256) = 32), document BLOB NOT NULL CHECK (length(document) = byte_length), CHECK ((graph_kind = 'timeline' AND root_timeline_id IS NOT NULL AND name IS NULL) OR (graph_kind = 'standalone' AND root_timeline_id IS NULL AND name IS NOT NULL AND length(name) > 0))) STRICT, WITHOUT ROWID";
+pub(crate) const PROJECT_METADATA_SCHEMA: &str = "CREATE TABLE project_metadata (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format TEXT NOT NULL CHECK (format = 'superi.project'), format_version TEXT NOT NULL, primitive_schema_revision INTEGER NOT NULL CHECK (primitive_schema_revision > 0), project_id BLOB NOT NULL CHECK (length(project_id) = 16), document_revision TEXT NOT NULL, root_timeline_id BLOB NOT NULL CHECK (length(root_timeline_id) = 16), manifest_sha256 BLOB NOT NULL CHECK (length(manifest_sha256) = 32)) STRICT";
+pub(crate) const TIMELINE_COMPONENT_SCHEMA: &str = "CREATE TABLE timeline_component (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format_revision INTEGER NOT NULL CHECK (format_revision > 0), byte_length INTEGER NOT NULL CHECK (byte_length >= 0 AND byte_length <= 67108864), sha256 BLOB NOT NULL CHECK (length(sha256) = 32), document BLOB NOT NULL CHECK (length(document) = byte_length)) STRICT";
+pub(crate) const GRAPH_COMPONENTS_SCHEMA: &str = "CREATE TABLE graph_components (graph_id BLOB PRIMARY KEY CHECK (length(graph_id) = 16), graph_kind TEXT NOT NULL CHECK (graph_kind IN ('timeline', 'standalone')), root_timeline_id BLOB CHECK (root_timeline_id IS NULL OR length(root_timeline_id) = 16), name TEXT, graph_revision TEXT NOT NULL, format_revision INTEGER NOT NULL CHECK (format_revision > 0), byte_length INTEGER NOT NULL CHECK (byte_length >= 0 AND byte_length <= 67108864), sha256 BLOB NOT NULL CHECK (length(sha256) = 32), document BLOB NOT NULL CHECK (length(document) = byte_length), CHECK ((graph_kind = 'timeline' AND root_timeline_id IS NOT NULL AND name IS NULL) OR (graph_kind = 'standalone' AND root_timeline_id IS NULL AND name IS NOT NULL AND length(name) > 0))) STRICT, WITHOUT ROWID";
 
 /// One secured connection to a stable whole-project database.
 pub struct ProjectDatabase {
     connection: Connection,
     writable: bool,
+    source_schema_revision: u32,
 }
 
 impl fmt::Debug for ProjectDatabase {
@@ -53,6 +58,7 @@ impl fmt::Debug for ProjectDatabase {
         formatter
             .debug_struct("ProjectDatabase")
             .field("writable", &self.writable)
+            .field("source_schema_revision", &self.source_schema_revision)
             .finish_non_exhaustive()
     }
 }
@@ -85,6 +91,7 @@ impl ProjectDatabase {
         Ok(Self {
             connection,
             writable: true,
+            source_schema_revision: PROJECT_SCHEMA_REVISION,
         })
     }
 
@@ -97,6 +104,24 @@ impl ProjectDatabase {
         Ok(Self {
             connection,
             writable: true,
+            source_schema_revision: PROJECT_SCHEMA_REVISION,
+        })
+    }
+
+    /// Opens an existing project with write authority and migrates supported schemas.
+    ///
+    /// Current projects are validated without mutation. Every registered older
+    /// schema is upgraded to the current schema in one immediate transaction.
+    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        let mut connection = Connection::open_with_flags(path, flags)
+            .map_err(|source| database_error(source, "open_writable_database"))?;
+        initialize_connection(&connection, true)?;
+        let source_schema_revision = migrate_connection(&mut connection)?;
+        Ok(Self {
+            connection,
+            writable: true,
+            source_schema_revision,
         })
     }
 
@@ -110,7 +135,20 @@ impl ProjectDatabase {
         Ok(Self {
             connection,
             writable: false,
+            source_schema_revision: PROJECT_SCHEMA_REVISION,
         })
+    }
+
+    /// Returns the schema revision observed when this connection was opened.
+    #[must_use]
+    pub const fn source_schema_revision(&self) -> u32 {
+        self.source_schema_revision
+    }
+
+    /// Returns whether writable open upgraded a supported older schema.
+    #[must_use]
+    pub const fn was_migrated(&self) -> bool {
+        self.source_schema_revision != PROJECT_SCHEMA_REVISION
     }
 
     /// Replaces all semantic database rows in one immediate transaction.
@@ -163,20 +201,20 @@ impl ProjectDatabase {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum StoredGraphKind {
+pub(crate) enum StoredGraphKind {
     Timeline,
     Standalone,
 }
 
 impl StoredGraphKind {
-    const fn as_str(self) -> &'static str {
+    pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::Timeline => "timeline",
             Self::Standalone => "standalone",
         }
     }
 
-    fn parse(value: &str) -> Result<Self> {
+    pub(crate) fn parse(value: &str) -> Result<Self> {
         match value {
             "timeline" => Ok(Self::Timeline),
             "standalone" => Ok(Self::Standalone),
@@ -185,7 +223,7 @@ impl StoredGraphKind {
     }
 }
 
-struct PreparedProject {
+pub(crate) struct PreparedProject {
     project_id: ProjectId,
     revision: u64,
     root_timeline_id: TimelineId,
@@ -206,7 +244,7 @@ struct PreparedGraph {
 }
 
 impl PreparedProject {
-    fn from_snapshot(snapshot: &ProjectSnapshot) -> Result<Self> {
+    pub(crate) fn from_snapshot(snapshot: &ProjectSnapshot) -> Result<Self> {
         let timeline_document = serialize_timeline_state(snapshot.editorial_project())?;
         check_component_size(timeline_document.len(), "encode_timeline_component")?;
         let timeline_digest = sha256(&timeline_document);
@@ -336,7 +374,7 @@ fn initialize_connection(connection: &Connection, writable: bool) -> Result<()> 
     Ok(())
 }
 
-fn initialize_schema(connection: &Connection) -> Result<()> {
+pub(crate) fn initialize_schema(connection: &Connection) -> Result<()> {
     let schema =
         format!("{PROJECT_METADATA_SCHEMA};{TIMELINE_COMPONENT_SCHEMA};{GRAPH_COMPONENTS_SCHEMA};");
     connection
@@ -351,7 +389,7 @@ fn initialize_schema(connection: &Connection) -> Result<()> {
     validate_identity_and_schema(connection)
 }
 
-fn validate_identity_and_schema(connection: &Connection) -> Result<()> {
+pub(crate) fn validate_identity_and_schema(connection: &Connection) -> Result<()> {
     let quick_check: String = connection
         .query_row("PRAGMA quick_check(1)", [], |row| row.get(0))
         .map_err(|source| database_error(source, "quick_check"))?;
@@ -375,6 +413,15 @@ fn validate_identity_and_schema(connection: &Connection) -> Result<()> {
         return Err(unsupported(
             "read_schema_revision",
             "project database uses a future schema revision",
+        ));
+    }
+    if schema_revision >= 0
+        && schema_revision < i64::from(PROJECT_SCHEMA_REVISION)
+        && schema_revision >= i64::from(PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION)
+    {
+        return Err(unsupported(
+            "read_schema_revision",
+            "project database requires writable migration",
         ));
     }
     if schema_revision != i64::from(PROJECT_SCHEMA_REVISION) {
@@ -428,7 +475,10 @@ fn validate_identity_and_schema(connection: &Connection) -> Result<()> {
     Ok(())
 }
 
-fn write_prepared_project(connection: &Connection, prepared: &PreparedProject) -> Result<()> {
+pub(crate) fn write_prepared_project(
+    connection: &Connection,
+    prepared: &PreparedProject,
+) -> Result<()> {
     connection
         .execute_batch(
             "DELETE FROM graph_components;\
@@ -496,7 +546,7 @@ fn write_prepared_project(connection: &Connection, prepared: &PreparedProject) -
     Ok(())
 }
 
-fn load_connection(connection: &Connection) -> Result<ProjectDocument> {
+pub(crate) fn load_connection(connection: &Connection) -> Result<ProjectDocument> {
     validate_identity_and_schema(connection)?;
     require_row_count(connection, "project_metadata", 1)?;
     require_row_count(connection, "timeline_component", 1)?;
@@ -819,7 +869,7 @@ fn supported_revision(value: i64, current: u32, operation: &'static str) -> Resu
     Ok(current)
 }
 
-fn check_component_size(bytes: usize, operation: &'static str) -> Result<()> {
+pub(crate) fn check_component_size(bytes: usize, operation: &'static str) -> Result<()> {
     if bytes > MAX_COMPONENT_BYTES {
         return Err(resource_exhausted(
             operation,
@@ -829,7 +879,7 @@ fn check_component_size(bytes: usize, operation: &'static str) -> Result<()> {
     Ok(())
 }
 
-fn parse_revision(value: &str, operation: &'static str) -> Result<u64> {
+pub(crate) fn parse_revision(value: &str, operation: &'static str) -> Result<u64> {
     let revision = value
         .parse::<u64>()
         .map_err(|_| corrupt(operation, "stored revision is not an unsigned integer"))?;
@@ -842,7 +892,7 @@ fn parse_revision(value: &str, operation: &'static str) -> Result<u64> {
     Ok(revision)
 }
 
-fn fixed_bytes<const N: usize>(
+pub(crate) fn fixed_bytes<const N: usize>(
     bytes: Vec<u8>,
     operation: &'static str,
     field: &'static str,
@@ -937,7 +987,7 @@ fn create_path_error(source: std::io::Error, operation: &'static str) -> Error {
         .with_context(ErrorContext::new(COMPONENT, operation))
 }
 
-fn database_error(source: rusqlite::Error, operation: &'static str) -> Error {
+pub(crate) fn database_error(source: rusqlite::Error, operation: &'static str) -> Error {
     let (category, recoverability, message) = match &source {
         rusqlite::Error::SqliteFailure(failure, _) => match failure.code {
             ErrorCode::DatabaseBusy | ErrorCode::DatabaseLocked => (
@@ -994,7 +1044,7 @@ fn database_error(source: rusqlite::Error, operation: &'static str) -> Error {
         .with_context(ErrorContext::new(COMPONENT, operation))
 }
 
-fn stored_state_error(source: Error, operation: &'static str) -> Error {
+pub(crate) fn stored_state_error(source: Error, operation: &'static str) -> Error {
     Error::with_source(
         ErrorCategory::CorruptData,
         Recoverability::UserCorrectable,
@@ -1004,7 +1054,7 @@ fn stored_state_error(source: Error, operation: &'static str) -> Error {
     .with_context(ErrorContext::new(COMPONENT, operation))
 }
 
-fn project_error(
+pub(crate) fn project_error(
     category: ErrorCategory,
     recoverability: Recoverability,
     operation: &'static str,
@@ -1014,7 +1064,7 @@ fn project_error(
         .with_context(ErrorContext::new(COMPONENT, operation))
 }
 
-fn corrupt(operation: &'static str, message: &'static str) -> Error {
+pub(crate) fn corrupt(operation: &'static str, message: &'static str) -> Error {
     project_error(
         ErrorCategory::CorruptData,
         Recoverability::UserCorrectable,
@@ -1023,7 +1073,7 @@ fn corrupt(operation: &'static str, message: &'static str) -> Error {
     )
 }
 
-fn unsupported(operation: &'static str, message: &'static str) -> Error {
+pub(crate) fn unsupported(operation: &'static str, message: &'static str) -> Error {
     project_error(
         ErrorCategory::Unsupported,
         Recoverability::UserCorrectable,

@@ -1,7 +1,8 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
+use rusqlite::Connection;
 use superi_core::color_space::{
     ColorPrimaries, ColorRange, ColorSpace, MatrixCoefficients, TransferFunction,
 };
@@ -30,6 +31,7 @@ use superi_media_io::mkv_webm::MkvWebmBackend;
 use superi_media_io::operation::{MediaPriority, OperationContext};
 use superi_media_io::read::ReadOutcome;
 use superi_project::document::ProjectDocument;
+use superi_project::ProjectDatabase;
 use superi_timeline::compile::{TimelineGraphOrigin, TimelineGraphValue};
 use superi_timeline::model::{
     Clip, ClipSource, EditorialObjectId, EditorialProject, LinkedMediaReference, Timeline, Track,
@@ -42,6 +44,36 @@ const CLIP: ClipId = ClipId::from_raw(0x300);
 const STREAM: StreamId = StreamId::new(1);
 const SOURCE_FINGERPRINT: &str =
     "sha256:117f5cebcaaf788d1891e84aec57066c73e33d4af308368f640f28a8419f4bbc";
+static NEXT_PROJECT_PATH: AtomicUsize = AtomicUsize::new(0);
+
+struct TempProjectFile {
+    path: PathBuf,
+}
+
+impl TempProjectFile {
+    fn new() -> Self {
+        Self {
+            path: std::env::temp_dir().join(format!(
+                "superi-engine-migrated-project-{}-{}.superi",
+                std::process::id(),
+                NEXT_PROJECT_PATH.fetch_add(1, Ordering::Relaxed)
+            )),
+        }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempProjectFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+        for suffix in ["-journal", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", self.path.display()));
+        }
+    }
+}
 
 fn fixture_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -261,8 +293,7 @@ fn real_timeline_acquisition_compiles_once_and_preserves_media_semantics() {
     assert!(frame.metadata().get("container.offset").is_some());
 }
 
-#[test]
-fn project_acquisition_preserves_published_editable_graph_state() {
+fn edited_project_document() -> ProjectDocument {
     let mut document = ProjectDocument::new(project(), ROOT).unwrap();
     let compilation = document.timeline_graph(ROOT).unwrap();
     let node_id = compilation
@@ -303,6 +334,36 @@ fn project_acquisition_preserves_published_editable_graph_state() {
         })
         .unwrap();
 
+    document
+}
+
+fn downgrade_project_fixture_to_schema_zero(path: &Path) {
+    let connection = Connection::open(path).unwrap();
+    connection
+        .execute_batch(
+            "BEGIN IMMEDIATE;
+             ALTER TABLE project_metadata RENAME TO current_project_metadata;
+             ALTER TABLE timeline_component RENAME TO current_timeline_component;
+             ALTER TABLE graph_components RENAME TO current_graph_components;
+             CREATE TABLE project_metadata (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format TEXT NOT NULL CHECK (format = 'superi.project'), format_version TEXT NOT NULL, primitive_schema_revision INTEGER NOT NULL CHECK (primitive_schema_revision > 0), project_id BLOB NOT NULL CHECK (length(project_id) = 16), document_revision TEXT NOT NULL, root_timeline_id BLOB NOT NULL CHECK (length(root_timeline_id) = 16)) STRICT;
+             CREATE TABLE timeline_component (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format_revision INTEGER NOT NULL CHECK (format_revision >= 0), document BLOB NOT NULL CHECK (length(document) <= 67108864)) STRICT;
+             CREATE TABLE graph_components (graph_id BLOB PRIMARY KEY CHECK (length(graph_id) = 16), graph_kind TEXT NOT NULL CHECK (graph_kind IN ('timeline', 'standalone')), root_timeline_id BLOB CHECK (root_timeline_id IS NULL OR length(root_timeline_id) = 16), name TEXT, graph_revision TEXT NOT NULL, format_revision INTEGER NOT NULL CHECK (format_revision >= 0), document BLOB NOT NULL CHECK (length(document) <= 67108864), CHECK ((graph_kind = 'timeline' AND root_timeline_id IS NOT NULL AND name IS NULL) OR (graph_kind = 'standalone' AND root_timeline_id IS NULL AND name IS NOT NULL AND length(name) > 0))) STRICT, WITHOUT ROWID;
+             INSERT INTO project_metadata (singleton, format, format_version, primitive_schema_revision, project_id, document_revision, root_timeline_id) SELECT singleton, format, '0.9.0', primitive_schema_revision, project_id, document_revision, root_timeline_id FROM current_project_metadata;
+             INSERT INTO timeline_component (singleton, format_revision, document) SELECT singleton, format_revision, document FROM current_timeline_component;
+             INSERT INTO graph_components (graph_id, graph_kind, root_timeline_id, name, graph_revision, format_revision, document) SELECT graph_id, graph_kind, root_timeline_id, name, graph_revision, format_revision, document FROM current_graph_components;
+             DROP TABLE current_graph_components;
+             DROP TABLE current_timeline_component;
+             DROP TABLE current_project_metadata;
+             PRAGMA user_version = 0;
+             COMMIT;",
+        )
+        .unwrap();
+}
+
+#[test]
+fn project_acquisition_preserves_published_editable_graph_state() {
+    let document = edited_project_document();
+
     let snapshot = document.snapshot();
     let registry = media_backend_registry().unwrap();
     let resources = acquire_project_resources(
@@ -317,6 +378,41 @@ fn project_acquisition_preserves_published_editable_graph_state() {
     assert_eq!(
         resources.compilation(),
         snapshot.timeline_graph(ROOT).unwrap()
+    );
+    assert_eq!(resources.compilation().snapshot().revision(), 2);
+    assert_eq!(
+        resources.media(MEDIA).unwrap().info().streams()[0].id(),
+        STREAM
+    );
+}
+
+#[test]
+fn migrated_project_reaches_engine_with_the_exact_edited_graph() {
+    let artifact = TempProjectFile::new();
+    let expected = edited_project_document().snapshot();
+    let mut database = ProjectDatabase::create(artifact.path()).unwrap();
+    database.replace(&expected).unwrap();
+    drop(database);
+    downgrade_project_fixture_to_schema_zero(artifact.path());
+
+    let database = ProjectDatabase::open(artifact.path()).unwrap();
+    assert!(database.was_migrated());
+    assert_eq!(database.source_schema_revision(), 0);
+    let migrated = database.load().unwrap().snapshot();
+    assert_eq!(migrated, expected);
+
+    let registry = media_backend_registry().unwrap();
+    let resources = acquire_project_resources(
+        &migrated,
+        &registry,
+        [request()],
+        ResourceAcquisitionPolicy::default(),
+        &operation(),
+    )
+    .unwrap();
+    assert_eq!(
+        resources.compilation(),
+        expected.timeline_graph(ROOT).unwrap()
     );
     assert_eq!(resources.compilation().snapshot().revision(), 2);
     assert_eq!(

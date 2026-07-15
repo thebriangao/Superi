@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 54163614810468f82d8b5ab38543564904fa4cf6a381c948f3dfc6a0280434b3
+source_hash: 7eea6ab5004e0f354123faa8cd6550a8f3479c76a71a54d3115f23651d0240f1
 source_files: 143
 mapped_at_commit: working-tree
 ---
@@ -403,7 +403,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   test edge to `superi-concurrency`, graph and timeline document serialization and integrity edges,
   cache-key hashing, and the exact `oxideav-mp3` Git revision. Timeline state
   directly consumes the already-resolved `serde`, `serde_json`, and `sha2` packages, while
-  `superi-project` now directly consumes exact `rusqlite` 0.32.1 and the existing SHA-256 package.
+  `superi-project` now directly consumes exact `rusqlite` 0.32.1 and the existing SHA-256 package,
+  plus test-only JSON for exact legacy component fixtures. `superi-engine` records a test-only
+  direct rusqlite edge for its real migrated-project resource consumer.
   The bundled SQLite edge resolves `libsqlite3-sys` 0.30.1, `ahash` 0.8.12, `hashbrown` 0.14.5,
   `hashlink` 0.9.1, fallible iterator adapters, and native build discovery packages. This exact
   path compiles on the declared Rust 1.80 floor and keeps project databases offline and
@@ -708,7 +710,10 @@ SQLite enabled. It also consumes the existing exact SHA-256 pin. Rusqlite and li
 MIT-licensed, SQLite is public domain, and the bundled path performs no runtime discovery or
 network operation. The dependency remains below project and does not change any internal Superi
 crate edge. Fresh `cargo +1.80.1 check -p superi-project --locked` proves the selected resolution on
-the declared compiler floor.
+the declared compiler floor. Project's test-only JSON edge builds supported schema-0 component
+fixtures, while engine's test-only direct rusqlite edge builds an exact legacy database around the
+existing real resource-acquisition consumer. Both packages were already locked and neither edge
+enters a runtime dependency tier.
 
 The effects animation, mask, rotoscope, text, and preset wires reuse the same workspace Serde pin.
 Effect presets additionally reuse the workspace JSON and SHA-256 pins at runtime for strict
@@ -1139,11 +1144,13 @@ bundle discovery, launch coordination, containment, and graph availability are i
 concrete platform transport, native OFX ABI adapters, and GPU-handle IPC remain absent.
 The project crate now owns a stable schema-1 SQLite application database with deterministic
 timeline and graph component rows, SHA-256 evidence, transactional replacement, checked reload,
-durable nonoverwriting create, and read-only reopen. The lockfile records exact rusqlite 0.32.1 and
-libsqlite3-sys 0.30.1 with bundled SQLite. Project migrations, synchronized temporary publication,
-atomic destination replacement, autosave, and recovery remain incomplete.
+durable nonoverwriting create, read-only reopen, and an ordered exact schema-0-to-schema-1 migration
+inside one immediate transaction. The lockfile records exact rusqlite 0.32.1 and libsqlite3-sys
+0.30.1 with bundled SQLite, plus project JSON and engine rusqlite test edges. Additional project
+schema revisions, synchronized temporary publication, atomic destination replacement, autosave, and
+recovery remain incomplete.
 The synchronized remote revision before this checkpoint is
-`61ac670f185e7511974cafad32974d65f331d9c2`.
+`755398c118357ede40275e4086e3580353d7e1b8`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
 root README, deny policy, and structure guide with license-audit CI. Commit
 `e0b3af9f099f527a8544d1b0317896640969903b` added the executable dependency-policy contract and its
@@ -1298,7 +1305,7 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`61ac670f185e7511974cafad32974d65f331d9c2` when the map was refreshed. Its hash describes the exact
+`755398c118357ede40275e4086e3580353d7e1b8` when the map was refreshed. Its hash describes the exact
 143 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes

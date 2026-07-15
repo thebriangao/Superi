@@ -35,3 +35,4 @@ superi-codecs-vendor = { path = "../superi-codecs-vendor", optional = true }
 
 [dev-dependencies]
 pollster = { workspace = true }
+rusqlite.workspace = true
