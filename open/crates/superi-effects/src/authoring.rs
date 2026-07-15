@@ -792,7 +792,11 @@ fn instance_error(id: &NodeSchemaId, reason: &'static str, message: &'static str
     )
 }
 
-fn required_text(operation: &'static str, field: &'static str, value: String) -> Result<String> {
+pub(crate) fn required_text(
+    operation: &'static str,
+    field: &'static str,
+    value: String,
+) -> Result<String> {
     if value.trim().is_empty() {
         return Err(Error::new(
             ErrorCategory::InvalidInput,

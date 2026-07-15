@@ -3,12 +3,14 @@
 //!
 //! Section 5.10 in `docs/architecture.md`. The authoring SDK provides typed inspectable definitions,
 //! editable graph-node instantiation, deterministic discovery, and exact-schema runtime factory
-//! compilation. The keyframe module provides exact editable animation. The built-in catalog and
-//! bounded CPU reference cover common visual operations, while masks, transitions, text, tracking,
-//! OFX hosting, and production GPU integration remain staged in their owning modules.
+//! compilation. The keyframe and control modules provide exact editable animation, reusable links,
+//! and parent expressions through ordinary graph driver state. The built-in catalog and bounded CPU
+//! reference cover common visual operations, while masks, transitions, text, tracking, OFX hosting,
+//! and production GPU integration remain staged in their owning modules.
 
 pub mod authoring;
 pub mod catalog;
+pub mod control;
 pub mod keyframe;
 pub mod mask;
 pub mod ofx;

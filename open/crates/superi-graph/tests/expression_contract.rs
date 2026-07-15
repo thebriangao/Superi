@@ -4,7 +4,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use superi_core::color_space::ColorSpace;
-use superi_core::error::{ErrorCategory, Recoverability, Result};
+use superi_core::error::{Error, ErrorCategory, Recoverability, Result};
 use superi_core::settings::{CapabilitySet, SemanticVersion};
 use superi_graph::expr::{
     ExpressionInstruction, ExpressionParameterValue, ExpressionVariableName, ParameterAddress,
@@ -346,6 +346,76 @@ fn links_and_expressions_share_one_typed_editable_snapshot_and_result() {
             address(4, 401),
         ]
     );
+}
+
+#[test]
+fn parameter_evaluation_projects_only_literal_dependencies_into_the_result_domain() {
+    let scalar_type = value_type("superi.value.scalar");
+    let mut graph = four_node_graph();
+    let snapshot = graph
+        .apply(GraphTransaction::with_mutations(
+            1,
+            [
+                GraphMutation::SetParameterDriver {
+                    target: address(3, 301),
+                    driver: ParameterDriver::link(
+                        scalar_type.clone(),
+                        reference(1, 101, "superi.value.scalar"),
+                    ),
+                },
+                GraphMutation::SetParameterDriver {
+                    target: address(4, 401),
+                    driver: ParameterDriver::expression(scalar_type, expression()),
+                },
+            ],
+        ))
+        .unwrap();
+
+    let mut projected = Vec::new();
+    let result = snapshot
+        .evaluate_parameter_with(address(4, 401), |parameter, literal| {
+            projected.push(parameter);
+            Ok(Scalar(literal.payload().0 + 1.0))
+        })
+        .unwrap();
+
+    assert_eq!(projected, [address(2, 201), address(1, 101)]);
+    assert_eq!(result.value().payload(), &Scalar(14.0));
+    assert_eq!(
+        result.evaluated_parameters(),
+        [
+            address(2, 201),
+            address(1, 101),
+            address(3, 301),
+            address(4, 401),
+        ]
+    );
+    assert_eq!(
+        snapshot
+            .evaluate_parameter(address(4, 401))
+            .unwrap()
+            .value()
+            .payload(),
+        &Scalar(11.0)
+    );
+
+    let error = snapshot
+        .evaluate_parameter_with(address(4, 401), |parameter, literal| {
+            if parameter == address(2, 201) {
+                return Err(Error::new(
+                    ErrorCategory::InvalidInput,
+                    Recoverability::UserCorrectable,
+                    "test projection failed",
+                ));
+            }
+            Ok(Scalar(literal.payload().0))
+        })
+        .unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::InvalidInput);
+    assert!(error.contexts().iter().any(|context| {
+        context.field("reason") == Some("parameter_projection_failed")
+            && context.field("parameter") == Some(&address(2, 201).to_string())
+    }));
 }
 
 #[test]

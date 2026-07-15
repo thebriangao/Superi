@@ -460,19 +460,26 @@ impl<T> ParameterEvaluation<T> {
     }
 }
 
-impl<T: ExpressionParameterValue> GraphSnapshot<T> {
-    /// Resolves one parameter from this exact immutable editable snapshot.
+impl<T> GraphSnapshot<T> {
+    /// Resolves one parameter after projecting stored literals into an expression-capable domain.
     ///
-    /// Direct links clone the source payload without conversion. Expressions resolve their
-    /// explicit dependencies first and use [`ExpressionParameterValue`] only at the numeric
-    /// expression boundary. Every call starts with an empty request-local result set.
+    /// The graph remains the sole owner of driver traversal, exact dependency typing, direct-link
+    /// behavior, expression evaluation, cycle invariants, and deterministic completion order. The
+    /// caller projection runs only for reached parameters without drivers, allowing a higher domain
+    /// to sample or otherwise adapt its literal payload without copying graph topology or formulas.
+    /// The projected payload keeps the literal's exact [`ValueTypeId`].
     ///
     /// # Errors
     ///
-    /// Returns user-correctable errors for a missing target or payload conversion failure. A cycle
-    /// or dangling reference in already published state is classified as an internal invariant
-    /// failure because mutation validation prevents either condition.
-    pub fn evaluate_parameter(&self, target: ParameterAddress) -> Result<ParameterEvaluation<T>> {
+    /// Returns user-correctable errors for a missing target, projection failure, or projected
+    /// expression conversion failure. A cycle or dangling reference in already published state is
+    /// classified as an internal invariant failure because mutation validation prevents either
+    /// condition.
+    pub fn evaluate_parameter_with<U: ExpressionParameterValue>(
+        &self,
+        target: ParameterAddress,
+        mut project: impl FnMut(ParameterAddress, &TypedParameterValue<T>) -> Result<U>,
+    ) -> Result<ParameterEvaluation<U>> {
         if self
             .state
             .dag
@@ -499,6 +506,7 @@ impl<T: ExpressionParameterValue> GraphSnapshot<T> {
             &mut evaluated,
             &mut completion,
             &mut active,
+            &mut project,
         )?;
         Ok(ParameterEvaluation {
             target,
@@ -508,13 +516,35 @@ impl<T: ExpressionParameterValue> GraphSnapshot<T> {
     }
 }
 
-fn resolve_parameter<T: ExpressionParameterValue>(
+impl<T: ExpressionParameterValue> GraphSnapshot<T> {
+    /// Resolves one parameter from this exact immutable editable snapshot.
+    ///
+    /// Direct links clone the source payload without conversion. Expressions resolve their
+    /// explicit dependencies first and use [`ExpressionParameterValue`] only at the numeric
+    /// expression boundary. Every call starts with an empty request-local result set.
+    ///
+    /// # Errors
+    ///
+    /// Returns user-correctable errors for a missing target or payload conversion failure. A cycle
+    /// or dangling reference in already published state is classified as an internal invariant
+    /// failure because mutation validation prevents either condition.
+    pub fn evaluate_parameter(&self, target: ParameterAddress) -> Result<ParameterEvaluation<T>> {
+        self.evaluate_parameter_with(target, |_, literal| Ok(literal.payload().clone()))
+    }
+}
+
+fn resolve_parameter<T, U, F>(
     state: &GraphState<T>,
     address: ParameterAddress,
-    evaluated: &mut BTreeMap<ParameterAddress, TypedParameterValue<T>>,
+    evaluated: &mut BTreeMap<ParameterAddress, TypedParameterValue<U>>,
     completion: &mut Vec<ParameterAddress>,
     active: &mut BTreeSet<ParameterAddress>,
-) -> Result<TypedParameterValue<T>> {
+    project: &mut F,
+) -> Result<TypedParameterValue<U>>
+where
+    U: ExpressionParameterValue,
+    F: FnMut(ParameterAddress, &TypedParameterValue<T>) -> Result<U>,
+{
     if let Some(value) = evaluated.get(&address) {
         return Ok(value.clone());
     }
@@ -529,7 +559,7 @@ fn resolve_parameter<T: ExpressionParameterValue>(
         ));
     }
 
-    let result = resolve_parameter_uncached(state, address, evaluated, completion, active);
+    let result = resolve_parameter_uncached(state, address, evaluated, completion, active, project);
     active.remove(&address);
     let value = result?;
     evaluated.insert(address, value.clone());
@@ -537,18 +567,23 @@ fn resolve_parameter<T: ExpressionParameterValue>(
     Ok(value)
 }
 
-fn resolve_parameter_uncached<T: ExpressionParameterValue>(
+fn resolve_parameter_uncached<T, U, F>(
     state: &GraphState<T>,
     address: ParameterAddress,
-    evaluated: &mut BTreeMap<ParameterAddress, TypedParameterValue<T>>,
+    evaluated: &mut BTreeMap<ParameterAddress, TypedParameterValue<U>>,
     completion: &mut Vec<ParameterAddress>,
     active: &mut BTreeSet<ParameterAddress>,
-) -> Result<TypedParameterValue<T>> {
+    project: &mut F,
+) -> Result<TypedParameterValue<U>>
+where
+    U: ExpressionParameterValue,
+    F: FnMut(ParameterAddress, &TypedParameterValue<T>) -> Result<U>,
+{
     let literal = state
         .dag
         .node(address.node_id())
         .and_then(|node| node.parameter(address.parameter_id()))
-        .map(|parameter| parameter.value().clone())
+        .map(EditableParameter::value)
         .ok_or_else(|| {
             parameter_evaluation_error(
                 state.dag.id(),
@@ -560,11 +595,30 @@ fn resolve_parameter_uncached<T: ExpressionParameterValue>(
             )
         })?;
     let Some(driver) = state.parameter_drivers.get(&address) else {
-        return Ok(literal);
+        let payload = project(address, literal).map_err(|mut error| {
+            error.push_context(
+                ErrorContext::new(COMPONENT, "evaluate_parameter")
+                    .with_field("graph_id", state.dag.id().to_string())
+                    .with_field("parameter", address.to_string())
+                    .with_field("reason", "parameter_projection_failed"),
+            );
+            error
+        })?;
+        return Ok(TypedParameterValue::new(
+            literal.value_type().clone(),
+            payload,
+        ));
     };
 
     for dependency in driver.dependencies() {
-        let _ = resolve_parameter(state, dependency.address(), evaluated, completion, active)?;
+        let _ = resolve_parameter(
+            state,
+            dependency.address(),
+            evaluated,
+            completion,
+            active,
+            project,
+        )?;
     }
 
     if let Some(source) = driver.as_link() {
@@ -608,7 +662,7 @@ fn resolve_parameter_uncached<T: ExpressionParameterValue>(
                 error
             })
     })?;
-    let payload = T::from_expression_scalar(driver.value_type(), scalar).map_err(|mut error| {
+    let payload = U::from_expression_scalar(driver.value_type(), scalar).map_err(|mut error| {
         error.push_context(
             ErrorContext::new(COMPONENT, "evaluate_parameter")
                 .with_field("graph_id", state.dag.id().to_string())

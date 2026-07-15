@@ -2,7 +2,7 @@
 module_id: superi-graph
 source_paths:
   - open/crates/superi-graph
-source_hash: 797abd7a841405b58561058d2704a33c7a0b886b8ce9093e9b84079f49370153
+source_hash: 68e83e97dc61e16f7ef7fc1fe33b9fcd156e05b0436f2c3809aeac590c9c7523
 source_files: 32
 mapped_at_commit: working-tree
 ---
@@ -22,8 +22,9 @@ dependency invalidation planning, snapshot-bound region-of-interest propagation,
 requested-versus-dirty work intersection, lazy request-scoped evaluation, deterministic work
 scheduling, reusable bounded scalar expression programs, typed parameter links, graph-bound pure
 expressions, parameter dependency-cycle
-protection, deterministic parameter evaluation, and derived missing-node resolution against an
-immutable schema registry are implemented. Deterministic pre-execution node introspection,
+protection, deterministic parameter evaluation with caller-projected literal payloads, and derived
+missing-node resolution against an immutable schema registry are implemented. Deterministic
+pre-execution node introspection,
 policy-scoped cache keys, actionable non-cacheable decisions, run-local evaluator timing, and a
 node-neutral retained-value adapter are also implemented without changing semantic result equality.
 Cached evaluation checks a final target before node execution, prunes complete prerequisite
@@ -105,7 +106,7 @@ The module owns 32 text files:
   instances, opaque typed parameters, canonical authored driver state, immutable graph snapshots,
   optimistic revisions, ordered atomic add, remove, connect, disconnect, reorder, parameter, set
   driver, and clear driver transactions, dependency validation and cycle rejection, and shared
-  request-local parameter evaluation.
+  request-local parameter evaluation with an optional higher-domain literal projection callback.
 - `open/crates/superi-graph/src/node.rs`: Implements typed versioned schemas, complete node behavior
   declarations, atomic registration, immutable deterministic discovery snapshots, and
   `GraphColorMetadata`, which preserves the image-owned pipeline across graph boundaries.
@@ -147,7 +148,9 @@ The module owns 32 text files:
   and variables, language bounds, finite arithmetic, typed links and expressions, deterministic
   transitive results, driver replacement and clearing, immutable snapshots, cycle and dependency
   rejection, explicit node-removal cleanup, transaction rollback, and editor-script-headless
-  parameter parity.
+  parameter parity. It also proves projected evaluation visits only reached undriven literals,
+  preserves graph dependency order and driver semantics, retains identity evaluation, and adds
+  exact projection failure context.
 - `open/crates/superi-graph/tests/headless_contract.rs`: Proves one `Send + Sync` role-neutral
   evaluation snapshot, snapshot-owned linked parameter compilation, exact invalidated lazy work,
   skipped unused failure branches, equal editor, script, and headless schedules, inspections,
@@ -379,9 +382,12 @@ use a schema identity or a separate payload without coupling the DAG algorithm t
 - Mutation failures preserve their original shared error classification and add stable graph,
   expected revision, mutation index, and mutation code context.
 - `GraphSnapshot::evaluate_parameter` resolves literals, direct links, and expressions from that
-  exact immutable state. `ParameterEvaluation<T>` returns the typed result and unique parameters in
-  deterministic dependency-completion order, with one request-local memo and no caller mode or
-  persistent cache.
+  exact immutable state. `GraphSnapshot::evaluate_parameter_with` keeps the same graph-owned
+  traversal but lets a higher domain project only reached undriven literals into another
+  `ExpressionParameterValue` result domain. The graph preserves the literal `ValueTypeId`, exact
+  link and expression meaning, cycle invariant, request-local memo, and dependency-completion order.
+- `ParameterEvaluation<T>` returns the typed result and unique parameters in deterministic
+  dependency-completion order, with no caller mode or persistent cache.
 
 `superi_graph::missing` exposes the derived plugin-availability boundary:
 
@@ -647,9 +653,12 @@ The mutation transaction flow is:
 The parameter evaluation flow is:
 
 1. A caller requests one `ParameterAddress` from an immutable `GraphSnapshot<T>`. Missing authored
-   targets fail as user-correctable input before dependency traversal.
-2. Literal parameters return their exact stored `TypedParameterValue<T>`. A direct link resolves
-   its source first and clones that lossless typed payload.
+   targets fail as user-correctable input before dependency traversal. Identity evaluation uses the
+   stored payload domain, while projected evaluation supplies one caller-owned literal callback and
+   a separate expression-capable result domain.
+2. An undriven literal returns its exact stored value or calls the projection once and retains the
+   literal's exact `ValueTypeId`. Driven placeholder literals are not projected. A direct link
+   resolves its source first and clones that lossless result payload.
 3. An expression resolves unique referenced addresses in canonical address and type order. A
    request-local ordered memo evaluates shared transitive dependencies once while retaining stable
    dependency-completion order.
@@ -657,18 +666,20 @@ The parameter evaluation flow is:
    `ExpressionParameterValue`. The checked postfix program performs only basic arithmetic, rejects
    division by zero and nonfinite values or results, and converts the finite result back to the
    driver's exact target type.
-5. Every call starts empty and reads only the immutable snapshot. Editor, script, and headless
-   callers therefore observe the same authored state, typed result, and completion order without a
-   parallel expression store, caller-specific interpreter, or persistent cache.
+5. Every call starts empty and reads only the immutable snapshot. Editor, script, headless, and
+   higher-domain projected callers therefore share one dependency traversal, authored driver state,
+   typed result path, and completion order without a parallel expression store, caller-specific
+   interpreter, or persistent cache.
 6. Mutation-time cycle rejection is authoritative. Evaluation retains an active parameter set as a
    defensive terminal invariant check for corrupted future deserialization rather than permitting
    recursive execution.
 
 Higher domain owners may reuse the same checked scalar program without manufacturing graph
 addresses. They provide one explicit allowed-variable set at compile time and one resolver at
-evaluation time. `superi-effects::keyframe::TimeExpression` is the first real consumer, permitting
-only `time` and `value`; this preserves the downward effects-to-graph dependency and does not add an
-effects concept to the graph crate.
+evaluation time. `superi-effects::keyframe::TimeExpression` permits only `time` and `value`.
+`superi-effects::control` uses projected evaluation to sample exact-time animation literals before
+ordinary graph links and parent expressions resolve. Both preserve the downward effects-to-graph
+dependency and add no effects concept to the graph crate.
 
 The graph document flow is:
 
@@ -774,10 +785,11 @@ graph evaluation or runtime integration.
   render coordinators and `superi-concurrency`.
 - Direct manifest consumers are `superi-ai`, `superi-cache`, `superi-color`, `superi-effects`,
   `superi-timeline`, `superi-project`, and `superi-engine`.
-- Effects consumes `ScalarExpression` for bounded animation time expressions and stores its strict
-  curve payload through an animatable authoring definition in generic editable graph state for
-  reload proof. Graph remains unaware of effect presentation, curve types, interpolation,
-  keyframes, and time-expression variable meaning.
+- Effects consumes `ScalarExpression` for bounded animation time and parent expressions, stores its
+  strict curve payload through animatable authoring definitions, compiles reusable controls into
+  ordinary typed drivers, and uses `evaluate_parameter_with` to sample only literal curves before
+  graph driver resolution. Graph remains unaware of effect presentation, control rigs, curve types,
+  interpolation, keyframes, and animation variable meaning.
 - Cache consumes `EvaluationValueCache`, `EvaluationCacheEntryKind`, `EvaluationCacheIdentity`,
   `EvaluationCacheKey`, `GraphEditInvalidation`, and `GraphColorMetadata`; its scoped adapter
   composes graph lineage and work time with outer result identity before concrete retention, applies
@@ -879,7 +891,9 @@ graph evaluation or runtime integration.
   typed parameters, cycles, and interrupted documents fail instead of being repaired or guessed.
 - Parameter evaluation reads one immutable snapshot, resolves unique dependencies in deterministic
   completion order, evaluates each address once per call, and owns no persistent cache or caller
-  mode. Direct links preserve the exact source payload; expression conversion is explicit.
+  mode. Direct links preserve the exact source payload; expression conversion is explicit. A
+  projected call may transform only reached undriven literals, cannot change their `ValueTypeId`,
+  and reuses the same graph-owned driver traversal and invariant checks.
 - Input validation never merges duplicate binding groups. Each declared port appears exactly once
   after validation, variadic value order is preserved, and absent optional or variadic ports do not
   become evaluator work.
@@ -966,7 +980,7 @@ graph evaluation or runtime integration.
 
 ## Tests and verification
 
-The graph crate owns 87 integration tests across sixteen files. The two identifier tests prove all
+The graph crate owns 88 integration tests across sixteen files. The two identifier tests prove all
 six public domains are distinct, each canonical text value parses back exactly, and every graph
 export has the same Rust `TypeId` as its official core owner.
 
@@ -1000,13 +1014,16 @@ topological order separation, stale revision handling, immutable old snapshots, 
 script, and headless sharing, equivalent deterministic state, cycle safety, and full rollback after
 failures in the middle of a candidate batch.
 
-Nine expression tests prove the shared allowed-variable scalar program, editable source and checked
+Ten expression tests prove the shared allowed-variable scalar program, editable source and checked
 postfix inspection, canonical named variables, syntax and resource bounds, duplicate, missing, and
 unused binding rejection, finite arithmetic, direct links, transitive expressions, exact driver
 typing, deterministic dependency completion, replacement and clearing, immutable old snapshots,
 missing references, direct and multi-hop cycle rejection, full candidate rollback, explicit driver
 cleanup before node removal, lossless versioned document round trips, and equal
-editor-script-headless parameter results.
+editor-script-headless parameter results. Projected evaluation additionally proves only reached
+undriven literals enter the caller domain, driver semantics and completion order remain unchanged,
+identity evaluation stays compatible, and projection failures gain exact graph and parameter
+context.
 
 Nine invalidation tests prove exact dirty-region union decomposition, clean-gap preservation,
 full-frame subsumption, empty-region handling, requested-work clipping, stable topological
@@ -1118,7 +1135,9 @@ own concrete cached values, persist cache data, bind
 plugin implementations, or render production values. Timeline compilation and memory cache
 retention are now real downstream consumers. Effects is a concrete downstream schema, expression,
 diagnostics, evaluator, immutable compiler, generic serialization, authoring, and animation consumer
-with bounded reference pixels. It does not yet connect invalidation, missing-node resolution, GPU
+with bounded reference pixels. Effects also consumes projected parameter evaluation and typed
+drivers for exact-time links, reusable controls, and parent expressions, including ordinary
+`GraphValue<T>` built-in state. It does not yet connect invalidation, missing-node resolution, GPU
 execution, or production engine orchestration into a complete render path.
 
 The latest-version rule deterministically selects the lexically highest build-metadata variant when
@@ -1135,12 +1154,14 @@ systems.
 
 The expression language is intentionally a bounded numeric foundation rather than a general script
 runtime. Its reusable scalar layer supports an explicit variable vocabulary and basic finite
-arithmetic only. Graph parameter expressions add exact typed bindings, while effects time
-expressions prove that higher domains can reuse the program without inventing graph identities.
-Node catalogs must implement `ExpressionParameterValue` for their actual graph payload
-representation, and later rigging work must extend the same authored driver state rather than
-storing editor-only formulas. Persistence must serialize editable source, exact typed bindings when
-present, and checked meaning or deterministically recompile and validate source during migration.
+arithmetic only. Graph parameter expressions add exact typed bindings, while effects time and
+parent expressions prove that higher domains can reuse the program without inventing graph
+identities. Node catalogs must implement `ExpressionParameterValue` for their result representation
+and may project stored literals through `evaluate_parameter_with` when exact time or another domain
+context must be resolved first. Projection must remain request-local and cannot become a second
+driver evaluator or stored topology. Persistence must serialize editable source, exact typed
+bindings when present, and checked meaning or deterministically recompile and validate source during
+migration.
 
 Public request-local value and inspection lookup remains linear and bounded by reached work.
 Planning and execution indexes use `BTreeMap` keys whose total order matches endpoint,
@@ -1209,9 +1230,11 @@ semantic inspection and result equality.
 
 Keep parameter drivers inside the same editable snapshot and transaction boundary. Preserve exact
 target and dependency types, explicit named variables, bounded pure compilation, deterministic
-address order, mutation-time cycle rejection, and request-local evaluation together. Do not add
-implicit catalog lookup, host scripting, caller-specific formulas, or cached results without graph
-revision ownership and invalidation proof.
+address order, mutation-time cycle rejection, request-local evaluation, and literal-only projection
+together. Higher domains may adapt literal payloads, but graph must retain dependency traversal,
+driver meaning, exact type tags, cycle checks, memoization, and completion order. Do not add implicit
+catalog lookup, host scripting, caller-specific formulas, or cached results without graph revision
+ownership and invalidation proof.
 
 Keep `GraphValue<T>` neutral and lossless. Add variants only for shared representation needs with
 checked construction, validated serialization, exact equality, and explicit expression behavior.
