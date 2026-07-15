@@ -14,3 +14,4 @@ superi-core = { path = "../superi-core" }
 superi-gpu = { path = "../superi-gpu" }
 superi-image = { path = "../superi-image" }
 superi-graph = { path = "../superi-graph" }
+sha2.workspace = true

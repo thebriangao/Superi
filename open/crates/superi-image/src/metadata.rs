@@ -266,6 +266,17 @@ pub enum ColorTransformStageKind {
 }
 
 impl ColorTransformStageKind {
+    /// Returns the permanent serialization code for this semantic stage position.
+    #[must_use]
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Input => "input",
+            Self::Creative => "creative",
+            Self::Display => "display",
+            Self::Output => "output",
+        }
+    }
+
     const fn rank(self) -> u8 {
         match self {
             Self::Input => 0,

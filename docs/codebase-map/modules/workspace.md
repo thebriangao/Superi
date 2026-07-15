@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 2ce5dcb779f2f0723ea4c25f846105c25b0fda052e6af6e44751f2c77cf93e30
+source_hash: 9954484cefc713d49c8e9dbd4a52194134bd51927958a850e86227afd5ab4f34
 source_files: 125
 mapped_at_commit: working-tree
 ---
@@ -326,8 +326,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 24 local
   workspace packages, registry dependencies, target-support dependency trees, scenario digest
   and process-instrumentation dependency edges, graph and timeline document serialization and
-  integrity edges, and the exact `oxideav-mp3` Git revision. Timeline state now directly consumes
-  the already-resolved `serde`, `serde_json`, and `sha2` packages, so this change adds no new
+  integrity edges, cache-key hashing, and the exact `oxideav-mp3` Git revision. Timeline state
+  directly consumes the already-resolved `serde`, `serde_json`, and `sha2` packages, while
+  `superi-cache` now directly consumes the same pinned `sha2` package. Neither edge adds a new
   registry package. The lockfile is generated resolution evidence and is not hand-edited policy.
 - `open/Cargo.toml`: Root Cargo workspace manifest using resolver 2 and glob members under
   `crates/*` and `tools/*`. It centralizes version `0.0.0`, Rust 2021, MIT, Rust 1.80, repository
@@ -601,6 +602,10 @@ The timeline component document reuses workspace `serde`, `serde_json`, and `sha
 present for core and graph contracts. This changes the direct package edges recorded for
 `superi-timeline` but does not change crate-tier direction, introduce a network path, or transfer
 SQLite and autosave ownership away from `superi-project`.
+
+The deterministic cache-key contract reuses the same resolved `sha2` pin. Its lockfile change adds
+one direct external package edge to `superi-cache` without changing the reviewed internal runtime
+dependency graph or introducing another registry package.
 
 The dependency-direction path is a separate local architecture gate. `superi-dependency-check`
 reads locked offline Cargo metadata, classifies all 19 runtime crates, and checks internal normal,

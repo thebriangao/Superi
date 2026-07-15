@@ -2,9 +2,9 @@
 module_id: superi-image
 source_paths:
   - open/crates/superi-image
-source_hash: 04daec6661a0191f4e1df34ea826e808a03dca74c13c30524e3090cd4dd773f0
+source_hash: 1f8dbce739ed82401c510b6387da8283a9e59887f37c15ed10466db8fd303524
 source_files: 26
-mapped_at_commit: 217e9d48703bcfd4736d949aea510c94505071bc
+mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
@@ -49,7 +49,8 @@ or residency object. `superi-color` owns actual color transforms over dense `Ima
   metadata, and tile limits plus checked allocation and clone helpers.
 - `open/crates/superi-image/src/metadata.rs`: Defines orientation, exact metadata floats, typed
   metadata values, authoritative color tags, ICC and named-space payload retention, ordered color
-  transform stages, complete pipeline metadata, pixel aspect, timecode, and deterministic attributes.
+  transform stages with permanent semantic codes, complete pipeline metadata, pixel aspect,
+  timecode, and deterministic attributes.
 - `open/crates/superi-image/src/model.rs`: Defines immutable interleaved or planar CPU byte storage,
   including plane origins, row strides, relative alignment, channel slices, and checked addressing.
 - `open/crates/superi-image/src/ops.rs`: Implements dense CPU crop, resize, affine transform, flip,
@@ -137,7 +138,8 @@ Metadata and resource contracts:
   text and ICC bytes. Those source payloads do not override the interpretation or select a
   transform. `ImageMetadata` separately retains optional orientation, aspect, timecode, and
   deterministically ordered arbitrary attributes.
-- `ColorTransformStageKind` classifies input, creative, display, and output stages.
+- `ColorTransformStageKind` classifies input, creative, display, and output stages and exposes the
+  permanent `input`, `creative`, `display`, and `output` codes for downstream canonical encoding.
   `ColorTransformStage` retains a stable transform identity and exact source and destination tags.
   `ColorPipelineMetadata` retains source interpretation, current tags, ordered stage history, and
   optional working, display, and delivery spaces while enforcing source continuity and semantic
@@ -270,7 +272,8 @@ Current source-level consumers are narrower than the manifest graph:
   Cache, timeline, and engine surfaces then preserve that exact value without moving transform
   execution into this crate.
 
-`superi-cache` directly owns complete pipeline equality at its cached-frame seam.
+`superi-cache` directly owns complete pipeline equality at its cached-frame seam and consumes the
+stage-kind codes plus every accessible pipeline field for deterministic color fingerprints.
 
 `superi-ai`, `superi-codecs-platform`, `superi-codecs-rs`,
 `superi-codecs-vendor`, `superi-effects`, and `superi-engine` also declare `superi-image`
@@ -300,6 +303,8 @@ the remaining listed crates are declared integration, scaffold, or transitive bo
   tone maps, or renders scene values to a display.
 - Color pipeline history is append-only through validated construction. Input may occur only first;
   display and output are terminal; every stage source must equal the preceding current tags.
+- Color transform stage codes are stable serialization identities. Downstream persisted or cache
+  formats must version their own domains if this public encoding contract changes.
 - `ImageLimits` is finite by default, and checked producers validate dimensions, counts, arithmetic,
   and allocation before constructing results. It is mainly an operation and decode policy, not a
   global process-memory cap: retained source bytes and decoded planes can coexist, and
@@ -349,7 +354,9 @@ PNG, DPX, and EXR inputs return structured errors without panic. `cpu_reference_
 deterministic operation dispatch, descriptor and metadata comparison ordering, exact integer and
 float behavior, tolerant IEEE cases, and first-mismatch diagnostics. External proof exists in
 `superi-gpu` for one explicit GPU readback against the CPU alpha oracle and in `superi-media-io`
-for decoded PCM to waveform-envelope to raster flow.
+for decoded PCM to waveform-envelope to raster flow. `superi-cache` additionally proves that the
+permanent stage codes distinguish transform order and monitoring versus delivery intent in complete
+color-pipeline fingerprints.
 
 The shard mapping pass did not execute the test suite, so source and test presence alone are not a
 claim that the tests currently pass. The map metadata and inventory are verified by the repository
