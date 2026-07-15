@@ -82,6 +82,10 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install nasm
 
+      - name: Build approved Windows libvpx runtime
+        if: runner.os == 'Windows'
+        run: ../.github/scripts/provision-windows-libvpx.sh
+
       - name: Build approved libvpx runtime
         if: runner.os != 'Windows'
         run: |

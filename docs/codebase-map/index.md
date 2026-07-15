@@ -637,7 +637,9 @@ official libva 2.22.0 source at a pinned SHA-256, and publish its header, pkg-co
 paths. The helper installs the GBM development target, publishes the private native-linker path,
 and installs `nasm`, while Intel macOS lanes install `nasm` with Homebrew. Linux
 and macOS lanes build the approved libvpx 1.16.0 source after verifying its pinned archive checksum,
-then expose the exact shared runtime to capability and codec tests.
+then expose the exact shared runtime to capability and codec tests. Windows builds libvpx 1.16.0
+with VP9 high-bit-depth support from a pinned vcpkg registry revision through the dynamic MinGW
+triplet and publishes the single produced DLL to those same strict tests.
 Hosted macOS skips only three named VideoToolbox or AudioConverter lifecycle tests whose physical
 codec evidence belongs to the documented hardware lane; Linux and Windows run the exact full
 workspace test command. Matrix fail-fast is disabled, superseded branch runs are cancelled, and

@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: d9f3568b463c13d83348b47c64702cd4a9368b57c6d783d5480066649c8a1470
-source_files: 121
+source_hash: 530bedc15c6a85ffaec38d22d09575bacc025cc28914df733746e28ca5496deb
+source_files: 122
 mapped_at_commit: working-tree
 ---
 
@@ -65,6 +65,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   SHA-256, builds a private prefix, verifies the VVC header and API version, installs the GBM
   development link target, and publishes header, pkg-config, native-linker, and runtime library
   paths to subsequent hosted steps.
+- `.github/scripts/provision-windows-libvpx.sh`: Windows hosted runtime provisioner that pins the
+  reviewed vcpkg registry baseline, builds libvpx 1.16.0 with VP9 high-bit-depth support through the
+  dynamic MinGW triplet without binary-cache reuse, requires one produced DLL, and publishes its
+  native path to strict capability and codec tests.
 - `.github/scripts/check-ci-features.py`: Standard-library contract that binds supported matrix
   lanes to explicit default or `os-codecs` policy, the real CLI feature build, engine and API
   consumer tests, and a default-only Ubuntu 22.04 job.
@@ -81,7 +85,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   graph sees the required VVC API and the approved runtime retains optimized x86 code. Intel macOS
   jobs install `nasm` with Homebrew. Linux and macOS jobs build the approved
   libvpx 1.16.0 archive after verifying its pinned checksum and expose that exact shared runtime to
-  capability and codec tests. Both macOS lanes, Windows 2025, and Ubuntu 26.04
+  capability and codec tests. Windows builds the same approved runtime from a pinned vcpkg registry
+  revision as a dynamic MinGW DLL with VP9 high-bit-depth support. Both macOS lanes, Windows 2025,
+  and Ubuntu 26.04
   also build the CLI with `os-codecs` and test the engine and API consumers; Ubuntu 24.04 and the
   Ubuntu 22.04 job remain default-only.
 - `.github/workflows/dependency-policy.yml`: Defines the current GitHub Actions dependency-policy

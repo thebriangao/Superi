@@ -6,6 +6,7 @@ workspace_root="$(CDPATH= cd -- "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 workflow="$workspace_root/.github/workflows/network-isolated.yml"
 cross_platform_workflow="$workspace_root/.github/workflows/ci.yml"
 provisioner="$workspace_root/.github/scripts/provision-linux-libva.sh"
+windows_libvpx_provisioner="$workspace_root/.github/scripts/provision-windows-libvpx.sh"
 harness="$workspace_root/open/ci/run-network-isolated.sh"
 
 fail() {
@@ -16,9 +17,11 @@ fail() {
 [[ -f "$workflow" ]] || fail "missing GitHub Actions workflow"
 [[ -x "$harness" ]] || fail "missing executable isolation harness"
 [[ -x "$provisioner" ]] || fail "missing executable Linux libva provisioner"
+[[ -x "$windows_libvpx_provisioner" ]] || fail "missing executable Windows libvpx provisioner"
 
 bash -n "$harness"
 bash -n "$provisioner"
+bash -n "$windows_libvpx_provisioner"
 
 grep -Fq 'runs-on: ubuntu-24.04' "$workflow" || fail "workflow must use Ubuntu 24.04"
 grep -Fq 'permissions:' "$workflow" || fail "workflow must declare permissions"
@@ -55,6 +58,18 @@ grep -Fq 'LIBRARY_PATH=$prefix/lib${LIBRARY_PATH:+:$LIBRARY_PATH}' "$provisioner
     fail "provisioner must publish the private libva native linker path"
 grep -Fq 'LD_LIBRARY_PATH=$prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}' "$provisioner" ||
     fail "provisioner must publish the private libva runtime linker path"
+[[ "$(grep -Fc '../.github/scripts/provision-windows-libvpx.sh' "$cross_platform_workflow")" -eq 1 ]] ||
+    fail "the Windows matrix lane must use the approved libvpx provisioner exactly once"
+grep -Fq 'vcpkg_baseline="a0400024711b283056538ac19ced80b91a83c24c"' "$windows_libvpx_provisioner" ||
+    fail "Windows libvpx provisioning must pin the reviewed vcpkg registry revision"
+grep -Fq 'VCPKG_BINARY_SOURCES=clear' "$windows_libvpx_provisioner" ||
+    fail "Windows libvpx provisioning must build from the pinned source package"
+grep -Fq -- '--triplet x64-mingw-dynamic' "$windows_libvpx_provisioner" ||
+    fail "Windows libvpx provisioning must produce a dynamically loadable runtime"
+grep -Fq '"features": ["highbitdepth"]' "$windows_libvpx_provisioner" ||
+    fail "Windows libvpx provisioning must retain VP9 high-bit-depth support"
+grep -Fq 'SUPERI_LIBVPX_PATH=' "$windows_libvpx_provisioner" ||
+    fail "Windows libvpx provisioning must publish the exact runtime path"
 grep -Fq 'LIBVPX_VERSION: "1.16.0"' "$workflow" ||
     fail "workflow must pin the approved libvpx version"
 grep -Fq 'LIBVPX_SOURCE_SHA256:' "$workflow" ||
