@@ -2,8 +2,8 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 0a42b2bf4c63ba6d34528ed3f37ec99c7ff466ae3663921626f0cbe2430e8ce9
-source_files: 39
+source_hash: 15a56ab260b32966ff54f28ce7c528dd7ffd1b81dfe182ea3548921cad7eb988
+source_files: 41
 mapped_at_commit: working-tree
 ---
 
@@ -17,9 +17,9 @@ predictive cache population, foreground graph and display-color execution, bound
 audio-master A/V coordination with bounded video correction and discontinuity recovery, monotonic
 clock fallback, lossless viewport handoff, exact interactive transport control, coherent decode,
 graph, delivery-color, audio, and elementary-stream export execution, deterministic subsystem
-lifecycle, and atomic timeline plus clip-mix edits. Native GPU presentation, timeline-owned
-decoded-audio rendering, export muxing and publication, broad transactions, plugins, nodes, and
-validation remain incomplete.
+lifecycle, bounded logical export job orchestration, and atomic timeline plus clip-mix edits. Native
+GPU presentation, timeline-owned decoded-audio rendering, export muxing and publication, broad
+transactions, plugins, nodes, and validation remain incomplete.
 
 The command path is a bounded reference owner for contract conformance. It does not claim to replace
 the production project, timeline, graph, media, color, render, or muxing owners.
@@ -43,16 +43,21 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   nonblocking lifecycle to end of stream, hashes complete packet semantics, and publishes only a
   complete proxy or optimized-media payload through `superi-cache`.
 - `open/crates/superi-engine/src/error.rs`: Placeholder for cross-subsystem recovery.
+- `open/crates/superi-engine/src/export_jobs.rs`: Implements a bounded EngineControl-owned logical
+  export queue with immutable dependency declarations, export-priority worker attempts, nonblocking
+  progress and result observation, cooperative pause and cancel, fresh-attempt resume and retry,
+  classified failure retention, and explicit blocking-safe shutdown.
 - `open/crates/superi-engine/src/export_queue.rs`: Implements lifecycle-admitted render and export
   transactions through prepared source reads, decode, shared immutable graph evaluation, explicit
   delivery color and audio stages, one-shot registry encoder selection, complete codec draining,
-  exact semantic validation, elementary packet publication, and reset-based recovery.
+  exact semantic validation, tracked semantic progress, elementary packet publication, and
+  reset-based recovery.
 - `open/crates/superi-engine/src/frame_upload.rs`: Implements the media-I/O-to-GPU upload boundary
   for CPU-addressable decoded video and retains the frame's complete color pipeline beside the GPU owner.
 - `open/crates/superi-engine/src/introspection.rs`: Implements deterministic API-neutral backend and
   codec capability snapshots.
 - `open/crates/superi-engine/src/lib.rs`: Documents the implemented orchestration boundaries and
-  exposes eighteen engine modules.
+  exposes nineteen engine modules.
 - `open/crates/superi-engine/src/lifecycle.rs`: Implements the EngineControl-owned lifecycle state
   machine, canonical subsystem dependency plan, exact action tokens, immutable generated snapshots,
   coherent playback/render/export admission, recoverable degradation, rollback, reverse teardown,
@@ -93,6 +98,10 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 - `open/crates/superi-engine/tests/derived_media_generation_contract.rs`: Proves complete and
   deterministic real AV1 generation, exact cache reuse, quality identity, settings mismatch
   rejection, cooperative cancellation, and original-source fallback.
+- `open/crates/superi-engine/tests/export_job_queue_contract.rs`: Proves bounded logical identity,
+  immutable dependency ordering, nonblocking progress and retained results, cooperative pause and
+  cancel, fresh-attempt resume and retry, recovery-class policy, terminal propagation, safe removal,
+  execution-domain enforcement, and blocking-safe shutdown.
 - `open/crates/superi-engine/tests/frame_upload_contract.rs`: Upload, ownership, storage, and budget
   proof.
 - `open/crates/superi-engine/tests/lifecycle_contract.rs`: Proves deterministic startup and reverse
@@ -121,7 +130,8 @@ the production project, timeline, graph, media, color, render, or muxing owners.
 - `open/crates/superi-engine/tests/render_export_orchestration_contract.rs`: Proves coherent paired
   video and audio export, deterministic fallback evidence, no exception retry, lifecycle degradation,
   partial-source recovery, encoder and terminal-delivery color agreement, exact WAVE PCM completion,
-  and rejection of real VP9 timing drift after complete WebM AV1 decode and shared graph evaluation.
+  rejection of real VP9 timing drift after complete WebM AV1 decode and shared graph evaluation, and
+  completion through the real logical export queue with exact semantic progress.
 - `open/crates/superi-engine/tests/playback_transport_contract.rs`: Proves exact seek and scrub
   supersession, pause and resume, frame stepping, fractional cadence, reverse looping, stale-work
   exclusion, bounded drops, protected intent, audio discontinuity, foreground and prediction
@@ -183,7 +193,18 @@ immutable graph evaluator without copying pixel storage, while `ExportVideoDeliv
 `ExportAudioGraph` keep delivery color and prepared audio processing with their subsystem owners.
 `render_and_export` admits one video and or one audio route, selects each encoder once, drives every
 source, decoder, graph, delivery, audio, and encoder stage to completion, and publishes only complete
-validated elementary streams. It does not expose a muxed container or persistence result.
+validated elementary streams. `render_and_export_tracked` preserves the same transaction while
+advancing an indeterminate `JobProgress` at semantic admission, source, decode, graph, delivery,
+audio, encode, validation, reset, and publication boundaries. Neither path exposes a muxed container
+or persistence result.
+
+`export_jobs` exposes `ExportJobQueueConfig`, stable `ExportJobStatus` codes,
+`ExportJobSnapshot`, `ExportJobExecutionContext`, `ExportJobExecutor<R>`, and
+`ExportJobQueue<R>`. EngineControl callers submit unique logical jobs with already-retained
+dependencies, poll without waiting, observe immutable progress and failure context, retain typed
+results, pause, resume, retry, cancel, or remove terminal jobs, and perform explicit blocking-safe
+shutdown. Each attempt receives fresh generic job control, export-priority media operation control,
+and progress while retaining the logical `JobId` across recovery.
 
 `playback` exposes the `PlaybackPrefetchEvaluator` seam, concrete
 `GraphPlaybackPrefetchEvaluator`, playback-owned `PlaybackPrefetcher`, and structured prediction
@@ -434,6 +455,31 @@ accepts the original permit does the engine return `RenderExportArtifact`. Any t
 uses a fresh export context to reset all created encoders and selected decoders. Output remains
 complete elementary packet streams in memory, not a muxed or persisted container.
 
+### Export job orchestration
+
+`ExportJobQueue<R>` is the EngineControl-owned logical scheduler around export work. Construction
+fixes worker, pending, and retained-job bounds. Submission reserves one unique `JobId`, requires
+every dependency to be an older retained job, and stores the executor separately from a worker
+closure so temporary pool saturation does not lose reconstructible work. Those admission rules
+make dependency edges acyclic without a separate graph traversal.
+
+Polling resolves dependency history before dispatch. A ready attempt enters the shared bounded pool
+as `JobKind::Export` at `JobPriority::Export` with fresh `JobControl`, `JobProgress`, and
+`OperationContext` values. The executor can check both cooperative cancellation models and can call
+`render_and_export_tracked` so decode, graph, delivery, audio, and encode work contributes semantic
+progress. Completed typed values remain retained as `Arc<R>` and are never published for cancelled,
+paused, failed, or dependency-failed attempts.
+
+Pause and cancel request both cancellation tokens and settle only after the worker acknowledges the
+request. Pause discards a raced result and leaves the logical job resumable. Resume and retry create
+a new attempt with progress reset to revision zero. Retryable, degraded, and user-correctable errors
+retain actionable context and permit retry; terminal errors do not. Recoverable failures remain
+unresolved in dependency history, so dependents wait for a successful retry, while terminal failure,
+cancel, and dependency failure finalize deterministic downstream outcomes. Terminal removal is
+rejected while another retained job still names the candidate as a prerequisite. Normal control and
+observation never join workers; explicit shutdown is restricted to a blocking-safe execution domain,
+cancels unfinished work, drains completions, and joins the owned pool.
+
 ### Exact interactive transport
 
 `PlaybackTransport` retains one exact frame range, playhead, signed reduced rate, optional loop,
@@ -483,9 +529,9 @@ audio mutation, so their user intent remains attached without synthesis.
   evaluation snapshot. Timeline supplies the retained editable graph compilation, reachable
   editorial source relationships for resource preparation, and reduced signed `PlaybackRate` used
   by transport cadence. Concurrency supplies proxy selection, playback ownership, worker priority,
-  nonblocking completion, the playback clock, A/V drift measurement and scheduling policy, bounded
-  handoffs, the shared lifecycle coordinator and signal, EngineControl ownership, and immutable
-  snapshot publication.
+  bounded export workers, job progress and control, dependency history, nonblocking completion, the
+  playback clock, A/V drift measurement and scheduling policy, bounded handoffs, the shared lifecycle
+  coordinator and signal, EngineControl ownership, and immutable snapshot publication.
   Media I/O supplies exact decoded frame and audio block semantics, image supplies color and scene
   artifacts, color supplies CPU display execution, and audio supplies the prepared graph identity,
   bounded producer, callback-owned discard acknowledgement, and actual presentation clock. Export
@@ -577,8 +623,20 @@ audio mutation, so their user intent remains attached without synthesis.
   state resets successfully. Failure recovery uses a fresh operation context to reset each created
   encoder and selected decoder, but cannot publish a partial result.
 - Export results are in-memory elementary packet streams with explicit selection and input evidence.
-  Container muxing, file publication, progress streaming, arbitrary stream counts, and native GPU
-  readback are separate owners.
+  Container muxing, file publication, arbitrary stream counts, and native GPU readback are separate
+  owners.
+- Export jobs have explicit worker, pending, and retained bounds. One logical `JobId` remains unique
+  for its full retained lifetime, including all resume and retry attempts.
+- Export job dependencies are immutable, refer only to older retained jobs, and cannot be removed
+  while a retained dependent names them. Recoverable failure leaves dependencies waiting; terminal
+  failure, cancellation, and dependency failure finalize downstream history.
+- Export job polling, progress, result observation, pause, resume, retry, cancel, and removal require
+  EngineControl and never wait for worker completion. Pause and cancel are cooperative and discard
+  raced success before publication.
+- Resume and permitted retry use fresh controls and progress. Retryable, degraded, and
+  user-correctable failures permit retry, while terminal failures retain context and deny retry.
+- Export queue shutdown can block and is legal only from a blocking-safe domain. It cancels all
+  unfinished attempts before draining and joining workers.
 - Transport controls require playback ownership and preserve integral frame identity. Cadence uses
   fixed checked anchors, loop ranges are nonempty half-open subranges, and only ordinary playing
   frames may be dropped. User targets, loop boundaries, and the forced-progress frame are protected.
@@ -668,7 +726,14 @@ selected-factory failure without retry, stale lifecycle denial, rendering degrad
 recovery, and later fresh success. Production lanes open and decode the canonical WebM and WAVE
 fixtures: WAVE PCM completes through the in-tree decoder and encoder with all 4,410 samples, while
 the WebM AV1 path evaluates all 96 frames and rejects libvpx VP9 duration rounding before artifact
-publication.
+publication. A queue-backed paired route exercises the same real transaction as one logical export
+job and proves exactly 11 semantic progress units before the retained artifact becomes observable.
+
+Seven export-job contracts prove EngineControl ownership, configuration bounds, retained logical
+identity, dependency admission and propagation, temporary worker saturation, nonblocking progress,
+typed result retention, pause acknowledgement, fresh resume, cancel winning over raced success, all
+four recoverability classes, retry unblocking a dependent, terminal retry denial, safe removal, and
+blocking-safe shutdown.
 
 Four transport contracts use the real bounded worker pool, prefetcher, output producer and callback,
 shared clock, and viewport handoff. They prove superseding seek and scrub generations, stale-result
@@ -698,8 +763,9 @@ container or decoding frames. Timeline and graph state are exact control models 
 production timeline owner or the generic `superi-graph` DAG store.
 
 Four orchestration files remain documentation-only placeholders. Source registration, timeline
-media preparation, deterministic lifecycle, foreground playback, interactive transport, and
-render-export execution are coherent and test-backed, but there is no timeline-owned decoded-audio
+media preparation, deterministic lifecycle, foreground playback, interactive transport,
+render-export execution, and bounded logical export scheduling are coherent and test-backed, but
+there is no timeline-owned decoded-audio
 graph renderer, persistent cache lifecycle owner, native GPU viewport or export submission, packet
 muxer, output publisher, project persistence, native plugin discovery, isolated OpenFX adapter
 implementation, worker transport, or real-condition validator.
@@ -712,7 +778,9 @@ shared scheduler and actual audio clock, but physical A/V latency and drift rema
 evidence. `TimelineResources` prepares the reachable sources, decoders, and graph, and its acquired
 media owner now has a real export consumer.
 Export still requires caller-supplied graph, delivery, and audio stage owners and returns elementary
-streams without muxing or persistence. The derived-media driver and resolver are synchronous and
+streams without muxing or persistence. The export queue retains results in process memory, uses
+cooperative checkpoints, and requires an explicit blocking-safe shutdown; it is not a persistent or
+crash-recoverable scheduler. The derived-media driver and resolver are synchronous and
 caller-owned, and no application or API path invokes them yet.
 Clip-mix reconciliation is substantive but currently entered by Rust callers rather than the public
 API or playback controller. Lifecycle is a production control-plane contract, but later transport,
@@ -746,7 +814,10 @@ Keep export selection one-shot, route source and output identities separately, d
 and encoder through end of stream, retain exact input and packet evidence, validate interval unions
 with rational time, and reset failure state through a fresh operation context without publishing
 partial output. Add muxing or persistence only through an explicit owner after elementary streams
-have passed the current completion checks.
+have passed the current completion checks. Keep logical export identity stable across attempts,
+dependency edges immutable and older-only, recoverable failures unresolved until retry, terminal
+history final, all controls nonblocking on EngineControl, and worker joining confined to explicit
+blocking-safe shutdown.
 Remove a placeholder label only after substantive behavior and consumer proof exist.
 When implementing `plugins.rs`, consume `superi_effects::ofx::IsolatedOfxAdapter` and preserve its
 worker-process, bounded-message, deadline, permission, restart, and quarantine guarantees rather

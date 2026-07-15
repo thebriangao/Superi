@@ -9,6 +9,7 @@ use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 
 use superi_audio::graph::AudioGraphId;
+use superi_concurrency::jobs::JobProgress;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_core::geometry::PixelBounds;
 use superi_core::pixel::AlphaMode;
@@ -803,7 +804,85 @@ pub fn render_and_export<S, V, F>(
     lifecycle_snapshot: F,
     session: &mut S,
     registry: &BackendRegistry,
+    stages: RenderExportStages<'_, V>,
+    operation: &OperationContext,
+) -> Result<RenderExportArtifact>
+where
+    S: ExportMediaSession,
+    F: Fn() -> Result<EngineLifecycleSnapshot>,
+{
+    render_and_export_internal(
+        request,
+        lifecycle_snapshot,
+        session,
+        registry,
+        stages,
+        RenderExportProgress::silent(),
+        operation,
+    )
+}
+
+/// Renders and encodes one complete source lifetime with indeterminate semantic progress.
+///
+/// The supplied progress must be indeterminate because packet, decoded-output, and encoder-output
+/// counts are not known until the complete source and codec lifecycles finish.
+pub fn render_and_export_tracked<S, V, F>(
+    request: &RenderExportRequest,
+    lifecycle_snapshot: F,
+    session: &mut S,
+    registry: &BackendRegistry,
+    stages: RenderExportStages<'_, V>,
+    progress: &JobProgress,
+    operation: &OperationContext,
+) -> Result<RenderExportArtifact>
+where
+    S: ExportMediaSession,
+    F: Fn() -> Result<EngineLifecycleSnapshot>,
+{
+    if progress.snapshot().total_units().is_some() {
+        return Err(invalid(
+            "track_render_export",
+            "render and export progress must be indeterminate",
+        ));
+    }
+    render_and_export_internal(
+        request,
+        lifecycle_snapshot,
+        session,
+        registry,
+        stages,
+        RenderExportProgress::tracked(progress),
+        operation,
+    )
+}
+
+#[derive(Clone, Copy)]
+struct RenderExportProgress<'a>(Option<&'a JobProgress>);
+
+impl<'a> RenderExportProgress<'a> {
+    const fn silent() -> Self {
+        Self(None)
+    }
+
+    const fn tracked(progress: &'a JobProgress) -> Self {
+        Self(Some(progress))
+    }
+
+    fn advance(self) -> Result<()> {
+        if let Some(progress) = self.0 {
+            progress.increment(1)?;
+        }
+        Ok(())
+    }
+}
+
+fn render_and_export_internal<S, V, F>(
+    request: &RenderExportRequest,
+    lifecycle_snapshot: F,
+    session: &mut S,
+    registry: &BackendRegistry,
     mut stages: RenderExportStages<'_, V>,
+    progress: RenderExportProgress<'_>,
     operation: &OperationContext,
 ) -> Result<RenderExportArtifact>
 where
@@ -823,6 +902,7 @@ where
         "admit_render_export",
     )?;
     validate_session_routes(request, session, &stages)?;
+    progress.advance()?;
 
     let source_identity = session.source_info().identity().clone();
     let mut active = create_encoders(request, registry, operation)?;
@@ -838,6 +918,7 @@ where
         &route_indexes,
         &mut active,
         &mut stages,
+        progress,
         operation,
     );
     if let Err(error) = execution {
@@ -850,12 +931,15 @@ where
         for route in &active {
             validate_complete_stream(route)?;
         }
+        progress.advance()?;
         validate_permit(
             &lifecycle_snapshot()?,
             request.permit,
             "publish_render_export",
         )?;
         reset_transaction(session, &mut active, operation)?;
+        progress.advance()?;
+        progress.advance()?;
         operation.check("publish_render_export")
     })();
     if let Err(error) = finalization {
@@ -952,11 +1036,13 @@ fn execute_transaction<S, V>(
     route_indexes: &BTreeMap<StreamId, usize>,
     active: &mut [ActiveRoute],
     stages: &mut RenderExportStages<'_, V>,
+    progress: RenderExportProgress<'_>,
     operation: &OperationContext,
 ) -> Result<()>
 where
     S: ExportMediaSession,
 {
+    progress.advance()?;
     for route in active.iter_mut() {
         operation.check("reset_export_stream")?;
         session.reset_decoder(route.route.source_stream_id, operation)?;
@@ -977,6 +1063,7 @@ where
         operation.check("read_export_packet")?;
         match session.read_packet(operation)? {
             ReadOutcome::Complete(packet) => {
+                progress.advance()?;
                 let Some(index) = route_indexes.get(&packet.stream_id()).copied() else {
                     continue;
                 };
@@ -987,6 +1074,7 @@ where
                     stream_id,
                     &mut active[index],
                     stages,
+                    progress,
                     operation,
                 )?;
             }
@@ -1007,10 +1095,10 @@ where
         let stream_id = route.route.source_stream_id;
         operation.check("flush_export_decoder")?;
         session.flush_decoder(stream_id, operation)?;
-        drain_decoder_after_flush(session, stream_id, route, stages, operation)?;
+        drain_decoder_after_flush(session, stream_id, route, stages, progress, operation)?;
         operation.check("flush_export_encoder")?;
         route.encoder.flush(operation)?;
-        drain_encoder_after_flush(route, operation)?;
+        drain_encoder_after_flush(route, progress, operation)?;
     }
     Ok(())
 }
@@ -1020,6 +1108,7 @@ fn drain_decoder_before_flush<S, V>(
     stream_id: StreamId,
     route: &mut ActiveRoute,
     stages: &mut RenderExportStages<'_, V>,
+    progress: RenderExportProgress<'_>,
     operation: &OperationContext,
 ) -> Result<()>
 where
@@ -1028,8 +1117,14 @@ where
     for _ in 0..MAX_DRAIN_OUTPUTS {
         operation.check("drain_export_decoder")?;
         match session.receive_decoder(stream_id, operation)? {
-            DecodeOutput::Frame(frame) => process_video(frame, route, stages, operation)?,
-            DecodeOutput::Audio(block) => process_audio(block, route, stages, operation)?,
+            DecodeOutput::Frame(frame) => {
+                process_video(frame, route, stages, progress, operation)?;
+                progress.advance()?;
+            }
+            DecodeOutput::Audio(block) => {
+                process_audio(block, route, stages, progress, operation)?;
+                progress.advance()?;
+            }
             DecodeOutput::NeedInput => return Ok(()),
             DecodeOutput::EndOfStream => {
                 return Err(internal(
@@ -1056,6 +1151,7 @@ fn drain_decoder_after_flush<S, V>(
     stream_id: StreamId,
     route: &mut ActiveRoute,
     stages: &mut RenderExportStages<'_, V>,
+    progress: RenderExportProgress<'_>,
     operation: &OperationContext,
 ) -> Result<()>
 where
@@ -1064,8 +1160,14 @@ where
     for _ in 0..MAX_DRAIN_OUTPUTS {
         operation.check("drain_flushed_export_decoder")?;
         match session.receive_decoder(stream_id, operation)? {
-            DecodeOutput::Frame(frame) => process_video(frame, route, stages, operation)?,
-            DecodeOutput::Audio(block) => process_audio(block, route, stages, operation)?,
+            DecodeOutput::Frame(frame) => {
+                process_video(frame, route, stages, progress, operation)?;
+                progress.advance()?;
+            }
+            DecodeOutput::Audio(block) => {
+                process_audio(block, route, stages, progress, operation)?;
+                progress.advance()?;
+            }
             DecodeOutput::EndOfStream => return Ok(()),
             DecodeOutput::NeedInput => {
                 return Err(internal(
@@ -1091,6 +1193,7 @@ fn process_video<V>(
     decoded: VideoFrame,
     route: &mut ActiveRoute,
     stages: &mut RenderExportStages<'_, V>,
+    progress: RenderExportProgress<'_>,
     operation: &OperationContext,
 ) -> Result<()> {
     let EncoderMediaFormat::Video(expected_format) = route.route.encoder_config.media_format()
@@ -1187,13 +1290,14 @@ fn process_video<V>(
     validate_next_input(route, &provenance)?;
     route.encoder.send(EncodeInput::Video(output), operation)?;
     route.inputs.push(provenance);
-    drain_encoder_before_flush(route, operation)
+    drain_encoder_before_flush(route, progress, operation)
 }
 
 fn process_audio<V>(
     decoded: AudioBlock,
     route: &mut ActiveRoute,
     stages: &mut RenderExportStages<'_, V>,
+    progress: RenderExportProgress<'_>,
     operation: &OperationContext,
 ) -> Result<()> {
     let EncoderMediaFormat::Audio(expected_format) = route.route.encoder_config.media_format()
@@ -1250,14 +1354,21 @@ fn process_audio<V>(
         .encoder
         .send(EncodeInput::Audio(output.clone()), operation)?;
     route.inputs.push(provenance);
-    drain_encoder_before_flush(route, operation)
+    drain_encoder_before_flush(route, progress, operation)
 }
 
-fn drain_encoder_before_flush(route: &mut ActiveRoute, operation: &OperationContext) -> Result<()> {
+fn drain_encoder_before_flush(
+    route: &mut ActiveRoute,
+    progress: RenderExportProgress<'_>,
+    operation: &OperationContext,
+) -> Result<()> {
     for _ in 0..MAX_DRAIN_OUTPUTS {
         operation.check("drain_export_encoder")?;
         match route.encoder.receive(operation)? {
-            EncodeOutput::Packet(packet) => route.packets.push(packet),
+            EncodeOutput::Packet(packet) => {
+                route.packets.push(packet);
+                progress.advance()?;
+            }
             EncodeOutput::NeedInput => return Ok(()),
             EncodeOutput::EndOfStream => {
                 return Err(internal(
@@ -1279,11 +1390,18 @@ fn drain_encoder_before_flush(route: &mut ActiveRoute, operation: &OperationCont
     ))
 }
 
-fn drain_encoder_after_flush(route: &mut ActiveRoute, operation: &OperationContext) -> Result<()> {
+fn drain_encoder_after_flush(
+    route: &mut ActiveRoute,
+    progress: RenderExportProgress<'_>,
+    operation: &OperationContext,
+) -> Result<()> {
     for _ in 0..MAX_DRAIN_OUTPUTS {
         operation.check("drain_flushed_export_encoder")?;
         match route.encoder.receive(operation)? {
-            EncodeOutput::Packet(packet) => route.packets.push(packet),
+            EncodeOutput::Packet(packet) => {
+                route.packets.push(packet);
+                progress.advance()?;
+            }
             EncodeOutput::EndOfStream => return Ok(()),
             EncodeOutput::NeedInput => {
                 return Err(internal(

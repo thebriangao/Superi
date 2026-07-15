@@ -371,11 +371,16 @@ EngineControl, publishes every committed transition through `SnapshotPublisher`,
 coordinator's lock-free `LifecycleSignal` to latency-sensitive consumers. Engine render-export is
 the first concrete workflow to require the resulting revision-scoped export permit both before
 codec creation and immediately before artifact publication, so rendering or export degradation and
-recovery cannot be bypassed by a long-running transaction. The broader downstream
+recovery cannot be bypassed by a long-running transaction. `superi-engine::export_jobs` wraps that
+transaction in a bounded logical queue: it submits `JobKind::Export` work at
+`JobPriority::Export`, retains reconstructible executors across temporary saturation, combines
+`JobControl` with an export-priority media operation context, reports `JobProgress`, polls typed
+completion without waiting, and composes `JobDependencyTracker` into deterministic dependency
+admission and terminal propagation. The broader downstream
 crate graph is not evidence that other transitive crates call these runtime surfaces.
 The concurrency integration-test files, cache render contract, audio graph contract, engine
-substitution contract, engine playback and transport contracts, engine render-export contract, and
-engine lifecycle contract exercise the public crate paths directly. No public API crate currently
+substitution contract, engine playback and transport contracts, engine export queue and render-export
+contracts, and engine lifecycle contract exercise the public crate paths directly. No public API crate currently
 reexports these types. Engine composes lifecycle with export admission, while foreground playback
 and transport consume A/V drift decisions with the actual audio clock, graph result, and viewport
 handoff. Lifecycle does not yet own that foreground flow, and no end-to-end runtime composes it with
@@ -400,6 +405,8 @@ liveness or native GPU submission.
 - `JobId` uniqueness is enforced only while a job remains queued. Dispatch removes the identity,
   so the same ID can be submitted again while an earlier lifetime is active. Consumers must treat
   reuse as a deliberate new lifecycle and must not assume process-wide or in-flight uniqueness.
+  The engine export queue closes this generic gap for retained logical export jobs by reserving each
+  identity across every attempt until explicit safe removal.
 - Cancellation is idempotent, irreversible, and cooperative. It cannot interrupt an unbounded
   foreign call, blocked user closure, or work that omits checkpoints. Deadlines use process-local
   monotonic time and are not persistent timestamps.
@@ -442,6 +449,9 @@ non-`Send` or non-`Sync` guards and owners. Test coverage is contract-oriented:
   progress, panic containment, and wait restrictions.
 - Job-lifecycle tests prove cooperative cancellation and deadlines, sorted dependency outcomes,
   contended progress, terminal classification, and structured error retention.
+- Engine export queue tests prove the generic pool, progress, control, completion, and dependency
+  surfaces can form a bounded nonblocking logical scheduler with fresh recovery attempts and retained
+  results. The real render-export consumer additionally proves semantic progress reaches publication.
 - Clock and A/V tests prove exact sample timing, checked monotonic anchoring, mode continuity,
   signed cross-timebase drift, playback ownership, bounded correction, conservative dropping,
   forced visible progress, and resettable statistics.
@@ -496,11 +506,14 @@ incomplete:
   prepared resource and foreground playback owners through subsystem actions.
 - Dependency tracking is passive. The worker pool does not delay a job until prerequisites are
   ready, propagate terminal states, create `DependencyFailed`, or detect cycles across submitted
-  jobs. Callers must provide all of that orchestration.
+  jobs. The engine export queue now provides that orchestration for its own retained logical jobs by
+  admitting only dependencies that already exist, polling dependency history before dispatch, and
+  finalizing terminal downstream outcomes. The generic pool remains passive for other consumers.
 - Operation identity is not globally unique. Removing `JobId` from the pending index at dispatch
   permits overlapping active lifetimes with the same identifier, which can make cancellation,
   dependency, result, or diagnostic correlation ambiguous if a consumer assumes one live
-  operation per ID.
+  operation per ID. The engine export queue reserves identity for the full retained logical lifetime,
+  but the generic worker API still permits reuse.
 - Cancellation and deadline enforcement is only as responsive as user checkpoints. Shutdown and
   `Drop` drain and join, so either can block indefinitely on a closure that waits forever or omits
   cooperative termination.
@@ -551,7 +564,9 @@ incomplete:
   engine integration expands.
 - If job dependencies become scheduler-owned, document admission, cycle detection, cancellation
   propagation, terminal result publication, identity lifetime, and how they interact with weighted
-  queues and shutdown.
+  queues and shutdown. The engine export queue is the first consumer-owned composition and must keep
+  its older-only admission, retryable unresolved state, terminal propagation, retained identity, and
+  blocking-safe shutdown rules explicit.
 - Keep latency-sensitive claims honest. Audit allocation, final-drop, locking, and blocking behavior
   when changing atomic signals, handoffs, audio clocks, snapshots, worker handles, or lifecycle
   observers.

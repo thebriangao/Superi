@@ -14,6 +14,7 @@ pub mod av_sync;
 pub mod command;
 pub mod derived_media;
 pub mod error;
+pub mod export_jobs;
 pub mod export_queue;
 pub mod frame_upload;
 pub mod introspection;
