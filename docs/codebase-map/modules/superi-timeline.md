@@ -2,8 +2,8 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: 268e3af451d1c088c756c47e1f708c495ea0a1c6dd54d1cec3b97e8a528cba7d
-source_files: 26
+source_hash: 4204e2ab056533df22bc04f9428251afc58b24f04143b7e38a634549cdfae7f5
+source_files: 28
 mapped_at_commit: working-tree
 ---
 
@@ -58,20 +58,25 @@ across semantic edits, while a bidirectional provenance index keeps every timeli
 editorial object understandable and directly controllable. Timeline outputs, ordered tracks,
 clips, gaps, transitions, generators, captions, and nested-sequence routing remain ordinary typed
 graph state. Native multicam source catalogs, synchronization provenance, switching, and audio
-intent remain ordinary typed graph parameters, while
-OTIO-compatible interchange remains staged.
-The canonical OTIO 0.18.1 fixture remains executable evidence for future interchange work rather
-than a production reader or writer.
+intent remain ordinary typed graph parameters.
+
+The crate also owns offline OTIO 0.18.1 JSON interchange. Import maps root and nested stacks,
+tracks, clips, gaps, transitions, markers, media references, metadata, and linear time warps into
+the ordinary native project model. Export rebuilds the current edited hierarchy and merges native
+values into complete preserved source templates, retaining unknown fields and unsupported effects
+with stable warnings.
 
 ## Source inventory
 
 - `open/crates/superi-timeline/Cargo.toml`: Declares runtime dependencies on `superi-core`,
-  `superi-graph`, and the workspace-pinned SHA-256 implementation, plus development-only
-  `serde_json` for canonical OTIO fixture contracts.
+  `superi-graph`, the workspace-pinned SHA-256 implementation, and workspace-pinned `serde_json`
+  for offline OTIO JSON interchange.
 - `open/crates/superi-timeline/src/compile.rs`: Compiles validated root and nested timelines into
   one typed editable graph transaction with stable graph, node, port, parameter, and edge IDs,
   explicit stream routing, authored track and item order, complete object and multicam parameters,
   and bidirectional editorial provenance.
+- `open/crates/superi-timeline/examples/otio_roundtrip.rs`: Imports one OTIO document through the
+  public native boundary, reports stable diagnostics, and writes deterministic OTIO 0.18.1 JSON.
 - `open/crates/superi-timeline/src/edit_ops.rs`: Implements directly inspectable foundational and
   advanced commands, exact source-aware and retime-aware trimming and splitting, deterministic
   fragment identities, explicit sync-locked ripple plans, transition reconciliation, result
@@ -82,8 +87,7 @@ than a production reader or writer.
 - `open/crates/superi-timeline/src/ids.rs`: Re-exports the canonical project, editorial object, and
   multicam angle identities owned by `superi-core`.
 - `open/crates/superi-timeline/src/lib.rs`: Exports the implemented identity, edit-state, edit
-  operation, model, multicam, nested, retime, and graph compilation modules plus staged interchange
-  namespaces.
+  operation, model, media, retime, nesting, marker, multicam, OTIO, and graph compilation modules.
 - `open/crates/superi-timeline/src/markers.rs`: Implements stable timeline, track, and object marker
   ownership, visible labels, flags, notes, recursively nested ordered metadata, owner-relative range
   resolution, dangling-owner reconciliation, persistent snapping state, exact candidate projection,
@@ -103,9 +107,10 @@ than a production reader or writer.
 - `open/crates/superi-timeline/src/nested.rs`: Implements exact nested placement, atomic compound
   timeline creation, direct child editing by stable instance identity, shared-instance inspection,
   recursive nesting inspection, and typed outcomes over the foundational edit owner.
-- `open/crates/superi-timeline/src/otio.rs`: Reserves the ratified OTIO-compatible serialization
-  boundary and points to the shared 0.18.1 fixtures. The production reader and writer remain
-  staged.
+- `open/crates/superi-timeline/src/otio.rs`: Implements dependency-light OTIO 0.18.1 JSON import
+  and export, exact time conversion, deterministic native identity allocation, explicit audio
+  defaults, supported object mapping, complete source-template preservation, stable unsupported
+  diagnostics, native edit projection, and deterministic target serialization.
 - `open/crates/superi-timeline/src/retime.rs`: Implements reduced signed playback rates,
   continuous clip-local retime segments, immutable complete time maps, exact and explicitly
   rounded record-to-source queries, reverse and freeze constructors, direct mode inspection,
@@ -145,6 +150,10 @@ than a production reader or writer.
   editing, typed multicam source, switch, and audio intent, and missing-root failure.
 - `open/crates/superi-timeline/tests/otio_fixture_contract.rs`: Proves canonical OTIO schema,
   hierarchy, identity, timing, relationships, opaque retention, and unsupported diagnostics.
+- `open/crates/superi-timeline/tests/otio_interchange_contract.rs`: Proves production fixture
+  import, native hierarchy and exact timing, media and nested links, markers, linear retiming,
+  explicit audio defaults, deterministic export, direct edit reimport, opaque retention, stable
+  warning pointers, duplicate identity rejection, and inexact clock rejection.
 - `open/crates/superi-timeline/tests/range_contract.rs`: Proves exact cross-clock point and subrange
   mapping, fallible atomic range replacement, media overscan classification, unknown availability,
   and derived nested-timeline availability.
@@ -294,8 +303,23 @@ The compilation surface includes `compile_timeline`, `TimelineGraphCompilation`,
 `TimelineGraphValue`, `TimelineGraphOrigin`, and `TimelineGraphIndex`. It captures the source
 project and revision, exposes the editable graph and immutable snapshots, resolves timeline,
 track, and object origins in both directions, and allows later checked graph transactions without
-inventing a second topology. `otio` remains a namespace reservation without production operations.
-`edit_ops`, `markers`, `multicam`, `nested`, and `compile` are substantive public operation surfaces.
+inventing a second topology.
+
+The OTIO interchange surface includes:
+
+- `OtioDocument`, which owns the ordinary editable `EditorialProject`, root `TimelineId`, stable
+  diagnostics, and opaque preservation state without exposing a second timeline model.
+- `import_otio` and `export_otio` for offline JSON bytes, with exact native clock conversion and
+  deterministic serialization.
+- `OtioImportOptions` for explicit sample rate and channel layout policy on generic OTIO audio
+  tracks.
+- `OtioSchemaTarget::OtioCore0181` and its complete release schema map.
+- `OtioDiagnostic`, `OtioDiagnosticSeverity`, and
+  `timeline.otio.unsupported_construct` for source schema, identity, severity, and exact JSON
+  pointer inspection.
+
+`edit_ops`, `markers`, `multicam`, `nested`, `compile`, and `otio` are substantive public operation
+surfaces.
 
 `TimelineColorMetadata::from_graph` retains exact graph-owned color state and `graph` exposes it.
 Timeline compilation keeps processing color requirements typed at the graph schema boundary but
@@ -464,8 +488,22 @@ Timeline compilation consumes the validated result without changing authoring st
    every compiled node back to its editorial owner. UI-only selection, targeting, sync locks,
    links, groups, annotations, and caches do not become hidden processing inputs.
 
-The separate fixture path reads checked-in OTIO JSON through development-only `serde_json::Value`
-assertions. It does not enter the native model yet.
+OTIO interchange composes the same native owners:
+
+1. Import validates a root `Timeline.1`, derives an exact timeline clock, and assigns deterministic
+   typed project, timeline, track, item, marker, and media identities while retaining source IDs.
+2. Root and nested `Stack.1` objects become native timelines. A nested stack also becomes a parent
+   clip linked by `ClipSource::Timeline`, so ordinary nesting validation remains authoritative.
+3. Track traversal derives contiguous record ranges from ordered OTIO children. Clips, gaps,
+   transitions, media, marker ownership, metadata, and `LinearTimeWarp.1` state map into their
+   existing native counterparts without another mutation path.
+4. Every source object remains an opaque template keyed by native identity. Unsupported effects
+   and timed schemas stay present, and warnings retain exact source pointer, schema, and identity.
+5. Export traverses the current validated project order, patches supported names, ranges, links,
+   handles, marker values, metadata, and linear retime scalars, then merges those values into the
+   templates. Removed objects disappear and new objects receive canonical OTIO shapes and IDs.
+6. `OtioSchemaTarget::OtioCore0181` makes the pinned target explicit. Runtime behavior uses only
+   Rust and `serde_json`; the official OpenTimelineIO package is an external verification oracle.
 
 ## Dependencies and consumers
 
@@ -477,12 +515,13 @@ assertions. It does not enter the native model yet.
   by timeline compilation.
 - The workspace-pinned `sha2` 0.10.9 implementation derives stable graph-facing identifiers from
   domain-separated, length-framed editorial identity inputs without adding a network path.
-- `serde_json` is development-only and reads checked-in canonical JSON. No OTIO library, Python
-  package, network path, or fixture-tool runtime dependency enters the crate.
+- `serde_json` is a workspace-pinned production dependency for offline OTIO JSON parsing and
+  serialization. No OTIO library, Python package, network path, plugin host, or fixture-tool
+  runtime dependency enters the crate.
 - `superi-project` and `superi-engine` declare `superi-timeline` as a dependency. Engine integration
   tests consume the color metadata seam; neither source tree consumes the editorial model yet.
-- Public integration tests are the current real consumers. No API or CLI surface exposes the
-  general editorial model.
+- Public integration tests and the `otio_roundtrip` example are real consumers. No application API
+  or editor surface exposes the general editorial model yet.
 
 ## Invariants and operational boundaries
 
@@ -583,8 +622,15 @@ assertions. It does not enter the native model yet.
   Append and insert report exact extension, while extract reports exact shortening.
 - A transition is never silently redirected. It survives only with its original adjacent endpoints
   and valid nonoverlapping handles; otherwise its typed identity appears in the outcome.
-- Fit-to-fill, production OTIO preservation, graph evaluation, undo-history ownership, multicam
-  playback and mixing, and higher-level editorial commands remain outside this state.
+- OTIO import rejects duplicate source identity, malformed required structure, and coordinates that
+  cannot be represented exactly on the target native clock. It never silently rounds timing.
+- Supported OTIO objects are rebuilt from native state while complete source templates preserve
+  unknown fields. Unsupported effects remain opaque and produce stable warning code, severity,
+  schema, identity, and JSON pointer values.
+- Generic OTIO audio lacks complete native semantics, so sample rate and channel layout are explicit
+  import options and routing is deterministic. Original audio metadata remains opaque and preserved.
+- Fit-to-fill, arbitrary vendor-effect interpretation, graph evaluation, undo-history ownership,
+  multicam playback and mixing, and higher-level editorial commands remain outside this state.
 - The timeline color seam preserves exact graph metadata and performs no transform, inference,
   normalization, or reordering.
 
@@ -610,6 +656,15 @@ Three OTIO tests prove the first editorial fixture, comprehensive coverage fixtu
 changes, stable unsupported-object pointers, opaque preservation, and the warning code
 `timeline.otio.unsupported_construct`. Official OpenTimelineIO 0.18.1 separately loads both files
 and reports exact 48-frame and 120-frame durations at 24 fps.
+
+Nine production interchange tests prove native root and nested structure, exact duration and
+record placement, media targets, marker ownership, transition adjacency, 2x and 0.5x playback,
+the two required warnings, direct name and retime edits, deterministic bytes, Rust reimport,
+preserved unsupported fields, explicit 48 kHz stereo audio policy, duplicate identity rejection,
+exact-clock failure pointers, conflicting repeated media rejection, and native hierarchy reshape
+with exact reimported duration. The public example emits both fixtures; OpenTimelineIO 0.18.1
+under Python 3.12 loads them, target-writes them with its release map, rereads them, and reports
+equivalent 48-frame and 120-frame timelines.
 
 Five foundational edit-operation tests prove insert, overwrite, append, replace, lift, and extract
 through the public API. They cover source and record clocks at 48 and 24 units per second, arbitrary
@@ -676,10 +731,10 @@ timeline edit state, markers, deterministic metadata, exact snapping,
 exact clip retiming, six primary operations, nine advanced edit families, nested placement,
 compound creation, shared child editing, recursive inspection, and native multicam angle,
 synchronization, switching, audio-intent, structural inheritance, and exact resolution are
-substantive and test-backed.
-Production OTIO reading and writing, graph evaluation, fit-to-fill, grouped-source compound
-synthesis, undo ownership, multicam mixing and runtime playback, persistence, and engine or API
-integration remain absent.
+substantive and test-backed. Deterministic graph compilation and production OTIO 0.18.1 reading,
+writing, opaque preservation, stable diagnostics, and a headless consumer are also test-backed.
+Graph evaluation, fit-to-fill, grouped-source compound synthesis, undo ownership, multicam mixing
+and runtime playback, persistence, and engine or API integration remain absent.
 
 The model retains equal physical source and record duration for nominal clip ranges, while separate
 time maps may sample beyond that selection and report known unavailable points. Exact seam and slice
@@ -693,10 +748,11 @@ with explicit per-track identity material; the resolver alone remains a pure pro
 groups are timeline-local and have no independent durable ID. Edit material is currently one timed
 object per command; multi-object source sequences and link-group targeting belong to later command
 and orchestration layers. Audio continuity is structural evidence rather than signal analysis or
-playback. The model has no stable Serde schema, hostile-input collection bounds, or production
-consumer outside its contract tests. The engine color propagation contract consumes only the
-narrow metadata seam. Timeline compilation now produces real generic editable graph state, but no
-engine, API, CLI, evaluator catalog, playback, or render owner consumes that result yet.
+playback. The native project model has no stable Serde schema, and OTIO collection sizes are not
+yet bounded independently of process memory. The `otio_roundtrip` example is the first production
+consumer outside contract tests. The engine color propagation contract consumes only the narrow
+metadata seam. Timeline compilation now produces real generic editable graph state, but no engine,
+API, CLI, evaluator catalog, playback, or render owner consumes that result yet.
 
 ## Maintenance notes
 
@@ -711,7 +767,8 @@ resolution, audio intent, structural inheritance, and atomic publication as publ
 Extend tests before changing them. Later
 higher-level and grouped-source compound operations must consume `tracks_affected_by_sync`, exact
 selection state, and clip-owned time maps instead of recreating those policies. Add higher-level
-edit commands, interchange, and graph evaluation only through their owning modules, and update
-project, engine, API, CLI, persistence, and fixture maps when those paths begin consuming native
-timeline state. Preserve the OTIO fixture's versioned semantics rather than inferring interchange
-behavior from the native model alone.
+edit commands and graph evaluation only through their owning modules, and update project, engine,
+API, CLI, persistence, and fixture maps when those paths begin consuming native timeline state.
+Extend OTIO only through `OtioDocument` and the pinned schema target, preserve unknown source
+templates and stable diagnostics, and prove emitted files through an official compatible reader
+before expanding the supported subset.
