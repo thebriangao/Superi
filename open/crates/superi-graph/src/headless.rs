@@ -152,7 +152,12 @@ impl<T, N> GraphEvaluationSnapshot<T, N> {
         V: Clone,
         C: EvaluationValueCache<V>,
     {
-        LazyEvaluator::evaluate_with_cache(&self.executable, request, cache)
+        LazyEvaluator::evaluate_with_cache_at_revision(
+            &self.executable,
+            request,
+            cache,
+            Some(self.graph_revision()),
+        )
     }
 
     /// Inspects deterministic node identity and cache decisions through the shared evaluator.

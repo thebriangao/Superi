@@ -16,7 +16,7 @@ against raw source before changing code.
 | `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
 | `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade for capabilities and canonical editorial state | Partial: capability and canonical scenario controls implemented; transport, general API, and scripting absent |
 | `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Reserved audio graph, playback, mixing, resampling, metering, and plugin boundary | Skeleton: public module names only |
-| `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, plus reserved proxy, render, prefetch, and disk cache policy | Complete identity feeds two independent value tiers with exact total, project, device, byte, and frame admission plus scoped automatic reclamation; invalidation cleanup, persistence, proxies, render caching, and prefetch remain |
+| `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, precise graph edit invalidation, plus reserved proxy, render, prefetch, and disk cache policy | Complete identity feeds two atomic value tiers with exact total, project, device, byte, and frame admission, scoped automatic reclamation, and graph plus node revision fences; persistence, proxies, render caching, and prefetch remain |
 | `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario consumer | Implemented portable expectation verifier and eight instrumented contract stages; rendered media flow absent |
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
 | `superi-codecs-rs` | [module map](modules/superi-codecs-rs.md) | `open/crates/superi-codecs-rs` | Default permissive software codec implementations | Implemented: AV1, FLAC, MP3, Opus, PCM, Vorbis, VP8, and VP9 decode and encode |
@@ -27,7 +27,7 @@ against raw source before changing code.
 | `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Reserved effect-node catalog, animation, mask, transition, text, tracking, and OFX boundary | Skeleton: public module names only |
 | `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: canonical command state, registry, capability introspection, CPU-frame GPU upload, and viewport or export color metadata branching implemented |
 | `superi-gpu` | [module map](modules/superi-gpu.md) | `open/crates/superi-gpu` | wgpu device, resource, upload, conversion, pass, submission, presentation, and recovery substrate | Implemented substrate with explicit application-level integration gaps |
-| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, typed parameter links and expressions, derived missing-node resolution, dependency invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, graph-lineage cache identity and adapter, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, typed driver state, bounded expressions, parameter-cycle protection, fail-closed missing-node placeholders, exact invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic graph cache inspection, final and intermediate retained-work pruning, run-local timing, and role-neutral editable-to-runtime evaluation implemented; production catalog and plugin binding, project persistence, cache generation policy, and rendered integration absent |
+| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, typed parameter links and expressions, derived missing-node resolution, dependency and semantic edit invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, graph and revision cache lineage, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, typed driver state, bounded expressions, parameter-cycle protection, fail-closed missing-node placeholders, exact region and edit invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic graph cache inspection, final and intermediate retained-work pruning, run-local timing, and role-neutral editable-to-runtime evaluation implemented; production catalog and plugin binding, project persistence, cache resource policy, and rendered integration absent |
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
 | `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; production source registration and muxing absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
@@ -181,7 +181,9 @@ Generic graph storage is implemented independently of that reference path:
    before mutation. Stable Kahn ordering uses the smallest ready node identity.
 4. Exact dirty-region sets preserve half-open coverage without bounding-box over-invalidation. A
    pure planner validates changed nodes, walks stable topological and edge order, maps dependency
-   regions through a caller-owned edge seam, merges converging work, and excludes clean nodes.
+   regions through a caller-owned edge seam, merges converging work, and excludes clean nodes. A
+   semantic edit planner compares immutable revisions, expands parameter-driver dependencies, and
+   propagates roots through both prior and current topology in stable identity order.
 5. ROI requests are validated against one immutable editable snapshot, clipped to per-output
    regions of definition, and propagated only through connected ancestors in reverse stable
    topological order. Built-in full-frame, pass-through, and checked expansion behavior shares one
@@ -279,16 +281,19 @@ without a production catalog:
    Timings do not participate in semantic inspection, result equality, or cache identity.
 6. Cached evaluation accepts one caller-owned `EvaluationValueCache<V>`, checks the final key before
    node execution, and recursively stops at retained intermediate keys. Every adapter call receives
-   graph lineage and exact work identity. `superi-cache::FrameMemoryCacheContext` adds authoritative
-   project, host or device placement, media, parameter, color, and render context, and the scoped
-   adapter derives a complete `FrameCacheKey` before either concrete tier is consulted. Only
-   successful cacheable work is offered for retention. Each admitted entry owns an exact total and
-   project byte and frame reservation, device entries also hold the shared GPU cache reservation,
-   and a refusal selects an eligible scoped victim without changing the fresh evaluator result.
-   Successful hits and insertions promote per-tier logical recency. Automatic pressure reclaims
-   intermediate values before final frames and chooses oldest access within a tier; explicit
-   management can also remove exact per-tier LRU victims. A later request recomputes the exact value
-   through the unchanged evaluator.
+   stable graph identity, optional published revision, semantic graph lineage, and exact work
+   identity. `superi-cache::FrameMemoryCacheContext` adds authoritative project, host or device
+   placement, media, parameter, color, and render context, and the scoped adapter derives a complete
+   `FrameCacheKey` before either concrete tier is consulted. Only successful cacheable work is
+   offered for retention. Each admitted entry owns an exact total and project byte and frame
+   reservation, device entries also hold the shared GPU cache reservation, and a refusal selects an
+   eligible scoped victim without changing the fresh evaluator result. Successful hits and
+   insertions promote per-tier logical recency. Automatic pressure reclaims intermediate values
+   before final frames and chooses oldest access within a tier; explicit management can also remove
+   exact per-tier LRU victims. One graph edit invalidation atomically
+   removes affected older entries and releases their reservations from both tiers, then fences late
+   old-snapshot work while leaving unrelated semantic keys reusable. Later requests recompute exact
+   evicted or invalidated results through the unchanged evaluator.
 7. `GraphEvaluationSnapshot<T, N>` retains one exact editable snapshot and uses a higher-tier
    `NodeCompiler<T, N>` to replace only node payloads while preserving graph identity, node IDs,
    edge routes, and checked topology. Each compilation receives the full snapshot, so authored
@@ -298,11 +303,13 @@ without a production catalog:
 8. Public tests prove linked parameter state enters runtime-node compilation, exact invalidated lazy
    work, equal role schedules, semantic inspection, cache keys, exact retained results, final-hit
    short circuiting, intermediate subtree pruning, immutable old revisions, fresh edited results,
-   and contextual atomic compiler failure. No production node catalog, engine, API, CLI, GPU, or
+   driver-expanded edit roots, selective two-tier cleanup, stale revision fencing, and contextual
+   atomic compiler failure. No production node catalog, engine, API, CLI, GPU, or
    render stage calls this path yet, so the canonical `graph.evaluate` stage remains a disclosed
    stub.
 9. Invalidation-to-render orchestration, ROI-plan-to-evaluator binding, outer job dispatch, cache
-   generations, persistence, and production catalog wiring remain separate later checkpoints.
+   invalidation invocation, persistence, and production catalog wiring remain separate later
+   checkpoints.
 
 No transport, request envelope, dispatcher, event channel, subscription, broad public transaction,
 script runtime, or UI is implemented. There is no shell, extension, automation, or closed-tier
@@ -320,9 +327,9 @@ editorial state plus selection, targeting, sync locks, linked selection, clip gr
 retiming, six primary operations, and ripple, roll, slip, slide, razor, trim, extend, three-point,
 and four-point edits.
 Timeline compilation now publishes native editorial state into the generic editable graph, but no
-production catalog evaluates that compiled state. Project, cache, audio,
-effects, and most engine orchestration remain placeholders, so no complete edit, playback, render,
-save, or export control flow exists.
+production catalog evaluates that compiled state. Project, audio, effects, and most engine
+orchestration remain placeholders, so no complete edit, playback, render, save, or export control
+flow exists.
 
 `docs/vertical-slice.md` now defines the exact first control flow as scenario
 `superi.slice.canonical.v1`: one immutable WebM and AV1 fixture role, one 24 fps video track, a
@@ -599,6 +606,10 @@ The following constraints cross multiple modules and should be preserved togethe
   final and intermediate hits cannot change authored state or result meaning. Cache-local LRU
   eviction changes only retained availability, so victims deterministically recompute without
   changing project or output meaning.
+- Semantic edit invalidation compares immutable revisions, expands changed parameters through both
+  driver graphs, and propagates roots through both pixel topologies. The cache applies that plan to
+  both tiers under one lock, preserves unaffected semantic keys, and rejects affected work older
+  than the graph and node revision fence.
 - Capability declarations are metadata, not proof that a factory or every declared format can run.
   Introspection must not instantiate codecs or sources.
 - Backend fallback is explicit. The registry, platform adapters, and vendor workers do not silently
@@ -840,8 +851,9 @@ encodes and muxes output, persists a project, and drives the flow through the pu
 Entire crate skeletons are `superi-ai`, `superi-audio`, `superi-effects`, and `superi-project`.
 Their manifests establish intended dependency direction, but their public modules expose no
 substantive types or operations. `superi-cache` now has substantive composite identity, budgeted
-memory retention, hierarchical memory policy, priority-aware LRU eviction, and color metadata, while
-its disk, prefetch, proxy, and render extension modules remain placeholders.
+memory retention, hierarchical memory policy, priority-aware LRU eviction, precise edit
+invalidation, and color metadata, while its disk, prefetch, proxy, and render extension modules
+remain placeholders.
 
 Partial modules contain these explicit placeholder areas:
 
@@ -853,14 +865,14 @@ Partial modules contain these explicit placeholder areas:
 - `superi-engine`: ten orchestration modules covering A/V sync, errors, export, lifecycle, nodes,
   playback, plugins, render, resources, and validation.
 - `superi-graph`: invalidation and ROI render orchestration, outer job dispatch, project persistence,
-  undo ownership, engine coordination, cache generations and resource policy, production node
-  catalogs, and runtime consumers beyond its implemented identifier, node-schema, typed DAG storage and
-  validation, schema-bound instances, immutable snapshots, atomic editable transactions, canonical
-  versioned graph documents, typed parameter drivers and expressions, derived fail-closed plugin
-  availability, exact dirty regions, dependency invalidation, snapshot-bound ROI planning,
-  deterministic request-scoped scheduling, node introspection, versioned graph-lineage identity,
-  retained value adapter and pruning, run-local timing, and shared interactive and headless evaluation
-  surfaces.
+  undo ownership, engine coordination, cache invalidation invocation and resource policy,
+  production node catalogs, and runtime consumers beyond its implemented identifier, node-schema,
+  typed DAG storage and validation, schema-bound instances, immutable snapshots, atomic editable
+  transactions, canonical versioned graph documents, typed parameter drivers and expressions,
+  derived fail-closed plugin availability, exact dirty regions, dependency and semantic edit
+  invalidation, snapshot-bound ROI planning, deterministic request-scoped scheduling, node
+  introspection, graph and revision cache lineage, retained value adapter and pruning, run-local
+  timing, and shared interactive and headless evaluation surfaces.
 - `superi-timeline`: broader OTIO schema and vendor-effect interpretation beyond its pinned 0.18.1
   native subset, graph evaluation, fit-to-fill, grouped-source compound synthesis and higher-level
   edit orchestration, undo ownership, multicam playback and mixing, the owning SQLite project
@@ -907,14 +919,14 @@ For common concerns, begin at these owners:
 - Jobs, domains, clocks, handoffs, lifecycle, and liveness: `superi-concurrency`.
 - Graph-facing identifiers, node schemas, deterministic DAG state, typed binding validation,
   schema-bound instances, editable transactions, canonical graph documents, typed parameter links
-  and expressions, missing-node resolution, exact dirty regions, dependency invalidation,
-  snapshot-bound ROI propagation, deterministic request-scoped scheduling and evaluation,
-  pre-execution node introspection, graph-lineage identity and retained-value adapter, run-local timing, and
-  shared interactive and headless evaluation:
+  and expressions, missing-node resolution, exact dirty regions, dependency and semantic edit
+  invalidation, snapshot-bound ROI propagation, deterministic request-scoped scheduling and
+  evaluation, pre-execution node introspection, graph and revision lineage plus retained-value
+  adapter, run-local timing, and shared interactive and headless evaluation:
   `superi-graph`, with value identity, rational time, and pixel bounds owned by `superi-core`.
 - Complete reusable-result identity, budgeted final-frame and intermediate-node memory retention,
-  exact total, project, and device admission, priority-aware LRU eviction, and cache color identity:
-  `superi-cache`.
+  exact total, project, and device admission, priority-aware LRU eviction, precise revision-safe
+  graph edit invalidation, and cache color identity: `superi-cache`.
 - Native editorial objects, typed track semantics, exact timing and clip retiming, selection, track
   targeting, sync locks, linked selection, clip grouping, markers, deterministic metadata, exact
   snapping, and foundational insert, overwrite, append, replace, lift, and extract operations plus

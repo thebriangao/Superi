@@ -19,7 +19,7 @@ use crate::diagnostics::{
     derive_cache_status, CacheKeyStatus, EvaluationCacheKey, EvaluationDiagnostics,
     EvaluationInspection, EvaluationReport, IntrospectNode, NodeInspection, NodeTiming,
 };
-use crate::ids::EdgeId;
+use crate::ids::{EdgeId, GraphId};
 use crate::node::{CachePolicy, Determinism};
 
 const COMPONENT: &str = "superi-graph.eval";
@@ -142,22 +142,45 @@ pub enum EvaluationCacheEntryKind {
 
 /// The graph-owned identity inputs for one retained evaluator value.
 ///
-/// `graph_key` covers graph topology, node state, request scope, behavior, and upstream lineage.
-/// `evaluation_key` exposes the exact endpoint, physical time, and region so an outer cache owner
-/// can compose graph identity with media, parameter, color, and render-setting identity without
-/// moving those concerns into the graph crate.
+/// `graph_id` and `graph_revision` identify editable lineage when evaluation comes from a published
+/// snapshot. `graph_key` covers graph topology, node state, request scope, behavior, and upstream
+/// lineage. `evaluation_key` exposes the exact endpoint, physical time, and region so an outer
+/// cache owner can compose graph identity with media, parameter, color, and render-setting identity
+/// without moving those concerns into the graph crate. Direct immutable DAG evaluation has no
+/// editable revision and reports `None` conservatively.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct EvaluationCacheIdentity {
+    graph_id: GraphId,
+    graph_revision: Option<u64>,
     graph_key: EvaluationCacheKey,
     evaluation_key: EvaluationKey,
 }
 
 impl EvaluationCacheIdentity {
-    const fn new(graph_key: EvaluationCacheKey, evaluation_key: EvaluationKey) -> Self {
+    const fn new(
+        graph_id: GraphId,
+        graph_revision: Option<u64>,
+        graph_key: EvaluationCacheKey,
+        evaluation_key: EvaluationKey,
+    ) -> Self {
         Self {
+            graph_id,
+            graph_revision,
             graph_key,
             evaluation_key,
         }
+    }
+
+    /// Returns the stable graph identity that owns this retained work.
+    #[must_use]
+    pub const fn graph_id(self) -> GraphId {
+        self.graph_id
+    }
+
+    /// Returns the published editable revision, when evaluation came from one.
+    #[must_use]
+    pub const fn graph_revision(self) -> Option<u64> {
+        self.graph_revision
     }
 
     /// Returns the deterministic graph-lineage component.
@@ -492,9 +515,23 @@ impl LazyEvaluator {
         V: Clone,
         C: EvaluationValueCache<V>,
     {
+        Self::evaluate_with_cache_at_revision(graph, request, cache, None)
+    }
+
+    pub(crate) fn evaluate_with_cache_at_revision<N, V, C>(
+        graph: &DirectedAcyclicGraph<N>,
+        request: EvaluationRequest,
+        cache: &C,
+        graph_revision: Option<u64>,
+    ) -> Result<EvaluationResult<V>>
+    where
+        N: EvaluateNode<V> + IntrospectNode,
+        V: Clone,
+        C: EvaluationValueCache<V>,
+    {
         let plan = PlanBuilder::build::<V>(graph, request)?;
         let inspection = build_inspection(graph, &plan);
-        execute_plan_with_cache(graph, plan, &inspection, cache)
+        execute_plan_with_cache(graph, plan, &inspection, cache, graph_revision)
     }
 
     /// Evaluates one private plan and returns its ordinary result beside graph diagnostics.
@@ -914,18 +951,23 @@ fn execute_plan_with_cache<N, V, C>(
     plan: EvaluationPlan,
     inspection: &EvaluationInspection,
     cache: &C,
+    graph_revision: Option<u64>,
 ) -> Result<EvaluationResult<V>>
 where
     N: EvaluateNode<V>,
     V: Clone,
     C: EvaluationValueCache<V>,
 {
+    let lineage = EvaluationCacheLineage {
+        graph_id: graph.id(),
+        graph_revision,
+    };
     let target = plan.schedule.request().key();
     if let Some(cache_key) = inspection
         .node(target)
         .and_then(|node| node.cache_status().key())
     {
-        let identity = EvaluationCacheIdentity::new(cache_key, target);
+        let identity = lineage.identity(cache_key, target);
         if let Some(value) = cache.get(EvaluationCacheEntryKind::FinalFrame, identity) {
             return Ok(EvaluationResult {
                 request: plan.schedule.request(),
@@ -936,17 +978,23 @@ where
         }
     }
 
-    let mut required = BTreeSet::new();
-    let mut retained = BTreeMap::new();
+    let mut selection = RequiredWorkSelection {
+        required: BTreeSet::new(),
+        retained: BTreeMap::new(),
+    };
     select_required_work(
         target,
         target,
         &plan.work,
         inspection,
         cache,
-        &mut required,
-        &mut retained,
+        lineage,
+        &mut selection,
     );
+    let RequiredWorkSelection {
+        required,
+        mut retained,
+    } = selection;
 
     let EvaluationPlan { schedule, work } = plan;
     let mut evaluated: Vec<EvaluatedValue<V>> = Vec::with_capacity(required.len() + retained.len());
@@ -1001,11 +1049,7 @@ where
                     } else {
                         EvaluationCacheEntryKind::IntermediateNode
                     };
-                    cache.insert(
-                        kind,
-                        EvaluationCacheIdentity::new(cache_key, *key),
-                        value.clone(),
-                    );
+                    cache.insert(kind, lineage.identity(cache_key, *key), value.clone());
                 }
                 value
             } else {
@@ -1027,18 +1071,44 @@ where
     })
 }
 
+#[derive(Clone, Copy)]
+struct EvaluationCacheLineage {
+    graph_id: GraphId,
+    graph_revision: Option<u64>,
+}
+
+impl EvaluationCacheLineage {
+    const fn identity(
+        self,
+        graph_key: EvaluationCacheKey,
+        evaluation_key: EvaluationKey,
+    ) -> EvaluationCacheIdentity {
+        EvaluationCacheIdentity::new(
+            self.graph_id,
+            self.graph_revision,
+            graph_key,
+            evaluation_key,
+        )
+    }
+}
+
+struct RequiredWorkSelection<V> {
+    required: BTreeSet<EvaluationKey>,
+    retained: BTreeMap<EvaluationKey, V>,
+}
+
 fn select_required_work<V, C>(
     key: EvaluationKey,
     target: EvaluationKey,
     work: &BTreeMap<EvaluationKey, PlannedWork>,
     inspection: &EvaluationInspection,
     cache: &C,
-    required: &mut BTreeSet<EvaluationKey>,
-    retained: &mut BTreeMap<EvaluationKey, V>,
+    lineage: EvaluationCacheLineage,
+    selection: &mut RequiredWorkSelection<V>,
 ) where
     C: EvaluationValueCache<V>,
 {
-    if required.contains(&key) || retained.contains_key(&key) {
+    if selection.required.contains(&key) || selection.retained.contains_key(&key) {
         return;
     }
 
@@ -1047,9 +1117,9 @@ fn select_required_work<V, C>(
             .node(key)
             .and_then(|node| node.cache_status().key())
         {
-            let identity = EvaluationCacheIdentity::new(cache_key, key);
+            let identity = lineage.identity(cache_key, key);
             if let Some(value) = cache.get(EvaluationCacheEntryKind::IntermediateNode, identity) {
-                retained.insert(key, value);
+                selection.retained.insert(key, value);
                 return;
             }
         }
@@ -1065,11 +1135,11 @@ fn select_required_work<V, C>(
             work,
             inspection,
             cache,
-            required,
-            retained,
+            lineage,
+            selection,
         );
     }
-    required.insert(key);
+    selection.required.insert(key);
 }
 
 fn diagnostic_context(node: &NodeInspection, elapsed: std::time::Duration) -> ErrorContext {

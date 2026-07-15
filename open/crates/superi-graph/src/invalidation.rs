@@ -10,7 +10,9 @@ use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Res
 use superi_core::geometry::PixelBounds;
 
 use crate::dag::{DirectedAcyclicGraph, GraphEdge};
-use crate::ids::NodeId;
+use crate::expr::ParameterAddress;
+use crate::ids::{GraphId, NodeId};
+use crate::mutate::{EditableNode, GraphSnapshot};
 
 const COMPONENT: &str = "superi-graph.invalidation";
 
@@ -228,6 +230,270 @@ impl InvalidationPlan {
         self.dirty_regions(node_id)
             .map_or_else(DirtyRegionSet::empty, |dirty| dirty.clip_to(requested))
     }
+}
+
+/// Deterministic cache lineage affected by one published graph edit interval.
+///
+/// Roots identify direct semantic changes. Affected nodes include those roots plus every result
+/// descendant reached in either the prior or current topology. Node identities are sorted so a
+/// coalesced edit interval remains inspectable even when the two revisions have different
+/// topological orders.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GraphEditInvalidation {
+    graph_id: GraphId,
+    from_revision: u64,
+    to_revision: u64,
+    roots: Vec<NodeId>,
+    affected_nodes: Vec<NodeId>,
+}
+
+impl GraphEditInvalidation {
+    /// Returns the graph whose retained values are affected.
+    #[must_use]
+    pub const fn graph_id(&self) -> GraphId {
+        self.graph_id
+    }
+
+    /// Returns the oldest compared editable revision.
+    #[must_use]
+    pub const fn from_revision(&self) -> u64 {
+        self.from_revision
+    }
+
+    /// Returns the newly published editable revision.
+    #[must_use]
+    pub const fn to_revision(&self) -> u64 {
+        self.to_revision
+    }
+
+    /// Returns direct semantic edit roots in stable node identity order.
+    #[must_use]
+    pub fn roots(&self) -> &[NodeId] {
+        &self.roots
+    }
+
+    /// Returns all affected cache-lineage nodes in stable identity order.
+    #[must_use]
+    pub fn affected_nodes(&self) -> &[NodeId] {
+        &self.affected_nodes
+    }
+
+    /// Returns whether one node has affected retained output.
+    #[must_use]
+    pub fn affects(&self, node_id: NodeId) -> bool {
+        self.affected_nodes.binary_search(&node_id).is_ok()
+    }
+
+    /// Returns whether the revisions differ only in presentation or not at all.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.affected_nodes.is_empty()
+    }
+}
+
+/// Derives precise cache invalidation from two immutable editable graph revisions.
+///
+/// Equal snapshots are valid and produce no work. A later revision may skip intermediate
+/// publications, allowing an orchestration owner to coalesce rapid edits into one semantic diff.
+/// Presentation order is excluded because it does not affect processing meaning. Parameter edits
+/// expand through both revisions' driver dependency graphs, and node roots propagate through both
+/// pixel-flow topologies so connection removal and node removal cannot hide old descendants.
+pub fn derive_edit_invalidation<T: PartialEq>(
+    before: &GraphSnapshot<T>,
+    after: &GraphSnapshot<T>,
+) -> Result<GraphEditInvalidation> {
+    if before.graph_id() != after.graph_id() {
+        return Err(edit_pair_error(
+            before,
+            after,
+            ErrorCategory::InvalidInput,
+            "graph_identity_mismatch",
+            "graph edit invalidation requires one stable graph identity",
+        ));
+    }
+    if after.revision() < before.revision() {
+        return Err(edit_pair_error(
+            before,
+            after,
+            ErrorCategory::Conflict,
+            "revision_reversed",
+            "graph edit invalidation revisions are reversed",
+        ));
+    }
+    if after.revision() == before.revision() {
+        if before == after {
+            return Ok(GraphEditInvalidation {
+                graph_id: before.graph_id(),
+                from_revision: before.revision(),
+                to_revision: after.revision(),
+                roots: Vec::new(),
+                affected_nodes: Vec::new(),
+            });
+        }
+        return Err(edit_pair_error(
+            before,
+            after,
+            ErrorCategory::Conflict,
+            "revision_not_advanced",
+            "different graph states cannot share one editable revision",
+        ));
+    }
+
+    let mut roots = BTreeSet::new();
+    let mut changed_parameters = BTreeSet::new();
+    let node_ids = before
+        .dag()
+        .nodes()
+        .keys()
+        .chain(after.dag().nodes().keys())
+        .copied()
+        .collect::<BTreeSet<_>>();
+
+    for node_id in node_ids {
+        match (before.node(node_id), after.node(node_id)) {
+            (Some(previous), Some(current)) => {
+                collect_changed_node_state(
+                    node_id,
+                    previous,
+                    current,
+                    &mut roots,
+                    &mut changed_parameters,
+                );
+            }
+            (Some(node), None) | (None, Some(node)) => {
+                roots.insert(node_id);
+                changed_parameters.extend(
+                    node.parameters()
+                        .keys()
+                        .map(|parameter_id| ParameterAddress::new(node_id, *parameter_id)),
+                );
+            }
+            (None, None) => unreachable!("node identity came from one compared graph"),
+        }
+    }
+
+    let edge_ids = before
+        .dag()
+        .edges()
+        .keys()
+        .chain(after.dag().edges().keys())
+        .copied()
+        .collect::<BTreeSet<_>>();
+    for edge_id in edge_ids {
+        let previous = before.dag().edge(edge_id);
+        let current = after.dag().edge(edge_id);
+        if previous == current {
+            continue;
+        }
+        if let Some(edge) = previous {
+            roots.insert(edge.destination().node_id());
+        }
+        if let Some(edge) = current {
+            roots.insert(edge.destination().node_id());
+        }
+    }
+
+    let driver_targets = before
+        .parameter_drivers()
+        .keys()
+        .chain(after.parameter_drivers().keys())
+        .copied()
+        .collect::<BTreeSet<_>>();
+    for target in driver_targets {
+        if before.parameter_driver(target) != after.parameter_driver(target) {
+            roots.insert(target.node_id());
+            changed_parameters.insert(target);
+        }
+    }
+
+    let mut driver_dependents: BTreeMap<ParameterAddress, BTreeSet<ParameterAddress>> =
+        BTreeMap::new();
+    for snapshot in [before, after] {
+        for (target, driver) in snapshot.parameter_drivers() {
+            for dependency in driver.dependencies() {
+                driver_dependents
+                    .entry(dependency.address())
+                    .or_default()
+                    .insert(*target);
+            }
+        }
+    }
+
+    let mut pending_parameters = changed_parameters;
+    let mut visited_parameters = BTreeSet::new();
+    while let Some(address) = pending_parameters.pop_first() {
+        if !visited_parameters.insert(address) {
+            continue;
+        }
+        roots.insert(address.node_id());
+        if let Some(dependents) = driver_dependents.get(&address) {
+            pending_parameters.extend(dependents.iter().copied());
+        }
+    }
+
+    let mut affected_nodes = roots.clone();
+    for graph in [before.dag(), after.dag()] {
+        let seeds = roots
+            .iter()
+            .filter(|node_id| graph.node(**node_id).is_some())
+            .map(|node_id| InvalidationSeed::from_region(*node_id, DirtyRegion::FullFrame));
+        let propagated = propagate_dependency_invalidation(graph, seeds)?;
+        affected_nodes.extend(propagated.nodes().iter().map(InvalidatedNode::node_id));
+    }
+
+    Ok(GraphEditInvalidation {
+        graph_id: before.graph_id(),
+        from_revision: before.revision(),
+        to_revision: after.revision(),
+        roots: roots.into_iter().collect(),
+        affected_nodes: affected_nodes.into_iter().collect(),
+    })
+}
+
+fn collect_changed_node_state<T: PartialEq>(
+    node_id: NodeId,
+    previous: &EditableNode<T>,
+    current: &EditableNode<T>,
+    roots: &mut BTreeSet<NodeId>,
+    changed_parameters: &mut BTreeSet<ParameterAddress>,
+) {
+    let structure_changed = previous.schema() != current.schema()
+        || previous.inputs() != current.inputs()
+        || previous.outputs() != current.outputs();
+    if structure_changed {
+        roots.insert(node_id);
+    }
+
+    let parameter_ids = previous
+        .parameters()
+        .keys()
+        .chain(current.parameters().keys())
+        .copied()
+        .collect::<BTreeSet<_>>();
+    for parameter_id in parameter_ids {
+        if structure_changed || previous.parameter(parameter_id) != current.parameter(parameter_id)
+        {
+            roots.insert(node_id);
+            changed_parameters.insert(ParameterAddress::new(node_id, parameter_id));
+        }
+    }
+}
+
+fn edit_pair_error<T>(
+    before: &GraphSnapshot<T>,
+    after: &GraphSnapshot<T>,
+    category: ErrorCategory,
+    reason: &'static str,
+    message: &'static str,
+) -> Error {
+    Error::new(category, Recoverability::UserCorrectable, message).with_context(
+        ErrorContext::new(COMPONENT, "derive_edit_invalidation")
+            .with_field("before_graph_id", before.graph_id().to_string())
+            .with_field("after_graph_id", after.graph_id().to_string())
+            .with_field("before_revision", before.revision().to_string())
+            .with_field("after_revision", after.revision().to_string())
+            .with_field("reason", reason),
+    )
 }
 
 /// Propagates dirty regions through dependencies that share one coordinate space.

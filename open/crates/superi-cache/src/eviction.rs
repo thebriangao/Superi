@@ -776,6 +776,26 @@ impl<K: Copy + Ord, V> LruMap<K, V> {
         self.entries.remove(key).map(|entry| entry.value)
     }
 
+    pub(crate) fn remove_where(
+        &mut self,
+        mut predicate: impl FnMut(&K, &V) -> bool,
+    ) -> Vec<(K, V)> {
+        let keys = self
+            .entries
+            .iter()
+            .filter_map(|(key, entry)| predicate(key, &entry.value).then_some(*key))
+            .collect::<Vec<_>>();
+        keys.into_iter()
+            .map(|key| {
+                let entry = self
+                    .entries
+                    .remove(&key)
+                    .expect("selected cache entry remains retained");
+                (key, entry.value)
+            })
+            .collect()
+    }
+
     pub(crate) fn evict_lru(&mut self, maximum: usize) -> Vec<(K, V)> {
         self.evict_lru_where(maximum, |_| true)
     }
