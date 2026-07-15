@@ -365,14 +365,17 @@ through `HandoffSender` while retaining the payload and resolved presentation re
 backpressure. `superi-engine::lifecycle` composes
 `LifecycleCoordinator` as one engine participant, keeps authoritative state in `DomainOwned` on
 EngineControl, publishes every committed transition through `SnapshotPublisher`, and exposes the
-coordinator's lock-free `LifecycleSignal` to latency-sensitive consumers. The broader downstream
+coordinator's lock-free `LifecycleSignal` to latency-sensitive consumers. Engine render-export is
+the first concrete workflow to require the resulting revision-scoped export permit both before
+codec creation and immediately before artifact publication, so rendering or export degradation and
+recovery cannot be bypassed by a long-running transaction. The broader downstream
 crate graph is not evidence that other transitive crates call these runtime surfaces.
 The concurrency integration-test files, cache render contract, audio graph contract, engine
-substitution contract, engine playback contracts, and engine lifecycle contract exercise the public
-crate paths directly. No public API crate currently reexports these types. Engine composes lifecycle
-and foreground playback separately. Foreground playback now consumes A/V drift decisions with the
-actual audio clock, graph result, and viewport handoff, but lifecycle does not yet own that flow and
-no end-to-end runtime composes it with liveness or native GPU submission.
+substitution contract, engine playback contracts, engine render-export contract, and engine lifecycle
+contract exercise the public crate paths directly. No public API crate currently reexports these
+types. Engine composes lifecycle with export admission, while foreground playback consumes A/V drift
+decisions with the actual audio clock, graph result, and viewport handoff. Lifecycle does not yet own
+that foreground flow, and no end-to-end runtime composes it with liveness or native GPU submission.
 
 ## Invariants and operational boundaries
 
@@ -480,7 +483,9 @@ incomplete:
   playback owners through those actions. Foreground engine playback now composes A/V hold,
   correction, eligible dropping, starvation protection, and rebase decisions with its actual clock
   and viewport. Decoded-sample scheduling, prepared audio graph execution, GPU submission, and
-  liveness are not yet composed into one application flow.
+  liveness are not yet composed into one application flow. Render-export enforces its current permit
+  at transaction admission and publication, but lifecycle still does not acquire codecs or drive the
+  prepared resource and foreground playback owners through subsystem actions.
 - Dependency tracking is passive. The worker pool does not delay a job until prerequisites are
   ready, propagate terminal states, create `DependencyFailed`, or detect cycles across submitted
   jobs. Callers must provide all of that orchestration.

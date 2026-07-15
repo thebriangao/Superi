@@ -2,8 +2,8 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: ce2793c589d38376e2122797d653d05391edee5f55726eb5c34817e36b15313d
-source_files: 36
+source_hash: 3abe94019455e155d14ef00252bf50a0086f008bf8a7cf50388ccac5514112b4
+source_files: 37
 mapped_at_commit: working-tree
 ---
 
@@ -15,9 +15,11 @@ and decoder preparation, capability introspection, CPU-decoded frame upload, exa
 export color metadata branching, derived-media generation, transparent proxy resolution,
 predictive cache population, foreground graph and display-color execution, bounded audio admission,
 audio-master A/V coordination with bounded video correction and discontinuity recovery, monotonic
-clock fallback, lossless viewport handoff, deterministic subsystem lifecycle, and atomic timeline
-plus clip-mix edits. Full transport queue policy, native GPU presentation, export muxing, broad
-transactions, plugins, nodes, and validation remain incomplete.
+clock fallback, lossless viewport handoff, coherent decode, graph,
+delivery-color, audio, and elementary-stream export execution, deterministic subsystem lifecycle,
+and atomic timeline plus clip-mix edits. Full transport policy, native GPU presentation, export
+muxing and publication, broad transactions, plugins, nodes, and validation
+remain incomplete.
 
 The command path is a bounded reference owner for contract conformance. It does not claim to replace
 the production project, timeline, graph, media, color, render, or muxing owners.
@@ -41,7 +43,10 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   nonblocking lifecycle to end of stream, hashes complete packet semantics, and publishes only a
   complete proxy or optimized-media payload through `superi-cache`.
 - `open/crates/superi-engine/src/error.rs`: Placeholder for cross-subsystem recovery.
-- `open/crates/superi-engine/src/export_queue.rs`: Placeholder for render and export queues.
+- `open/crates/superi-engine/src/export_queue.rs`: Implements lifecycle-admitted render and export
+  transactions through prepared source reads, decode, shared immutable graph evaluation, explicit
+  delivery color and audio stages, one-shot registry encoder selection, complete codec draining,
+  exact semantic validation, elementary packet publication, and reset-based recovery.
 - `open/crates/superi-engine/src/frame_upload.rs`: Implements the media-I/O-to-GPU upload boundary
   for CPU-addressable decoded video and retains the frame's complete color pipeline beside the GPU owner.
 - `open/crates/superi-engine/src/introspection.rs`: Implements deterministic API-neutral backend and
@@ -108,6 +113,10 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   frame, graph, cache, color, audio, clock, worker, and viewport path across normal playback,
   early waiting, late correction, discontinuity recovery, backpressure without duplicate sync
   decisions, invalid scene degradation, cache reuse, and clock recovery.
+- `open/crates/superi-engine/tests/render_export_orchestration_contract.rs`: Proves coherent paired
+  video and audio export, deterministic fallback evidence, no exception retry, lifecycle degradation,
+  partial-source recovery, encoder and terminal-delivery color agreement, exact WAVE PCM completion,
+  and rejection of real VP9 timing drift after complete WebM AV1 decode and shared graph evaluation.
 - `open/crates/superi-engine/tests/scenario_contract.rs`: Exact canonical state, atomicity, bounds,
   operation log, and reversal proof.
 - `open/crates/superi-engine/tests/vendor_codec_registry_contract.rs`: Explicit vendor registry
@@ -155,6 +164,16 @@ to a generated packet adapter or the lazily opened original source.
 master and either the engine policy or a caller-supplied validated policy. It exposes clock mode,
 policy, scheduler statistics, exact clock reads, monotonic fallback, audio-master restoration, and
 one nonblocking coordination call that applies discontinuity rebases through the concrete clock.
+
+`export_queue` exposes exact route and request values, backend-selection evidence, video and audio
+input provenance, complete elementary packet streams, and one immutable render-export artifact. Its
+`ExportMediaSession` production implementation consumes an `AcquiredMediaSource` directly.
+`SharedExportDecodedFrame` and `HeadlessGraphVideoRenderer` bind each decoded frame to the ordinary
+immutable graph evaluator without copying pixel storage, while `ExportVideoDelivery<V>` and
+`ExportAudioGraph` keep delivery color and prepared audio processing with their subsystem owners.
+`render_and_export` admits one video and or one audio route, selects each encoder once, drives every
+source, decoder, graph, delivery, audio, and encoder stage to completion, and publishes only complete
+validated elementary streams. It does not expose a muxed container or persistence result.
 
 `playback` exposes the `PlaybackPrefetchEvaluator` seam, concrete
 `GraphPlaybackPrefetchEvaluator`, playback-owned `PlaybackPrefetcher`, and structured prediction
@@ -218,9 +237,10 @@ allocation lifetime. It rejects GPU and external storage with a classified degra
 
 The color metadata integration path preserves source tags and ordered transforms through media,
 graph, timeline, and cache wrappers, then derives independent display and delivery branches. Each
-branch validates its terminal stage kind and leaves the cached scene state unchanged. No production
-path yet executes those transforms, connects uploaded textures to graph evaluation, monitors a
-viewport, or encodes an export.
+branch validates its terminal stage kind and leaves the cached scene state unchanged. Foreground
+playback executes one CPU display transform, while render-export orchestration invokes a caller-owned
+delivery transform and validates its complete output color and alpha meaning. Native GPU graph
+binding, viewport presentation, and export readback remain absent.
 
 ### Subsystem lifecycle and coherent work admission
 
@@ -268,8 +288,9 @@ backend IDs, fallback candidates, fallback-use state, container confidence, and 
 The graph compilation, all opened sources, and all live decoders remain local until a final
 cancellation check. An open or decoder factory error returns directly and never retries through
 fallback candidates. The returned `TimelineResources` is therefore one shared preparation boundary
-for later playback, render, and export orchestration without implementing those consumers or
-copying graph, time, pixel, metadata, alpha, source, or decoder meanings.
+for later playback, render, and export orchestration without copying graph, time, pixel, metadata,
+alpha, source, or decoder meanings. Render-export now consumes an acquired media owner from this
+bundle, while playback source binding and direct use of its compiled graph remain later work.
 
 ### Derived-media generation
 
@@ -367,6 +388,35 @@ correction, rebase, or scheduler statistic. Invalid graph or color output is not
 that request, and permits later recovery. Explicit audio loss and restoration switch the concrete
 clock source while preserving the current timeline position and the existing scheduler owner.
 
+### Render and export orchestration
+
+The caller supplies a revision-scoped lifecycle permit, exact source seek position, up to one video
+and one audio route, one prepared `ExportMediaSession`, the immutable backend registry, required
+graph, delivery, and audio stage owners, and an export-priority operation context. The production
+session adapter operates directly on `AcquiredMediaSource`, so timeline resource preparation and
+export share the same source, decoder, identity, and registry contracts.
+
+Each route validates source kind and complete encoder representation before selecting one encoder
+factory through normal registry ranking. Registered fallback is policy controlled and retained as
+evidence, never used as an exception retry. The transaction resets decoders and encoders, seeks
+exactly, rejects partial source reads, routes packets, drains decode outputs before and after flush,
+processes video through the shared headless graph plus delivery seam or audio through its graph seam,
+drains encoders before and after flush, and requires end of stream from every codec.
+
+Decoded video is bound through one shared owner slot to the existing `PlaybackSceneFrame<V>` graph
+value. Graph output must preserve exact timing, source provenance, nonterminal color history, alpha
+meaning, and graph revision. Delivery must preserve timing and metadata, match the encoder format,
+append a coherent terminal output-color history, and give the encoder that terminal color
+interpretation. Audio must preserve exact sample timing,
+metadata, graph identity, format, sample precision, and channel layout.
+
+Each packet must retain nonempty data, configured stream and timebase, required input metadata, and
+timing whose normalized exact interval union equals the submitted input union. Only after all routes
+validate, completed state is reset, the caller remains uncancelled, and a fresh lifecycle snapshot
+accepts the original permit does the engine return `RenderExportArtifact`. Any transaction failure
+uses a fresh export context to reset all created encoders and selected decoders. Output remains
+complete elementary packet streams in memory, not a muxed or persisted container.
+
 ### Editorial audio intent
 
 The engine applies a timeline edit batch to a cloned project, reads its typed fragment, inserted,
@@ -384,7 +434,8 @@ audio mutation, so their user intent remains attached without synthesis.
 - `sha2` supplies bounded fixture payload identity and complete packet-content fingerprinting.
 - `superi-media-io`, `superi-gpu`, and `superi-codecs-rs` support source and codec registry assembly,
   content probing, source and decoder preparation, declaration, upload, codec-neutral derived
-  generation, and the common proxy or original source interface.
+  generation, the common proxy or original source interface, and complete render-export source,
+  decoder, encoder, packet, timing, metadata, and operation lifecycles.
 - Platform and vendor codec crates are feature-gated.
 - Cache now supplies color metadata, media-neutral derived publication, bounded playback prediction,
   budgeted scene retention, and an owned host evaluator adapter. Graph supplies the immutable
@@ -393,9 +444,12 @@ audio mutation, so their user intent remains attached without synthesis.
   playback ownership, worker priority, nonblocking completion, the playback clock, A/V drift
   measurement and scheduling policy, bounded handoffs, the shared lifecycle coordinator and
   signal, EngineControl ownership, and immutable snapshot publication.
-  Media I/O supplies exact decoded frame semantics, image supplies color and scene artifacts, color
-  supplies CPU display execution, and audio supplies the bounded producer and actual presentation
-  clock. Timeline and audio are also jointly consumed by the clip-mix edit transaction. Effects
+  Media I/O supplies exact decoded frame and audio block semantics, image supplies color and scene
+  artifacts, color supplies CPU display execution, and audio supplies the prepared graph identity,
+  bounded producer, and actual presentation clock. Export reuses the graph snapshot and playback
+  scene envelope, invokes explicit delivery and audio processing seams, and validates all returned
+  semantics before encoding. Timeline and audio are also jointly consumed by the clip-mix edit
+  transaction. Effects
   supplies the safe
   `IsolatedOfxAdapter` contract, typed requests, graph projection, and plugin lifecycle state that a
   future engine worker supervisor can consume, but engine implements no adapter, native discovery,
@@ -466,6 +520,18 @@ audio mutation, so their user intent remains attached without synthesis.
   resolved presentation for retry without another scheduler observation.
 - Audio admission is all-or-nothing and A/V coordination never changes audio samples or the
   callback-owned clock counter.
+- Export admits no more than one video and one audio route, requires an export-priority operation and
+  a current export permit at admission and publication, and never retries a different encoder after
+  registry selection.
+- Export rejects partial source reads, wrong decoded kinds, incomplete codec drains, timing or
+  metadata drift, format or precision drift, incoherent graph, color, alpha, or audio provenance,
+  and any nonempty packet stream whose normalized exact interval union differs from its inputs.
+- Export artifacts publish only after all decoders and encoders reach end of stream and completed
+  state resets successfully. Failure recovery uses a fresh operation context to reset each created
+  encoder and selected decoder, but cannot publish a partial result.
+- Export results are in-memory elementary packet streams with explicit selection and input evidence.
+  Container muxing, file publication, progress streaming, arbitrary stream counts, and native GPU
+  readback are separate owners.
 - GPU ownership and pool lifetime remain tied to the originating device.
 - Timeline and clip-mix publication is all-or-nothing across both expected revisions and typed edit
   outcomes. It does not imply a general whole-engine transaction owner.
@@ -481,7 +547,8 @@ audio mutation, so their user intent remains attached without synthesis.
   orderly teardown and a fresh lifetime complete.
 - Successful recovery clears the subsystem's active failure and restores admission without erasing
   the latest reported failure evidence from the current lifetime snapshot.
-- Placeholder modules do not imply whole-engine transport or render/export execution behavior.
+- Remaining placeholder modules do not imply whole-engine transport, node registration,
+  plugin supervision, or validation behavior.
 
 ## Tests and verification
 
@@ -540,6 +607,16 @@ audio saturation, lossless viewport retry without a duplicate scheduler observat
 rejection without cache poisoning, a greater-than-ten-second discontinuity recovery, later frame
 recovery, and continuity across audio-clock loss and restoration.
 
+The render-export integration contract constructs a paired decoded video and audio session, binds
+video through the real immutable graph snapshot and shared playback scene envelope, invokes explicit
+delivery and audio stages, selects registered encoders, drains every lifecycle, and proves exact
+timing, metadata, precision, color, alpha, graph, and audio provenance. It proves fallback policy,
+selected-factory failure without retry, stale lifecycle denial, rendering degradation, partial-read
+recovery, and later fresh success. Production lanes open and decode the canonical WebM and WAVE
+fixtures: WAVE PCM completes through the in-tree decoder and encoder with all 4,410 samples, while
+the WebM AV1 path evaluates all 96 frames and rejects libvpx VP9 duration rounding before artifact
+publication.
+
 The audio editorial contract drives a real `superi-timeline` razor operation through the combined
 engine transaction. It proves exact source and record subdivision, retained and new identities,
 group, link, and sync-lock inheritance, complete clip mix inheritance, and unchanged caller state
@@ -560,20 +637,23 @@ implementation identity is disclosed as such. It validates fixture bytes without
 container or decoding frames. Timeline and graph state are exact control models but do not use the
 production timeline owner or the generic `superi-graph` DAG store.
 
-Five orchestration files remain documentation-only placeholders. Source registration and timeline
-media preparation, deterministic lifecycle, and foreground playback are coherent and test-backed,
-but there is no transport controller, decoded-audio graph renderer, persistent cache lifecycle
-owner, native GPU viewport submission, encoder-to-mux path, project persistence, native plugin
-discovery, isolated OpenFX adapter implementation, worker transport, or real-condition validator.
+Four orchestration files remain documentation-only placeholders. Source registration, timeline
+media preparation, deterministic lifecycle, foreground playback, and render-export execution are
+coherent and test-backed, but there is no transport controller, timeline-owned decoded-audio graph
+renderer, persistent cache lifecycle owner, native GPU viewport or export submission, packet muxer,
+output publisher, project persistence, native plugin discovery, isolated OpenFX adapter
+implementation, worker transport, or real-condition validator.
 The effects-side
 OpenFX host contract is substantive, but `plugins.rs` remains the production supervisor placeholder.
 Playback prediction and foreground orchestration are substantive, but they accept caller-prepared
 graph, audio, cache, and viewport owners and are not a full transport, proxy selector, source
 session binder, queue-based frame-drop owner, or native presentation path. Engine A/V coordination
 now consumes the shared scheduler and actual audio clock, but physical A/V latency and drift remain
-hardware-lane evidence. `TimelineResources` prepares the reachable sources, decoders, and graph but
-does not schedule packets, evaluate frames, or write outputs. The derived-media driver and resolver
-are synchronous and caller-owned, and no application, export queue, or API path invokes them yet.
+hardware-lane evidence. `TimelineResources` prepares the reachable sources, decoders, and graph, and
+its acquired media owner now has a real export consumer.
+Export still requires caller-supplied graph, delivery, and audio stage owners and returns elementary
+streams without muxing or persistence. The derived-media driver and resolver are synchronous and
+caller-owned, and no application or API path invokes them yet.
 Clip-mix reconciliation is substantive but currently entered by Rust callers rather than the public
 API or playback controller. Lifecycle is a production control-plane contract, but later transport,
 render, export, resource-arbitration, and error owners still must perform concrete subsystem actions
@@ -600,6 +680,11 @@ color, and alpha before retention, preserve immutable media timing through live 
 one resolved presentation across viewport backpressure, require explicit readiness before dropping,
 apply discontinuity rebases only through the concrete clock, and preserve timeline position when
 changing clock sources.
+Keep export selection one-shot, route source and output identities separately, drain every decoder
+and encoder through end of stream, retain exact input and packet evidence, validate interval unions
+with rational time, and reset failure state through a fresh operation context without publishing
+partial output. Add muxing or persistence only through an explicit owner after elementary streams
+have passed the current completion checks.
 Remove a placeholder label only after substantive behavior and consumer proof exist.
 When implementing `plugins.rs`, consume `superi_effects::ofx::IsolatedOfxAdapter` and preserve its
 worker-process, bounded-message, deadline, permission, restart, and quarantine guarantees rather

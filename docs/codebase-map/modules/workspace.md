@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 42300dd817cf58ba906a2a8924403a950ae395df6b0475329b21ab7d16f8cf71
-source_files: 139
+source_hash: 5a223963fd4be1722413aa38c511e94568ea62aad71fb045acadae220fff24c8
+source_files: 140
 mapped_at_commit: working-tree
 ---
 
@@ -294,6 +294,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   coordination over the actual audio clock, explicit nonblocking hold, correction, protected and
   eligible-drop behavior, applied discontinuity recovery, immutable media timing, foreground
   playback integration, research basis, deterministic proof, and physical-lane limitations.
+- `docs/checkpoints/P2.W06.C005.md`: Durable implementation evidence for coherent prepared-source
+  render and export orchestration through decode, immutable graph evaluation, delivery color, audio
+  processing, deterministic encoder selection, complete elementary packet validation, lifecycle
+  degradation, reset recovery, exact PCM completion, and rejected VP9 timing drift.
 - `docs/checkpoints/P2.W04.C010.md`: Durable implementation evidence for production input-device
   discovery, atomic record arming and monitoring, bounded exact-timestamp capture, and the real
   monitoring bridge into existing output playback.
@@ -920,6 +924,11 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   corrections, protected and eligible drops, applied rebases, exact timing preservation,
   backpressure without duplicate decisions, and continuous clock recovery. This deterministic
   evidence does not replace the platform matrix's physical audio, performance, or soak lanes.
+- `docs/checkpoints/P2.W06.C005.md` records the engine transaction from prepared source reads through
+  decode, shared graph evaluation, delivery and audio stages, deterministic encode, strict semantic
+  validation, and complete elementary stream publication. Its contract covers normal, degraded, and
+  recovery behavior, real acquired WebM and WAVE paths, exact PCM completion, and rejection of VP9
+  duration drift without claiming muxing, persistence, native GPU readback, or public API control.
 
 - The focused effects preset contract verifies the runtime JSON and SHA-256 edges through canonical
   current documents, legacy migration, integrity rejection, and exact graph reload. Crate-wide
@@ -1054,7 +1063,7 @@ canonical integrity-protected documents, while atomic project persistence, produ
 binding, and engine integration remain incomplete. The effects-side isolated OpenFX contract is implemented, but
 native bundle discovery, worker transport, and production plugin binding remain outside that crate.
 The synchronized remote revision before this checkpoint is
-`38543db1006c164abad03d189817aa7174779bb8`.
+`f35aa144656cc0c51dd83d4549410b435e0d5fd4`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
 root README, deny policy, and structure guide with license-audit CI. Commit
 `e0b3af9f099f527a8544d1b0317896640969903b` added the executable dependency-policy contract and its
@@ -1096,7 +1105,17 @@ time. Plugin hosting and decoded-sample binding remain absent. Production device
 sample-accurate scheduling are implemented in the same audio crate, and engine foreground playback
 now feeds its bounded producer and coordinates video from its actual presentation clock with
 explicit hold, correction, drop, rebase, and recovery evidence. No engine owner yet renders prepared
-timeline audio through routing, effects, resampling, and device delivery.
+timeline audio through routing, effects, resampling, and device delivery. Engine render-export invokes
+an explicit audio stage and completes a real acquired PCM decode and encode path, but no engine owner
+yet binds decoded or scheduled timeline audio into the actual prepared graph, routing, effects,
+resampling, and device delivery path.
+
+Engine render-export now consumes an acquired media owner through exact seek, complete packet reads,
+decode drain and flush, immutable graph evaluation, caller-owned delivery color or audio processing,
+one-shot encoder selection, encode drain and flush, exact provenance and packet validation, and
+fresh-context reset recovery. It returns complete in-memory elementary packet streams only after a
+current lifecycle permit is rechecked. Container muxing and publication, arbitrary stream counts,
+transport, native GPU readback, and application or public API integration remain separate gaps.
 
 The effects crate now provides a substantive graph-native authoring SDK. It composes canonical graph
 schemas, editable nodes, deterministic registry snapshots, and snapshot-bound compiler translation,
@@ -1197,7 +1216,7 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`f35aa14` when the map was refreshed. Its hash describes the exact 139 discovered source files,
+`4b7de1f` when the map was refreshed. Its hash describes the exact 140 discovered source files,
 including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes

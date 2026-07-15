@@ -22,8 +22,10 @@ Implemented ownership is narrower than the full color architecture described by
 conversion, working-space storage, LUTs, ICC validation and discovery, and stale-profile
 presentation checks are implemented. A managed GPU wide-gamut transform is implemented for
 canonical `Rgba16Float` textures. Engine foreground playback now consumes the CPU output transform
-for an explicit display branch; executable ICC evaluation, native GPU display conversion, export,
-and shell integration remain absent.
+for an explicit display branch. Engine render-export now invokes a separate caller-owned delivery
+stage and validates its color history, but no concrete export transform in this crate is wired.
+Executable ICC evaluation, native GPU display conversion, concrete export conversion, and shell
+integration remain absent.
 
 The crate owns color interpretation, transform policy, and explicit legal-range RGB normalization,
 but it does not own YUV matrix conversion, media decoding, image storage primitives, GPU device
@@ -285,7 +287,10 @@ node catalogs or orchestration must consume both from above.
 `CpuPlaybackDisplayTransform` binds one exact nonterminal scene pipeline and display stage to
 `OutputColorTransform`, executes the transform on a playback-priority worker, and publishes the
 result with `ViewportColorMetadata` through a bounded handoff. Native surface submission, ICC
-evaluation, GPU output conversion, export, and shell display remain unwired. The crate's own public
+evaluation, GPU output conversion, export, and shell display remain unwired. Engine
+`export_queue` owns a generic `ExportVideoDelivery<V>` seam and validates the returned terminal
+output pipeline, scene continuity, format, and alpha meaning, but it does not import or execute a
+`superi-color` transform. The crate's own public
 integration contracts, including the canonical repository color fixture, remain the direct color
 algorithm proofs. The fixture contract reads versioned artifacts directly and does not add a
 runtime dependency on the repository fixture generator.
@@ -377,9 +382,11 @@ The ten integration suites cover the implemented CPU and presentation-state cont
   transactional catalog state, stale monitor tokens, shell-provided native IDs, audit inventory,
   and macOS discovery when a display server is available.
 
-The engine playback contract now constructs decoded provenance, a canonical working image, one CPU
-display transform, and a bounded viewport payload. There is still no end-to-end source import,
-project-configured look, ICC evaluation, native GPU viewport presentation, or export test.
+The engine playback contract constructs decoded provenance, a canonical working image, one CPU
+display transform, and a bounded viewport payload. The engine render-export contract separately
+proves delivery-pipeline and alpha validation through a caller-owned test stage, but it does not
+exercise this crate's output transform. There is still no project-configured look, ICC evaluation,
+native GPU viewport presentation, or concrete color-to-export test.
 
 ## Current status and risks
 
@@ -392,12 +399,14 @@ contracts are implemented and extensively tested. The module is not yet a comple
 - Output transforms and rule evaluation remain CPU implementations that emit RGBA binary32
   artifacts. Engine foreground playback is a concrete display consumer, but executable ICC profile
   evaluation, project-configured rule persistence, concrete integer or YUV encoding, complete
-  display and delivery GPU output transforms, native viewport submission, and export remain absent.
+  display and delivery GPU output transforms, native viewport submission, and concrete export
+  conversion remain absent.
 - ICC profiles are validated and bound to presentation, but their matrix/TRC or LUT payloads are
   not evaluated. `MonitorAwareViewport` prevents stale profile use but does not color-convert the
   rendered texture by itself.
-- Engine foreground playback is a live CPU output-transform consumer. There is no shell, native
-  viewport, export, or public API consumer.
+- Engine foreground playback is a live CPU output-transform consumer. Engine export has only a
+  generic delivery seam, not a live transform from this crate. There is no shell, native viewport,
+  concrete export-transform, or public API consumer.
 - `superi-graph` is an unused manifest dependency. No color node catalog or graph-visible transform
   integration exists in this crate.
 - CPU input, gamut, and LUT application allocate replacement sample vectors and iterate pixels on
@@ -436,8 +445,9 @@ profile absence explicit and retain atomic snapshot publication.
 When configuration becomes real, replace the placeholder in
 `open/crates/superi-color/src/config.rs`, add its complete contracts and tests, and update the
 dependency and consumer trace. Keep the existing engine CPU playback consumer and its bounded
-viewport integration explicit, and record native viewport or export integration separately when it
-exists. Do not describe future OCIO, ICC evaluation, GPU output
-conversion, or export orchestration as implemented before the source and
+viewport integration explicit, and keep the engine export delivery seam distinct from a concrete
+color transform. Record native viewport or concrete export integration separately when it exists.
+Do not describe future OCIO, ICC evaluation, GPU output
+conversion, or concrete color export conversion as implemented before the source and
 end-to-end consumers exist. Keep legal-range RGB encoding distinct from later YUV matrix and packed
 integer storage ownership.

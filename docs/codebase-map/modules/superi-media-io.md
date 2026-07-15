@@ -167,7 +167,10 @@ Waveform preview begins after audio decode. The adapter checks one stable audio 
   upload boundary, and adapts complete generated proxy packets or a verified original source behind
   one `MediaSource`. Foreground playback snapshots exact `VideoFrame` format, timestamp, duration,
   metadata, color history, and alpha meaning as graph-result provenance without copying decoded
-  pixel storage.
+  pixel storage. Render-export orchestration consumes an acquired source and selected decoders
+  through exact seek, complete and partial read handling, packet routing, decode drain and flush,
+  audio and video provenance validation, one-shot encoder selection, encode drain and flush, packet
+  validation, and reset-based recovery.
 - `superi-api` has a test-only direct dependency for public capability fixtures; its production path consumes engine-owned projections rather than media-I/O types directly.
 - `superi-concurrency` has a test-only direct dependency used to prove backpressure with decoded frame, audio block, and media metadata payloads.
 - Codec integration tests in `superi-codecs-rs` directly connect `MkvWebmBackend` packets to AV1, VP8/VP9, Opus, and FLAC codec implementations, proving selected cross-crate compositions beyond the media-I/O fake backend tests.
@@ -186,9 +189,11 @@ the selected source once, maps explicit stream IDs into exact decoder configurat
 decoder, and retains source and decoder policy evidence with one timeline compilation. Engine proxy
 substitution separately provides a `MediaSource` adapter over generated packets and a verified lazy
 original-source seam. Foreground playback consumes caller-prepared decoded provenance and graph
-values, but it does not yet bind prepared sources and decoders to scheduled graph requests. `nodes`,
-transport, native presentation, and export orchestration remain incomplete, so there is still no
-scheduled source-to-decode-to-playback or encode-to-mux flow. Repository search likewise finds no
+values, but it does not yet bind prepared sources and decoders to scheduled graph requests. Export
+now binds explicit acquired source routes through decode, graph or audio processing, and encode into
+complete in-memory elementary packet streams. `nodes`, transport, native presentation, container
+muxing, and output publication remain incomplete, so there is still no scheduled
+source-to-decode-to-playback or encode-to-container flow. Repository search likewise finds no
 production consumer for paired selection, source timecode tracks, image-sequence traits, or
 waveform generation.
 
@@ -266,21 +271,23 @@ The other fixtures prove implemented contracts, not broad real-world compatibili
 The module is substantive and test-rich at the value, probing, demux, timing, selection,
 interruption, PCM, and waveform-adapter layers. It provides four real source backends and exact
 contracts consumed by three codec families plus engine source and decoder preparation,
-introspection, upload, generation, and transparent proxy or original-source resolution. It is not
-merely a scaffold.
+introspection, upload, generation, transparent proxy or original-source resolution, and exact
+render-export lifecycle orchestration. It is not merely a scaffold.
 
 Its canonical fixture consumers now cover the complete current raw pixel-format and
 standard-video-rate matrix, synchronized multichannel PCM at three common audio rates, exact timing
 cadences, noncontiguous image-sequence addressing, and four deterministic PCM error or degradation
 paths. These are format, container, timing, representation, and focused failure contracts. Engine
-registry and editorial preparation integration are now real, but broad compatibility and scheduled
-playback or export runtime are not.
+registry, editorial preparation, and explicit render-export integration are now real, but broad
+compatibility, scheduled playback, muxing, and output publication are not.
 
 Principal incomplete behavior and risks are:
 
 - Engine preparation requires callers to choose every decoder stream explicitly. It does not yet
   consume paired selection, language or role metadata, multiple stems, or output-storage constraints.
-- Decode and encode are public contracts only in this crate. There is no in-module codec, muxer, container output, or complete export flow.
+- Decode and encode remain boundary contracts in this crate. In-tree codecs implement them and the
+  engine composes an explicit complete elementary-stream export transaction, but there is no
+  in-module codec, muxer, container output, or publication owner.
 - Image-sequence input/output has no concrete backend and no operation context. File naming, missing-frame policy, codec choice, collision handling, rollback, and atomic publication are undefined here.
 - Source timecode metadata is byte-exact and test-proven but not produced by current container adapters or consumed by an exporter.
 - Paired selection models one video and one audio stream only. It does not choose by language or role, select multiple stems, or own subtitle/data routing beyond `Unselected`.
@@ -318,6 +325,7 @@ priority 100, preflighted stable IDs, and real integration proof. Do not make th
 auto-discover implementations or silently execute fallback candidates. Preserve complete
 `SourceIdentity` equality during resource preparation and at the proxy or original seam. Add real
 consumers before treating paired selection, image sequences, timecode metadata, waveform generation,
-or muxing as integrated engine flows.
+or muxing as integrated engine flows. Keep the engine export consumer aligned with complete-read
+admission, codec drain and reset lifecycles, exact packet timing and metadata, and no exception retry.
 
 After source edits, regenerate this module's file inventory, source count, and hash, then reconcile every affected statement rather than updating metadata alone. Update maps for `superi-core`, `superi-image`, codec implementers, `superi-engine`, or public API consumers whenever their interface or dependency relationship changes.

@@ -280,7 +280,8 @@ stage-kind codes plus every accessible pipeline field for deterministic color fi
 dependencies. The engine imports pipeline metadata directly for upload, cache validation, and
 terminal intent. Foreground playback carries color metadata beside a generic scene value and its
 concrete CPU display path publishes the color-owned transformed `Image` without changing image
-ownership or semantics;
+ownership or semantics. Render-export carries the same complete metadata through decoded, graph,
+scene, delivery, and encoder provenance and rejects nonterminal or discontinuous pipeline history;
 the remaining listed crates are declared integration, scaffold, or transitive boundaries.
 `superi-color`, `superi-gpu`, `superi-media-io`, `superi-graph`, `superi-cache`, and `superi-engine` are source consumers.
 

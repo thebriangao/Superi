@@ -543,7 +543,7 @@ The lazy evaluation flow is:
 
 The shared interactive and headless evaluation flow is:
 
-1. An editor, script, playback owner, or headless owner captures one immutable
+1. An editor, script, playback owner, export owner, or headless owner captures one immutable
    `GraphSnapshot<T>` from the editable graph transaction boundary.
 2. A higher-tier `NodeCompiler<T, N>` receives the complete immutable graph snapshot beside every
    schema-bound editable node in stable identity order and produces its runtime `EvaluateNode<V>`
@@ -577,13 +577,15 @@ The shared interactive and headless evaluation flow is:
    animatable parameters, diagnostics, cache identity, and old-revision isolation. Effects supplies
    no production GPU runtime factory, spatial GPU renderer, vector, mask, or text rasterizer,
    production tracking accelerator, native OpenFX transport, propagation solver, timeline transition
-   binder, or production GPU-rendered application value. Engine foreground playback now supplies a
-   caller-prepared scene-value runtime and CPU display consumer, but no API, CLI, or GPU owner closes
-   the missing source-to-render runtime, so the
-   canonical `graph.evaluate` stage remains an honest stub even though the generic interactive,
-   playback, headless, and cache boundaries are explicit and test-backed. Engine playback now
-   accepts an externally prepared snapshot and runs both exact predicted and foreground frames
-   through this cached path.
+   binder, or production GPU-rendered application value. Engine foreground playback supplies a
+   caller-prepared scene-value runtime and CPU display consumer. Engine render-export binds each
+   prepared decoded frame to the same immutable snapshot, evaluates an exact scene envelope, and
+   sends the caller-owned delivery result to an encoder. No API, CLI, or native GPU owner closes the
+   application path, so the canonical `graph.evaluate` stage remains an honest stub even though the
+   generic interactive, playback, export, headless, and cache boundaries are explicit and
+   test-backed. Engine playback accepts an externally prepared snapshot for exact predicted and
+   foreground frames, while export evaluates explicit acquired-source routes without adding
+   role-specific behavior to graph.
 
 The schema discovery flow is:
 
@@ -833,7 +835,10 @@ reference model.
   layered reuse and bounded background jobs without moving worker policy into graph.
   `superi-engine::playback` consumes `GraphEvaluationSnapshot` and
   `EvaluationRequest` to populate predicted frames and evaluate exact foreground scene values
-  through the cache-owned host adapter, without adding mode-specific evaluation behavior. The
+  through the cache-owned host adapter, without adding mode-specific evaluation behavior.
+  `superi-engine::export_queue` consumes the same snapshot and request contracts, binds the current
+  decoded frame through a caller-owned runtime node seam, retains the evaluated graph revision, and
+  validates the existing playback scene envelope before delivery and encoding. The
   resource preparation path also retains one timeline compilation and its editable graph beside
   exact opened media owners, without copying or evaluating graph state. The engine color
   propagation contract exercises metadata. Effects consumes versioned schemas, schema registration
@@ -1186,7 +1191,9 @@ complete ROI and invalidation plans or timeline-owned transitions to a rendered-
 flow. Engine playback is the first production role consumer of an externally prepared evaluation
 snapshot. Its prediction contract proves cached warming does not change foreground meaning, and its
 foreground contract evaluates one exact scene value through validated retention and CPU display
-conversion.
+conversion. Engine render-export is a second production role consumer: it binds each prepared
+decoded frame to one immutable snapshot, evaluates the exact requested time and region, retains the
+source graph revision, and validates scene timing, color, and alpha before delivery and encode.
 Engine resource preparation is the first owner to retain timeline's editable compilation with exact
 source and decoder lifetimes, but it does not compile runtime nodes or evaluate output.
 The versioned graph document codec now preserves and validates that complete editable state,

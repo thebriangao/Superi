@@ -262,7 +262,8 @@ Repository source search shows active direct Rust imports in twelve of them:
   shared error model for pools, priorities, liveness, playback clocks, backpressure, and lifecycle.
 - `superi-engine` uses shared errors, identifiers, color, pixel and alpha meaning, and exact
   timestamps at media, introspection, CPU-frame upload, cache identity, and foreground playback
-  boundaries.
+  boundaries. Render-export additionally uses rational interval unions, exact rescaling, lifecycle
+  errors, stream identity, and pixel or sample meaning to reject semantic drift before publication.
 - `superi-gpu` uses errors and diagnostics throughout resource and submission paths, plus color,
   pixel, and geometry values for conversion and upload contracts.
 - `superi-graph` re-exports the official graph, node, port, edge, parameter, and resource identifier

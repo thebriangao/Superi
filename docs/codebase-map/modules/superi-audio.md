@@ -40,9 +40,12 @@ All processing paths enforce the platform-owned audio execution domain, but thei
 remain separate. Graph editing and preparation allocate outside callbacks. Schedule construction and
 transport reanchoring also occur outside callbacks. Resampler and meter construction and scratch
 allocation remain outside callbacks. Device discovery and stream setup remain on control threads. Decoded
-sample binding, automation, plugins, and complete engine audio-graph orchestration remain separate
-concerns. Engine foreground playback now feeds the existing bounded output producer and paces video
-from its paired presentation clock without moving device callback work into the engine.
+sample binding to the real prepared graph, automation, plugins, and complete timeline audio-graph
+orchestration remain separate concerns. Engine foreground playback feeds the existing bounded output
+producer and paces video from its paired presentation clock without moving device callback work into
+the engine. Engine render-export now invokes a caller-owned audio processing stage, records its
+`AudioGraphId`, and validates exact returned block semantics before encoding, but it does not yet
+adapt decoded blocks into `PreparedAudioGraph`.
 
 ## Source inventory
 
@@ -291,13 +294,18 @@ and spectrum values, and performs the two-stage integrated loudness gate without
   and discontinuity recovery evidence and preserves continuity through monotonic fallback. The
   device callback and `OutputConsumer` remain audio-owned, and engine never changes audio samples or
   the physical counter.
+- `superi-engine::export_queue` exposes an `ExportAudioGraph` seam whose result retains the
+  audio-owned `AudioGraphId`. It sends each decoded block through that caller-owned stage, validates
+  exact timestamp, duration, metadata, sample precision, rate, and channel layout, and then encodes
+  the returned block. The current production PCM lane proves source, codec, and stage orchestration,
+  but the stage implementation in that contract is not a `PreparedAudioGraph` adapter.
 - `superi-timeline` remains upstream through future engine composition rather than a direct Rust
   dependency. Its sample-exact placements, track order, channel layout, and routing intent are
   adapter inputs.
 - `superi-media-io` remains the decoded sample owner and is not a direct dependency. No production
   decoder currently feeds a prepared graph from scheduled slices.
-- The ten public integration contracts and the engine foreground playback contract are current real
-  consumers. They process exact adjacent
+- The ten public integration contracts, engine foreground playback contract, and engine
+  render-export audio-stage contract are current real consumers. They process exact adjacent
   blocks through clip DSP, dry, auxiliary, submix, and master paths, publish scheduled presentation
   through actual concurrency clocks, exercise bounded device output, coordinate real foreground
   video against that clock under normal, late, discontinuous, and recovered conditions, and prove clip identity
@@ -406,8 +414,9 @@ Together these contracts prove the graph and scheduler coexist without changing 
 channel meaning. Dependent concurrency clock and A/V tests, the engine coordinator and foreground
 playback contracts, and timeline track-semantics tests guard the composed contracts. The engine
 consumer proves actual sample-clock video decisions and exact timing preservation, but deterministic
-local proof does not claim physical hardware latency, hot-plug behavior, decoded sample binding,
-prepared graph delivery, or hardware A/V behavior.
+local proof does not claim physical hardware latency, hot-plug behavior, prepared graph delivery, or
+hardware A/V behavior. Engine export adds real acquired PCM decode and encode around an explicit test
+audio stage, not a binding into this crate's prepared graph.
 
 Two playback unit tests and ten public output contracts prove typed conversion, backend-default
 buffer semantics, capacity and normalized-sample validation, whole-frame backpressure, silence and
@@ -449,9 +458,11 @@ substantive and publicly test-backed. Plugin hosting remains a documentation-onl
 Engine consumes timeline edit outcomes for atomic clip identity reconciliation and foreground
 playback feeds the bounded device producer while coordinating video from the actual audio clock.
 That foreground path now exposes bounded video correction and applied discontinuity recovery without
-mutating audio timing. There is still no decoded-audio fetch, scheduled-slice graph binding, plugin
-host, platform channel-layout negotiation, or end-to-end source-playback-final-mix path. Microphone permission, physical input latency, semantic input
-layout, and hot-plug recovery remain platform-owned boundaries.
+mutating audio timing. Engine export now fetches decoded audio, invokes an explicit graph-stage seam,
+preserves its graph identity, and completes an exact in-tree PCM encode. There is still no
+scheduled-slice `PreparedAudioGraph` binding, plugin host, platform channel-layout negotiation, or
+end-to-end source-playback-final-mix path. Microphone permission, physical input latency, semantic
+input layout, and hot-plug recovery remain platform-owned boundaries.
 
 Multi-input routing is deliberately unity-only to avoid claiming later control semantics. Prepared
 input views retain immutable routes and earlier buffers without self-referential storage or callback
@@ -485,8 +496,8 @@ the existing output producer rather than adding a competing playback path.
 Extend the existing engine output, clock, and A/V coordinator consumer by adapting immutable
 timeline and decoded audio owners into the existing schedule and graph types instead of adding
 upward dependencies. Keep channel layout and routing intent attached through that adapter, publish
-only completed audible windows, and add a real prepared-graph consumer before claiming source
-playback, mixing, or final delivery.
+only completed audible windows, and replace the export stage seam with a real prepared-graph adapter
+before claiming timeline-owned source playback, mixing, or final delivery through this crate.
 
 After source changes, refresh this map's inventory, architecture, invariants, tests, hash, and file
 count from resulting behavior, then update consumer maps and validate the global map closure.

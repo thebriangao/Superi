@@ -15,21 +15,21 @@ against raw source before changing code.
 | --- | --- | --- | --- | --- |
 | `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
 | `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade for capabilities and canonical editorial state | Partial: capability and canonical scenario controls implemented; transport, general API, and scripting absent |
-| `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Independent prepared audio graph with explicit channel conversion, typed bus routing, transactional clip DSP, core effects, sample-accurate scheduling, bounded device playback, dual-clock sample-rate conversion, and graph-native metering | Partial: graph processing, channel-layout conversion, bus routing, clip controls, equalization, compression, limiting, delay, saturation, callback scheduling, audio-master publication, device output, band-limited resampling, and peak, RMS, true-peak, phase, spectrum, and loudness metering implemented; decoded-sample binding, automation, hosting, and complete engine composition absent |
+| `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Independent prepared audio graph with explicit channel conversion, typed bus routing, transactional clip DSP, core effects, sample-accurate scheduling, bounded device playback, dual-clock sample-rate conversion, and graph-native metering | Partial: graph processing, channel-layout conversion, bus routing, clip controls, equalization, compression, limiting, delay, saturation, callback scheduling, audio-master publication, device output, band-limited resampling, and peak, RMS, true-peak, phase, spectrum, and loudness metering implemented; engine export invokes an explicit audio stage and proves exact PCM completion, while binding decoded blocks to the real prepared graph, automation, hosting, and complete timeline composition remain absent |
 | `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, precise graph edit invalidation, versioned corruption-recovering disk persistence, replaceable derived-media publication, layered render reuse, bounded background population, bounded playback prediction, bounded edit and scrub warming, and deterministic lifecycle management | Complete identity feeds independent memory and disk tiers with exact admission, revision fencing, bounded envelopes, atomic publication, schema isolation, and corruption quarantine; memory, persistent, and derived owners expose inspection and exact clearing, persistent namespaces relocate through rename or synchronized staged copy, render jobs add cancellation-safe layered reuse, prediction supplies finite signed frame plans and an owned host adapter, and warming is deterministic and hard bounded; engine and scheduler own quality substitution and lifecycle policy remains caller-owned |
 | `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario consumer | Implemented portable expectation verifier and eight instrumented contract stages; rendered media flow absent |
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
 | `superi-codecs-rs` | [module map](modules/superi-codecs-rs.md) | `open/crates/superi-codecs-rs` | Default permissive software codec implementations | Implemented: AV1, FLAC, MP3, Opus, PCM, Vorbis, VP8, and VP9 decode and encode |
 | `superi-codecs-vendor` | [module map](modules/superi-codecs-vendor.md) | `open/crates/superi-codecs-vendor` | Explicit process adapter for separately installed vendor RAW workers | Implemented first revision: decode-only, CPU-only, JSON and hexadecimal IPC |
-| `superi-color` | [module map](modules/superi-color.md) | `open/crates/superi-color` | Versioned configuration, project working spaces, color math, CPU input and output transforms, GPU wide-gamut transforms, tone mapping, legal-range RGB encoding, LUTs, ICC discovery, and presentation profile guards | Substantial but partial: project-pinned configuration, CPU transforms, managed GPU wide-gamut transforms, and an engine CPU display consumer are implemented; ICC evaluation, native GPU display conversion, export, and shell integration remain absent |
-| `superi-concurrency` | [module map](modules/superi-concurrency.md) | `open/crates/superi-concurrency` | Execution domains, jobs, clocks, handoffs, shared snapshots, lifecycle, liveness, and derived-media selection | Substantial; audio enforces its domain, engine proxy resolution consumes selection, engine foreground playback consumes bounded workers, the shared clock and A/V scheduler, and handoffs, and engine lifecycle composes acknowledged phases, EngineControl ownership, immutable publication, and lock-free signals; broader lifecycle, liveness, and GPU submission composition remain incomplete |
+| `superi-color` | [module map](modules/superi-color.md) | `open/crates/superi-color` | Versioned configuration, project working spaces, color math, CPU input and output transforms, GPU wide-gamut transforms, tone mapping, legal-range RGB encoding, LUTs, ICC discovery, and presentation profile guards | Substantial but partial: project-pinned configuration, CPU transforms, managed GPU wide-gamut transforms, and an engine CPU display consumer are implemented; engine export validates a caller-owned delivery stage but does not execute this crate, while ICC evaluation, native GPU display conversion, concrete export conversion, and shell integration remain absent |
+| `superi-concurrency` | [module map](modules/superi-concurrency.md) | `open/crates/superi-concurrency` | Execution domains, jobs, clocks, handoffs, shared snapshots, lifecycle, liveness, and derived-media selection | Substantial; audio enforces its domain, engine proxy resolution consumes selection, engine foreground playback consumes bounded workers, the shared clock and A/V scheduler, and handoffs, engine lifecycle composes acknowledged phases, EngineControl ownership, immutable publication, and lock-free signals, and render-export enforces lifecycle admission at transaction start and publication; broader liveness and GPU submission composition remain incomplete |
 | `superi-core` | [module map](modules/superi-core.md) | `open/crates/superi-core` | Tier-zero values, validation, exact time, identifiers, errors, diagnostics, and stable serialization | Implemented and broadly consumed; crate-level skeleton wording is stale |
 | `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Graph-native visual definitions, editable defaults and instances, complete reusable effect presets with explicit schema migration and missing-plugin recovery, exact editable keyframe animation, reusable typed control rigs, strict visual composition artifacts with layer parenting, reusable precompositions, collapse boundaries and time remapping, editable 2D and 3D spatial layers with cameras, lights, depth ordering and exact motion sampling, editable cubic vector shapes with fills, strokes, gradients, repeaters, and path animation, animated cubic mask paths with ordered boolean alpha composition, editable rotoscope artifacts and propagation hooks, editable point, planar, object, and calibrated camera tracking with manual corrections and bounded CPU reference solvers, styled text authoring, offline OpenType shaping, Unicode paragraph layout, versioned built-in visual nodes and transitions, exact handle-to-progress timing, isolated OpenFX effect hosting, and bounded CPU reference evaluation | Substantive but partial: typed authoring, presets, deterministic integrity-protected preset documents, revision-zero document migration, explicit transactional schema migration, graph-native missing-plugin placeholder editing and recovery, animation, graph-native links and parent controls, strict visual and spatial composition state, local and nested DAG validation, exact time maps, reusable collapsed or isolated precompositions, complete resolved layer paths, binary64 transform composition, perspective and orthographic cameras, ambient, directional and point lights, stable depth order, exact shutter sampling, vector shape documents, mask controls, rotoscope spans and corrections, revision-fenced propagation, stable tracking selections, observations, transformed regions, camera poses, revision-fenced tracking results, typography, paragraph controls, glyph layout, transform, crop, opacity, blend, composite, blur, sharpen, distortion, keying, invert, grade, cross dissolve, directional wipe, isolated OFX adapter validation, graph projection, permissions, exact-time sampling, lifecycle, recovery, quarantine, workflow parity, strict reload, and real pixel proof are implemented; project persistence, production plugin binding, production spatial GPU execution, engine, UI, vector, mask, and text rasterization, glyph atlases, propagation solvers, pyramid and GPU tracking acceleration, production tracking attachment, native OFX discovery and worker transport, production transition attachment, and complete timeline attachment remain absent |
-| `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: canonical command state, complete source and codec registry, transactional timeline graph plus source and decoder preparation, capability introspection, CPU-frame GPU upload, color metadata branching, derived-media generation, transparent proxy resolution, predictive cache population, foreground graph and CPU display execution, bounded audio admission, audio-master A/V coordination with correction and discontinuity recovery, lossless viewport handoff, atomic timeline plus clip-mix edits, and deterministic subsystem lifecycle are implemented; transport control, native GPU presentation, export execution, plugin transport, and worker supervision remain absent |
+| `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: canonical command state, complete source and codec registry, transactional timeline graph plus source and decoder preparation, capability introspection, CPU-frame GPU upload, color metadata branching, derived-media generation, transparent proxy resolution, predictive cache population, foreground graph and CPU display execution, bounded audio admission, audio-master A/V coordination with correction and discontinuity recovery, lossless viewport handoff, coherent decode, graph, delivery, audio, and elementary-stream export execution, atomic timeline plus clip-mix edits, and deterministic subsystem lifecycle are implemented; transport control, native GPU presentation and export readback, container muxing and publication, plugin transport, and worker supervision remain absent |
 | `superi-gpu` | [module map](modules/superi-gpu.md) | `open/crates/superi-gpu` | wgpu device, resource, upload, conversion, pass, submission, presentation, and recovery substrate | Implemented substrate with explicit application-level integration gaps |
-| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers and shared typed values, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, reusable scalar expressions, typed parameter links and expressions, caller-projected literal evaluation, derived missing-node resolution, dependency and semantic edit invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, graph and revision cache lineage, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, exact neutral domain and processing values, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, shared bounded scalar programs, typed driver state, parameter-cycle protection, literal-only projected evaluation, fail-closed missing-node placeholders, exact region and edit invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic graph cache inspection, final and intermediate retained-work pruning, run-local timing, and role-neutral editable-to-runtime evaluation implemented; effects consumes broad authoring and reference evaluation, timeline compiles editable graphs, and engine now retains one compilation with prepared media, while production engine catalog and plugin binding, project persistence, cache resource policy, and rendered integration remain absent |
+| `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers and shared typed values, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, reusable scalar expressions, typed parameter links and expressions, caller-projected literal evaluation, derived missing-node resolution, dependency and semantic edit invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, graph and revision cache lineage, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, exact neutral domain and processing values, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, shared bounded scalar programs, typed driver state, parameter-cycle protection, literal-only projected evaluation, fail-closed missing-node placeholders, exact region and edit invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic graph cache inspection, final and intermediate retained-work pruning, run-local timing, and role-neutral editable-to-runtime evaluation implemented; effects consumes broad authoring and reference evaluation, timeline compiles editable graphs, and engine consumes externally prepared snapshots for playback and render-export, while production engine catalog and plugin binding, project persistence, and complete application rendering remain absent |
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
-| `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; engine source registration and preparation are integrated, while muxing is absent |
+| `superi-media-io` | [module map](modules/superi-media-io.md) | `open/crates/superi-media-io` | Codec-neutral source, demux, packet, frame, audio, selection, timing, and operation contracts | Implemented contracts and four demuxers; engine source registration, preparation, and complete elementary-stream export lifecycle orchestration are integrated, while muxing and publication are absent |
 | `superi-project` | [module map](modules/superi-project.md) | `open/crates/superi-project` | Reserved project document, persistence, autosave, and recovery boundary | Skeleton: no project model or storage format |
 | `superi-timeline` | [module map](modules/superi-timeline.md) | `open/crates/superi-timeline` | Native editorial project state, media bins and saved queries, metadata and relink state, rational range maps and availability, exact clip retiming, typed tracks, authoritative edit intent, markers, exact snapping, clip relationships, atomic foundational, advanced, nested, and multicam operations, OTIO 0.18.1 interchange, versioned integrity-checked state documents, color metadata propagation, and deterministic typed graph compilation | Foundational model, bins, sub-bins, metadata smart collections, explicit relink evidence, exact range and retime resolution, speed changes, reverse, freeze, piecewise time remapping, track clocks, linked sample reshaping, selection, targeting, synchronization, clip relationships, three-class marker ownership, snapping, six primary operations, nine advanced edit families, nested placement, compound creation, shared child editing, recursive inspection, native multicam angle metadata, switching, structural inheritance and resolution, dependency-light OTIO import and export, opaque preservation, stable interchange diagnostics, a headless consumer, strict canonical timeline documents, revision 0 migration, checked recovery, graph color metadata, stable editable timeline-to-graph compilation, and engine preparation retention are test-backed; broader interchange interpretation, fit-to-fill, grouped-source compound synthesis, the owning project container and autosave policy, graph evaluation, multicam mixing, playback, and render integration are absent |
 | `tool-superi-dependency-check` | [module map](modules/tool-superi-dependency-check.md) | `open/tools/superi-dependency-check` | Offline executable policy for the open runtime dependency graph | Implemented exact runtime, build, dev, and new-crate checks |
@@ -37,7 +37,7 @@ against raw source before changing code.
 | `tool-superi-bench` | [module map](modules/tool-superi-bench.md) | `open/tools/superi-bench` | Stable benchmark harnesses and reproducible stage reporting | Implemented seven-stage runner with real graph evaluation and explicit gaps |
 | `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline fixture validation, generation, and typed golden verification | Implemented validation library, six generators, seven-command CLI, four golden harnesses, and focused contracts |
 | `tool-superi-test-report` | [module map](modules/tool-superi-test-report.md) | `open/tools/superi-test-report` | Offline structured platform-lane evidence generator | Implemented strict schema, deterministic findings, collision-safe CLI, and focused contracts |
-| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: deterministic checkpoint workflow and contract slice delivered; runtime slice absent |
+| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: deterministic checkpoint workflow and contract slice delivered; focused playback and elementary-stream export runtime paths exist, while the canonical application slice remains absent |
 
 ## Ownership and repository boundaries
 
@@ -660,18 +660,18 @@ with a bounded effects reference consumer but without a production engine catalo
    edge routes, and checked topology. Each compilation receives the full snapshot, so authored
    parameter drivers remain visible. Scheduling, inspection, ordinary evaluation, cached
    evaluation, and diagnostic evaluation delegate to the same `LazyEvaluator` for editor, script,
-   interactive, playback, and headless callers.
+   interactive, playback, export, and headless callers.
 8. Public graph and effects tests prove linked and expression-driven parameter state enters
    runtime-node compilation, real effect and transition pixels evaluate through immutable old and
    new revisions, exact visual state changes alter diagnostics and cache identity, exact invalidated lazy
    work, equal role schedules, semantic inspection, cache keys, exact retained results, final-hit
    short circuiting, intermediate subtree pruning, immutable old revisions, fresh edited results,
    driver-expanded edit roots, selective two-tier cleanup, stale revision fencing, and contextual
-   atomic compiler failure. Cache render orchestration and engine playback are the first production
-   role consumers of externally prepared evaluation snapshots, while effects is a deterministic
+   atomic compiler failure. Cache render orchestration, engine playback, and engine render-export
+   are the first production role consumers of externally prepared evaluation snapshots, while effects is a deterministic
    headless CPU reference consumer with exact authoring, animation, and transition foundations. No production
-   engine node catalog, API, CLI, GPU, or rendered-frame stage builds the canonical evaluation path,
-   so `graph.evaluate` remains a disclosed stub.
+   engine node catalog, API, CLI, or native GPU stage builds the canonical evaluation path, so
+   `graph.evaluate` remains a disclosed stub in the canonical application slice.
 9. Playback prediction validates an exact playhead, half-open bounds, and nonzero signed step, then
    emits at most 512 nearest-first critical, farther predictive, and trailing frame requests.
    `superi-engine::PlaybackPrefetcher` requires the playback domain, cancels the prior generation,
@@ -687,9 +687,20 @@ with a bounded effects reference consumer but without a production engine catalo
     presentation, explicit drop, and applied discontinuity recovery evidence without changing media
     timing. Viewport backpressure retains the exact payload and resolved presentation, so retry does
     not repeat a scheduler observation. The path remains nonblocking and leaves prepared source
-    binding, queue-based transport and drop eligibility, native GPU submission, and export execution
+    binding, queue-based transport and drop eligibility, and native GPU submission
     to their separate owners.
-11. Invalidation-to-render orchestration, ROI-plan-to-evaluator binding, cache invalidation
+11. Render-export accepts exact acquired-source routes, a current lifecycle permit, one immutable
+    graph snapshot and decoded-frame binder, explicit delivery and audio stage owners, the ordinary
+    backend registry, and an export-priority operation. It seeks and reads complete packets, drains
+    selected decoders, evaluates exact graph scene envelopes, invokes delivery color or audio
+    processing, selects each encoder once, drains every encoder, validates timing interval unions,
+    metadata, formats, precision, color, alpha, and graph identity, and resets all completed state.
+    It publishes complete in-memory elementary packet streams only after every codec reaches end of
+    stream and the permit remains current. Partial reads, semantic drift, cancellation, degradation,
+    or codec failure publish nothing and trigger fresh-context reset recovery. Container muxing,
+    persistence, native GPU readback, progress streaming, arbitrary stream counts, transport, API,
+    and application integration remain separate owners.
+12. Invalidation-to-render orchestration, ROI-plan-to-evaluator binding, cache invalidation
     invocation, automatic capacity policy, external directory coordination, and production engine
     catalog wiring remain separate later checkpoints. Cache owns bounded outer job dispatch for background
     population without moving priority or worker ownership into graph.
@@ -717,7 +728,12 @@ reference, but no production timeline attachment or project owner closes the flo
 foreground playback evaluates caller-prepared graph values, performs CPU display conversion, admits
 prepared audio, and coordinates viewport delivery with the device clock under normal, late,
 discontinuous, and recovered conditions, but it does not bind the prepared source bundle or timeline
-audio renderer. No complete edit, playback, render, save, or export control flow exists.
+audio renderer. Engine render-export separately binds explicit acquired
+source routes through decode, immutable graph evaluation, caller-owned delivery color or audio
+processing, and encode with exact elementary-stream publication and recovery. It does not consume
+the timeline-compiled runtime graph, mux or publish a container, expose transport or API control, or
+complete the canonical edit-to-export slice. No complete edit, playback, render, save, or export
+control flow exists.
 
 `docs/vertical-slice.md` now defines the exact first control flow as scenario
 `superi.slice.canonical.v1`: one immutable WebM and AV1 fixture role, one 24 fps video track, a
@@ -783,8 +799,10 @@ render, and export consumers.
 
 There is no muxer, export container writer, production image-sequence backend, multiple-stem stream
 selector, source-to-generation decoder, or source-to-playback coordinator. Resource preparation
-creates source and decoder owners but does not schedule packet flow, choose paired streams, upload
-decoded output, evaluate graph nodes, or synchronize audio and video. Derived generation does not
+creates source and decoder owners but does not itself schedule packet flow, choose paired streams,
+upload decoded output, evaluate graph nodes, or synchronize audio and video. Render-export now
+consumes explicit acquired routes and schedules their packet, decode, graph or audio, and encode
+lifecycles, but it does not choose paired streams from editorial intent or mux output. Derived generation does not
 render or resize its caller-prepared inputs or persist its packets. Proxy resolution is caller-owned
 and is not wired to playback or export orchestration.
 Platform and vendor frames can be external or
@@ -922,7 +940,9 @@ state on EngineControl,
 composes one acknowledged lifecycle participant, publishes immutable generation-tagged snapshots,
 and exposes one lock-free signal. Its exact action tokens sequence shared-state, playback,
 rendering, and export initialization, recovery, reverse teardown, and restart without performing
-subsystem work inline. Audio enforces the platform-owned audio domain for fixed prepared
+subsystem work inline. Render-export consumes that control plane by requiring the same current
+export permit before codec creation and artifact publication, but it does not use concurrency jobs
+or make lifecycle acquire codec resources. Audio enforces the platform-owned audio domain for fixed prepared
 graph processing and exact callback scheduling. Device input uses independent preallocated capture
 and monitoring queues with exact physical sample coordinates. Device output uses a preallocated
 lock-free queue and publishes the audio master clock consumed by foreground playback. Cache's
@@ -946,15 +966,18 @@ transactional timeline graph plus source and decoder preparation. It evaluates e
 graph values through shared cache retention, performs CPU display color execution, admits bounded
 audio, coordinates viewport delivery with the shared clock through explicit wait, correction, drop,
 and rebase outcomes, and retains frames plus resolved presentation through backpressure. It also
-atomically coordinates production timeline edit batches with audio-owned clip mix intent.
+composes exact acquired-source reads, decode, shared graph evaluation, caller-owned delivery
+color and audio stages, deterministic encoder selection, complete codec drains, strict semantic
+validation, reset recovery, and all-or-nothing elementary packet publication. It atomically
+coordinates production timeline edit batches with audio-owned clip mix intent.
 It owns a canonical lifecycle control plane that sequences shared-state, playback, rendering, and
 export subsystem actions, publishes one immutable health and admission snapshot, isolates
 recoverable degradation, rolls back failed startup, preserves dependency-safe reverse teardown,
 and restarts with a fresh lifetime.
 The command model is a reference boundary, not production project, timeline, or graph ownership.
-Prepared resources and foreground playback are not a full transport, proxy selector, queue-based
-drop owner, native GPU presenter, or export path. Render and export queues, plugins, nodes,
-validation, and cross-subsystem error recovery remain explicit placeholders.
+Prepared resources, foreground playback, and render-export are not a full transport, proxy selector,
+queue-based transport and drop owner, native GPU presenter or readback path, container muxer, file
+publisher, or public control flow. Errors, nodes, plugins, and validation remain explicit placeholders.
 
 `superi-api` is the stable public facade. It keeps implementation types private and exposes strict
 versioned capability records plus the fixed canonical scenario action and complete state projection.
@@ -1243,7 +1266,10 @@ golden harness baseline commits exact typed examples for frame, audio, timeline,
 comparison. It proves the reusable verifier and canonical format, while real renderer, mixer,
 timeline-engine, and project-runtime outputs remain consumer-owned future cases. The separate
 `slice/video-cfr` fixture provides one digest-bound 96-frame AV1 WebM for the canonical runner. Its
-decoded traits remain expected values because current contract import does not open it. The derived
+canonical runner still treats decoded traits as expectations, while engine resource and render-export
+contracts now open it with the production WebM source and decode all 96 frames through the in-tree
+AV1 backend. The render-export lane evaluates those frames through one shared graph and delivery
+stage, then rejects the selected VP9 encoder's duration rounding before publication. The derived
 `slice/expectations` version 1 remains immutable historical data. Current version 2 adds a portable
 project-state digest while retaining the same 48 mirrored RGBA8 frame identities, explicit pixel
 and PCM tolerances, synchronized audio probes, timestamps, and target export metadata. The CLI
@@ -1357,8 +1383,11 @@ independent processing graph, typed bus routing, sample-accurate scheduler, prod
 clip-mix processor, prepared sample-rate converter, explicit channel conversion, and prepared core
 effects, plus a graph-native meter, while automation, hosting, and decoded-sample binding remain
 absent. Engine foreground playback feeds the bounded output producer and consumes its actual
-presentation clock through explicit video synchronization and recovery outcomes, but no engine
-owner renders prepared timeline audio through routing, effects, resampling, and device delivery.
+presentation clock through explicit video synchronization and recovery outcomes. Engine
+render-export invokes an explicit audio stage, retains its graph identity,
+and proves real acquired PCM decode and encode completion, but no adapter yet binds decoded or
+scheduled timeline blocks into the actual prepared graph, routing, effects, resampling, and device
+delivery path.
 `superi-cache` now has substantive composite identity, budgeted memory retention, hierarchical
 memory policy, priority-aware LRU eviction, precise edit invalidation, persistent storage, color
 metadata, replaceable proxy or optimized-media publication, deterministic inspection and clearing,
@@ -1375,20 +1404,23 @@ Partial modules contain these explicit placeholder areas:
 
 - `superi-api`: scripting and every general command, dispatcher, transport, subscription, and
   transaction path beyond capabilities and the fixed canonical scenario.
-- `superi-audio`: decoded sample binding, plugin hosting, effect automation, and engine
-  composition across schedule, conversion, clip and effects processing, graph routing, and device
-  execution.
+- `superi-audio`: binding decoded samples into the real prepared graph, plugin hosting, effect
+  automation, and engine composition across schedule, conversion, clip and effects processing,
+  graph routing, and device execution. Export currently owns only an explicit stage seam.
 - `superi-color`: broader config-persisted rule graphs, ICC transform evaluation, GPU output
   conversion, and production viewport or export integration.
 - `superi-concurrency`: GPU submission coordination module and production composition beyond the
   audio domain, derived-media selection, playback workers, clocks, bounded handoffs, and lifecycle
   control consumers.
-- `superi-engine`: five placeholder orchestration modules covering errors, export, nodes, plugins,
-  and validation. Playback composes prepared foreground graph, cache, CPU display, audio,
+- `superi-engine`: four placeholder orchestration modules covering errors, nodes, plugins, and
+  validation. Playback composes prepared foreground graph, cache, CPU display, audio,
   audio-master A/V coordination, worker, and viewport owners, but prepared source binding,
   queue-based transport and drop eligibility, native GPU presentation, and application integration
-  remain absent. Lifecycle, resource preparation, and clip-mix edit orchestration are implemented
-  separately.
+  remain absent. Render-export composes explicit acquired source, decoder, shared
+  graph, delivery, audio, encoder, lifecycle, and recovery owners into complete elementary streams.
+  Transport, native GPU presentation and readback, container muxing, publication,
+  and application integration remain absent. Lifecycle, resource preparation, and clip-mix edit
+  orchestration are implemented separately.
 - `superi-effects`: production GPU node implementations, engine registration, playback, viewport,
   export, project persistence, autosave and recovery orchestration, production native plugin binding, UI,
   production spatial transform, camera, light, and motion-blur

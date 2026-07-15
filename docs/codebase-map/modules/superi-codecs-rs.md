@@ -26,7 +26,8 @@ current crate source.
 The implementation is codec-only. Every backend returns `NoMatch` from `probe_source` and rejects
 `open_source`; container backends identify codec IDs, provide packet timing and configuration, and
 feed elementary packets into decoders selected from the registry. Encoders return elementary
-packets for a separate mux or export path.
+packets for a higher-tier export or mux path. Engine render-export now owns one such complete
+elementary-stream consumer; container muxing remains separate.
 
 ## Source inventory
 
@@ -175,8 +176,10 @@ VPx backend, and checks both existing and intra-batch backend IDs before mutatin
 registry. This makes duplicate-ID failure atomic, but also makes a compatible libvpx runtime a
 construction dependency of the whole default registry. `superi-engine::media_backend_registry` is
 the direct runtime consumer. Engine timeline resource preparation now selects these registrations
-from opened stream codec IDs and constructs the selected decoder exactly once. Optional OS and
-vendor layers are added only after this default set.
+from opened stream codec IDs and constructs the selected decoder exactly once. Engine render-export
+then drives those selected decoders and one-shot selected encoders through reset, send, receive,
+flush, end-of-stream, exact semantic validation, and recovery. Optional OS and vendor layers are
+added only after this default set.
 
 Upstream container implementations in `superi-media-io` map Matroska/WebM identities `V_AV1`,
 `V_VP8`, `V_VP9`, `A_MPEG/L3`, `A_FLAC`, `A_VORBIS`, and `A_OPUS`, and MP4/MOV `av01`, to the stable
@@ -300,6 +303,9 @@ Direct consumers and producers are:
 - `superi-engine` always calls `register_default_backends`; its optional codec features add other
   layers afterward. Resource preparation consumes decoder selection and factory lifecycles, and the
   canonical WebM contract proves a live `rust-av1` decoder beside the retained timeline graph.
+  Render-export consumes the prepared decoder owner and ordinary encoder selection, proves exact
+  WAVE PCM decode and encode completion, and drives real WebM AV1 decode plus VP9 encode far enough
+  to reject observed duration drift before publishing an artifact.
 - `superi-media-io` Matroska/WebM and MP4/MOV readers produce codec IDs, elementary packets,
   configuration, timing, trimming, color, and provenance metadata consumed here.
 - Registry and engine capability consumers inspect the detailed codec rows without invoking codec
@@ -307,8 +313,9 @@ Direct consumers and producers are:
   capability and retains the exact `DecoderConfig` and backend evidence.
 - Playback, ingest, seek, relink, graph upload, and audio pipelines consume decoded `VideoFrame` and
   `AudioBlock` values through the neutral interface.
-- Mux and export paths consume encoded elementary `Packet` values and their configuration,
-  keyframe, timing, and metadata fields.
+- Engine render-export consumes encoded elementary `Packet` values and their configuration,
+  keyframe, timing, metadata, and payload fields as one complete in-memory stream. A later mux owner
+  must consume that validated boundary without changing its semantics.
 
 The crate does not depend on a container, engine, graph, GPU, color-processing, or audio-engine
 module. It therefore preserves the downward-only T1b boundary, although its CPU-only video outputs
@@ -429,7 +436,10 @@ or `FIXME` in the implementation surface. Current limitations and contradictions
   duration. Decoded keyframe state is inherited from the packet for every frame.
 - VPx encode policy is fixed: software CPU input, one thread, one-pass VBR, zero lag, estimated
   bitrate, automatic keyframes, and no user rate-control or quality surface. It has no GPU-resident,
-  alpha, 12-bit, RGB, or non-planar path.
+  alpha, 12-bit, RGB, or non-planar path. In the canonical 24 fps WebM engine export lane, libvpx
+  returns a 41,666,600 ns packet duration for a 41,666,666 ns input duration. The engine exact-union
+  validator rejects that rounding as degraded timing drift, so this configuration is not currently
+  a successful exact export path.
 - AV1 decoder flush does not submit a distinct rav1d end marker; it reports EOS after immediate
   output and queued input are exhausted. Reordered-stream coverage must continue to guard delayed
   picture behavior. The Windows offset range is finite and now fails explicitly before submission
@@ -476,7 +486,8 @@ advertisement before relying on it for automated format selection.
 Changes to packets, stream metadata, audio/video storage, decoder/encoder lifecycle, or operation
 context must be reconciled with the owning `superi-media-io` map and raw interfaces. Changes to
 container codec IDs or `codec.configuration`, delay, padding, or color keys must update both the
-container and codec contract tests.
+container and codec contract tests. Recheck the engine elementary-stream export consumer whenever
+codec timing, metadata attribution, drain, reset, or fallback-visible behavior changes.
 
 Treat `vp9.rs`, `vpx_ffi.rs`, `vpx_shim.c`, `vpx_shim.h`, the vendored headers, runtime version
 filter, and VPx tests as one compatibility unit. Any enum value, field order, symbol list, ABI
