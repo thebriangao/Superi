@@ -12,46 +12,54 @@ fresh verification, remote delivery, and checklist evidence define completion.
 
 ## Execute
 
-1. **Synchronize safely.** Reconfirm the exact timestamped claim suffix on the configured
-   descriptions tab, re-read the matching immutable main-tab specification, inspect the worktree,
-   fetch current remote state, and integrate without discarding any existing work. Never delete code
-   you did not write.
-2. **Load the plan.** Read the mandatory `plans/<checkpoint-id>/planning.md`, then create and maintain
-   the live task list and execution evidence in `plans/<checkpoint-id>/execution.md`. These are the
-   only two plan files permitted. Keep one slice active, but retain ownership of the entire checkpoint
-   and its necessary dependencies. Refuse execution if the map validator did not pass, the global
-   index or any mandatory map was not read in full, an omitted map lacks recorded raw-code
-   substitutes, or the selected raw-file inventory was not read through EOF and recorded.
-3. **Prove before changing.** For each behavior, write the smallest real test first and run it to
-   confirm the expected failure. For bugs, reproduce the defect. For existing untested behavior,
-   capture it before modifying it. Then implement the smallest complete change and run the proof
-   again.
-4. **Integrate completely.** Follow current interfaces and dependency direction. Include real error
-   paths, migrations, feature configurations, diagnostics, and documentation required by the
-   checkpoint. No placeholders, mocked success, dead interfaces, or hidden manual steps.
-5. **Verify in widening rings.** Run focused tests after every slice and relevant subsystem suites
-   after integration. Then run
+1. **Reconfirm owner state.** The checkpoint owner reconfirms its exact timestamped claim suffix,
+   re-reads the immutable main specification, inspects the worktree, fetches current remote state, and
+   integrates without discarding existing work. The owner reads `planning.md` and `execution.md`,
+   confirms the recorded reading evidence and base revision, and refuses execution when the planning
+   gate is incomplete. Never delete code another worker wrote.
+2. **Staff the execution plan.** The owner launches project-scoped `superi-tier2` specialists from
+   the approved execution decomposition. Give each one a detailed assignment with exact path
+   ownership, mandatory reads, interfaces, proof, peers, and handoff. Use one writer per path at a
+   time. Run disjoint slices concurrently, serialize dependent or overlapping slices, and route
+   interface decisions directly between affected peers. Tier 2 specialists never pull, rebase,
+   commit, push, or touch Google Docs.
+3. **Prove before changing.** Each implementation specialist writes the smallest real test first and
+   runs it to confirm the expected failure. For bugs, reproduce the defect. For existing untested
+   behavior, capture it before modifying it. Then implement the smallest complete slice and rerun the
+   proof. Record commands, results, files, and remaining risks in its handoff and the assigned section
+   of `execution.md` when authorized.
+4. **Integrate completely.** Specialists follow current interfaces and dependency direction and
+   include real error paths, migrations, feature configurations, diagnostics, and documentation.
+   They coordinate directly before changing shared contracts. No placeholders, mocked success, dead
+   interfaces, hidden manual steps, or concurrent edits to one path.
+5. **Verify in widening rings.** Focused test specialists verify individual slices, then an
+   integration specialist runs relevant subsystem and consumer suites. The checkpoint owner runs the
+   final
    `python3 .agents/skills/superi-execution/scripts/verify_checkpoint.py --base <base-revision>` from
-   the root, using `--full` for broad infrastructure changes or uncertain selection. Record every
-   selected command and result in `execution.md`. The verifier is a floor, so also run every
-   checkpoint-specific proof from `planning.md`. Headless proof is mandatory. Use computer control
-   only for behavior that cannot be proven headlessly, and verify resulting engine or project state
-   instead of trusting appearance alone.
-6. **Refresh the maps.** Run `superi-mapping` after source edits and tests. Use the Git diff to find
-   every directly affected module, then update each module map from the changed raw files and related
-   interfaces read through EOF. Update consumer maps and the global index when contracts, ownership,
-   layering, public flow, or status changed. Recompute hashes and file counts, and never change only
-   metadata while leaving inaccurate prose.
-7. **Review the whole result.** Inspect the source and map diff line by line against the checkpoint,
-   research, plan, architectural boundaries, failure modes, and neighboring work. Remove only defects
-   introduced by this checkpoint. Never weaken a test, requirement, diagnostic, safety boundary, or
-   map validation rule to pass.
-8. **Deliver and record.** Follow the root `AGENTS.md` Git delivery and Google Docs paired-tab
-   lifecycle exactly. Reverify after the final rebase and prove the commit exists on the required
-   remote branch. Replace the exact descriptions-tab claim suffix with the required three-sentence
-   `Implemented` description, then highlight the main-tab specification from its first non-whitespace
-   character through its final character without highlighting the separator space or changing its ID
-   tag. Explicitly count the sentences and verify both tabs through fresh readback.
+   the root, using `--full` for broad infrastructure changes or uncertain selection, and confirms
+   every checkpoint-specific proof from `planning.md`. Keep bulky logs inside specialist threads and
+   record exact commands, exit status, concise results, and artifact locations in `execution.md`.
+   Headless proof is mandatory. Use computer control only when headless proof is impossible, and
+   verify resulting engine or project state instead of trusting appearance alone.
+6. **Refresh the maps.** Assign tier 2 map specialists after source edits and tests. Use the Git diff
+   to identify every directly affected module, update each map from changed raw files and related
+   interfaces read through EOF, and update consumers and the global index when contracts, ownership,
+   layering, public flow, or status changed. The owner reviews the complete map diff, reconciles
+   cross-module statements, recomputes hashes and file counts, and runs the final validator.
+7. **Review independently.** Assign at least one fresh tier 2 integration reviewer that did not own
+   the implementation. It reads every changed file through EOF and inspects the complete source,
+   test, and map diff against the checkpoint, research, plan, architectural boundaries, failure modes,
+   and neighboring work, then reports evidence and defects without editing unless explicitly assigned
+   a correction. The owner personally reads the final diff line by line, every critical interface and
+   relevant test through EOF, all disputed or high-risk regions, and both plan files. Delegate
+   substantive corrections, then repeat focused and final verification. The owner may make only small
+   integration corrections that do not require new architecture or broad context.
+8. **Deliver and record as owner.** Only the checkpoint owner performs the final fetch and safe
+   integration, commit, rebase, push, remote verification, and Google Docs paired-tab lifecycle.
+   Reverify the final rebased source and prove the commit exists on the required remote branch.
+   Replace the exact descriptions-tab claim with the required three-sentence `Implemented`
+   description, highlight only the main specification text, explicitly count the sentences, and
+   verify both tabs through fresh readback.
 
 ## Document completion gate
 
@@ -79,10 +87,12 @@ Do not return `Done.` unless all of these are true:
 
 ## Autonomy loop
 
-When evidence breaks an assumption, inspect the root cause, research the missing fact, revise the
-internal plan, and continue. Retry transient tool, test, rebase, push, and document failures with a
+When evidence breaks an assumption, the owner routes root-cause inspection and missing research to
+tier 2 specialists, has the lead planner revise `planning.md`, has the execution decomposer reconcile
+`execution.md`, and continues. Retry transient tool, test, rebase, push, and document failures with a
 bounded corrective change. Do not pause for routine choices, progress reports, or approval between
-slices.
+slices. Reuse idle specialists with follow-up assignments and queue additional specialists whenever
+more parallel work would materially reduce owner context or improve proof.
 
 Stop only for a blocking condition defined by root `AGENTS.md`. Otherwise continue until every item
 in its completion gate passes, then return exactly `Done.`

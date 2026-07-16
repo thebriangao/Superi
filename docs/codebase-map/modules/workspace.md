@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 7eea6ab5004e0f354123faa8cd6550a8f3479c76a71a54d3115f23651d0240f1
-source_files: 143
+source_hash: b907873defa7fa6634774aaeecfd600c859c91a90f7f313fa129ea45c4affbbd
+source_files: 145
 mapped_at_commit: working-tree
 ---
 
@@ -21,12 +21,13 @@ checkpoint assignments, fixes the paired-tab Google Docs claim, blocked-note, hi
 three-sentence completion protocol, requires safe synchronization with `origin/main`, and makes
 current mandatory maps plus complete selected raw-file reads a prerequisite for implementation.
 Optional maps may be replaced only by the recorded deeper raw-code reading defined there. It routes
-a single checkpoint through mapping, planning, and execution, and routes multiple checkpoints into
-separate Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers
-but obeys an explicit positive user concurrency value. The file is ignored by Git and copied into
-managed worktrees through `.worktreeinclude`, so the mapping script does not include it in this
-module's 143-file inventory or source hash. It must still be reread independently before repository
-work.
+a single checkpoint to a tier 0 or tier 1 owner that delegates research, complete reading, planning,
+implementation, testing, mapping, and independent review to tier 2 specialists while retaining sole
+ownership of Google Docs, integration, delivery, and final approval. Multiple checkpoints still use
+separate Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers but
+obeys an explicit positive user concurrency value. The file is ignored by Git and copied into managed
+worktrees through `.worktreeinclude`, so the mapping script does not include it in this module's
+145-file inventory or source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
 ratified architecture, while `open/Cargo.toml` and `open/Cargo.lock` expose the dependency graph
@@ -38,11 +39,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 ### Repository workflows and mapping
 
 - `.agents/skills/superi-execution/SKILL.md`: Defines the checkpoint execution loop after planning.
-  It requires the sole `planning.md` input and maintains the sole `execution.md` evidence file,
-  refuses execution without validated mandatory maps and complete reading evidence, requires
-  test-first proof, full integration, deterministic local verification, affected and consumer map
-  refreshes, whole-result review, remote delivery, and paired-tab Google Docs completion before
-  `Done.` is allowed.
+  It requires one owner-orchestrated tier 2 execution team, sole `planning.md` and `execution.md`
+  artifacts, disjoint writer ownership, test-first proof, widening specialist verification, map
+  refreshes, independent complete-file review, owner compatibility review, deterministic local
+  verification, remote delivery, and paired-tab Google Docs completion before `Done.` is allowed.
 - `.agents/skills/superi-execution/scripts/verify_checkpoint.py`: Selects deterministic local quality
   gates from the Git change set relative to a required base revision, validates changed Python and
   JSON syntax, always validates the codebase maps, and conditionally runs the applicable workflow,
@@ -51,10 +51,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `.agents/skills/superi-execution/agents/openai.yaml`: Supplies the display name, short description,
   and default invocation prompt for the execution skill.
 - `.agents/skills/superi-mapping/SKILL.md`: Defines module discovery, shard reading, synthesis,
-  map frontmatter and required sections, stale-map refresh, and whole-map validation. Normal
-  checkpoint workers read their mandatory map closure and may replace only optional maps with the
-  prescribed deeper raw-code evidence. Mapping delegation is reserved for an explicitly assigned
-  full-map coordinator, while each checkpoint worker refreshes its own affected maps.
+  map frontmatter and required sections, stale-map refresh, and whole-map validation. Checkpoint
+  owners may delegate complete map reading and affected-map updates to tier 2 specialists with one
+  writer per map, exact EOF evidence, peer coordination, and owner reconciliation. Optional maps may
+  still be replaced only with the prescribed deeper raw-code evidence.
 - `.agents/skills/superi-mapping/scripts/codebase_maps.py`: Implements repository discovery, module
   assignment, UTF-8 and binary classification, deterministic source hashing, whole-file sharding,
   changed-module reporting, and strict map validation. It reads tracked plus nonignored untracked
@@ -63,13 +63,19 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   frontmatter, exact source ownership, revision syntax, inventory-section entries, resolved index
   links, unexpected module maps, required headings, current hashes, and forbidden Unicode dashes.
 - `.agents/skills/superi-planning/SKILL.md`: Defines evidence-based planning for one checkpoint. It
-  requires the live canonical assignment, verified descriptions-tab claim suffix, immutable
-  main-tab specification, validated mandatory maps or recorded optional-map substitutions, full
-  implementation-path reading through EOF, uncertainty research, proof design, and an ordered
-  change map in the mandatory `plans/<checkpoint-id>/planning.md` before execution. No other
-  planning document is permitted.
+  requires the owner to synchronize and claim before creating a tier 2 planning team. Parallel map,
+  raw-file, and research specialists report distilled evidence to one lead planner, which is the sole
+  writer of `plans/<checkpoint-id>/planning.md`; one execution decomposer then writes the initial
+  `execution.md` with dependencies and disjoint path ownership. No other plan document is permitted.
 - `.agents/skills/superi-planning/agents/openai.yaml`: Supplies the display name, short description,
   and default invocation prompt for the planning skill.
+- `.codex/config.toml`: Pins every Superi project session to `gpt-5.6-sol` with `max` reasoning and
+  raises nested agent depth to two so both direct checkpoint owners and tier 1 owners can create tier
+  2 specialists. It leaves concurrent thread count to the active platform limit.
+- `.codex/agents/superi-tier2.toml`: Defines the preferred project-scoped tier 2 specialist with the
+  same Sol and max settings. Its fixed behavior accepts only detailed bounded assignments, forbids
+  checkpoint lifecycle and Git delivery, preserves path ownership, requires direct peer
+  coordination, and returns concise evidence without copying bulky context to the owner.
 - `.github/scripts/check-dependency-policy.sh`: Executable Bash contract check for the dependency
   policy workflow. It requires exact workflow name, permissions, checker invocation, cargo-deny
   action inputs, unknown-Git denial, revision-pinned Git policy, and the approved OxideAV source;
@@ -618,6 +624,9 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
 - The three repository skills expose checkpoint planning, checkpoint execution, and codebase map
   maintenance workflows. Their `agents/openai.yaml` files are presentation metadata, not alternate
   behavior specifications.
+- `.codex/config.toml` and `.codex/agents/superi-tier2.toml` expose the repository's local multi-agent
+  runtime contract. Generic children inherit Sol with max reasoning when a tool surface cannot name
+  the custom type; surfaces that support custom agents select `superi-tier2` directly.
 - The execution verifier accepts a required Git base revision and optional `--full` or `--dry-run`
   flags. It turns the final changed-path set into an explicit local command plan, validates changed
   Python and JSON inputs, always validates maps, and executes applicable repository gates without
@@ -656,16 +665,19 @@ modules even when workspace documents define constraints on them.
 
 Repository work flows through two control planes.
 
-The operational control plane begins with `AGENTS.md`. A single checkpoint synchronizes with the
-remote, claims its exact descriptions-tab ID suffix, rereads the immutable main-tab specification,
-validates and reads the global index plus mandatory affected and contract-path maps, and records
-deeper raw-code substitutes for any permitted optional-map omission. Planning writes exactly
-`plans/<id>/planning.md`; execution writes exactly `plans/<id>/execution.md`, implements and tests
-the result, runs the changed-path local verifier plus checkpoint-specific proof, refreshes affected
-maps, and completes only after repository, remote, and paired-tab document readback. A
-multi-checkpoint request is dispatched in first-seen order into separate Codex-managed worktrees.
-The rolling queue defaults to three active workers unless the user supplies another positive
-concurrency value, and `.worktreeinclude` supplies the otherwise ignored root law.
+The operational control plane begins with `AGENTS.md`. A single checkpoint owner synchronizes with
+the remote, claims its exact descriptions-tab ID suffix, rereads the immutable main-tab
+specification, and records the base revision. It then creates detailed tier 2 assignments for map
+validation, complete file reading, research, planning, decomposition, disjoint implementation,
+focused proof, map reconciliation, and independent review. One lead planner owns `planning.md`, one
+execution decomposer initializes `execution.md`, and one writer owns each source or map path at a
+time. Specialists coordinate contract decisions directly and keep raw context in their own threads.
+The owner monitors and integrates their distilled handoffs, reads the final diff and critical
+interfaces, runs final deterministic proof, and alone controls Git delivery and paired-tab Google
+Docs completion. A multi-checkpoint request is dispatched in first-seen order into separate
+Codex-managed worktrees. The rolling queue defaults to three active checkpoint owners unless the
+user supplies another positive concurrency value, and `.worktreeinclude` supplies the otherwise
+ignored root law.
 
 The codebase-map flow is a repository navigation and freshness control plane. The Python script
 discovers tracked files plus nonignored untracked files, excludes Git internals, generated maps,
@@ -860,7 +872,9 @@ workspace, Bash and `grep` for the executable policy contract, cargo-deny plus G
 dependency policy, GitHub-hosted macOS, Windows, and Ubuntu runners for build portability, Node.js
 24.13.0 with npm for the frontend contract, Tauri 2 with native desktop SDKs for the shell contract,
 and the Google Docs plus Codex environment described by repository law for checkpoint coordination.
-The mapping and verification scripts use only the Python standard library; the verifier
+Project Codex configuration requires GPT-5.6 Sol with max reasoning, nested depth two, custom agent
+discovery when the surface supports it, and inherited generic spawning otherwise. The mapping and
+verification scripts use only the Python standard library; the verifier
 conditionally invokes the repository's Git, Python, Bash, Cargo, cargo-deny, and npm commands.
 
 Every crate and repository tool consumes `open/Cargo.toml` package defaults and may opt into its
@@ -936,6 +950,13 @@ of open runtime behavior.
   exactly `plans/<id>/execution.md`; additional planning documents are prohibited. Work synchronizes
   with `origin/main`, preserves all existing work, and never force pushes or uses destructive
   conflict handling.
+- A tier 0 or tier 1 owner alone claims and completes Google Docs, integrates remote state, approves
+  compatibility, commits, rebases, pushes, and closes the checkpoint. Tier 2 specialists receive
+  detailed non-`Build` assignments, run only on GPT-5.6 Sol with max reasoning, do not spawn deeper
+  agents, and never perform checkpoint lifecycle or Git delivery.
+- Parallel tier 2 writes require disjoint path ownership. Overlapping or dependent edits are
+  serialized, one lead planner owns `planning.md`, one execution decomposer initializes
+  `execution.md`, and one map writer owns each module map or the global index at a time.
 - Mandatory map closure cannot be skipped. An optional map may be omitted only when the worker
   records and fully reads its module manifest, public entry points, cross-module interfaces, and
   relevant implementation and tests as the deeper substitute.
@@ -959,6 +980,12 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   applicable repository contracts from paths and file kinds. Broad or uncertain work uses `--full`.
   Hosted CI status is not a general completion gate unless the assigned checkpoint explicitly
   requires hosted CI behavior.
+
+- Fresh local configuration proof parsed `.codex/config.toml` and
+  `.codex/agents/superi-tier2.toml` with Python `tomllib`, confirmed the exact Sol, max, and depth-two
+  values, and ran `codex --strict-config doctor --summary --ascii --no-color`. Codex reported the
+  configuration loaded without warnings; the noninteractive terminal capability remains an
+  environment note rather than a configuration failure.
 
 - `docs/checkpoints/P2.W05.C002.md` records the shared typed graph payload, concrete built-in effect
   schemas, caller-owned graph authoring, bounded CPU reference behavior, exact ROI and pixel
@@ -1298,15 +1325,16 @@ The largest current risk is cross-document drift:
   targets or prove a native frontend build outside the Ubuntu workflow.
 - The governing `AGENTS.md` is ignored and absent from the mapping script's repository inventory.
   Changes to repository law therefore do not change this module's source hash, which makes manual
-  rereading mandatory even when this map validates as current.
+  rereading mandatory even when this map validates as current. The tracked `.codex` project and tier
+  2 configuration do contribute to the hash and travel through ordinary Git worktrees.
 - Hosted workflows are not the routine agent completion gate. The local deterministic verifier plus
   checkpoint-specific proof is authoritative for the agent workflow unless a checkpoint explicitly
   owns hosted CI behavior; this does not convert a failing hosted lane into passing product evidence.
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`755398c118357ede40275e4086e3580353d7e1b8` when the map was refreshed. Its hash describes the exact
-143 discovered source files, including twelve generated binary payloads, layered on that revision.
+`7494125a924670cc0c35327298ea342a6c20d3b6` when the map was refreshed. Its hash describes the exact 145 discovered source files,
+including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 
@@ -1316,8 +1344,9 @@ after source changes settle, and run `validate` after map synthesis. The script 
 path, a null separator, its exact bytes, and another null separator in sorted path order, so path
 changes and content changes both invalidate the hash.
 
-Refresh this map whenever a root document, repository skill, workspace manifest, lockfile, toolchain
-policy, deny policy, shared fixture, or other non-crate and non-tool source changes. Reconcile prose,
+Refresh this map whenever a root document, repository skill, project Codex or custom agent
+configuration, workspace manifest, lockfile, toolchain policy, deny policy, shared fixture, or other
+non-crate and non-tool source changes. Reconcile prose,
 not only frontmatter: update membership counts, dependency and feature descriptions, proof commands,
 status claims, cross-module relationships, and identified conflicts. Use `working-tree` while mapped
 sources are uncommitted; otherwise record the revision whose source bytes were mapped.

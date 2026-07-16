@@ -28,17 +28,19 @@ The `workspace` module owns repository files outside `open/crates/*` and `open/t
 output, dependency caches, ignored files, plan files, and the generated map tree are excluded.
 Tracked binary artifacts remain in the inventory, but their bytes are not treated as readable prose.
 
-For ordinary checkpoint work, root `AGENTS.md` controls map selection. Read the global index and the
-complete affected caller, consumer, contract, and runtime-path map closure. Omit another map only by
-recording the deeper raw-code substitution required there. Never substitute raw code for a directly
-affected or contract-path map.
+For ordinary checkpoint work, root `AGENTS.md` controls map selection and tier 2 delegation. The
+checkpoint owner may assign map validation, complete map reading, and affected-map refresh to one or
+more tier 2 specialists. The checkpoint team must read the global index and the complete affected
+caller, consumer, contract, and runtime-path map closure. Omit another map only by recording the
+deeper raw-code substitution required there. Never substitute raw code for a directly affected or
+contract-path map.
 
 ## Create all maps
 
 This coordinator workflow applies only when the user explicitly assigns a full-map creation or
-full-map rebuild outside a normal single-checkpoint worker. A standard checkpoint worker must refresh
-its affected maps itself and must not delegate. The explicit full-map coordinator performs these
-steps:
+full-map rebuild outside a normal single-checkpoint team. A checkpoint owner may delegate affected
+map work to tier 2 specialists but remains responsible for reconciling and approving the delivered
+maps. The explicit full-map coordinator performs these steps:
 
 1. Synchronize the repository safely, run `inventory`, and create one mapping assignment per module.
 2. Partition large modules with `shards`. A shard contains whole files only and may exceed the line
@@ -119,3 +121,9 @@ Map maintenance is part of implementation, not a later documentation task:
 
 No source-changing commit is complete while an affected map is stale. Do not update only the hash;
 the prose and inventory must truthfully describe the resulting code.
+
+For delegated checkpoint work, assign one tier 2 map writer per module map and never allow concurrent
+writers on the same map or global index. Every map specialist must report its exact EOF reading
+inventory, relationships changed, validation commands, and remaining uncertainty to the checkpoint
+owner and any implementation peer affected by the map. The checkpoint owner personally reviews the
+final map diff, reconciles cross-module statements, and runs the final validator after integration.
