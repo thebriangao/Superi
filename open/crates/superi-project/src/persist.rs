@@ -6,7 +6,7 @@
 //! policy remain separate project concerns.
 
 use std::fmt;
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 use std::path::Path;
 use std::time::Duration;
 
@@ -108,6 +108,35 @@ impl ProjectDatabase {
         })
     }
 
+    /// Creates schema 1 inside a path already reserved with atomic `create_new`.
+    pub(crate) fn create_reserved<F>(
+        path: &Path,
+        reservation: File,
+        mut verify_reservation: F,
+    ) -> Result<Self>
+    where
+        F: FnMut(&File, &Path) -> Result<()>,
+    {
+        verify_reservation(&reservation, path)?;
+        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        let connection = Connection::open_with_flags(path, flags)
+            .map_err(|source| database_error(source, "open_reserved_database"))?;
+        verify_reservation(&reservation, path)?;
+        if let Err(error) =
+            initialize_connection(&connection, true).and_then(|()| initialize_schema(&connection))
+        {
+            drop(connection);
+            drop(reservation);
+            return Err(error);
+        }
+        drop(reservation);
+        Ok(Self {
+            connection,
+            writable: true,
+            source_schema_revision: PROJECT_SCHEMA_REVISION,
+        })
+    }
+
     /// Opens an existing project with write authority and migrates supported schemas.
     ///
     /// Current projects are validated without mutation. Every registered older
@@ -197,6 +226,53 @@ impl ProjectDatabase {
             .commit()
             .map_err(|source| database_error(source, "finish_load_project"))?;
         Ok(document)
+    }
+
+    /// Configures a publication candidate for one closed rollback-journal file.
+    pub(crate) fn configure_save_candidate(&self) -> Result<()> {
+        if !self.writable {
+            return Err(project_error(
+                ErrorCategory::PermissionDenied,
+                Recoverability::UserCorrectable,
+                "configure_save_candidate",
+                "save candidate requires write authority",
+            ));
+        }
+        let journal_mode: String = self
+            .connection
+            .query_row("PRAGMA journal_mode = DELETE", [], |row| row.get(0))
+            .map_err(|source| database_error(source, "configure_save_journal_mode"))?;
+        if !journal_mode.eq_ignore_ascii_case("delete") {
+            return Err(project_error(
+                ErrorCategory::Unsupported,
+                Recoverability::UserCorrectable,
+                "configure_save_journal_mode",
+                "SQLite cannot provide the required single-file rollback journal mode",
+            ));
+        }
+        self.connection
+            .pragma_update(None, "synchronous", "EXTRA")
+            .map_err(|source| database_error(source, "configure_save_synchronous"))?;
+        let synchronous: i64 = self
+            .connection
+            .pragma_query_value(None, "synchronous", |row| row.get(0))
+            .map_err(|source| database_error(source, "verify_save_synchronous"))?;
+        if synchronous != 3 {
+            return Err(project_error(
+                ErrorCategory::Unsupported,
+                Recoverability::UserCorrectable,
+                "verify_save_synchronous",
+                "SQLite cannot provide synchronous EXTRA for the save candidate",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Closes SQLite and reports any delayed close failure.
+    pub(crate) fn close_for_save(self) -> Result<()> {
+        self.connection
+            .close()
+            .map_err(|(_, source)| database_error(source, "close_save_candidate"))
     }
 }
 

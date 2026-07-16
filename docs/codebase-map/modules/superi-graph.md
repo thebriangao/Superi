@@ -48,12 +48,13 @@ editable graph instances.
 
 Concrete cache storage, exact byte and frame admission, precise edit cleanup, and bounded
 background render dispatch remain owned by `superi-cache`; invalidation invocation,
-ROI-plan evaluator orchestration, project storage, and a production runtime node catalog remain
-absent or placeholders. The
+ROI-plan evaluator orchestration, and a production runtime node catalog remain absent or
+placeholders. `superi-project` now stores canonical graph documents and publishes exact project
+snapshots durably without transferring graph meaning into this crate. The
 implemented storage, schema, validation, mutation, invalidation, ROI planning, scheduling, cache
 identity, diagnostics, document, parameter evaluator, compiler seam, and shared interactive and
-headless evaluator surfaces must not be interpreted as a working production render path or atomic
-project save system.
+headless evaluator surfaces must not be interpreted as a working production render path or as the
+owner of project-file publication.
 
 ## Source inventory
 
@@ -709,8 +710,9 @@ The graph document flow is:
    cardinality, and acyclicity before the persisted revision becomes visible.
 5. The returned `GraphLoad<T>` supplies the exact checked graph and canonical current document, so
    an editor, script, or headless caller can save an upgrade without maintaining a second model.
-6. Project persistence may place those bytes in a crash-safe container later. The graph codec does
-   not claim filesystem interruption handling beyond rejecting incomplete document bytes.
+6. Project persistence stores those bytes in its checked schema-1 container and now publishes the
+   complete snapshot through durable Save, SaveAs, Copy, or Backup commands. The graph codec owns no
+   filesystem path, identity, no-clobber, synchronization, or interruption handling.
 
 The dependency invalidation flow is:
 
@@ -794,7 +796,9 @@ graph evaluation or runtime integration. Separately, engine resource preparation
 reference model. `superi-project` now owns those compilations as ordinary whole-project state and
 also admits named standalone `EditableGraph<CompiledTimelineGraphValue>` documents. Its immutable
 snapshots preserve graph revisions and prior graph state without moving graph validation or
-mutation policy into the project crate.
+mutation policy into the project crate. Its file session can durably publish and reopen those exact
+documents, and the engine saved-project consumer proves the retained direct edit reaches resource
+acquisition without recompilation.
 
 ## Dependencies and consumers
 
@@ -1044,7 +1048,8 @@ mutation policy into the project crate.
   snapshots, domains, requests, and deterministic custom mapping.
 - The crate has no project container, atomic file replacement, locking owner, autosave, recovery
   journal, outer scheduler connection, production runtime node catalog, GPU resource ownership,
-  plugin loading, undo history, cache generation owner, or engine transaction coordinator yet.
+  plugin loading, undo history, cache generation owner, or engine transaction coordinator. The
+  project-file boundaries are implemented downstream by `superi-project`, not missing graph work.
 
 ## Tests and verification
 
@@ -1217,11 +1222,11 @@ and editable expression source through save and load. Missing-node resolution no
 current schema availability without changing those bytes or that editable state, retains absent or
 incompatible nodes as typed placeholders, and gives every caller one deterministic degraded
 evaluation result until exact schemas return. Exact schemas then enable the shared interactive and
-headless evaluation snapshot without a graph rewrite. The crate cannot store a project atomically,
+headless evaluation snapshot without a graph rewrite. The crate cannot itself store a project atomically,
 own concrete cached values, persist cache data, bind
 plugin implementations, or render production values. Timeline compilation, project document
-retention, engine preparation retention, and memory cache retention are now real downstream
-consumers. Effects is a concrete downstream schema, expression,
+retention and durable publication, engine saved-project preparation retention, and memory cache
+retention are now real downstream consumers. Effects is a concrete downstream schema, expression,
 diagnostics, evaluator, immutable compiler, generic serialization, authoring, and animation consumer
 with strict visual composition, spatial composition, vector shape, mask, rotoscope, motion-tracking,
 and text payloads, inspectable glyph layout, ordinary transition nodes, isolated OpenFX definitions
@@ -1350,7 +1355,8 @@ editor-specific, script-specific, or headless-specific propagation path.
 Keep graph documents strict, versioned, canonical, and reconstructed through the existing checked
 state owners. Additive fields must remain canonically omittable for old current-format documents;
 incompatible fields require an explicit format revision and migration. Preserve unknown-future
-rejection, and leave atomic project storage, recovery selection, and locking in `superi-project`.
+rejection, and leave durable project storage, native publication, recovery selection, and locking
+in `superi-project`.
 
 Keep plugin availability derived from the immutable graph and registry snapshots. Preserve exact
 saved schemas, typed instance state, stable blocker order, fail-closed definition conflicts, and the
