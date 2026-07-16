@@ -33,7 +33,7 @@ use superi_media_io::operation::{MediaPriority, OperationContext};
 use superi_media_io::read::ReadOutcome;
 use superi_project::document::ProjectDocument;
 use superi_project::media::{PortableRelativePath, ReferencedMediaPath};
-use superi_project::{ProjectDatabase, ProjectFileSession, ProjectSaveCommand};
+use superi_project::ProjectDatabase;
 use superi_timeline::compile::{TimelineGraphOrigin, TimelineGraphValue};
 use superi_timeline::model::{
     Clip, ClipSource, EditorialObjectId, EditorialProject, LinkedMediaReference, Timeline, Track,
@@ -517,48 +517,22 @@ fn project_acquisition_preserves_published_editable_graph_state() {
 
 #[test]
 fn migrated_project_reaches_engine_with_the_exact_edited_graph() {
-    let source_artifact = TempProjectFile::new();
-    let published_artifact = TempProjectFile::new();
+    let artifact = TempProjectFile::new();
     let expected = edited_project_document().snapshot();
-    let mut database = ProjectDatabase::create(source_artifact.path()).unwrap();
+    let mut database = ProjectDatabase::create(artifact.path()).unwrap();
     database.replace(&expected).unwrap();
     drop(database);
-    downgrade_project_fixture_to_schema_zero(source_artifact.path());
+    downgrade_project_fixture_to_schema_zero(artifact.path());
 
-    let migrated = {
-        let database = ProjectDatabase::open(source_artifact.path()).unwrap();
-        assert!(database.was_migrated());
-        assert_eq!(database.source_schema_revision(), 0);
-        database.load().unwrap().snapshot()
-    };
+    let database = ProjectDatabase::open(artifact.path()).unwrap();
+    assert!(database.was_migrated());
+    assert_eq!(database.source_schema_revision(), 0);
+    let migrated = database.load().unwrap().snapshot();
     assert_eq!(migrated, expected);
-    let migrated_source = fs::read(source_artifact.path()).unwrap();
-
-    let mut session = ProjectFileSession::new(source_artifact.path()).unwrap();
-    let outcome = session
-        .execute(ProjectSaveCommand::SaveAs {
-            destination: published_artifact.path().to_path_buf(),
-            snapshot: migrated.clone(),
-        })
-        .unwrap();
-    assert!(outcome.durable());
-    assert!(outcome.adopted());
-    assert_eq!(
-        outcome.active_path(),
-        fs::canonicalize(published_artifact.path()).unwrap()
-    );
-    assert_eq!(fs::read(source_artifact.path()).unwrap(), migrated_source);
-
-    let published = ProjectDatabase::open_read_only(published_artifact.path())
-        .unwrap()
-        .load()
-        .unwrap()
-        .snapshot();
-    assert_eq!(published, migrated);
 
     let registry = media_backend_registry().unwrap();
     let resources = acquire_project_resources(
-        &published,
+        &migrated,
         &registry,
         [request()],
         ResourceAcquisitionPolicy::default(),

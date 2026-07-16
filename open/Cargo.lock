@@ -3126,14 +3126,12 @@ dependencies = [
 name = "superi-project"
 version = "0.0.0"
 dependencies = [
- "libc",
  "rusqlite",
  "serde_json",
  "sha2",
  "superi-core",
  "superi-graph",
  "superi-timeline",
- "windows 0.61.3",
 ]
 
 [[package]]

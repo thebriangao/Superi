@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 157dc3500c903d8135f859ff0fdd6d6e0d2d9a9bd36caa889ddf1cbd00e1ef6d
+source_hash: b907873defa7fa6634774aaeecfd600c859c91a90f7f313fa129ea45c4affbbd
 source_files: 145
 mapped_at_commit: working-tree
 ---
@@ -409,11 +409,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   test edge to `superi-concurrency`, graph and timeline document serialization and integrity edges,
   cache-key hashing, and the exact `oxideav-mp3` Git revision. Timeline state
   directly consumes the already-resolved `serde`, `serde_json`, and `sha2` packages, while
-  `superi-project` now directly consumes exact `rusqlite` 0.32.1, the existing SHA-256 package,
-  target-specific `libc` on Unix, existing exact `windows` 0.61.3 Foundation and Storage FileSystem
-  bindings on Windows, and test-only JSON for exact legacy component fixtures. `superi-engine`
-  records a test-only direct rusqlite edge for its real migrated, durably saved project resource
-  consumer. These platform edges reuse packages already present in the lock resolution.
+  `superi-project` now directly consumes exact `rusqlite` 0.32.1 and the existing SHA-256 package,
+  plus test-only JSON for exact legacy component fixtures. `superi-engine` records a test-only
+  direct rusqlite edge for its real migrated-project resource consumer.
   The bundled SQLite edge resolves `libsqlite3-sys` 0.30.1, `ahash` 0.8.12, `hashbrown` 0.14.5,
   `hashlink` 0.9.1, fallible iterator adapters, and native build discovery packages. This exact
   path compiles on the declared Rust 1.80 floor and keeps project databases offline and
@@ -719,18 +717,15 @@ present for core and graph contracts. This changes the direct package edges reco
 `superi-timeline` but does not change crate-tier direction, introduce a network path, or transfer
 SQLite and autosave ownership away from `superi-project`.
 
-The project schema and file-publication owner consumes exact rusqlite 0.32.1 with default features
-disabled and bundled SQLite enabled. It also consumes the existing exact SHA-256 pin,
-target-specific workspace `libc` on Unix, and exact `windows` 0.61.3 with only
-`Win32_Foundation` and `Win32_Storage_FileSystem` added on Windows. Rusqlite and libsqlite3-sys are
+The project schema owner consumes exact rusqlite 0.32.1 with default features disabled and bundled
+SQLite enabled. It also consumes the existing exact SHA-256 pin. Rusqlite and libsqlite3-sys are
 MIT-licensed, SQLite is public domain, and the bundled path performs no runtime discovery or
 network operation. The dependency remains below project and does not change any internal Superi
 crate edge. Fresh `cargo +1.80.1 check -p superi-project --locked` proves the selected resolution on
 the declared compiler floor. Project's test-only JSON edge builds supported schema-0 component
 fixtures, while engine's test-only direct rusqlite edge builds an exact legacy database around the
-existing real resource-acquisition consumer. The platform packages were already locked, so this
-change adds direct target edges and Windows API features without introducing another package
-version. All publication remains local and offline, and no Superi crate-tier direction changes.
+existing real resource-acquisition consumer. Both packages were already locked and neither edge
+enters a runtime dependency tier.
 
 The effects animation, mask, rotoscope, text, and preset wires reuse the same workspace Serde pin.
 Effect presets additionally reuse the workspace JSON and SHA-256 pins at runtime for strict
@@ -1170,22 +1165,19 @@ introspection ownership contract without changing the production runtime graph.
 The effects crate now owns a substantive graph-native authoring SDK, exact animation curves,
 complete reusable presets, explicit checked schema migration, and strict authored wires. Its preset
 lockfile change records direct runtime use of already-resolved JSON and SHA-256 packages for
-canonical integrity-protected documents. Effects does not own project publication, which is now
-implemented by `superi-project`; production native plugin execution remains incomplete. The
-effects-side isolated OpenFX contract and engine-side
+canonical integrity-protected documents, while atomic project persistence and production native
+plugin execution remain incomplete. The effects-side isolated OpenFX contract and engine-side
 bundle discovery, launch coordination, containment, and graph availability are implemented, while
 concrete platform transport, native OFX ABI adapters, and GPU-handle IPC remain absent.
 The project crate now owns a stable schema-1 SQLite application database with deterministic
 timeline and graph component rows, SHA-256 evidence, transactional replacement, checked reload,
 durable nonoverwriting create, read-only reopen, and an ordered exact schema-0-to-schema-1 migration
-inside one immediate transaction. Its public file session also owns exact durable Save, SaveAs,
-Copy, and Backup publication, command-specific adoption, no-clobber destinations, current-schema
-Save replacement, native identity checks, and retained same-session completion evidence after an
-interrupted visible publication. The lockfile records exact rusqlite 0.32.1 and libsqlite3-sys
-0.30.1 with bundled SQLite, project JSON and engine rusqlite test edges, and direct reuse of existing
-Unix `libc` and Windows 0.61.3 packages. Additional project schema revisions, autosave scheduling,
-recovery journals, dirty-state policy, and public API, CLI, and scripting adapters remain incomplete.
-Windows publication passes target check and strict Clippy but has not run on a native Windows host.
+inside one immediate transaction. The lockfile records exact rusqlite 0.32.1 and libsqlite3-sys
+0.30.1 with bundled SQLite, plus project JSON and engine rusqlite test edges. Additional project
+schema revisions, synchronized temporary publication, atomic destination replacement, autosave, and
+recovery remain incomplete.
+The synchronized remote revision before this checkpoint is
+`755398c118357ede40275e4086e3580353d7e1b8`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
 root README, deny policy, and structure guide with license-audit CI. Commit
 `e0b3af9f099f527a8544d1b0317896640969903b` added the executable dependency-policy contract and its
@@ -1341,7 +1333,7 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`44b23e7027a55ec88175926da5067e3e296e9860` when the map was refreshed. Its hash describes the exact 145 discovered source files,
+`7494125a924670cc0c35327298ea342a6c20d3b6` when the map was refreshed. Its hash describes the exact 145 discovered source files,
 including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes

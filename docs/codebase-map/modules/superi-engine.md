@@ -2,7 +2,7 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: f500869b05ac8a5ab343a917715d1ee0d2a373d46dbed1c677599c11d4e5b46d
+source_hash: 43bdc74574bb94e25880a549fe5ed91e72d062339ad8b5b6735287d943509bed
 source_files: 52
 mapped_at_commit: working-tree
 ---
@@ -184,10 +184,10 @@ the production project, timeline, graph, media, color, render, or muxing owners.
   teardown retry, direct and stopped restart, and EngineControl ownership.
 - `open/crates/superi-engine/tests/media_resource_acquisition_contract.rs`: Proves complete source
   registration, real WebM and AV1 preparation, exact published project graph retention after a
-  direct graph edit, exact schema-0 project migration, source-preserving SaveAs publication, durable
-  reopen into that same retained graph, legacy timeline compilation, exact timing, precision,
-  metadata, color and alpha semantics, strict request validation, explicit fallback evidence,
-  cancellation, no exception retry, and fresh-context recovery.
+  direct graph edit, exact schema-0 project migration into that same retained graph, legacy timeline
+  compilation, exact timing, precision, metadata, color and alpha semantics, strict request
+  validation, explicit fallback evidence, cancellation, no exception retry, and fresh-context
+  recovery.
 - `open/crates/superi-engine/tests/opus_capability_contract.rs`: Default Opus selection proof.
 - `open/crates/superi-engine/tests/os_codec_registry_contract.rs`: Feature-gated host registry proof.
 - `open/crates/superi-engine/tests/proxy_substitution_contract.rs`: Proves real AV1 proxy
@@ -296,11 +296,8 @@ legacy editorial entry point and compiles one root plus its reachable nested tim
 `TimelineGraphCompilation` without recompiling, so published direct graph edits remain intact. Both
 paths require exactly one request for each reachable linked media identity and share the same
 source, decoder, cancellation, and all-or-nothing publication implementation. The consumer contract
-now obtains that snapshot through `ProjectDatabase::open` from a supported schema-0 fixture,
-publishes the migrated snapshot through `ProjectFileSession` SaveAs, proves the legacy source bytes
-remain unchanged, reopens the durable current-schema destination, and passes that exact saved
-snapshot into engine preparation. Migration and publication therefore cannot erase the graph
-revision before the real graph and media consumer.
+now obtains that snapshot through `ProjectDatabase::open` from a supported schema-0 fixture, proving
+that project migration cannot erase the graph revision before engine preparation.
 `MediaResourceRequest::from_project_media` resolves a recognized filesystem target through the
 project-owned codec, binds the stored `MediaId` and expected fingerprint into `SourceRequest`, and
 rejects missing identities, explicit missing state, opaque targets, and nondeterministic relative
@@ -846,10 +843,10 @@ audio mutation, so their user intent remains attached without synthesis.
   future engine worker supervisor can consume, but engine implements no adapter, native discovery,
   transport, or production command integration. AI remains a declared dependency without
   production command integration. Project supplies the implemented immutable whole-project
-  snapshot consumed by resource preparation, including current-schema snapshots durably published
-  from its schema migration path. Test-only rusqlite creates the exact legacy database fixture
-  without entering the engine runtime graph, and its referenced-media path adapter constructs local
-  `SourceRequest` values. Engine lifecycle still names only abstract project quiescence, and engine
+  snapshot consumed by resource preparation, including snapshots reconstructed by its schema
+  migration path. Test-only rusqlite creates the exact legacy database fixture without entering the
+  engine runtime graph, and its referenced-media path adapter constructs local `SourceRequest`
+  values. Engine lifecycle still names only abstract project quiescence, and engine
   implements neither persistence nor a parallel project command model.
 - `superi-api` consumes dispatcher transactions and events plus command, media capability, and
   complete engine introspection and integration validation snapshots, preserving public adaptation,
@@ -909,8 +906,8 @@ audio mutation, so their user intent remains attached without synthesis.
 - Timeline resource preparation requires the exact reachable media request set and at least one
   unique explicit decoder stream for each source-bearing media request.
 - Project resource preparation must clone the exact selected compilation from an immutable
-  `ProjectSnapshot`, whether the snapshot came from current state or a supported migrated and saved
-  project. It cannot recompile and erase ordinary published graph edits.
+  `ProjectSnapshot`, whether the snapshot came from current state or a supported migrated project.
+  It cannot recompile and erase ordinary published graph edits.
 - Project fingerprints are bound when omitted and rejected when conflicting. Opened source media ID
   and fingerprint are verified again before decoder construction.
 - Timeline compilation, sources, decoders, and selection evidence publish together only after every
@@ -1105,11 +1102,10 @@ The media resource acquisition contract proves the default registry exposes all 
 backends without changing codec ranking. It compiles the canonical timeline, probes and opens the
 real WebM fixture, creates the real Rust AV1 decoder, and retains exact source fingerprint, stream,
 packet and decoded-frame timing, 8-bit YUV representation, partially specified color tags, opaque
-alpha, and metadata. The same nine-test contract creates an exact schema-0 project around a directly
-edited graph, migrates it through the sole project database owner, proves full snapshot equality,
-publishes the migrated snapshot with SaveAs, proves the source bytes are preserved, reopens the
-durable current-schema destination, and then acquires the retained graph revision plus real media
-stream without recompilation. It resolves a portable stored project target into that real WebM path,
+alpha, and metadata. The same contract creates an exact schema-0 project around a directly edited
+graph, migrates it through the sole project database owner, proves full snapshot equality, and then
+acquires the retained graph revision plus real media stream without recompilation. It resolves a
+portable stored project target into that real WebM path,
 retains the project `MediaId` and expected fingerprint, rejects opaque targets, missing identities,
 explicit missing state, and relative project-file context, and proves exact request-set validation,
 fallback-tier policy evidence, selected-factory failure without retry, pre-cancelled atomic failure,
@@ -1293,8 +1289,7 @@ through its real crate rather than growing this reference model into a competing
 or upload changes require updating their actual consumers and tests independently. Keep source
 registration synchronized with all four media-I/O adapters. Keep legacy resource preparation bound
 to the timeline compiler and project resource preparation bound to the exact retained snapshot
-compilation, including snapshots durably published and reopened after project schema migration.
-Both paths must preserve
+compilation, including snapshots returned after project schema migration. Both paths must preserve
 the exact reachable media set, persistent source identity,
 explicit decoder streams, one-shot selection, operation checks, and all-or-nothing publication.
 Keep project request construction dependent on the project path codec, reject explicit missing

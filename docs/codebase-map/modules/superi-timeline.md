@@ -56,9 +56,7 @@ envelope in memory, and reconstructs every owner through checked constructors an
 The codec returns canonical current bytes only after whole-project validation. It owns no file I/O,
 SQLite schema, autosave policy, replacement protocol, or recovery journal. `superi-project` now
 retains this editorial state in memory and stores the canonical component bytes inside its stable
-schema-1 SQLite database, while timeline remains the only owner of component interpretation. The
-project file session can durably Save, SaveAs, Copy, or Backup the complete snapshot without
-changing these bytes or moving filesystem publication policy into timeline.
+schema-1 SQLite database, while timeline remains the only owner of component interpretation.
 Linked media target text remains opaque in this crate. `superi-project` recognizes versioned
 filesystem targets, resolves portable project-relative paths, and exposes revision-fenced path and
 relink commands while continuing to mutate this single timeline-owned media state.
@@ -587,9 +585,8 @@ Timeline document flow preserves those owners without becoming a project contain
    seams, followed by whole-project validation. Canonical current bytes are regenerated from the
    validated project, so successful migration never returns stale or unchecked input bytes.
 6. The API performs no file I/O and mutates no caller-owned project. The `superi-project` schema-1
-   transaction stores accepted canonical bytes with independent length and SHA-256 evidence. Its
-   project file session now owns destination replacement and no-clobber publication, while autosave
-   scheduling and journal recovery remain later project policies.
+   transaction stores accepted canonical bytes with independent length and SHA-256 evidence, while
+   autosave, destination replacement, and journal recovery remain later project policies.
 7. Compiled timeline graph values project through a separate strict tagged wire in this module.
    The graph codec preserves those values and revisions, and project joins the decoded editable
    graph to freshly derived trusted provenance through `TimelineGraphCompilation::with_graph`.
@@ -619,10 +616,8 @@ Timeline document flow preserves those owners without becoming a project contain
   `EditorialProject` plus complete matching `TimelineGraphCompilation` values in its revisioned
   immutable snapshots, stores canonical timeline bytes in schema 1, and uses timeline-owned strict
   graph-value Serde when storing retained graph documents. Project also interprets recognized media
-  targets as typed filesystem paths without changing their timeline serialization meaning. Its
-  save commands preserve those exact target bytes when publishing at another path, so subsequent
-  relative resolution intentionally follows the new project directory. Engine integration consumes
-  the color metadata seam, preserves the legacy direct compiler path,
+  targets as typed filesystem paths without changing their timeline serialization meaning. Engine
+  integration consumes the color metadata seam, preserves the legacy direct compiler path,
   traverses reachable media and nested timeline relationships, and clones the exact project-retained
   compilation with prepared source and decoder owners. Engine transport separately consumes the
   retime-owned reduced signed `PlaybackRate` without importing editorial mutation policy.
@@ -878,14 +873,11 @@ shared processing-value coexistence, plus production OTIO 0.18.1 reading,
 writing, opaque preservation, stable diagnostics, and a headless consumer are also test-backed.
 Strict canonical timeline documents, revision 0 migration, checked recovery, continued editing
 after load, and strict compiled graph-value round trips are test-backed. `superi-project` now stores
-canonical timeline and compiled graph components in stable SQLite schema 1 and durably publishes
-the exact retained state through Save, SaveAs, Copy, and Backup. The engine consumer migrates a
-legacy project, publishes it with SaveAs, reopens it, and acquires the saved graph and media path
-without recompilation. Effects has compatible
+canonical timeline and compiled graph components in stable SQLite schema 1. Effects has compatible
 graph-native transition authoring and a bounded oracle, but the production binder from this
 timeline-owned state to those visual schemas is absent. Graph evaluation, fit-to-fill,
-grouped-source compound synthesis, undo ownership, multicam mixing and runtime playback, autosave,
-recovery orchestration, and API integration remain absent. Engine
+grouped-source compound synthesis, undo ownership, multicam mixing and runtime playback, atomic save
+publication, autosave, recovery orchestration, and API integration remain absent. Engine
 preparation integration now consumes and retains the compiled graph, and engine transport consumes
 the standalone signed rate value, but no
 owner yet binds that prepared native timeline graph to decoded playback, multicam mixing, or render

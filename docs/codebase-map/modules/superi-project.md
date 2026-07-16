@@ -2,16 +2,15 @@
 module_id: superi-project
 source_paths:
   - open/crates/superi-project
-source_hash: bc7183eaebc5ef5a805f7af29d00adafa69ba907215cb5bb6e8399f248d880bb
-source_files: 16
+source_hash: baed0463ed04915b968c1197d2eeef2d5e99ff06c635dab28174fb8cc84b915a
+source_files: 12
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
 `superi-project` owns the coherent whole-project aggregate, stable schema-1 SQLite serialization,
-ordered forward migration from supported older project schemas, and durable project-file
-publication. One `ProjectDocument` combines
+and ordered forward migration from supported older project schemas. One `ProjectDocument` combines
 the validated editorial project, selected root timeline, retained compiled timeline graphs,
 optional named standalone editable graphs, and one optimistic document revision. Immutable
 `ProjectSnapshot` values give editor, script, headless, persistence, and engine consumers one equal
@@ -25,34 +24,27 @@ its source schema and migrates exact schema 0 to schema 1 in one immediate trans
 persists canonical timeline and graph component documents instead of copying their domain models
 into competing SQL fields.
 
-`ProjectFileSession` is the public file-publication authority. Its `Save`, `SaveAs`, `Copy`, and
-`Backup` commands share one exact candidate database pipeline, native publication rules, explicit
-durability checks, and same-session retry evidence for a visible publication whose final
-synchronization was interrupted. It preserves one absolute active path, never silently adopts a
-copy or backup destination, and adopts a SaveAs destination only after durable success.
-
 The project media boundary interprets timeline-owned opaque targets as versioned filesystem
 references when their syntax is known. It owns portable relative path validation, project-file
 resolution, explicit host-absolute platform evidence, stable `MediaId` queries, and atomic path,
 missing, and fingerprint-checked relink commands without creating a second media state model.
 
-This module does not yet own settings, history, autosave scheduling, recovery journals, unknown
-extension preservation, modified-since-open policy, public dirty-state hashing, or public API, CLI,
-and scripting adapters. Those remain assigned to later project checkpoints.
+This module does not yet own temporary save publication, filesystem synchronization, atomic
+destination replacement, save-as, copy, backup, settings, history, autosave, recovery journals,
+unknown extension preservation, modified-since-open policy, or public API and CLI commands. Those
+remain assigned to later project checkpoints.
 
 ## Source inventory
 
 - `open/crates/superi-project/Cargo.toml`: Declares core, graph, timeline, exact workspace
-  `rusqlite`, workspace SHA-256, test-only JSON fixtures, Unix `libc`, and the exact Windows
-  Foundation and Storage FileSystem bindings needed by native publication and identity checks.
+  `rusqlite`, workspace SHA-256, and test-only JSON fixture dependencies.
 - `open/crates/superi-project/src/autosave.rs`: Placeholder for autosave policy and execution.
 - `open/crates/superi-project/src/document.rs`: Implements `ProjectDocument`, immutable snapshots,
   private edit candidates, retained timeline compilations, named standalone graphs, revision
   fencing, checked reconstruction, and complete relationship validation.
 - `open/crates/superi-project/src/lib.rs`: Documents the implemented aggregate, schema-1
-  persistence, migration, referenced-media, and file-publication boundaries, exports public
-  project modules, keeps migration private, and re-exports the database and save authorities plus
-  stable format constants.
+  persistence, migration, and referenced-media boundaries, exports public project modules, keeps
+  migration private, and re-exports `ProjectDatabase` plus stable format constants.
 - `open/crates/superi-project/src/migrate.rs`: Owns the exact schema-0 contract, contiguous migration
   registry, secured compatibility decoding, checked aggregate reconstruction, single-transaction
   canonical schema-1 rewrite, full integrity checks, and precommit rollback proof.
@@ -62,19 +54,8 @@ and scripting adapters. Those remain assigned to later project checkpoints.
   timeline graphs.
 - `open/crates/superi-project/src/persist.rs`: Implements secured SQLite connections, schema 1,
   deterministic component records and manifest evidence, transactional replacement, strict
-  interpretation, bounded decoding, checked aggregate reconstruction, reserved-candidate creation,
-  save-candidate pragmas, and fallible close reporting.
+  interpretation, bounded decoding, and checked aggregate reconstruction.
 - `open/crates/superi-project/src/recovery.rs`: Placeholder for crash recovery.
-- `open/crates/superi-project/src/save.rs`: Implements absolute-path session ownership, the public
-  four-command save surface, command-specific destination validation, exact candidate generation,
-  identity-aware cleanup, native publication dispatch, durable outcome evidence, and private
-  same-session completion of interrupted visible publications.
-- `open/crates/superi-project/src/save/unix.rs`: Implements Unix identity from device and inode,
-  replacement by rename, no-clobber publication by hard link, directory synchronization, final
-  identity rechecking before candidate unlink, and classified unsupported filesystem behavior.
-- `open/crates/superi-project/src/save/windows.rs`: Implements Windows file identity from volume
-  serial plus full 128-bit file ID, native move publication with write-through, writable
-  destination synchronization for retry, and Win32 error classification without copy fallback.
 - `open/crates/superi-project/tests/document_contract.rs`: Proves coherent construction, immutable
   concurrent snapshots, ordinary graph editing, atomic failure behavior, compilation freshness,
   standalone graph identity, explicit revision restoration, and graph identity checks.
@@ -88,16 +69,11 @@ and scripting adapters. Those remain assigned to later project checkpoints.
 - `open/crates/superi-project/tests/persistence_contract.rs`: Proves durable create and read-only
   reopen, exact schema identity, deterministic semantic rows, complete timeline, media, relink,
   graph, and revision preservation, rollback, read-only enforcement, and corruption rejection.
-- `open/crates/superi-project/tests/save_contract.rs`: Proves all four public commands, path and
-  alias rejection, exact current-schema publication, constrained Save replacement, permission
-  preservation, legacy source preservation, migration before SaveAs, concurrent no-clobber
-  publication, durable outcomes, adoption rules, and stable document revisions.
 
 ## Public surface
 
-The crate root exports `autosave`, `document`, `media`, `persist`, `recovery`, and `save`, and
-re-exports the stable persistence and file-session authorities, project format constants, and media
-path target format identifier.
+The crate root exports `autosave`, `document`, `media`, `persist`, and `recovery`, and re-exports the
+stable persistence authority, project format constants, and media path target format identifier.
 
 - `ProjectDocument::new` accepts one `EditorialProject` and selected `TimelineId`, compiles that
   root through `superi_timeline::compile_timeline`, validates the aggregate, and starts document
@@ -142,15 +118,6 @@ path target format identifier.
 - `ProjectDatabase::load` verifies the database, metadata, component lengths and SHA-256 values,
   project manifest, canonical component bytes, graph ownership, and revisions inside one read
   transaction before returning one checked document.
-- `ProjectFileSession::new` binds one absolute active path without creating it, and `active_path`
-  reports the currently owned path. Symlinks and nonregular entries are rejected.
-- `ProjectFileSession::execute` accepts one non-exhaustive `ProjectSaveCommand`. `Save` publishes a
-  supplied snapshot to the active path, `SaveAs` publishes to a new path and adopts it after durable
-  success, `Copy` publishes a supplied snapshot without adoption, and `Backup` reads and publishes
-  the last durable active snapshot without caller-provided unsaved state.
-- `ProjectSaveKind` identifies the four stable command meanings. `ProjectSaveOutcome` reports kind,
-  absolute destination, resulting active path, saved document revision, explicit adoption, and
-  completed durability. Saving does not advance the document revision.
 - `PROJECT_APPLICATION_ID`, `PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION`,
   `PROJECT_SCHEMA_REVISION`, `PROJECT_FORMAT`, and `PROJECT_FORMAT_VERSION` identify application
   `SUPR`, supported source schema `0`, current schema `1`, `superi.project`, and `1.0.0`.
@@ -219,33 +186,6 @@ direct graph edits, and canonical persistence meaning remain intact. Portable re
 normalized once and resolve lexically from the owning project file, without process current
 directory or filesystem-dependent interpretation.
 
-Every file command uses one durable candidate pipeline:
-
-1. The session normalizes absolute active and destination paths, requires an existing directory
-   parent, rejects symlinks and nonregular entries, and rejects lexical or native aliases between
-   active, destination, and candidate names. Save may create a missing active file or replace only
-   an existing validated current-schema Superi project. SaveAs, Copy, and Backup are no-clobber.
-2. A unique same-directory candidate is reserved with native create-new semantics. Its native
-   identity is retained and checked before and after SQLite opens the path, before schema mutation,
-   and again before publication so a replaced pathname is never mistaken for the owned candidate.
-3. The reserved database uses DELETE journal mode and synchronous EXTRA, writes the exact snapshot,
-   reloads and compares it, closes fallibly, reopens read-only, compares again, closes again, rejects
-   WAL, SHM, and journal sidecars, copies destination permissions only for Save replacement, and
-   synchronizes the candidate file.
-4. Unix Save replacement renames the candidate and synchronizes the parent directory. Unix
-   no-clobber publication creates a hard link, synchronizes the parent, rechecks candidate and
-   destination device and inode immediately before unlink, removes the candidate only when identity
-   still matches, accepts an already missing candidate, and synchronizes the parent again.
-5. Windows uses `MoveFileExW` with `MOVEFILE_WRITE_THROUGH`, enables replacement only for an
-   authorized Save, and never enables `MOVEFILE_COPY_ALLOWED`. Destination identity uses volume
-   serial plus the full 128-bit file ID. A pending retry requires an absent candidate and an exact
-   destination, then opens the destination writable and synchronizes it.
-6. If native publication becomes visible but final durability is interrupted or ambiguous, the
-   session privately retains exact command, destination, snapshot, prior destination, candidate,
-   and identity evidence. Only the identical command may finish that publication; another command
-   conflicts. Cleanup removes a candidate only after ownership proof and otherwise reports explicit
-   retained cleanup state.
-
 Connections enable SQLite defensive mode, foreign keys, cell-size checks, and a finite busy
 timeout. They disable triggers, views, trusted schema, double-quoted string literals, and memory
 mapping. Read-only connections also enable query-only mode. Schema 1 contains no trigger, view,
@@ -272,14 +212,8 @@ and acquires the exact reachable source and decoder set before one resources pub
   public dirty-state hash.
 - Test-only `serde_json` builds exact legacy revision-0 component fixtures from current canonical
   payloads without entering the runtime dependency surface.
-- Target-specific `libc` supplies Unix errno constants used to classify native hard-link and
-  directory-sync failures. `std::fs` and `std::os::unix::fs::MetadataExt` own Unix filesystem
-  operations and device-and-inode evidence. Exact `windows` 0.61.3 supplies only Foundation and
-  Storage FileSystem APIs used by Windows publication, synchronization, and file identity.
 - `superi-engine` consumes immutable snapshots for transactional resource acquisition and adapts
-  project-owned referenced-media paths into media-I/O source requests. Its migration consumer now
-  first publishes the migrated snapshot with SaveAs, reopens the durable destination, and sends that
-  exact saved snapshot through the ordinary graph and media acquisition path.
+  project-owned referenced-media paths into media-I/O source requests.
 - API and CLI do not yet expose database or document commands. Later public commands must wrap this
   owner instead of creating another project or database authority.
 
@@ -287,8 +221,7 @@ and acquires the exact reachable source and decoder set before one resources pub
 
 - The selected root exists and has exactly one retained timeline compilation at the current
   editorial revision. Every retained graph identity is unique and equals its ordered map key.
-- Document edits, database replacement, schema migration, and candidate database preparation are
-  all-or-nothing. Stale revisions,
+- Document edits, database replacement, and schema migration are all-or-nothing. Stale revisions,
   failed closures, invalid candidates, preflight bounds, SQL failures, failed reload, snapshot
   inequality, or precommit interruption publish nothing.
 - Schema identity is explicit at three levels: SQLite application ID, monotonic schema revision,
@@ -313,16 +246,8 @@ and acquires the exact reachable source and decoder set before one resources pub
 - Semantic row order, component bytes, and manifest digest are deterministic. SQLite page layout is
   not a public deterministic contract.
 - `create` does not overwrite an existing path. Migration changes only the already opened source
-  database after the complete legacy document is checked and only at commit.
-- Save replacement is authorized only for a valid current-schema project at the active path.
-  SaveAs, Copy, and Backup never clobber. Backup publishes the last durable active state, and only
-  SaveAs changes the active path.
-- File publication is exact and offline. Relative media target bytes do not change when a project is
-  copied or adopted at a new destination; later resolution intentionally follows the destination's
-  parent directory.
-- Candidate deletion requires proven native identity. The implementation does not claim portable
-  compare-and-unlink, so a hostile namespace can still change after the final check, and a narrow
-  path-open replacement window remains around SQLite. Unprovable cleanup is retained and reported.
+  database after the complete legacy document is checked and only at commit. Atomic destination
+  replacement, save-as, copy, backup, autosave, and recovery remain later concerns.
 
 ## Tests and verification
 
@@ -351,47 +276,31 @@ foreign-platform visibility, stable `MediaId` commands, revision conflicts, pres
 edits, explicit missing and fingerprint-mismatch state, exact database round trips, accepted relinks,
 and safe rejection of opaque or future syntax.
 
-`save_contract.rs` contains seven public tests. They prove all four commands through real files,
-exact snapshot equality, explicit SaveAs adoption, no adoption for Save, Copy, or Backup, durable
-active-state backup, current-schema-only Save replacement, permission preservation, alias and
-symlink rejection, source-preserving migration and SaveAs, one winner under concurrent no-clobber
-copy, and outcomes that do not advance document revision. The private save module defines six host
-tests plus one Windows-only classification test, and the Unix platform module defines twelve host
-tests over replacement, no-clobber, synchronization, identity changes, missing candidates, and
-classified failures. The full project suite contains 45 passing tests.
-
 Timeline's serialization contract independently round trips a real compiled multicam graph through
 the public graph codec and rejects unknown `TimelineGraphValue` fields and tags. The engine resource
-contract opens an exact schema-0 fixture through the public database owner, publishes the migrated
-snapshot with SaveAs without changing source bytes, reopens exact saved state, and proves that its
-retained graph and real media stream reach resource acquisition unchanged. The engine contract has
-nine passing tests.
+contract opens an exact schema-0 fixture through the public database owner and proves that the
+migrated retained graph and real media stream reach resource acquisition unchanged.
 Rust 1.80.1 check, strict Clippy, dependency direction, policy, formatting, map validation, and the
-repository verifier remain required delivery gates. The Windows target passes check and strict
-Clippy, but native Windows publication tests have not run on a Windows host.
+repository verifier remain required delivery gates.
 
 ## Current status and risks
 
 The coherent in-memory document owner, schema-1 SQLite application format, deterministic component
 records, integrity manifest, transactional replacement, exact schema-0 compatibility, ordered
 forward migration, checked reconstruction, durable create and read-only reopen, writable current or
-legacy open, versioned referenced-media paths, stable identity commands, durable Save, SaveAs, Copy,
-and Backup publication, same-session visible-publication completion, and the real engine saved-state
+legacy open, versioned referenced-media paths, stable identity commands, and the real engine target
 consumer are substantive and test-backed.
 
-Additional schema revisions, settings, history, autosave, recovery-journal selection, unknown
-extension preservation, modified-since-open policy, dirty-state hashing, public API adaptation,
-CLI, and scripting remain absent. Exact schema 0 is the only supported predecessor. Future, older unknown,
+Additional schema revisions, synchronized temporary save publication, atomic destination
+replacement, save-as, copy, backup, settings, history, autosave, recovery, unknown extension
+preservation, modified-since-open policy, dirty-state hashing, public API adaptation, CLI, and
+scripting remain absent. Exact schema 0 is the only supported predecessor. Future, older unknown,
 or extended layouts remain rejected until an explicit migration or preservation contract exists.
 
 Bundled SQLite increases the locked build graph and must remain pinned to the Rust 1.80-compatible
 rusqlite 0.32.1 path unless a separately verified upgrade changes that decision. Integrity digests
 detect changes but do not authenticate malicious files. Defensive configuration, strict schema
 inspection, bounds, and checked domain reconstruction remain mandatory for untrusted projects.
-Unix no-clobber publication requires hard-link and directory-sync support and fails explicitly when
-the filesystem cannot provide them. Windows implementation is compile-checked but lacks native-host
-runtime evidence, and interrupted native publication can remain ambiguous enough to require the
-session's exact retained retry evidence.
 
 ## Maintenance notes
 
@@ -403,11 +312,8 @@ second editorial owner, unchecked graph mutation, or a second persistence model.
 Preserve timeline and graph component ownership. Incompatible project layout changes require a new
 monotonic schema revision, semantic version decision, and one exact successor step appended to the
 contiguous migration registry. Do not change schema 0 or schema 1 in place after release. Keep
-filesystem publication and native identity behavior in `save` and its platform modules, keep
-database candidate guarantees in `persist`, and keep autosave and recovery behavior in their
-assigned modules and checkpoints. Any publication change must preserve exact no-clobber semantics,
-command-specific adoption, explicit durability, retained ambiguity evidence, and source-preserving
-migration behavior.
+filesystem publication, replacement, backups, autosave, and recovery behavior in their assigned
+modules and checkpoints.
 
 Refresh this map after any project source, manifest, public consumer, schema, or test change. Reread
 every changed file and relevant component interface through EOF, reconcile prose before recomputing
