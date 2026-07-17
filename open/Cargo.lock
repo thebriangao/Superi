@@ -1800,6 +1800,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6948501a91121d6399b79abaa33a8aa4ea7857fe019f341b8c23ad6e81b79b08"
 dependencies = [
  "bitflags 2.13.0",
+ "block2 0.6.2",
  "libc",
  "objc2 0.6.4",
  "objc2-core-audio",
@@ -2880,7 +2881,10 @@ dependencies = [
 name = "superi-audio"
 version = "0.0.0"
 dependencies = [
+ "block2 0.6.2",
  "cpal",
+ "objc2-audio-toolbox",
+ "objc2-core-audio-types",
  "ringbuf",
  "rubato",
  "serde",

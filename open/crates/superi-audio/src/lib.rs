@@ -10,8 +10,9 @@
 //! clocks is implemented in [`resample`]. Prepared equalization, dynamics, limiting, delay, and
 //! saturation are implemented in [`effects`]. Transparent graph-native level,
 //! spectrum, phase, true-peak, and loudness analysis is implemented in [`metering`]. Bounded record
-//! arming, input monitoring, and operating-system capture are implemented in [`capture`]. Plugin
-//! hosting remains a separate staged owner.
+//! arming, input monitoring, and operating-system capture are implemented in [`capture`]. Prepared
+//! macOS Audio Unit effect hosting is implemented in [`hosting`], while VST3, instruments, MIDI,
+//! and plug-in UI remain separate staged owners.
 
 pub mod automation;
 pub mod capture;

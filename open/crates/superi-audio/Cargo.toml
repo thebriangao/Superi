@@ -18,3 +18,8 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 superi-core = { path = "../superi-core" }
 superi-concurrency = { path = "../superi-concurrency" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = { workspace = true }
+objc2-audio-toolbox = { workspace = true, features = ["AUComponent", "AudioComponent", "AudioUnit", "AudioUnitProperties", "block2"] }
+objc2-core-audio-types = { workspace = true, features = ["CoreAudioBaseTypes"] }

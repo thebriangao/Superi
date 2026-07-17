@@ -72,6 +72,7 @@ objc2-core-media = { version = "=0.3.2", default-features = false }
 objc2-core-video = { version = "=0.3.2", default-features = false }
 objc2-video-toolbox = { version = "=0.3.2", default-features = false }
 objc2-core-graphics = { version = "=0.3.2", default-features = false }
+block2 = { version = "=0.6.2", default-features = false, features = ["std"] }
 cpal = "=0.17.3"
 ringbuf = "=0.4.8"
 rubato = { version = "=0.16.2", default-features = false }

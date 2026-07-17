@@ -15,7 +15,7 @@ against raw source before changing code.
 | --- | --- | --- | --- | --- |
 | `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
 | `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public facade for media capabilities, complete engine health and readiness, coherent integration validation, canonical editorial state, project settings, project recovery, and audio automation | Partial: media and engine introspection queries, strict read-only integration validation, revision-fenced scenario, project settings, and audio automation transactions, strict recovery discovery, complete comparison, restore, and dismiss commands, and ordered replacement events implemented; wire transport, general editorial mutation, database file commands, and scripting absent |
-| `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Independent prepared audio graph with explicit channel conversion, typed bus routing, transactional clip DSP, revisioned clip-gain automation, canonical authored-state serialization, core effects, sample-accurate scheduling, bounded device playback, callback-owned discontinuity discard, dual-clock sample-rate conversion, and graph-native metering | Partial: graph processing, channel-layout conversion, bus routing, clip controls, Read, Write, Touch, and Latch clip-gain automation, strict canonical clip-mix persistence bytes, equalization, compression, limiting, delay, saturation, callback scheduling, audio-master publication, device output and discard acknowledgement, band-limited resampling, and peak, RMS, true-peak, phase, spectrum, and loudness metering implemented; project schema 4 durably stores authored clip mix, engine dispatches automation, and engine export invokes an explicit audio stage, while decoded-sample binding to the prepared graph, automation persistence, effect and plugin automation, variable-rate playback audio, hosting, and complete timeline composition remain absent |
+| `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Independent prepared audio graph with explicit channel conversion, typed bus routing, transactional clip DSP, revisioned clip-gain automation, canonical authored-state serialization, core effects, macOS Audio Unit effect hosting, sample-accurate scheduling, bounded device playback, callback-owned discontinuity discard, dual-clock sample-rate conversion, and graph-native metering | Partial: graph processing, channel-layout conversion, bus routing, clip controls, Read, Write, Touch, and Latch clip-gain automation, strict canonical clip-mix persistence bytes, equalization, compression, limiting, delay, saturation, macOS Audio Unit effect hosting with verified isolation, callback scheduling, audio-master publication, device output and discard acknowledgement, band-limited resampling, and peak, RMS, true-peak, phase, spectrum, and loudness metering implemented; project schema 4 durably stores authored clip mix, engine dispatches automation, and engine export invokes an explicit audio stage, while decoded-sample binding to the prepared graph, automation persistence, effect and plugin automation, variable-rate playback audio, VST3, Audio Unit instruments, and complete timeline composition remain absent |
 | `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, precise graph edit invalidation, versioned corruption-recovering disk persistence, replaceable derived-media publication, layered render reuse, bounded background population, bounded playback prediction, bounded edit and scrub warming, and deterministic lifecycle management | Complete identity feeds independent memory and disk tiers with exact admission, revision fencing, bounded envelopes, atomic publication, schema isolation, and corruption quarantine; memory, persistent, and derived owners expose inspection and exact clearing, persistent namespaces relocate through rename or synchronized staged copy, render jobs add cancellation-safe layered reuse, prediction supplies finite signed frame plans and an owned host adapter, and warming is deterministic and hard bounded; engine and scheduler own quality substitution and lifecycle policy remains caller-owned |
 | `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless canonical editorial scenario and engine validation consumer | Implemented revision-fenced transaction and event consumer, portable expectation verifier, eight instrumented contract stages, and strict deterministic `engine validate`; rendered media flow and live application attachment absent |
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
@@ -567,8 +567,15 @@ The independent audio processing graph is implemented below engine orchestration
    dependency.
 13. The compound project command routes timeline, graph, media, audio, and root actions through one
    history unit. Public audio and engine contracts prove save and reopen, undo and redo, and audible
-   adjacent-block continuity. No decoder, plugin host, or engine playback owner feeds the complete
+   adjacent-block continuity. No decoder or engine playback owner feeds the complete
    routing path.
+14. `superi-audio::hosting::PreparedAudioUnit` enters the ordinary processor path on macOS after
+   background-domain discovery and initialization. Exact component identity, maximum slice, planar
+   format, ordered channel meaning, and actual process location are read back before publication.
+   The audio-domain path uses preallocated pull-callback and output storage, supports bounded native
+   subrange requests, commits only complete finite output, and poisons native failures. A public
+   contract runs Apple's Peak Limiter from a deterministic source through the terminal master in
+   audited in-process and verified out-of-process modes.
 
 Generic graph storage is implemented independently of that reference path:
 
@@ -1473,6 +1480,10 @@ The following constraints cross multiple modules and should be preserved togethe
 - Audio project settings preserve an exact sample timebase and ordered channel layout. They do not
   synthesize routing, resample authored media, reinterpret channel meaning, alter synchronization,
   or claim live device reconfiguration merely by being inspected or persisted.
+- Native audio effects preserve one exact component identity, sample clock, maximum slice, and
+  ordered channel layout. Preparation and teardown remain outside the audio callback, required
+  process isolation is verified from the instance, successful processing uses prepared storage,
+  and native or callback failure cannot publish partial caller output or permit instance reuse.
 - Timeline media organization retains stable bin and smart collection identities. Manual bin
   membership and dynamic query results never replace clip `MediaId` links, and mismatched relink
   candidates retain evidence without replacing the active target.
@@ -1616,6 +1627,11 @@ all six settings domains, atomic optimistic updates, no-op stability, migration-
 manifest coverage, strict public JSON, permanent names, full replacement events, audio timebase and
 ordered channel preservation, invalid and stale rollback, and dependency direction. They do not
 claim live subsystem reconfiguration, project file wire commands, or hardware audio behavior.
+The macOS Audio Unit contracts use the real Apple Peak Limiter to prove exact component identity,
+background preparation, actual process-location verification, repeated bounded pull callbacks,
+adjacent partition continuity, stereo meaning, finite audible output through the terminal master,
+and prevalidation failure atomicity. This host proof does not claim third-party plug-in coverage,
+parameter automation, plug-in UI, crash restart, device latency, or a decoded timeline adapter.
 The cache warming contract maps deterministic edit and scrub targets through the real graph
 evaluator and bounded memory cache, then proves demand reuse, source-fingerprint freshness, and
 unchanged recomputation after pressure. It does not claim a production editor, playback, engine,
@@ -1926,9 +1942,10 @@ contains failures, and rebuilds shared workflow availability above that host.
 `superi-audio` now has a substantive
 independent processing graph, typed bus routing, sample-accurate scheduler, production device input and output,
 canonical authored clip-mix codec, clip-mix processor, prepared sample-rate converter, explicit channel conversion, and prepared core
-effects, revisioned clip-gain automation, and a graph-native meter, while automation persistence,
-effect and plugin automation, hosting, and decoded-sample binding remain absent. Engine foreground
-playback feeds the bounded output producer and consumes its actual
+effects, revisioned clip-gain automation, a graph-native meter, and a macOS Audio Unit effect host
+with default verified process isolation, while automation persistence, effect and plugin automation,
+VST3, Audio Unit instruments, and decoded-sample binding remain absent. Engine foreground playback
+feeds the bounded output producer and consumes its actual
 presentation clock through explicit video synchronization and recovery outcomes. Transport uses
 callback-owned discard acknowledgement and explicitly mutes inactive or unsupported signed-rate
 audio. Engine render-export invokes an explicit audio stage, retains its graph identity, and proves
@@ -1959,10 +1976,11 @@ Partial modules contain these explicit placeholder areas:
   dirty-state hashing, public database API adaptation, CLI, and scripting beyond its implemented
   document, settings, extension state, database, migration, media path, atomic save, autosave, and
   recovery command owners.
-- `superi-audio`: binding decoded samples into the real prepared graph, plugin hosting, effect
-  and plugin automation, automation persistence, and engine composition across schedule,
-  conversion, clip and effects processing,
-  graph routing, and device execution. Export currently owns only an explicit stage seam.
+- `superi-audio`: binding decoded samples into the real prepared graph, VST3, Audio Unit instruments,
+  MIDI, parameters, presets, UI, latency compensation, crash restart, effect and plugin automation,
+  automation persistence, and engine composition across schedule, conversion, clip and effects
+  processing, graph routing, and device execution. Clip-gain automation and macOS Audio Unit effects
+  are implemented; export currently owns only an explicit stage seam.
 - `superi-color`: broader config-persisted rule graphs, ICC transform evaluation, GPU output
   conversion, and production viewport or export integration.
 - `superi-concurrency`: GPU submission coordination module and production composition beyond the
@@ -2077,7 +2095,7 @@ For common concerns, begin at these owners:
 - Audio graph topology, input and output device identity, capability discovery, record arming,
   input monitoring, bounded sample handoff, typed platform callbacks, stream lifecycle,
   audio-clock publication, capture and output telemetry, revisioned clip-gain keyframes plus Read,
-  Write, Touch, and Latch behavior, and graph-native
+  Write, Touch, and Latch behavior, macOS Audio Unit effect hosting, and graph-native
   peak, RMS, true-peak, phase, spectrum, and loudness analysis: `superi-audio`.
 - Graph-facing identifiers, node schemas, deterministic DAG state, typed binding validation,
   schema-bound instances, editable transactions, canonical graph documents, typed parameter links

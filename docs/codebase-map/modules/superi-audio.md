@@ -2,8 +2,8 @@
 module_id: superi-audio
 source_paths:
   - open/crates/superi-audio
-source_hash: af1bcdead4b62c3d5d7c99f2696990e534354c9ded5abe9fbed22c0205763b68
-source_files: 27
+source_hash: 8d6715f1871b1b7841eed318c1ace1f42b2d4b888182ce2cee913d63ec91a7d0
+source_files: 29
 mapped_at_commit: working-tree
 ---
 
@@ -31,6 +31,11 @@ prepared speaker or discrete conversion nodes adapt channels without implicit gr
 Prepared core effects add cascaded biquad equalization, linked-channel compression and peak
 limiting, fixed channel-preserving delay, and normalized soft saturation through the existing
 single-input graph processor boundary.
+Prepared macOS Audio Unit effect hosting now enters that same processor boundary through exact
+FourCC component identity, bounded background-domain preparation, verified process isolation,
+explicit stream and channel-layout negotiation, stable pull callbacks, and preallocated planar
+render storage. Native failures poison the affected instance, while prevalidation and final output
+checks preserve graph continuity and caller-owned output on rejection.
 Its transparent prepared meter preserves graph samples while publishing coherent peak, RMS,
 true-peak, phase, spectrum, momentary, short-term, and integrated loudness snapshots through
 bounded lock-free storage.
@@ -44,8 +49,9 @@ All processing paths enforce the platform-owned audio execution domain, but thei
 remain separate. Graph editing and preparation allocate outside callbacks. Schedule construction and
 transport reanchoring also occur outside callbacks. Resampler and meter construction and scratch
 allocation remain outside callbacks. Device discovery and stream setup remain on control threads.
-Decoded sample binding to the real prepared graph, plugin automation, plugins, and complete timeline
-audio-graph orchestration remain separate concerns. Engine foreground playback feeds the existing
+Decoded sample binding to the real prepared graph, automation persistence, effect and plugin
+automation, VST3, Audio Unit instruments, and complete timeline audio-graph orchestration remain
+separate concerns. Engine foreground playback feeds the existing
 bounded output producer and paces video from its paired presentation clock. Engine transport
 requests queued-audio discard through an atomic generation handshake without moving queue ownership
 or device callback work into the engine. Engine render-export now invokes a caller-owned audio
@@ -56,7 +62,8 @@ encoding, but it does not yet adapt decoded blocks into `PreparedAudioGraph`.
 
 - `open/crates/superi-audio/Cargo.toml`: Declares dependencies on `superi-core`,
   `superi-concurrency`, exact CPAL 0.17.3, ringbuf 0.4.8, default-feature-free rubato 0.16.2,
-  serde, serde_json, and sha2.
+  serde, serde_json, and sha2, plus macOS-only `block2`, AudioToolbox, and Core Audio type
+  bindings for the private Audio Unit host.
 - `open/crates/superi-audio/src/automation.rs`: Implements bounded revisioned clip-gain lanes,
   exact keyframes, Read, Write, Touch, and Latch state, half-open region replacement, immutable
   snapshots, and prepared allocation-free absolute-sample curve evaluation.
@@ -75,10 +82,15 @@ encoding, but it does not yet adapt decoded blocks into `PreparedAudioGraph`.
   and deterministic cycle-safe topology; exact channel-layout validation; destination-scoped and
   master preparation; borrowed ordered multi-input views; preallocated intermediate buffers; and
   exact consecutive block processing on the audio domain.
-- `open/crates/superi-audio/src/hosting.rs`: Placeholder for additive VST3 and Audio Unit hosting.
+- `open/crates/superi-audio/src/hosting.rs`: Defines exact Audio Unit effect identity, isolation
+  policy, bounded immutable host configuration, background-domain preparation, native diagnostics,
+  and the safe prepared graph-processor surface.
+- `open/crates/superi-audio/src/hosting/audio_unit_macos.rs`: Owns the private audited macOS
+  AudioToolbox lifecycle, asynchronous instance transfer, exact property and channel negotiation,
+  pull callback, preallocated planar rendering, output validation, poisoning, and teardown.
 - `open/crates/superi-audio/src/lib.rs`: Documents the implemented automation, graph, channel,
-  routing, scheduling, capture, playback, conversion, effects, and metering boundaries and exports
-  the thirteen audio concern modules.
+  routing, scheduling, capture, playback, conversion, effects, hosting, and metering boundaries and
+  exports the thirteen audio concern modules.
 - `open/crates/superi-audio/src/metering.rs`: Implements transparent prepared graph metering,
   per-channel sample peak, RMS and true peak, stereo phase correlation, bounded spectrum analysis,
   K-weighted EBU windows, ITU programme gating, coherent lock-free snapshots, and explicit history
@@ -138,12 +150,15 @@ encoding, but it does not yet adapt decoded blocks into `PreparedAudioGraph`.
 - `open/crates/superi-audio/tests/metering_contract.rs`: Proves sample-transparent graph execution,
   exact channel semantics and continuity, peak, RMS, inter-sample true peak, phase, spectrum,
   calibrated EBU loudness windows, ITU gating, and bounded preparation.
+- `open/crates/superi-audio/tests/audio_unit_host_contract.rs`: Proves bounded safe configuration,
+  background ownership, real Apple Peak Limiter execution through source, effect, and master nodes,
+  adjacent-partition continuity, exact timing failure atomicity, and verified out-of-process loading.
 
 ## Public surface
 
 The crate root exports `automation`, `capture`, `channels`, `effects`, `graph`, `hosting`,
-`metering`, `mixing`, `playback`, `resample`, `routing`, `serialize`, and `sync`. Every module except the hosting
-placeholder contains substantive behavior.
+`metering`, `mixing`, `playback`, `resample`, `routing`, `serialize`, and `sync`. Every exported
+module contains substantive behavior.
 
 `automation` exposes typed `AudioAutomationTarget` addresses, validated exact keyframes,
 professional `AudioAutomationMode` values, bounded ordered mutations and transactions,
@@ -172,6 +187,13 @@ high-pass, peaking, low-shelf, and high-shelf equalization; feed-forward compres
 zero-lookahead peak limiting; fixed feedback delay; and normalized soft saturation. Equalizer,
 compressor, and limiter preparation bind one positive sample rate. Every processor binds one
 unchanged ordered layout and implements the graph's public single-input `AudioProcessor` contract.
+
+`hosting` exposes safe `AudioUnitComponentId`, `AudioUnitExecutionPolicy`, `AudioUnitHostConfig`,
+and `PreparedAudioUnit` values. Effects bind one exact component, integral sample clock, maximum
+slice, and equal ordered input and output layout. Out-of-process loading is the default and must be
+confirmed from the native instance; in-process loading requires explicit caller audit. A prepared
+instance exposes component version, actual process location, poison state, and ordinary graph
+processor behavior without exposing native handles or callback storage.
 
 `metering` exposes validated `MeterConfig`, transparent `PreparedMeter`, independently retained
 `MeterReadings`, and owned `MeterSnapshot` values. Snapshots retain exact sample coordinates and
@@ -323,6 +345,16 @@ before state mutation. Equalizer state is independent per band and channel; dyna
 gain are linked once per frame; the delay ring advances in interleaved channel order; and all state
 continues identically across arbitrary adjacent block partitions.
 
+Audio Unit preparation discovers one exact effect component, transfers asynchronous instantiation
+ownership through a bounded completion wait, verifies the component and actual process location,
+sets and reads back maximum frames, planar native-float stream formats, and semantic channel
+layouts, registers one stable pull callback, then initializes the unit. Processing validates the
+complete block and exactly representable sample window before deinterleaving into prepared planes.
+The callback serves only bounded integral subranges from those planes. After synchronous native
+rendering, the host checks callback status, output buffer identity and shape, silence signaling, and
+finite samples before interleaving into caller output. Destruction uninitializes and disposes the
+instance before releasing callback or plane storage.
+
 Meter preparation validates the exact sample clock, ordered channel layout, callback bound,
 spectrum dimensions, and integrated-history ceiling before fallibly allocating all DSP and atomic
 publication storage. The audio callback copies its sole input unchanged, then updates K-weighting,
@@ -346,13 +378,16 @@ and spectrum values, and performs the two-stage integrated loudness gate without
   `process_into_buffer` path.
 - serde and serde_json provide the strict bounded wire shape, and sha2 provides the payload digest.
   Exact-float and canonical-byte policy remains owned by `superi-audio::serialize`.
+- macOS-only `block2`, `objc2-audio-toolbox`, and `objc2-core-audio-types` provide generated block,
+  AudioToolbox, and Core Audio type bindings. The private host retains lifecycle, pointer, callback,
+  process-isolation, and semantic-layout policy under the repository unsafe inventory.
 - `superi-engine::audio_mix` owns production timeline edit and clip-mix identity reconciliation.
   No production adapter yet binds decoded media into the schedule or prepared graph.
 - `superi-engine::dispatcher` owns optional lifecycle-scoped automation state, serialized
   inspection and transaction execution, dynamic no-op event reservation, and complete replacement
   events. `superi-api` projects that engine boundary without a direct dependency on this crate.
 - `superi-project` owns clip-mix state inside the durable project aggregate and stores the canonical
-  codec bytes as the singleton schema-3 audio component. Engine project command history restores
+  codec bytes as the singleton schema-4 audio component. Engine project command history restores
   authored clip-mix snapshots, while audio device, callback, meter, resampler, and prepared graph
   state remain operational and absent from persistence and history.
 - `superi-engine::project_transaction` composes timeline edits, graph mutations, media commands,
@@ -377,14 +412,15 @@ and spectrum values, and performs the two-stage integrated loudness gate without
   adapter inputs.
 - `superi-media-io` remains the decoded sample owner and is not a direct dependency. No production
   decoder currently feeds a prepared graph from scheduled slices.
-- The ten public integration contracts, engine foreground playback contract, and engine
+- The twelve public integration contracts, engine foreground playback contract, and engine
   render-export audio-stage contract are current real consumers. They process exact adjacent
   blocks through clip DSP, dry, auxiliary, submix, and master paths, publish scheduled presentation
   through actual concurrency clocks, exercise bounded device output, coordinate real foreground
   video against that clock under normal, late, discontinuous, and recovered conditions, and prove clip identity
   inheritance while converting between independent source and device clocks and applying core
   effects through the prepared graph. The metering contract places a real meter between a source
-  and master bus. Input proof
+  and master bus. The Audio Unit contract places Apple's Peak Limiter between a deterministic source
+  and the terminal master. Input proof
   additionally exercises exact channel-indexed capture and routes monitoring samples through the
   production bounded output handoff.
 
@@ -421,8 +457,17 @@ and spectrum values, and performs the two-stage integrated loudness gate without
   internals of caller-supplied processor code.
 - Processor failure may retain processor-internal partial state; callers must treat processor error
   recovery according to that processor's contract. Graph continuity advances only on full success.
-- All implementation is safe Rust. Plugin ABI, worker isolation, and native code outside CPAL
+- Audio Unit native code is confined to one macOS-only private module with a narrow unsafe allowance.
+  Public configuration and processor surfaces remain safe Rust values, no raw handle escapes, and
+  required out-of-process loading is verified rather than inferred. VST3 and other plug-in ABIs
   remain outside this module.
+- Audio Unit preparation requires the background domain and processing requires the audio domain.
+  The maximum slice, sample rate, ordered channel layout, component identity, and process-location
+  policy are immutable after preparation.
+- The successful Audio Unit process path takes no host lock, allocation, or free. It supports
+  repeated bounded native pulls, commits only complete finite output, and poisons an instance after
+  native entry, callback, buffer-contract, or output failure. Prevalidation does not poison or
+  mutate graph continuity.
 - The output queue is nonzero, checked for overflow, capped at 1,048,576 samples, and admits only
   finite normalized complete frames. The callback takes no blocking lock and grows no storage.
 - Output discard is requested only by the producer and applied only by the consumer. Admission is
@@ -552,21 +597,31 @@ no-ops, stale and invalid rollback, wrong clocks, maximum-coordinate rejection, 
 and Latch boundaries, active-pass snapshots, and whole-versus-split equivalence. The routed proof
 renders finite audible stereo samples through source, automated clip, submix, and master nodes.
 
+Four private unit tests cover typed playback conversion plus Audio Unit callback storage copying,
+host-plane publication, repeated bounded pulls, malformed native requests, and failure reporting.
+Six public Audio Unit host contracts cover component identity and bounds, background-domain
+preparation, a real Apple Peak Limiter through the prepared graph and terminal master, adjacent
+partition continuity, finite audible stereo output, exact sample-time rejection without graph or
+output commit, and required out-of-process verification from the instantiated component.
+
 ## Current status and risks
 
 The independent audio graph, channel conversion, bus routing, sample-accurate schedule, production
 device-input and device-output substrates, durable clip-mix codec, clip mix processor, prepared sample-rate converter,
-revisioned clip-gain automation, core effects, and graph-native meter are
-substantive and publicly test-backed. Plugin hosting remains a documentation-only placeholder.
+revisioned clip-gain automation, core effects, graph-native meter, and macOS Audio Unit effect host are
+substantive and publicly test-backed. VST3, Audio Unit instruments, MIDI, parameter automation,
+presets, plug-in UI, crash restart, and latency compensation remain absent.
 Engine consumes timeline edit outcomes for atomic clip identity reconciliation and foreground
 playback feeds the bounded device producer while coordinating video from the actual audio clock.
 That foreground path now exposes bounded video correction and applied discontinuity recovery without
 mutating audio timing, and transport uses the callback-owned discard handshake for control
 discontinuities. Engine export now fetches decoded audio, invokes an explicit graph-stage seam,
 preserves its graph identity, and completes an exact in-tree PCM encode. There is still no
-scheduled-slice `PreparedAudioGraph` binding, plugin host, platform channel-layout negotiation, or
-end-to-end source-playback-final-mix path. Microphone permission, physical input latency, semantic
-input layout, and hot-plug recovery remain platform-owned boundaries.
+scheduled-slice `PreparedAudioGraph` binding, production engine host adapter, or end-to-end
+source-playback-final-mix delivery path. Audio Unit hosting performs exact macOS channel-layout
+negotiation for a configured effect, but device-level semantic layout remains separate. Microphone
+permission, physical input latency, semantic input layout, and hot-plug recovery remain
+platform-owned boundaries.
 
 Engine now owns bounded project-level history and a compound transaction that includes authored
 audio intent. Undo and redo restore the exact clip-mix state through project snapshots, and save and
@@ -583,6 +638,10 @@ decibel-addressed, fades are linear only, and pan is the canonical stereo equal-
 Effects intentionally omit parameter automation, lookahead, tempo sync, and convolution; those
 require separate prepared control and latency contracts. Current automation addresses clip linear
 gain only and is not yet stored in project snapshots.
+Third-party Audio Units remain native code with vendor-defined behavior. Default out-of-process
+loading contains process failure but does not yet provide scanning, restart, quarantine, parameter,
+latency, UI, or broad compatibility policy, and deterministic proof currently uses Apple's Peak
+Limiter rather than a physical third-party test matrix.
 
 ## Maintenance notes
 
@@ -599,6 +658,12 @@ bounded atomic publication, explicit programme-history saturation, and control-s
 gating. Any indexed extension must define ordering explicitly and prove
 callback safety. Keep discovery and stream setup on control threads, and revalidate capabilities
 before stream creation.
+
+Preserve Audio Unit background preparation, default verified isolation, exact identity and property
+readback, stable callback lifetime, fixed planar storage, bounded repeated pulls, caller-output
+commit after complete validation, poison-on-native-failure behavior, and teardown before callback
+storage release. New native calls, properties, plug-in classes, or callback forms require matching
+unsafe inventory and real macOS lifecycle proof.
 
 Preserve capture's independent whole-frame rings, atomic callback-boundary controls, exact physical
 sample continuation through dropped intervals, and channel-index meaning. Bridge monitoring into

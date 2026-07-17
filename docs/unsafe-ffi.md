@@ -157,6 +157,42 @@ framework boundary while `videotoolbox.rs` remains a safe cross-platform adapter
 This private child of the macOS boundary has its own module documentation because its callback and
 buffer ownership differ from the VideoToolbox video sessions.
 
+### macOS Audio Unit effect hosting
+
+- Source: `open/crates/superi-audio/src/hosting/audio_unit_macos.rs`
+- Dependency and target: pinned `objc2-audio-toolbox`, `objc2-core-audio-types`, and `block2`
+  bindings on macOS only
+- Safe entry: `AudioUnitHostConfig` and `PreparedAudioUnit` through the existing
+  `AudioProcessor` graph boundary
+- Unsafe surface: component discovery and identity reads, asynchronous instantiation, property
+  negotiation, stream and channel-layout configuration, render callback registration, bounded
+  planar buffer-list access, synchronous rendering, uninitialization, and disposal
+- Instantiation ownership: the escaping completion block retains shared state until one result is
+  delivered or the bounded waiter abandons it. One send wrapper transfers the unique instance
+  through the completion mutex without dereferencing it; late, duplicate, failed, or abandoned
+  completions dispose every nonnull instance exactly once.
+- Callback lifetime: the callback context is boxed before registration and remains stable until
+  `Drop` first deactivates and uninitializes the unit, then disposes the instance. Input plane
+  allocations and the fixed output list remain live through every synchronous `AudioUnitRender`.
+- Buffer and timing rules: preparation fixes the maximum slice, planar native float format, exact
+  sample rate, and ordered channel meaning. The callback accepts only bounded subranges inside the
+  published integral sample window, copies or publishes one preallocated plane per channel, and
+  rejects malformed buffer lists. Processing commits caller output only after exact buffer shape,
+  finite samples, callback status, and an exactly representable `AudioTimeStamp` are verified.
+- Process isolation: out-of-process loading is the default policy and is verified from
+  `kAudioUnitProperty_LoadedOutOfProcess`. In-process execution requires an explicit audited policy;
+  no silent fallback satisfies a required isolation request.
+- Threading: discovery, instantiation, configuration, and initialization require the blocking
+  background domain. The prepared instance moves once into graph ownership, and exclusive mutable
+  processing runs on the audio domain without host allocation or locks on the successful path.
+- Failure and fallback: native render, callback, malformed output, or nonfinite output failure
+  poisons the instance and prevents reuse. Prevalidation leaves native state, graph continuity, and
+  caller output untouched. Drop tears down the native unit while all registered storage is live.
+
+The public hosting module contains only safe values and a safe processor implementation. The
+macOS-only private child contains the complete native allowance and exposes no raw handle, pointer,
+buffer list, or callback type.
+
 ### Windows Media Foundation and COM
 
 - Source: `open/crates/superi-codecs-platform/src/media_foundation_windows.rs`
@@ -212,9 +248,9 @@ surface, buffer identifier, pointer, or exported descriptor crosses the safe mod
 Vorbis uses safe `vorbis_rs` ownership on a dedicated worker. Its sys crates are linked but Superi
 does not call their raw functions. Linux H.264, HEVC, and H.264 encode use safe `cros-codecs` and
 `libva` ownership in Superi source; Linux VVC is inventoried separately above. wgpu and the current
-image, container, color, and audio paths use safe Rust APIs. Third-party crate internals and
-vendored libvpx headers are governed by dependency pinning, licensing, and upstream review, but
-they are not Superi-owned Rust unsafe boundaries.
+image, container, and color paths use safe Rust APIs. macOS Audio Unit hosting is inventoried
+separately above. Third-party crate internals and vendored libvpx headers are governed by dependency
+pinning, licensing, and upstream review, but they are not Superi-owned Rust unsafe boundaries.
 
 ## Required audit
 

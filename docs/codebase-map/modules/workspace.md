@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: b661963af66f97b23a47aebf8f205ae9d4adf27813a1d6b41d55fb164dc619de
-source_files: 146
+source_hash: de4d6ae63d1609033f85b240b7c9a284ffc1b223b34ea6ce7d4f5799bf9bff46
+source_files: 147
 mapped_at_commit: working-tree
 ---
 
@@ -324,6 +324,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   Read, Write, Touch, and Latch automation, immutable callback curves, serialized engine ownership,
   strict public transactions and events, routed source-to-master proof, verification, delivery, and
   intentionally deferred persistence, broader targets, and hardware control input.
+- `docs/checkpoints/P2.W04.C013.md`: Durable implementation evidence for macOS Audio Unit effect
+  hosting. It records exact identity and configuration, verified process isolation, private native
+  lifecycle and callback ownership, real Apple Peak Limiter graph proof, delivery gates, and
+  intentionally deferred engine, parameter, UI, latency, instrument, MIDI, VST3, and physical work.
 - `docs/checkpoints/P1.W07.C025.md`: Durable implementation evidence for bounded timing and process
   resident-memory instrumentation across all eight canonical slice stages. It records the private
   sampler boundary, schema 1.1.0 report contract, dependency decision, red-to-green proof,
@@ -357,9 +361,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   cross-platform expectations, the portable `slice-contract` versus physical all-runtime `slice`
   distinction, capability-based codec testing, and the structured evidence every result must retain.
 - `docs/unsafe-ffi.md`: Defines the deny-by-default unsafe policy and inventories audited macOS
-  CoreGraphics, AV1, Opus, VPx, VideoToolbox, AudioConverter, Windows Media Foundation, and Linux
-  VVC VA-API boundaries. It records ownership, buffer, thread, failure, and target proof for each
-  boundary plus required source scans, Clippy runs, and focused tests.
+  CoreGraphics, AV1, Opus, VPx, VideoToolbox, AudioConverter, Audio Unit hosting, Windows Media
+  Foundation, and Linux VVC VA-API boundaries. It records ownership, buffer, thread, failure, and
+  target proof for each boundary plus required source scans, Clippy runs, and focused tests.
 - `docs/vertical-slice.md`: Defines revision 1 of `superi.slice.canonical.v1`. It pins the immutable
   video fixture role, exact one-track edit and trim, one typed horizontal-mirror graph effect,
   explicit delivery, eight stable replacement stages, schema 1.1.0 runner report, bounded stage
@@ -413,7 +417,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   cache-key hashing, and the exact `oxideav-mp3` Git revision. Timeline state
   directly consumes the already-resolved `serde`, `serde_json`, and `sha2` packages, while
   `superi-audio` now directly consumes the already resolved serde, serde_json, and SHA-256 packages
-  for its strict authored clip-mix component codec. `superi-project` directly consumes
+  for its strict authored clip-mix component codec. Its macOS target also directly consumes the
+  already resolved `block2`, `objc2-audio-toolbox`, and `objc2-core-audio-types` packages for the
+  private Audio Unit host. `superi-project` directly consumes
   `superi-audio`, exact `rusqlite` 0.32.1, and the existing Serde, JSON, and SHA-256 packages for
   canonical extension metadata, opaque-payload evidence, and legacy component fixtures.
   `superi-engine` records a test-only
@@ -432,14 +438,16 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   0.31.1, Unicode Bidi 0.3.18, and Unicode Linebreak 0.1.5 runtime packages plus test-only Font Test
   Data 0.5.0. The locked Indexmap resolution is 2.11.4 so the declared Rust 1.80 compiler can parse
   and build the affected graph and GPU dependency path. Audio output adds exact CPAL
-  0.17.3 and ringbuf 0.4.8 plus their target-specific backend dependency trees. The lockfile is
-  generated resolution evidence and is not hand-edited policy.
+  0.17.3 and ringbuf 0.4.8 plus their target-specific backend dependency trees. Audio Unit hosting
+  reuses already locked permissive Objective-C framework bindings and adds no network or internal
+  crate edge. The lockfile is generated resolution evidence and is not hand-edited policy.
 - `open/Cargo.toml`: Root Cargo workspace manifest using resolver 2 and glob members under
   `crates/*` and `tools/*`. It centralizes version `0.0.0`, Rust 2021, MIT, Rust 1.80, repository
   metadata, deny-by-default unsafe lints, and shared dependencies for error handling, serialization,
   images, GPU, codecs, hashes, process instrumentation, platform APIs, native build support,
-  reviewed audio device and ring-buffer primitives, exact bundled SQLite through rusqlite 0.32.1,
-  and offline font shaping plus Unicode layout.
+  reviewed audio device and ring-buffer primitives, a pinned block binding for macOS native
+  completion handlers, exact bundled SQLite through rusqlite 0.32.1, and offline font shaping plus
+  Unicode layout.
 - `open/README.md`: Compact open-tree orientation and build commands. It records the 19 runtime
   crates plus repository tools, the exact canonical runner command, contract-only status, and
   the remaining production integration boundary.
@@ -739,6 +747,13 @@ by other strict component codecs. `superi-project` now depends directly on `supe
 clip-mix state can enter the aggregate and schema-4 database while prepared processors, devices, and
 callback state remain below the persistence boundary. This is a downward runtime edge and preserves
 the declared crate tiers and offline dependency policy.
+
+The macOS Audio Unit host reuses the workspace's existing pinned AudioToolbox and Core Audio type
+bindings and adds `block2` as a direct workspace declaration for the asynchronous native completion
+handler. All three packages were already present in the resolved permissive platform graph. The
+target-gated edge remains inside `superi-audio`, adds no internal dependency direction, and keeps
+discovery, preparation, process-location verification, callbacks, and teardown inside the audited
+private native module.
 
 The effects animation, mask, rotoscope, text, and preset wires reuse the same workspace Serde pin.
 Effect presets additionally reuse the workspace JSON and SHA-256 pins at runtime for strict
@@ -1168,6 +1183,10 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
 - `docs/unsafe-ffi.md` requires a repository unsafe scan, all-feature strict Clippy, Windows-target
   Clippy for Media Foundation, codec tests, and all-feature engine tests after native-boundary
   changes. Real lifecycle tests still run on the owning operating system.
+- `docs/checkpoints/P2.W04.C013.md` records the macOS Audio Unit host's safe configuration,
+  background preparation, default verified isolation, callback and teardown ownership, real Apple
+  Peak Limiter graph consumer, exact timing and channel proof, dependency audit, and deferred
+  engine, plug-in-management, and physical-lane boundaries.
 - `open/test-fixtures/README.md` defines
   `cargo run -p superi-fixture-tool -- check test-fixtures` as the shared validation path and
   `cargo run -p superi-fixture-tool -- generate-video <OUTPUT_DIRECTORY>` as the video reproduction
@@ -1297,7 +1316,12 @@ meaning and avoid callback allocation. Public consumers prove both a source-to-g
 dry-submix plus auxiliary-return path, including atomic topology rejection and order-sensitive
 floating-point behavior. Explicit prepared channel nodes now convert canonical mono through 7.1
 layouts using documented speaker rules or caller-selected discrete order without changing sample
-time. Plugin hosting and decoded-sample binding remain absent. Production device output and
+time. macOS effect Audio Units now enter the same graph processor boundary through exact component
+identity, bounded background preparation, process-location verification, semantic channel
+negotiation, preallocated pull callbacks, and poison-on-native-failure ownership. A real Apple Peak
+Limiter consumer proves adjacent partition continuity through the terminal master. VST3, Audio Unit
+instruments, MIDI, parameters, presets, UI, crash restart, engine host adaptation, and decoded-sample
+binding remain absent. Production device output and
 sample-accurate scheduling are implemented in the same audio crate, and engine foreground playback
 now feeds its bounded producer and coordinates video from its actual presentation clock with
 explicit hold, correction, drop, rebase, and recovery evidence. Engine transport requests
@@ -1418,8 +1442,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`317d2464dce5c33fa26d6e5b363961246582d188` when the map was refreshed. Its hash describes the exact
-145 discovered source files, including twelve generated binary payloads, layered on that revision.
+`ba7c68e0037737b36ab28c6c051c2ff02a09d065` when the map was refreshed. Its hash describes the exact
+147 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 
