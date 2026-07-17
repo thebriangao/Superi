@@ -15,12 +15,13 @@ use std::time::Duration;
 use block2::RcBlock;
 use objc2_audio_toolbox as at;
 use objc2_core_audio_types as ca;
+use objc2_core_foundation as cf;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_core::pixel::{ChannelLayout, ChannelPosition};
 
 use crate::graph::AudioProcessBlock;
 
-use super::{AudioUnitExecutionPolicy, AudioUnitHostConfig};
+use super::{AudioUnitExecutionPolicy, AudioUnitHostConfig, AudioUnitPluginState};
 
 const COMPONENT: &str = "superi-audio.hosting.audio-unit.macos";
 const ELEMENT_ZERO: u32 = 0;
@@ -193,6 +194,7 @@ pub(super) struct PreparedAudioUnit {
     unit: at::AudioUnit,
     component_version: u32,
     loaded_out_of_process: bool,
+    latency_samples: usize,
     input_planes: Vec<f32>,
     output_planes: Vec<f32>,
     output_buffers: FixedAudioBufferList,
@@ -208,6 +210,7 @@ impl fmt::Debug for PreparedAudioUnit {
             .field("unit", &self.unit)
             .field("component_version", &self.component_version)
             .field("loaded_out_of_process", &self.loaded_out_of_process)
+            .field("latency_samples", &self.latency_samples)
             .field("initialized", &self.initialized)
             .field("poisoned", &self.poisoned)
             .finish_non_exhaustive()
@@ -257,6 +260,7 @@ impl PreparedAudioUnit {
             unit,
             component_version: 0,
             loaded_out_of_process: false,
+            latency_samples: 0,
             input_planes,
             output_planes,
             output_buffers: FixedAudioBufferList::new(config.output_layout().len()),
@@ -279,6 +283,79 @@ impl PreparedAudioUnit {
 
     pub(super) const fn is_poisoned(&self) -> bool {
         self.poisoned
+    }
+
+    pub(super) const fn latency_samples(&self) -> usize {
+        self.latency_samples
+    }
+
+    pub(super) fn capture_state(&mut self) -> Result<AudioUnitPluginState> {
+        if self.poisoned {
+            return Err(host_error(
+                ErrorCategory::Unavailable,
+                Recoverability::UserCorrectable,
+                "capture_state",
+                "poisoned Audio Unit state cannot be captured safely",
+            ));
+        }
+        let mut property_list = ptr::null::<cf::CFPropertyList>();
+        let expected_size = u32::try_from(size_of::<*const cf::CFPropertyList>())
+            .expect("property-list reference size fits u32");
+        let mut actual_size = expected_size;
+        // SAFETY: The unit is live and property_list is writable storage for one retained
+        // CFPropertyListRef returned synchronously by the class-info property.
+        let status = unsafe {
+            at::AudioUnitGetProperty(
+                self.unit,
+                at::kAudioUnitProperty_ClassInfo,
+                at::kAudioUnitScope_Global,
+                ELEMENT_ZERO,
+                NonNull::new_unchecked(ptr::addr_of_mut!(property_list).cast()),
+                NonNull::from(&mut actual_size),
+            )
+        };
+        check_status(status, "capture_state")?;
+        if actual_size != expected_size {
+            return Err(host_error(
+                ErrorCategory::CorruptData,
+                Recoverability::UserCorrectable,
+                "capture_state",
+                "Audio Unit class-info property returned an invalid reference size",
+            ));
+        }
+        let property_list = NonNull::new(property_list.cast_mut()).ok_or_else(|| {
+            host_error(
+                ErrorCategory::CorruptData,
+                Recoverability::UserCorrectable,
+                "capture_state",
+                "Audio Unit class-info property returned a null property list",
+            )
+        })?;
+        // SAFETY: A successful class-info property read transfers one retained CF object that this
+        // owner releases after serialization.
+        let property_list = unsafe { cf::CFRetained::from_raw(property_list) };
+        let mut serialization_error = ptr::null_mut();
+        // SAFETY: The retained property list is valid for the complete synchronous serialization,
+        // and serialization_error is writable optional CFError storage.
+        let data = unsafe {
+            cf::CFPropertyListCreateData(
+                None,
+                Some(&property_list),
+                cf::CFPropertyListFormat::BinaryFormat_v1_0,
+                0,
+                &mut serialization_error,
+            )
+        };
+        release_cf_error(serialization_error);
+        let data = data.ok_or_else(|| {
+            host_error(
+                ErrorCategory::CorruptData,
+                Recoverability::UserCorrectable,
+                "capture_state",
+                "Audio Unit class-info property could not be serialized",
+            )
+        })?;
+        AudioUnitPluginState::new(data.to_vec())
     }
 
     fn verify_component(&mut self, config: &AudioUnitHostConfig) -> Result<()> {
@@ -374,6 +451,10 @@ impl PreparedAudioUnit {
             ));
         }
 
+        if let Some(state) = config.initial_state() {
+            self.restore_state(state)?;
+        }
+
         let format = linear_pcm_format(config.sample_rate(), config.input_layout().len());
         set_and_verify_format(
             self.unit,
@@ -419,7 +500,69 @@ impl PreparedAudioUnit {
         let status = unsafe { at::AudioUnitInitialize(self.unit) };
         check_status(status, "initialize_audio_unit")?;
         self.initialized = true;
+        let latency_seconds: f64 = get_property(
+            self.unit,
+            at::kAudioUnitProperty_Latency,
+            at::kAudioUnitScope_Global,
+            ELEMENT_ZERO,
+            "read_latency",
+        )?;
+        if !latency_seconds.is_finite() || latency_seconds < 0.0 {
+            return Err(host_error(
+                ErrorCategory::CorruptData,
+                Recoverability::UserCorrectable,
+                "read_latency",
+                "Audio Unit returned an invalid algorithmic latency",
+            ));
+        }
+        let latency_samples = latency_seconds * f64::from(config.sample_rate());
+        if latency_samples > usize::MAX as f64 {
+            return Err(host_error(
+                ErrorCategory::ResourceExhausted,
+                Recoverability::UserCorrectable,
+                "read_latency",
+                "Audio Unit latency exceeds the host sample domain",
+            ));
+        }
+        self.latency_samples = latency_samples.round() as usize;
         Ok(())
+    }
+
+    fn restore_state(&mut self, state: &AudioUnitPluginState) -> Result<()> {
+        let data = cf::CFData::from_bytes(state.bytes());
+        let mut format = cf::CFPropertyListFormat::BinaryFormat_v1_0;
+        let mut parse_error = ptr::null_mut();
+        // SAFETY: The retained data is exact immutable input, format and parse_error are writable,
+        // and the returned property list is retained by its Rust owner.
+        let property_list = unsafe {
+            cf::CFPropertyListCreateWithData(None, Some(&data), 0, &mut format, &mut parse_error)
+        };
+        release_cf_error(parse_error);
+        let property_list = property_list.ok_or_else(|| {
+            host_error(
+                ErrorCategory::CorruptData,
+                Recoverability::UserCorrectable,
+                "restore_state",
+                "Audio Unit state is not a valid property list",
+            )
+        })?;
+        let property_list_pointer = ptr::from_ref::<cf::CFPropertyList>(&property_list);
+        let size = u32::try_from(size_of::<*const cf::CFPropertyList>())
+            .expect("property-list reference size fits u32");
+        // SAFETY: The uninitialized live unit consumes one retained property-list reference during
+        // the synchronous class-info property write and does not retain the address of the stack
+        // pointer variable.
+        let status = unsafe {
+            at::AudioUnitSetProperty(
+                self.unit,
+                at::kAudioUnitProperty_ClassInfo,
+                at::kAudioUnitScope_Global,
+                ELEMENT_ZERO,
+                ptr::from_ref(&property_list_pointer).cast(),
+                size,
+            )
+        };
+        check_status(status, "restore_state")
     }
 
     pub(super) fn process(
@@ -912,6 +1055,14 @@ fn get_property<T: Copy>(
     }
     // SAFETY: A successful exact-size property read initialized the complete `T` value.
     Ok(unsafe { value.assume_init() })
+}
+
+fn release_cf_error(error: *mut cf::CFError) {
+    if let Some(error) = NonNull::new(error) {
+        // SAFETY: Core Foundation create functions return one retained CFError through the output
+        // pointer on failure. Converting it transfers that ownership to the temporary Rust guard.
+        drop(unsafe { cf::CFRetained::from_raw(error) });
+    }
 }
 
 fn sample_timestamp(sample: i64) -> ca::AudioTimeStamp {

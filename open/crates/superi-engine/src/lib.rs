@@ -10,11 +10,13 @@
 //! decode, graph, delivery color, audio, and elementary-stream export orchestration, bounded
 //! logical export jobs, deterministic project and device lifecycle across sleep, wake, shutdown,
 //! and restart, bounded typed command dispatch, contained OpenFX bundle discovery and worker
-//! supervision, shared plugin availability for playback, rendering, and export, and atomic timeline
-//! plus clip-mix edits are integrated while the remaining orchestration modules advance through
-//! their focused checkpoints.
+//! supervision, isolated native audio plugin discovery, checkpoints, recovery, and fault-contained
+//! graph preparation, shared plugin availability for playback, rendering, and export, and atomic
+//! timeline plus clip-mix edits are integrated while the remaining orchestration modules advance
+//! through their focused checkpoints.
 
 pub mod audio_mix;
+pub mod audio_plugins;
 pub mod av_sync;
 pub mod command;
 pub mod derived_media;

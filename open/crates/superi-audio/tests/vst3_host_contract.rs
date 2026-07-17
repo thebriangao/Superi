@@ -10,8 +10,9 @@ use superi_audio::graph::{
     AudioProcessBlock, AudioProcessor,
 };
 use superi_audio::hosting::vst3::{
-    Vst3AutomationPoint, Vst3ClassId, Vst3EffectConfig, Vst3ProcessMode, Vst3WorkerSession,
-    VST3_SPEAKER_5_1, VST3_SPEAKER_7_1, VST3_SPEAKER_MONO, VST3_SPEAKER_QUAD, VST3_SPEAKER_STEREO,
+    Vst3AutomationPoint, Vst3ClassId, Vst3EffectConfig, Vst3PluginState, Vst3ProcessMode,
+    Vst3WorkerSession, VST3_SPEAKER_5_1, VST3_SPEAKER_7_1, VST3_SPEAKER_MONO, VST3_SPEAKER_QUAD,
+    VST3_SPEAKER_STEREO,
 };
 use superi_audio::routing::SummingBus;
 use superi_concurrency::threads::ExecutionDomain;
@@ -221,6 +222,11 @@ fn assert_fixture_evidence(evidence: &str, channels: usize, mode: i32) {
     assert_eq!(fields.get("processes"), Some(&"2"));
     assert_eq!(fields.get("host_objects"), Some(&"1"));
     assert_eq!(fields.get("callback_allocations"), Some(&"0"));
+    assert_eq!(fields.get("component_state_gets"), Some(&"1"));
+    assert_eq!(fields.get("component_state_sets"), Some(&"1"));
+    assert_eq!(fields.get("controller_component_state_sets"), Some(&"1"));
+    assert_eq!(fields.get("controller_state_gets"), Some(&"1"));
+    assert_eq!(fields.get("controller_state_sets"), Some(&"1"));
 }
 
 #[test]
@@ -596,6 +602,10 @@ fn vst3_fixture_child() {
     request = request
         .with_monitoring_capacity(if monitoring_overflow { 1 } else { 8 })
         .unwrap();
+    let initial_gain_state = 1.0_f64.to_bits().to_le_bytes().to_vec();
+    request = request.with_initial_state(
+        Vst3PluginState::new(initial_gain_state.clone(), initial_gain_state.clone()).unwrap(),
+    );
     if std::env::var_os("SUPERI_VST3_FIXTURE_REQUIRE_TEMPO").is_some() {
         let error = match Vst3WorkerSession::load(request) {
             Ok(_) => panic!("VST3 effect with unsupported context requirements loaded"),
@@ -612,8 +622,15 @@ fn vst3_fixture_child() {
         assert_eq!(error.category(), ErrorCategory::Unavailable);
         return;
     }
-    let (mut session, effect, mut writer, mut readings) =
+    let (mut session, mut effect, mut writer, mut readings) =
         Vst3WorkerSession::load(request).expect("load fixture VST3 effect");
+
+    let captured = {
+        let _background = ExecutionDomain::BackgroundJob.enter_current().unwrap();
+        effect.capture_state().expect("capture fixture VST3 state")
+    };
+    assert_eq!(captured.component_state(), initial_gain_state);
+    assert_eq!(captured.controller_state(), initial_gain_state);
 
     assert_eq!(session.metadata().factory_vendor(), "Superi");
     assert_eq!(

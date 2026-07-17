@@ -19,7 +19,8 @@ use vst3::Steinberg::Vst::*;
 use vst3::Steinberg::*;
 use vst3::{Class, ComPtr, ComWrapper, Interface};
 
-use super::{Vst3EffectConfig, Vst3ProcessMode};
+use super::{Vst3EffectConfig, Vst3PluginState, Vst3ProcessMode};
+use crate::plugins::MAX_AUDIO_PLUGIN_STATE_BYTES;
 
 const COMPONENT: &str = "superi-audio.hosting.vst3.native";
 const MAXIMUM_PARAMETERS: usize = 4_096;
@@ -159,6 +160,27 @@ fn status(
     }
 }
 
+fn optional_state_status(
+    result: tresult,
+    operation: &'static str,
+    message: &'static str,
+) -> Result<bool> {
+    if result == kResultOk {
+        Ok(true)
+    } else if result == kNotImplemented || result == kResultFalse {
+        Ok(false)
+    } else {
+        Err(Error::new(
+            ErrorCategory::CorruptData,
+            Recoverability::UserCorrectable,
+            message,
+        )
+        .with_context(
+            ErrorContext::new(COMPONENT, operation).with_field("tresult", result.to_string()),
+        ))
+    }
+}
+
 fn unavailable(operation: &'static str, message: impl Into<String>) -> Error {
     Error::new(
         ErrorCategory::Unavailable,
@@ -179,6 +201,155 @@ fn unsupported(operation: &'static str, message: &'static str) -> Error {
 
 fn host_control_call_allowed() -> bool {
     current_execution_domain() != Some(ExecutionDomain::Audio)
+}
+
+struct MemoryStreamBuffer {
+    bytes: Vec<u8>,
+    cursor: usize,
+}
+
+struct MemoryStream {
+    buffer: Mutex<MemoryStreamBuffer>,
+}
+
+impl MemoryStream {
+    fn empty() -> Self {
+        Self::from_bytes(Vec::new())
+    }
+
+    fn from_bytes(bytes: Vec<u8>) -> Self {
+        Self {
+            buffer: Mutex::new(MemoryStreamBuffer { bytes, cursor: 0 }),
+        }
+    }
+
+    fn bytes(&self) -> Result<Vec<u8>> {
+        self.buffer
+            .lock()
+            .map(|buffer| buffer.bytes.clone())
+            .map_err(|_| unavailable("read_state_stream", "VST3 state stream lock was poisoned"))
+    }
+}
+
+impl Class for MemoryStream {
+    type Interfaces = (IBStream,);
+}
+
+impl IBStreamTrait for MemoryStream {
+    unsafe fn read(
+        &self,
+        buffer: *mut c_void,
+        num_bytes: i32,
+        num_bytes_read: *mut i32,
+    ) -> tresult {
+        if num_bytes < 0 || (num_bytes != 0 && buffer.is_null()) {
+            return kInvalidArgument;
+        }
+        let Ok(mut state) = self.buffer.lock() else {
+            return kInternalError;
+        };
+        let requested = usize::try_from(num_bytes).unwrap_or(0);
+        let start = state.cursor.min(state.bytes.len());
+        let end = start.saturating_add(requested).min(state.bytes.len());
+        let read = end - start;
+        if read != 0 {
+            // SAFETY: The plugin supplied at least num_bytes writable bytes and this copy uses no
+            // more than that validated extent from retained stream storage.
+            unsafe {
+                ptr::copy_nonoverlapping(state.bytes[start..end].as_ptr(), buffer.cast(), read)
+            };
+        }
+        state.cursor = end;
+        if !num_bytes_read.is_null() {
+            // SAFETY: VST3 supplied optional writable storage for one signed byte count.
+            unsafe { num_bytes_read.write(i32::try_from(read).unwrap_or(i32::MAX)) };
+        }
+        if read == requested {
+            kResultOk
+        } else {
+            kResultFalse
+        }
+    }
+
+    unsafe fn write(
+        &self,
+        buffer: *mut c_void,
+        num_bytes: i32,
+        num_bytes_written: *mut i32,
+    ) -> tresult {
+        if num_bytes < 0 || (num_bytes != 0 && buffer.is_null()) {
+            return kInvalidArgument;
+        }
+        let requested = usize::try_from(num_bytes).unwrap_or(0);
+        let Ok(mut state) = self.buffer.lock() else {
+            return kInternalError;
+        };
+        let Some(end) = state.cursor.checked_add(requested) else {
+            return kOutOfMemory;
+        };
+        if end > MAX_AUDIO_PLUGIN_STATE_BYTES {
+            return kOutOfMemory;
+        }
+        if end > state.bytes.len() {
+            let additional = end - state.bytes.len();
+            if state.bytes.try_reserve_exact(additional).is_err() {
+                return kOutOfMemory;
+            }
+            state.bytes.resize(end, 0);
+        }
+        if requested != 0 {
+            // SAFETY: The plugin supplied num_bytes readable bytes and the destination range is
+            // fully allocated and uniquely locked for the synchronous copy.
+            let source = unsafe { std::slice::from_raw_parts(buffer.cast::<u8>(), requested) };
+            let start = state.cursor;
+            state.bytes[start..end].copy_from_slice(source);
+        }
+        state.cursor = end;
+        if !num_bytes_written.is_null() {
+            // SAFETY: VST3 supplied optional writable storage for one signed byte count.
+            unsafe { num_bytes_written.write(num_bytes) };
+        }
+        kResultOk
+    }
+
+    unsafe fn seek(&self, pos: i64, mode: i32, result: *mut i64) -> tresult {
+        let Ok(mut state) = self.buffer.lock() else {
+            return kInternalError;
+        };
+        let base = match mode {
+            0 => 0_i64,
+            1 => i64::try_from(state.cursor).unwrap_or(i64::MAX),
+            2 => i64::try_from(state.bytes.len()).unwrap_or(i64::MAX),
+            _ => return kInvalidArgument,
+        };
+        let Some(next) = base.checked_add(pos) else {
+            return kInvalidArgument;
+        };
+        let Ok(next) = usize::try_from(next) else {
+            return kInvalidArgument;
+        };
+        if next > MAX_AUDIO_PLUGIN_STATE_BYTES {
+            return kOutOfMemory;
+        }
+        state.cursor = next;
+        if !result.is_null() {
+            // SAFETY: VST3 supplied optional writable storage for the resulting cursor.
+            unsafe { result.write(i64::try_from(next).unwrap_or(i64::MAX)) };
+        }
+        kResultOk
+    }
+
+    unsafe fn tell(&self, pos: *mut i64) -> tresult {
+        if pos.is_null() {
+            return kInvalidArgument;
+        }
+        let Ok(state) = self.buffer.lock() else {
+            return kInternalError;
+        };
+        // SAFETY: The nonnull pointer is writable storage supplied by the synchronous caller.
+        unsafe { pos.write(i64::try_from(state.cursor).unwrap_or(i64::MAX)) };
+        kResultOk
+    }
 }
 
 unsafe fn tuid_matches(value: *const TUID, expected: &[u8; 16]) -> bool {
@@ -1363,6 +1534,9 @@ impl NativePlugin {
 
         self.initialize_controller(&factory, host_pointer)?;
         self.connect_component_controller()?;
+        if let Some(state) = config.initial_state() {
+            self.restore_state(state)?;
+        }
         let parameters = self.read_parameters()?;
         let mut parameter_ids = parameters
             .iter()
@@ -1527,6 +1701,116 @@ impl NativePlugin {
         )?;
         self.controller_connected = true;
         Ok(())
+    }
+
+    fn restore_state(&self, state: &Vst3PluginState) -> Result<()> {
+        if !state.component_state().is_empty() {
+            let component_stream =
+                ComWrapper::new(MemoryStream::from_bytes(state.component_state().to_vec()));
+            let component_stream = component_stream
+                .as_com_ref::<IBStream>()
+                .expect("memory stream implements IBStream");
+            let component = self.component.as_ref().expect("component initialized");
+            status(
+                // SAFETY: The inactive initialized component and retained stream are uniquely
+                // controlled during single-threaded worker preparation.
+                unsafe { component.setState(component_stream.as_ptr()) },
+                "restore_component_state",
+                "VST3 component rejected its durable state",
+                ErrorCategory::CorruptData,
+            )?;
+
+            if let Some(controller) = self.controller.as_ref() {
+                let controller_stream =
+                    ComWrapper::new(MemoryStream::from_bytes(state.component_state().to_vec()));
+                let controller_stream = controller_stream
+                    .as_com_ref::<IBStream>()
+                    .expect("memory stream implements IBStream");
+                status(
+                    // SAFETY: The initialized inactive controller consumes an independent stream
+                    // positioned at the beginning of the exact component state.
+                    unsafe { controller.setComponentState(controller_stream.as_ptr()) },
+                    "restore_controller_component_state",
+                    "VST3 controller rejected the restored component state",
+                    ErrorCategory::CorruptData,
+                )?;
+            }
+        }
+
+        if !state.controller_state().is_empty() {
+            let Some(controller) = self.controller.as_ref() else {
+                return Err(Error::new(
+                    ErrorCategory::Conflict,
+                    Recoverability::UserCorrectable,
+                    "VST3 state contains controller bytes but the component has no controller",
+                )
+                .with_context(ErrorContext::new(COMPONENT, "restore_controller_state")));
+            };
+            let controller_stream =
+                ComWrapper::new(MemoryStream::from_bytes(state.controller_state().to_vec()));
+            let controller_stream = controller_stream
+                .as_com_ref::<IBStream>()
+                .expect("memory stream implements IBStream");
+            status(
+                // SAFETY: The initialized inactive controller and exact retained stream are
+                // uniquely controlled during preparation.
+                unsafe { controller.setState(controller_stream.as_ptr()) },
+                "restore_controller_state",
+                "VST3 controller rejected its durable state",
+                ErrorCategory::CorruptData,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn capture_state(&self) -> Result<Vst3PluginState> {
+        if !host_control_call_allowed() {
+            return Err(Error::new(
+                ErrorCategory::Conflict,
+                Recoverability::Retryable,
+                "VST3 state cannot be captured on the audio callback domain",
+            )
+            .with_context(ErrorContext::new(COMPONENT, "capture_state")));
+        }
+        let component_stream = ComWrapper::new(MemoryStream::empty());
+        let component_stream_reference = component_stream
+            .as_com_ref::<IBStream>()
+            .expect("memory stream implements IBStream");
+        let component = self.component.as_ref().expect("component initialized");
+        let component_supported = optional_state_status(
+            // SAFETY: The retained component and bounded writable stream are accessed only by the
+            // exclusive prepared worker owner outside the audio callback.
+            unsafe { component.getState(component_stream_reference.as_ptr()) },
+            "capture_component_state",
+            "VST3 component state capture failed",
+        )?;
+        let component_state = if component_supported {
+            component_stream.bytes()?
+        } else {
+            Vec::new()
+        };
+
+        let controller_state = if let Some(controller) = self.controller.as_ref() {
+            let controller_stream = ComWrapper::new(MemoryStream::empty());
+            let controller_stream_reference = controller_stream
+                .as_com_ref::<IBStream>()
+                .expect("memory stream implements IBStream");
+            let supported = optional_state_status(
+                // SAFETY: The retained controller and independent bounded stream have the same
+                // exclusive control-side access as the component capture above.
+                unsafe { controller.getState(controller_stream_reference.as_ptr()) },
+                "capture_controller_state",
+                "VST3 controller state capture failed",
+            )?;
+            if supported {
+                controller_stream.bytes()?
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+        Vst3PluginState::new(component_state, controller_state)
     }
 
     fn read_parameters(&self) -> Result<Vec<NativeParameterInfo>> {
@@ -2082,6 +2366,16 @@ impl NativeLease {
         if let Some(plugin) = unsafe { &*self.plugin.get() }.as_ref() {
             plugin.visit_output_points(visitor);
         }
+    }
+
+    pub(super) fn capture_state(&self) -> Result<Vst3PluginState> {
+        // SAFETY: The public prepared effect requires exclusive mutable ownership and a non-audio
+        // execution domain before entering this control-side operation. Session shutdown remains
+        // excluded by the outstanding prepared Arc lease.
+        let plugin = unsafe { &*self.plugin.get() }
+            .as_ref()
+            .ok_or_else(|| unavailable("capture_state", "VST3 native session is shut down"))?;
+        plugin.capture_state()
     }
 
     pub(super) fn shutdown(&self) -> Result<()> {

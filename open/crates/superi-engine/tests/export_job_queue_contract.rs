@@ -221,7 +221,14 @@ fn pause_acknowledges_one_attempt_and_resume_starts_fresh_progress() -> Result<(
     })?;
 
     poll_until(&mut queue, job_id, ExportJobStatus::Running)?;
-    assert!(entered.load(Ordering::SeqCst));
+    let entry_deadline = Instant::now() + Duration::from_secs(2);
+    while !entered.load(Ordering::SeqCst) {
+        assert!(
+            Instant::now() < entry_deadline,
+            "export executor did not enter its first attempt"
+        );
+        thread::yield_now();
+    }
     assert_eq!(queue.pause(job_id)?.status(), ExportJobStatus::Pausing);
     let paused = poll_until(&mut queue, job_id, ExportJobStatus::Paused)?;
     assert_eq!(paused.attempt(), 1);

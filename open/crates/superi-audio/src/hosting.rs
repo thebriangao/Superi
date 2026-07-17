@@ -11,6 +11,7 @@ use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Res
 use superi_core::pixel::ChannelLayout;
 
 use crate::graph::{AudioProcessBlock, AudioProcessor};
+use crate::plugins::MAX_AUDIO_PLUGIN_STATE_BYTES;
 
 pub mod vst3;
 
@@ -20,6 +21,39 @@ mod audio_unit_macos;
 const COMPONENT: &str = "superi-audio.hosting.audio-unit";
 const EFFECT_COMPONENT_TYPE: [u8; 4] = *b"aufx";
 const MAX_CHANNELS: usize = 64;
+
+/// Exact binary property-list state captured from an Audio Unit's class-info property.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AudioUnitPluginState(Vec<u8>);
+
+impl AudioUnitPluginState {
+    /// Creates one bounded Audio Unit class-info checkpoint.
+    pub fn new(bytes: Vec<u8>) -> Result<Self> {
+        if bytes.is_empty() {
+            return Err(error(
+                ErrorCategory::InvalidInput,
+                Recoverability::UserCorrectable,
+                "create_state",
+                "Audio Unit state must contain one property list",
+            ));
+        }
+        if bytes.len() > MAX_AUDIO_PLUGIN_STATE_BYTES {
+            return Err(error(
+                ErrorCategory::ResourceExhausted,
+                Recoverability::UserCorrectable,
+                "create_state",
+                "Audio Unit state exceeds the explicit payload bound",
+            ));
+        }
+        Ok(Self(bytes))
+    }
+
+    /// Returns the exact binary property-list bytes.
+    #[must_use]
+    pub fn bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
 
 /// Exact Audio Unit effect component identity.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -104,6 +138,7 @@ pub struct AudioUnitHostConfig {
     input_layout: ChannelLayout,
     output_layout: ChannelLayout,
     execution_policy: AudioUnitExecutionPolicy,
+    initial_state: Option<AudioUnitPluginState>,
 }
 
 impl AudioUnitHostConfig {
@@ -156,7 +191,15 @@ impl AudioUnitHostConfig {
             input_layout,
             output_layout,
             execution_policy,
+            initial_state: None,
         })
+    }
+
+    /// Supplies exact class-info state to restore before native initialization.
+    #[must_use]
+    pub fn with_initial_state(mut self, state: AudioUnitPluginState) -> Self {
+        self.initial_state = Some(state);
+        self
     }
 
     /// Returns the exact component identity.
@@ -193,6 +236,10 @@ impl AudioUnitHostConfig {
     #[must_use]
     pub const fn execution_policy(&self) -> AudioUnitExecutionPolicy {
         self.execution_policy
+    }
+
+    pub(crate) const fn initial_state(&self) -> Option<&AudioUnitPluginState> {
+        self.initial_state.as_ref()
     }
 }
 
@@ -276,9 +323,49 @@ impl PreparedAudioUnit {
             false
         }
     }
+
+    /// Returns the fixed native algorithmic latency in sample frames.
+    #[must_use]
+    pub fn latency_samples(&self) -> usize {
+        #[cfg(target_os = "macos")]
+        {
+            self.native.latency_samples()
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            0
+        }
+    }
+
+    /// Captures exact Audio Unit class-info state on the background control domain.
+    pub fn capture_state(&mut self) -> Result<AudioUnitPluginState> {
+        ExecutionDomain::BackgroundJob
+            .require_current()
+            .map_err(|mut error| {
+                error.push_context(ErrorContext::new(COMPONENT, "capture_state"));
+                error
+            })?;
+        #[cfg(target_os = "macos")]
+        {
+            self.native.capture_state()
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            Err(error(
+                ErrorCategory::Unsupported,
+                Recoverability::UserCorrectable,
+                "capture_state",
+                "Audio Unit hosting is available only on macOS",
+            ))
+        }
+    }
 }
 
 impl AudioProcessor for PreparedAudioUnit {
+    fn latency_samples(&self) -> usize {
+        self.latency_samples()
+    }
+
     fn process(&mut self, block: AudioProcessBlock<'_>) -> Result<()> {
         #[cfg(target_os = "macos")]
         {

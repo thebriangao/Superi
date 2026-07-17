@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: d4fca2990fe2afafd281be7309037371186da4e1189b08602e799c6fd80b0b83
-source_files: 148
+source_hash: 7ac8a9d889a864dd4426bcc0b9a46de5ec6f8c5c02ad8a3e768713d727417af2
+source_files: 149
 mapped_at_commit: working-tree
 ---
 
@@ -28,7 +28,7 @@ Google Docs work, and delivery itself without another agent. Multiple checkpoint
 Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers but obeys an
 explicit positive user concurrency value. The file is ignored by Git and copied into managed
 worktrees through `.worktreeinclude`, so the mapping script does not include it in this module's
-148-file inventory or source hash. It must still be reread independently before repository work.
+149-file inventory or source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
 ratified architecture, while `open/Cargo.toml` and `open/Cargo.lock` expose the dependency graph
@@ -324,6 +324,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   Read, Write, Touch, and Latch automation, immutable callback curves, serialized engine ownership,
   strict public transactions and events, routed source-to-master proof, verification, delivery, and
   intentionally deferred persistence, broader targets, and hardware control input.
+- `docs/checkpoints/P2.W04.C014.md`: Durable implementation evidence for deterministic native audio
+  plugin discovery and validation, exact Audio Unit and VST3 state persistence, graph delay
+  compensation, isolated timing-matched fallback, checkpoint recovery and quarantine, per-node
+  project save and reopen, verification, and remaining platform transport boundaries.
 - `docs/checkpoints/P2.W04.C013.md`: Durable implementation evidence for macOS Audio Unit effect
   hosting. It records exact identity and configuration, verified process isolation, private native
   lifecycle and callback ownership, real Apple Peak Limiter graph proof, delivery gates, and
@@ -367,8 +371,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/unsafe-ffi.md`: Defines the deny-by-default unsafe policy and inventories audited macOS
   CoreGraphics, AV1, Opus, VPx, VideoToolbox, AudioConverter, Audio Unit hosting, Windows Media
   Foundation, Linux VVC VA-API, and cross-platform VST3 worker-host boundaries. It records
-  ownership, buffer, thread, failure, and target proof for each boundary plus required source scans,
-  Clippy runs, and focused tests.
+  ownership, buffer, thread, state, latency, failure, and target proof for each boundary plus required
+  source scans, Clippy runs, and focused tests. Audio Unit class-info property lists and VST3 bounded
+  seekable `IBStream` transfers are explicit native-state boundaries.
 - `docs/vertical-slice.md`: Defines revision 1 of `superi.slice.canonical.v1`. It pins the immutable
   video fixture role, exact one-track edit and trim, one typed horizontal-mirror graph effect,
   explicit delivery, eight stable replacement stages, schema 1.1.0 runner report, bounded stage
@@ -777,6 +782,12 @@ crate, both under the existing permissive license allowlist. It reuses the pinne
 loader on Windows and Linux and the pinned Core Foundation bundle owner on macOS. No host framework,
 remote service, plugin binary, SDK source, or runtime discovery database enters the repository;
 tests compile their own temporary dynamic module and load it only inside isolated child processes.
+
+The native plugin resilience work adds no new resolved package. Audio Unit state reuses the existing
+target-gated Core Foundation binding with data, error, and property-list features, VST3 state reuses
+the existing low-level binding, and the format-neutral binary envelope reuses the audio crate's
+existing SHA-256 dependency. Engine continues to depend downward on audio and project for the state,
+processor, and extension contracts, with no new internal tier edge.
 
 The effects animation, mask, rotoscope, text, and preset wires reuse the same workspace Serde pin.
 Effect presets additionally reuse the workspace JSON and SHA-256 pins at runtime for strict
@@ -1222,6 +1233,10 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   background preparation, default verified isolation, callback and teardown ownership, real Apple
   Peak Limiter graph consumer, exact timing and channel proof, dependency audit, and deferred
   engine, plug-in-management, and physical-lane boundaries.
+- `docs/checkpoints/P2.W04.C014.md` records format-neutral state persistence, native Audio Unit and
+  VST3 state transfer, fixed graph delay compensation, isolated timing-matched dry fallback,
+  deterministic discovery and worker validation, checkpoint recovery and quarantine, per-node
+  database reopen proof, and the remaining concrete IPC and physical-lane boundaries.
 - `docs/checkpoints/P2.W04.C012.md` records the VST3 host's exact configuration, retained module and
   COM lifecycle, canonical channel and timing behavior, bounded automation and monitoring, isolated
   real-module contracts, dependency audit, and deferred orchestration boundaries.
@@ -1352,8 +1367,9 @@ strict CLI consumption, reference frames, audio and timing proof, and its durabl
 The independent audio processing graph now provides deterministic audio-owned topology,
 destination-scoped preparation with fixed intermediate buffers, exact consecutive block
 processing on the concurrency-owned audio domain, and typed submix, auxiliary, send, return, and
-single-master routing. Borrowed prepared input views and stable route-ID summing preserve channel
-meaning and avoid callback allocation. Public consumers prove both a source-to-gain chain and a
+single-master routing. Graph preparation now propagates every processor's fixed latency and
+preallocates exact per-route delay compensation before callback publication. Borrowed prepared input
+views and stable route-ID summing preserve channel meaning and avoid callback allocation. Public consumers prove both a source-to-gain chain and a
 dry-submix plus auxiliary-return path, including atomic topology rejection and order-sensitive
 floating-point behavior. Explicit prepared channel nodes now convert canonical mono through 7.1
 layouts using documented speaker rules or caller-selected discrete order without changing sample
@@ -1361,8 +1377,15 @@ time. macOS effect Audio Units now enter the same graph processor boundary throu
 identity, bounded background preparation, process-location verification, semantic channel
 negotiation, preallocated pull callbacks, and poison-on-native-failure ownership. A real Apple Peak
 Limiter consumer proves adjacent partition continuity through the terminal master. Audio Unit
-instruments, MIDI, presets, UI, crash restart, engine host adaptation, and decoded-sample binding
-remain absent. Worker-side VST3 effect processing, production device output, and
+class-info property-list state and native latency now round-trip through the host. The worker-side
+VST3 host restores and captures exact component and controller streams and reports fixed latency.
+One format-neutral digest-checked envelope preserves native state plus sample-clock and latency
+evidence, while the prepared isolated bridge always advances timing-matched dry fallback. Engine now
+owns deterministic candidate discovery, strict separate-process worker validation, activation,
+checkpoint capture, restart, quarantine, and one state record per audio node through real project
+save and reopen. Audio Unit instruments, MIDI, broader parameter automation, preset browsing, UI,
+concrete platform IPC and sandbox launchers, dynamic latency rebuild, and decoded-sample binding
+remain absent. Production device output and
 sample-accurate scheduling are implemented in the same audio crate, and engine foreground playback
 now feeds its bounded producer and coordinates video from its actual presentation clock with
 explicit hold, correction, drop, rebase, and recovery evidence. Engine transport requests
@@ -1483,8 +1506,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`2e802430f19a5640420b05690183183982a79844` when the map was refreshed. Its hash describes the exact
-148 discovered source files, including twelve generated binary payloads, layered on that revision.
+`88edc77f54229818550107c90b418198b7511251` when this checkpoint was rebased. Its hash describes the exact
+149 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 

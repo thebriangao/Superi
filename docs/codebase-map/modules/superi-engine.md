@@ -2,8 +2,8 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 4c0d5d455fe58e39e2dab0122934556d3ac1672422021d3a359f1882c5f50889
-source_files: 63
+source_hash: 47ed1cafcb78d733d45aa8b35b684976a2ca9159552143312e4201e86cda6ae7
+source_files: 65
 mapped_at_commit: working-tree
 ---
 
@@ -18,7 +18,9 @@ audio-master A/V coordination with bounded video correction and discontinuity re
 clock fallback, lossless viewport handoff, exact interactive transport control, coherent decode,
 graph, delivery-color, audio, and elementary-stream export execution, deterministic OpenFX bundle
 discovery and isolated-worker supervision, coherent plugin availability across playback, rendering,
-and export, deterministic project, device, sleep, wake, shutdown, and restart lifecycle,
+and export, deterministic native audio plugin candidate discovery, strict isolated-worker
+validation, checkpoint recovery and quarantine, per-node durable state records, prepared
+timing-matched audio fallback, deterministic project, device, sleep, wake, shutdown, and restart lifecycle,
 bounded logical export job orchestration, classified cross-subsystem failure propagation
 and recovery, shared finite-resource arbitration across decode, GPU, cache, audio, AI, and export
 work, atomic timeline plus clip-mix edits, typed resolution of durable project settings, bounded
@@ -52,6 +54,10 @@ through the existing dispatcher.
 - `open/crates/superi-engine/Cargo.toml`: Declares subsystem dependencies, optional codec features,
   production `sha2`, a narrow empty-project `test-support` feature for upper-tier public contracts,
   and test-only `pollster` plus `rusqlite` for exact project database fixtures.
+- `open/crates/superi-engine/src/audio_plugins.rs`: Implements deterministic recursive VST3 bundle
+  discovery and explicit Audio Unit candidate ingestion, strict isolated-worker contracts, bounded
+  descriptor validation, retained scan and runtime failures, activation, state capture, restart and
+  quarantine recovery, prepared process-bridge construction, and per-node project extension records.
 - `open/crates/superi-engine/src/audio_mix.rs`: Applies timeline edit batches and audio clip-mix
   identity reconciliation against cloned subsystem states, publishing both only after timeline and
   mix revisions, fragment inheritance, replacement transfer, and removal all validate.
@@ -182,6 +188,10 @@ through the existing dispatcher.
   lifecycle-owned automation attachment, serialized inspection and mutation, no-op suppression,
   stale and invalid atomicity, full event-queue preflight, isolated revision correlation, and real
   clip-processor consumption of a returned replacement snapshot.
+- `open/crates/superi-engine/tests/audio_plugin_supervision_contract.rs`: Proves deterministic VST3
+  discovery, domain and worker-contract validation, compatible-version state recovery, fixed
+  latency propagation, fault and quarantine transitions, per-node state identity, and exact project
+  save and reopen through the real database.
 - `open/crates/superi-engine/tests/av_sync_coordination_contract.rs`: Proves the interactive
   policy, playback-domain ownership, bounded hold and correction, protected and eligible-drop
   behavior, distinct live deadlines and intervals with immutable media timing, discontinuity
@@ -202,7 +212,9 @@ through the existing dispatcher.
 - `open/crates/superi-engine/tests/export_job_queue_contract.rs`: Proves bounded logical identity,
   immutable dependency ordering, nonblocking progress and retained results, cooperative pause and
   cancel, fresh-attempt resume and retry, recovery-class policy, terminal propagation, safe removal,
-  execution-domain enforcement, and blocking-safe shutdown.
+  execution-domain enforcement, and blocking-safe shutdown. The pause contract waits for its
+  separate executor-entry handshake after observing queue `Running` state, so parallel test
+  scheduling cannot turn the intended cooperative loop into a teardown hang.
 - `open/crates/superi-engine/tests/export_dispatcher_contract.rs`: Proves dispatcher-owned prepared
   submit, ordered complete replacement state, automated progress and completion polling, typed
   result retention, inspection, pause, fresh resume, dependency release, one-job and all-job cancel,
@@ -423,6 +435,15 @@ vendor constructor.
 owns one boxed effects host per launched bundle, rebuilds its active graph registry after every
 lifecycle transition, contains bundle-local scan and worker failures, and resolves one graph plus
 registry snapshot identically for playback, rendering, and export.
+
+`audio_plugins` exposes `AudioPluginInstanceId`, validated candidate and failure records,
+`AudioPluginDiscoveryReport`, deterministic `discover_vst3_bundles`, strict
+`AudioPluginWorkerContract`, descriptor and launcher seams, lifecycle snapshots, and
+`AudioPluginSupervisor`. It scans on BackgroundJob, contains each candidate's activation and runtime
+failure, restores compatible saved state before launch, captures exact current state, retries a
+faulted worker, quarantines repeated activation failure, and prepares the audio-owned isolated
+bridge processor. Per-instance project helpers encode and decode one exact versioned extension
+record keyed by the owning audio node rather than the reusable plugin component.
 
 `resources` exposes explicit `MediaResourceRequest`, `DecoderResourceRequest`, and
 `ResourceAcquisitionPolicy` inputs; stable source and decoder selection evidence; stateful acquired
@@ -1050,6 +1071,32 @@ current borrowed sample seam has no timestamped rate-conversion contract. Transp
 decoded sources, perform A/V drift correction, or submit native GPU work. Render and export
 orchestration consume separate exact-time inputs and remain unaffected by live transport policy.
 
+### Native audio plugin lifecycle
+
+Background-domain discovery recursively walks caller-selected roots, canonicalizes each `.vst3`
+bundle, sorts by path, and retains malformed entries as candidate-scoped failures. Audio Unit
+candidates enter through explicit typed component identifiers because platform registry enumeration
+remains outside this module. Scan replaces the candidate table deterministically and does not load
+native code.
+
+Every launcher must declare a separate process, a positive bounded message capacity, a finite
+deadline no greater than 300 seconds, restart support, and a bounded descriptor. Enable validates
+identity and layout, accepts saved state only for the same format and component identifier, starts
+the worker, obtains one bridge and exact descriptor, and publishes Ready only after all checks pass.
+Capture asks the worker for exact current state and rebinds its identity plus native and transport
+latency to the live descriptor. A first activation or runtime failure publishes Faulted and retains
+the last valid checkpoint; recovery restarts from that checkpoint. A repeated activation failure
+publishes Quarantined until an explicit clear.
+
+Processor preparation converts the ready worker bridge into
+`superi_audio::plugins::PreparedIsolatedAudioPlugin`, which owns callback-safe timing-matched dry
+fallback while the supervisor retains lifecycle and checkpoint authority. Runtime observations must
+arrive on EngineControl and can move a ready worker to Faulted without editing durable state. Each
+project record uses an instance ID derived from its audio graph node, embeds the format-neutral state
+envelope in a strict `superi.audio-plugin-state` extension, and round-trips through ordinary project
+save, schema validation, and database reopen. Two nodes using the same component therefore retain
+separate state and user intent across compatible installed upgrades.
+
 ### Editorial audio intent
 
 The engine applies a timeline edit batch to a cloned project, reads its typed fragment, inserted,
@@ -1086,21 +1133,23 @@ audio mutation, so their user intent remains attached without synthesis.
   `DomainOwned`, and immutable snapshot publication.
   Media I/O supplies exact decoded frame and audio block semantics, image supplies color and scene
   artifacts, color supplies CPU display execution, and audio supplies the prepared graph identity,
-  bounded producer, callback-owned discard acknowledgement, and actual presentation clock. Export
+  bounded producer, callback-owned discard acknowledgement, actual presentation clock, bounded
+  format-neutral plugin state, and the isolated timing-matched process bridge. Export
   reuses the graph snapshot and playback scene envelope, invokes explicit delivery and audio
   processing seams, and validates all returned semantics before encoding. Timeline and audio are
-  also jointly consumed by the clip-mix edit transaction. Effects
-  supplies the safe
-  `IsolatedOfxAdapter` contract, typed requests, graph projection, and plugin lifecycle state that a
-  future engine worker supervisor can consume, but engine implements no adapter, native discovery,
-  transport, or production command integration. AI remains a declared dependency without
+  also jointly consumed by the clip-mix edit transaction. Effects supplies the safe
+  `IsolatedOfxAdapter` contract, typed requests, graph projection, and OpenFX plugin lifecycle state
+  consumed by the existing isolated supervisor. Engine defines launcher seams and native bundle
+  discovery but does not implement concrete platform OpenFX or audio plugin transports. AI remains a declared dependency without
   production command integration. Project supplies the implemented mutable whole-project document
   and immutable snapshots consumed by settings dispatch, command history, compound transactions,
   and resource preparation, including snapshots reconstructed by its schema migration path. It
   supplies the checked document edit and restoration seams, authored media commands, draft
   validation, authoritative settings keys and defaults, durable clip-mix aggregate, versioned
   semantic diagnostics over canonical prepared evidence, and the typed autosave controller
-  exercised by the selected-history-state consumer contract. Project remains
+  exercised by the selected-history-state consumer contract. The native audio
+  plugin supervisor uses ordinary versioned project extension records to persist one exact state
+  envelope per audio node instance without persisting operational readiness. Project remains
   authoritative for settings keys, validation, defaults, persistence, autosave scheduling,
   recovery-point publication, pruning, recovery discovery, semantic comparison, candidate
   classification, and exact dismissal, while engine owns typed subsystem resolution, bounded
@@ -1145,6 +1194,19 @@ audio mutation, so their user intent remains attached without synthesis.
   compound transactions, dispatch, undo, redo, persistence, and autosave preserve the complete
   opaque record; engine does not reinterpret payload bytes, expand capability grants, infer runtime
   readiness, or duplicate plugin supervisor state.
+- Native audio plugin scanning, enablement, checkpoint capture, recovery, quarantine clearing,
+  disablement, and processor preparation require BackgroundJob. Runtime bridge observation requires
+  EngineControl. No lifecycle operation may run on Audio or treat a native callback as a control
+  owner.
+- Audio plugin workers must be separate processes with bounded messages and deadlines plus restart
+  support. Descriptor identity, layout count, fixed native and transport latency, and captured state
+  must validate before Ready or durable checkpoint publication. Failure is candidate-local, the
+  first activation fault retains the last valid checkpoint, and repeated activation failure
+  quarantines without blocking a healthy sibling.
+- A durable audio plugin record is keyed by one `AudioPluginInstanceId`, not reusable component
+  identity. It preserves exact format-neutral state bytes and saved identity evidence across a
+  compatible version upgrade, while worker handles, bridges, telemetry, lifecycle state, and
+  quarantine remain operational and absent from project data.
 - Project apply, undo, and redo require the exact current document revision. Undo and redo restore
   complete project semantics through the project owner, publish a fresh monotonic revision, and move
   a history entry only after restoration succeeds. Revision exhaustion, project validation failure,
@@ -1544,7 +1606,8 @@ Seven export-job contracts prove EngineControl ownership, configuration bounds, 
 identity, dependency admission and propagation, temporary worker saturation, nonblocking progress,
 typed result retention, pause acknowledgement, fresh resume, cancel winning over raced success, all
 four recoverability classes, retry unblocking a dependent, terminal retry denial, safe removal, and
-blocking-safe shutdown.
+blocking-safe shutdown. The pause proof separately acknowledges executor entry before requesting
+cooperative interruption, preserving the runtime assertion without a scheduler race.
 
 Three export dispatcher contracts run against that real queue. They prove prepared submit, complete
 state and revision events, automated progress and completion observation, typed result retention,
@@ -1600,6 +1663,13 @@ also proves permission-free scan, exact activation grants, retryable and user-co
 deadline quarantine, explicit clearing and restart, and equal playback, rendering, and export
 resolution revisions in degraded and recovered states.
 
+Three native audio plugin supervision contracts discover valid and malformed VST3 bundles in stable
+order, reject wrong-domain discovery and in-process or oversized worker contracts, restore a saved
+checkpoint from a compatible installed version, and publish exact native plus transport latency.
+They capture current state, preserve two instances of one component as distinct project extension
+records through real database save and reopen, retain the first activation fault, restart from the
+checkpoint, quarantine a repeated activation failure, and deny recovery while quarantined.
+
 ## Current status and risks
 
 Canonical command state is substantive and test-backed, but it is a reference boundary whose
@@ -1642,8 +1712,11 @@ shell, or CLI adapter is claimed.
 Project extension integration is substantive and test-backed. History, compound transactions,
 dispatch, ordered replacement events, persistence, save, autosave, undo, and redo preserve plugin,
 auxiliary effect, AI artifact provenance, and unknown future records through the project-owned
-command surface. Engine does not interpret opaque payloads or convert durable lifecycle into live
-plugin readiness; `PluginSupervisor` remains the separate runtime availability owner.
+command surface. The native audio plugin supervisor deliberately interprets only its own
+`superi.audio-plugin-state` extension kind, validates the exact audio-owned envelope, and keeps live
+readiness separate from the durable checkpoint. Unknown and other owned extension kinds remain
+opaque. `PluginSupervisor` and `AudioPluginSupervisor` remain separate OpenFX and native audio
+runtime availability owners.
 
 One orchestration file remains a documentation-only placeholder. Source registration, timeline
 media preparation, deterministic lifecycle, classified failure propagation and recovery,
@@ -1652,12 +1725,17 @@ execution, and bounded logical export scheduling are coherent and test-backed, b
 timeline-owned decoded-audio graph
   renderer, persistent cache lifecycle owner, native GPU viewport or export submission, packet muxer,
   output publisher, project-history wire adapter, concrete
-platform OpenFX worker launchers, native OFX ABI adapters, or GPU-handle transport. Project
+platform OpenFX or audio plugin worker launchers, native OFX or audio plugin IPC adapters, Audio Unit
+registry enumeration, heartbeat and kill integration, or GPU-handle transport. Project
 persistence exists in `superi-project`, while history stacks deliberately remain session-local. The
 integration validator is substantive but observes only
 canonical cached state and cannot replace a production soak, platform lane, or wire client. The effects-side OpenFX host contract
 and engine-side bundle discovery, launch coordination, active registry rebuilding, containment,
 recovery, and quarantine are substantive.
+Native audio bundle discovery, worker-contract validation, checkpoint recovery, quarantine,
+per-instance project persistence, and timing-matched processor preparation are substantive. Their
+launcher and bridge traits are enforced integration boundaries, not concrete operating-system IPC or
+sandbox implementations. Dynamic plug-in latency changes still require a control-side graph rebuild.
 Playback prediction, foreground orchestration, and transport control are substantive, but they
 accept caller-prepared graph, audio, cache, and viewport owners and are not a source session binder,
 decoded-audio rate processor, or native presentation path. Engine A/V coordination consumes the
@@ -1778,3 +1856,10 @@ missing-node resolver, canonical bundle paths, permission-free scanning, exact p
 and classified retained failures. Concrete platform launchers must satisfy the declared process,
 message, deadline, restart, and sandbox contract without moving native code into the engine process
 or creating an engine-private editable plugin model.
+Keep `audio_plugins.rs` bound to the audio-owned identity, state, graph-latency, and isolated bridge
+contracts. Preserve deterministic candidate order, BackgroundJob control ownership, separate-process
+validation, per-instance durable keys, compatible-component restore, exact captured-state rebinding,
+retained checkpoints, one-fault restart, repeated-fault quarantine, and timing-matched dry fallback.
+Concrete launchers may add IPC, shared memory, heartbeats, kill, sandbox, and Audio Unit enumeration,
+but may not load vendor code in engine, persist operational readiness, merge two node instances, or
+bypass the existing state and descriptor bounds.

@@ -12,9 +12,9 @@
 //! spectrum, phase, true-peak, and loudness analysis is implemented in [`metering`]. Bounded record
 //! arming, input monitoring, and operating-system capture are implemented in [`capture`]. Prepared
 //! macOS Audio Unit effect hosting is implemented in [`hosting`], and explicit worker-side VST3
-//! effect hosting is implemented in [`hosting::vst3`]. Plugin discovery, persistence,
-//! delay-compensation application, crash supervision, instruments, MIDI, and plug-in UI remain
-//! later orchestration.
+//! effect hosting is implemented in [`hosting::vst3`]. Format-neutral plugin state, fixed-latency
+//! worker bridging, timing-matched fault fallback, and graph delay compensation are implemented in
+//! [`plugins`] and [`graph`]. Instruments, MIDI, and plugin UI remain later orchestration.
 
 pub mod automation;
 pub mod capture;
@@ -25,6 +25,7 @@ pub mod hosting;
 pub mod metering;
 pub mod mixing;
 pub mod playback;
+pub mod plugins;
 pub mod resample;
 pub mod routing;
 pub mod serialize;

@@ -2,8 +2,8 @@
 module_id: superi-audio
 source_paths:
   - open/crates/superi-audio
-source_hash: a0e2beb4e20ab3c27efeddad5cbd4b586a21f142d3121b3bdc426949e5b08f5f
-source_files: 33
+source_hash: 97f1257f7950de13328a53613ed802a65e647bafdc50923015330f79dd499076
+source_files: 36
 mapped_at_commit: working-tree
 ---
 
@@ -44,7 +44,15 @@ Its VST3 worker host loads one explicit audio-effect class on macOS, Windows, or
 one exact canonical main input and output, and exposes the prepared plugin as the existing graph's
 single-input `AudioProcessor`. Preallocated planar f32 buffers preserve channel order, exact
 `SampleTime` drives the VST3 process context, bounded sample-offset automation crosses into the
-callback, and bounded output-parameter monitoring crosses back to control-side readings.
+callback, and bounded output-parameter monitoring crosses back to control-side readings. Audio Unit
+class-info property lists and VST3 component and controller streams now round-trip through one
+format-neutral, versioned, digest-checked state envelope that also records the exact sample clock and
+native plus transport latency evidence.
+
+Graph preparation now computes cumulative processor latency and inserts one preallocated delay for
+each faster incoming direct, send, or auxiliary-return route. The format-neutral isolated-process
+bridge advances the same prepared dry delay on every block, publishes wet output only after complete
+finite validation, and falls back to timing-matched dry audio when a worker is missing or faults.
 
 Its capture slice discovers input devices, validates exact stream configurations, and publishes
 channel-indexed recorded samples at exact physical input coordinates through one preallocated
@@ -56,8 +64,8 @@ remain separate. Graph editing and preparation allocate outside callbacks. Sched
 transport reanchoring also occur outside callbacks. Resampler and meter construction and scratch
 allocation remain outside callbacks. Device discovery and stream setup remain on control threads.
 Decoded sample binding to the real prepared graph, automation persistence, broader effect and
-plugin automation, production plugin transport and supervision, Audio Unit instruments, and
-complete timeline audio-graph orchestration remain separate concerns. Engine foreground playback
+plugin automation, concrete platform worker transport, Audio Unit instruments, and complete
+timeline audio-graph orchestration remain separate concerns. Engine foreground playback
 feeds the existing
 bounded output producer and paces video from its paired presentation clock. Engine transport
 requests queued-audio discard through an atomic generation handshake without moving queue ownership
@@ -94,16 +102,19 @@ encoding, but it does not yet adapt decoded blocks into `PreparedAudioGraph`.
   and the safe prepared graph-processor surface, and exports the worker-side VST3 host.
 - `open/crates/superi-audio/src/hosting/audio_unit_macos.rs`: Owns the private audited macOS
   AudioToolbox lifecycle, asynchronous instance transfer, exact property and channel negotiation,
-  pull callback, preallocated planar rendering, output validation, poisoning, and teardown.
+  class-info property-list state restoration and capture, latency reporting, pull callback,
+  preallocated planar rendering, output validation, poisoning, and teardown.
 - `open/crates/superi-audio/src/hosting/vst3.rs`: Implements strict class identity, exact canonical
   speaker mapping, bounded configuration, metadata, automation and monitoring handoffs, telemetry,
-  lease-gated worker session ownership, and the prepared graph processor.
+  initial-state restoration, exact captured component and controller state, lease-gated worker
+  session ownership, and the prepared graph processor.
 - `open/crates/superi-audio/src/hosting/vst3/native.rs`: Contains the private audited platform
   loader, VST3 COM ownership, bounded host messages and attributes, fixed parameter queues, bus
-  negotiation, planar process bridge, and reverse lifecycle.
+  negotiation, bounded seekable `IBStream` state transfer, planar process bridge, and reverse
+  lifecycle.
 - `open/crates/superi-audio/src/lib.rs`: Documents the implemented automation, graph, channel,
-  routing, scheduling, capture, playback, conversion, effects, hosting, and metering boundaries and
-  exports the thirteen audio concern modules.
+  routing, scheduling, capture, playback, conversion, effects, hosting, plugin-state, isolated
+  bridge, and metering boundaries and exports the fourteen audio concern modules.
 - `open/crates/superi-audio/src/metering.rs`: Implements transparent prepared graph metering,
   per-channel sample peak, RMS and true peak, stereo phase correlation, bounded spectrum analysis,
   K-weighted EBU windows, ITU programme gating, coherent lock-free snapshots, and explicit history
@@ -115,6 +126,10 @@ encoding, but it does not yet adapt decoded blocks into `PreparedAudioGraph`.
   discovery, exact configuration validation, bounded producer and callback endpoints, sample
   conversion, producer-requested and callback-applied queue discontinuities, audio-clock
   publication, atomic telemetry, and production stream lifecycle.
+- `open/crates/superi-audio/src/plugins.rs`: Defines bounded format-neutral plugin identity,
+  versioned digest-checked component and controller state, sample-rate and latency evidence, the
+  isolated process bridge contract, lock-free runtime telemetry, and a prepared timing-matched dry
+  fallback processor.
 - `open/crates/superi-audio/src/resample.rs`: Implements prepared fixed-output band-limited
   conversion, ordered interleaved and planar transfer, exact dual-clock accounting, sinc delay
   reporting, and bounded ramped device-clock correction.
@@ -128,6 +143,12 @@ encoding, but it does not yet adapt decoded blocks into `PreparedAudioGraph`.
   publication.
 - `open/crates/superi-audio/tests/audio_graph_contract.rs`: Proves graph topology, validation,
   preparation, exact bounded processing, continuity, channel order, and domain ownership.
+- `open/crates/superi-audio/tests/audio_delay_compensation_contract.rs`: Proves fixed processor
+  latency propagation, dry and auxiliary route alignment, partition independence, exact graph
+  latency diagnostics, and fallible compensation storage preparation.
+- `open/crates/superi-audio/tests/audio_plugin_runtime_contract.rs`: Proves exact native-state
+  round trips, corruption and bound rejection, worker fault telemetry, and timing-matched dry
+  fallback through the prepared isolated bridge processor.
 - `open/crates/superi-audio/tests/audio_automation_contract.rs`: Proves revisioned exact keyframes,
   Read, Write, Touch, and Latch region semantics, invalid and overflow atomicity, and
   partition-independent automated gain through a real source, clip, submix, and master graph.
@@ -176,7 +197,7 @@ encoding, but it does not yet adapt decoded blocks into `PreparedAudioGraph`.
 ## Public surface
 
 The crate root exports `automation`, `capture`, `channels`, `effects`, `graph`, `hosting`,
-`metering`, `mixing`, `playback`, `resample`, `routing`, `serialize`, and `sync`. Every exported
+`metering`, `mixing`, `playback`, `plugins`, `resample`, `routing`, `serialize`, and `sync`. Every exported
 module contains substantive behavior.
 
 `automation` exposes typed `AudioAutomationTarget` addresses, validated exact keyframes,
@@ -211,8 +232,10 @@ unchanged ordered layout and implements the graph's public single-input `AudioPr
 and `PreparedAudioUnit` values. Effects bind one exact component, integral sample clock, maximum
 slice, and equal ordered input and output layout. Out-of-process loading is the default and must be
 confirmed from the native instance; in-process loading requires explicit caller audit. A prepared
-instance exposes component version, actual process location, poison state, and ordinary graph
-processor behavior without exposing native handles or callback storage.
+instance exposes component version, actual process location, poison state, native latency, bounded
+state capture, and ordinary graph processor behavior without exposing native handles or callback
+storage. Optional initial state is restored before initialization through the native class-info
+property.
 
 `hosting::vst3` exposes `Vst3ClassId`, `Vst3EffectConfig`, `Vst3ProcessMode`, immutable effect and
 parameter metadata, exact `Vst3AutomationPoint`, `Vst3AutomationWriter`, output parameter points,
@@ -220,11 +243,20 @@ control-side readings and telemetry, `Vst3WorkerSession`, and `PreparedVst3Worke
 accepts one explicit module and class inside a dedicated plugin worker. The prepared effect supports
 only one canonical mono, stereo, quad, 5.1, or 7.1 main input and output with f32 processing.
 Only automatable writable parameters enter the input handoff. Latency and tail are reported without
-applying compensation. Raw VST3 and platform types remain private.
+applying compensation inside the host, because the graph applies route compensation. Optional
+component and controller state is restored in VST3-defined order before activation and captured
+through bounded seekable streams off the audio callback. Raw VST3 and platform types remain private.
 
 Configuration rejects more than 1,048,576 planar samples or points in either bounded handoff,
 per-block automation larger than its total queue, more than 4,096 controller parameters, or more
 than 1,048,576 combined fixed parameter-point cells before allocating the prepared graph node.
+
+`plugins` exposes `AudioPluginFormat`, exact bounded `AudioPluginIdentity`, `AudioPluginState`,
+`IsolatedAudioPluginProcessBridge`, `PreparedIsolatedAudioPlugin`, and atomic runtime readings. The
+binary state envelope binds exact native bytes to identity, schema, sample rate, fixed native and
+transport latency, and a SHA-256 digest. The prepared bridge processor requires wet output to arrive
+already aligned to its declared transport delay and otherwise advances and publishes the same
+timing-matched dry path without blocking or allocating.
 
 `metering` exposes validated `MeterConfig`, transparent `PreparedMeter`, independently retained
 `MeterReadings`, and owned `MeterSnapshot` values. Snapshots retain exact sample coordinates and
@@ -237,9 +269,11 @@ output layout. `AudioEdge` retains direct, send, or auxiliary-return intent. `Au
 fixed sample rate, positive maximum frame count, and at most one master, supports checked node and
 edge mutation, and exposes deterministic topology. `AudioGraph::prepare` consumes processor
 implementations for one destination, while `prepare_master` selects the authored master. The
-resulting `PreparedAudioGraph` exposes stable prepared input routes and processes exact
-`SampleTime`, bounded frames, and caller-owned output. `AudioProcessInputs` lazily yields borrowed
-current-block samples, source identities, route identities, and layouts without allocation.
+resulting `PreparedAudioGraph` exposes stable prepared input routes, per-node and destination
+latency diagnostics, and processes exact `SampleTime`, bounded frames, and caller-owned output.
+Preparation computes every cumulative processor latency and preallocates route delay rings plus
+scratch for faster branches. `AudioProcessInputs` lazily yields borrowed current-block samples,
+source identities, route identities, layouts, and compensation-adjusted buffers without allocation.
 
 `routing::SummingBus` is a unity processor for submix, auxiliary, and master nodes. It clears the
 prepared output and adds exact-layout inputs in ascending route identity, rejecting non-finite
@@ -294,13 +328,18 @@ before mutation. Direct routes carry dry or submix flow, sends terminate at auxi
 leave auxiliaries for a submix or master, and the master has no output route. Preparation walks
 backward from one destination, validates connectivity and processor coverage, filters stable
 topological order, resolves every input to an earlier runtime index in edge identity order, and
-fallibly reserves one maximum-sized interleaved f32 buffer per node.
+fallibly reserves one maximum-sized interleaved f32 buffer per node. The same pass adds each
+processor's fixed `latency_samples`, derives cumulative output arrival per node, and preallocates a
+ring plus maximum-block scratch for the exact difference between every incoming route and its
+destination's slowest branch.
 
 Prepared processing requires `ExecutionDomain::Audio`, then validates rate, positive bounded frame
 count, exact output length, coordinate overflow, and continuity with the prior successful block.
 Each processor reads earlier current-block buffers through a borrowed input view and writes its own
-prepared buffer. `SummingBus` performs deterministic unity addition without callback allocation.
-The destination is copied into caller-owned output, and continuity advances only after full success.
+prepared buffer. A compensated route returns the delayed prepared scratch instead of the earlier
+node buffer, while a zero-delay route remains borrowed directly. `SummingBus` performs deterministic
+unity addition without callback allocation. The destination is copied into caller-owned output,
+and continuity advances only after full success.
 
 Channel conversion is authored as an ordinary processor with distinct exact input and output
 layouts. Its dense matrix is allocated and filled during control-side preparation. Callback
@@ -379,7 +418,9 @@ continues identically across arbitrary adjacent block partitions.
 Audio Unit preparation discovers one exact effect component, transfers asynchronous instantiation
 ownership through a bounded completion wait, verifies the component and actual process location,
 sets and reads back maximum frames, planar native-float stream formats, and semantic channel
-layouts, registers one stable pull callback, then initializes the unit. Processing validates the
+layouts, restores any bounded class-info property list, registers one stable pull callback, reads
+native latency, then initializes the unit. Control-side state capture copies and serializes the
+current class-info property list without entering the audio callback. Processing validates the
 complete block and exactly representable sample window before deinterleaving into prepared planes.
 The callback serves only bounded integral subranges from those planes. After synchronous native
 rendering, the host checks callback status, output buffer identity and shape, silence signaling, and
@@ -395,8 +436,10 @@ and spectrum values, and performs the two-stage integrated loudness gate without
 
 VST3 preparation retains the native module, factory, component, processor, optional controller,
 host callbacks, parameter queues, planar sample storage, and immutable metadata before publishing a
-graph node. It rejects unrepresentable bus topology, event buses, unsupported semantic speaker
-arrangements, and non-f32 processing. The callback validates domain, rate, layout, extent,
+graph node. Before activation it restores bounded component state, forwards that component state to
+the controller, and restores bounded controller state. Control-side capture writes both streams into
+owned bounded seekable buffers. It rejects unrepresentable bus topology, event buses, unsupported
+semantic speaker arrangements, and non-f32 processing. The callback validates domain, rate, layout, extent,
 continuity, and finite input, translates exact absolute points in the current half-open block to
 sample offsets, performs one native process call, and maps finite planar output plus output points
 back to graph order and absolute time. Bounded host messages and attributes serve control-side
@@ -406,6 +449,14 @@ and point once after processing. Shutdown succeeds only after the graph lease is
 reverses processing, component, each bus and connection direction, controller, factory,
 module-entry, and loader ownership. A failed reverse call leaves unresolved owners and mapped code
 retained for retry or worker-process exit.
+
+Format-neutral plugin state encoding stays off the callback and rejects oversized identity fields,
+individual state streams above 32 MiB, combined native state above the bounded total, invalid sample
+rates, structural truncation or trailing bytes, and digest mismatch before constructing state. The
+isolated process processor preallocates one interleaved dry-delay ring and wet output buffer. Each
+audio block advances dry timing regardless of worker status, accepts only complete finite aligned
+wet output from the bridge, and records missing, faulted, or malformed worker output before copying
+the matching delayed dry block to caller output.
 
 ## Dependencies and consumers
 
@@ -421,17 +472,24 @@ retained for retry or worker-process exit.
 - rubato 0.16.2 supplies the MIT-licensed adjustable asynchronous sinc implementation with a Rust
   1.61 declaration. Audio uses no default FFT feature and calls only its prepared
   `process_into_buffer` path.
-- serde and serde_json provide the strict bounded wire shape, and sha2 provides the payload digest.
-  Exact-float and canonical-byte policy remains owned by `superi-audio::serialize`.
+- serde and serde_json provide the strict bounded clip-mix wire shape, and sha2 provides the clip-mix
+  and binary plugin-state payload digests. Exact-float and canonical-byte policy remains owned by
+  `superi-audio`.
 - macOS-only `block2`, `objc2-audio-toolbox`, and `objc2-core-audio-types` provide generated block,
-  AudioToolbox, and Core Audio type bindings. The private host retains lifecycle, pointer, callback,
-  process-isolation, and semantic-layout policy under the repository unsafe inventory.
+  AudioToolbox, and Core Audio type bindings. `objc2-core-foundation` also supplies bounded property
+  list, data, and error ownership for Audio Unit state. The private host retains lifecycle, pointer,
+  callback, process-isolation, state, latency, and semantic-layout policy under the repository unsafe
+  inventory.
 - `vst3` 0.3.0 and its `com-scrape-types` 0.1.1 support crate provide low-level generated COM
   bindings under `MIT OR Apache-2.0`. libloading retains Windows and Linux modules, while
   objc2-core-foundation retains macOS VST3 bundles. These dependencies remain behind the private
   worker-native boundary.
 - `superi-engine::audio_mix` owns production timeline edit and clip-mix identity reconciliation.
   No production adapter yet binds decoded media into the schedule or prepared graph.
+- `superi-engine::audio_plugins` owns deterministic VST3 bundle and caller-supplied Audio Unit
+  candidate discovery, strict worker contracts, lifecycle supervision, recovery and quarantine,
+  per-instance project records, and prepared isolated bridge construction. Concrete platform worker
+  launchers remain adapters outside this crate.
 - `superi-engine::dispatcher` owns optional lifecycle-scoped automation state, serialized
   inspection and transaction execution, dynamic no-op event reservation, and complete replacement
   events. `superi-api` projects that engine boundary without a direct dependency on this crate.
@@ -439,6 +497,9 @@ retained for retry or worker-process exit.
   codec bytes as the singleton schema-4 audio component. Engine project command history restores
   authored clip-mix snapshots, while audio device, callback, meter, resampler, and prepared graph
   state remain operational and absent from persistence and history.
+- `superi-project` extension records also store one exact bounded plugin-state envelope per audio
+  node instance. Runtime readiness, native handles, delay rings, worker telemetry, and quarantine
+  remain operational engine or audio state and are never serialized into those records.
 - `superi-engine::project_transaction` composes timeline edits, graph mutations, media commands,
   root selection, and clip-mix mutations into one bounded project transaction and one history entry.
 - `superi-engine::playback` wraps the existing `OutputProducer`, accepts only whole borrowed sample
@@ -472,7 +533,9 @@ retained for retry or worker-process exit.
   and the terminal master. Input proof
   additionally exercises exact channel-indexed capture and routes monitoring samples through the
   production bounded output handoff. The VST3 contract adds isolated real-module proof through a
-  source, hosted effect, submix, and master without exposing an editor-process load path.
+  source, hosted effect, submix, and master without exposing an editor-process load path. New delay,
+  runtime bridge, and engine supervision contracts prove aligned routing, fallback timing, restart,
+  quarantine, compatible-version state restoration, and save-reopen identity preservation.
 
 ## Invariants and operational boundaries
 
@@ -500,6 +563,10 @@ retained for retry or worker-process exit.
   adjacent graph blocks.
 - Prepared execution includes only the chosen destination and its connected ancestors. Its order
   and buffers do not change during processing.
+- Every processor declares one fixed nonnegative latency at preparation. Each node's cumulative
+  output latency is the slowest incoming arrival plus that processor latency, and every faster route
+  receives exactly the difference. Compensation storage is fully allocated before publication, and
+  impossible capacity fails preparation instead of weakening alignment.
 - Every block has one exact integral sample clock and must follow the prior successful block
   without a gap or overlap. Failed prevalidation does not advance continuity.
 - The graph-owned successful process path takes no lock, allocates no memory, and frees no memory.
@@ -514,6 +581,9 @@ retained for retry or worker-process exit.
 - Audio Unit preparation requires the background domain and processing requires the audio domain.
   The maximum slice, sample rate, ordered channel layout, component identity, and process-location
   policy are immutable after preparation.
+- Audio Unit state capture and restoration use only bounded Core Foundation property-list bytes on
+  the background domain. Native latency is converted to integral samples once during preparation
+  and becomes the processor's fixed graph latency.
 - The successful Audio Unit process path takes no host lock, allocation, or free. It supports
   repeated bounded native pulls, commits only complete finite output, and poisons an instance after
   native entry, callback, buffer-contract, or output failure. Prevalidation does not poison or
@@ -523,6 +593,10 @@ retained for retry or worker-process exit.
   remains. An unretired lease intentionally keeps the module mapped until worker exit.
 - VST3 accepts exactly one main input and output with equal canonical channel meaning, f32 samples,
   and no event buses. Unsupported topology fails instead of dropping buses or changing layout.
+- VST3 state restoration orders component `setState`, controller `setComponentState`, then
+  controller `setState`. Bounded `IBStream` reads and writes preserve exact bytes and report short
+  transfers. State capture and restore remain outside the audio callback, and native latency becomes
+  the processor's fixed graph latency.
 - VST3 automation is admitted as one validated nondecreasing slice and maps exact absolute time to
   block-local offsets. Only automatable writable parameter IDs are accepted. One future point
   remains queued for the next block. Monitoring retains exact absolute time, including read-only
@@ -530,6 +604,13 @@ retained for retry or worker-process exit.
 - The successful VST3 callback uses only prepared buffers, fixed queues, atomics, and one native
   process call. It performs no allocation, free, lock, wait, I/O, controller call, lifecycle call,
   or module lookup. Failed or nonfinite plugin output is cleared before graph publication.
+- Plugin identity fields are bounded, and compatibility across an installed upgrade requires the
+  same format and component identifier. The durable state envelope retains the saved vendor and
+  version as evidence, while its digest, schema, clock, native latency, transport latency, and exact
+  component and controller bytes must all validate before use.
+- The isolated bridge contract requires a worker process, not an in-process adapter. Its successful
+  audio callback never blocks or allocates, always advances dry delay, and replaces wet output with
+  the timing-matched delayed dry block on worker absence, fault, malformed extent, or nonfinite data.
 - The output queue is nonzero, checked for overflow, capped at 1,048,576 samples, and admits only
   finite normalized complete frames. The callback takes no blocking lock and grows no storage.
 - Output discard is requested only by the producer and applied only by the consumer. Admission is
@@ -608,6 +689,15 @@ uses order-sensitive floating-point values and different edit orders to prove su
 comes from stable edge identity. One proves duplicate masters, master outputs, wrong direct, send,
 and return roles, layout mismatch, and cycles fail without mutating topology.
 
+`audio_delay_compensation_contract.rs` has three public tests. They prove fixed-latency parallel
+impulses align at the same destination sample, whole and partitioned execution agree, dry plus typed
+auxiliary-return routing stays aligned through submix and master, cumulative latency diagnostics are
+exact, and an unrepresentable compensation allocation fails preparation.
+
+`audio_plugin_runtime_contract.rs` has two public tests. They prove exact component and controller
+state bytes, clock and latency evidence, deterministic re-encoding, corruption and oversize
+rejection, and timing-matched delayed dry fallback with atomic worker-fault telemetry.
+
 Together these contracts prove the graph and scheduler coexist without changing exact timing or
 channel meaning. Dependent concurrency clock and A/V tests, the engine coordinator and foreground
 playback contracts, and timeline track-semantics tests guard the composed contracts. The engine
@@ -661,10 +751,11 @@ renders finite audible stereo samples through source, automated clip, submix, an
 
 Four private unit tests cover typed playback conversion plus Audio Unit callback storage copying,
 host-plane publication, repeated bounded pulls, malformed native requests, and failure reporting.
-Six public Audio Unit host contracts cover component identity and bounds, background-domain
+Seven public Audio Unit host contracts cover component identity and bounds, background-domain
 preparation, a real Apple Peak Limiter through the prepared graph and terminal master, adjacent
 partition continuity, finite audible stereo output, exact sample-time rejection without graph or
-output commit, and required out-of-process verification from the instantiated component.
+output commit, required out-of-process verification from the instantiated component, class-info
+state capture and restore, and native latency publication.
 
 The VST3 contract has six ordinary tests plus one ignored child entry invoked only by its parent.
 It compiles a standards-shaped temporary dynamic module, proves the parent never loads it, and runs
@@ -674,26 +765,31 @@ source, hosted effect, submix, and master output; in-block and block-boundary au
 monitoring and overflow; metadata, process context, real-time and offline modes; host message and
 attribute support; read-only automation and optional-context rejection; zero fixture callback
 allocations; load failure; lease conflict; partial unwind; failed-stop module retention; reverse
-lifecycle order; and module exit.
+lifecycle order; exact component and controller state traffic; restored initial state; captured
+state; fixed latency publication; and module exit.
 
 ## Current status and risks
 
 The independent audio graph, channel conversion, bus routing, sample-accurate schedule, production
 device-input and device-output substrates, durable clip-mix codec, clip mix processor, prepared sample-rate converter,
 revisioned clip-gain automation, core effects, graph-native meter, macOS Audio Unit effect host, and
-worker-side VST3 effect host are substantive and publicly test-backed. The VST3 subset is canonical
-single-main-bus processing exercised through the graph master. Audio Unit instruments, MIDI,
-broader effect automation, presets, plug-in UI, crash restart, and latency compensation remain
-absent.
+worker-side VST3 effect host are substantive and publicly test-backed. Fixed graph delay
+compensation, exact native plugin state envelopes, Audio Unit class-info persistence, VST3 component
+and controller persistence, and a timing-matched isolated bridge fallback are also substantive. The
+VST3 subset is canonical single-main-bus processing exercised through the graph master. Audio Unit
+instruments, MIDI, broader effect automation, preset browsing, plug-in UI, dynamic latency rebuild,
+and concrete cross-process transport remain absent.
 Engine consumes timeline edit outcomes for atomic clip identity reconciliation and foreground
 playback feeds the bounded device producer while coordinating video from the actual audio clock.
 That foreground path now exposes bounded video correction and applied discontinuity recovery without
 mutating audio timing, and transport uses the callback-owned discard handshake for control
 discontinuities. Engine export now fetches decoded audio, invokes an explicit graph-stage seam,
 preserves its graph identity, and completes an exact in-tree PCM encode. There is still no
-scheduled-slice `PreparedAudioGraph` binding, production plugin transport or supervision, plugin
-state persistence or delay compensation, production engine host adapter, or end-to-end decoded
-source playback and final-mix delivery path. Audio Unit hosting performs exact macOS channel-layout
+scheduled-slice `PreparedAudioGraph` binding, concrete platform plugin worker launcher, production
+shared-memory transport, heartbeat and kill integration, or end-to-end decoded source playback and
+final-mix delivery path. Engine now owns format-neutral discovery, validation, supervision, restart,
+quarantine, state checkpointing, and per-node project records, while audio owns the prepared bridge
+and fixed graph compensation. Audio Unit hosting performs exact macOS channel-layout
 negotiation for a configured effect, but device-level semantic layout remains separate. Microphone
 permission, physical input latency, semantic input layout, and hot-plug recovery remain
 platform-owned boundaries.
@@ -714,8 +810,9 @@ Effects intentionally omit parameter automation, lookahead, tempo sync, and conv
 require separate prepared control and latency contracts. Current automation addresses clip linear
 gain only and is not yet stored in project snapshots.
 Third-party Audio Units remain native code with vendor-defined behavior. Default out-of-process
-loading contains process failure but does not yet provide scanning, restart, quarantine, parameter,
-latency, UI, or broad compatibility policy, and deterministic proof currently uses Apple's Peak
+loading contains process failure, and engine supervision defines restart and quarantine policy, but
+Audio Unit registry enumeration, concrete process launch and heartbeat control, parameter metadata,
+UI, and broad compatibility policy remain external. Deterministic proof currently uses Apple's Peak
 Limiter rather than a physical third-party test matrix.
 
 ## Maintenance notes
@@ -747,9 +844,17 @@ the existing output producer rather than adding a competing playback path.
 Preserve VST3's worker-only load boundary, retained module and COM ordering, exact speaker masks,
 single-main-bus rejection policy, preallocated planar and parameter storage, half-open automation
 window, finite fail-closed output, bounded monitoring, and lease-gated explicit shutdown. Add
-discovery, validation, state, production process transport, supervision, recovery, quarantine, and
-delay-compensation application through their owning lifecycle checkpoint rather than expanding the
-audio callback contract here.
+new state calls only through the bounded seekable stream boundary and preserve component,
+controller-component, then controller restore order. Keep discovery, lifecycle supervision,
+recovery, quarantine, and project-record policy in engine. Add concrete platform worker transport
+through an adapter that satisfies the existing isolated bridge contract instead of expanding the
+audio callback contract.
+
+Preserve fixed-latency declarations, cumulative prepare-time propagation, exact route difference,
+fallible preallocation, and zero callback allocation for delay compensation. Preserve exact
+format-neutral state bytes, digest and bound checks, per-instance project identity, timing-matched
+dry fallback, and worker-fault telemetry. Dynamic latency changes require a control-side graph
+rebuild and must never mutate compensation rings inside a callback.
 
 Extend the existing engine output, clock, and A/V coordinator consumer by adapting immutable
 timeline and decoded audio owners into the existing schedule and graph types instead of adding

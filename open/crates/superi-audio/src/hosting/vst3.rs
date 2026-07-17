@@ -1,9 +1,10 @@
 //! Prepared VST3 audio-effect hosting for a dedicated plugin worker.
 //!
 //! This module exposes only safe Rust configuration, processing, automation, and monitoring values.
-//! Native modules, COM pointers, and VST3 process structures remain private to [`native`]. Loading
-//! this module in the main editor process is unsupported. A worker supervisor and production
-//! transport belong to the later plugin lifecycle checkpoint.
+//! Native modules, COM pointers, and VST3 process structures remain private to the native module. Loading
+//! this module in the main editor process is unsupported. Engine supervision accepts only an
+//! isolated bounded worker adapter, while concrete platform process transport remains launcher
+//! owned.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -19,6 +20,7 @@ use superi_core::pixel::ChannelLayout;
 use superi_core::time::SampleTime;
 
 use crate::graph::{AudioProcessBlock, AudioProcessor};
+use crate::plugins::MAX_AUDIO_PLUGIN_STATE_BYTES;
 
 mod native;
 
@@ -28,6 +30,45 @@ const DEFAULT_MAXIMUM_AUTOMATION_POINTS_PER_BLOCK: usize = 256;
 const DEFAULT_MONITORING_CAPACITY: usize = 1_024;
 const MAXIMUM_PREPARED_PLANAR_SAMPLES: usize = 1_048_576;
 const MAXIMUM_HANDOFF_POINTS: usize = 1_048_576;
+
+/// Exact opaque VST3 component and controller state captured through `IBStream`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Vst3PluginState {
+    component_state: Vec<u8>,
+    controller_state: Vec<u8>,
+}
+
+impl Vst3PluginState {
+    /// Creates one bounded native state pair without interpreting plugin-owned bytes.
+    pub fn new(component_state: Vec<u8>, controller_state: Vec<u8>) -> Result<Self> {
+        if component_state.len() > MAX_AUDIO_PLUGIN_STATE_BYTES
+            || controller_state.len() > MAX_AUDIO_PLUGIN_STATE_BYTES
+        {
+            return Err(Error::new(
+                ErrorCategory::ResourceExhausted,
+                Recoverability::UserCorrectable,
+                "VST3 native state exceeds the explicit per-stream bound",
+            )
+            .with_context(ErrorContext::new(COMPONENT, "create_state")));
+        }
+        Ok(Self {
+            component_state,
+            controller_state,
+        })
+    }
+
+    /// Returns exact `IComponent::getState` bytes.
+    #[must_use]
+    pub fn component_state(&self) -> &[u8] {
+        &self.component_state
+    }
+
+    /// Returns exact `IEditController::getState` bytes.
+    #[must_use]
+    pub fn controller_state(&self) -> &[u8] {
+        &self.controller_state
+    }
+}
 
 /// Canonical VST3 mono arrangement containing one center speaker.
 pub const VST3_SPEAKER_MONO: u64 = 524_288;
@@ -129,6 +170,7 @@ pub struct Vst3EffectConfig {
     automation_capacity: usize,
     maximum_automation_points_per_block: usize,
     monitoring_capacity: usize,
+    initial_state: Option<Vst3PluginState>,
 }
 
 impl Vst3EffectConfig {
@@ -184,6 +226,7 @@ impl Vst3EffectConfig {
             automation_capacity: DEFAULT_AUTOMATION_CAPACITY,
             maximum_automation_points_per_block: DEFAULT_MAXIMUM_AUTOMATION_POINTS_PER_BLOCK,
             monitoring_capacity: DEFAULT_MONITORING_CAPACITY,
+            initial_state: None,
         })
     }
 
@@ -230,6 +273,13 @@ impl Vst3EffectConfig {
         }
         self.monitoring_capacity = monitoring_capacity;
         Ok(self)
+    }
+
+    /// Supplies exact native state to restore before bus activation and processing setup.
+    #[must_use]
+    pub fn with_initial_state(mut self, state: Vst3PluginState) -> Self {
+        self.initial_state = Some(state);
+        self
     }
 
     /// Returns the explicit plugin bundle or module path.
@@ -290,6 +340,10 @@ impl Vst3EffectConfig {
     #[must_use]
     pub const fn monitoring_capacity(&self) -> usize {
         self.monitoring_capacity
+    }
+
+    pub(crate) const fn initial_state(&self) -> Option<&Vst3PluginState> {
+        self.initial_state.as_ref()
     }
 }
 
@@ -720,6 +774,8 @@ impl Vst3WorkerSession {
         Vst3EffectReadings,
     )> {
         let (native, native_metadata) = native::NativeLease::load(&config)?;
+        let latency_samples = usize::try_from(native_metadata.latency_samples)
+            .expect("VST3 latency sample count fits usize");
         let parameters: Arc<[Vst3ParameterInfo]> = native_metadata
             .parameters
             .into_iter()
@@ -769,6 +825,7 @@ impl Vst3WorkerSession {
         let prepared = PreparedVst3WorkerEffect {
             native: Arc::clone(&native),
             config: config.clone(),
+            latency_samples,
             automation_ring: automation_reader_ring,
             output_ring: output_writer_ring,
             telemetry: Arc::clone(&telemetry),
@@ -837,6 +894,7 @@ impl Vst3WorkerSession {
 pub struct PreparedVst3WorkerEffect {
     native: Arc<native::NativeLease>,
     config: Vst3EffectConfig,
+    latency_samples: usize,
     automation_ring: HeapCons<Vst3AutomationPoint>,
     output_ring: HeapProd<Vst3OutputParameterPoint>,
     telemetry: Arc<Vst3Telemetry>,
@@ -847,6 +905,20 @@ pub struct PreparedVst3WorkerEffect {
 }
 
 impl PreparedVst3WorkerEffect {
+    /// Captures exact component and controller state on the dedicated worker control domain.
+    ///
+    /// The caller must hold this processor exclusively and must not invoke the method from the
+    /// audio callback. The native module remains loaded and ready for subsequent processing.
+    pub fn capture_state(&mut self) -> Result<Vst3PluginState> {
+        ExecutionDomain::BackgroundJob
+            .require_current()
+            .map_err(|mut error| {
+                error.push_context(ErrorContext::new(COMPONENT, "capture_state"));
+                error
+            })?;
+        self.native.capture_state()
+    }
+
     fn fail_automation(&self, message: &'static str) -> Error {
         self.telemetry
             .automation_rejections
@@ -856,6 +928,10 @@ impl PreparedVst3WorkerEffect {
 }
 
 impl AudioProcessor for PreparedVst3WorkerEffect {
+    fn latency_samples(&self) -> usize {
+        self.latency_samples
+    }
+
     fn process(&mut self, block: AudioProcessBlock<'_>) -> Result<()> {
         ExecutionDomain::Audio.require_current()?;
         let input = block.input.ok_or_else(|| {

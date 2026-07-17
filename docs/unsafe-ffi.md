@@ -166,7 +166,8 @@ buffer ownership differ from the VideoToolbox video sessions.
   `AudioProcessor` graph boundary
 - Unsafe surface: component discovery and identity reads, asynchronous instantiation, property
   negotiation, stream and channel-layout configuration, render callback registration, bounded
-  planar buffer-list access, synchronous rendering, uninitialization, and disposal
+  planar buffer-list access, class-info property capture and restoration, Core Foundation property
+  list serialization, latency reads, synchronous rendering, uninitialization, and disposal
 - Instantiation ownership: the escaping completion block retains shared state until one result is
   delivered or the bounded waiter abandons it. One send wrapper transfers the unique instance
   through the completion mutex without dereferencing it; late, duplicate, failed, or abandoned
@@ -179,11 +180,15 @@ buffer ownership differ from the VideoToolbox video sessions.
   published integral sample window, copies or publishes one preallocated plane per channel, and
   rejects malformed buffer lists. Processing commits caller output only after exact buffer shape,
   finite samples, callback status, and an exactly representable `AudioTimeStamp` are verified.
+  Class-info bytes are bounded before restore, parsed as a retained property list, applied before
+  stream formats are reasserted, and serialized as binary property-list bytes during capture.
+  Native latency is validated and converted to fixed sample frames after initialization.
 - Process isolation: out-of-process loading is the default policy and is verified from
   `kAudioUnitProperty_LoadedOutOfProcess`. In-process execution requires an explicit audited policy;
   no silent fallback satisfies a required isolation request.
 - Threading: discovery, instantiation, configuration, and initialization require the blocking
-  background domain. The prepared instance moves once into graph ownership, and exclusive mutable
+  background domain. State capture and restoration remain on that control domain and cannot race
+  audio processing. The prepared instance moves once into graph ownership, and exclusive mutable
   processing runs on the audio domain without host allocation or locks on the successful path.
 - Failure and fallback: native render, callback, malformed output, or nonfinite output failure
   poisons the instance and prevents reuse. Prevalidation leaves native state, graph continuity, and
@@ -264,6 +269,8 @@ surface, buffer identifier, pointer, or exported descriptor crosses the safe mod
   reverse lifecycle call retains the unresolved owners and module for retry or worker-process exit.
 - Interface ownership: `ComPtr` owns every acquired factory or plugin reference. The host and
   bounded message, attribute, and parameter-change objects are retained `ComWrapper` values.
+  Component and controller state use separate bounded seekable `IBStream` implementations whose
+  mutexes are entered only by exclusive worker control calls outside the audio domain.
   Host-created binary buffers and message identifiers retain stable backing storage under explicit
   count and byte caps. The session refuses shutdown while a prepared processor lease exists, and an
   unretired lease intentionally leaks until worker process exit instead of unloading code reachable
@@ -274,7 +281,9 @@ surface, buffer identifier, pointer, or exported descriptor crosses the safe mod
   planar slices, passes one exact `ProcessData`, and copies finite f32 output back into the existing
   interleaved graph buffer. Parameter queues use fixed prepared point arrays and exact block-local
   sample offsets. Planar and handoff storage each cap at 1,048,576 elements, parameter metadata caps
-  at 4,096 entries, and combined parameter-point cells cap at 1,048,576.
+  at 4,096 entries, and combined parameter-point cells cap at 1,048,576. Each native state stream
+  caps at 32 MiB, checked seek cannot leave that range, partial reads return the VST3 false status,
+  and independent streams preserve component, controller-component, and controller ordering.
 - Threading: construction, controller interaction, bus negotiation, activation, and teardown run
   on the plugin worker control path. One prepared effect alone performs process calls on
   `ExecutionDomain::Audio`. Host message and attribute operations fail on that domain before
@@ -283,18 +292,21 @@ surface, buffer identifier, pointer, or exported descriptor crosses the safe mod
   plugin access.
 - Capability and failure: the host rejects instruments, event buses, auxiliary or sidechain buses,
   multiple main buses, unsupported speaker arrangements, f64-only processing, invalid metadata,
-  nonfinite samples, and failed lifecycle calls. Latency and tail are reported but delay
-  compensation, module discovery, validation databases, state persistence, supervision, restart,
-  quarantine, and recovery remain outside this boundary. Parameters must be both automatable and
-  writable for input automation, and any requested optional process-context field fails setup
-  rather than receiving guessed timing or transport data.
+  nonfinite samples, and failed lifecycle calls. Native latency is reported to the prepared graph,
+  and exact component and controller bytes can be restored before audio setup or captured by the
+  exclusive prepared owner. Deterministic discovery, validation policy, supervision, restart,
+  quarantine, project envelopes, and delay compensation remain outside this raw native boundary in
+  safe audio and engine owners. Concrete process transport remains platform-launcher work.
+  Parameters must be both automatable and writable for input automation, and any requested optional
+  process-context field fails setup rather than receiving guessed timing or transport data.
 - Runtime proof: `vst3_host_contract` compiles a standards-shaped VST3 fixture into a temporary
   bundle, loads it only in isolated child processes, and proves every supported layout through a
   source, hosted effect, submix, and master. It also proves exact sample-offset automation,
   block-boundary retention, output monitoring and overflow, process context, real-time and offline
   modes, bounded host message and attribute behavior, read-only automation and optional-context
-  rejection, partial-activation unwind, failed-stop mapped-code retention, callback allocation
-  counts, lease-gated shutdown, reverse lifecycle order, and module exit evidence.
+  rejection, exact component and controller restore and capture calls through real `IBStream`
+  traffic, partial-activation unwind, failed-stop mapped-code retention, callback allocation counts,
+  lease-gated shutdown, reverse lifecycle order, and module exit evidence.
 
 The public `hosting::vst3` module exports only safe owned values. Raw VST3 identifiers, interfaces,
 callbacks, pointers, and platform loader types remain private to this audited file.

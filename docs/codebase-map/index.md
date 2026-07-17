@@ -15,7 +15,7 @@ against raw source before changing code.
 | --- | --- | --- | --- | --- |
 | `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
 | `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public schema catalog and facade for media capabilities, complete engine health and readiness, coherent integration validation, canonical editorial state, project settings, project recovery, and audio automation | Partial: deterministic versioned command, query, event, resource, error, and capability discovery, strict JSON-RPC data contracts, media and engine introspection queries, strict read-only integration validation, revision-fenced scenario, project settings, and audio automation transactions, strict recovery discovery, complete comparison, restore, and dismiss commands, and ordered replacement events implemented; live wire routing, general editorial mutation, database file commands, and scripting absent |
-| `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Independent prepared audio graph with explicit channel conversion, typed bus routing, transactional clip DSP, revisioned clip-gain automation, canonical authored-state serialization, core effects, macOS Audio Unit effects, worker-side VST3 effects, sample-accurate scheduling, bounded device I/O, dual-clock sample-rate conversion, and graph-native metering | Partial: core graph, routing, clip, device, conversion, metering, Read, Write, Touch, and Latch clip-gain automation, macOS Audio Unit effect hosting with verified isolation, and canonical single-main-bus VST3 effect processing are implemented; project schema 4 stores authored audio, engine dispatches automation, and engine export invokes an explicit audio stage, while decoded-sample binding, automation persistence, production plugin transport and lifecycle policy, broader effect automation, variable-rate playback audio, Audio Unit instruments, and complete timeline composition remain absent |
+| `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Independent prepared audio graph with explicit channel conversion, typed bus routing, fixed route delay compensation, transactional clip DSP, revisioned clip-gain automation, canonical authored-state serialization, bounded native plugin state, timing-matched isolated bridge fallback, core effects, macOS Audio Unit effects, worker-side VST3 effects, sample-accurate scheduling, bounded device I/O, dual-clock sample-rate conversion, and graph-native metering | Partial: core graph, routing, fixed delay compensation, clip, device, conversion, metering, clip-gain automation, exact Audio Unit and VST3 state persistence, verified Audio Unit isolation, canonical single-main-bus VST3 processing, and isolated bridge fallback are implemented; engine owns lifecycle supervision and per-node project state, while decoded-sample binding, automation persistence, concrete platform worker transport, broader effect automation, variable-rate playback audio, Audio Unit instruments, dynamic latency rebuild, and complete timeline composition remain absent |
 | `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, precise graph edit invalidation, versioned corruption-recovering disk persistence, replaceable derived-media publication, layered render reuse, bounded background population, bounded playback prediction, bounded edit and scrub warming, and deterministic lifecycle management | Complete identity feeds independent memory and disk tiers with exact admission, revision fencing, bounded envelopes, atomic publication, schema isolation, and corruption quarantine; memory, persistent, and derived owners expose inspection and exact clearing, persistent namespaces relocate through rename or synchronized staged copy, render jobs add cancellation-safe layered reuse, prediction supplies finite signed frame plans and an owned host adapter, and warming is deterministic and hard bounded; engine and scheduler own quality substitution and lifecycle policy remains caller-owned |
 | `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless public schema, canonical editorial scenario, and engine validation consumer | Implemented deterministic `api schema`, revision-fenced transaction and event consumer, portable expectation verifier, eight instrumented contract stages, and strict deterministic `engine validate`; broad command parity, rendered media flow, and live application attachment absent |
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
@@ -25,7 +25,7 @@ against raw source before changing code.
 | `superi-concurrency` | [module map](modules/superi-concurrency.md) | `open/crates/superi-concurrency` | Execution domains, jobs, clocks, handoffs, shared snapshots, lifecycle, liveness, and derived-media selection | Substantial; audio enforces its domain, engine proxy resolution consumes selection, engine foreground playback and transport consume bounded workers, cancellation, anchor-based clocks, the A/V scheduler, and handoffs, engine lifecycle composes acknowledged startup, sleep, wake, shutdown, and restart phases with EngineControl ownership, immutable publication, and lock-free signals, engine error propagation keeps bounded bookkeeping in a separate EngineControl `DomainOwned`, render-export enforces lifecycle admission, and the engine export queue composes bounded workers, progress, dependency history, typed completion, and recovery attempts; broader liveness and GPU submission composition remain incomplete |
 | `superi-core` | [module map](modules/superi-core.md) | `open/crates/superi-core` | Tier-zero values, validation, exact time, identifiers, errors, diagnostics, and stable serialization | Implemented and broadly consumed; crate-level skeleton wording is stale |
 | `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Graph-native visual definitions, editable defaults and instances, reusable presets, animation, controls, composition, spatial, shape, mask, rotoscope, tracking, text, transitions, isolated OpenFX hosting, and bounded CPU reference evaluation | Substantive but partial: graph-native authoring, strict documents and migrations, missing-plugin recovery, visual contracts, isolated OFX adapter validation, boxed dynamic forwarding, permissions, lifecycle, recovery, quarantine, workflow parity, and real pixel proof are implemented; effects-to-project persistence integration, native plugin binding, production GPU execution, concrete worker transport, UI, and complete timeline attachment remain absent |
-| `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: engine-wide typed command dispatch, bounded revision-fenced project history, deterministic semantic project diagnostics inspection, compound timeline, graph, media, authored audio, extension, and root transactions, complete project undo and redo, authoritative project extension, settings, and audio automation dispatch, crash recovery discovery, complete semantic comparison, durable restore, and exact dismissal, coherent project and device lifecycle, integration validation, bounded playback and export dispatch, exact project resource preparation, selected-history autosave consumer proof, render-export orchestration, shared arbitration, and plugin containment are implemented; production autosave hosting, generic public project-history adaptation, automation persistence and broader targets, live subsystem reconfiguration from settings, platform power callback binding, concrete lifecycle workers, automatic arbiter binding, decoded source and prepared-audio binding, native GPU presentation, muxing and publication, concrete plugin transport, persistent job recovery, and production plugin factories remain absent |
+| `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: engine-wide typed command dispatch, bounded revision-fenced project history, deterministic semantic project diagnostics inspection, compound timeline, graph, media, authored audio, extension, and root transactions, complete project undo and redo, authoritative project extension, settings, and audio automation dispatch, crash recovery discovery, complete semantic comparison, durable restore, and exact dismissal, coherent project and device lifecycle, integration validation, bounded playback and export dispatch, exact project resource preparation, selected-history autosave consumer proof, render-export orchestration, shared arbitration, OpenFX containment, and native audio plugin discovery, worker validation, checkpoint recovery, quarantine, processor preparation, and per-node project persistence are implemented; production autosave hosting, generic public project-history adaptation, automation persistence and broader targets, live subsystem reconfiguration from settings, platform power callback binding, concrete lifecycle workers, automatic arbiter binding, decoded source and prepared-audio binding, native GPU presentation, muxing and publication, concrete plugin transport, persistent job recovery, and production plugin factories remain absent |
 | `superi-gpu` | [module map](modules/superi-gpu.md) | `open/crates/superi-gpu` | wgpu device, resource, upload, conversion, pass, submission, presentation, and recovery substrate | Implemented substrate with explicit application-level integration gaps |
 | `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers and shared typed values, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, reusable scalar expressions, typed parameter links and expressions, caller-projected literal evaluation, derived missing-node resolution, dependency and semantic edit invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, graph and revision cache lineage, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, exact neutral domain and processing values, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, shared bounded scalar programs, typed driver state, parameter-cycle protection, literal-only projected evaluation, fail-closed missing-node placeholders, exact region and edit invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic graph cache inspection, final and intermediate retained-work pruning, run-local timing, and role-neutral editable-to-runtime evaluation implemented; effects consumes broad authoring and reference evaluation, timeline compiles editable graphs, project retains and atomically publishes timeline and named standalone graph documents, and engine consumes externally prepared snapshots for playback and render-export, while production engine catalog and plugin binding and complete application rendering remain absent |
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
@@ -98,7 +98,7 @@ superi-engine
   -> superi-timeline               graph compilation, three-way retained-edit reconciliation, reachable media preparation, signed playback rate
   -> superi-graph                  foreground evaluation and retained timeline compilation
   -> superi-project                immutable snapshots, semantic hash and component diagnostics, checked edit and restoration, authored media and extension commands, durable clip-mix and opaque extension state, autosave, and recovery store contracts
-  -> image, color, audio           active playback and display contracts
+  -> image, color, audio           active playback and display contracts plus native audio plugin state and isolated bridge supervision
   -> effects and ai                partial or manifest-only integration
 
 superi-project -> superi-audio
@@ -607,9 +607,10 @@ The independent audio processing graph is implemented below engine orchestration
    illegal direct, send, return, or master routes, and unequal ordered `ChannelLayout` values before
    mutation. No implicit channel conversion or resampling occurs.
 3. Preparation selects one destination or the single master and its ancestors, computes stable
-   processing order, resolves every input in edge identity order to an earlier node, and fallibly
-   preallocates every interleaved f32 buffer. Borrowed input views expose current-block samples
-   without callback allocation or copying.
+   processing order, resolves every input in edge identity order to an earlier node, accumulates each
+   processor's fixed latency, and fallibly preallocates every interleaved f32 buffer plus the exact
+   ring and scratch required to delay faster routes to the slowest arrival. Borrowed input views
+   expose direct or compensation-adjusted current-block samples without callback allocation.
 4. `PreparedAudioGraph::process` requires `ExecutionDomain::Audio`, rejects rate, size, output,
    overflow, and continuity mismatches before running processors, then advances the next exact
    sample only after complete success.
@@ -645,7 +646,9 @@ The independent audio processing graph is implemented below engine orchestration
    routing path.
 14. `superi-audio::hosting::PreparedAudioUnit` enters the ordinary processor path on macOS after
    background-domain discovery and initialization. Exact component identity, maximum slice, planar
-   format, ordered channel meaning, and actual process location are read back before publication.
+   format, ordered channel meaning, native latency, and actual process location are read back before publication.
+   Optional class-info property-list state is restored before initialization and captured in bounded
+   serialized form on the control path.
    The audio-domain path uses preallocated pull-callback and output storage, supports bounded native
    subrange requests, commits only complete finite output, and poisons native failures. A public
    contract runs Apple's Peak Limiter from a deterministic source through the terminal master in
@@ -654,10 +657,20 @@ The independent audio processing graph is implemented below engine orchestration
    mono, stereo, quad, 5.1, or 7.1 f32 processing. It retains platform module and COM ownership,
    converts the graph's interleaved semantic order through preallocated planar buffers, and maps
    exact `SampleTime` plus bounded automation and output monitoring across one native process call.
+   Bounded seekable streams restore component, controller-component, then controller state before
+   activation and capture exact state off the callback.
 16. A real temporary VST3 fixture runs only in isolated child processes and proves every supported
-   layout through source, hosted effect, submix, and master. Production plugin discovery, process
-   transport, state, supervision, recovery, quarantine, and delay compensation remain separately
-   owned lifecycle work.
+   layout through source, hosted effect, submix, and master, including exact state traffic and native
+   latency.
+17. `superi-audio::plugins` owns a bounded versioned digest-checked native-state envelope and an
+   isolated process bridge processor. It preserves exact component and controller bytes, sample
+   clock, native and transport latency, always advances a preallocated dry delay, and publishes
+   timing-matched dry fallback after missing, faulted, malformed, or nonfinite worker output.
+18. `superi-engine::audio_plugins` discovers VST3 bundles deterministically, accepts typed Audio Unit
+   candidates, rejects in-process or unbounded workers, validates descriptors, captures and restores
+   compatible checkpoints, restarts one fault, quarantines repeated activation failure, and stores
+   one exact project extension record per audio node. Concrete IPC, sandbox launchers, heartbeats,
+   kill integration, and Audio Unit registry enumeration remain external adapters.
 
 Generic graph storage is implemented independently of that reference path:
 
@@ -1589,6 +1602,18 @@ The following constraints cross multiple modules and should be preserved togethe
   ordered channel layout. Preparation and teardown remain outside the audio callback, required
   process isolation is verified from the instance, successful processing uses prepared storage,
   and native or callback failure cannot publish partial caller output or permit instance reuse.
+- Native plugin state is bounded, digest checked, and format neutral. Audio Unit property-list bytes
+  and VST3 component plus controller streams are captured and restored only off the callback, retain
+  exact saved identity evidence, and may cross an installed upgrade only when format and component
+  identifier still match.
+- Every prepared audio processor declares fixed latency. Graph preparation computes cumulative
+  arrival and allocates the exact route differences, so direct, send, and auxiliary-return branches
+  remain sample aligned without callback allocation. Dynamic latency requires a control-side graph
+  rebuild.
+- Native audio supervision requires BackgroundJob for scan and lifecycle work, EngineControl for
+  runtime observation, and a declared separate-process worker with bounded messages, deadline, and
+  restart support. The first activation fault retains a checkpoint, repeated activation failure
+  quarantines, and durable records use per-node instance identity without persisting readiness.
 - Timeline media organization retains stable bin and smart collection identities. Manual bin
   membership and dynamic query results never replace clip `MediaId` links, and mismatched relink
   candidates retain evidence without replacing the active target.
@@ -1748,8 +1773,16 @@ claim live subsystem reconfiguration, project file wire commands, or hardware au
 The macOS Audio Unit contracts use the real Apple Peak Limiter to prove exact component identity,
 background preparation, actual process-location verification, repeated bounded pull callbacks,
 adjacent partition continuity, stereo meaning, finite audible output through the terminal master,
-and prevalidation failure atomicity. This host proof does not claim third-party plug-in coverage,
-parameter automation, plug-in UI, crash restart, device latency, or a decoded timeline adapter.
+prevalidation failure atomicity, bounded class-info state round trips, and fixed native latency. This
+host proof does not claim broad third-party plug-in coverage, parameter automation, plug-in UI,
+physical device latency, or a decoded timeline adapter.
+The audio delay and isolated runtime contracts prove aligned parallel and auxiliary routes, exact
+cumulative latency diagnostics, partition independence, fallible compensation preparation, exact
+state bytes and digest rejection, worker-fault telemetry, and timing-matched dry fallback. The engine
+supervision contracts add stable VST3 discovery, wrong-domain and in-process rejection,
+compatible-version checkpoint recovery, restart and quarantine, and distinct per-node project state
+through real database save and reopen. Concrete platform IPC and sandbox behavior remain outside
+these deterministic adapters.
 The cache warming contract maps deterministic edit and scrub targets through the real graph
 evaluator and bounded memory cache, then proves demand reuse, source-fingerprint freshness, and
 unchanged recomputation after pressure. It does not claim a production editor, playback, engine,
@@ -2088,12 +2121,17 @@ contains failures, and rebuilds shared workflow availability above that host.
 `superi-audio` now has a substantive
 independent processing graph, typed bus routing, sample-accurate scheduler, production device input and output,
 canonical authored clip-mix codec, clip-mix processor, prepared sample-rate converter, explicit channel conversion, and prepared core
-effects, revisioned clip-gain automation, a graph-native meter, a macOS Audio Unit effect host with
-default verified process isolation, and a worker-side VST3 audio-effect host. The VST3 subset preserves
-canonical channel layouts, exact timing, bounded sample-offset automation, monitoring, and
-source-to-master routing, while production plugin transport, supervision, state, delay compensation,
-automation persistence, broader effect automation, Audio Unit instruments, and decoded-sample binding
-remain absent. Engine foreground playback
+effects, revisioned clip-gain automation, a graph-native meter, fixed route delay compensation, a
+bounded native-state envelope, a timing-matched isolated process bridge, a macOS Audio Unit effect
+host with default verified process isolation, and a worker-side VST3 audio-effect host. Audio Unit
+class-info state and VST3 component plus controller state round-trip exactly, both hosts publish fixed
+native latency, and the graph aligns direct, send, and auxiliary-return branches before processing.
+Engine now discovers native audio candidates, validates separate worker contracts and descriptors,
+captures compatible checkpoints, restarts and quarantines faults, prepares the isolated bridge, and
+persists one exact record per audio node through project save and reopen. Concrete platform IPC,
+sandbox launchers, heartbeats, kill integration, Audio Unit registry enumeration, dynamic latency
+rebuild, automation persistence, broader effect automation, Audio Unit instruments, and decoded-sample
+binding remain absent. Engine foreground playback
 feeds the bounded output producer and consumes its actual
 presentation clock through explicit video synchronization and recovery outcomes. Transport uses
 callback-owned discard acknowledgement and explicitly mutes inactive or unsupported signed-rate
@@ -2127,12 +2165,13 @@ Partial modules contain these explicit placeholder areas:
   and scripting beyond its implemented document, settings, extension state, database, migration,
   media path, collaborative-safe atomic save, autosave, recovery, read-only integrity command, and
   semantic diagnostics owners.
-- `superi-audio`: binding decoded samples into the real prepared graph, production plugin discovery,
-  transport, supervision, state, recovery, quarantine, delay compensation, Audio Unit instruments,
-  MIDI, presets, plug-in UI, automation persistence, broader effect automation modes, and engine
-  composition across schedule, conversion, clip and effects processing, graph routing, and device
-  execution. Clip-gain automation, macOS Audio Unit effects, and worker-side VST3 effects are
-  implemented; export currently owns only an explicit stage seam.
+- `superi-audio`: binding decoded samples into the real prepared graph, concrete platform worker
+  transport, shared-memory or IPC adapters, heartbeat and kill control, Audio Unit instruments,
+  MIDI, preset browsing, plug-in UI, dynamic latency rebuild, automation persistence, broader effect
+  automation modes, and engine composition across schedule, conversion, clip and effects processing,
+  graph routing, and device execution. Clip-gain automation, Audio Unit and VST3 effects, exact
+  native state, fixed delay compensation, isolated dry fallback, engine lifecycle supervision, and
+  per-node project persistence are implemented; export currently owns only an explicit stage seam.
 - `superi-color`: broader config-persisted rule graphs, ICC transform evaluation, GPU output
   conversion, and production viewport or export integration.
 - `superi-concurrency`: GPU submission coordination module and production composition beyond the
@@ -2247,8 +2286,11 @@ For common concerns, begin at these owners:
 - Audio graph topology, input and output device identity, capability discovery, record arming,
   input monitoring, bounded sample handoff, typed platform callbacks, stream lifecycle,
   audio-clock publication, capture and output telemetry, revisioned clip-gain keyframes plus Read,
-  Write, Touch, and Latch behavior, macOS Audio Unit effect hosting, and graph-native
-  peak, RMS, true-peak, phase, spectrum, and loudness analysis: `superi-audio`.
+  Write, Touch, and Latch behavior, fixed route delay compensation, format-neutral native state,
+  timing-matched isolated bridge fallback, macOS Audio Unit and worker-side VST3 effect hosting, and
+  graph-native peak, RMS, true-peak, phase, spectrum, and loudness analysis: `superi-audio`, followed
+  by `superi-engine` for discovery, worker validation, checkpoint recovery, quarantine, and per-node
+  project records.
 - Graph-facing identifiers, node schemas, deterministic DAG state, typed binding validation,
   schema-bound instances, editable transactions, canonical graph documents, typed parameter links
   and expressions, missing-node resolution, exact dirty regions, dependency and semantic edit

@@ -175,6 +175,34 @@ mod macos {
         assert_eq!(unit.component(), peak_limiter());
     }
 
+    #[test]
+    fn class_info_state_and_native_latency_survive_a_fresh_instance() {
+        let mut original = prepare_audio_unit();
+        let original_version = original.component_version();
+        let original_latency = original.latency_samples();
+        let state = {
+            let _background = ExecutionDomain::BackgroundJob.enter_current().unwrap();
+            original.capture_state().unwrap()
+        };
+        assert!(!state.bytes().is_empty());
+
+        let mut restored = {
+            let _background = ExecutionDomain::BackgroundJob.enter_current().unwrap();
+            PreparedAudioUnit::prepare(
+                stereo_config(AudioUnitExecutionPolicy::AllowAuditedInProcess)
+                    .with_initial_state(state),
+            )
+            .unwrap()
+        };
+        assert_eq!(restored.component_version(), original_version);
+        assert_eq!(restored.latency_samples(), original_latency);
+        let recaptured = {
+            let _background = ExecutionDomain::BackgroundJob.enter_current().unwrap();
+            restored.capture_state().unwrap()
+        };
+        assert!(!recaptured.bytes().is_empty());
+    }
+
     fn graph(audio_unit: PreparedAudioUnit) -> PreparedAudioGraph {
         let stereo = ChannelLayout::stereo();
         let source = AudioNodeId::from_raw(1);

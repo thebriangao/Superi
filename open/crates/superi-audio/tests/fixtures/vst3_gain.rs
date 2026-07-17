@@ -29,6 +29,11 @@ static PROCESS_COUNT: AtomicU32 = AtomicU32::new(0);
 static HOST_OBJECTS_VERIFIED: AtomicBool = AtomicBool::new(false);
 static TRACK_ALLOCATIONS: AtomicBool = AtomicBool::new(false);
 static CALLBACK_ALLOCATIONS: AtomicU64 = AtomicU64::new(0);
+static COMPONENT_STATE_GETS: AtomicU32 = AtomicU32::new(0);
+static COMPONENT_STATE_SETS: AtomicU32 = AtomicU32::new(0);
+static CONTROLLER_COMPONENT_STATE_SETS: AtomicU32 = AtomicU32::new(0);
+static CONTROLLER_STATE_GETS: AtomicU32 = AtomicU32::new(0);
+static CONTROLLER_STATE_SETS: AtomicU32 = AtomicU32::new(0);
 
 struct CountingAllocator;
 
@@ -127,6 +132,50 @@ fn arrangement_channels(arrangement: SpeakerArrangement) -> Option<i32> {
         SpeakerArr::k51 => Some(6),
         SpeakerArr::k71Music => Some(8),
         _ => None,
+    }
+}
+
+unsafe fn write_gain_state(stream: *mut IBStream, gain: u64) -> tresult {
+    // SAFETY: The host supplies one live stream for this synchronous state call.
+    let Some(stream) = (unsafe { ComRef::from_raw(stream) }) else {
+        return kInvalidArgument;
+    };
+    let bytes = gain.to_le_bytes();
+    let mut written = 0_i32;
+    // SAFETY: bytes remains readable and written remains writable for the complete call.
+    let result = unsafe {
+        stream.write(
+            bytes.as_ptr().cast_mut().cast::<c_void>(),
+            i32::try_from(bytes.len()).unwrap(),
+            &mut written,
+        )
+    };
+    if result == kResultOk && written == i32::try_from(bytes.len()).unwrap() {
+        kResultOk
+    } else {
+        kResultFalse
+    }
+}
+
+unsafe fn read_gain_state(stream: *mut IBStream) -> Result<u64, tresult> {
+    // SAFETY: The host supplies one live stream for this synchronous state call.
+    let Some(stream) = (unsafe { ComRef::from_raw(stream) }) else {
+        return Err(kInvalidArgument);
+    };
+    let mut bytes = [0_u8; 8];
+    let mut read = 0_i32;
+    // SAFETY: bytes remains writable and read remains writable for the complete call.
+    let result = unsafe {
+        stream.read(
+            bytes.as_mut_ptr().cast::<c_void>(),
+            i32::try_from(bytes.len()).unwrap(),
+            &mut read,
+        )
+    };
+    if result == kResultOk && read == i32::try_from(bytes.len()).unwrap() {
+        Ok(u64::from_le_bytes(bytes))
+    } else {
+        Err(kResultFalse)
     }
 }
 
@@ -434,12 +483,22 @@ impl IComponentTrait for FixtureEffect {
         kResultOk
     }
 
-    unsafe fn setState(&self, _state: *mut IBStream) -> tresult {
-        kNotImplemented
+    unsafe fn setState(&self, state: *mut IBStream) -> tresult {
+        // SAFETY: The exact state stream is consumed synchronously during host preparation.
+        match unsafe { read_gain_state(state) } {
+            Ok(gain) => {
+                self.gain.store(gain, Ordering::Relaxed);
+                COMPONENT_STATE_SETS.fetch_add(1, Ordering::Relaxed);
+                kResultOk
+            }
+            Err(result) => result,
+        }
     }
 
-    unsafe fn getState(&self, _state: *mut IBStream) -> tresult {
-        kNotImplemented
+    unsafe fn getState(&self, state: *mut IBStream) -> tresult {
+        COMPONENT_STATE_GETS.fetch_add(1, Ordering::Relaxed);
+        // SAFETY: The host-provided stream remains live for this synchronous state write.
+        unsafe { write_gain_state(state, self.gain.load(Ordering::Relaxed)) }
     }
 }
 
@@ -706,16 +765,34 @@ impl IProcessContextRequirementsTrait for FixtureEffect {
 }
 
 impl IEditControllerTrait for FixtureEffect {
-    unsafe fn setComponentState(&self, _state: *mut IBStream) -> tresult {
-        kNotImplemented
+    unsafe fn setComponentState(&self, state: *mut IBStream) -> tresult {
+        // SAFETY: The host supplies an independent component-state stream at position zero.
+        match unsafe { read_gain_state(state) } {
+            Ok(gain) => {
+                self.gain.store(gain, Ordering::Relaxed);
+                CONTROLLER_COMPONENT_STATE_SETS.fetch_add(1, Ordering::Relaxed);
+                kResultOk
+            }
+            Err(result) => result,
+        }
     }
 
-    unsafe fn setState(&self, _state: *mut IBStream) -> tresult {
-        kNotImplemented
+    unsafe fn setState(&self, state: *mut IBStream) -> tresult {
+        // SAFETY: The exact controller-state stream is consumed synchronously.
+        match unsafe { read_gain_state(state) } {
+            Ok(gain) => {
+                self.gain.store(gain, Ordering::Relaxed);
+                CONTROLLER_STATE_SETS.fetch_add(1, Ordering::Relaxed);
+                kResultOk
+            }
+            Err(result) => result,
+        }
     }
 
-    unsafe fn getState(&self, _state: *mut IBStream) -> tresult {
-        kNotImplemented
+    unsafe fn getState(&self, state: *mut IBStream) -> tresult {
+        CONTROLLER_STATE_GETS.fetch_add(1, Ordering::Relaxed);
+        // SAFETY: The host-provided stream remains live for this synchronous state write.
+        unsafe { write_gain_state(state, self.gain.load(Ordering::Relaxed)) }
     }
 
     unsafe fn getParameterCount(&self) -> i32 {
@@ -875,6 +952,11 @@ fn reset_evidence() {
     PROCESS_COUNT.store(0, Ordering::SeqCst);
     HOST_OBJECTS_VERIFIED.store(false, Ordering::SeqCst);
     CALLBACK_ALLOCATIONS.store(0, Ordering::SeqCst);
+    COMPONENT_STATE_GETS.store(0, Ordering::SeqCst);
+    COMPONENT_STATE_SETS.store(0, Ordering::SeqCst);
+    CONTROLLER_COMPONENT_STATE_SETS.store(0, Ordering::SeqCst);
+    CONTROLLER_STATE_GETS.store(0, Ordering::SeqCst);
+    CONTROLLER_STATE_SETS.store(0, Ordering::SeqCst);
 }
 
 fn write_evidence() {
@@ -882,7 +964,7 @@ fn write_evidence() {
         return;
     };
     let body = format!(
-        "events={}\nsequence={:X}\nsample_rate={}\nstart_sample={}\nframes={}\nmode={}\nsample_size={}\nchannels={}\nprocesses={}\nhost_objects={}\ncallback_allocations={}\n",
+        "events={}\nsequence={:X}\nsample_rate={}\nstart_sample={}\nframes={}\nmode={}\nsample_size={}\nchannels={}\nprocesses={}\nhost_objects={}\ncallback_allocations={}\ncomponent_state_gets={}\ncomponent_state_sets={}\ncontroller_component_state_sets={}\ncontroller_state_gets={}\ncontroller_state_sets={}\n",
         EVENT_COUNT.load(Ordering::SeqCst),
         EVENT_SEQUENCE.load(Ordering::SeqCst),
         f64::from_bits(OBSERVED_SAMPLE_RATE.load(Ordering::SeqCst)),
@@ -894,6 +976,11 @@ fn write_evidence() {
         PROCESS_COUNT.load(Ordering::SeqCst),
         u8::from(HOST_OBJECTS_VERIFIED.load(Ordering::SeqCst)),
         CALLBACK_ALLOCATIONS.load(Ordering::SeqCst),
+        COMPONENT_STATE_GETS.load(Ordering::SeqCst),
+        COMPONENT_STATE_SETS.load(Ordering::SeqCst),
+        CONTROLLER_COMPONENT_STATE_SETS.load(Ordering::SeqCst),
+        CONTROLLER_STATE_GETS.load(Ordering::SeqCst),
+        CONTROLLER_STATE_SETS.load(Ordering::SeqCst),
     );
     std::fs::write(path, body).expect("write VST3 fixture evidence");
 }

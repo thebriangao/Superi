@@ -25,4 +25,4 @@ vst3 = { workspace = true }
 block2 = { workspace = true }
 objc2-audio-toolbox = { workspace = true, features = ["AUComponent", "AudioComponent", "AudioUnit", "AudioUnitProperties", "block2"] }
 objc2-core-audio-types = { workspace = true, features = ["CoreAudioBaseTypes"] }
-objc2-core-foundation = { workspace = true, features = ["std", "CFBundle", "CFString", "CFURL"] }
+objc2-core-foundation = { workspace = true, features = ["std", "CFBundle", "CFData", "CFError", "CFPropertyList", "CFString", "CFURL"] }

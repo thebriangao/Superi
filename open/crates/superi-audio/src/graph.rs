@@ -565,6 +565,34 @@ impl AudioGraph {
             .enumerate()
             .map(|(index, node)| (*node, index))
             .collect::<BTreeMap<_, _>>();
+        let mut output_latencies = BTreeMap::<AudioNodeId, usize>::new();
+        let mut route_compensations = BTreeMap::<AudioEdgeId, usize>::new();
+        for node_id in &order {
+            let maximum_input_latency = self.incoming[node_id]
+                .iter()
+                .map(|edge_id| output_latencies[&self.edges[edge_id].source])
+                .max()
+                .unwrap_or(0);
+            for edge_id in &self.incoming[node_id] {
+                let source_latency = output_latencies[&self.edges[edge_id].source];
+                route_compensations.insert(*edge_id, maximum_input_latency - source_latency);
+            }
+            let processor_latency = processors
+                .get(node_id)
+                .expect("required audio processor was validated")
+                .latency_samples();
+            let output_latency = maximum_input_latency
+                .checked_add(processor_latency)
+                .ok_or_else(|| {
+                    self.error(
+                        ErrorCategory::ResourceExhausted,
+                        "prepare_graph",
+                        "audio processing latency overflowed",
+                        [("node_id", node_id.to_string())],
+                    )
+                })?;
+            output_latencies.insert(*node_id, output_latency);
+        }
         let mut prepared_nodes = Vec::with_capacity(order.len());
         for node_id in &order {
             let descriptor = self.nodes[node_id].clone();
@@ -574,8 +602,33 @@ impl AudioGraph {
                     edge_id: *edge_id,
                     source_node: self.edges[edge_id].source,
                     source_index: indices[&self.edges[edge_id].source],
+                    compensation_delay_samples: route_compensations[edge_id],
                 })
-                .collect();
+                .collect::<Vec<_>>();
+            let mut route_delays = Vec::with_capacity(input_routes.len());
+            for route in &input_routes {
+                let channel_count = self.nodes[&route.source_node].output_layout.len();
+                route_delays.push(
+                    PreparedRouteDelay::new(
+                        route.compensation_delay_samples,
+                        channel_count,
+                        self.maximum_frames,
+                    )
+                    .map_err(|mut error| {
+                        error.push_context(
+                            ErrorContext::new(COMPONENT, "prepare_compensation")
+                                .with_field("graph_id", self.id.to_string())
+                                .with_field("edge_id", route.edge_id.to_string())
+                                .with_field("source_node_id", route.source_node.to_string())
+                                .with_field(
+                                    "delay_samples",
+                                    route.compensation_delay_samples.to_string(),
+                                ),
+                        );
+                        error
+                    })?,
+                );
+            }
             let samples = self
                 .maximum_frames
                 .checked_mul(descriptor.output_layout.len())
@@ -600,6 +653,8 @@ impl AudioGraph {
             prepared_nodes.push(PreparedNode {
                 descriptor,
                 input_routes,
+                route_delays,
+                output_latency_samples: output_latencies[node_id],
                 processor: processors
                     .remove(node_id)
                     .expect("required audio processor was validated"),
@@ -614,6 +669,7 @@ impl AudioGraph {
             order,
             output_index: indices[&destination],
             nodes: prepared_nodes,
+            latency_samples: output_latencies[&destination],
             next_sample: None,
         })
     }
@@ -725,6 +781,7 @@ pub struct PreparedAudioRoute {
     edge_id: AudioEdgeId,
     source_node: AudioNodeId,
     source_index: usize,
+    compensation_delay_samples: usize,
 }
 
 impl PreparedAudioRoute {
@@ -738,6 +795,12 @@ impl PreparedAudioRoute {
     #[must_use]
     pub const fn source_node(self) -> AudioNodeId {
         self.source_node
+    }
+
+    /// Returns the route-local delay inserted to align this input with the latest arrival.
+    #[must_use]
+    pub const fn compensation_delay_samples(self) -> usize {
+        self.compensation_delay_samples
     }
 }
 
@@ -780,6 +843,7 @@ impl<'a> AudioProcessInput<'a> {
 pub struct AudioProcessInputs<'a> {
     previous: &'a [PreparedNode],
     routes: &'a [PreparedAudioRoute],
+    route_delays: &'a [PreparedRouteDelay],
     frame_count: usize,
 }
 
@@ -802,9 +866,15 @@ impl<'a> AudioProcessInputs<'a> {
         let route = *self.routes.get(index)?;
         let source = self.previous.get(route.source_index)?;
         let sample_count = self.frame_count * source.descriptor.output_layout.len();
+        let delay = self.route_delays.get(index)?;
+        let samples = if route.compensation_delay_samples == 0 {
+            &source.buffer[..sample_count]
+        } else {
+            &delay.output[..sample_count]
+        };
         Some(AudioProcessInput {
             route,
-            samples: &source.buffer[..sample_count],
+            samples,
             layout: source.descriptor.output_layout(),
         })
     }
@@ -855,6 +925,15 @@ impl std::iter::FusedIterator for AudioProcessInputsIter<'_> {}
 
 /// One prepared audio node implementation.
 pub trait AudioProcessor: Send {
+    /// Returns the processor's fixed algorithmic delay in sample frames.
+    ///
+    /// The value is sampled once during graph preparation. Processors must report the delay they
+    /// apply to their own output and must require a graph rebuild if it changes.
+    #[must_use]
+    fn latency_samples(&self) -> usize {
+        0
+    }
+
     /// Processes one complete bounded block.
     fn process(&mut self, block: AudioProcessBlock<'_>) -> Result<()>;
 
@@ -871,9 +950,77 @@ pub trait AudioProcessor: Send {
     }
 }
 
+struct PreparedRouteDelay {
+    ring: Vec<f32>,
+    output: Vec<f32>,
+    cursor: usize,
+}
+
+impl PreparedRouteDelay {
+    fn new(delay_samples: usize, channel_count: usize, maximum_frames: usize) -> Result<Self> {
+        if delay_samples == 0 {
+            return Ok(Self {
+                ring: Vec::new(),
+                output: Vec::new(),
+                cursor: 0,
+            });
+        }
+        let ring_samples = delay_samples.checked_mul(channel_count).ok_or_else(|| {
+            audio_error(
+                ErrorCategory::ResourceExhausted,
+                "prepare_compensation",
+                "audio compensation ring size overflowed",
+                [],
+            )
+        })?;
+        let output_samples = maximum_frames.checked_mul(channel_count).ok_or_else(|| {
+            audio_error(
+                ErrorCategory::ResourceExhausted,
+                "prepare_compensation",
+                "audio compensation block size overflowed",
+                [],
+            )
+        })?;
+        Ok(Self {
+            ring: prepared_samples(ring_samples)?,
+            output: prepared_samples(output_samples)?,
+            cursor: 0,
+        })
+    }
+
+    fn process(&mut self, input: &[f32]) {
+        debug_assert!(!self.ring.is_empty());
+        debug_assert!(input.len() <= self.output.len());
+        for (input, output) in input.iter().copied().zip(self.output.iter_mut()) {
+            *output = self.ring[self.cursor];
+            self.ring[self.cursor] = input;
+            self.cursor += 1;
+            if self.cursor == self.ring.len() {
+                self.cursor = 0;
+            }
+        }
+    }
+}
+
+fn prepared_samples(sample_count: usize) -> Result<Vec<f32>> {
+    let mut samples = Vec::new();
+    samples.try_reserve_exact(sample_count).map_err(|_| {
+        audio_error(
+            ErrorCategory::ResourceExhausted,
+            "prepare_compensation",
+            "audio compensation storage allocation failed",
+            [],
+        )
+    })?;
+    samples.resize(sample_count, 0.0);
+    Ok(samples)
+}
+
 struct PreparedNode {
     descriptor: AudioNode,
     input_routes: Vec<PreparedAudioRoute>,
+    route_delays: Vec<PreparedRouteDelay>,
+    output_latency_samples: usize,
     processor: Box<dyn AudioProcessor>,
     buffer: Vec<f32>,
 }
@@ -886,6 +1033,7 @@ pub struct PreparedAudioGraph {
     order: Vec<AudioNodeId>,
     output_index: usize,
     nodes: Vec<PreparedNode>,
+    latency_samples: usize,
     next_sample: Option<i64>,
 }
 
@@ -906,6 +1054,21 @@ impl PreparedAudioGraph {
     #[must_use]
     pub fn output_layout(&self) -> &ChannelLayout {
         self.nodes[self.output_index].descriptor.output_layout()
+    }
+
+    /// Returns the prepared destination's fixed end-to-end latency in sample frames.
+    #[must_use]
+    pub const fn latency_samples(&self) -> usize {
+        self.latency_samples
+    }
+
+    /// Returns one prepared node's cumulative output-arrival latency.
+    #[must_use]
+    pub fn node_latency_samples(&self, node: AudioNodeId) -> Option<usize> {
+        self.order
+            .iter()
+            .position(|candidate| *candidate == node)
+            .map(|index| self.nodes[index].output_latency_samples)
     }
 
     /// Returns the next required sample after successful processing begins.
@@ -1007,9 +1170,22 @@ impl PreparedAudioGraph {
             let (previous, current_and_later) = self.nodes.split_at_mut(index);
             let current = &mut current_and_later[0];
             let output_len = frame_count * current.descriptor.output_layout.len();
+            for (route, delay) in current
+                .input_routes
+                .iter()
+                .zip(current.route_delays.iter_mut())
+            {
+                if route.compensation_delay_samples == 0 {
+                    continue;
+                }
+                let source = &previous[route.source_index];
+                let input_len = frame_count * source.descriptor.output_layout.len();
+                delay.process(&source.buffer[..input_len]);
+            }
             let inputs = AudioProcessInputs {
                 previous,
                 routes: &current.input_routes,
+                route_delays: &current.route_delays,
                 frame_count,
             };
             let input = inputs.get(0).map(AudioProcessInput::samples);
