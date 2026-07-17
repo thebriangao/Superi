@@ -1163,6 +1163,31 @@ export type ProjectRecoveryFindingSnapshot = { candidate_id: string; category: s
 export type ProjectRecoverySnapshot = { schema_version: SemanticVersion; project_id: string; project_revision: number; catalog_revision: number; candidates: ProjectRecoveryCandidateSnapshot[]; findings: ProjectRecoveryFindingSnapshot[] };
 
 /**
+ * Complete strict source document for `superi-json` version 1.
+ */
+export type ProjectScriptProgram = { language: string; language_version: SemanticVersion; script_id: ScriptId; expected_initial_project_revision: number; steps: ProjectScriptStep[] };
+
+/**
+ * Final deterministic interpretation of one script run.
+ */
+export type ProjectScriptRunStatus = "completed" | "rejected" | "stopped";
+
+/**
+ * Closed supported step vocabulary for version 1 of `superi-json`.
+ */
+export type ProjectScriptStep = { method: "superi.project.command.execute"; params: ExecuteProjectCommand } | { method: "superi.editor.state.get"; params: GetEditorState };
+
+/**
+ * One ordered completed step and its typed public response.
+ */
+export type ProjectScriptStepRecord = { index: number; response: ProjectScriptStepResponse };
+
+/**
+ * Typed successful response from one supported script step.
+ */
+export type ProjectScriptStepResponse = { method: "superi.project.command.execute"; response: ExecuteProjectCommandResult } | { method: "superi.editor.state.get"; response: GetEditorStateResult };
+
+/**
  * One strict ordered mutation carried by a public transaction.
  */
 export type ProjectSettingMutation = { operation: "set"; key: string; value: ProjectSettingValue } | { operation: "remove"; key: string };
@@ -1328,6 +1353,16 @@ export type ResyncResource = { resource: string; method: string; method_kind: Pu
 export type RetryAsyncJob = { transaction_id: string; handle: AsyncJobHandle };
 
 /**
+ * Request to validate and run exact local script source.
+ */
+export type RunProjectScript = { source: string; expected_source_sha256: string };
+
+/**
+ * Complete deterministic trace from one local script execution.
+ */
+export type RunProjectScriptResult = { runtime_schema_version: SemanticVersion; language: string; language_version: SemanticVersion; script_id: ScriptId; source_sha256: string; project_id: string; initial_project_revision: number; initial_project_semantic_hash: string; final_project_revision: number; final_project_semantic_hash: string; status: ProjectScriptRunStatus; completed_steps: ProjectScriptStepRecord[]; failed_step_index: number | null; failure: PublicApiError | null; effects_committed: boolean };
+
+/**
  * Successful result for one typed action command.
  */
 export type ScenarioActionResult = { action: SliceActionKind; state: ScenarioStateSnapshot };
@@ -1356,6 +1391,11 @@ export type ScenarioTransactionResult = { transaction_id: string; command_sequen
  * Public editable scenario summary and reversal capacity.
  */
 export type ScenarioValidationState = { revision: number; phase: string; operation_count: number; undo_depth: number; redo_depth: number };
+
+/**
+ * Validated canonical identity for one local script.
+ */
+export type ScriptId = string;
 
 /**
  * Generator-only shadow for the core semantic version string wire.
@@ -1455,6 +1495,7 @@ export interface SuperiMethodMap {
   "superi.project.recovery.dismiss": { request: DismissProjectRecovery; response: DismissProjectRecoveryResult };
   "superi.project.recovery.get": { request: GetProjectRecovery; response: GetProjectRecoveryResult };
   "superi.project.recovery.restore": { request: RestoreProjectRecovery; response: RestoreProjectRecoveryResult };
+  "superi.project.script.run": { request: RunProjectScript; response: RunProjectScriptResult };
   "superi.project.settings.get": { request: GetProjectSettings; response: GetProjectSettingsResult };
   "superi.project.settings.transaction.execute": { request: ExecuteProjectSettingsTransaction; response: ExecuteProjectSettingsTransactionResult };
   "superi.slice.scenario.action.execute": { request: ExecuteScenarioAction; response: ScenarioActionResult };

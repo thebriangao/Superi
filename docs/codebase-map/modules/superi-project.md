@@ -611,8 +611,11 @@ and acquires the exact reachable source and decoder set before one resources pub
   undo, and redo, and exposes eventless `InspectProjectDiagnostics` results from that same attached
   history snapshot.
 - `superi-api` consumes project settings and recovery only through engine-owned re-exports and
-  dispatcher commands. API and CLI do not yet expose database file commands. Later file commands
-  must wrap this owner instead of creating another project or database authority.
+  dispatcher commands. Its local scripting contract uses this crate as a test-only downstream
+  proof for SQLite reload, semantic integrity, media identity, autosave discovery, comparison, and
+  recovery restoration; production script mutation still reaches project only through engine and
+  `ProjectEditorApi`. API and CLI do not yet expose database file commands. Later file commands must
+  wrap this owner instead of creating another project or database authority.
 - Editor, script, and headless callers can consume the same project-owned integrity report directly.
   No API, CLI, engine, transport, or GUI adapter is added by this checkpoint.
 
@@ -834,6 +837,11 @@ nonmutation of every inspected source. Six unit tests prove permanent code strin
 complete foreign-key collection, exact finding-limit behavior, truncation, source-change precedence,
 and source versus semantic not-found classification.
 
+The downstream `superi-api` scripting contract persists the selected scripted snapshot through the
+real database, reloads exact equality, validates full integrity, discovers and compares an autosave
+candidate, restores it through the existing recovery owner, and proves stable media ID, target, and
+fingerprint meaning. This adds no interpreter or file authority to the project crate.
+
 Timeline's serialization contract independently round trips a real compiled multicam graph through
 the public graph codec and rejects unknown `TimelineGraphValue` fields and tags. The engine resource
 contract opens an exact schema-0 fixture through the public database owner and proves that the
@@ -869,7 +877,9 @@ typed component evidence over canonical prepared state, and the engine dispatche
 without events or history mutation.
 
 Additional schema revisions beyond 4, persisted history or command logs, authenticated integrity,
-public database adaptation, CLI, and scripting remain absent.
+public database adaptation, and CLI remain absent. This crate has no script interpreter or source
+loader; the supported API-local runtime above it preserves project meaning through the existing
+engine command, snapshot, persistence, integrity, autosave, and recovery owners.
 Autosave policy is process-local and recovery roots are caller selected; no background timer,
 persistent scheduler, wire adapter, runtime registry, plugin worker, or automatic recovery choice
 is claimed. Exact schemas 0, 1, 2, and 3 are the supported predecessors. Future, older unknown, or
@@ -926,6 +936,10 @@ explicit new `PROJECT_HASH_FORMAT_REVISION` and compatibility decision. Never ad
 revision, paths, save identity, autosave generations, SQLite schema or page layout, runtime state,
 or process state to the semantic content hash. Preserve typed component evidence and the eventless
 engine consumer together.
+
+Keep scripted project consumers on the same public command, immutable snapshot, canonical codec,
+database, integrity, autosave, and recovery paths. Never add a script-specific project schema,
+media identity, conflict policy, file format, hash, or recovery store.
 
 Refresh this map after any project source, manifest, public consumer, schema, or test change. Reread
 every changed file and relevant component interface through EOF, reconcile prose before recomputing

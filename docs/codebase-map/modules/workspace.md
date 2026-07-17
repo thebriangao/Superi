@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 2692249e88ee97bfe288a87c3444fd7e5beb8cfbf268e76cec7ca9f0888736a8
-source_files: 152
+source_hash: 3209781550ff165e1a08dfe726ab47f91448ea8b3aa76875929763721a56ea7b
+source_files: 153
 mapped_at_commit: working-tree
 ---
 
@@ -28,7 +28,7 @@ Google Docs work, and delivery itself without another agent. Multiple checkpoint
 Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers but obeys an
 explicit positive user concurrency value. The file is ignored by Git and copied into managed
 worktrees through `.worktreeinclude`, so the mapping script does not include it in this module's
-152-file inventory or source hash. It must still be reread independently before repository work.
+153-file inventory or source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
 ratified architecture, while `open/Cargo.toml` and `open/Cargo.lock` expose the dependency graph
@@ -320,6 +320,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P2.W07.C016.md`: Durable implementation evidence for the strict generic project
   command, every current authored operation family, complete pre-dispatch conversion, one mixed
   atomic engine transaction, correlated public events, database reload, and public undo plus redo.
+- `docs/checkpoints/P2.W07.C022.md`: Defines the supported local `superi-json` language, exact-source
+  digest contract, strict bounds, closed method vocabulary, deterministic interpretation,
+  conflict and committed-prefix behavior, permission preflight, event preservation, durable project
+  meaning, recovery compatibility, and versioning policy.
 - `docs/checkpoints/P2.W04.C010.md`: Durable implementation evidence for production input-device
   discovery, atomic record arming and monitoring, bounded exact-timestamp capture, and the real
   monitoring bridge into existing output playback.
@@ -430,7 +434,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 
 - `open/bindings/typescript/superi-api.ts`: Deterministic committed TypeScript representation of the
   public API. It contains all named DTOs, exact method, event, and resource maps, recursive wire
-  primitives, and a transport-neutral typed client without owning runtime IPC.
+  primitives, the bounded local scripting request, program, trace, and response types, and a
+  transport-neutral typed client without owning runtime IPC.
 - `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 25 local
   workspace packages, registry dependencies, target-support dependency trees, scenario digest
   and process-instrumentation dependency edges, the API introspection and validation contracts'
@@ -454,9 +459,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   internal dependency on `superi-concurrency` for bounded background rendering. `superi-effects`
   directly consumes Serde for its strict authored wires and now directly consumes the existing
   `serde_json` and `sha2` resolutions at runtime for canonical integrity-protected effect preset
-  documents. The `superi-api` package record also includes `superi-concurrency` because its
-  integration contract enters the real EngineControl domain; this is a test-only manifest edge and
-  does not change the runtime crate tiers. Text layout adds exact Swash 0.2.9, Skrifa
+  documents. The `superi-api` package record now consumes the already resolved `serde_json` and
+  `sha2` packages at runtime for strict local script interpretation and exact-source identity. It
+  also includes `superi-concurrency` as a test-only internal edge for real EngineControl proof and
+  enables the existing engine test-support seam for persistence, integrity, media, autosave, and
+  recovery proof without adding a direct API-to-project edge. Text layout adds exact Swash 0.2.9, Skrifa
   0.31.1, Unicode Bidi 0.3.18, and Unicode Linebreak 0.1.5 runtime packages plus test-only Font Test
   Data 0.5.0. The locked Indexmap resolution is 2.11.4 so the declared Rust 1.80 compiler can parse
   and build the affected graph and GPU dependency path. Audio output adds exact CPAL
@@ -478,8 +485,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   Unicode layout, and exact Specta 1.0.5 for opt-in TypeScript generation.
 - `open/README.md`: Compact open-tree orientation and build commands. It records the 19 runtime
   crates plus six repository tools, the committed TypeScript API artifact and freshness command,
-  the exact canonical runner command, contract-only status, and the remaining production
-  integration boundary.
+  the documented local scripting runtime, the exact canonical runner command, contract-only status,
+  and the remaining production integration boundary.
 - `open/ci/network-isolated-contract.sh`: Executable contract binding the dedicated workflow to
   immutable checkout, least privilege, locked artifact preparation, namespace isolation, fixture
   validation, namespace-aware interface inspection, and the exact canonical headless CLI invocation
@@ -627,7 +634,7 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
 - `open/Cargo.toml` exports inherited workspace package metadata, lints, and dependency declarations
   to every member manifest. The current glob expansion is 19 crate packages plus
   `superi-fixture-tool`, `superi-dependency-check`, `superi-boundary-tool`, `superi-bench`, and
-  `superi-test-report`, for 24 members total.
+  `superi-test-report`, and `superi-api-bindings`, for 25 members total.
 - `open/Cargo.lock` is the reproducible dependency-resolution surface for builds and audit tools.
 - `open/deny.toml`, `open/rust-toolchain.toml`, and `open/rustfmt.toml` are entry points for license
   audit, toolchain installation, and formatting.
@@ -755,9 +762,10 @@ orchestration assembles them; the API is the stable facade; and CLI is a headles
   runtime DAG.
 
 Cargo records test-only member dependencies in the same package dependency arrays as runtime
-dependencies. The `superi-api` lock entry therefore names `superi-concurrency` so its public engine
-introspection contract can exercise real EngineControl ownership, while the production API manifest
-still depends only on lower stable facade inputs and preserves runtime direction.
+dependencies. The `superi-api` lock entry names `superi-concurrency` so public contracts can
+exercise real EngineControl ownership. Production `serde_json` and `sha2` support strict local
+scripts, while the engine's existing feature-gated test-support seam exercises durable persistence,
+integrity, media, autosave, and recovery without a direct API-to-project edge.
 
 The API's optional `typescript-bindings` feature uses exact Specta 1.0.5 only to reflect its
 serializable DTO declarations. The `superi-api-bindings` tool consumes that feature, combines the
@@ -918,8 +926,11 @@ snapshot through one clockless typed autosave controller, publish a complete cur
 point through the existing atomic Backup path, and deterministically retain only the newest
 user-selected generation count. The engine consumer proves apply, undo, and redo state reach those
 artifacts exactly. The API now projects every current authored project action through one strict
-generic command, typed evidence, minimum history replacement state, and correlated event while CLI
-execution, scripting, subscriptions, and autosave scheduling remain later work. Durable extension
+generic command, typed evidence, minimum history replacement state, and correlated event. Its
+bounded digest-bound `superi-json` runtime interprets a closed command and editor-state step
+vocabulary through that same facade, preserves nested permission checks and ordinary events, and
+returns deterministic revision, semantic hash, conflict, and committed-prefix evidence. CLI
+execution, subscription hosting, script source loading, and autosave scheduling remain later work. Durable extension
 lifecycle remains user-controlled project state, while live plugin readiness stays derived from the
 engine supervisor and graph registry. The documented broader
 target coordinates project, timeline, graph, caches,
@@ -997,10 +1008,11 @@ already-resolved permissive serialization and hashing packages, remains offline,
 effects-to-graph dependency direction, and does not move atomic project storage or plugin hosting
 into the workspace layer.
 
-The API engine-introspection and integration-validation tests are the current test-only consumers
-recorded by that edge. They enter the concurrency-owned EngineControl domain to prove the real
-dispatcher seam; production API code does not import that crate, and no runtime ownership moves
-into the workspace layer.
+The API engine-introspection and integration-validation tests consume the test-only concurrency
+edge and enter the EngineControl domain to prove the real dispatcher seam. The scripting contract
+uses the engine's narrow feature-gated helper to prove real persistence, integrity, media, autosave,
+and recovery behavior without a direct project dependency. Production API code does not import the
+project owner directly, and no runtime ownership moves into the workspace layer.
 
 The documents deliberately point into other modules:
 
@@ -1019,7 +1031,7 @@ The documents deliberately point into other modules:
   `superi-engine` owns bounded compound project commands, session command history, extension
   dispatch, canonical asynchronous export-job scheduling, and integration;
   `superi-api` owns the stable public seam, including host-injected filesystem, plugin, and
-  destructive authorization plus strict nonblocking job inspection and cooperative control; and
+  destructive authorization, bounded local scripting, plus strict nonblocking job inspection and cooperative control; and
   `superi-cli` is the headless schema and exact-fixture scenario consumer.
 - `superi-fixture-tool` validates repository fixture policy but does not enter runtime engine flow.
 - `superi-dependency-check` validates the runtime Cargo graph but does not enter runtime engine flow.
@@ -1038,6 +1050,10 @@ of open runtime behavior.
   and Superi Max depends on open Superi rather than the reverse.
 - The public API is transport-neutral, versioned, typed, and shared by every client. Bulk media does
   not cross JSON-RPC or webview IPC.
+- Local scripts use exact digest-bound `superi-json`, a closed versioned step vocabulary, complete
+  nested permission preflight, and the same stable public project command surface. They do not gain
+  ambient file, process, network, or hidden mutation authority, and a stopped result preserves both
+  committed-prefix visibility and the last valid project evidence.
 - Public asynchronous job state is a strict projection of the engine-owned queue. Handles,
   progress, dependencies, cooperative controls, and ordered full replacement events may cross the
   public seam, while executors, host polling, waits, typed artifacts, and process-local queue
@@ -1190,6 +1206,12 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   timeline, graph, media, clip-mix, and extension mutation. A real mixed fixture proves one revision,
   one history unit, one correlated event, exact database reload, and fresh undo plus redo revisions
   without claiming C017 full snapshots, CLI routing, scripting, subscriptions, or wire transport.
+- `docs/checkpoints/P2.W07.C022.md` records the bounded local script language and stable runtime
+  contract. Focused API, catalog, generated binding, CLI discovery, persistence, integrity, media,
+  autosave, and recovery proofs cover exact-source validation, deterministic interpretation,
+  initial and later conflicts, committed-prefix visibility, and nested permission denial without
+  claiming arbitrary code, filesystem loading, operating-system sandboxing, or whole-script
+  atomicity.
 - The asynchronous job API contracts build on that canonical queue rather than introducing another
   scheduler. Focused API, schema, and CLI consumer proof covers strict handles, stable weighted
   priorities, unit progress, every cooperative control, deterministic dependency and handle order,
@@ -1349,7 +1371,8 @@ Its `superi-api` package record now includes one test-only concurrency edge for 
 introspection ownership contract without changing the production runtime graph.
 The API now owns a nonserializable host permission context, typed lexical filesystem and plugin
 scopes, explicit destructive operations, deny precedence, payload-derived requirements, and schema
-`1.1.0` discovery metadata without adding a dependency. The CLI exercises that boundary with one
+`1.2.0` discovery metadata. Its bounded `superi-json` runtime uses already resolved JSON and
+SHA-256 packages and preserves the same nested authorization and project command owner. The CLI exercises that boundary with one
 exact canonical fixture-read grant; authentication, symlink confinement, and operating-system
 sandboxing remain host and I/O-owner responsibilities.
 The effects crate now owns a substantive graph-native authoring SDK, exact animation curves,
@@ -1386,9 +1409,9 @@ records one immutable before-and-after unit, restores undo and redo targets with
 revisions, persists only the selected snapshot through the existing database, and exposes one
 correlated dispatcher event. Plugin, effect, AI artifact provenance, and unknown future extension
 records preserve exact payloads and user-controlled lifecycle without duplicating runtime plugin
-readiness. The generic public project command, typed evidence, and correlated history event are
-implemented. CLI execution, scripting, logging, subscriptions, complete stable snapshots, and
-autosave hosting remain incomplete.
+readiness. The generic public project command, typed evidence, correlated history event, complete
+stable editor snapshot, and local scripting runtime are implemented. CLI project or script
+execution, logging, subscription hosting, and autosave hosting remain incomplete.
 The synchronized remote revision before this checkpoint is
 `88edc77f54229818550107c90b418198b7511251`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the

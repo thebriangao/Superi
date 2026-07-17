@@ -368,6 +368,38 @@ pub struct EditorProjectState {
     clip_mix_resource: String,
 }
 
+impl EditorProjectState {
+    /// Returns the stable project identity.
+    #[must_use]
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+
+    /// Returns the current authored project revision.
+    #[must_use]
+    pub const fn project_revision(&self) -> u64 {
+        self.project_revision
+    }
+
+    /// Returns the project semantic hash algorithm.
+    #[must_use]
+    pub fn semantic_hash_algorithm(&self) -> &str {
+        &self.semantic_hash_algorithm
+    }
+
+    /// Returns the incompatible project semantic hash format revision.
+    #[must_use]
+    pub const fn semantic_hash_format_revision(&self) -> u32 {
+        self.semantic_hash_format_revision
+    }
+
+    /// Returns the deterministic semantic identity of the current project state.
+    #[must_use]
+    pub fn semantic_hash(&self) -> &str {
+        &self.semantic_hash
+    }
+}
+
 /// Complete canonical timeline and editorial state.
 #[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

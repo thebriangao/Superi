@@ -2,33 +2,35 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: 267ff5e53147ce3aeb9b4e6801c5c6032bd633176d08607b834d3a235e53d673
-source_files: 34
+source_hash: bc682d4d5c8ef5b89bbe67b1ae5a071da5f6ed81089c0adb65c0796c6b5242be
+source_files: 35
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
 `superi-api` owns the transport-neutral public boundary for UI, scripting, extension, CLI, and
-automation clients. Eleven public slices are implemented: media capability introspection, complete
+automation clients. Twelve public slices are implemented: media capability introspection, complete
 engine capability and health introspection for adaptive clients, canonical editorial scenario
 control through revision-fenced typed transactions and ordered full-state events, coherent
 read-only integration validation, durable project settings inspection and optimistic mutation,
 project crash recovery discovery, semantic comparison, durable restoration, exact dismissal,
 authored audio automation inspection and transaction execution through the full engine dispatcher,
-complete authored project control and complete editor replacement state through one generic
-revision-fenced facade, and asynchronous job inspection, progress, cooperative control, and ordered
+complete authored project control, deterministic local scripting, and complete editor replacement
+state through one generic revision-fenced facade, and asynchronous job inspection, progress, cooperative control, and ordered
 completion events over the engine-owned export queue, plus bounded ordered delivery for the complete
-public event vocabulary. The additive schema `1.1.0` catalog classifies all 26 current methods into
-15 commands and 11 queries, describes all eight events and 11 replacement resources, publishes the
+public event vocabulary. The additive schema `1.2.0` catalog classifies all 27 current methods into
+16 commands and 11 queries, describes all eight events and 11 replacement resources, publishes the
 complete error, capability, and permission vocabularies, and defines strict data-only JSON-RPC 2.0
 envelopes. A host-injected nonserializable permission context denies protected filesystem, plugin,
 and destructive operations by default, derives exact requirements from complete typed payloads,
 and authorizes before conversion or dispatch.
 The event stream adds API-owned registration, polling, backpressure, replay, and reconnect behavior
-without duplicating engine event ownership. Network transport, dynamic routing, push delivery,
-scripting, public job submission and typed job results, and project database file commands remain
-absent. The generic editor and job facades project the engine's existing owners without duplicating
+without duplicating engine event ownership. The local `superi-json` runtime validates exact
+digest-bound source, aggregates nested permission requirements, and interprets its closed step
+vocabulary only through the same project editor facade. Network transport, dynamic routing, push
+delivery, public job submission and typed job results, and project database file commands remain
+absent. The generic editor, scripting, and job facades project the engine's existing owners without duplicating
 state, history, scheduling, execution, or event ownership.
 The same canonical method, event, and resource registry now drives deterministic generated
 TypeScript declarations, strongly typed maps, JSON-RPC envelopes, and a transport-neutral client.
@@ -36,11 +38,12 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
 
 ## Source inventory
 
-- `open/crates/superi-api/Cargo.toml`: Declares production `serde`, `superi-core`, and
+- `open/crates/superi-api/Cargo.toml`: Declares production `serde`, `serde_json`, `sha2`, `superi-core`, and
   `superi-engine` dependencies, enabling the engine's narrow test-support fixture for this crate's
   public contract tests. The opt-in `typescript-bindings` feature adds exact Specta 1.0.5 only for
-  deterministic type derivation. Test-only `serde_json`, `sha2`, `superi-media-io`, and
-  `superi-concurrency` support real EngineControl and recovery contracts.
+  deterministic type derivation. Test-only `superi-media-io` and `superi-concurrency` support real
+  registry and EngineControl contracts. The existing engine test-support seam supplies the narrow
+  real persistence, integrity, autosave, and recovery proof without a direct API-to-project edge.
 - `open/crates/superi-api/src/api.rs`: Implements public media and complete engine introspection
   snapshots, strict engine-neutral projection including project, device, sleep, and wake state,
   independent revisions, query state, and full-replacement change events.
@@ -55,8 +58,8 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   removal, restore, and dismissal contracts.
 - `open/crates/superi-api/src/editor.rs`: Owns the strict generic project command, action, timeline,
   graph, media, clip-mix, and extension DTOs, checked engine conversion, typed history resource and
-  evidence, and the dispatcher-backed apply, inspect, undo, redo, event, state-query, and persistence
-  facade.
+  evidence, script prevalidation, and the dispatcher-backed apply, inspect, undo, redo, script,
+  event, state-query, and persistence facade.
 - `open/crates/superi-api/src/event_stream.rs`: Owns canonical stream and subscriber identities,
   finite retention and registration bounds, independent public sequencing, the closed eight-event
   union, command and observation correlation, immutable replay records, caller-held cursors,
@@ -73,7 +76,7 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   runtime executors and typed artifacts below the API boundary.
 - `open/crates/superi-api/src/lib.rs`: Exposes API, audio automation, command, event stream, event,
   project editor, complete editor state, asynchronous jobs, permissions, settings, project recovery,
-  scenario, public schema, scripting, validation, and version modules, plus the feature-gated
+  scenario, public schema, local scripting, validation, and version modules, plus the feature-gated
   TypeScript renderer.
 - `open/crates/superi-api/src/permissions.rs`: Owns validated serializable rules and requirements,
   component-aware project-relative, Unix, Windows drive, and Windows UNC scopes, exact and recursive
@@ -94,13 +97,18 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
 - `open/crates/superi-api/src/schema.rs`: Owns the deterministic complete public catalog, schema
   descriptors, method and resource traits, typed schema discovery query, strict JSON-RPC 2.0
   request and response envelopes, safe structured errors, reviewed contexts, last-valid resource
-  references, capability and permission vocabularies, per-method permission metadata, asynchronous
-  jobs, event subscription, and complete editor-state resource registration without dynamic routing
-  or engine state ownership.
-- `open/crates/superi-api/src/scripting.rs`: Placeholder for a scripting runtime.
+  references, capability and permission vocabularies, per-method permission metadata, local
+  scripting, asynchronous jobs, event subscription, and complete editor-state resource registration
+  without dynamic routing or engine state ownership.
+- `open/crates/superi-api/src/scripting.rs`: Implements the bounded `superi-json` language, strict
+  duplicate-key and nesting validation, exact-source SHA-256 checks, canonical script identities,
+  one initial revision fence, a closed project-command and editor-state step union, payload-derived
+  permission preflight, ordered typed traces, safe stopped results, and interpretation exclusively
+  through `ProjectEditorApi`.
 - `open/crates/superi-api/src/state.rs`: Owns the strict ten-domain complete editor replacement
   snapshot, canonical authored JSON resource envelopes, bounded extension descriptors, exact audio
-  routing and continuity projection, and dispatcher-backed read-only query facade.
+  routing and continuity projection, public project identity and semantic hash accessors for script
+  traces, and the dispatcher-backed read-only query facade.
 - `open/crates/superi-api/src/typescript.rs`: Collects every canonical request, response, event,
   resource, and structured error type through Specta; validates exact registry parity; preserves
   reviewed core wire encodings; and renders recursive JSON, strongly typed public maps, JSON-RPC
@@ -111,8 +119,9 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   accessors. It also provides the standalone starting-engine query owner used by the CLI and derives
   standalone construction failures from the shared user-safe projection.
 - `open/crates/superi-api/src/version.rs`: Owns all domain, catalog, and error schema revisions plus
-  permanent method and event names, including catalog revision `1.1.0`, the complete `superi.jobs`
-  vocabulary, the editor-state query, and event subscription open, close, and poll methods.
+  permanent method and event names, including catalog revision `1.2.0`, scripting schema `1.0.0`,
+  `superi.project.script.run`, the complete `superi.jobs` vocabulary, the editor-state query, and
+  event subscription open, close, and poll methods.
 - `open/crates/superi-api/tests/async_jobs_contract.rs`: Proves strict handles, stable kind and
   weighted priority vocabulary, nonblocking progress and completion, every cooperative transition,
   cancel-all finality, deterministic ordering, dependency state, safe failure filtering, typed
@@ -164,6 +173,11 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
 - `open/crates/superi-api/tests/scenario_contract.rs`: Covers the strict canonical schema, complete
   state projection, exact undo plus redo evidence, structured last-valid-state failures, and
   negative proof that private paths and raw engine context values never serialize.
+- `open/crates/superi-api/tests/scripting_contract.rs`: Proves permanent runtime identity, every
+  bound, strict parsing, exact-source integrity, deterministic typed traces, real mutation and state
+  inspection, media identity and fingerprint preservation, SQLite reload, project integrity,
+  recovery comparison and restoration, initial and later conflict behavior, committed-prefix
+  visibility, and nested permission denial before dispatch.
 - `open/crates/superi-api/tests/editor_state_contract.rs`: Covers the permanent query and resource,
   strict deterministic ten-domain state, exact canonical payload identity, explicit optional
   runtime owners, project color intent, and no-poll playback and export observations.
@@ -173,8 +187,8 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
 
 ## Public surface
 
-The public schema catalog is schema `1.1.0` at query method `superi.api.schema.get`.
-`PublicApiSchemaSnapshot` records stable primitive revision 1 and JSON-RPC `2.0`, then separates 15
+The public schema catalog is schema `1.2.0` at query method `superi.api.schema.get`.
+`PublicApiSchemaSnapshot` records stable primitive revision 1 and JSON-RPC `2.0`, then separates 16
 mutating commands from 11 read-only queries and lists all eight current replacement events, 11
 current replacement resources, one complete error vocabulary, one capability vocabulary, and one
 permission vocabulary in canonical name order. `ApiCommand` declares method kind, schema version,
@@ -293,6 +307,16 @@ lengths, and SHA-256 identities. Audio state retains integral sample clocks, ord
 channels, explicit routing or mute targets, and exact continuity seams. Detached, attached without
 an observation, pending, and observed runtime owners remain distinct, while packets, frames,
 samples, textures, extension payload bytes, and export result bytes remain private.
+
+The local scripting surface is schema `1.0.0` at command `superi.project.script.run`. One request
+carries exact UTF-8 `superi-json` source and its required lowercase SHA-256 digest. The strict
+program names language and version, one canonical script identity, the expected initial project
+revision, and one to 256 ordered steps drawn only from `superi.project.command.execute` and
+`superi.editor.state.get`. Source is capped at 1,048,576 bytes, identifiers at 128 bytes, and JSON
+nesting at 128 levels. The result preserves language, source, project identity, initial and final
+revision and semantic hash evidence, ordered typed successful steps, optional user-safe failure,
+the failed index, completed, rejected, or stopped status, and whether any prefix effect committed.
+Source loading and filesystem confinement remain caller-owned.
 
 The asynchronous job surface is schema `1.0.0`, with query `superi.jobs.get`, commands
 `superi.jobs.pause`, `superi.jobs.resume`, `superi.jobs.retry`, `superi.jobs.cancel`,
@@ -449,6 +473,24 @@ plus observations already cached by the dispatcher. It does not poll workers, di
 files, or create another mutable state owner. The facade's immutable project snapshot borrow remains
 only the existing in-process persistence seam.
 
+Local scripts compose that same facade rather than introducing a scripting mutation model:
+
+```text
+exact UTF-8 source plus required SHA-256
+  -> strict bounded duplicate-key-aware superi-json parse and validation
+  -> one initial project revision fence and complete nested permission preflight
+  -> ProjectEditorApi sealed RunProjectScript request
+  -> each supported step through the existing ExecuteProjectCommand or GetEditorState path
+  -> ordered typed trace with initial and final semantic hash evidence
+```
+
+An initial revision conflict rejects every step. A later command failure stops the remaining suffix
+and returns the complete last valid project evidence while preserving any earlier independently
+committed public commands and their ordinary events. Repeating source against an identical complete
+initial runtime state produces the same interpretation. The runtime does not evaluate JavaScript,
+load modules, open files, create a hidden transaction, rewrite project schemas, suppress inner
+events, or claim whole-script atomicity.
+
 Projection preserves stable core identifiers as strings, exact rational rates, named timeline and
 track identity, half-open ranges, full image-port graph topology, row-major binary64 mirror matrix,
 sampling and edge behavior, and original mutation revisions. Unknown future engine enum variants
@@ -540,6 +582,9 @@ messages, contexts, paths, and source chains never serialize.
 ## Dependencies and consumers
 
 - `serde` supplies strict snake-case and tagged serialized shapes with unknown-field rejection.
+- `serde_json` supplies bounded local source decoding and canonical typed JSON values, while the
+  runtime's custom seed rejects duplicate object members and excessive nesting before execution.
+- Exact `sha2` 0.10.9 binds every script request to the caller's exact UTF-8 source bytes.
 - Exact optional Specta 1.0.5 derives TypeScript declarations only when the
   `typescript-bindings` feature is selected. It does not enter the default API or engine graph.
 - `superi-core` supplies semantic versions, canonical names, stable primitive revision 1, feature
@@ -554,9 +599,10 @@ messages, contexts, paths, and source chains never serialize.
   and the canonical export queue projected as public asynchronous jobs. This public crate has no
   production project, timeline, graph, audio, or export executor dependency, and neither public
   facade becomes another state owner.
-- `serde_json`, `sha2`, `superi-media-io`, and `superi-concurrency` are test dependencies for wire,
-  digest, registry, and EngineControl contracts. The feature-gated engine test-support seam creates
-  real file-backed recovery artifacts without adding API-to-project or API-to-timeline edges.
+- `superi-media-io` and `superi-concurrency` are test dependencies for registry and EngineControl
+  contracts. The feature-gated engine test-support seam exercises real project persistence,
+  integrity, media, autosave, and recovery owners for the scripting contract without adding any
+  direct API-to-project or API-to-timeline edge.
 - `superi-cli` is the first production Rust consumer of `PublicApiSchemaApi`, `ScenarioApi`, and
   `IntegrationValidationApi`. Its schema process contract consumes the job registrations without
   reconstructing the catalog or projecting engine state directly. Its scenario consumer binds one
@@ -566,8 +612,9 @@ messages, contexts, paths, and source chains never serialize.
   artifact is consumed by `ci/frontend-smoke` through strict TypeScript checking and a production
   Vite bundle.
 
-No network transport, application UI, shell, scripting runtime, extension host, or closed-tier
-client is present. The event stream is a transport-neutral in-process owner that a later server can
+No network transport, application UI, shell source loader, extension host, or closed-tier client is
+present. The local script interpreter is an in-process public API consumer, not a process sandbox
+or general-purpose language runtime. The event stream is a transport-neutral in-process owner that a later server can
 expose, and the frontend smoke package is a real generated-contract consumer, not an application.
 
 ## Invariants and operational boundaries
@@ -634,6 +681,18 @@ expose, and the frontend smoke package is a real generated-contract consumer, no
   command sequence, returns typed history state, and emits no event.
 - Every generic apply converts the entire public value before dispatch and becomes one bounded
   compound transaction, one project revision, one history unit, and at most one correlated event.
+- Script source is exact digest-bound UTF-8 and must pass the source-size, duplicate-key, depth,
+  language, identity, step-count, method, and nested request bounds before interpretation.
+- Script method support is closed and versioned. Every step reuses the existing public request and
+  response type, engine dispatcher, revision fence, permission boundary, event behavior, semantic
+  hash, and persistence owner instead of introducing a parallel command path.
+- The initial project revision fence runs before the first step. A later failure stops the suffix
+  but cannot roll back or hide an earlier public command that already committed. The result makes
+  committed-prefix visibility explicit through status, completed records, final revision, final
+  semantic hash, and `effects_committed`.
+- Nested permission requirements are parsed and unioned before any script step dispatch. Each inner
+  command retains its ordinary authorization as defense in depth, and denial changes no command,
+  project, file, recovery, or event state.
 - Invalid identifiers, exact time, finite numeric values, media paths, graph values, clip controls,
   extension records, empty batches, and bounds publish no partial state or event.
 - Complete editor state is captured by one dispatcher command against one selected project
@@ -714,12 +773,12 @@ three-node graph with image ports, exact mirror parameters, four stable operatio
 plus two redo actions, final revision 8, structured engine context, last-valid-state retention, and
 serialized exclusion of a private missing-source path and raw context values.
 
-Four public schema contracts prove the exact 15-command, 11-query, eight-event, and 11-resource
-surface, current domain versions, catalog schema `1.1.0`, error schema `1.0.0`, media schema `2.0.0`,
+Four public schema contracts prove the exact 16-command, 11-query, eight-event, and 11-resource
+surface, current domain versions, catalog schema `1.2.0`, error schema `1.0.0`, media schema `2.0.0`,
 stable primitive revision 1, strict deterministic catalog round trips, invalid identity and
 duplicate rejection, typed JSON-RPC exclusivity, all four recovery classes, user-safe diagnostic
 filtering, last-valid resource identity and revision, the complete permission vocabulary, and exact
-permission metadata for all 26 methods. They include every public asynchronous job and event
+permission metadata for all 27 methods. They include local scripting, every public asynchronous job and event
 subscription method and resource, but do not claim a network transport server, dynamic method
 routing, push delivery, authentication, or negotiation.
 
@@ -769,7 +828,17 @@ EngineControl fixture executes one six-action project transaction across graph, 
 clip mix, extension, and selected root state, then proves one revision, one history unit, one
 correlated event, exact database reload, undo, and redo through the same public facade.
 
-These tests do not prove wire delivery ordering, scripting, UI integration, media decoding, graph
+Five scripting contracts lock the `superi-json` language, schema, method, canonical file suffix,
+source, step, identity, and depth bounds. They prove exact-source SHA-256 rejection, duplicate and
+unknown object rejection, unsupported language rejection, empty and oversized program rejection,
+deterministic equal traces from equal complete initial runtimes, mutation plus state-query steps,
+media identity and fingerprint retention, exact SQLite reopen, verified project integrity, recovery
+discovery, comparison, and restore, initial conflict with no effect, later conflict with committed
+prefix visibility, stopped suffix exclusion, and nested filesystem or plugin denial before the
+first dispatch. They prove an in-process bounded local language, not arbitrary code execution,
+module loading, source-file ownership, an operating-system sandbox, or whole-script atomicity.
+
+These tests do not prove wire delivery ordering, UI integration, media decoding, graph
 pixel evaluation, native presentation, or runtime export publication.
 
 Three integration validation contracts prove schema `1.0.0`, the permanent method name, strict
@@ -808,7 +877,7 @@ bulk runtime payloads or hidden polling.
 
 ## Current status and risks
 
-The API now has ten substantive domain surfaces plus bounded ordered event delivery, one complete
+The API now has eleven substantive domain surfaces plus bounded ordered event delivery, one complete
 discovery catalog, and strict wire grammar, including one unified generic authored project command
 and editor-state facade plus one asynchronous job control surface. Engine introspection gives
 clients a coherent adaptation view without adding mutation
@@ -817,7 +886,7 @@ evidence. Project settings retain exact durable scalar meaning, and project reco
 complete strict discover, compare, restore, and dismiss surface without leaking file identity. The
 API still does not expose project file open or save, public job submission or typed results,
 network transport, dynamic routing, push delivery, persisted replay, authentication,
-operating-system sandboxing, a scripting runtime, or CLI editor execution.
+operating-system sandboxing, script source loading, general-purpose code execution, or CLI editor execution.
 Host-injected authorization now covers every current
 caller-selected filesystem target, plugin state and delegation mutation, and destructive job,
 recovery, and automation operation before dispatch.
@@ -831,8 +900,9 @@ owner, but schema 1 does not persist lanes or address pan, sends, buses, effects
 The generic editor facade now reaches the engine's project command-history owner for apply, undo,
 redo, inspection, semantic evidence, and correlated replacement events. It intentionally exposes
 minimum history replacement state beside the complete editor snapshot through the same sealed
-request handler. Project file commands, live wire routing, push delivery, scripting, and broader
-automation adaptation remain later checkpoints.
+request handler. Local scripting now consumes that handler with a strict digest-bound command
+document and complete conflict trace. Project file commands, live wire routing, push delivery, and
+broader automation adaptation remain later checkpoints.
 
 Asynchronous job control is a substantive strict projection over the canonical engine export queue.
 It keeps user-visible work responsive through nonblocking state replacement and cooperative
@@ -845,8 +915,8 @@ the CLI; a production UI must supply fresh observations from its live dispatcher
 not supply transport, endpoint mutation, or background polling.
 
 The separate media, engine introspection, integration validation, scenario, event stream, catalog, and error
-schema versions are correct for independent surfaces. The catalog is `1.1.0` because permission
-metadata is additive while individual method and resource schemas retain their own versions.
+schema versions are correct for independent surfaces. The catalog is `1.2.0` because local
+scripting is additive while individual method and resource schemas retain their own versions.
 Data-only JSON-RPC framing, bounded retryable polling, and host-injected authorization now exist,
 while network hosting, dynamic routing, version negotiation, authentication, persisted replay, and
 push delivery remain required before remote clients exist. Public scenario failure state
@@ -892,6 +962,12 @@ Keep generic editor DTOs API-owned and strict, conversions complete before dispa
 authored apply operations inside one engine-owned compound transaction. Add every new lower editor
 operation to the explicit parity contract, public evidence projection, schema catalog, CLI schema
 consumer, and real dispatcher proof without adding direct API dependencies on lower domain crates.
+Keep `superi-json` closed, bounded, exact-source digest checked, and interpreted only through the
+sealed project editor request path. Adding a supported step requires the existing public method and
+typed response, exact nested permission derivation before execution, catalog and TypeScript parity,
+deterministic trace proof, conflict and partial-commit review, and real persistence or runtime
+consumer evidence. Never add direct file loading, process execution, networking, ambient authority,
+hidden retries, silent event draining, or a second authored-state model to the scripting module.
 Keep asynchronous job handles canonical, all query and control paths routed through the attached
 engine export queue, and every event a verified full replacement from the ordered engine envelope.
 Do not catalog host polling, executor submission, waiting, or typed result access. Preserve exact

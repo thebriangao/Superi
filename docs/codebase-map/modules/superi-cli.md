@@ -2,7 +2,7 @@
 module_id: superi-cli
 source_paths:
   - open/crates/superi-cli
-source_hash: b93df081b721dcab2e86a659edb10c6d99e5744e52013f7f199d497a65832a60
+source_hash: 0236c67e641fb02e5dacc0c40bb06c521b5d0bcc7c9b32c8ac4de024ea68d19c
 source_files: 8
 mapped_at_commit: working-tree
 ---
@@ -25,8 +25,8 @@ recovery actions, workflow admission, playback, and export state.
 The exact `api schema` command is a third public API consumer. It asks `PublicApiSchemaApi` for the
 same deterministic catalog used by typed clients and prints all current command, query, event,
 resource, error, capability, and permission schemas, including the complete asynchronous job
-control vocabulary, complete editor-state discovery, and bounded event subscription control and
-polling, without reconstructing registry data in the CLI. The canonical scenario consumer binds one
+control vocabulary, complete editor-state discovery, the bounded local scripting command, and
+bounded event subscription control and polling, without reconstructing registry data in the CLI. The canonical scenario consumer binds one
 exact read permission for its resolved canonical fixture and grants no repository-wide filesystem
 authority.
 
@@ -61,7 +61,7 @@ production owner is explicit in stage diagnostics and the artifact name.
   exits with its exact status.
 - `open/crates/superi-cli/tests/api_schema_cli_contract.rs`: Proves deterministic exact schema
   discovery output, catalog and primitive identity, all seven schema categories, exact current counts
-  and method names including the generic project command, asynchronous job query and controls, and
+  and method names including the generic project and local script commands, asynchronous job query and controls, and
   complete editor-state discovery, event subscription open, close, and poll, plus the permission
   vocabulary and per-method metadata, help coverage, and invalid usage status.
 - `open/crates/superi-cli/tests/scenario_runner.rs`: Provides process contracts for two-run
@@ -95,7 +95,7 @@ superi-cli api schema
 ```
 
 Schema discovery success prints exactly one strict `PublicApiSchemaSnapshot` JSON value containing
-catalog schema `1.1.0`, stable primitive revision 1, JSON-RPC `2.0`, 15 commands, 11 queries,
+catalog schema `1.2.0`, stable primitive revision 1, JSON-RPC `2.0`, 16 commands, 11 queries,
 eight events, 11 resources, one error schema, one capability schema, and one permission schema in
 canonical order. Every method carries its permission mode and possible kinds. Discovery starts no
 engine, routes no operation, and owns no transport, permission authority, or registry state.
@@ -158,7 +158,7 @@ PublicApiSchemaApi
 ```
 
 The CLI neither duplicates the explicit API registration list nor imports engine types for schema
-discovery. It discovers the public permission, asynchronous job, and event stream schemas but
+discovery. It discovers the public permission, local scripting, asynchronous job, and event stream schemas but
 exposes no policy parser, job or subscription query, control, submission, polling, waiting, or
 result command of its own.
 
@@ -209,11 +209,11 @@ success.
 ## Dependencies and consumers
 
 - `superi-api` supplies all three public boundaries used by the binary: deterministic schema
-  discovery including permission and asynchronous job control metadata, revisioned permission-bound
+  discovery including permission, scripting, and asynchronous job control metadata, revisioned permission-bound
   scenario transactions, and immutable coherent integration validation.
 - Engine project-history types are deliberately not a dependency. The CLI continues to depend only
   on `superi-api`; the generic editor contract is discoverable, while project apply, undo, redo,
-  scripting, and automation command routing remain absent from this binary.
+  script source loading or execution, and automation command routing remain absent from this binary.
 - `serde` and `serde_json` parse strict manifests and serialize state, stages, reports, artifacts,
   summaries, and failures.
 - `sha2` computes manifest, payload, semantic state, timeline, graph, operation log, and artifact
@@ -308,7 +308,7 @@ application session, UI rendering, endpoint polling, or long-session recovery.
 
 Two API schema process contracts prove deterministic semantics across separate invocations, exact
 catalog, primitive, and JSON-RPC identity, all seven schema sections, exact current counts and method
-names including the generic editor registration, every asynchronous job query and control, and
+names including the generic editor and `superi.project.script.run` registrations, every asynchronous job query and control, and
 `superi.editor.state.get`, event subscription open, close, and poll, the complete permission
 vocabulary, and exact method permission metadata, plus help coverage and precise invalid usage.
 They do not prove method routing, wire transport, event delivery, host policy persistence, job
@@ -330,6 +330,11 @@ Schema discovery now exposes the stable asynchronous job catalog, but the CLI in
 job-control parser or runtime attachment. A future headless job workflow must consume the same
 API-owned query, command, replacement event, and resource contracts rather than importing the
 engine queue or adding a second scheduler.
+
+Schema discovery now also exposes the bounded `superi-json` runtime with payload-derived permission
+metadata. The CLI intentionally has no script path argument, source loader, policy owner, or
+execution command; a future adapter must pass exact digest-bound source through the existing API
+method rather than interpret another language or bypass `ProjectEditorApi`.
 
 Schema discovery also exposes bounded event registration and polling, but the CLI intentionally has
 no live stream owner or subscriber command. A later headless client can consume the same API-owned

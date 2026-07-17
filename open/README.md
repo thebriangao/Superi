@@ -48,6 +48,13 @@ The canonical public API registry also drives the committed desktop-facing TypeS
 `bindings/typescript/superi-api.ts`. Regenerate it with `superi-api-bindings generate`; use the
 nonmutating `check` command in verification.
 
+The supported local `superi-json` runtime accepts bounded `.superi-script.json` source through
+`superi.project.script.run`. It executes the existing generic project command and complete editor
+state query through the one public editor owner, with exact-source integrity, permission preflight,
+conflict visibility, typed traces, and normal project durability. See
+`../docs/checkpoints/P2.W07.C022.md` for the language, bounds, failure semantics, and complete source
+example.
+
 ## The rules that govern this tree
 
 - **Offline law** (`../docs/architecture.md`): no network for core functionality, ever.

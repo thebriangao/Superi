@@ -41,6 +41,7 @@ use crate::permissions::{
 use crate::project::ProjectSettingsSnapshot;
 use crate::recovery::ProjectRecoverySnapshot;
 use crate::scenario::ScenarioStateSnapshot;
+use crate::scripting::RunProjectScript;
 use crate::state::EditorStateSnapshot;
 use crate::validation::IntegrationValidationSnapshot;
 use crate::version::{
@@ -1483,6 +1484,7 @@ macro_rules! for_each_public_method {
         $callback::<CompareProjectRecovery>($($argument),+)?;
         $callback::<RestoreProjectRecovery>($($argument),+)?;
         $callback::<DismissProjectRecovery>($($argument),+)?;
+        $callback::<RunProjectScript>($($argument),+)?;
         $callback::<GetAudioAutomation>($($argument),+)?;
         $callback::<GetEditorState>($($argument),+)?;
         $callback::<ExecuteAudioAutomationTransaction>($($argument),+)?;
@@ -1593,6 +1595,7 @@ pub(crate) fn register_typescript_surface(
     for_each_public_event!(register_typescript_event, registry);
     for_each_public_resource!(register_typescript_resource, registry);
     registry.register_common::<PublicApiError>()?;
+    registry.register_common::<crate::scripting::ProjectScriptProgram>()?;
     Ok(())
 }
 

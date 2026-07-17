@@ -3,7 +3,7 @@
 use superi_core::settings::SemanticVersion;
 
 /// Schema version for the complete public API catalog.
-pub const PUBLIC_API_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 1, 0);
+pub const PUBLIC_API_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 2, 0);
 
 /// Schema version for structured public API failures.
 pub const PUBLIC_ERROR_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
@@ -28,6 +28,12 @@ pub const PROJECT_EDITOR_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(
 
 /// JSON-RPC method for one generic authored project command.
 pub const EXECUTE_PROJECT_COMMAND_METHOD: &str = "superi.project.command.execute";
+
+/// Schema version for the bounded local scripting language and execution trace.
+pub const SCRIPTING_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
+
+/// JSON-RPC method for validating and running exact local script source.
+pub const RUN_PROJECT_SCRIPT_METHOD: &str = "superi.project.script.run";
 
 /// Ordered event name for generic authored project state changes.
 pub const PROJECT_STATE_CHANGED_EVENT: &str = "superi.project.state.changed";

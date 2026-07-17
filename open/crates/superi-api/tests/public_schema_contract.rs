@@ -27,6 +27,7 @@ const COMMANDS: &[&str] = &[
     "superi.project.command.execute",
     "superi.project.recovery.dismiss",
     "superi.project.recovery.restore",
+    "superi.project.script.run",
     "superi.project.settings.transaction.execute",
     "superi.slice.scenario.action.execute",
     "superi.slice.scenario.transaction.execute",
@@ -101,7 +102,7 @@ fn current_catalog_is_complete_versioned_sorted_and_deterministic() {
     assert_eq!(snapshot.capability().availability().len(), 4);
     assert_eq!(
         snapshot.permission().schema().version().to_string(),
-        "1.1.0"
+        "1.2.0"
     );
     assert_eq!(snapshot.permission().requirement_modes().len(), 3);
     assert_eq!(snapshot.permission().kinds().len(), 3);
@@ -376,7 +377,7 @@ fn expected_permission(
             ApiPermissionRequirementMode::PayloadDependent,
             &[ApiPermissionKind::Destructive],
         ),
-        "superi.project.command.execute" => (
+        "superi.project.command.execute" | "superi.project.script.run" => (
             ApiPermissionRequirementMode::PayloadDependent,
             &[ApiPermissionKind::Filesystem, ApiPermissionKind::Plugin],
         ),

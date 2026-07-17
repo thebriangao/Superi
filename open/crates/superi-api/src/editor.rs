@@ -17,6 +17,7 @@ use crate::permissions::{
     ApiPermissionRequirements, ApiPluginOperation,
 };
 use crate::schema::{ApiResource, PublicMethodKind};
+use crate::scripting::RunProjectScript;
 use crate::version::{
     EXECUTE_PROJECT_COMMAND_METHOD, PROJECT_EDITOR_SCHEMA_VERSION, PROJECT_HISTORY_RESOURCE,
 };
@@ -110,6 +111,19 @@ impl ExecuteProjectCommand {
             self.expected_project_revision,
             self.command,
         )
+    }
+
+    pub(crate) fn validate_for_script(&self) -> Result<()> {
+        let (transaction_id, _, command) = self.clone().into_parts();
+        let _ = engine::EngineTransactionId::new(transaction_id)?;
+        if let ProjectCommand::Apply { actions } = command {
+            let actions = actions
+                .into_iter()
+                .map(ProjectAction::into_engine)
+                .collect::<Result<Vec<_>>>()?;
+            let _ = engine::CompoundProjectTransaction::new(actions)?;
+        }
+        Ok(())
     }
 }
 
@@ -2808,6 +2822,14 @@ impl request_sealed::Sealed for GetEditorState {}
 impl ProjectEditorRequest for GetEditorState {
     fn dispatch(self, api: &mut ProjectEditorApi) -> Result<<Self as ApiCommand>::Response> {
         crate::state::execute_editor_state(&mut api.dispatcher, self)
+    }
+}
+
+impl request_sealed::Sealed for RunProjectScript {}
+
+impl ProjectEditorRequest for RunProjectScript {
+    fn dispatch(self, api: &mut ProjectEditorApi) -> Result<<Self as ApiCommand>::Response> {
+        crate::scripting::execute_project_script(api, self)
     }
 }
 

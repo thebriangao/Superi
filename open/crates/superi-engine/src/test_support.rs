@@ -10,11 +10,14 @@ use superi_core::time::{RationalTime, Timebase};
 use superi_project::autosave::{
     ProjectAutosaveCommand, ProjectAutosaveController, ProjectAutosavePolicy,
 };
-use superi_project::document::ProjectDocument;
+use superi_project::document::{ProjectDocument, ProjectSnapshot};
 use superi_project::settings::{
     ProjectSettingMutation, ProjectSettingsTransaction, AUDIO_SAMPLE_RATE_KEY,
 };
-use superi_project::ProjectDatabase;
+use superi_project::{
+    execute_project_integrity_command, ProjectDatabase, ProjectIntegrityCommand,
+    ProjectIntegrityStatus, ProjectRecoveryController,
+};
 use superi_timeline::model::{EditorialProject, LinkedMediaReference, Timeline};
 
 use crate::dispatcher::EngineCommandDispatcher;
@@ -103,4 +106,66 @@ pub fn project_recovery_dispatcher_fixture(
     dispatcher.attach_project(current)?;
     dispatcher.attach_project_recovery(database, recovery_root)?;
     Ok((dispatcher, candidate_path))
+}
+
+/// Proves that one selected snapshot survives the real integrity and recovery owners.
+pub fn verify_project_snapshot_integrity_and_recovery(
+    active_path: impl AsRef<Path>,
+    recovery_root: impl AsRef<Path>,
+    snapshot: &ProjectSnapshot,
+) -> Result<ProjectSnapshot> {
+    let integrity = execute_project_integrity_command(ProjectIntegrityCommand::Validate {
+        path: active_path.as_ref().to_path_buf(),
+    })?;
+    let identity = integrity.identity().ok_or_else(|| {
+        Error::new(
+            ErrorCategory::Internal,
+            Recoverability::Terminal,
+            "project integrity proof did not return verified identity",
+        )
+    })?;
+    if integrity.status() != ProjectIntegrityStatus::Valid
+        || !integrity.inspection_complete()
+        || !integrity.findings().is_empty()
+        || identity.project_id() != snapshot.project_id()
+        || identity.document_revision() != snapshot.revision()
+        || identity.root_timeline_id() != snapshot.root_timeline_id()
+    {
+        return Err(Error::new(
+            ErrorCategory::Internal,
+            Recoverability::Terminal,
+            "project integrity proof did not preserve the selected snapshot",
+        ));
+    }
+
+    let recovery_root = recovery_root.as_ref();
+    let mut autosave = ProjectAutosaveController::new(snapshot.project_id())?;
+    autosave.execute(ProjectAutosaveCommand::Configure {
+        policy: ProjectAutosavePolicy::new(false, Duration::from_secs(60), recovery_root, 2)?,
+        elapsed: Duration::ZERO,
+    })?;
+    autosave.execute(ProjectAutosaveCommand::SaveNow {
+        elapsed: Duration::from_secs(1),
+        snapshot: snapshot.clone(),
+    })?;
+
+    let mut recovery = ProjectRecoveryController::new(snapshot.project_id(), recovery_root)?;
+    let catalog = recovery.discover()?.clone();
+    if !catalog.findings().is_empty() || catalog.candidates().len() != 1 {
+        return Err(Error::new(
+            ErrorCategory::Internal,
+            Recoverability::Terminal,
+            "project recovery proof did not discover one valid candidate",
+        ));
+    }
+    let candidate_id = catalog.candidates()[0].id();
+    let comparison = recovery.compare(catalog.revision(), candidate_id, snapshot)?;
+    if comparison.has_changes() {
+        return Err(Error::new(
+            ErrorCategory::Internal,
+            Recoverability::Terminal,
+            "project recovery proof changed selected snapshot meaning",
+        ));
+    }
+    recovery.load_candidate_for_restore(catalog.revision(), candidate_id, snapshot)
 }

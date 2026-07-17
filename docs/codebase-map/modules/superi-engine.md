@@ -2,7 +2,7 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: b78ec364b53a8b7f7731454d46b8aaf2851d8f1b583a3fab0e095ac6364bcba0
+source_hash: 12734cb8d31086bc7dd1535f9c013f40506f2150f272a3bb47631d442894a53f
 source_files: 68
 mapped_at_commit: working-tree
 ---
@@ -177,8 +177,9 @@ through the existing dispatcher.
   opens each source, selects and creates each decoder once, retains policy evidence, and publishes
   one all-or-nothing owner bundle.
 - `open/crates/superi-engine/src/test_support.rs`: Feature-gated hidden construction of a minimal
-  valid project document and one real file-backed recovery dispatcher fixture for upper-tier API
-  contract tests, without widening dependency direction.
+  valid project document, one real file-backed recovery dispatcher fixture, and one narrow selected
+  snapshot integrity, autosave, comparison, and recovery proof for upper-tier API contract tests,
+  without widening dependency direction or exposing a production project edge.
 - `open/crates/superi-engine/src/transport.rs`: Implements playback-domain pause, play, seek,
   superseding scrub, exact frame step, reduced signed rate, direction, half-open loop, rational
   clock cadence, prediction replanning, protected discontinuities, bounded ordinary late-frame
@@ -347,6 +348,8 @@ dispatcher commands, snapshots, and database consumer needed by `superi-api::Pro
 It owns no behavior and deliberately does not derive or define wire serialization for lower-domain
 types. This keeps API conversion dependent only on `superi-engine` and `superi-core` while every
 semantic check remains with its existing lower owner.
+The API-local scripting runtime reuses this same seam and sealed editor dispatcher; engine owns no
+script language, parser, source loader, trace, permission policy, or competing mutation path.
 
 `history` exposes the production Rust project command-history surface:
 
@@ -1219,6 +1222,10 @@ audio mutation, so their user intent remains attached without synthesis.
   editor-state queries. Generic project history is projected through strict API-owned DTOs, typed
   evidence, and correlated replacement events, while recovery is projected through opaque
   identities and user-safe findings.
+  The API-local `superi-json` runtime interprets only its existing generic project command and
+  complete editor-state request through that facade, so scripts retain engine revision fences,
+  history, lower-domain validation, event sequencing, and selected snapshot meaning without adding
+  an engine script owner.
 - Cache and GPU retain their own exact local budget enforcement, audio retains its preallocated
   callback-safe queue, media I/O retains decoded value and lifecycle ownership, and export retains
   logical job and publication ownership. The engine arbiter composes a higher shared managed-byte
@@ -1551,6 +1558,12 @@ snapshot, then performs public undo and redo. Its parity table covers every curr
 timeline, graph, media, clip-mix, and extension operation without widening the engine dependency
 graph or making lower types wire owners.
 
+The downstream scripting contract drives that same curated seam through the API-local script
+interpreter. It proves real mutation and state inspection, committed-prefix visibility after a
+later conflict, unchanged state after an initial conflict or permission denial, ordinary event
+retention, and exact persistence, integrity, media, autosave, and recovery compatibility without
+adding engine source parsing or scripting state.
+
 One project-autosave consumer contract applies a real media-path mutation through that history,
 autosaves the selected snapshot, then repeats after undo and redo. It opens all three recovery-point
 databases through the public project owner and requires exact snapshot equality, including durable
@@ -1836,7 +1849,8 @@ surface submits prepared work, polls the host runtime, waits, retrieves typed ar
 files. The derived-media driver
 and resolver are synchronous and caller-owned, and no application or API path invokes them yet.
 Clip-mix reconciliation, extension mutation, and compound project mutation are substantive and now
-entered by the generic public API as well as Rust callers, but not by the playback controller.
+entered by the generic public API, its bounded local scripting consumer, and Rust callers, but not
+by the playback controller.
 Lifecycle is a production control-plane contract that now names project
 and device boundaries across sleep and wake, but later platform callbacks, additional typed project
 mutation adapters, native device owners, render submission, export
@@ -1879,6 +1893,9 @@ in project, timeline, graph, audio, API, or CLI owners.
 Keep `editor` a behavior-free curated reexport seam for the public adapter. New authored operations
 must stay implemented and validated by their lower owners, then be added to this seam only when the
 API has a strict DTO, complete conversion, parity proof, and real dispatcher consumer.
+Keep scripting interpretation, exact-source identity, method vocabulary, and traces in the API.
+Script steps must continue through the same sealed editor request, dispatcher, revision fences,
+history, events, and lower-domain owners rather than creating an engine script dispatcher.
 Keep `InspectProjectDiagnostics` bound to the selected immutable history snapshot and delegate all
 hash framing, component evidence, versioning, and exclusions to `superi-project`. Preserve its typed
 complete result, successful command sequencing, missing-owner failure, eventless behavior, and zero
