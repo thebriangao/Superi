@@ -4,8 +4,9 @@
 //! immutable snapshots, atomic revision-fenced edits, timeline compilations,
 //! named standalone graphs, durable project settings, stable schema-2 project
 //! serialization, checked schema migration, atomic save publication, portable
-//! referenced-media paths, and MediaId-keyed relink commands are implemented.
-//! Autosave and recovery remain staged in their dedicated modules.
+//! referenced-media paths, MediaId-keyed relink commands, and deterministic
+//! project autosave scheduling and retention are implemented. Recovery remains
+//! staged in its dedicated module.
 
 pub mod autosave;
 pub mod document;
@@ -16,6 +17,11 @@ pub mod recovery;
 mod save;
 pub mod settings;
 
+pub use autosave::{
+    ProjectAutosaveArtifact, ProjectAutosaveCommand, ProjectAutosaveController,
+    ProjectAutosaveDisposition, ProjectAutosaveOperation, ProjectAutosaveOutcome,
+    ProjectAutosavePolicy, ProjectAutosaveState, MAX_PROJECT_AUTOSAVE_RETENTION,
+};
 pub use media::MEDIA_PATH_TARGET_FORMAT;
 pub use persist::{
     ProjectDatabase, PROJECT_APPLICATION_ID, PROJECT_FORMAT, PROJECT_FORMAT_VERSION,

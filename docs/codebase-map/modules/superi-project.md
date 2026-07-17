@@ -2,8 +2,8 @@
 module_id: superi-project
 source_paths:
   - open/crates/superi-project
-source_hash: fdadf15a85a4c78f5cd8c2fec0aea72361931f7c68329615d357f74a4896f2c8
-source_files: 16
+source_hash: 0b9529dda3c6f2ad7ea65c389a1a8d0cbe7a581f9ecef7125a07f01231c3b2ba
+source_files: 17
 mapped_at_commit: working-tree
 ---
 
@@ -38,16 +38,28 @@ document also exposes one checked whole-snapshot restore seam for the engine-own
 policy. Restoration preserves project identity, validates the complete aggregate, and publishes a
 fresh monotonic document revision instead of reviving an old revision number.
 
+The project autosave boundary owns one clockless and threadless controller per `ProjectId`. A host
+supplies monotonic elapsed time and immutable selected snapshots through one typed command surface.
+The controller publishes complete current-schema recovery points through the existing atomic
+no-clobber `Backup` authority, assigns strictly parsed numeric generations, retains a bounded
+user-selected count, and prunes only regular files in its project-owned namespace. Policy and
+schedule state remain session-local, while every completed artifact is an ordinary independently
+openable `.superi` database containing the complete editable project meaning.
+
 This module does not own command-history storage, branching, or selection policy. It also does not
-yet own persisted command logs, autosave policy, recovery journals, unknown extension preservation,
-modified-since-open conflict policy, or direct file commands in the public API and CLI. Those remain
-assigned to later project checkpoints.
+yet own persisted command logs, recovery discovery, restore or dismissal policy, interrupted-save
+candidate cleanup, unknown extension preservation, modified-since-open conflict policy, or direct
+file commands in the public API and CLI. Those remain assigned to later project checkpoints.
 
 ## Source inventory
 
 - `open/crates/superi-project/Cargo.toml`: Declares core, graph, timeline, exact workspace
   `rusqlite`, workspace SHA-256, and JSON settings component dependencies.
-- `open/crates/superi-project/src/autosave.rs`: Placeholder for autosave policy and execution.
+- `open/crates/superi-project/src/autosave.rs`: Implements validated runtime policy, host-driven
+  monotonic scheduling, typed configure, tick, save-now, prune, and inspect commands, deterministic
+  project and artifact naming, atomic Backup publication, bounded collision retry, strict managed
+  namespace inspection, count-based retention, safe regular-file pruning, and classified failure
+  or postpublication cleanup evidence.
 - `open/crates/superi-project/src/document.rs`: Implements `ProjectDocument`, immutable snapshots,
   private edit candidates, authoritative settings, retained timeline compilations, named standalone
   graphs, revision fencing, checked reconstruction and restoration, fresh monotonic restore
@@ -55,7 +67,7 @@ assigned to later project checkpoints.
 - `open/crates/superi-project/src/lib.rs`: Documents the implemented aggregate, schema-2
   persistence, migration, settings, atomic save, and referenced-media boundaries, exports public
   project modules, keeps migration and save mechanics private, and re-exports the database, save
-  command surface, and stable format constants.
+  and autosave command surfaces, and stable format constants.
 - `open/crates/superi-project/src/migrate.rs`: Owns exact schema-0 and schema-1 contracts, the
   contiguous 0-to-1-to-2 migration registry, secured compatibility decoding, root-rate-derived
   settings defaults, checked aggregate reconstruction, transactional canonical rewrites, full
@@ -99,12 +111,19 @@ assigned to later project checkpoints.
 - `open/crates/superi-project/tests/project_settings_contract.rs`: Proves default and configured
   settings, strict atomic revision-fenced transactions, no-op behavior, complete domain validation,
   schema-2 durability, manifest coverage, and migration defaults.
+- `open/crates/superi-project/tests/autosave_contract.rs`: Proves deterministic scheduling, enable
+  and disable control, manual publication, unchanged suppression, missing-artifact republication,
+  large forward jumps, monotonic-time rejection, exact current-schema snapshot recovery points,
+  unchanged active-project bytes, strict generation ownership, count retention independent of
+  filesystem timestamps, explicit pruning, foreign and save-candidate preservation, symlink
+  rejection before deletion, policy and deadline bounds, no-clobber generation selection,
+  generation exhaustion, state-preserving failure, and same-time retry.
 
 ## Public surface
 
 The crate root exports `autosave`, `document`, `media`, `persist`, `recovery`, and `settings`, keeps
-save mechanics private, and re-exports the stable persistence and save authorities, project format
-constants, and media path target format identifier.
+save mechanics private, and re-exports the stable persistence, save, and autosave authorities,
+project format constants, and media path target format identifier.
 
 - `ProjectDocument::new` accepts one `EditorialProject` and selected `TimelineId`, compiles that
   root through `superi_timeline::compile_timeline`, derives deterministic settings from its edit
@@ -162,6 +181,23 @@ constants, and media path target format identifier.
   filesystem mutation, builds and reloads one complete current-schema candidate, closes and
   synchronizes it, then atomically publishes it. Save-as rebinds active identity at the publication
   commit point; copy and backup retain the prior active identity.
+- `ProjectAutosavePolicy` validates enabled state, a nonzero interval, one explicit existing
+  canonical recovery root, and retention from one through
+  `MAX_PROJECT_AUTOSAVE_RETENTION` recovery points. It contains runtime policy only and never enters
+  project schema or authored meaning.
+- `ProjectAutosaveCommand` supplies `Configure`, `Tick`, `SaveNow`, `Prune`, and `Inspect` through
+  one public controller entrypoint. `ProjectAutosaveOperation` and
+  `ProjectAutosaveDisposition` distinguish typed work and successful no-work outcomes without
+  exposing a direct publisher or deletion bypass.
+- `ProjectAutosaveController` binds permanently to one `ProjectId`, accepts caller-supplied
+  monotonic `Duration` values, validates immutable snapshot identity, publishes through
+  `ProjectSaveCommand::Backup`, schedules at most one recovery point per observed tick, and retains
+  no thread, clock, or global process state.
+- `ProjectAutosaveArtifact`, `ProjectAutosaveState`, and `ProjectAutosaveOutcome` expose completed
+  generation, absolute path, project revision, active policy, accepted elapsed time, next deadline,
+  latest successful publication, managed count, and per-command prune progress. A completed managed
+  name is `autosave-g<20 zero-padded decimal generation>.superi` inside
+  `project-<32 lowercase raw ProjectId hex>`.
 - `ProjectDatabase::replace` delegates file-backed state to `Save` and keeps the existing checked
   immediate transaction for in-memory state. Both paths pre-encode one immutable snapshot, bound
   all content, write every row including settings, reload through public component decoders, and
@@ -243,6 +279,30 @@ File publication adds one explicit commit boundary:
    postpublication failures report `publication_state=published`, unconfirmed durability, exact
    destination and candidate context, and a recovery action without claiming rollback.
 
+Autosave composes that publication authority without another persistence model:
+
+1. Configuration validates caller policy, rejects backward elapsed time, anchors one checked next
+   deadline, creates only the bound project's direct child under an existing canonical root, and
+   applies a lower retention limit before committing controller state.
+2. A periodic tick returns disabled or not due without publication. At a due boundary it suppresses
+   a duplicate only when the last successful periodic revision still has its exact managed file,
+   advances a new deadline from the observed time, and never performs catch-up bursts.
+3. `SaveNow` always publishes, including while periodic scheduling is disabled or the immutable
+   revision is unchanged. Every successful publish chooses one checked generation and delegates the
+   complete snapshot to no-clobber `Backup`; a destination collision causes a bounded rescan and
+   retry, never replacement.
+4. Scanning recognizes only the exact project directory and strict 20-digit artifact syntax,
+   revalidates the directory without following a final symlink, inspects every managed name with
+   `symlink_metadata`, sorts by parsed generation, and ignores all foreign, malformed, and
+   `.superi-save-candidate-` entries.
+5. Automatic and explicit pruning preflight every managed entry, retain the newest configured
+   count, remove older regular files individually, never recurse, and synchronize a completed
+   deletion batch where supported. A cleanup error after publication preserves the new artifact and
+   reports its exact generation, path, project revision, and partial prune progress.
+6. Policy, elapsed anchors, and last-publication state live only in the controller. A restart reads
+   no timer journal, while each completed artifact remains a complete current-schema database for
+   C010 recovery discovery and validation.
+
 Load follows the same path without partial publication. One deferred read transaction pins a
 coherent SQLite snapshot across every identity, schema, metadata, component, and manifest query.
 Timeline bytes reconstruct the validated `EditorialProject`, and settings bytes reconstruct the
@@ -318,8 +378,9 @@ and acquires the exact reachable source and decoder set before one resources pub
   to build exact legacy revision-0 component fixtures from current canonical payloads.
 - `superi-engine` consumes immutable snapshots for transactional resource acquisition, adapts
   project-owned referenced-media paths into media-I/O source requests, resolves settings into
-  existing subsystem types, dispatches authoritative settings transactions, and exclusively owns
-  bounded command history over the checked whole-snapshot restore seam.
+  existing subsystem types, dispatches authoritative settings transactions, exclusively owns
+  bounded command history over the checked whole-snapshot restore seam, and supplies the real
+  selected history snapshot used by the autosave consumer contract after apply, undo, and redo.
 - `superi-api` consumes project settings only through engine-owned re-exports and dispatcher
   commands. API and CLI do not yet expose database file commands. Later file commands must wrap
   this owner instead of creating another project or database authority.
@@ -371,6 +432,20 @@ and acquires the exact reachable source and decoder set before one resources pub
   active state, retains no live SQLite handle across ordinary calls, and never reports an unconfirmed
   postpublication error as if the old path were restored. Directory synchronization is explicit on
   Unix; other platforms do not receive an unsupported physical-durability guarantee.
+- Autosave is bound to exactly one project identity and accepts only caller-supplied monotonic time.
+  It starts no timer or thread, stores no process clock in project meaning, publishes at most once
+  for each observed tick, and rejects backward time without changing schedule or files.
+- Periodic duplicate suppression requires both the same document revision and the still-present
+  exact managed recovery point. Manual save-now always publishes. Failed publication marks neither
+  a revision nor a deadline complete and may retry at the same elapsed value.
+- Managed autosave ownership is defined only by the exact project child name and exact 20-digit
+  generation syntax. Retention is count based and generation ordered, never wall-clock, mtime, or
+  directory order based. Unknown names and save candidates remain untouched.
+- A managed-name symlink, directory, or nonregular entry blocks every prune before deletion.
+  Pruning uses individual `remove_file` calls only, never recursion or glob expansion, and retains
+  honest partial progress plus publication evidence when cleanup fails.
+- Autosave does not open retained artifact contents during scan or prune. C010 owns database
+  validation, comparison with the active project, recovery choice, restoration, and dismissal.
 
 ## Tests and verification
 
@@ -417,6 +492,16 @@ postpublication stage, exercise destination races, classify representative stora
 abort subprocesses at candidate-close, candidate-sync, publication, and completion stages for both
 rename and no-clobber publication paths.
 
+`autosave_contract.rs` contains five public controller contracts. They prove exact due boundaries,
+disable and re-enable control, forced manual recovery points, unchanged periodic suppression,
+republication after external removal, one-save forward jumps, backward-time atomicity, exact
+current-schema reopen equality, unchanged active-project bytes, deterministic generation order
+despite reversed mtimes, bounded retention, explicit pruning, strict lookalike exclusion, candidate
+and foreign-file preservation, managed-name symlink rejection before any delete, invalid policy and
+deadline rejection, no-clobber next-generation selection, generation exhaustion without state
+advance, and same-time retry. The engine consumer separately autosaves selected immutable history
+state after apply, undo, and redo and requires exact snapshot equality on every reopen.
+
 Timeline's serialization contract independently round trips a real compiled multicam graph through
 the public graph codec and rejects unknown `TimelineGraphValue` fields and tags. The engine resource
 contract opens an exact schema-0 fixture through the public database owner and proves that the
@@ -433,18 +518,23 @@ exact schema-0 and schema-1 compatibility, ordered forward migration, checked re
 create and read-only reopen, writable current or legacy open, versioned referenced-media paths,
 stable identity commands, and the real engine and public API consumers are substantive and
 test-backed. Its checked whole-snapshot restore seam supports the engine-owned session command
-history without moving branching policy or retained entries into the project crate.
+history without moving branching policy or retained entries into the project crate. Its typed
+autosave controller adds deterministic host-driven scheduling, complete current-schema recovery
+points, bounded count retention, strict managed naming, safe pruning, and user control while reusing
+the same atomic Backup authority and leaving active project identity unchanged.
 
-Additional schema revisions, persisted history or command logs, autosave, recovery, unknown
-extension preservation, modified-since-open policy, dirty-state hashing, public database adaptation,
-CLI, and scripting remain absent. Exact schemas 0 and 1 are the supported predecessors. Future,
-older unknown, or extended layouts remain rejected until an explicit migration or preservation
-contract exists. Current atomicity proofs cover ordinary local filesystem semantics and do not claim
-strict cross-process compare-and-swap after the final destination recheck, network filesystem
-behavior, or physical power-loss proof on every platform. Rust 1.80 exposes no stable portable
-Windows file identity, so a pre-existing Windows hard-link alias is not recognized as the active
-path; explicit collision policy still prevents unintended no-clobber publication, and
-replace-existing changes only the named destination entry without mutating the original active link.
+Additional schema revisions, persisted history or command logs, recovery discovery and restoration,
+unknown extension preservation, modified-since-open policy, dirty-state hashing, public database
+adaptation, CLI, and scripting remain absent. Autosave policy is process-local and recovery roots are
+caller selected; no background timer, persistent scheduler, wire adapter, or recovery choice is
+claimed. Exact schemas 0 and 1 are the supported predecessors. Future, older unknown, or extended
+layouts remain rejected until an explicit migration or preservation contract exists. Current
+atomicity proofs cover ordinary local filesystem semantics and do not claim strict cross-process
+compare-and-swap after the final destination recheck, network filesystem behavior, or physical
+power-loss proof on every platform. Rust 1.80 exposes no stable portable Windows file identity, so a
+pre-existing Windows hard-link alias is not recognized as the active path; explicit collision
+policy still prevents unintended no-clobber publication, and replace-existing changes only the
+named destination entry without mutating the original active link.
 
 Bundled SQLite increases the locked build graph and must remain pinned to the Rust 1.80-compatible
 rusqlite 0.32.1 path unless a separately verified upgrade changes that decision. Integrity digests
@@ -466,8 +556,10 @@ exact successor step appended to the contiguous migration registry. Do not chang
 schema 1, or schema 2 in place after release. Keep every file-backed save operation on
 `ProjectSaveCommand` and the existing complete-candidate
 publication path. Preserve active-path rebinding at the publication commit point, explicit collision
-policy, precommit cleanup ownership, and honest published-error context together. Extend autosave and
-recovery through their assigned modules without creating another project or file authority.
+policy, precommit cleanup ownership, and honest published-error context together. Keep autosave
+clockless, host-driven, count-bounded, and routed through `ProjectSaveCommand::Backup`. Preserve its
+strict filenames, foreign-entry exclusion, regular-file-only pruning, and postpublication evidence
+when C010 adds recovery discovery and choice without creating another project or file authority.
 
 Refresh this map after any project source, manifest, public consumer, schema, or test change. Reread
 every changed file and relevant component interface through EOF, reconcile prose before recomputing

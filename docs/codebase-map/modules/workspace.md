@@ -817,9 +817,14 @@ state. The engine now dispatches canonical scenario transactions and lifecycle c
 ordered replacement state events. It also owns a bounded typed command history around the real
 project document and every currently authored project media command. Apply, undo, and redo share one
 revision-fenced dispatcher path, restore complete immutable snapshots at fresh monotonic revisions,
-and preserve failure and no-op branches. The API projects the earlier scenario transaction seam and
-the CLI consumes it; project-history wire, API, CLI, and scripting projection remain later work. The
-documented broader target coordinates project, timeline, graph, caches,
+and preserve failure and no-op branches. The project layer can now consume any selected immutable
+snapshot through one clockless typed autosave controller, publish a complete current-schema recovery
+point through the existing atomic Backup path, and deterministically retain only the newest
+user-selected generation count. The engine consumer proves apply, undo, and redo state reach those
+artifacts exactly, but engine scheduling, recovery choice, API, CLI, and scripting adapters remain
+later work. The API projects the earlier scenario transaction seam and the CLI consumes it;
+project-history wire, API, CLI, and scripting projection remain later work. The documented broader
+target coordinates project, timeline, graph, caches,
 persistence, undo, events, playback, and export and presents the same command surface to UI, CLI,
 scripts, extensions, and Superi Max, with no privileged closed-tier route.
 
@@ -910,8 +915,9 @@ The documents deliberately point into other modules:
 - `superi-graph`, `superi-cache`, `superi-color`, `superi-effects`, `superi-timeline`, `superi-audio`,
   and `superi-ai` own evaluation and capability layers.
 - `superi-project` owns aggregate validation, checked snapshot restoration, database persistence,
-  and atomic file publication; `superi-engine` owns bounded session command history and integration;
-  `superi-api` owns the stable public seam; and `superi-cli` is the headless consumer.
+  atomic file publication, deterministic autosave scheduling, managed recovery-point retention, and
+  pruning; `superi-engine` owns bounded session command history and integration; `superi-api` owns
+  the stable public seam; and `superi-cli` is the headless consumer.
 - `superi-fixture-tool` validates repository fixture policy but does not enter runtime engine flow.
 - `superi-dependency-check` validates the runtime Cargo graph but does not enter runtime engine flow.
 - `superi-boundary-tool` validates source boundaries but does not enter runtime engine flow.
@@ -932,6 +938,10 @@ of open runtime behavior.
 - Authored project changes use one typed engine command-history surface. Retained before and after
   snapshots are bounded session state, the selected project snapshot is the only durable state, and
   domain crates do not own competing undo stacks.
+- Autosave policy and monotonic elapsed state remain session-local and project-owned. Completed
+  recovery points are complete current-schema `.superi` databases, count retention is ordered only
+  by strict numeric generation, unknown and candidate files are preserved, and recovery discovery,
+  restore, dismissal, and conflict policy remain separate owners.
 - The graph is the render primitive, and timeline compilation is deterministic. UI state is not a
   hidden render input. Local AI and automation produce normal editable, undoable artifacts.
 - The canonical slice keeps one typed editable graph state across timeline inspection, preview, CLI,
@@ -993,6 +1003,14 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   and one-thread values, and ran `codex --strict-config doctor --summary --ascii --no-color`. Codex
   reported the configuration loaded without warnings; the noninteractive terminal capability
   remains an environment note rather than a configuration failure.
+
+- The project autosave contract proves host-driven due boundaries, enable and disable control,
+  forced manual recovery points, exact current-schema snapshot reopen, unchanged active-project
+  bytes, strict generation ownership, timestamp-independent retention, foreign and candidate
+  preservation, safe tamper rejection, generation exhaustion without schedule success, and retry.
+  Its real engine consumer autosaves the selected history snapshot after apply, undo, and redo.
+  This headless proof does not claim an engine worker, wire adapter, UI, recovery choice, network
+  filesystem semantics, or physical power-loss testing.
 
 - `docs/checkpoints/P2.W05.C002.md` records the shared typed graph payload, concrete built-in effect
   schemas, caller-owned graph authoring, bounded CPU reference behavior, exact ROI and pixel
@@ -1176,16 +1194,20 @@ canonical integrity-protected documents, while effects-to-project integration an
 plugin execution remain incomplete. The effects-side isolated OpenFX contract and engine-side
 bundle discovery, launch coordination, containment, and graph availability are implemented, while
 concrete platform transport, native OFX ABI adapters, and GPU-handle IPC remain absent.
-The project crate now owns a stable schema-1 SQLite application database with deterministic
-timeline and graph component rows, SHA-256 evidence, checked in-memory replacement, checked reload,
-durable nonoverwriting create, read-only reopen, and an ordered exact schema-0-to-schema-1 migration
-inside one immediate transaction. It also owns one typed save, save-as, copy, and backup surface that
-builds, validates, closes, synchronizes, and atomically publishes complete same-parent current-schema
-candidates under explicit collision policy, with active-path rebinding and honest postpublication
-state. The lockfile records exact rusqlite 0.32.1 and libsqlite3-sys 0.30.1 with bundled SQLite, plus
-project JSON and engine rusqlite test edges. Additional project schema revisions, settings, persisted
-command logs, autosave, recovery journals, modified-since-open conflict policy, API adaptation, and
-CLI exposure remain incomplete.
+The project crate now owns a stable schema-2 SQLite application database with deterministic
+timeline, settings, and graph component rows, SHA-256 evidence, checked in-memory replacement,
+checked reload, durable nonoverwriting create, read-only reopen, and contiguous exact schema-0 and
+schema-1 migration inside one immediate transaction. It owns authoritative versioned timeline,
+color, audio, cache, proxy, and render settings plus one typed save, save-as, copy, and backup surface
+that builds, validates, closes, synchronizes, and atomically publishes complete same-parent
+current-schema candidates under explicit collision policy, with active-path rebinding and honest
+postpublication state. Its clockless autosave controller now adds host-driven monotonic scheduling,
+strict managed generations, complete Backup recovery points, bounded count retention, explicit
+pruning, and typed user control without another persistence model. The lockfile records exact
+rusqlite 0.32.1 and libsqlite3-sys 0.30.1 with bundled SQLite, plus project JSON and engine rusqlite
+test edges. Additional project schema revisions, persisted command logs, recovery discovery and
+restoration, modified-since-open conflict policy, API adaptation, and CLI exposure remain
+incomplete.
 The engine now owns a production Rust project command-history boundary around that aggregate. It
 records successful authored media changes as bounded immutable before-and-after units, restores
 undo and redo targets through project validation with fresh monotonic revisions, persists only the
@@ -1299,9 +1321,12 @@ The largest current risk is cross-document drift:
 - `open/rust-toolchain.toml` follows floating `stable`, while workspace package metadata promises a
   Rust 1.80 floor. The hosted workflow still installs floating stable and there is no recurring
   Rust 1.80 lane. The text checkpoint freshly checks the affected `superi-effects` all-target graph
-  and the project persistence checkpoint freshly checks `superi-project` with Cargo and Rust 1.80.0
-  against the locked compatible dependency resolution, but those focused local proofs are not a
-  recurring whole-workspace hosted guarantee.
+  and the project persistence and autosave checkpoints freshly check `superi-project` with Cargo and
+  Rust 1.80.0 against the locked compatible dependency resolution, but those focused local proofs
+  are not a recurring whole-workspace hosted guarantee. An engine-wide Rust 1.80 all-target check
+  reaches the unchanged rav1d 1.1.0 use of `std::ptr::fn_addr_eq`, which is unavailable on that
+  compiler, before it can establish an engine MSRV lane; current hosted and local engine gates use
+  the repository's stable toolchain.
 - The dependency-policy workflow uses third-party actions by major version tags rather than commit
   digests. It grants only read access, but action-version immutability is not enforced by this file.
 - The shell contract check is intentionally exact-line based. It catches deletion or textual drift

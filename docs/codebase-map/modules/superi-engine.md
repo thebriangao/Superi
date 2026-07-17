@@ -2,8 +2,8 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 23e012ef16a9953fda7a5c7cd83659ba9d40f82afa06c8c5daf19be46074885c
-source_files: 57
+source_hash: aa19b2ee98ceda2fa5d2ae1fdc16df1330a11a7ad54281af2289c517f6cdaa8e
+source_files: 58
 mapped_at_commit: working-tree
 ---
 
@@ -38,6 +38,10 @@ The scenario command path remains a bounded reference owner for contract conform
 history path instead wraps the real `superi-project` document, media command, and settings owners,
 without
 replacing timeline, graph, media, color, render, persistence, or muxing policy.
+The selected immutable snapshot from that history path is also the real consumer input for the
+project-owned autosave contract. Engine production source does not own autosave policy, filesystem
+publication, retention, scheduling, or recovery choice, and no dispatcher or wire command is added
+by that proof.
 
 ## Source inventory
 
@@ -248,6 +252,10 @@ replacing timeline, graph, media, color, render, persistence, or muxing policy.
   full-project undo and redo, branch clearing only after a successful authored change, failure and
   no-op preservation, bounded oldest-entry eviction, monotonic revision exhaustion, schema-2 SQLite
   durability of the selected snapshot, and the real media resource consumer after reversal.
+- `open/crates/superi-engine/tests/project_autosave_contract.rs`: Proves that immutable selected
+  history state after authored apply, undo, and redo reaches the project-owned autosave command
+  surface as complete current-schema recovery points, including exact revisions, settings, media
+  references, editorial state, and retained graphs, without adding an engine autosave owner.
 - `open/crates/superi-engine/tests/project_settings_dispatcher_contract.rs`: Proves authoritative
   project attachment, exact typed resolution for all six policy domains, optimistic transactions,
   no-op event suppression under a full queue, invalid and stale rollback, ordered replacement
@@ -506,6 +514,14 @@ history owner also records project settings transactions as `ProjectSettings` ch
 project-owned validation path. Timeline edit aggregation, clip-mix composition, graph edits, and
 other cross-owner transactions require later typed adapters and the compound transaction owner.
 They do not bypass this history surface or gain an implicit undo stack in their domain crates.
+
+The autosave consumer contract takes the exact immutable snapshot selected after apply, undo, and
+redo and sends it to `superi-project::ProjectAutosaveController::execute` with explicit elapsed
+time. The project owner publishes and reopens each current-schema artifact, and equality proves that
+history-selected revision, settings, referenced media, editorial meaning, and retained graphs all
+survive. This is a real cross-crate consumer proof, not an engine dispatcher integration: a future
+background I/O host must own the controller and route typed commands without blocking EngineControl,
+Playback, Render, or Audio.
 
 ### Engine command dispatch and event publication
 
@@ -955,9 +971,11 @@ audio mutation, so their user intent remains attached without synthesis.
   production command integration. Project supplies the implemented mutable whole-project document
   and immutable snapshots consumed by settings dispatch, command history, and resource preparation,
   including snapshots reconstructed by its schema migration path. It supplies the checked document
-  restoration seam and authored media commands wrapped by `ProjectCommandHistory`; project remains
-  authoritative for settings keys, validation, defaults, and persistence, while engine owns typed
-  subsystem resolution and bounded session history.
+  restoration seam, authored media commands wrapped by `ProjectCommandHistory`, and the typed
+  autosave controller exercised by the selected-history-state consumer contract; project remains
+  authoritative for settings keys, validation, defaults, persistence, autosave scheduling,
+  recovery-point publication, and pruning, while engine owns typed subsystem resolution and bounded
+  session history.
   Test-only rusqlite creates the exact legacy database fixture without entering the engine runtime
   graph, and its referenced-media path adapter constructs local `SourceRequest` values. Engine
   lifecycle still names only abstract project quiescence, and engine implements neither persistence
@@ -994,6 +1012,10 @@ audio mutation, so their user intent remains attached without synthesis.
 - Project history is session-local operational state and never enters project snapshots or SQLite.
   The selected immutable snapshot remains the only durable project state, so database reload starts
   with empty history around the loaded revision.
+- Autosave policy, elapsed time, retention, filesystem publication, and recovery-point ownership
+  remain in `superi-project`. Engine supplies only an immutable selected snapshot in its consumer
+  proof. No engine dispatcher, lifecycle action, worker, or execution domain may perform blocking
+  autosave filesystem work inline.
 - Transaction IDs, pending events, retained error messages, and copied context frames are hard
   bounded. Successful command and event sequences are independently monotonic, each event retains
   its originating command sequence, and both exhaustion paths are checked before mutation.
@@ -1219,6 +1241,13 @@ oldest-entry eviction, and revision-exhaustion atomicity. The durability proof w
 snapshot to schema-2 SQLite, reloads with empty session history, and passes the canonical AV1 fixture
 through `acquire_project_resources` after reversal.
 
+One project-autosave consumer contract applies a real media-path mutation through that history,
+autosaves the selected snapshot, then repeats after undo and redo. It opens all three recovery-point
+databases through the public project owner and requires exact snapshot equality, including durable
+settings and referenced-media state, while generation evidence advances from one through three.
+This proves consumer compatibility only; it does not add engine scheduling, worker, dispatcher,
+wire, or recovery-selection behavior.
+
 Three project settings dispatcher contracts attach one real project document and prove complete
 default inspection, exact typed resolution across timeline, color, audio, cache, proxy, and render,
 one atomic optimistic mutation, and an ordered full replacement event. They also prove no-op success
@@ -1404,7 +1433,9 @@ needed by public clients without opening a mutation path.
 Typed project settings resolution and dispatcher control are substantive and test-backed. They
 preserve durable authored scalar meaning and expose one real API path, but resolution does not
 automatically reconfigure live timeline, color, audio, cache, proxy, or render owners. Project
-database open, save, and recovery commands remain outside engine and API.
+database open and save commands, autosave control, and recovery commands remain outside engine and
+API. The selected-history autosave contract proves exact snapshot compatibility without creating a
+production engine owner for those operations.
 
 One orchestration file remains a documentation-only placeholder. Source registration, timeline
 media preparation, deterministic lifecycle, classified failure propagation and recovery,
@@ -1471,6 +1502,10 @@ snapshots only after successful semantic changes, preflight dispatcher event cap
 mutation, preserve both branches on failure and no-op, and restore only through the project-owned
 revision-fenced monotonic seam. Add later command adapters and compound transactions without placing
 history stacks in project, timeline, graph, audio, API, or CLI owners.
+Keep the selected immutable snapshot directly consumable by the project-owned autosave command. A
+future background I/O integration may route that public surface, but must not duplicate policy,
+publication, naming, retention, or recovery choice in engine and must not block EngineControl,
+Playback, Render, or Audio.
 Keep settings keys, defaults, candidate validation, and persistence project-owned. Engine may only
 resolve validated snapshots into existing subsystem types and dispatch transactions through the
 same `ProjectCommandHistory` document owner. Preserve dynamic no-op event reservation, complete
