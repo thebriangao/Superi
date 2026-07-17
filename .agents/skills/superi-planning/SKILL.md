@@ -1,6 +1,6 @@
 ---
 name: superi-planning
-description: Use when an agent receives one Superi checklist checkpoint or must revise its implementation plan after discovering changed code, requirements, standards, dependencies, or research.
+description: Use when one Superi checkpoint needs a single plan-only tier 2 researcher to inspect Google Docs, maps, current code, and external evidence before the checkpoint owner implements it alone.
 ---
 
 # Superi Planning
@@ -10,70 +10,75 @@ description: Use when an agent receives one Superi checklist checkpoint or must 
 Plan from evidence, not memory. Find the smallest complete path from the assigned checkpoint to
 working, testable behavior through Superi's real architecture.
 
+## Roles
+
+The checkpoint owner synchronizes and claims the work, creates one tier 2 research planner, then
+implements and delivers the checkpoint alone. The research planner performs broad ingestion and hard
+architectural reasoning, but its only writes are the two mandatory files under
+`plans/<checkpoint-id>/`. No checkpoint may create a second tier 2 agent for any reason.
+
 ## Build the plan
 
-1. **Pin and claim as owner.** The tier 0 or tier 1 checkpoint owner reads the exact checkpoint and
-   surrounding workstream from both configured tabs, extracts the behavior and boundaries, places the
-   exact timestamped `CLAIMED |` suffix, and verifies both tabs through fresh readback. The owner also
-   synchronizes the repository and records the base revision before delegating expensive work.
-2. **Create the planning team.** Spawn project-scoped `superi-tier2` specialists with detailed
-   assignments under the checkpoint team model in root `AGENTS.md`. Use parallel map, raw-file,
-   standards, dependency, license, security, platform, or algorithm researchers where the work is
-   independent. Name peers and require direct coordination when their evidence intersects.
-3. **Assign one lead planner.** Make one tier 2 lead planner the sole writer of
-   `plans/<checkpoint-id>/planning.md`. Give it the live checkpoint specification, repository law,
-   base revision, required output schema, and every evidence handoff. Other specialists send concise
-   findings to the lead planner and owner rather than creating extra plan documents.
-4. **Load the codebase maps.** Assigned specialists run the map validator, refresh any missing or
-   stale relevant map with `superi-mapping`, then read the global index, every directly affected map,
-   and every caller, consumer, contract, and runtime-path map in full. Omit another map only through
-   the root `AGENTS.md` raw-code substitution rule. Record each reader, complete inventory, ownership,
-   dependency direction, public boundary, runtime flow, current status, and likely raw-file scope.
-   Never use a stale map or search result as source evidence.
-5. **Read the implementation path.** Assigned specialists read every raw file that may change from
-   first line through EOF, plus all relevant callers, consumers, public interfaces, manifests, tests,
-   schemas, fixtures, and governing docs needed to trace and prove the checkpoint. Apply the same rule
-   to every directly changed module. Continue after truncation until EOF and report the exact reading
-   inventory, omitted-map substitutes, consumer path, recent history, material findings, and open
-   questions to the planner and owner.
-6. **Research uncertainty.** Research whenever specifications, standards, licenses, security
-   guidance, platform behavior, algorithms, dependencies, or current best practice matter. Prefer
-   primary sources and current official documentation. Cross-check consequential claims, record exact
-   versions and license implications, and separate verified facts from inference.
-7. **Synthesize architecture and proof.** The lead planner reconciles all evidence into one coherent
-   design with exact files and interfaces, data flow, error paths, compatibility constraints, and
-   tests. Include feature configurations, migrations, concurrency, GPU, codec, offline, and open or
-   closed boundary effects when applicable. Every checkpoint sentence must map to implementation and
-   proof without unresolved design choices.
-8. **Decompose execution.** After the owner reviews `planning.md` for evidence completeness and
-   architectural compatibility, assign one tier 2 execution decomposer as the initial sole writer of
-   `plans/<checkpoint-id>/execution.md`. It divides the plan into ordered, dependency-aware slices,
-   assigns disjoint file ownership, identifies required failing proofs and widening verification, and
-   marks which slices may run concurrently. End with integration review, map refresh, deterministic
-   verification, delivery, and checklist readback owned by the checkpoint owner.
+1. **Prepare as owner.** Read and claim the exact checkpoint on both configured tabs, synchronize the
+   repository, record the base revision, and establish the product and repository boundary.
+2. **Create one planner.** Spawn exactly one project-scoped `superi-tier2` agent with the checkpoint
+   ID, configured document coordinates, base revision, repository law, and required output schema.
+   Never spawn another agent. If the planner becomes unavailable, the owner finishes the missing
+   planning itself.
+3. **Read live product state.** The planner independently reads the checkpoint on both Google Docs
+   tabs, its phase, workstream, subsystem, neighboring requirements, active claim, and relevant prior
+   completion descriptions. It changes nothing in the document.
+4. **Load maps read-only.** The planner runs the map validator and reads the global index plus every
+   affected, caller, consumer, contract, and runtime-path map through EOF. It records stale or missing
+   maps and compensates with deeper raw-code evidence instead of editing the map or trusting stale
+   prose.
+5. **Read current implementation.** The planner reads every likely changed file, public interface,
+   caller, consumer, manifest, schema, test, fixture, and governing document needed to trace the real
+   behavior. Every selected text file is read through EOF, including continuation after truncation.
+6. **Research uncertainty.** Research current specifications, standards, licenses, security
+   guidance, platform behavior, algorithms, and dependencies whenever they matter. Prefer primary
+   sources, cross-check consequential claims, record exact versions and license implications, and
+   separate verified facts from inference.
+7. **Synthesize both plans.** Think through architecture, failure paths, compatibility, implementation
+   order, test-first proof, map maintenance, deterministic verification, delivery, and Google Docs
+   completion. Write `planning.md` and `execution.md`, then return one concise evidence handoff.
+8. **Transfer to the owner.** The owner reads both plan files in full, then independently reads all
+   relevant raw code and tests through EOF before editing. The planner's map-backed orientation
+   removes the owner's initial map-reading requirement, but never replaces the owner's direct
+   understanding of the implementation it will change.
 
 ## Internal output
 
-Write the concise internal plan to `plans/<checkpoint-id>/planning.md`. This file is mandatory and
-is the only planning document permitted for the checkpoint. Structure it as:
+Write the research and architecture plan to `plans/<checkpoint-id>/planning.md`:
 
 ```text
 outcome: one measurable sentence
-reading record: global index, required maps, omitted-map substitutions, and selected raw files
-evidence: repository findings and research conclusions
-change map: ordered files, interfaces, and implementation slices
-proof: focused failures, success tests, applicable local suites, and real consumer
+document record: exact live Google Docs paragraphs and surrounding completion context
+reading record: global index, required maps, stale-map substitutions, and selected raw files
+research: primary sources, versions, verified facts, and explicit inferences
+architecture: ownership, interfaces, data flow, failure paths, and compatibility boundaries
+change map: ordered files, interfaces, implementation slices, and map maintenance
+proof: failing tests, success tests, applicable local suites, real consumer, and final verifier
 risks: only live risks with a concrete mitigation or blocking condition
 ```
 
-Every checkpoint requirement must map to an implementation slice and proof. The plan is invalid
-until the map validator passes, every mandatory map was read in full by a named specialist, every
-omitted map has recorded raw-code substitutes, and every selected raw file was read through EOF and
-recorded. The owner must verify the evidence record and resolve conflicts between specialist reports,
-but should not duplicate the complete initial ingestion. Leave no placeholders, unresolved design
-choices, or invented architecture. Do not create any planning document other than the mandatory
-`planning.md`, and do not ask for routine approval unless the checkpoint explicitly requires it.
+Write the ordered build plan to `plans/<checkpoint-id>/execution.md`:
+
+```text
+base revision: synchronized commit before implementation
+preconditions: claim, evidence, legal, dependency, and architecture gates
+slices: one ordered owner-executed sequence with exact files and failing proof first
+verification: focused, subsystem, consumer, map, deterministic, and UI proof as applicable
+delivery: final fetch, integration, commit, rebase, push, remote verification, and document readback
+evidence log: initially empty area for the owner to maintain during execution
+```
+
+Every checkpoint sentence must map to implementation and proof. The plan is invalid until the
+planner has read the mandatory map closure, recorded any stale-map raw-code substitutes, read every
+selected raw file through EOF, and resolved architecture choices. Leave no placeholders or invented
+interfaces. Create no other plan documents and write no repository or Google Docs file outside the
+two permitted plan files.
 
 If legal approval, credentials, external authority, or an absent architectural decision blocks safe
-work, follow the root `AGENTS.md` blocked path. Otherwise invoke `superi-execution` immediately and
-adapt the plan whenever repository evidence changes.
+work, report the exact blocker to the owner. Otherwise the owner invokes `superi-execution`, reads
+the implementation itself, and executes without spawning another agent.
