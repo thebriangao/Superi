@@ -1,15 +1,18 @@
-//! Prepared macOS Audio Unit effect hosting.
+//! Prepared native audio effect hosting.
 //!
-//! Configuration and component identity are portable safe values. Native discovery, preparation,
-//! callback ownership, and rendering are private to the macOS boundary. Preparation is confined to
-//! the blocking background domain, while a prepared effect implements the ordinary allocation-free
-//! [`crate::graph::AudioProcessor`] contract.
+//! macOS Audio Unit configuration and component identity are portable safe values. Native
+//! discovery, preparation, callback ownership, and rendering are private to the macOS boundary.
+//! Worker-side VST3 modules retain native code and lifecycle inside the dedicated plugin worker.
+//! Preparation is confined to control domains, while each prepared effect implements the ordinary
+//! allocation-free [`crate::graph::AudioProcessor`] contract.
 
 use superi_concurrency::threads::ExecutionDomain;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_core::pixel::ChannelLayout;
 
 use crate::graph::{AudioProcessBlock, AudioProcessor};
+
+pub mod vst3;
 
 #[cfg(target_os = "macos")]
 mod audio_unit_macos;

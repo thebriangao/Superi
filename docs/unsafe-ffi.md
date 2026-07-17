@@ -243,6 +243,62 @@ configuration parsers and cross-platform identifiers outside the allowance.
 The raw generated bindings remain private to this Linux-only module. No raw display, context,
 surface, buffer identifier, pointer, or exported descriptor crosses the safe module boundary.
 
+### VST3 worker module hosting
+
+- Source: `open/crates/superi-audio/src/hosting/vst3/native.rs`
+- Dependencies and targets: exact `vst3` 0.3.0 and `com-scrape-types` 0.1.1 on macOS, Windows, and
+  Linux; pinned `objc2-core-foundation` 0.3.2 on macOS; pinned `libloading` 0.8.9 on Windows and
+  Linux
+- Safe entry: `Vst3WorkerSession::load` creates one worker-local session, prepared graph effect,
+  bounded automation writer, and control-side readings for an explicit module path and class ID
+- Unsafe surface: platform module entry, exit, and factory symbols; retained dynamic-library or
+  Core Foundation bundle handles; VST3 COM factory, component, processor, and controller calls;
+  host callback objects; planar audio pointers; process context; parameter queues; and explicit
+  COM ownership transfer
+- Module ownership: the platform loader retains executable code through every copied symbol and
+  COM object. macOS pairs `bundleEntry` and `bundleExit` around one retained `CFBundle`; Windows
+  pairs optional `InitDll` and `ExitDll` around one retained library; Linux passes the actual
+  `dlopen` handle to `ModuleEntry`, reconstructs its unique library owner, and later calls
+  `ModuleExit`. Module unload occurs only after reverse processor, component, controller, factory,
+  and callback teardown. Each bus and connection direction has independent unwind state. Any failed
+  reverse lifecycle call retains the unresolved owners and module for retry or worker-process exit.
+- Interface ownership: `ComPtr` owns every acquired factory or plugin reference. The host and
+  bounded message, attribute, and parameter-change objects are retained `ComWrapper` values.
+  Host-created binary buffers and message identifiers retain stable backing storage under explicit
+  count and byte caps. The session refuses shutdown while a prepared processor lease exists, and an
+  unretired lease intentionally leaks until worker process exit instead of unloading code reachable
+  by an audio callback.
+- Buffer rules: configuration bounds frame, channel, automation, and monitoring storage before
+  load. The process bridge exposes exactly one main input and output with an equal canonical mono,
+  stereo, quad, 5.1, or 7.1 layout. It builds channel pointers only inside checked preallocated
+  planar slices, passes one exact `ProcessData`, and copies finite f32 output back into the existing
+  interleaved graph buffer. Parameter queues use fixed prepared point arrays and exact block-local
+  sample offsets. Planar and handoff storage each cap at 1,048,576 elements, parameter metadata caps
+  at 4,096 entries, and combined parameter-point cells cap at 1,048,576.
+- Threading: construction, controller interaction, bus negotiation, activation, and teardown run
+  on the plugin worker control path. One prepared effect alone performs process calls on
+  `ExecutionDomain::Audio`. Host message and attribute operations fail on that domain before
+  allocating or taking a mutex. The explicit `Send` and `Sync` implementations are justified by
+  that unique process lease and the control-side strong-count shutdown proof, not by concurrent
+  plugin access.
+- Capability and failure: the host rejects instruments, event buses, auxiliary or sidechain buses,
+  multiple main buses, unsupported speaker arrangements, f64-only processing, invalid metadata,
+  nonfinite samples, and failed lifecycle calls. Latency and tail are reported but delay
+  compensation, module discovery, validation databases, state persistence, supervision, restart,
+  quarantine, and recovery remain outside this boundary. Parameters must be both automatable and
+  writable for input automation, and any requested optional process-context field fails setup
+  rather than receiving guessed timing or transport data.
+- Runtime proof: `vst3_host_contract` compiles a standards-shaped VST3 fixture into a temporary
+  bundle, loads it only in isolated child processes, and proves every supported layout through a
+  source, hosted effect, submix, and master. It also proves exact sample-offset automation,
+  block-boundary retention, output monitoring and overflow, process context, real-time and offline
+  modes, bounded host message and attribute behavior, read-only automation and optional-context
+  rejection, partial-activation unwind, failed-stop mapped-code retention, callback allocation
+  counts, lease-gated shutdown, reverse lifecycle order, and module exit evidence.
+
+The public `hosting::vst3` module exports only safe owned values. Raw VST3 identifiers, interfaces,
+callbacks, pointers, and platform loader types remain private to this audited file.
+
 ## Native dependencies without Superi unsafe blocks
 
 Vorbis uses safe `vorbis_rs` ownership on a dedicated worker. Its sys crates are linked but Superi
@@ -260,7 +316,9 @@ Run from `open/` after any change to a native boundary:
 rg -n --glob '*.rs' '\bunsafe\b' crates
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo clippy -p superi-codecs-platform --target x86_64-pc-windows-msvc --lib -- -D warnings
+cargo clippy -p superi-audio --all-targets -- -D warnings
 cargo test -p superi-codecs-rs -p superi-codecs-platform --all-targets
+cargo test -p superi-audio --test vst3_host_contract
 cargo test -p superi-engine --all-features
 ```
 

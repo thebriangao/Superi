@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: de4d6ae63d1609033f85b240b7c9a284ffc1b223b34ea6ce7d4f5799bf9bff46
-source_files: 147
+source_hash: c92900a27fc05978be43372f7abbdf9888cb4cfe776572e5a9d7967c2200033b
+source_files: 148
 mapped_at_commit: working-tree
 ---
 
@@ -328,6 +328,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   hosting. It records exact identity and configuration, verified process isolation, private native
   lifecycle and callback ownership, real Apple Peak Limiter graph proof, delivery gates, and
   intentionally deferred engine, parameter, UI, latency, instrument, MIDI, VST3, and physical work.
+- `docs/checkpoints/P2.W04.C012.md`: Durable implementation evidence for worker-side VST3 effect
+  hosting on macOS, Windows, and Linux, including the supported bus and layout subset, retained
+  module lifecycle, exact timing and automation, bounded monitoring, isolated fixture proof,
+  dependency and legal result, and later lifecycle exclusions.
 - `docs/checkpoints/P1.W07.C025.md`: Durable implementation evidence for bounded timing and process
   resident-memory instrumentation across all eight canonical slice stages. It records the private
   sampler boundary, schema 1.1.0 report contract, dependency decision, red-to-green proof,
@@ -362,8 +366,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   distinction, capability-based codec testing, and the structured evidence every result must retain.
 - `docs/unsafe-ffi.md`: Defines the deny-by-default unsafe policy and inventories audited macOS
   CoreGraphics, AV1, Opus, VPx, VideoToolbox, AudioConverter, Audio Unit hosting, Windows Media
-  Foundation, and Linux VVC VA-API boundaries. It records ownership, buffer, thread, failure, and
-  target proof for each boundary plus required source scans, Clippy runs, and focused tests.
+  Foundation, Linux VVC VA-API, and cross-platform VST3 worker-host boundaries. It records
+  ownership, buffer, thread, failure, and target proof for each boundary plus required source scans,
+  Clippy runs, and focused tests.
 - `docs/vertical-slice.md`: Defines revision 1 of `superi.slice.canonical.v1`. It pins the immutable
   video fixture role, exact one-track edit and trim, one typed horizontal-mirror graph effect,
   explicit delivery, eight stable replacement stages, schema 1.1.0 runner report, bounded stage
@@ -440,14 +445,17 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and build the affected graph and GPU dependency path. Audio output adds exact CPAL
   0.17.3 and ringbuf 0.4.8 plus their target-specific backend dependency trees. Audio Unit hosting
   reuses already locked permissive Objective-C framework bindings and adds no network or internal
-  crate edge. The lockfile is generated resolution evidence and is not hand-edited policy.
+  crate edge. VST3 hosting adds
+  exact `vst3` 0.3.0 and `com-scrape-types` 0.1.1, both licensed `MIT OR Apache-2.0`, and reuses
+  existing libloading 0.8.9 plus macOS Core Foundation bindings. The lockfile is generated
+  resolution evidence and is not hand-edited policy.
 - `open/Cargo.toml`: Root Cargo workspace manifest using resolver 2 and glob members under
   `crates/*` and `tools/*`. It centralizes version `0.0.0`, Rust 2021, MIT, Rust 1.80, repository
   metadata, deny-by-default unsafe lints, and shared dependencies for error handling, serialization,
   images, GPU, codecs, hashes, process instrumentation, platform APIs, native build support,
   reviewed audio device and ring-buffer primitives, a pinned block binding for macOS native
-  completion handlers, exact bundled SQLite through rusqlite 0.32.1, and offline font shaping plus
-  Unicode layout.
+  completion handlers, exact bundled SQLite through rusqlite 0.32.1, exact low-level VST3 bindings,
+  and offline font shaping plus Unicode layout.
 - `open/README.md`: Compact open-tree orientation and build commands. It records the 19 runtime
   crates plus repository tools, the exact canonical runner command, contract-only status, and
   the remaining production integration boundary.
@@ -713,7 +721,7 @@ integration or rebase, and before delivery. A passing hash never excuses stale p
 The build control plane begins at `open/Cargo.toml`. Cargo expands `crates/*` and `tools/*`, applies
 shared package metadata and lint defaults, resolves member and external dependencies into
 `open/Cargo.lock`, including the pinned MIT rubato 0.16.2 sample-rate converter and the exact
-Rust-1.80-compatible text shaping stack, and writes
+Rust-1.80-compatible text shaping stack plus exact low-level VST3 0.3.0 bindings, and writes
 generated build output under the ignored `open/target/`. Runtime
 dependency direction is downward through the crate tiers: core and representation types support
 GPU, concurrency, media, graph, and codecs; feature catalogs and timeline build on those; engine
@@ -754,6 +762,12 @@ handler. All three packages were already present in the resolved permissive plat
 target-gated edge remains inside `superi-audio`, adds no internal dependency direction, and keeps
 discovery, preparation, process-location verification, callbacks, and teardown inside the audited
 private native module.
+
+The worker-side VST3 host uses exact `vst3` 0.3.0 and its exact `com-scrape-types` 0.1.1 support
+crate, both under the existing permissive license allowlist. It reuses the pinned retained-library
+loader on Windows and Linux and the pinned Core Foundation bundle owner on macOS. No host framework,
+remote service, plugin binary, SDK source, or runtime discovery database enters the repository;
+tests compile their own temporary dynamic module and load it only inside isolated child processes.
 
 The effects animation, mask, rotoscope, text, and preset wires reuse the same workspace Serde pin.
 Effect presets additionally reuse the workspace JSON and SHA-256 pins at runtime for strict
@@ -1181,12 +1195,16 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   source, CPU, fixture, and contract-slice portability, while named physical lanes are required for
   real GPU, display, audio, hardware codec, all-runtime slice, performance, and long-session evidence.
 - `docs/unsafe-ffi.md` requires a repository unsafe scan, all-feature strict Clippy, Windows-target
-  Clippy for Media Foundation, codec tests, and all-feature engine tests after native-boundary
-  changes. Real lifecycle tests still run on the owning operating system.
+  Clippy for Media Foundation, strict audio Clippy, codec and VST3 contracts, and all-feature engine
+  tests after native-boundary changes. Real lifecycle tests still run on the owning operating
+  system; the VST3 contract supplies real macOS lifecycle proof in an isolated child.
 - `docs/checkpoints/P2.W04.C013.md` records the macOS Audio Unit host's safe configuration,
   background preparation, default verified isolation, callback and teardown ownership, real Apple
   Peak Limiter graph consumer, exact timing and channel proof, dependency audit, and deferred
   engine, plug-in-management, and physical-lane boundaries.
+- `docs/checkpoints/P2.W04.C012.md` records the VST3 host's exact configuration, retained module and
+  COM lifecycle, canonical channel and timing behavior, bounded automation and monitoring, isolated
+  real-module contracts, dependency audit, and deferred orchestration boundaries.
 - `open/test-fixtures/README.md` defines
   `cargo run -p superi-fixture-tool -- check test-fixtures` as the shared validation path and
   `cargo run -p superi-fixture-tool -- generate-video <OUTPUT_DIRECTORY>` as the video reproduction
@@ -1442,8 +1460,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`ba7c68e0037737b36ab28c6c051c2ff02a09d065` when the map was refreshed. Its hash describes the exact
-147 discovered source files, including twelve generated binary payloads, layered on that revision.
+`99253f1300e7a7f65e8de6090236533ee711405d` when the map was refreshed. Its hash describes the exact
+148 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 

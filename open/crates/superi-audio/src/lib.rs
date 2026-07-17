@@ -11,8 +11,10 @@
 //! saturation are implemented in [`effects`]. Transparent graph-native level,
 //! spectrum, phase, true-peak, and loudness analysis is implemented in [`metering`]. Bounded record
 //! arming, input monitoring, and operating-system capture are implemented in [`capture`]. Prepared
-//! macOS Audio Unit effect hosting is implemented in [`hosting`], while VST3, instruments, MIDI,
-//! and plug-in UI remain separate staged owners.
+//! macOS Audio Unit effect hosting is implemented in [`hosting`], and explicit worker-side VST3
+//! effect hosting is implemented in [`hosting::vst3`]. Plugin discovery, persistence,
+//! delay-compensation application, crash supervision, instruments, MIDI, and plug-in UI remain
+//! later orchestration.
 
 pub mod automation;
 pub mod capture;

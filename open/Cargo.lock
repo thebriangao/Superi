@@ -448,6 +448,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "com-scrape-types"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ce183b975b8fc736a20919c4002717255fbd867df575c792aeefa9a56a73ad0"
+
+[[package]]
 name = "combine"
 version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2883,8 +2889,10 @@ version = "0.0.0"
 dependencies = [
  "block2 0.6.2",
  "cpal",
+ "libloading",
  "objc2-audio-toolbox",
  "objc2-core-audio-types",
+ "objc2-core-foundation",
  "ringbuf",
  "rubato",
  "serde",
@@ -2892,6 +2900,7 @@ dependencies = [
  "sha2",
  "superi-concurrency",
  "superi-core",
+ "vst3",
 ]
 
 [[package]]
@@ -3460,6 +3469,15 @@ dependencies = [
  "ogg_next_sys",
  "thiserror 1.0.69",
  "tinyvec",
+]
+
+[[package]]
+name = "vst3"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e31e3fe7a6f028ded8c5a9984cf283319e6dc63572c9b71da1d4ee9d71d3b6bf"
+dependencies = [
+ "com-scrape-types",
 ]
 
 [[package]]
