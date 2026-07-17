@@ -12,10 +12,12 @@ workspace = true
 [features]
 default = []
 os-codecs = ["superi-engine/os-codecs"]
+typescript-bindings = ["dep:specta"]
 
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true, features = ["raw_value"] }
+specta = { workspace = true, optional = true }
 superi-core = { path = "../superi-core" }
 superi-engine = { path = "../superi-engine", features = ["test-support"] }
 

@@ -30,6 +30,7 @@ use crate::version::ASYNC_JOBS_SCHEMA_VERSION;
 const COMPONENT: &str = "superi-api.jobs";
 
 /// Canonical opaque handle for one retained asynchronous job.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct AsyncJobHandle(String);
@@ -79,6 +80,7 @@ impl fmt::Display for AsyncJobHandle {
 }
 
 /// Stable kind of schedulable media work.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -113,6 +115,7 @@ impl AsyncJobKind {
 }
 
 /// User-visible scheduling priority for asynchronous work.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -163,6 +166,7 @@ impl AsyncJobPriority {
 }
 
 /// Complete observable lifecycle state for one asynchronous job.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -229,6 +233,7 @@ impl AsyncJobStatus {
 }
 
 /// Coherent numeric progress for one current or most recent attempt.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AsyncJobProgressSnapshot {
@@ -258,6 +263,7 @@ impl AsyncJobProgressSnapshot {
 }
 
 /// User-safe classified failure retained for one job attempt.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AsyncJobFailureSnapshot {
@@ -301,6 +307,7 @@ impl AsyncJobFailureSnapshot {
 }
 
 /// Terminal state of one prerequisite that prevented dependent work.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -328,6 +335,7 @@ impl AsyncJobDependencyStatus {
 }
 
 /// One unsuccessful prerequisite retained on a blocked job.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AsyncJobDependencyFailureSnapshot {
@@ -350,6 +358,7 @@ impl AsyncJobDependencyFailureSnapshot {
 }
 
 /// Stable full-state projection of one retained asynchronous job.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AsyncJobSnapshot {
@@ -442,9 +451,11 @@ impl AsyncJobSnapshot {
 }
 
 /// Complete replacement state for every retained asynchronous job.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AsyncJobsSnapshot {
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
     schema_version: SemanticVersion,
     revision: u64,
     jobs: Vec<AsyncJobSnapshot>,
@@ -477,6 +488,7 @@ impl AsyncJobsSnapshot {
 }
 
 /// Successful asynchronous job query or control result.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AsyncJobsResult {

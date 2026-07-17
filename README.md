@@ -346,7 +346,7 @@ See [`docs/codecs.md`](docs/codecs.md) for the current policy and format matrix.
 
 ## The current implementation
 
-The `open/` directory is a Cargo workspace containing nineteen runtime crates and three repository
+The `open/` directory is a Cargo workspace containing nineteen runtime crates and six repository
 tools. The workspace is intentionally organized as one crate per major responsibility, with
 dependencies pointing downward through an acyclic hierarchy. The crate graph is meant to make
 architectural violations visible to the Rust compiler rather than leaving them entirely to
@@ -392,7 +392,7 @@ or editing will actually be implemented.
 | T3 | `superi-ai` | Offline inference, editable AI artifacts, model auditing, and the bounded local transformation pipelines. |
 | T4 | `superi-project` | Project document, whole-state persistence, autosave, and crash recovery. |
 | T4 | `superi-engine` | Playback and export orchestration, transactions, lifecycle, errors, resources, built-in nodes, queues, introspection, validation, and plug-ins. |
-| T5 | `superi-api` | Stable public commands, events, scripting, versioning, and the unified automation surface. |
+| T5 | `superi-api` | Stable public commands, events, scripting, versioning, generated TypeScript bindings, and the unified automation surface. |
 | T6 | `superi-cli` | First headless API consumer and eventual vertical-slice harness. |
 
 The defining dependency rule is that lower tiers do not learn about the capabilities assembled above
@@ -419,7 +419,9 @@ superi/
 │   ├── rust-toolchain.toml   Stable Rust, rustfmt, and Clippy
 │   ├── rustfmt.toml          Formatting policy
 │   ├── docs/STRUCTURE.md     Compact crate topology and ownership map
-│   └── crates/               Open engine packages
+│   ├── bindings/typescript/  Generated desktop-facing public API contract
+│   ├── crates/               Open engine packages
+│   └── tools/                Repository generation and verification utilities
 └── closed/
     └── README.md             Superi Max boundary notice
 ```

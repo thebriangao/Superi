@@ -37,8 +37,9 @@ const MAX_EVENT_IDENTIFIER_BYTES: usize = 128;
 pub const MAX_EVENT_STREAM_BOUND: u32 = 4_096;
 
 macro_rules! define_identifier {
-    ($(#[$metadata:meta])* $name:ident, $operation:literal) => {
-        $(#[$metadata])*
+    ($name:ident, $operation:literal) => {
+        /// Validated stable identifier for public event delivery.
+        #[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
         #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
         #[serde(transparent)]
         pub struct $name(String);
@@ -70,18 +71,11 @@ macro_rules! define_identifier {
     };
 }
 
-define_identifier!(
-    /// Identity for one process-lifetime ordered public event stream.
-    EventStreamId,
-    "validate_stream_id"
-);
-define_identifier!(
-    /// Caller-owned identity for one independent event subscription.
-    SubscriptionId,
-    "validate_subscription_id"
-);
+define_identifier!(EventStreamId, "validate_stream_id");
+define_identifier!(SubscriptionId, "validate_subscription_id");
 
 /// Validated bounded storage and delivery limits for one event stream.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub struct EventStreamConfig {
     retained_events: u32,
@@ -155,6 +149,7 @@ impl<'de> Deserialize<'de> for EventStreamConfig {
 }
 
 /// Nonzero sequence allocated by the public stream independently of engine events.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct PublicEventSequence(u64);
@@ -190,6 +185,7 @@ impl<'de> Deserialize<'de> for PublicEventSequence {
 }
 
 /// Correlation retained independently from JSON-RPC request identifiers.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PublicEventCorrelation {
@@ -204,12 +200,17 @@ pub enum PublicEventCorrelation {
 }
 
 /// One authoritative state resource and the typed method that refreshes it.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResyncResource {
     resource: String,
     method: String,
     method_kind: PublicMethodKind,
+    #[cfg_attr(
+        feature = "typescript-bindings",
+        specta(type = crate::typescript::SemanticVersionBinding)
+    )]
     schema_version: SemanticVersion,
 }
 
@@ -321,6 +322,7 @@ pub fn replacement_resource_manifest() -> Vec<ResyncResource> {
 }
 
 /// The authoritative resource revision replaced by one delivered event.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EventReplacementResource {
@@ -358,6 +360,7 @@ impl EventReplacementResource {
 }
 
 /// Strict closed union of every event in the public schema catalog.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "event", content = "payload")]
 #[non_exhaustive]
@@ -743,11 +746,16 @@ impl_public_event_conversion!(EngineIntrospectionChanged, EngineIntrospectionCha
 impl_public_event_conversion!(ScenarioStateChanged, ScenarioStateChanged);
 
 /// One immutable retained record with public ordering and exact replacement metadata.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct PublicEventRecord {
     stream_id: EventStreamId,
     sequence: PublicEventSequence,
     event_name: String,
+    #[cfg_attr(
+        feature = "typescript-bindings",
+        specta(type = crate::typescript::SemanticVersionBinding)
+    )]
     schema_version: SemanticVersion,
     correlation: PublicEventCorrelation,
     replacement_resource: EventReplacementResource,
@@ -848,6 +856,7 @@ impl<'de> Deserialize<'de> for PublicEventRecord {
 }
 
 /// Where a newly registered subscriber begins reading retained state changes.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SubscriptionStart {
@@ -858,6 +867,7 @@ pub enum SubscriptionStart {
 }
 
 /// Strict command for registering one independent subscriber identity.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OpenEventSubscription {
@@ -902,6 +912,7 @@ impl ApiCommand for OpenEventSubscription {
 }
 
 /// Successful subscriber registration and its caller-held initial cursor.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OpenEventSubscriptionResult {
@@ -938,6 +949,7 @@ impl OpenEventSubscriptionResult {
 }
 
 /// Strict command for removing one subscriber without affecting any other cursor.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CloseEventSubscription {
@@ -982,6 +994,7 @@ impl ApiCommand for CloseEventSubscription {
 }
 
 /// Successful subscriber removal.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CloseEventSubscriptionResult {
@@ -1011,6 +1024,7 @@ impl CloseEventSubscriptionResult {
 }
 
 /// Strict retryable query using a caller-held replay cursor.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct PollEvents {
     stream_id: EventStreamId,
@@ -1100,6 +1114,7 @@ impl ApiCommand for PollEvents {
 }
 
 /// One successful bounded replay result.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EventBatch {
@@ -1143,6 +1158,7 @@ impl EventBatch {
 }
 
 /// Why a caller must refresh complete state instead of replaying an incomplete suffix.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EventGapReason {
@@ -1153,6 +1169,7 @@ pub enum EventGapReason {
 }
 
 /// Explicit recovery barrier and complete replacement-state manifest after a gap.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EventGap {
@@ -1224,6 +1241,7 @@ impl EventGap {
 }
 
 /// Poll result that never hides a replay gap behind partial delivery.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "status", content = "result", rename_all = "snake_case")]
 pub enum PollEventsResult {
@@ -1254,9 +1272,14 @@ impl PollEventsResult {
 }
 
 /// Complete inspectable state for the event subscription control resource.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EventStreamSnapshot {
+    #[cfg_attr(
+        feature = "typescript-bindings",
+        specta(type = crate::typescript::SemanticVersionBinding)
+    )]
     schema_version: SemanticVersion,
     stream_id: EventStreamId,
     config: EventStreamConfig,

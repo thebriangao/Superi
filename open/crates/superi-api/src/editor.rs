@@ -27,6 +27,7 @@ const COMPONENT: &str = "superi-api.editor";
 pub const MAX_PROJECT_ACTIONS: usize = engine::MAX_COMPOUND_PROJECT_ACTIONS;
 
 /// Stable command classification returned after public project execution.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -38,6 +39,7 @@ pub enum ProjectCommandKind {
 }
 
 /// One generic project command on the stable public surface.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ProjectCommand {
@@ -64,6 +66,7 @@ impl ProjectCommand {
 }
 
 /// Request for one generic public project command.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExecuteProjectCommand {
@@ -133,6 +136,7 @@ impl ApiCommand for ExecuteProjectCommand {
 }
 
 /// Stable typed mutation category retained by project history.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -153,9 +157,11 @@ pub enum ProjectMutationKind {
 }
 
 /// Minimum complete replacement state owned by the generic history command surface.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectHistorySnapshot {
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
     schema_version: SemanticVersion,
     project_id: String,
     project_revision: u64,
@@ -220,6 +226,7 @@ impl ApiResource for ProjectHistorySnapshot {
 }
 
 /// Semantic result from one media mutation.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -232,6 +239,7 @@ pub enum MediaMutationResult {
 }
 
 /// Stable extension result kind.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -246,6 +254,7 @@ pub enum ExtensionMutationResultKind {
 }
 
 /// One action result inside an applied compound command.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "result", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ProjectActionEvidence {
@@ -275,6 +284,7 @@ pub enum ProjectActionEvidence {
 }
 
 /// Stable command evidence returned by execution and attached to its matching event.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "result", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ProjectCommandEvidence {
@@ -286,9 +296,11 @@ pub enum ProjectCommandEvidence {
 }
 
 /// Successful generic public project command result.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExecuteProjectCommandResult {
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
     schema_version: SemanticVersion,
     transaction_id: String,
     command_sequence: u64,
@@ -336,6 +348,7 @@ impl ExecuteProjectCommandResult {
 }
 
 /// Exact public timebase.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExactTimebase {
@@ -350,6 +363,7 @@ impl ExactTimebase {
 }
 
 /// Exact public rational coordinate.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExactTime {
@@ -367,6 +381,7 @@ impl ExactTime {
 }
 
 /// Exact public nonnegative duration.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExactDuration {
@@ -381,6 +396,7 @@ impl ExactDuration {
 }
 
 /// Exact public half-open range.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExactTimeRange {
@@ -395,6 +411,7 @@ impl ExactTimeRange {
 }
 
 /// Stable identity for any timed editorial object.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorialObjectId {
@@ -427,6 +444,7 @@ impl EditorialObjectId {
 }
 
 /// Source relationship for a public clip value.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorClipSource {
@@ -449,6 +467,7 @@ impl EditorClipSource {
 }
 
 /// One exact piecewise-linear retime segment.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorRetimeSegment {
@@ -469,6 +488,7 @@ impl EditorRetimeSegment {
 }
 
 /// Complete clip-local record-to-source timing map.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorClipTimeMap {
@@ -491,6 +511,7 @@ impl EditorClipTimeMap {
 }
 
 /// Complete typed material accepted by timeline edit operations.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorTrackItem {
@@ -607,6 +628,7 @@ impl EditorTrackItem {
 }
 
 /// Public edit-edge selection.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EditorEditSide {
@@ -624,6 +646,7 @@ impl EditorEditSide {
 }
 
 /// Public extend behavior.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EditorExtendMode {
@@ -641,6 +664,7 @@ impl EditorExtendMode {
 }
 
 /// Companion-track identities for synchronized ripple and extend behavior.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorRippleSyncAdjustment {
@@ -663,6 +687,7 @@ impl EditorRippleSyncAdjustment {
 }
 
 /// One of the four exact three-point placement rules.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "placement", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorThreePointPlacement {
@@ -724,6 +749,7 @@ impl EditorThreePointPlacement {
 }
 
 /// Stable public timeline operation kind.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -746,6 +772,7 @@ pub enum TimelineEditKind {
 }
 
 /// Every current directly executable timeline edit operation.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum TimelineEditOperation {
@@ -1070,6 +1097,7 @@ impl TimelineEditOperation {
 }
 
 /// One complete graph endpoint.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorGraphEndpoint {
@@ -1087,6 +1115,7 @@ impl EditorGraphEndpoint {
 }
 
 /// One complete stable directed graph edge.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorGraphEdge {
@@ -1106,6 +1135,7 @@ impl EditorGraphEdge {
 }
 
 /// Complete color interpretation used by a graph schema.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorColorSpace {
@@ -1131,6 +1161,7 @@ impl EditorColorSpace {
 }
 
 /// Graph port cardinality.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EditorPortCardinality {
@@ -1150,6 +1181,7 @@ impl EditorPortCardinality {
 }
 
 /// One typed port declaration.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorPortSchema {
@@ -1171,6 +1203,7 @@ impl EditorPortSchema {
 }
 
 /// One typed editable parameter declaration.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorParameterSchema {
@@ -1192,6 +1225,7 @@ impl EditorParameterSchema {
 }
 
 /// Graph evaluation time dependency.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorTimeBehavior {
@@ -1222,6 +1256,7 @@ impl EditorTimeBehavior {
 }
 
 /// Graph region-of-interest behavior.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorRoiBehavior {
@@ -1243,6 +1278,7 @@ impl EditorRoiBehavior {
 }
 
 /// Graph color requirement.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorColorRequirements {
@@ -1264,6 +1300,7 @@ impl EditorColorRequirements {
 }
 
 /// Graph determinism declaration.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EditorDeterminism {
@@ -1283,6 +1320,7 @@ impl EditorDeterminism {
 }
 
 /// Graph cache declaration.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EditorCachePolicy {
@@ -1304,6 +1342,7 @@ impl EditorCachePolicy {
 }
 
 /// Complete graph node behavior declaration.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorNodeBehavior {
@@ -1327,10 +1366,12 @@ impl EditorNodeBehavior {
 }
 
 /// One complete versioned graph node schema.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorNodeSchema {
     pub node_type: String,
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
     pub schema_version: SemanticVersion,
     pub inputs: Vec<EditorPortSchema>,
     pub outputs: Vec<EditorPortSchema>,
@@ -1378,6 +1419,7 @@ impl EditorNodeSchema {
 }
 
 /// One semantic audio channel position.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorChannelPosition {
@@ -1433,6 +1475,7 @@ fn channel_layout(values: Vec<EditorChannelPosition>) -> Result<engine::ChannelL
 }
 
 /// Graph-domain track semantics.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorTrackSemantics {
@@ -1461,6 +1504,7 @@ pub enum EditorTrackSemantics {
 }
 
 /// Video compositing behavior.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EditorVideoCompositing {
@@ -1469,6 +1513,7 @@ pub enum EditorVideoCompositing {
 }
 
 /// Audio route destination.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorAudioDestination {
@@ -1477,6 +1522,7 @@ pub enum EditorAudioDestination {
 }
 
 /// Audio channel route target.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorAudioChannelTarget {
@@ -1485,6 +1531,7 @@ pub enum EditorAudioChannelTarget {
 }
 
 /// One exact audio channel routing decision.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorAudioChannelRoute {
@@ -1493,6 +1540,7 @@ pub struct EditorAudioChannelRoute {
 }
 
 /// Timed text purpose.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EditorCaptionPurpose {
@@ -1585,6 +1633,7 @@ impl EditorTrackSemantics {
 }
 
 /// One recursively typed timeline metadata value.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum EditorMetadataValue {
@@ -1633,6 +1682,7 @@ fn metadata_map(values: BTreeMap<String, EditorMetadataValue>) -> Result<engine:
 }
 
 /// Multicam synchronization provenance.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorMulticamSyncMethod {
@@ -1658,6 +1708,7 @@ impl EditorMulticamSyncMethod {
 }
 
 /// One complete multicam angle.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorMulticamAngle {
@@ -1687,6 +1738,7 @@ impl EditorMulticamAngle {
 }
 
 /// Complete synchronized multicam source state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorMulticamSource {
@@ -1707,6 +1759,7 @@ impl EditorMulticamSource {
 }
 
 /// Multicam audio selection policy.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorMulticamAudioPolicy {
@@ -1729,6 +1782,7 @@ impl EditorMulticamAudioPolicy {
 }
 
 /// One exact multicam switch interval.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorMulticamSwitch {
@@ -1737,6 +1791,7 @@ pub struct EditorMulticamSwitch {
 }
 
 /// Complete clip-local multicam state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorMulticamClip {
@@ -1781,6 +1836,7 @@ impl EditorMulticamClip {
 }
 
 /// Every exact timeline-domain value accepted by a compiled graph parameter.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorTimelineGraphValue {
@@ -1868,6 +1924,7 @@ impl EditorTimelineGraphValue {
 }
 
 /// Every processing or timeline-domain graph value on the editor surface.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorGraphValue {
@@ -1897,6 +1954,7 @@ impl EditorGraphValue {
 }
 
 /// One schema-tagged graph parameter value.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorTypedParameterValue {
@@ -1917,6 +1975,7 @@ impl EditorTypedParameterValue {
 }
 
 /// One stable instance port binding.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorInstancePort {
@@ -1935,6 +1994,7 @@ impl EditorInstancePort {
 }
 
 /// One complete editable parameter binding.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorEditableParameter {
@@ -1955,6 +2015,7 @@ impl EditorEditableParameter {
 }
 
 /// One complete editable graph node instance.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorEditableNode {
@@ -1986,6 +2047,7 @@ impl EditorEditableNode {
 }
 
 /// Stable graph parameter address.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorParameterAddress {
@@ -2003,6 +2065,7 @@ impl EditorParameterAddress {
 }
 
 /// One typed expression or link dependency.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorParameterReference {
@@ -2021,6 +2084,7 @@ impl EditorParameterReference {
 }
 
 /// One explicit expression variable binding.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorExpressionBinding {
@@ -2029,6 +2093,7 @@ pub struct EditorExpressionBinding {
 }
 
 /// Complete direct-link or bounded expression driver state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorParameterDriver {
@@ -2076,6 +2141,7 @@ impl EditorParameterDriver {
 }
 
 /// Every current graph mutation on the public editor surface.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorGraphMutation {
@@ -2161,6 +2227,7 @@ impl EditorGraphMutation {
 }
 
 /// Portable or declared-platform filesystem target for referenced media.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorMediaPath {
@@ -2174,6 +2241,7 @@ pub enum EditorMediaPath {
 }
 
 /// Filesystem syntax retained for an absolute media path.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EditorMediaPathPlatform {
@@ -2218,6 +2286,7 @@ impl EditorMediaPath {
 }
 
 /// Every current referenced-media mutation.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorMediaMutation {
@@ -2259,6 +2328,7 @@ impl EditorMediaMutation {
 }
 
 /// One complete authored source-to-destination audio route.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorChannelMap {
@@ -2268,6 +2338,7 @@ pub struct EditorChannelMap {
 }
 
 /// Complete durable mix controls for one clip.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorClipMixControls {
@@ -2314,6 +2385,7 @@ impl EditorClipMixControls {
 }
 
 /// Every current durable clip-mix mutation.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorClipMixMutation {
@@ -2357,6 +2429,7 @@ impl EditorClipMixMutation {
 }
 
 /// Stable compound extension record identity.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorExtensionKey {
@@ -2375,6 +2448,7 @@ impl EditorExtensionKey {
 }
 
 /// Durable extension lifecycle.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EditorExtensionLifecycle {
@@ -2394,6 +2468,7 @@ impl EditorExtensionLifecycle {
 }
 
 /// One retained extension failure context.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorFailureContext {
@@ -2413,6 +2488,7 @@ impl EditorFailureContext {
 }
 
 /// Complete durable extension failure evidence.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorExtensionFailure {
@@ -2442,11 +2518,13 @@ impl EditorExtensionFailure {
 }
 
 /// Complete opaque extension record envelope.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorExtensionRecord {
     pub extension_id: String,
     pub record_id: String,
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
     pub extension_version: SemanticVersion,
     pub extension_kind: String,
     pub payload_schema: String,
@@ -2486,6 +2564,7 @@ impl EditorExtensionRecord {
 }
 
 /// Every current durable extension mutation.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorExtensionMutation {
@@ -2605,6 +2684,7 @@ fn capability_set(values: Vec<String>) -> Result<engine::CapabilitySet> {
 }
 
 /// Every authored action integrated by the production project transaction owner.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ProjectAction {

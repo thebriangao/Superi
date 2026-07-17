@@ -57,6 +57,7 @@ pub trait ApiCommand {
 }
 
 /// Strict query for complete retained asynchronous job state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GetAsyncJobs {
@@ -98,8 +99,9 @@ impl ApiCommand for GetAsyncJobs {
 }
 
 macro_rules! define_async_job_command {
-    ($(#[$metadata:meta])* $name:ident, $method:ident, $mode:expr, $kinds:expr, $operation:expr) => {
-        $(#[$metadata])*
+    ($name:ident, $method:ident, $mode:expr, $kinds:expr, $operation:expr) => {
+        /// Strict command for controlling one retained asynchronous job.
+        #[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
         #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
         #[serde(deny_unknown_fields)]
         pub struct $name {
@@ -146,9 +148,11 @@ macro_rules! define_async_job_command {
             fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
                 let operation: Option<ApiDestructiveOperation> = $operation;
                 match operation {
-                    Some(operation) => ApiPermissionRequirements::new([
-                        ApiPermissionRequirement::destructive(operation),
-                    ]),
+                    Some(operation) => {
+                        ApiPermissionRequirements::new([ApiPermissionRequirement::destructive(
+                            operation,
+                        )])
+                    }
                     None => Ok(ApiPermissionRequirements::none()),
                 }
             }
@@ -157,7 +161,6 @@ macro_rules! define_async_job_command {
 }
 
 define_async_job_command!(
-    /// Strict command for cooperatively pausing one asynchronous job.
     PauseAsyncJob,
     PAUSE_ASYNC_JOB_METHOD,
     ApiPermissionRequirementMode::None,
@@ -165,7 +168,6 @@ define_async_job_command!(
     None
 );
 define_async_job_command!(
-    /// Strict command for resuming one fully paused asynchronous job.
     ResumeAsyncJob,
     RESUME_ASYNC_JOB_METHOD,
     ApiPermissionRequirementMode::None,
@@ -173,7 +175,6 @@ define_async_job_command!(
     None
 );
 define_async_job_command!(
-    /// Strict command for retrying one nonterminal failed asynchronous job.
     RetryAsyncJob,
     RETRY_ASYNC_JOB_METHOD,
     ApiPermissionRequirementMode::None,
@@ -181,7 +182,6 @@ define_async_job_command!(
     None
 );
 define_async_job_command!(
-    /// Strict command for cooperatively cancelling one asynchronous job.
     CancelAsyncJob,
     CANCEL_ASYNC_JOB_METHOD,
     ApiPermissionRequirementMode::Static,
@@ -189,7 +189,6 @@ define_async_job_command!(
     Some(ApiDestructiveOperation::CancelAsyncJob)
 );
 define_async_job_command!(
-    /// Strict command for removing one finalized asynchronous job.
     RemoveAsyncJob,
     REMOVE_ASYNC_JOB_METHOD,
     ApiPermissionRequirementMode::Static,
@@ -198,6 +197,7 @@ define_async_job_command!(
 );
 
 /// Strict command for cooperatively cancelling every unfinished asynchronous job.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CancelAllAsyncJobs {
@@ -241,6 +241,7 @@ impl ApiCommand for CancelAllAsyncJobs {
 }
 
 /// Strict query for one complete editor replacement snapshot.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GetEditorState {
@@ -282,6 +283,7 @@ impl ApiCommand for GetEditorState {
 }
 
 /// Successful complete editor-state query.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GetEditorStateResult {
@@ -323,6 +325,7 @@ impl GetEditorStateResult {
 }
 
 /// Structured command for refreshing project crash recovery state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GetProjectRecovery {
@@ -362,6 +365,7 @@ impl ApiCommand for GetProjectRecovery {
 }
 
 /// Successful complete recovery-state query.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GetProjectRecoveryResult {
@@ -400,6 +404,7 @@ impl GetProjectRecoveryResult {
 }
 
 /// Strict command for comparing one recovery candidate.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CompareProjectRecovery {
@@ -461,6 +466,7 @@ impl ApiCommand for CompareProjectRecovery {
 }
 
 /// Successful semantic recovery comparison.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CompareProjectRecoveryResult {
@@ -507,6 +513,7 @@ impl CompareProjectRecoveryResult {
 }
 
 /// Strict optimistic command for restoring one recovery candidate.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RestoreProjectRecovery {
@@ -579,6 +586,7 @@ impl ApiCommand for RestoreProjectRecovery {
 }
 
 /// Successful durable recovery restore result.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RestoreProjectRecoveryResult {
@@ -625,6 +633,7 @@ impl RestoreProjectRecoveryResult {
 }
 
 /// Strict optimistic command for dismissing one recovery candidate.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DismissProjectRecovery {
@@ -688,6 +697,7 @@ impl ApiCommand for DismissProjectRecovery {
 }
 
 /// Successful durable recovery dismissal result.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DismissProjectRecoveryResult {
@@ -734,6 +744,7 @@ impl DismissProjectRecoveryResult {
 }
 
 /// Structured parameters for the authored audio automation query.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GetAudioAutomation {}
@@ -761,6 +772,7 @@ impl ApiCommand for GetAudioAutomation {
 }
 
 /// Successful response to [`GetAudioAutomation`].
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GetAudioAutomationResult {
@@ -780,6 +792,7 @@ impl GetAudioAutomationResult {
 }
 
 /// One caller-owned optimistic authored audio automation transaction.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExecuteAudioAutomationTransaction {
@@ -857,6 +870,7 @@ impl ApiCommand for ExecuteAudioAutomationTransaction {
 }
 
 /// Successful response to one authored audio automation transaction.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExecuteAudioAutomationTransactionResult {
@@ -898,6 +912,7 @@ impl ExecuteAudioAutomationTransactionResult {
 }
 
 /// Structured parameters for the authoritative project settings query.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GetProjectSettings {}
@@ -924,6 +939,7 @@ impl ApiCommand for GetProjectSettings {
 }
 
 /// Successful response to [`GetProjectSettings`].
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GetProjectSettingsResult {
@@ -942,6 +958,7 @@ impl GetProjectSettingsResult {
 }
 
 /// One caller-owned optimistic project settings transaction.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExecuteProjectSettingsTransaction {
@@ -999,6 +1016,7 @@ impl ApiCommand for ExecuteProjectSettingsTransaction {
 }
 
 /// Successful response to one project settings transaction.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExecuteProjectSettingsTransactionResult {
@@ -1037,6 +1055,7 @@ impl ExecuteProjectSettingsTransactionResult {
 }
 
 /// Structured parameters for a media capability query.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GetMediaCapabilities {}
@@ -1064,6 +1083,7 @@ impl ApiCommand for GetMediaCapabilities {
 }
 
 /// Typed request for one coherent engine integration validation snapshot.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GetEngineIntegrationValidation {}
@@ -1091,6 +1111,7 @@ impl ApiCommand for GetEngineIntegrationValidation {
 }
 
 /// Successful coherent engine integration validation query.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GetEngineIntegrationValidationResult {
@@ -1110,6 +1131,7 @@ impl GetEngineIntegrationValidationResult {
 }
 
 /// Successful response to [`GetMediaCapabilities`].
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GetMediaCapabilitiesResult {
@@ -1129,6 +1151,7 @@ impl GetMediaCapabilitiesResult {
 }
 
 /// Structured parameters for a complete engine introspection query.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GetEngineIntrospection {}
@@ -1156,6 +1179,7 @@ impl ApiCommand for GetEngineIntrospection {
 }
 
 /// Successful response to [`GetEngineIntrospection`].
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GetEngineIntrospectionResult {
@@ -1175,6 +1199,7 @@ impl GetEngineIntrospectionResult {
 }
 
 /// Typed request to execute one precise reference slice action.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExecuteScenarioAction {
@@ -1215,6 +1240,7 @@ impl ApiCommand for ExecuteScenarioAction {
 }
 
 /// Typed request to commit one optimistic ordered scenario transaction.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExecuteScenarioTransaction {

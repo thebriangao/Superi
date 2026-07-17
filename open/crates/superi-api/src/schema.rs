@@ -58,6 +58,7 @@ const PUBLIC_CAPABILITY_SCHEMA_NAME: &str = "superi.api.capability";
 const PUBLIC_PERMISSION_SCHEMA_NAME: &str = "superi.api.permission";
 
 /// Whether a public method observes state or mutates it through the engine owner.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PublicMethodKind {
@@ -68,10 +69,12 @@ pub enum PublicMethodKind {
 }
 
 /// A stable named payload schema.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicSchemaReference {
     name: String,
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
     version: SemanticVersion,
     primitive_schema_revision: u32,
 }
@@ -119,6 +122,7 @@ impl PublicSchemaReference {
 }
 
 /// One public command or query request and response contract.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicMethodSchema {
@@ -179,6 +183,7 @@ impl PublicMethodSchema {
 }
 
 /// Permission metadata for one public method.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicMethodPermissionSchema {
@@ -242,6 +247,7 @@ impl PublicMethodPermissionSchema {
 }
 
 /// One ordered replacement event and payload contract.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicEventSchema {
@@ -279,6 +285,7 @@ impl PublicEventSchema {
 }
 
 /// One durable or inspectable public replacement-state identity.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicResourceSchema {
@@ -316,12 +323,21 @@ impl PublicResourceSchema {
 }
 
 /// The stable structured public error vocabulary.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicErrorSchema {
     schema: PublicSchemaReference,
     json_rpc_application_code: i32,
+    #[cfg_attr(
+        feature = "typescript-bindings",
+        specta(type = Vec<crate::typescript::ErrorCategoryBinding>)
+    )]
     categories: Vec<ErrorCategory>,
+    #[cfg_attr(
+        feature = "typescript-bindings",
+        specta(type = Vec<crate::typescript::RecoverabilityBinding>)
+    )]
     recoverabilities: Vec<Recoverability>,
     context_field_policy: String,
 }
@@ -378,12 +394,17 @@ impl PublicErrorSchema {
 }
 
 /// The stable capability descriptor vocabulary.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicCapabilitySchema {
     schema: PublicSchemaReference,
     capability_id_schema: String,
     semantic_version_schema: String,
+    #[cfg_attr(
+        feature = "typescript-bindings",
+        specta(type = Vec<crate::typescript::FeatureAvailabilityBinding>)
+    )]
     availability: Vec<FeatureAvailability>,
     required_capabilities_schema: String,
 }
@@ -428,6 +449,7 @@ impl PublicCapabilitySchema {
 }
 
 /// Stable permission vocabulary published for hosts and automation clients.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicPermissionSchema {
@@ -544,8 +566,10 @@ impl PublicPermissionSchema {
 }
 
 /// The deterministic complete public API catalog.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct PublicApiSchemaSnapshot {
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
     schema_version: SemanticVersion,
     primitive_schema_revision: u32,
     json_rpc_version: String,
@@ -719,9 +743,11 @@ impl PublicApiSchemaSnapshot {
     }
 }
 
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PublicApiSchemaSnapshotWire {
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
     schema_version: SemanticVersion,
     primitive_schema_revision: u32,
     json_rpc_version: String,
@@ -810,6 +836,7 @@ impl ApiResource for ScenarioStateSnapshot {
 }
 
 /// Strict empty query for retrieving the complete public API schema.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GetPublicApiSchema {}
@@ -837,6 +864,7 @@ impl ApiCommand for GetPublicApiSchema {
 }
 
 /// Successful public schema discovery response.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GetPublicApiSchemaResult {
@@ -881,11 +909,16 @@ impl PublicApiSchemaApi {
 }
 
 /// One reviewed public context attached to a structured failure.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicErrorContext {
     component: String,
     operation: String,
+    #[cfg_attr(
+        feature = "typescript-bindings",
+        specta(type = crate::typescript::TraceValueMapBinding)
+    )]
     fields: BTreeMap<String, TraceValue>,
 }
 
@@ -941,10 +974,12 @@ impl PublicErrorContext {
 }
 
 /// A last-valid public replacement resource retained after failure.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicResourceReference {
     resource: String,
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
     schema_version: SemanticVersion,
     identity: String,
     revision: u64,
@@ -1005,12 +1040,22 @@ impl PublicResourceReference {
 }
 
 /// Structured versioned data carried by every public JSON-RPC failure.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicErrorData {
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
     schema_version: SemanticVersion,
     primitive_schema_revision: u32,
+    #[cfg_attr(
+        feature = "typescript-bindings",
+        specta(type = crate::typescript::ErrorCategoryBinding)
+    )]
     category: ErrorCategory,
+    #[cfg_attr(
+        feature = "typescript-bindings",
+        specta(type = crate::typescript::RecoverabilityBinding)
+    )]
     recoverability: Recoverability,
     code: String,
     title: String,
@@ -1064,6 +1109,7 @@ impl PublicErrorData {
 }
 
 /// One user-safe structured public JSON-RPC application error.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct PublicApiError {
     code: i32,
@@ -1179,6 +1225,7 @@ impl PublicApiError {
     }
 }
 
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PublicApiErrorWire {
@@ -1204,6 +1251,7 @@ impl<'de> Deserialize<'de> for PublicApiError {
 }
 
 /// Strict typed JSON-RPC 2.0 request with a string identifier.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct JsonRpcRequest<T> {
     jsonrpc: String,
@@ -1250,6 +1298,7 @@ impl<T: ApiCommand> JsonRpcRequest<T> {
     }
 }
 
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct JsonRpcRequestWire<T> {
@@ -1284,6 +1333,7 @@ where
 }
 
 /// Strict typed JSON-RPC 2.0 success response.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct JsonRpcSuccessResponse<T> {
     jsonrpc: String,
@@ -1316,6 +1366,7 @@ impl<T> JsonRpcSuccessResponse<T> {
     }
 }
 
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct JsonRpcSuccessResponseWire<T> {
@@ -1346,6 +1397,7 @@ where
 }
 
 /// Strict JSON-RPC 2.0 failure response.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct JsonRpcFailureResponse {
     jsonrpc: String,
@@ -1379,6 +1431,7 @@ impl JsonRpcFailureResponse {
     }
 }
 
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct JsonRpcFailureResponseWire {
@@ -1406,6 +1459,7 @@ impl<'de> Deserialize<'de> for JsonRpcFailureResponse {
 }
 
 /// A response that contains exactly one success result or structured failure.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum JsonRpcResponse<T> {
@@ -1415,36 +1469,75 @@ pub enum JsonRpcResponse<T> {
     Failure(Box<JsonRpcFailureResponse>),
 }
 
+macro_rules! for_each_public_method {
+    ($callback:ident, $($argument:expr),+ $(,)?) => {
+        $callback::<GetAsyncJobs>($($argument),+)?;
+        $callback::<PauseAsyncJob>($($argument),+)?;
+        $callback::<ResumeAsyncJob>($($argument),+)?;
+        $callback::<RetryAsyncJob>($($argument),+)?;
+        $callback::<CancelAsyncJob>($($argument),+)?;
+        $callback::<CancelAllAsyncJobs>($($argument),+)?;
+        $callback::<RemoveAsyncJob>($($argument),+)?;
+        $callback::<GetProjectRecovery>($($argument),+)?;
+        $callback::<ExecuteProjectCommand>($($argument),+)?;
+        $callback::<CompareProjectRecovery>($($argument),+)?;
+        $callback::<RestoreProjectRecovery>($($argument),+)?;
+        $callback::<DismissProjectRecovery>($($argument),+)?;
+        $callback::<GetAudioAutomation>($($argument),+)?;
+        $callback::<GetEditorState>($($argument),+)?;
+        $callback::<ExecuteAudioAutomationTransaction>($($argument),+)?;
+        $callback::<GetProjectSettings>($($argument),+)?;
+        $callback::<ExecuteProjectSettingsTransaction>($($argument),+)?;
+        $callback::<GetMediaCapabilities>($($argument),+)?;
+        $callback::<GetEngineIntegrationValidation>($($argument),+)?;
+        $callback::<GetEngineIntrospection>($($argument),+)?;
+        $callback::<ExecuteScenarioAction>($($argument),+)?;
+        $callback::<ExecuteScenarioTransaction>($($argument),+)?;
+        $callback::<OpenEventSubscription>($($argument),+)?;
+        $callback::<CloseEventSubscription>($($argument),+)?;
+        $callback::<PollEvents>($($argument),+)?;
+        $callback::<GetPublicApiSchema>($($argument),+)?;
+    };
+}
+
+macro_rules! for_each_public_event {
+    ($callback:ident, $argument:expr $(,)?) => {
+        $callback::<ProjectStateChanged>($argument)?;
+        $callback::<AsyncJobsChanged>($argument)?;
+        $callback::<ProjectRecoveryChanged>($argument)?;
+        $callback::<AudioAutomationChanged>($argument)?;
+        $callback::<ProjectSettingsChanged>($argument)?;
+        $callback::<MediaCapabilitiesChanged>($argument)?;
+        $callback::<EngineIntrospectionChanged>($argument)?;
+        $callback::<ScenarioStateChanged>($argument)?;
+    };
+}
+
+macro_rules! for_each_public_resource {
+    ($callback:ident, $argument:expr $(,)?) => {
+        $callback::<ProjectHistorySnapshot>($argument)?;
+        $callback::<AsyncJobsSnapshot>($argument)?;
+        $callback::<ProjectRecoverySnapshot>($argument)?;
+        $callback::<AudioAutomationSnapshot>($argument)?;
+        $callback::<EditorStateSnapshot>($argument)?;
+        $callback::<ProjectSettingsSnapshot>($argument)?;
+        $callback::<MediaCapabilitiesSnapshot>($argument)?;
+        $callback::<EngineIntrospectionSnapshot>($argument)?;
+        $callback::<IntegrationValidationSnapshot>($argument)?;
+        $callback::<ScenarioStateSnapshot>($argument)?;
+        $callback::<EventStreamSnapshot>($argument)?;
+    };
+}
+
 fn current_catalog() -> CoreResult<PublicApiSchemaSnapshot> {
     let mut commands = Vec::new();
     let mut queries = Vec::new();
+    let mut events = Vec::new();
+    let mut resources = Vec::new();
 
-    register_method::<GetAsyncJobs>(&mut commands, &mut queries)?;
-    register_method::<PauseAsyncJob>(&mut commands, &mut queries)?;
-    register_method::<ResumeAsyncJob>(&mut commands, &mut queries)?;
-    register_method::<RetryAsyncJob>(&mut commands, &mut queries)?;
-    register_method::<CancelAsyncJob>(&mut commands, &mut queries)?;
-    register_method::<CancelAllAsyncJobs>(&mut commands, &mut queries)?;
-    register_method::<RemoveAsyncJob>(&mut commands, &mut queries)?;
-    register_method::<GetProjectRecovery>(&mut commands, &mut queries)?;
-    register_method::<ExecuteProjectCommand>(&mut commands, &mut queries)?;
-    register_method::<CompareProjectRecovery>(&mut commands, &mut queries)?;
-    register_method::<RestoreProjectRecovery>(&mut commands, &mut queries)?;
-    register_method::<DismissProjectRecovery>(&mut commands, &mut queries)?;
-    register_method::<GetAudioAutomation>(&mut commands, &mut queries)?;
-    register_method::<GetEditorState>(&mut commands, &mut queries)?;
-    register_method::<ExecuteAudioAutomationTransaction>(&mut commands, &mut queries)?;
-    register_method::<GetProjectSettings>(&mut commands, &mut queries)?;
-    register_method::<ExecuteProjectSettingsTransaction>(&mut commands, &mut queries)?;
-    register_method::<GetMediaCapabilities>(&mut commands, &mut queries)?;
-    register_method::<GetEngineIntegrationValidation>(&mut commands, &mut queries)?;
-    register_method::<GetEngineIntrospection>(&mut commands, &mut queries)?;
-    register_method::<ExecuteScenarioAction>(&mut commands, &mut queries)?;
-    register_method::<ExecuteScenarioTransaction>(&mut commands, &mut queries)?;
-    register_method::<OpenEventSubscription>(&mut commands, &mut queries)?;
-    register_method::<CloseEventSubscription>(&mut commands, &mut queries)?;
-    register_method::<PollEvents>(&mut commands, &mut queries)?;
-    register_method::<GetPublicApiSchema>(&mut commands, &mut queries)?;
+    for_each_public_method!(register_method, &mut commands, &mut queries);
+    for_each_public_event!(register_event, &mut events);
+    for_each_public_resource!(register_resource, &mut resources);
 
     PublicApiSchemaSnapshot::try_new(
         PUBLIC_API_SCHEMA_VERSION.clone(),
@@ -1452,29 +1545,8 @@ fn current_catalog() -> CoreResult<PublicApiSchemaSnapshot> {
         JSON_RPC_VERSION,
         commands,
         queries,
-        vec![
-            event_schema::<ProjectStateChanged>()?,
-            event_schema::<AsyncJobsChanged>()?,
-            event_schema::<ProjectRecoveryChanged>()?,
-            event_schema::<AudioAutomationChanged>()?,
-            event_schema::<ProjectSettingsChanged>()?,
-            event_schema::<MediaCapabilitiesChanged>()?,
-            event_schema::<EngineIntrospectionChanged>()?,
-            event_schema::<ScenarioStateChanged>()?,
-        ],
-        vec![
-            resource_schema::<ProjectHistorySnapshot>()?,
-            resource_schema::<AsyncJobsSnapshot>()?,
-            resource_schema::<ProjectRecoverySnapshot>()?,
-            resource_schema::<AudioAutomationSnapshot>()?,
-            resource_schema::<EditorStateSnapshot>()?,
-            resource_schema::<ProjectSettingsSnapshot>()?,
-            resource_schema::<MediaCapabilitiesSnapshot>()?,
-            resource_schema::<EngineIntrospectionSnapshot>()?,
-            resource_schema::<IntegrationValidationSnapshot>()?,
-            resource_schema::<ScenarioStateSnapshot>()?,
-            resource_schema::<EventStreamSnapshot>()?,
-        ],
+        events,
+        resources,
         PublicErrorSchema::current(),
         PublicCapabilitySchema::current(),
         PublicPermissionSchema::current(),
@@ -1495,6 +1567,32 @@ fn register_method<C: ApiCommand>(
         PublicMethodKind::Command => commands.push(descriptor),
         PublicMethodKind::Query => queries.push(descriptor),
     }
+    Ok(())
+}
+
+fn register_event<E: ApiEvent>(events: &mut Vec<PublicEventSchema>) -> CoreResult<()> {
+    events.push(event_schema::<E>()?);
+    Ok(())
+}
+
+fn register_resource<R: ApiResource>(resources: &mut Vec<PublicResourceSchema>) -> CoreResult<()> {
+    resources.push(resource_schema::<R>()?);
+    Ok(())
+}
+
+#[cfg(feature = "typescript-bindings")]
+pub(crate) fn register_typescript_surface(
+    registry: &mut crate::typescript::BindingRegistry,
+) -> Result<(), crate::typescript::TypeScriptBindingError> {
+    use crate::typescript::{
+        register_event as register_typescript_event, register_method as register_typescript_method,
+        register_resource as register_typescript_resource,
+    };
+
+    for_each_public_method!(register_typescript_method, registry);
+    for_each_public_event!(register_typescript_event, registry);
+    for_each_public_resource!(register_typescript_resource, registry);
+    registry.register_common::<PublicApiError>()?;
     Ok(())
 }
 

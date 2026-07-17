@@ -16,6 +16,7 @@ use crate::commands::ApiCommand;
 const COMPONENT: &str = "superi-api.permissions";
 
 /// The protected subsystem addressed by one public API permission requirement.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -44,6 +45,7 @@ impl ApiPermissionKind {
 }
 
 /// How a method obtains its permission requirements.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -62,6 +64,7 @@ impl ApiPermissionRequirementMode {
 }
 
 /// Whether a matching policy rule grants or explicitly rejects authority.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -78,6 +81,7 @@ impl ApiPermissionEffect {
 }
 
 /// Filesystem operation requested by a public command.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -105,6 +109,7 @@ impl ApiFilesystemAccess {
 }
 
 /// Filesystem syntax carried by an absolute path.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -133,6 +138,7 @@ impl ApiFilesystemPlatform {
     }
 }
 
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum ApiFilesystemPathValue {
@@ -146,6 +152,7 @@ enum ApiFilesystemPathValue {
 }
 
 /// A canonical project-relative or declared-platform absolute filesystem target.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ApiFilesystemPath(ApiFilesystemPathValue);
@@ -230,6 +237,7 @@ impl ApiFilesystemPath {
 }
 
 /// Exact or recursive filesystem policy scope.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ApiFilesystemScope {
@@ -277,6 +285,7 @@ impl ApiFilesystemScope {
 }
 
 /// Protected operation on durable plugin state or delegated authority.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -308,6 +317,7 @@ impl ApiPluginOperation {
 }
 
 /// Exact plugin identity or all validated plugin identities.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ApiPluginScope {
@@ -351,6 +361,7 @@ impl ApiPluginScope {
 }
 
 /// Explicitly destructive operation exposed by the current public API.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -390,6 +401,7 @@ impl ApiDestructiveOperation {
 }
 
 /// One exact permission requirement derived from a complete typed command payload.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ApiPermissionRequirement {
@@ -497,6 +509,7 @@ impl ApiPermissionRequirement {
 }
 
 /// A canonical deduplicated set of permission requirements.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ApiPermissionRequirements(Vec<ApiPermissionRequirement>);
@@ -548,6 +561,7 @@ impl ApiPermissionRequirements {
 }
 
 /// One allow or deny rule in a host-owned policy context.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ApiPermissionRule {

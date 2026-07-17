@@ -28,6 +28,7 @@ use crate::version::PROJECT_RECOVERY_SCHEMA_VERSION;
 const COMPONENT: &str = "superi-api.project-recovery";
 
 /// Strict public recovery candidate without any filesystem identity.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectRecoveryCandidateSnapshot {
@@ -48,6 +49,7 @@ impl ProjectRecoveryCandidateSnapshot {
 }
 
 /// Strict user-safe projection of one internal recovery finding.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectRecoveryFindingSnapshot {
@@ -98,9 +100,11 @@ impl ProjectRecoveryFindingSnapshot {
 }
 
 /// Complete strict public replacement state for project crash recovery.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectRecoverySnapshot {
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
     schema_version: SemanticVersion,
     project_id: String,
     project_revision: u64,
@@ -142,6 +146,7 @@ impl ProjectRecoverySnapshot {
 }
 
 /// Strict public semantic comparison for one recovery candidate.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectRecoveryComparisonSnapshot {

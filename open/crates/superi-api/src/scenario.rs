@@ -29,6 +29,7 @@ use crate::version::SLICE_SCENARIO_SCHEMA_VERSION;
 pub const MAX_SCENARIO_ACTIONS: usize = 64;
 
 /// Exact rational frame rate carried by scenario JSON.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExactFrameRate {
@@ -71,6 +72,7 @@ impl ExactFrameRate {
 }
 
 /// Typed graph effect supported by canonical scenario schema 1.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -93,6 +95,7 @@ impl SliceGraphEffect {
 }
 
 /// Stable action discriminator for output and diagnostics.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -130,6 +133,7 @@ impl SliceActionKind {
 }
 
 /// One strict canonical editorial action.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
@@ -197,9 +201,11 @@ impl SliceAction {
 }
 
 /// Versioned ordered scenario input for public control clients.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScenarioDocument {
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
     schema_version: SemanticVersion,
     actions: Vec<SliceAction>,
 }
@@ -252,6 +258,7 @@ impl ScenarioDocument {
 }
 
 /// Public implementation ownership for canonical editorial state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -263,6 +270,7 @@ pub enum SliceImplementation {
 }
 
 /// Highest completed phase in public scenario state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -282,6 +290,7 @@ pub enum ScenarioPhase {
 }
 
 /// Public imported-media state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ImportedMediaState {
@@ -352,6 +361,7 @@ impl ImportedMediaState {
 }
 
 /// Public canonical timeline state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TimelineState {
@@ -424,6 +434,7 @@ impl TimelineState {
 }
 
 /// Public graph node role.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -435,6 +446,7 @@ pub enum GraphNodeKind {
 }
 
 /// Public canonical graph node.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GraphNodeState {
@@ -486,6 +498,7 @@ impl GraphNodeState {
 }
 
 /// Public canonical graph edge.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GraphEdgeState {
@@ -519,6 +532,7 @@ impl GraphEdgeState {
 }
 
 /// Public complete graph state for the canonical mirror.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GraphState {
@@ -583,6 +597,7 @@ impl GraphState {
 }
 
 /// Public typed arguments retained for operation evidence.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum OperationArguments {
@@ -607,6 +622,7 @@ pub enum OperationArguments {
 }
 
 /// Public reversible operation evidence.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OperationRecord {
@@ -646,9 +662,11 @@ impl OperationRecord {
 }
 
 /// Complete strict public scenario state after one action.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScenarioStateSnapshot {
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
     schema_version: SemanticVersion,
     revision: u64,
     phase: ScenarioPhase,
@@ -715,6 +733,7 @@ impl ScenarioStateSnapshot {
 }
 
 /// Successful result for one typed action command.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScenarioActionResult {
@@ -723,6 +742,7 @@ pub struct ScenarioActionResult {
 }
 
 /// Successful result for one optimistic ordered scenario transaction.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScenarioTransactionResult {
@@ -772,6 +792,7 @@ impl ScenarioActionResult {
 }
 
 /// One public error context frame.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScenarioFailureContext {
@@ -799,6 +820,7 @@ impl ScenarioFailureContext {
 }
 
 /// Structured public failure that retains the last valid state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScenarioFailure {

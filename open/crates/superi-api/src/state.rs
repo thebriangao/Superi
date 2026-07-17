@@ -80,6 +80,7 @@ impl<'de> Deserialize<'de> for CanonicalJson {
 }
 
 /// One exact rational clock.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorTimebase {
@@ -97,6 +98,7 @@ impl EditorTimebase {
 }
 
 /// One exact signed coordinate and its explicit clock.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorRationalTime {
@@ -114,6 +116,7 @@ impl EditorRationalTime {
 }
 
 /// One exact half-open range.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorTimeRange {
@@ -131,6 +134,7 @@ impl EditorTimeRange {
 }
 
 /// One integrity-identified canonical JSON document owned by a domain codec.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorCanonicalDocument {
@@ -139,6 +143,10 @@ pub struct EditorCanonicalDocument {
     format_revision: u32,
     byte_length: u64,
     sha256: String,
+    #[cfg_attr(
+        feature = "typescript-bindings",
+        specta(type = crate::typescript::CanonicalJsonBinding)
+    )]
     content: CanonicalJson,
 }
 
@@ -218,6 +226,7 @@ impl EditorCanonicalDocument {
 }
 
 /// Timeline or standalone ownership for one graph resource.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
@@ -227,6 +236,7 @@ pub enum EditorGraphScope {
 }
 
 /// One complete versioned graph state resource.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorGraphDocument {
@@ -260,6 +270,7 @@ impl EditorGraphDocument {
 }
 
 /// Safe failure classification without raw internal messages or contexts.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorFailureState {
@@ -277,6 +288,11 @@ impl EditorFailureState {
 }
 
 /// Bounded descriptor for one extension record whose opaque payload remains project-owned.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[cfg_attr(
+    feature = "typescript-bindings",
+    specta(rename = "EditorStateExtensionRecord")
+)]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorExtensionRecord {
@@ -319,6 +335,7 @@ impl EditorExtensionRecord {
 }
 
 /// Explicit optional owner state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "status", content = "state", rename_all = "snake_case")]
 #[non_exhaustive]
@@ -328,6 +345,7 @@ pub enum EditorAvailability<T> {
 }
 
 /// Project identity, history, durability evidence, settings, recovery, and extensions.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorProjectState {
@@ -351,6 +369,7 @@ pub struct EditorProjectState {
 }
 
 /// Complete canonical timeline and editorial state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorTimelineState {
@@ -373,6 +392,7 @@ impl EditorTimelineState {
 }
 
 /// Every complete editable graph resource.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorGraphState {
@@ -380,6 +400,7 @@ pub struct EditorGraphState {
 }
 
 /// Media state is retained in the canonical timeline resource without copying media payloads.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorMediaState {
@@ -389,6 +410,7 @@ pub struct EditorMediaState {
 }
 
 /// Record coverage at one adjacent audio seam.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
@@ -399,6 +421,7 @@ pub enum EditorAudioRecordContinuity {
 }
 
 /// Source relationship at one adjacent audio seam.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
@@ -409,6 +432,7 @@ pub enum EditorAudioSourceContinuity {
 }
 
 /// Typed destination for one public audio track route.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
@@ -418,6 +442,11 @@ pub enum EditorAudioRouteDestination {
 }
 
 /// Destination or explicit suppression for one source channel.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[cfg_attr(
+    feature = "typescript-bindings",
+    specta(rename = "EditorStateAudioChannelTarget")
+)]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
@@ -427,6 +456,11 @@ pub enum EditorAudioChannelTarget {
 }
 
 /// One ordered source-channel routing decision.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[cfg_attr(
+    feature = "typescript-bindings",
+    specta(rename = "EditorStateAudioChannelRoute")
+)]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorAudioChannelRoute {
@@ -435,6 +469,7 @@ pub struct EditorAudioChannelRoute {
 }
 
 /// One exact sample-clock seam between adjacent authored clips.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorAudioSeam {
@@ -445,6 +480,7 @@ pub struct EditorAudioSeam {
 }
 
 /// Audited sample timing, or an explicit exactness limitation for retimed material.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
@@ -459,6 +495,7 @@ pub enum EditorAudioContinuity {
 }
 
 /// One audio track's exact sample clock and structural continuity evidence.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorAudioTrackState {
@@ -474,6 +511,7 @@ pub struct EditorAudioTrackState {
 }
 
 /// Exact authored audio state and optional sample-clock automation.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorAudioState {
@@ -485,6 +523,7 @@ pub struct EditorAudioState {
 }
 
 /// Durable project color state plus references to graph-authored color operations.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
@@ -500,6 +539,7 @@ pub enum EditorColorManagement {
 }
 
 /// Render output interpretation selected by the authoritative project settings.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -510,6 +550,7 @@ pub enum EditorRenderColorTarget {
 }
 
 /// Durable project color state plus references to graph-authored color operations.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorColorState {
@@ -522,6 +563,7 @@ pub struct EditorColorState {
 }
 
 /// Effect state references canonical graphs and auxiliary effect extension records.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorEffectState {
@@ -530,6 +572,7 @@ pub struct EditorEffectState {
 }
 
 /// AI artifacts remain ordinary editable resources while the runtime is honestly unavailable.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorAiState {
@@ -539,6 +582,7 @@ pub struct EditorAiState {
 }
 
 /// Exact playback scheduling and audio synchronization state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorPlaybackSnapshot {
@@ -562,6 +606,7 @@ pub struct EditorPlaybackSnapshot {
 }
 
 /// Playback bridge attachment with pending and latest observation status.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
@@ -574,6 +619,7 @@ pub enum EditorPlaybackState {
 }
 
 /// Exact elapsed wall duration for one observed export attempt.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorElapsedDuration {
@@ -582,6 +628,7 @@ pub struct EditorElapsedDuration {
 }
 
 /// Complete public-safe state for one retained logical export job.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorExportJobSnapshot {
@@ -601,6 +648,7 @@ pub struct EditorExportJobSnapshot {
 }
 
 /// One prerequisite that finalized without success.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorExportDependencyFailure {
@@ -609,6 +657,7 @@ pub struct EditorExportDependencyFailure {
 }
 
 /// Latest explicitly observed export queue replacement state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorExportQueueState {
@@ -617,6 +666,7 @@ pub struct EditorExportQueueState {
 }
 
 /// Export queue attachment and latest explicit observation.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
@@ -628,9 +678,11 @@ pub enum EditorExportState {
 }
 
 /// Complete replacement state for every editor-owned authored and runtime domain.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EditorStateSnapshot {
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
     schema_version: SemanticVersion,
     project: EditorProjectState,
     timeline: EditorTimelineState,

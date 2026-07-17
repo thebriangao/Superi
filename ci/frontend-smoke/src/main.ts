@@ -1,3 +1,5 @@
+import { inspectProjectCommand, unavailableAiState } from "./api-contract";
+
 type FrontendGate = "strict-types" | "production-bundle";
 
 interface FrontendContract {
@@ -21,6 +23,6 @@ const heading = document.createElement("h1");
 heading.textContent = `${contract.product} frontend contract`;
 
 const summary = document.createElement("p");
-summary.textContent = `${contract.status}: ${contract.gates.join(", ")}`;
+summary.textContent = `${contract.status}: ${contract.gates.join(", ")}; ${inspectProjectCommand.command.command}; ai ${unavailableAiState.runtime_availability}`;
 
 root.replaceChildren(heading, summary);

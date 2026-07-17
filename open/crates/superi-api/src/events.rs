@@ -30,6 +30,7 @@ pub trait ApiEvent {
 }
 
 /// Full replacement generic project history state after one authored state change.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectStateChanged {
@@ -97,6 +98,7 @@ impl ApiEvent for ProjectStateChanged {
 }
 
 /// Complete asynchronous job replacement state after one observable transition.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AsyncJobsChanged {
@@ -161,6 +163,7 @@ impl ApiEvent for AsyncJobsChanged {
 }
 
 /// Full replacement project recovery state after discovery, restore, or dismissal.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectRecoveryChanged {
@@ -228,6 +231,7 @@ impl ApiEvent for ProjectRecoveryChanged {
 }
 
 /// Full replacement authored automation state emitted after one committed transaction.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AudioAutomationChanged {
@@ -292,6 +296,7 @@ impl ApiEvent for AudioAutomationChanged {
 }
 
 /// Full replacement project settings state emitted after one committed transaction.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectSettingsChanged {
@@ -351,6 +356,7 @@ impl ApiEvent for ProjectSettingsChanged {
 }
 
 /// Full replacement state emitted when media capabilities change.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MediaCapabilitiesChanged {
@@ -375,6 +381,7 @@ impl ApiEvent for MediaCapabilitiesChanged {
 }
 
 /// Full replacement state emitted when engine capability or health state changes.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EngineIntrospectionChanged {
@@ -399,6 +406,7 @@ impl ApiEvent for EngineIntrospectionChanged {
 }
 
 /// Full replacement scenario state emitted after one committed transaction.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScenarioStateChanged {

@@ -16,5 +16,7 @@ pub mod scenario;
 pub mod schema;
 pub mod scripting;
 pub mod state;
+#[cfg(feature = "typescript-bindings")]
+pub mod typescript;
 pub mod validation;
 pub mod version;

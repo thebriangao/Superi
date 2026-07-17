@@ -27,6 +27,7 @@ use crate::version::PROJECT_SETTINGS_SCHEMA_VERSION;
 const COMPONENT: &str = "superi-api.project-settings";
 
 /// One strict shared value carried by public project settings JSON.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 #[non_exhaustive]
@@ -56,6 +57,7 @@ impl ProjectSettingValue {
 }
 
 /// One strict ordered mutation carried by a public transaction.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
@@ -79,9 +81,11 @@ impl ProjectSettingMutation {
 }
 
 /// Complete strict public replacement snapshot for project settings.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectSettingsSnapshot {
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
     schema_version: SemanticVersion,
     project_id: String,
     project_revision: u64,

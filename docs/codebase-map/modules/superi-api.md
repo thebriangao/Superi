@@ -2,8 +2,8 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: 91715b3ce92a5e2f37279beb74844b11e161bc4adaff5e0c5788ae296bb6cf69
-source_files: 32
+source_hash: 267ff5e53147ce3aeb9b4e6801c5c6032bd633176d08607b834d3a235e53d673
+source_files: 34
 mapped_at_commit: working-tree
 ---
 
@@ -30,13 +30,17 @@ without duplicating engine event ownership. Network transport, dynamic routing, 
 scripting, public job submission and typed job results, and project database file commands remain
 absent. The generic editor and job facades project the engine's existing owners without duplicating
 state, history, scheduling, execution, or event ownership.
+The same canonical method, event, and resource registry now drives deterministic generated
+TypeScript declarations, strongly typed maps, JSON-RPC envelopes, and a transport-neutral client.
+The generator adds no hidden runtime, state owner, Tauri dependency, network path, or application UI.
 
 ## Source inventory
 
 - `open/crates/superi-api/Cargo.toml`: Declares production `serde`, `superi-core`, and
   `superi-engine` dependencies, enabling the engine's narrow test-support fixture for this crate's
-  public contract tests, plus test-only `serde_json`, `sha2`, `superi-media-io`, and
-  `superi-concurrency` for real EngineControl and recovery contracts.
+  public contract tests. The opt-in `typescript-bindings` feature adds exact Specta 1.0.5 only for
+  deterministic type derivation. Test-only `serde_json`, `sha2`, `superi-media-io`, and
+  `superi-concurrency` support real EngineControl and recovery contracts.
 - `open/crates/superi-api/src/api.rs`: Implements public media and complete engine introspection
   snapshots, strict engine-neutral projection including project, device, sleep, and wake state,
   independent revisions, query state, and full-replacement change events.
@@ -69,7 +73,8 @@ state, history, scheduling, execution, or event ownership.
   runtime executors and typed artifacts below the API boundary.
 - `open/crates/superi-api/src/lib.rs`: Exposes API, audio automation, command, event stream, event,
   project editor, complete editor state, asynchronous jobs, permissions, settings, project recovery,
-  scenario, public schema, scripting, validation, and version modules.
+  scenario, public schema, scripting, validation, and version modules, plus the feature-gated
+  TypeScript renderer.
 - `open/crates/superi-api/src/permissions.rs`: Owns validated serializable rules and requirements,
   component-aware project-relative, Unix, Windows drive, and Windows UNC scopes, exact and recursive
   matching, plugin identity and capability delegation ceilings, destructive-operation scopes,
@@ -96,6 +101,10 @@ state, history, scheduling, execution, or event ownership.
 - `open/crates/superi-api/src/state.rs`: Owns the strict ten-domain complete editor replacement
   snapshot, canonical authored JSON resource envelopes, bounded extension descriptors, exact audio
   routing and continuity projection, and dispatcher-backed read-only query facade.
+- `open/crates/superi-api/src/typescript.rs`: Collects every canonical request, response, event,
+  resource, and structured error type through Specta; validates exact registry parity; preserves
+  reviewed core wire encodings; and renders recursive JSON, strongly typed public maps, JSON-RPC
+  envelopes, and a transport-neutral client without filesystem access or run-specific identity.
 - `open/crates/superi-api/src/validation.rs`: Strictly projects canonical engine integration state,
   nested introspection, exact lifecycle and recovery actions, workflow permits or denials, scenario
   reversal capacity, endpoint replacement state, and coherence findings through typed read-only
@@ -158,6 +167,9 @@ state, history, scheduling, execution, or event ownership.
 - `open/crates/superi-api/tests/editor_state_contract.rs`: Covers the permanent query and resource,
   strict deterministic ten-domain state, exact canonical payload identity, explicit optional
   runtime owners, project color intent, and no-poll playback and export observations.
+- `open/crates/superi-api/tests/typescript_bindings_contract.rs`: Proves two-run deterministic
+  rendering, exact coverage of every canonical method, event, and resource, required project,
+  event, AI, error, map, and client declarations, and absence of checkout paths and timestamps.
 
 ## Public surface
 
@@ -188,6 +200,15 @@ component-aware across project-relative, Unix, Windows drive, and Windows UNC sy
 claim symlink confinement or replace revalidation and operating-system containment at the actual I/O
 owner. Permission failures expose only the principal, method, permission kind, and operation code,
 never a target path, plugin identity, or delegated capability.
+
+With feature `typescript-bindings`, `render_typescript_bindings` derives the same complete surface
+into deterministic TypeScript. `SuperiMethodMap` binds each permanent method to its exact request
+and response, `SuperiEventMap` binds ordered replacement events, and `SuperiResourceMap` binds
+durable replacement state. `SuperiTransport` and `SuperiClient` are transport-neutral typed seams;
+they start no process, open no socket, own no engine or project state, and do not assume Tauri.
+Core semantic versions remain strings, structured error and availability values remain exact string
+unions, diagnostic signed and unsigned integers remain decimal strings, recursive canonical JSON
+remains JSON, and ordinary API integer fields retain their current JSON number representation.
 
 The media capability surface remains schema `2.0.0`, method
 `superi.media.capabilities.get`, and event `superi.media.capabilities.changed`. It exposes strict
@@ -359,6 +380,19 @@ Destructive requirements cover asynchronous job cancellation and removal, recove
 dismissal, and audio automation lane or keyframe removal. Unprotected siblings remain explicitly
 classified with no requirements instead of inheriting authority from a method-wide switch.
 
+TypeScript generation shares the exact registration lists rather than rebuilding catalog names:
+
+```text
+canonical method, event, and resource registry
+  -> validated PublicApiSchemaSnapshot
+  -> feature-gated Specta type collection and reviewed core wire shadows
+  -> deterministic TypeScript declarations and typed public maps
+  -> committed artifact check and strict frontend smoke consumer
+```
+
+The renderer is pure and filesystem-free. The repository tool owns publication and drift checks,
+and the frontend consumer owns only compile-time and transport-neutral client use.
+
 Media capability conversion remains declaration-only. Engine registry records are projected into
 API-owned stable types, equal states do not advance API revision, and a semantic change emits one
 full replacement.
@@ -506,6 +540,8 @@ messages, contexts, paths, and source chains never serialize.
 ## Dependencies and consumers
 
 - `serde` supplies strict snake-case and tagged serialized shapes with unknown-field rejection.
+- Exact optional Specta 1.0.5 derives TypeScript declarations only when the
+  `typescript-bindings` feature is selected. It does not enter the default API or engine graph.
 - `superi-core` supplies semantic versions, canonical names, stable primitive revision 1, feature
   availability, typed diagnostic fields, user-safe presentation, exact frame rates, and the
   classified error model.
@@ -526,9 +562,13 @@ messages, contexts, paths, and source chains never serialize.
   reconstructing the catalog or projecting engine state directly. Its scenario consumer binds one
   exact read grant for the resolved canonical fixture path and no repository-wide authority. It does
   not yet expose job control commands.
+- `superi-api-bindings` is the repository-only generator and drift-check consumer. The committed
+  artifact is consumed by `ci/frontend-smoke` through strict TypeScript checking and a production
+  Vite bundle.
 
-No network transport, UI, shell, scripting runtime, extension host, or closed-tier client is
-present. The event stream is a transport-neutral in-process owner that a later server can expose.
+No network transport, application UI, shell, scripting runtime, extension host, or closed-tier
+client is present. The event stream is a transport-neutral in-process owner that a later server can
+expose, and the frontend smoke package is a real generated-contract consumer, not an application.
 
 ## Invariants and operational boundaries
 
@@ -550,6 +590,15 @@ present. The event stream is a transport-neutral in-process owner that a later s
   capabilities, and policy rule contents.
 - Filesystem authorization is a logical public API boundary over typed lexical paths. Actual I/O
   owners must still confine handles, resolve symlink behavior, and apply platform sandbox policy.
+- TypeScript collection reuses those exact registration lists and validates method, event, and
+  resource parity against a fresh catalog before rendering. New public entries cannot silently
+  remain Rust-only.
+- Generated output contains no timestamp or checkout identity and rejects forbidden Unicode dash
+  characters. Core custom serialization is reflected explicitly rather than inferred from Rust
+  memory layout, and wide diagnostic integers remain lossless decimal strings.
+- The generated client is transport-neutral. It cannot own project state, bypass the public command
+  surface, introduce a hidden AI artifact channel, or imply Tauri, network, retry, or subscription
+  behavior that the supplied transport does not implement.
 - JSON-RPC request and response values require version `2.0`, string IDs, typed methods, and exactly
   one result or error branch. Event ordering and replay come only from the event stream contracts,
   not JSON-RPC IDs.
@@ -672,7 +721,7 @@ duplicate rejection, typed JSON-RPC exclusivity, all four recovery classes, user
 filtering, last-valid resource identity and revision, the complete permission vocabulary, and exact
 permission metadata for all 26 methods. They include every public asynchronous job and event
 subscription method and resource, but do not claim a network transport server, dynamic method
-routing, push delivery, authentication, generated bindings, or negotiation.
+routing, push delivery, authentication, or negotiation.
 
 Six event stream contracts plus one sequence-exhaustion unit test prove strict identities and wire
 values, finite configuration, duplicate and capacity rejection, exact eight-event union parity,
@@ -693,6 +742,14 @@ integration contracts separately prove denied job cancellation, recovery restore
 audio automation removal preserve their complete state, files, and event streams.
 
 Six asynchronous job integration contracts plus one exhaustive unit mapping drive the real
+
+The TypeScript binding contract renders twice and proves exact text equality, every canonical name,
+the generic project request and result, project replacement event, editable AI state, structured
+error, method, event, and resource maps, and the typed client. The repository tool adds current,
+missing, stale, nonmutating-check, deterministic-generation, and idempotent-publication proof. The
+strict frontend smoke package imports the committed artifact, typechecks project command, event,
+resource, AI, transport, and client use, and includes that consumer in the production Vite bundle.
+
 dispatcher-owned export queue. They prove canonical handle rejection, strict wire round trips,
 stable kind and weighted priority vocabulary, nonblocking progress and ordered completion events,
 pause, resume, retry, cancel, cancel-all, remove, dependency state, safe failure filtering,
@@ -760,10 +817,13 @@ evidence. Project settings retain exact durable scalar meaning, and project reco
 complete strict discover, compare, restore, and dismiss surface without leaking file identity. The
 API still does not expose project file open or save, public job submission or typed results,
 network transport, dynamic routing, push delivery, persisted replay, authentication,
-operating-system sandboxing, generated bindings, a scripting runtime, or CLI editor execution.
+operating-system sandboxing, a scripting runtime, or CLI editor execution.
 Host-injected authorization now covers every current
 caller-selected filesystem target, plugin state and delegation mutation, and destructive job,
 recovery, and automation operation before dispatch.
+Generated bindings are
+implemented as a deterministic representation of the current in-process public surface, not as
+wire routing or a desktop application.
 Scenario schema 1 remains deliberately narrow and fixed to one canonical edit. Its reference
 state proves transactional control semantics, not production timeline, graph, or media ownership.
 Authored clip-gain automation is a substantive strict transaction and event surface over the engine
@@ -798,7 +858,9 @@ raw context values.
 Preserve strict serialization, deterministic ordering, stable permanent names, last-valid-state
 errors, revision fences, transaction and event agreement, and unknown-variant handling. Keep
 the explicit catalog synchronized with every new command, query, event, resource, schema version,
-and CLI discovery assertion. Preserve the safe error conversion boundary and require negative leak
+CLI discovery assertion, and generated TypeScript map. Regenerate the committed artifact and run
+the nonmutating check after every public DTO or registry change. Preserve the safe error conversion
+boundary and require negative leak
 proof before adding context fields. Do not treat JSON-RPC data values as a transport implementation.
 Keep the public event union in exact parity with the catalog and preserve separate source and public
 sequence domains. Never advance subscriber state on poll, return events across a gap, reuse a stream

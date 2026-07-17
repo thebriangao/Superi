@@ -27,6 +27,7 @@ use crate::version::AUDIO_AUTOMATION_SCHEMA_VERSION;
 const COMPONENT: &str = "superi-api.audio-automation";
 
 /// One exact signed sample coordinate and its integral sample clock.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AudioAutomationSampleTime {
@@ -66,6 +67,7 @@ impl AudioAutomationSampleTime {
 }
 
 /// One strict typed audio automation parameter address.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
@@ -96,6 +98,7 @@ impl AudioAutomationTarget {
 }
 
 /// Professional playback and recording behavior for one automation lane.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
@@ -132,6 +135,7 @@ impl AudioAutomationMode {
 }
 
 /// One finite clip-gain value at an exact sample coordinate.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AudioAutomationKeyframe {
@@ -173,6 +177,7 @@ impl AudioAutomationKeyframe {
 }
 
 /// One strict ordered mutation in the permanent public automation vocabulary.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
@@ -291,6 +296,7 @@ impl AudioAutomationMutation {
 }
 
 /// Bounded state for one active automation write pass.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AudioAutomationActivePassSnapshot {
@@ -329,6 +335,7 @@ impl AudioAutomationActivePassSnapshot {
 }
 
 /// Complete strict replacement state for one authored automation lane.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AudioAutomationLaneSnapshot {
@@ -381,9 +388,11 @@ impl AudioAutomationLaneSnapshot {
 }
 
 /// Complete strict public replacement snapshot for authored audio automation.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AudioAutomationSnapshot {
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
     schema_version: SemanticVersion,
     revision: u64,
     lanes: Vec<AudioAutomationLaneSnapshot>,

@@ -39,6 +39,7 @@ use crate::events::{EngineIntrospectionChanged, MediaCapabilitiesChanged};
 use crate::version::{ENGINE_INTROSPECTION_SCHEMA_VERSION, MEDIA_CAPABILITIES_SCHEMA_VERSION};
 
 /// The stable public policy tier for one media backend.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -50,9 +51,13 @@ pub enum MediaBackendTier {
 }
 
 /// Whether one media capability dimension is fixed, dynamic, absent, or undeclared.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-#[serde(bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>"))]
+#[cfg_attr(
+    not(feature = "typescript-bindings"),
+    serde(bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>"))
+)]
 #[non_exhaustive]
 pub enum CapabilityConstraint<T> {
     /// The dimension does not apply to this operation.
@@ -69,6 +74,7 @@ pub enum CapabilityConstraint<T> {
 }
 
 /// Chroma sampling exposed by one video codec capability row.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -84,6 +90,7 @@ pub enum ChromaSampling {
 }
 
 /// How one backend executes its declared media operations.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -99,6 +106,7 @@ pub enum HardwareAcceleration {
 }
 
 /// One stable media action exposed to API consumers.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
@@ -118,6 +126,7 @@ pub enum MediaOperation {
 }
 
 /// One valid correlated profile, level, depth, and chroma tuple.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MediaCodecCapability {
@@ -161,6 +170,7 @@ impl MediaCodecCapability {
 }
 
 /// Public capability declaration for one registered backend.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MediaBackendCapabilities {
@@ -218,6 +228,7 @@ impl MediaBackendCapabilities {
 }
 
 /// Effective ranked backend support for one media action.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MediaOperationSupport {
@@ -247,9 +258,11 @@ impl MediaOperationSupport {
 }
 
 /// Strict, versioned, point-in-time media capability state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MediaCapabilitiesSnapshot {
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
     schema_version: SemanticVersion,
     revision: u64,
     backends: Vec<MediaBackendCapabilities>,
@@ -440,6 +453,7 @@ fn public_chroma_sampling(value: &EngineChromaSampling) -> ChromaSampling {
 }
 
 /// Stable public lifecycle phase for the complete engine state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -471,6 +485,7 @@ pub enum EngineLifecyclePhase {
 }
 
 /// Stable public aggregate engine health.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -486,6 +501,7 @@ pub enum EngineHealth {
 }
 
 /// Stable public engine subsystem identity.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -507,6 +523,7 @@ pub enum EngineSubsystem {
 }
 
 /// Stable public state for one engine subsystem.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -536,6 +553,7 @@ pub enum EngineSubsystemState {
 }
 
 /// Stable public workflow identity.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -551,6 +569,7 @@ pub enum EngineWorkflow {
 }
 
 /// Stable public response to one active failure.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -568,6 +587,7 @@ pub enum EngineFailureDisposition {
 }
 
 /// Stable public recovery intent for one active failure.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -583,6 +603,7 @@ pub enum EngineRecoveryRequest {
 }
 
 /// Stable public resource class identity.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -604,6 +625,7 @@ pub enum EngineResourceClass {
 }
 
 /// Strict public state for one canonical engine subsystem.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EngineSubsystemStatus {
@@ -626,6 +648,7 @@ impl EngineSubsystemStatus {
 }
 
 /// Strict public readiness for one coherent engine workflow.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EngineWorkflowStatus {
@@ -655,6 +678,7 @@ impl EngineWorkflowStatus {
 }
 
 /// Strict user-safe failure text and stable classification codes.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EngineUserSafeError {
@@ -698,6 +722,7 @@ impl EngineUserSafeError {
 }
 
 /// Strict user-safe active failure state for one subsystem.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EngineFailureStatus {
@@ -741,6 +766,7 @@ impl EngineFailureStatus {
 }
 
 /// Strict public accounting for one shared engine resource class.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EngineResourceClassStatus {
@@ -819,6 +845,7 @@ impl EngineResourceClassStatus {
 }
 
 /// Strict point-in-time state for the optional shared resource envelope.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EngineResourceStatus {
@@ -903,9 +930,11 @@ impl EngineResourceStatus {
 }
 
 /// Strict, versioned, point-in-time engine capability and health state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EngineIntrospectionSnapshot {
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
     schema_version: SemanticVersion,
     revision: u64,
     media_capabilities: MediaCapabilitiesSnapshot,

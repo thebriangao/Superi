@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 7b1ea697c5f78233ff065bd5a90ce8e06385bd5cd199b0190c885e7026485a08
-source_files: 150
+source_hash: 2692249e88ee97bfe288a87c3444fd7e5beb8cfbf268e76cec7ca9f0888736a8
+source_files: 152
 mapped_at_commit: working-tree
 ---
 
@@ -28,7 +28,7 @@ Google Docs work, and delivery itself without another agent. Multiple checkpoint
 Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers but obeys an
 explicit positive user concurrency value. The file is ignored by Git and copied into managed
 worktrees through `.worktreeinclude`, so the mapping script does not include it in this module's
-150-file inventory or source hash. It must still be reread independently before repository work.
+152-file inventory or source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
 ratified architecture, while `open/Cargo.toml` and `open/Cargo.lock` expose the dependency graph
@@ -395,11 +395,16 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   Vite 7.3.6, their build dependencies, and platform-optional esbuild and Rollup packages.
 - `ci/frontend-smoke/package.json`: Declares a private CI package, Node.js 24.13.0, independent
   typecheck, build, and test commands, and exact TypeScript and Vite development dependencies.
+- `ci/frontend-smoke/src/api-contract.ts`: Imports the committed generated API artifact, constructs
+  an exact typed project command and unavailable AI state, consumes method, event, and resource maps,
+  and exposes the transport-neutral client constructor to the browser build.
 - `ci/frontend-smoke/src/main.ts`: Implements a strict typed browser entry that verifies the contract
-  root and renders the declared product, readiness, and independent frontend gates.
+  root, consumes the generated command and AI state examples, and renders the declared product,
+  readiness, and independent frontend gates.
 - `ci/frontend-smoke/tests/contract.test.mjs`: Verifies exact scripts and versions, strict compiler
-  settings, immutable and least-privilege workflow wiring, locked installation, mandatory gates, and
-  the generated hashed JavaScript entry in the production bundle.
+  settings, immutable and least-privilege workflow wiring, locked installation, mandatory gates,
+  generated API import and typed maps, client surface, and the hashed JavaScript entry in the
+  production bundle.
 - `ci/frontend-smoke/tsconfig.json`: Defines strict no-emit TypeScript checking for the browser entry
   with ES2022, DOM, bundler-resolution, isolated-module, and forced-module semantics.
 
@@ -423,7 +428,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 
 ### Cargo workspace and repository configuration
 
-- `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 24 local
+- `open/bindings/typescript/superi-api.ts`: Deterministic committed TypeScript representation of the
+  public API. It contains all named DTOs, exact method, event, and resource maps, recursive wire
+  primitives, and a transport-neutral typed client without owning runtime IPC.
+- `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 25 local
   workspace packages, registry dependencies, target-support dependency trees, scenario digest
   and process-instrumentation dependency edges, the API introspection and validation contracts'
   test edge to `superi-concurrency`, graph and timeline document serialization and integrity edges,
@@ -456,19 +464,22 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   reuses already locked permissive Objective-C framework bindings and adds no network or internal
   crate edge. VST3 hosting adds
   exact `vst3` 0.3.0 and `com-scrape-types` 0.1.1, both licensed `MIT OR Apache-2.0`, and reuses
-  existing libloading 0.8.9 plus macOS Core Foundation bindings. The lockfile is generated
-  resolution evidence and is not hand-edited policy.
+  existing libloading 0.8.9 plus macOS Core Foundation bindings. TypeScript generation adds exact
+  optional Specta 1.0.5 plus its permissively licensed generator dependencies; none enters the
+  default runtime feature graph. The lockfile is generated resolution evidence and is not
+  hand-edited policy.
 - `open/Cargo.toml`: Root Cargo workspace manifest using resolver 2 and glob members under
   `crates/*` and `tools/*`. It centralizes version `0.0.0`, Rust 2021, MIT, Rust 1.80, repository
   metadata, deny-by-default unsafe lints, and shared dependencies for error handling, serialization,
   images, GPU, codecs, hashes, process instrumentation, platform APIs, native build support,
   reviewed audio device and ring-buffer primitives, a pinned block binding for macOS native
   completion handlers, exact bundled SQLite through rusqlite 0.32.1, exact low-level VST3 bindings,
-  exact synchronization-only filesystem locking through `fs4` 1.1.0, and offline font shaping plus
-  Unicode layout.
+  exact synchronization-only filesystem locking through `fs4` 1.1.0, offline font shaping plus
+  Unicode layout, and exact Specta 1.0.5 for opt-in TypeScript generation.
 - `open/README.md`: Compact open-tree orientation and build commands. It records the 19 runtime
-  crates plus repository tools, the exact canonical runner command, contract-only status, and
-  the remaining production integration boundary.
+  crates plus six repository tools, the committed TypeScript API artifact and freshness command,
+  the exact canonical runner command, contract-only status, and the remaining production
+  integration boundary.
 - `open/ci/network-isolated-contract.sh`: Executable contract binding the dedicated workflow to
   immutable checkout, least privilege, locked artifact preparation, namespace isolation, fixture
   validation, namespace-aware interface inspection, and the exact canonical headless CLI invocation
@@ -483,7 +494,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   permitting only the pinned OxideAV MP3 repository as a Git source.
 - `open/docs/STRUCTURE.md`: Compact dependency-tier map, codec placement, suggested human ownership,
   crate-boundary working rules, repository-tool placement, fixture-tool responsibility including
-  OTIO baseline generation, structured test-report responsibility, and deferred production work.
+  OTIO baseline generation, structured test-report responsibility, TypeScript binding generation,
+  and deferred production work.
   Its cache tier records the reviewed downward dependency on concurrency used by render jobs, and
   its project tier records the downward authored-audio dependency used by aggregate persistence.
 - `open/rust-toolchain.toml`: Selects the floating stable Rust channel with `rustfmt` and Clippy.
@@ -681,8 +693,9 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
 - `.github/workflows/dependency-policy.yml` is the separate dependency license and source policy
   surface.
 - `.github/workflows/frontend.yml` and `ci/frontend-smoke/` form a third CI surface for locked npm
-  installation, strict TypeScript checking, Vite production bundling, and bundle-contract proof.
-  This surface is intentionally not the absent React application or Tauri desktop shell.
+  installation, strict TypeScript checking of the committed public API artifact and its real
+  browser consumer, Vite production bundling, and bundle-contract proof. This surface is
+  intentionally not the absent React application or Tauri desktop shell.
 - `.github/workflows/network-isolated.yml` and `open/ci/` form a fourth CI surface. It prepares
   artifacts before isolation, then proves current workspace tests, fixture validation, and the CLI
   consumer run with no non-loopback interface, no IPv4 route, and Cargo offline mode.
@@ -691,7 +704,8 @@ Together the five workflows enforce the open-tree boundary, locked hosted Rust b
 policy, a locked frontend toolchain contract, and one network-isolated core path. They do not yet
 implement the complete documented feature, malformed-input, GPU, audio, shell, UI, or slice suites.
 
-The stable public automation protocol described by Phase 0 is owned in `superi-api`, not here.
+The stable public automation protocol described by Phase 0 is owned in `superi-api`, not here. The
+workspace owns only its committed generated TypeScript projection and frontend contract consumer.
 Likewise, codec, graph, image, engine, project, timeline, and CLI Rust interfaces live in their crate
 modules even when workspace documents define constraints on them.
 
@@ -736,13 +750,20 @@ generated build output under the ignored `open/target/`. Runtime
 dependency direction is downward through the crate tiers: core and representation types support
 GPU, concurrency, media, graph, and codecs; feature catalogs and timeline build on those; engine
 orchestration assembles them; the API is the stable facade; and CLI is a headless consumer. The
-fixture, dependency-check, boundary, and structured-report tools are workspace members for common
-build, test, Clippy, and MSRV coverage, but none is part of the runtime DAG.
+  fixture, dependency-check, boundary, structured-report, benchmark, and API-binding tools are
+  workspace members for common build, test, Clippy, and MSRV coverage, but none is part of the
+  runtime DAG.
 
 Cargo records test-only member dependencies in the same package dependency arrays as runtime
 dependencies. The `superi-api` lock entry therefore names `superi-concurrency` so its public engine
 introspection contract can exercise real EngineControl ownership, while the production API manifest
 still depends only on lower stable facade inputs and preserves runtime direction.
+
+The API's optional `typescript-bindings` feature uses exact Specta 1.0.5 only to reflect its
+serializable DTO declarations. The `superi-api-bindings` tool consumes that feature, combines the
+derived declarations with the API-owned canonical method, event, and resource registry, and writes
+the committed artifact outside the runtime graph. The generated client remains transport-neutral,
+and the default API feature set does not include Specta.
 
 The timeline component document reuses workspace `serde`, `serde_json`, and `sha2` pins already
 present for core and graph contracts. This changes the direct package edges recorded for
@@ -856,10 +877,11 @@ the platform crate's required version.
 
 The frontend CI path begins on pull requests, pushes to `main`, or manual dispatch. Its isolated
 Ubuntu 24.04 job installs the exact Node.js 24.13.0 declaration, performs a lockfile-only `npm ci`,
-runs strict no-emit TypeScript checking, builds the minimal browser entry with Vite 7.3.6, and then
-tests both workflow wiring and the generated hashed bundle. It proves the locked frontend toolchain
-and independent gates without creating a second application architecture or claiming React, Tauri,
-editorial behavior, native viewport integration, or product UI coverage.
+runs strict no-emit TypeScript checking over the committed API artifact and its browser consumer,
+builds the minimal browser entry with Vite 7.3.6, and then tests workflow wiring, exact binding
+imports and maps, and the generated hashed bundle. It proves the locked frontend toolchain and one
+real generated-contract consumer without creating a second application architecture or claiming
+React, Tauri, live IPC, editorial behavior, native viewport integration, or product UI coverage.
 
 The Tauri Rust CI path begins on pull requests, pushes to `main`, or manual dispatch. Its blocking
 matrix compiles the pinned CI-only host on macOS 26 arm64, macOS 15 Intel, Windows 2025, and Ubuntu
@@ -1222,8 +1244,14 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   checkpoint results, not hosted results for every configured lane.
 - `.github/workflows/frontend.yml` performs `npm ci`, `npm run typecheck`, `npm run build`, and
   `npm test` under exact Node.js, TypeScript, and Vite versions. The contract tests require strict
-  no-emit checking, immutable actions, read-only credentials, every independent gate, and a hashed
-  JavaScript entry in the generated production bundle.
+  no-emit checking, immutable actions, read-only credentials, every independent gate, the committed
+  generated API import and typed maps, the transport-neutral client surface, and a hashed JavaScript
+  entry in the generated production bundle.
+- `cargo test -p superi-api --features typescript-bindings --test typescript_bindings_contract`
+  proves deterministic API rendering, complete canonical registry coverage, required typed maps,
+  and absence of timestamps or checkout paths. `cargo test -p superi-api-bindings` proves
+  idempotent generation plus nonmutating missing and stale checks, and `cargo run --locked -p
+  superi-api-bindings -- check` proves the committed artifact is current.
 - `.github/workflows/tauri.yml` runs the four blocking Rust gates across two macOS architectures,
   Windows, and Ubuntu. Fresh local proof passed both workflow contracts, formatting, the Tauri mock
   runtime test, strict all-target Clippy, and native macOS wry compilation from the checkpoint target.
@@ -1310,9 +1338,10 @@ lane, an unimplemented suite is a gap, and a retry retains its original failure 
 ## Current status and risks
 
 The workspace is beyond the original empty scaffold even though the public orientation has not been
-updated consistently. Fresh Cargo metadata expands the member globs to 24 packages: 19 crates under
+updated consistently. Fresh Cargo metadata expands the member globs to 25 packages: 19 crates under
 `open/crates/` plus the `superi-fixture-tool`, `superi-dependency-check`,
-`superi-boundary-tool`, `superi-bench`, and `superi-test-report` repository utilities. The
+`superi-boundary-tool`, `superi-bench`, `superi-test-report`, and `superi-api-bindings` repository
+utilities. The
 lockfile includes a substantial
 GPU, image, codec, serialization, platform, and native-build dependency graph, and current codec,
 image, platform, and unsafe documents describe implemented contracts rather than empty placeholders.
@@ -1520,9 +1549,10 @@ The largest current risk is cross-document drift:
 - The CI checkpoint record delegates the exact delivered SHA to the canonical checklist and does
   not record a completed hosted run across the six configured lanes. The current workflow and local
   proof are implementation evidence, not proof that every hosted runner completed at this revision.
-- The frontend workflow validates a deliberately minimal TypeScript and Vite contract. It has no
-  React dependency, no Tauri host, no native viewport, no public API consumer, and no editorial
-  behavior, so a passing frontend lane must not be reported as product UI or desktop-shell proof.
+- The frontend workflow validates a deliberately minimal TypeScript and Vite contract. It now has a
+  real compile-time consumer of the generated public API, but no live transport, React dependency,
+  Tauri host, native viewport, or editorial behavior, so a passing frontend lane must not be
+  reported as product UI or desktop-shell proof.
 - The frontend lockfile includes many platform-optional esbuild and Rollup packages. Their presence
   describes npm's portable dependency resolution and does not make those platforms supported Superi
   targets or prove a native frontend build outside the Ubuntu workflow.
@@ -1536,8 +1566,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`4a2334220a1944c73ce7d7570aa7b3a3ba2647af` when this checkpoint was rebased. Its hash describes the exact
-150 discovered source files, including twelve generated binary payloads, layered on that revision.
+`8b5ef91657fd7bac7e6299f89833470484649711` when this checkpoint began. Its hash describes the exact
+152 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 

@@ -72,6 +72,16 @@ generators include the versioned OTIO 0.18.1 interchange baseline consumed by ti
 contracts without creating a runtime dependency.
 `superi-test-report` validates explicit lane evidence and emits deterministic structured reports for
 performance regressions, golden mismatches, flaky tests, and platform gaps without network access.
+`superi-api-bindings` derives the complete TypeScript contract from the canonical `superi-api`
+registry, publishes `bindings/typescript/superi-api.ts`, and checks committed output for drift. Its
+exact optional Specta dependency is generator-only and does not enter the default runtime graph.
+
+Generate or check the desktop-facing bindings from `open/`:
+
+```bash
+cargo run -p superi-api-bindings -- generate
+cargo run -p superi-api-bindings -- check
+```
 
 ### Automated dependency-direction gate
 

@@ -3,7 +3,9 @@
 This CI-only browser entry proves that Superi's locked TypeScript and Vite toolchain can install from
 the committed lockfile, perform strict type checking without emitting JavaScript, and create a
 production bundle. It is not the deferred React application or Tauri desktop shell, and it contains
-no authoritative project or editing behavior.
+no authoritative project or editing behavior. It does consume the committed generated bindings at
+`open/bindings/typescript/superi-api.ts`, including the canonical project command, replacement
+event, editor resource, AI state, and transport-neutral client types.
 
 Run the same gates as CI:
 

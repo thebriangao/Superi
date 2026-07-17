@@ -14,6 +14,7 @@ unplugged.
 cd open
 cargo build
 cargo run -p superi-cli -- --help
+cargo run -p superi-api-bindings -- check
 ```
 
 Run the fixed canonical slice from `open/` with absent output paths:
@@ -38,10 +39,14 @@ cargo build -p superi-cli --features os-codecs
 
 ## Layout
 
-Nineteen runtime crates in `crates/` and three repository tools in `tools/` are wired in strict
+Nineteen runtime crates in `crates/` and six repository tools in `tools/` are wired in strict
 downward-only dependency tiers so the architecture is compiler-enforced. Full module maps,
 dependency DAG, ownership, and workspace guidance are in **`../docs/codebase-map/`** and
 **`docs/STRUCTURE.md`**.
+
+The canonical public API registry also drives the committed desktop-facing TypeScript artifact at
+`bindings/typescript/superi-api.ts`. Regenerate it with `superi-api-bindings generate`; use the
+nonmutating `check` command in verification.
 
 ## The rules that govern this tree
 

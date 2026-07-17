@@ -29,6 +29,7 @@ use crate::commands::{GetEngineIntegrationValidation, GetEngineIntegrationValida
 use crate::version::ENGINE_INTEGRATION_VALIDATION_SCHEMA_VERSION;
 
 /// Stable public high-level condition of the integrated engine.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -73,6 +74,7 @@ impl IntegrationCondition {
 }
 
 /// Stable public lifecycle action kind.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -101,6 +103,7 @@ impl IntegrationLifecycleActionKind {
 }
 
 /// Exact public lifecycle action token.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LifecycleActionState {
@@ -133,6 +136,7 @@ impl LifecycleActionState {
 }
 
 /// Stable classified failure evidence without raw messages or diagnostic context.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IntegrationFailureState {
@@ -155,6 +159,7 @@ impl IntegrationFailureState {
 }
 
 /// Public editable scenario summary and reversal capacity.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScenarioValidationState {
@@ -203,6 +208,7 @@ impl ScenarioValidationState {
 }
 
 /// Revision-scoped public workflow permit.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowPermitState {
@@ -223,6 +229,7 @@ impl WorkflowPermitState {
 }
 
 /// Exact public workflow denial evidence.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowDenialState {
@@ -249,6 +256,7 @@ impl WorkflowDenialState {
 }
 
 /// Current exact admission state for one coherent engine workflow.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowValidationState {
@@ -280,6 +288,7 @@ impl WorkflowValidationState {
 }
 
 /// Exact public classified recovery token.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RecoveryActionState {
@@ -312,6 +321,7 @@ impl RecoveryActionState {
 }
 
 /// Classified recovery state that supplements user-safe failures in engine introspection.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RecoveryValidationState {
@@ -338,6 +348,7 @@ impl RecoveryValidationState {
 }
 
 /// Exact rational coordinate for transport state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RationalCoordinateState {
@@ -364,6 +375,7 @@ impl RationalCoordinateState {
 }
 
 /// Latest complete playback transport state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlaybackTransportValidationState {
@@ -426,6 +438,7 @@ impl PlaybackTransportValidationState {
 }
 
 /// Attached, pending, and latest observed playback state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlaybackValidationState {
@@ -458,6 +471,7 @@ impl PlaybackValidationState {
 }
 
 /// Public state for one retained logical export job.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExportJobValidationState {
@@ -532,6 +546,7 @@ impl ExportJobValidationState {
 }
 
 /// Latest complete export queue replacement state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExportQueueValidationState {
@@ -552,6 +567,7 @@ impl ExportQueueValidationState {
 }
 
 /// Attached and latest observed export state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExportValidationState {
@@ -572,6 +588,7 @@ impl ExportValidationState {
 }
 
 /// One public integration coherence finding.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IntegrationFindingState {
@@ -592,9 +609,11 @@ impl IntegrationFindingState {
 }
 
 /// Complete strict integration validation state.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IntegrationValidationSnapshot {
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
     schema_version: SemanticVersion,
     condition: IntegrationCondition,
     coherent: bool,
@@ -673,6 +692,7 @@ impl IntegrationValidationSnapshot {
 }
 
 /// Structured public failure while constructing a standalone validation host.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IntegrationValidationFailure {

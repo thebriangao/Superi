@@ -14,7 +14,7 @@ against raw source before changing code.
 | Module ID | Map | Owned path | Current role | Status |
 | --- | --- | --- | --- | --- |
 | `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
-| `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public schema catalog, host-injected permission boundary, and facade for media capabilities, complete engine health and readiness, coherent integration validation, canonical editorial state, generic authored project control, complete editor replacement state, project settings, project recovery, audio automation, asynchronous job control, and bounded ordered event delivery | Partial: deterministic versioned command, query, event, resource, error, capability, and permission discovery, strict JSON-RPC data contracts, fail-closed filesystem, plugin, and destructive authorization, media and engine introspection queries, strict read-only integration validation, revision-fenced scenario and generic project commands, one coherent ten-domain editor snapshot, complete current timeline, graph, media, clip-mix, and extension operation DTOs, project settings and audio automation transactions, strict recovery control, nonblocking export-job inspection and cooperative control, plus bounded replay, backpressure, independent cursors, and explicit reconnect recovery implemented; authentication, network transport, dynamic routing, push delivery, persisted replay, public job submission and typed results, database file commands, CLI execution, and scripting absent |
+| `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public schema catalog, host-injected permission boundary, facade for current state and control surfaces, bounded ordered event delivery, and generated TypeScript contracts | Partial: deterministic versioned discovery and JSON-RPC data contracts, fail-closed filesystem, plugin, and destructive authorization, current public DTOs and controls, bounded replay with explicit reconnect recovery, and deterministic TypeScript declarations, typed maps, and transport-neutral client implemented; authentication, network transport, dynamic routing, push delivery, persisted replay, public job submission and typed results, database file commands, CLI execution, and scripting absent |
 | `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Independent prepared audio graph with explicit channel conversion, typed bus routing, fixed route delay compensation, transactional clip DSP, revisioned clip-gain automation, canonical authored-state serialization, bounded native plugin state, timing-matched isolated bridge fallback, core effects, macOS Audio Unit effects, worker-side VST3 effects, sample-accurate scheduling, bounded device I/O, dual-clock sample-rate conversion, and graph-native metering | Partial: core graph, routing, fixed delay compensation, clip, device, conversion, metering, clip-gain automation, exact Audio Unit and VST3 state persistence, verified Audio Unit isolation, canonical single-main-bus VST3 processing, and isolated bridge fallback are implemented; engine owns lifecycle supervision and per-node project state, while decoded-sample binding, automation persistence, concrete platform worker transport, broader effect automation, variable-rate playback audio, Audio Unit instruments, dynamic latency rebuild, and complete timeline composition remain absent |
 | `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, precise graph edit invalidation, versioned corruption-recovering disk persistence, replaceable derived-media publication, layered render reuse, bounded background population, bounded playback prediction, bounded edit and scrub warming, and deterministic lifecycle management | Complete identity feeds independent memory and disk tiers with exact admission, revision fencing, bounded envelopes, atomic publication, schema isolation, and corruption quarantine; memory, persistent, and derived owners expose inspection and exact clearing, persistent namespaces relocate through rename or synchronized staged copy, render jobs add cancellation-safe layered reuse, prediction supplies finite signed frame plans and an owned host adapter, and warming is deterministic and hard bounded; engine and scheduler own quality substitution and lifecycle policy remains caller-owned |
 | `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless public schema, canonical editorial scenario, and engine validation consumer | Implemented deterministic `api schema` including permission, generic project control, complete editor-state, asynchronous job, and event subscription metadata, exact fixture-read authority for revision-fenced scenario transactions, portable expectation verification, eight instrumented contract stages, and strict deterministic `engine validate`; project command execution, policy-file ownership, job control, event polling, rendered media flow, and live application attachment absent |
@@ -37,7 +37,8 @@ against raw source before changing code.
 | `tool-superi-bench` | [module map](modules/tool-superi-bench.md) | `open/tools/superi-bench` | Stable benchmark harnesses and reproducible stage reporting | Implemented seven-stage runner with real graph evaluation and explicit gaps |
 | `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline fixture validation, generation, and typed golden verification | Implemented validation library, six generators, seven-command CLI, four golden harnesses, and focused contracts |
 | `tool-superi-test-report` | [module map](modules/tool-superi-test-report.md) | `open/tools/superi-test-report` | Offline structured platform-lane evidence generator | Implemented strict schema, deterministic findings, collision-safe CLI, and focused contracts |
-| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, and agent workflows | Active control layer: deterministic checkpoint workflow and contract slice delivered; focused playback and elementary-stream export runtime paths exist, while the canonical application slice remains absent |
+| `tool-superi-api-bindings` | [module map](modules/tool-superi-api-bindings.md) | `open/tools/superi-api-bindings` | Deterministic committed TypeScript API artifact generator and freshness checker | Implemented pure rendering, idempotent generation, nonmutating freshness checks, and focused contracts |
+| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, generated TypeScript artifact, frontend consumer, and agent workflows | Active control layer: deterministic checkpoint workflow, contract slice, and generated public API frontend consumption delivered; focused playback and elementary-stream export runtime paths exist, while the canonical application slice remains absent |
 
 ## Ownership and repository boundaries
 
@@ -62,8 +63,8 @@ Multi-checkpoint dispatch defaults to three active worktrees but follows any exp
 concurrency value from the user.
 
 The open runtime and tool workspace lives under `open/`. Current Cargo membership is 19 runtime
-crates plus `superi-fixture-tool`, `superi-dependency-check`, `superi-boundary-tool`, and
-`superi-bench`, and `superi-test-report`. All five tools are built with the workspace but remain
+crates plus `superi-fixture-tool`, `superi-dependency-check`, `superi-boundary-tool`,
+`superi-bench`, `superi-test-report`, and `superi-api-bindings`. All six tools are built with the workspace but remain
 outside the runtime dependency graph. The root
 `closed/README.md` is only a boundary notice for the separately maintained proprietary tier. Open
 Superi must never import, link, or depend on closed code. Closed
@@ -116,6 +117,7 @@ superi-media-io -> superi-image -> superi-core
 superi-gpu -> superi-core
 
 superi-bench -> superi-graph -> superi-core
+superi-api-bindings -> superi-api
 ```
 
 `superi-core` is the tier-zero semantic contract and has no Superi dependency. Higher modules must
@@ -1592,7 +1594,9 @@ strict recovery get, compare, restore, and dismiss commands, complete editor sta
 matching replacement events.
 It also exposes nonblocking job query and cooperative controls with matching full replacement
 events, plus bounded ordered event registration and non-destructive polling with explicit restart
-and eviction recovery.
+and eviction recovery. Its optional generator surface derives serializable declarations from the same Rust DTOs,
+registers method, event, and resource pairs from the same canonical registry as catalog discovery,
+and emits deterministic TypeScript declarations, exact typed maps, and a transport-neutral client.
 Validation nests
 canonical introspection, which preserves workflow readiness and only reviewed user-safe failure
 data, then adds exact action and endpoint evidence. Project settings retain complete project-owned
@@ -1749,6 +1753,10 @@ The following constraints cross multiple modules and should be preserved togethe
 - Eviction and changed stream identity return no partial events. They return a reset barrier and the
   complete ten-resource replacement manifest, including query versus typed inspect command paths.
   Events published after the barrier remain replayable.
+- Generated TypeScript is a projection of that same registry and the serializable Rust DTOs. Its
+  method, event, and resource names must equal the canonical catalog, wire-specific scalar shadows
+  remain explicit, output is deterministic and path-free, and the client owns no transport or
+  mutable project state.
 - Public asynchronous jobs are one strict projection of the engine-owned logical export queue.
   Canonical handles, weighted priority vocabulary, progress, dependencies, safe failures,
   cooperative controls, result availability, and ordered full replacement events may cross the
@@ -1904,6 +1912,11 @@ filesystem scopes and traversal resistance, exact plugin identity and delegation
 destructive-operation scoping, safe errors, unchanged state, files, sequences, and events on denial,
 and authorized parity through the existing facades. The canonical CLI scenario proves the same
 public path remains available under one exact resolved fixture-read grant.
+The TypeScript binding contracts render the API twice, require every canonical method, event, and
+resource, reject paths and timestamps, and prove that generation is idempotent while missing or
+stale checks never mutate their target. The committed artifact then passes its own freshness check,
+strict TypeScript compilation, Vite production bundling, and a browser consumer contract that uses
+the typed project command, AI state, method response, event, resource, and client surfaces.
 The generic editor contracts lock all four commands and every current authored operation
 discriminant, prove pre-dispatch conversion atomicity, and execute one real six-action project
 transaction through event correlation, database reload, undo, and redo.
@@ -2050,9 +2063,10 @@ evidence rather than hosted workflow behavior.
 
 The frontend workflow runs on pull requests, pushes to `main`, and manual dispatch using a read-only
 Ubuntu 24.04 job. It installs exact Node.js 24.13.0, uses `npm ci` against the committed lockfile,
-runs strict no-emit TypeScript 5.9.3 checking, creates a Vite 7.3.6 production bundle, and verifies
-the workflow contract plus generated hashed JavaScript entry. Its `ci/frontend-smoke/` consumer is
-an isolated toolchain contract, not the deferred React application or Tauri desktop shell.
+runs strict no-emit TypeScript 5.9.3 checking over the committed generated API and its real browser
+consumer, creates a Vite 7.3.6 production bundle, and verifies the API import, typed maps, client,
+workflow contract, and generated hashed JavaScript entry. Its `ci/frontend-smoke/` consumer is an
+isolated contract, not the deferred React application, live IPC integration, or Tauri desktop shell.
 
 The Tauri Rust workflow runs on pull requests, pushes to `main`, and manual dispatch across macOS 26
 arm64, macOS 15 Intel, Windows 2025, and Ubuntu 24.04. Its pinned CI-only Tauri 2 host uses one
@@ -2307,10 +2321,11 @@ Partial modules contain these explicit placeholder areas:
 - `superi-api`: scripting, network hosting, live wire routing, dynamic dispatch, push delivery,
   persisted replay, version negotiation, public job submission, host polling and waits, typed job
   results, database file commands, CLI editor execution, authentication, operating-system
-  sandboxing, and generated bindings. Generic authored project
+  sandboxing. Generic authored project
   control, the deterministic catalog, strict JSON-RPC data shapes, and safe structured error
   projection are implemented, including host-injected filesystem, plugin, and destructive
-  authorization plus catalog metadata. Media, complete engine introspection, complete editor replacement
+  authorization plus catalog metadata and generated TypeScript declarations, maps, and client.
+  Media, complete engine introspection, complete editor replacement
   state, and coherent integration validation remain read-only surfaces;
   project settings and clip-gain automation inspection and mutation plus strict project recovery
   control and asynchronous export-job inspection, progress, cooperative control, and ordered
@@ -2494,6 +2509,9 @@ For common concerns, begin at these owners:
 - Public command, query, event, resource, error, capability, and permission schema discovery plus
   strict JSON-RPC data contracts and host-injected pre-dispatch authorization: `superi-api`, followed
   by `superi-cli` for the exact-fixture scenario and schema process consumers.
+- Deterministic TypeScript API declarations, exact typed maps, committed artifact freshness, and the
+  transport-neutral client: `superi-api`, followed by `tool-superi-api-bindings` for generation and
+  `workspace` for the committed artifact and frontend compile-time consumer.
 - Asynchronous job handles, progress, cooperative control, and ordered replacement events:
   `superi-engine` for canonical queue ownership, followed by `superi-api` for the stable public
   projection and `superi-cli` for schema discovery only.
@@ -2507,6 +2525,7 @@ For common concerns, begin at these owners:
 - Reviewed internal runtime dependency direction: `tool-superi-dependency-check`.
 - Static network-client and open-to-closed enforcement: `tool-superi-boundary-tool`.
 - Deterministic structured platform-lane evidence: `tool-superi-test-report`.
+- Deterministic TypeScript artifact generation and freshness checks: `tool-superi-api-bindings`.
 
 ## Map maintenance
 
