@@ -5,13 +5,15 @@
 //! named standalone graphs, durable project settings and authored clip-mix state,
 //! opaque extension-state envelopes, stable project serialization, checked schema migration, atomic save
 //! publication, portable referenced-media paths, MediaId-keyed relink commands, and
-//! deterministic project autosave scheduling and retention are implemented. Crash
-//! recovery discovery, complete semantic comparison, restoration, and durable
-//! dismissal consume that same authoritative store.
+//! deterministic project autosave scheduling and retention, read-only whole-project
+//! integrity validation and repair reporting, crash recovery discovery, complete semantic
+//! comparison, restoration, and durable dismissal are implemented against that same
+//! authoritative store.
 
 pub mod autosave;
 pub mod document;
 pub mod extensions;
+pub mod integrity;
 pub mod media;
 mod migrate;
 pub mod persist;
@@ -23,6 +25,12 @@ pub use autosave::{
     ProjectAutosaveArtifact, ProjectAutosaveCommand, ProjectAutosaveController,
     ProjectAutosaveDisposition, ProjectAutosaveOperation, ProjectAutosaveOutcome,
     ProjectAutosavePolicy, ProjectAutosaveState, MAX_PROJECT_AUTOSAVE_RETENTION,
+};
+pub use integrity::{
+    execute_project_integrity_command, ProjectIntegrityCommand, ProjectIntegrityFinding,
+    ProjectIntegrityFindingCode, ProjectIntegrityIdentity, ProjectIntegrityReport,
+    ProjectIntegrityStage, ProjectIntegrityStatus, ProjectRepairDisposition,
+    MAX_PROJECT_INTEGRITY_EVIDENCE_VALUE_BYTES, MAX_PROJECT_INTEGRITY_FINDINGS,
 };
 pub use media::MEDIA_PATH_TARGET_FORMAT;
 pub use persist::{

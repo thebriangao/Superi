@@ -845,12 +845,7 @@ fn validate_schema(
     include_extensions: bool,
     require_current: bool,
 ) -> Result<()> {
-    let quick_check: String = connection
-        .query_row("PRAGMA quick_check(1)", [], |row| row.get(0))
-        .map_err(|source| database_error(source, "quick_check"))?;
-    if quick_check != "ok" {
-        return Err(corrupt("quick_check", "SQLite integrity check failed"));
-    }
+    validate_full_integrity(connection)?;
 
     let application_id: i64 = connection
         .pragma_query_value(None, "application_id", |row| row.get(0))
@@ -958,31 +953,94 @@ fn validate_schema(
     Ok(())
 }
 
-pub(crate) fn validate_full_integrity(connection: &Connection) -> Result<()> {
-    let integrity: String = connection
-        .query_row("PRAGMA integrity_check(1)", [], |row| row.get(0))
-        .map_err(|source| database_error(source, "integrity_check"))?;
-    if integrity != "ok" {
-        return Err(corrupt(
-            "integrity_check",
-            "SQLite full integrity check failed",
-        ));
+const INTERNAL_INTEGRITY_FINDING_LIMIT: usize = 64;
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) struct SqliteForeignKeyViolation {
+    pub(crate) table: String,
+    pub(crate) row_id: Option<i64>,
+    pub(crate) parent_table: String,
+    pub(crate) constraint_index: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct SqliteIntegrityEvidence {
+    pub(crate) integrity_messages: Vec<String>,
+    pub(crate) foreign_key_violations: Vec<SqliteForeignKeyViolation>,
+    pub(crate) truncated: bool,
+}
+
+pub(crate) fn collect_sqlite_integrity(
+    connection: &Connection,
+    retained_limit: usize,
+    operation: &'static str,
+) -> Result<SqliteIntegrityEvidence> {
+    let query_limit = retained_limit.saturating_add(1).max(1);
+    let query = format!("PRAGMA integrity_check({query_limit})");
+    let mut statement = connection
+        .prepare(&query)
+        .map_err(|source| database_error(source, operation))?;
+    let rows = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|source| database_error(source, operation))?;
+    let mut integrity_messages = rows
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(|source| database_error(source, operation))?;
+    if integrity_messages.len() == 1 && integrity_messages[0] == "ok" {
+        integrity_messages.clear();
+    } else {
+        integrity_messages.sort();
     }
 
     let mut statement = connection
         .prepare("PRAGMA foreign_key_check")
-        .map_err(|source| database_error(source, "foreign_key_check"))?;
-    let mut rows = statement
-        .query([])
-        .map_err(|source| database_error(source, "foreign_key_check"))?;
-    if rows
-        .next()
-        .map_err(|source| database_error(source, "foreign_key_check"))?
-        .is_some()
+        .map_err(|source| database_error(source, operation))?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok(SqliteForeignKeyViolation {
+                table: row.get(0)?,
+                row_id: row.get(1)?,
+                parent_table: row.get(2)?,
+                constraint_index: row.get(3)?,
+            })
+        })
+        .map_err(|source| database_error(source, operation))?;
+    let mut foreign_key_violations = rows
+        .take(query_limit)
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(|source| database_error(source, operation))?;
+    foreign_key_violations.sort();
+
+    let truncated = integrity_messages.len() > retained_limit
+        || foreign_key_violations.len() > retained_limit
+        || integrity_messages
+            .len()
+            .saturating_add(foreign_key_violations.len())
+            > retained_limit;
+    Ok(SqliteIntegrityEvidence {
+        integrity_messages,
+        foreign_key_violations,
+        truncated,
+    })
+}
+
+pub(crate) fn validate_full_integrity(connection: &Connection) -> Result<()> {
+    validate_full_integrity_with_operation(connection, "integrity_check")
+}
+
+pub(crate) fn validate_full_integrity_with_operation(
+    connection: &Connection,
+    operation: &'static str,
+) -> Result<()> {
+    let evidence =
+        collect_sqlite_integrity(connection, INTERNAL_INTEGRITY_FINDING_LIMIT, operation)?;
+    if evidence.truncated
+        || !evidence.integrity_messages.is_empty()
+        || !evidence.foreign_key_violations.is_empty()
     {
         return Err(corrupt(
-            "foreign_key_check",
-            "SQLite foreign key consistency check failed",
+            operation,
+            "SQLite full integrity or foreign key consistency check failed",
         ));
     }
     Ok(())
@@ -1792,6 +1850,9 @@ fn require_row_count(connection: &Connection, table: &'static str, expected: i64
         return Err(corrupt(
             "count_project_rows",
             "project singleton row count is invalid",
+        )
+        .with_context(
+            ErrorContext::new(COMPONENT, "count_project_rows").with_field("table", table),
         ));
     }
     Ok(())

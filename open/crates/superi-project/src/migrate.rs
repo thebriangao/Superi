@@ -1,7 +1,7 @@
 //! Ordered, transactional whole-project schema migration.
 
 use rusqlite::{Connection, TransactionBehavior};
-use superi_core::error::{ErrorCategory, Recoverability, Result};
+use superi_core::error::{ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_core::ids::{GraphId, ProjectId, TimelineId};
 use superi_core::serialization::STABLE_PRIMITIVE_SCHEMA_REVISION;
 use superi_graph::serialize::{deserialize_graph, GRAPH_DOCUMENT_FORMAT_REVISION};
@@ -13,11 +13,12 @@ use crate::persist::{
     check_component_size, corrupt, database_error, fixed_bytes, initialize_schema,
     initialize_schema_one, initialize_schema_three, initialize_schema_two, load_connection,
     load_schema_one_connection, load_schema_three_connection, load_schema_two_connection,
-    parse_revision, project_error, stored_state_error, unsupported, validate_identity_and_schema,
-    write_prepared_project, write_schema_one_project, write_schema_three_project,
-    write_schema_two_project, PreparedProject, StoredGraphKind, MAX_GRAPH_COUNT,
-    MAX_STANDALONE_NAME_BYTES, PROJECT_APPLICATION_ID, PROJECT_FORMAT,
-    PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION, PROJECT_SCHEMA_REVISION,
+    parse_revision, project_error, stored_state_error, unsupported,
+    validate_full_integrity_with_operation, validate_identity_and_schema, write_prepared_project,
+    write_schema_one_project, write_schema_three_project, write_schema_two_project,
+    PreparedProject, StoredGraphKind, MAX_GRAPH_COUNT, MAX_STANDALONE_NAME_BYTES,
+    PROJECT_APPLICATION_ID, PROJECT_FORMAT, PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION,
+    PROJECT_SCHEMA_REVISION,
 };
 
 const LEGACY_FORMAT_VERSION: &str = "0.9.0";
@@ -141,6 +142,27 @@ fn validate_registry() -> Result<()> {
         ));
     }
     Ok(())
+}
+
+pub(crate) fn inspect_project_revision(
+    connection: &Connection,
+    revision: u32,
+) -> Result<ProjectDocument> {
+    validate_registry()?;
+    match revision {
+        0 => {
+            validate_legacy_schema(connection)?;
+            load_legacy_project(connection)
+        }
+        1 => load_schema_one_connection(connection),
+        2 => load_schema_two_connection(connection),
+        3 => load_schema_three_connection(connection),
+        value if value == PROJECT_SCHEMA_REVISION => load_connection(connection),
+        _ => Err(unsupported(
+            "inspect_project_revision",
+            "project database schema revision has no registered reader",
+        )),
+    }
 }
 
 fn read_database_revision(connection: &Connection) -> Result<u32> {
@@ -585,35 +607,17 @@ fn require_row_count(connection: &Connection, table: &'static str, expected: i64
         return Err(corrupt(
             "count_legacy_project_rows",
             "legacy project singleton row count is invalid",
+        )
+        .with_context(
+            ErrorContext::new("superi-project.migrate", "count_legacy_project_rows")
+                .with_field("table", table),
         ));
     }
     Ok(())
 }
 
 fn validate_sqlite_integrity(connection: &Connection, operation: &'static str) -> Result<()> {
-    let integrity: String = connection
-        .query_row("PRAGMA integrity_check", [], |row| row.get(0))
-        .map_err(|source| database_error(source, operation))?;
-    if integrity != "ok" {
-        return Err(corrupt(operation, "SQLite integrity check failed"));
-    }
-    let mut statement = connection
-        .prepare("PRAGMA foreign_key_check")
-        .map_err(|source| database_error(source, operation))?;
-    let mut rows = statement
-        .query([])
-        .map_err(|source| database_error(source, operation))?;
-    if rows
-        .next()
-        .map_err(|source| database_error(source, operation))?
-        .is_some()
-    {
-        return Err(corrupt(
-            operation,
-            "SQLite foreign key consistency check failed",
-        ));
-    }
-    Ok(())
+    validate_full_integrity_with_operation(connection, operation)
 }
 
 #[cfg(test)]
@@ -841,6 +845,10 @@ mod tests {
             .extension_records()
             .next()
             .is_none());
+        assert_eq!(
+            inspect_project_revision(&connection, 3).unwrap().snapshot(),
+            expected
+        );
 
         assert_eq!(migrate_connection(&mut connection).unwrap(), 3);
         let migrated = load_connection(&connection).unwrap();

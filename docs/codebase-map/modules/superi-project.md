@@ -2,8 +2,8 @@
 module_id: superi-project
 source_paths:
   - open/crates/superi-project
-source_hash: 5c5356962d0b5c6f851ed4ecfb47f91650dbb4340d0e0be0cdd86a726beed101
-source_files: 20
+source_hash: e28e3e80b379fc7938e9131e0d303677caaa95bf04ba0eb6d924a92b123f5280
+source_files: 22
 mapped_at_commit: working-tree
 ---
 
@@ -11,8 +11,9 @@ mapped_at_commit: working-tree
 
 `superi-project` owns the coherent whole-project aggregate, authoritative versioned project
 settings, authored clip-mix state, durable opaque extension records, stable schema-4 SQLite
-serialization, and ordered forward migration from supported older project schemas. One
-`ProjectDocument` combines the validated
+serialization, ordered forward migration from supported older project schemas, and read-only
+project integrity validation with deterministic repair reporting. One `ProjectDocument` combines
+the validated
 editorial project, selected root timeline, retained compiled timeline graphs, optional named
 standalone editable graphs, complete timeline, color, audio, cache, proxy, and render settings,
 authored clip-mix state, bounded plugin, effect, AI artifact metadata, and future namespaced
@@ -56,6 +57,13 @@ durably dismisses one opaque candidate through a synchronized tombstone transiti
 and source-chain details remain private to this crate, and interrupted dismissal cleanup is safely
 resumed during later discovery.
 
+The project integrity boundary exposes one role-neutral read-only command for current and supported
+legacy state. It reports bounded deterministic status, stage, finding, evidence, verified identity,
+and repair disposition values after complete SQLite, foreign-key, application, schema, component,
+manifest, semantic reconstruction, aggregate, and source-stability checks. It performs no repair,
+migration, file creation, salvage, or authority change. A restore recommendation points callers to
+the independently validated recovery path rather than opening another mutation surface.
+
 This module does not own command-history storage, branching, or selection policy. It also does not
 yet own persisted command logs, engine restoration transactions, modified-since-open conflict
 policy, runtime readiness, plugin process state, or direct file commands in the public API and CLI.
@@ -80,15 +88,19 @@ Those remain assigned to their engine, API, or later project checkpoints.
   requested and granted capabilities, user-controlled lifecycle, structured failure evidence, and
   one typed revision-fenced upsert, remove, lifecycle, grant, failure, and clear command surface for
   documents and caller-owned drafts.
+- `open/crates/superi-project/src/integrity.rs`: Implements the role-neutral read-only integrity
+  command, bounded deterministic report vocabulary, complete SQLite and foreign-key evidence,
+  application and schema identity checks, registered current and legacy reconstruction, component
+  finding classification, verified identity, source-stability fencing, and safe repair dispositions.
 - `open/crates/superi-project/src/lib.rs`: Documents the implemented aggregate, schema-4
-  persistence, migration, settings, extension state, atomic save, and referenced-media boundaries,
-  exports public project modules, keeps migration and save mechanics private, and re-exports the database, save
-  and autosave command surfaces, and stable format constants.
+  persistence, migration, settings, extension state, atomic save, referenced-media, and integrity
+  boundaries, exports public project modules, keeps migration and save mechanics private, and
+  re-exports the database, save, autosave, integrity, and stable format surfaces.
 - `open/crates/superi-project/src/migrate.rs`: Owns exact schema-0, schema-1, and frozen schema-2
   and schema-3 contracts, the contiguous 0-to-1-to-2-to-3-to-4 migration registry, secured
   compatibility decoding, root-rate-derived settings defaults, canonical empty-audio and empty
-  extension migrations, checked aggregate reconstruction, transactional canonical rewrites, full
-  integrity checks, and precommit rollback proof.
+  extension migrations, checked aggregate reconstruction, registered read-only revision inspection,
+  transactional canonical rewrites, shared complete integrity checks, and precommit rollback proof.
 - `open/crates/superi-project/src/media.rs`: Implements versioned referenced-media target encoding,
   portable relative path normalization, deterministic project-file resolution, host-platform
   evidence, stable media lookup, and reusable draft plus revision-fenced document commands that
@@ -98,7 +110,7 @@ Those remain assigned to their engine, API, or later project checkpoints.
   schema-3 migration helpers, deterministic timeline, graph, settings, audio, and extension
   component records and manifest evidence, canonical strict extension metadata, separately hashed
   opaque payload bytes, checked in-memory replacement, strict interpretation, bounded decoding,
-  and checked aggregate reconstruction.
+  complete shared SQLite and foreign-key collection, and checked aggregate reconstruction.
 - `open/crates/superi-project/src/recovery.rs`: Implements opaque autosave generation identities,
   deterministic restart discovery, complete current-schema database loading, semantic comparison
   across editorial, settings, authored clip-mix, extension, root, and graph state, internal raw
@@ -116,6 +128,10 @@ Those remain assigned to their engine, API, or later project checkpoints.
   concurrent snapshots, ordinary graph editing, atomic failure behavior, compilation freshness,
   standalone graph identity, checked reconstruction, revision-fenced whole-snapshot restoration,
   monotonic restore publication, exhaustion atomicity, and graph identity checks.
+- `open/crates/superi-project/tests/integrity_contract.rs`: Proves one deterministic command surface
+  across editor, script, and headless roles, valid current and supported legacy reconstruction,
+  migration reporting, complete component corruption classification, stable bounded evidence,
+  source failure handling, byte nonmutation, and continued authority-project use after inspection.
 - `open/crates/superi-project/tests/migration_contract.rs`: Proves public supported legacy open,
   legacy timeline and graph component migration, exact editable-state preservation, canonical
   current reopen, continued editing and replacement, save, save-as, copy, and backup after migration,
@@ -155,10 +171,10 @@ Those remain assigned to their engine, API, or later project checkpoints.
 
 ## Public surface
 
-The crate root exports `autosave`, `document`, `extensions`, `media`, `persist`, `recovery`, and
-`settings`, keeps save mechanics private, and re-exports the stable persistence, save, autosave,
-and recovery authorities,
-project format constants, and media path target format identifier.
+The crate root exports `autosave`, `document`, `extensions`, `integrity`, `media`, `persist`,
+`recovery`, and `settings`, keeps save mechanics private, and re-exports the stable persistence,
+save, autosave, integrity, and recovery authorities, project format constants, and media path
+target format identifier.
 
 - `ProjectDocument::new` accepts one `EditorialProject` and selected `TimelineId`, compiles that
   root through `superi_timeline::compile_timeline`, derives deterministic settings from its edit
@@ -274,6 +290,20 @@ project format constants, and media path target format identifier.
   project manifest, canonical timeline, settings, audio, graph, and extension metadata and payload
   bytes, graph and extension ownership, and revisions inside one read transaction before returning
   one checked document.
+- `ProjectIntegrityCommand::Validate` accepts one project path through the public
+  `execute_project_integrity_command` entrypoint. `ProjectIntegrityReport` returns one stable
+  `ProjectIntegrityStatus`, overall `ProjectRepairDisposition`, observed and current schema
+  revisions, bounded ordered `ProjectIntegrityFinding` values, completion evidence, and verified
+  `ProjectIntegrityIdentity` with media, graph, and extension counts only after complete semantic
+  reconstruction.
+- `ProjectIntegrityStage` and `ProjectIntegrityFindingCode` provide permanent semantic codes for
+  open, SQLite structure, foreign keys, application identity, schema, component evidence, semantic
+  reconstruction, aggregate validation, and source stability. Evidence values are UTF-8 bounded,
+  finding count is capped by `MAX_PROJECT_INTEGRITY_FINDINGS`, and overflow retains an explicit
+  truncation finding instead of claiming complete interpretation.
+- `ProjectRepairDisposition` distinguishes no action, checked forward migration, validated recovery,
+  inspection retry, access correction, newer application use, and manual recovery. It reports a safe
+  next action only and grants no repair or publication authority.
 - `PROJECT_APPLICATION_ID`, `PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION`,
   `PROJECT_SCHEMA_REVISION`, `PROJECT_FORMAT`, and `PROJECT_FORMAT_VERSION` identify application
   `SUPR`, supported source schema `0`, current schema `4`, `superi.project`, and `1.3.0`.
@@ -409,6 +439,26 @@ decoded audio intent, and exact extension records at the stored revision. Direct
 are never replaced by recompilation; compilation supplies only trusted provenance around the
 decoded graph.
 
+Integrity inspection composes the same checked owners without a write path:
+
+1. The command first reads and verifies the SQLite file header, then opens the existing path through
+   the hardened read-only connection configuration and starts one deferred snapshot transaction.
+2. One shared collector consumes complete bounded `PRAGMA integrity_check` and
+   `PRAGMA foreign_key_check` results. Ordinary open, save validation, migration validation, and the
+   integrity command all use the same collector instead of one-row or quick-check shortcuts.
+3. Application identity and schema revision dispatch select exactly one registered schema 0, 1, 2,
+   3, or 4 reader. Each path performs its exact schema-object, row, component, digest, manifest,
+   codec, relationship, and aggregate checks without migration.
+4. Only complete reconstruction returns verified project identity, document revision, selected root,
+   media count, graph count, and extension count. Supported legacy state reports migration required
+   while preserving identity; future or wrong-application state remains unsupported.
+5. Findings are classified into deterministic stages and codes, sorted canonically, and bounded with
+   explicit truncation. Missing, inaccessible, busy, changed, or resource-exhausted sources remain
+   indeterminate instead of being misreported as durable corruption.
+6. A same-connection `data_version` comparison rejects an inspection whose visible source changed.
+   Checked close completes the read, and no branch creates, writes, migrates, salvages, or recomputes
+   authority evidence.
+
 Writable open applies one contiguous compatibility path:
 
 1. Connection-level application identity and `user_version` dispatch before mutation. Current
@@ -493,6 +543,8 @@ and acquires the exact reachable source and decoder set before one resources pub
 - `superi-api` consumes project settings and recovery only through engine-owned re-exports and
   dispatcher commands. API and CLI do not yet expose database file commands. Later file commands
   must wrap this owner instead of creating another project or database authority.
+- Editor, script, and headless callers can consume the same project-owned integrity report directly.
+  No API, CLI, engine, transport, or GUI adapter is added by this checkpoint.
 
 ## Invariants and operational boundaries
 
@@ -553,6 +605,15 @@ and acquires the exact reachable source and decoder set before one resources pub
 - Wrong application identity, future schema or format versions, and read-only legacy open are
   unsupported. Malformed, noncanonical current state, tampered, missing, extra, or inconsistent
   stored state is corrupt data.
+- Integrity validation is read-only and role neutral. It never creates a missing path, writes or
+  migrates a database, repairs a digest, salvages partial state, changes active identity, or selects
+  recovery authority.
+- A valid or migration-required integrity report carries verified identity only after complete
+  semantic reconstruction. Invalid, unsupported, indeterminate, truncated, or source-changed reports
+  carry no verified identity.
+- Integrity findings and evidence are deterministic and bounded. Truncation or source mutation makes
+  the report indeterminate, and a recovery disposition is guidance to the separately validated
+  recovery controller rather than direct mutation permission.
 - Semantic row order, component bytes, and manifest digest are deterministic. SQLite page layout is
   not a public deterministic contract.
 - `create`, backup, and require-absent publication do not overwrite an existing path. Migration
@@ -658,6 +719,16 @@ preservation, restart discovery,
 and recognized tombstone cleanup. Private classification coverage proves retryable and terminal
 source evidence is retained rather than downgraded.
 
+`integrity_contract.rs` contains six public tests. They prove deterministic editor, script, and
+headless interpretation; full current-schema identity; complete linked-media, retained-graph,
+settings, authored-audio, and opaque-extension reconstruction; schema-0 migration reporting without mutation;
+continued writable migration through the existing authority; wrong-application, future-schema, and
+non-SQLite classification; missing-source noncreation; exact timeline, graph, settings, audio,
+extension metadata, extension payload, manifest, singleton, and extra-schema-object findings; stable ordering; bounded evidence; and byte
+nonmutation of every inspected source. Six unit tests prove permanent code strings, UTF-8 bounds,
+complete foreign-key collection, exact finding-limit behavior, truncation, source-change precedence,
+and source versus semantic not-found classification.
+
 Timeline's serialization contract independently round trips a real compiled multicam graph through
 the public graph codec and rejects unknown `TimelineGraphValue` fields and tags. The engine resource
 contract opens an exact schema-0 fixture through the public database owner and proves that the
@@ -684,10 +755,13 @@ autosave controller adds deterministic host-driven scheduling, complete current-
 points, bounded count retention, strict managed naming, safe pruning, and user control while reusing
 the same atomic Backup authority and leaving active project identity unchanged. Its recovery owner
 now discovers, validates, compares, classifies, and durably dismisses those exact recovery points
-without exposing filesystem identity or creating a second store.
+without exposing filesystem identity or creating a second store. The public integrity command adds
+complete current and supported legacy reconstruction, deterministic bounded evidence, verified
+identity, and repair reporting without creating another database or recovery authority.
 
 Additional schema revisions beyond 4, persisted history or command logs, modified-since-open
-conflict policy, dirty-state hashing, public database adaptation, CLI, and scripting remain absent.
+write conflict policy, cross-process file locking, authenticated integrity, dirty-state hashing,
+public database adaptation, CLI, and scripting remain absent.
 Autosave policy is process-local and recovery roots are caller selected; no background timer,
 persistent scheduler, wire adapter, runtime registry, plugin worker, or automatic recovery choice
 is claimed. Exact schemas 0, 1, 2, and 3 are the supported predecessors. Future, older unknown, or
@@ -701,8 +775,10 @@ only the named destination entry without mutating the original active link.
 
 Bundled SQLite increases the locked build graph and must remain pinned to the Rust 1.80-compatible
 rusqlite 0.32.1 path unless a separately verified upgrade changes that decision. Integrity digests
-detect changes but do not authenticate malicious files. Defensive configuration, strict schema
-inspection, bounds, and checked domain reconstruction remain mandatory for untrusted projects.
+detect changes but do not authenticate malicious files. The `data_version` fence detects changes
+visible to the open connection but does not claim a cross-process filesystem replacement lock.
+Defensive configuration, strict schema inspection, bounds, and checked domain reconstruction remain
+mandatory for untrusted projects.
 
 ## Maintenance notes
 
@@ -725,6 +801,12 @@ count-bounded, and routed through `ProjectSaveCommand::Backup`. Preserve its str
 foreign-entry exclusion, regular-file-only pruning, and postpublication evidence
 together with recovery's opaque identity, complete load, file revalidation, classified diagnostic,
 and tombstone dismissal contracts. Never add another project or file authority.
+
+Keep integrity validation on the shared hardened read-only connection, complete SQLite collector,
+registered schema readers, canonical component codecs, and checked aggregate reconstruction. Add new
+finding or disposition codes only as stable semantic contracts, preserve bounded deterministic
+evidence and explicit indeterminate state, and route any actual repair through the existing migration,
+save, or validated recovery authority instead of adding mutation to the integrity command.
 
 Refresh this map after any project source, manifest, public consumer, schema, or test change. Reread
 every changed file and relevant component interface through EOF, reconcile prose before recomputing
