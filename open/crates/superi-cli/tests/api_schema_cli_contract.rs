@@ -14,13 +14,13 @@ fn api_schema_is_a_deterministic_complete_public_api_consumer() {
     let first: Value = serde_json::from_slice(&first.stdout).unwrap();
     let second: Value = serde_json::from_slice(&second.stdout).unwrap();
     assert_eq!(first, second);
-    assert_eq!(first["schema_version"], "1.0.0");
+    assert_eq!(first["schema_version"], "1.1.0");
     assert_eq!(first["primitive_schema_revision"], 1);
     assert_eq!(first["json_rpc_version"], "2.0");
-    assert_eq!(first["commands"].as_array().unwrap().len(), 13);
-    assert_eq!(first["queries"].as_array().unwrap().len(), 10);
+    assert_eq!(first["commands"].as_array().unwrap().len(), 15);
+    assert_eq!(first["queries"].as_array().unwrap().len(), 11);
     assert_eq!(first["events"].as_array().unwrap().len(), 8);
-    assert_eq!(first["resources"].as_array().unwrap().len(), 10);
+    assert_eq!(first["resources"].as_array().unwrap().len(), 11);
     assert_eq!(first["error"]["schema"]["version"], "1.0.0");
     assert_eq!(
         first["capability"]["availability"]
@@ -34,6 +34,8 @@ fn api_schema_is_a_deterministic_complete_public_api_consumer() {
         names(&first, "commands", "method"),
         vec![
             "superi.audio.automation.transaction.execute",
+            "superi.events.subscription.close",
+            "superi.events.subscription.open",
             "superi.jobs.cancel",
             "superi.jobs.cancel_all",
             "superi.jobs.pause",
@@ -56,6 +58,7 @@ fn api_schema_is_a_deterministic_complete_public_api_consumer() {
             "superi.editor.state.get",
             "superi.engine.integration.validation.get",
             "superi.engine.introspection.get",
+            "superi.events.subscription.poll",
             "superi.jobs.get",
             "superi.media.capabilities.get",
             "superi.project.recovery.compare",

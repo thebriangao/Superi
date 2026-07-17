@@ -25,6 +25,9 @@ use crate::commands::{
     ResumeAsyncJob, RetryAsyncJob,
 };
 use crate::editor::{ExecuteProjectCommand, ProjectHistorySnapshot};
+use crate::event_stream::{
+    CloseEventSubscription, EventStreamSnapshot, OpenEventSubscription, PollEvents,
+};
 use crate::events::{
     ApiEvent, AsyncJobsChanged, AudioAutomationChanged, EngineIntrospectionChanged,
     MediaCapabilitiesChanged, ProjectRecoveryChanged, ProjectSettingsChanged, ProjectStateChanged,
@@ -1226,6 +1229,9 @@ fn current_catalog() -> CoreResult<PublicApiSchemaSnapshot> {
     register_method::<GetEngineIntrospection>(&mut commands, &mut queries)?;
     register_method::<ExecuteScenarioAction>(&mut commands, &mut queries)?;
     register_method::<ExecuteScenarioTransaction>(&mut commands, &mut queries)?;
+    register_method::<OpenEventSubscription>(&mut commands, &mut queries)?;
+    register_method::<CloseEventSubscription>(&mut commands, &mut queries)?;
+    register_method::<PollEvents>(&mut commands, &mut queries)?;
     register_method::<GetPublicApiSchema>(&mut commands, &mut queries)?;
 
     PublicApiSchemaSnapshot::try_new(
@@ -1255,6 +1261,7 @@ fn current_catalog() -> CoreResult<PublicApiSchemaSnapshot> {
             resource_schema::<EngineIntrospectionSnapshot>()?,
             resource_schema::<IntegrationValidationSnapshot>()?,
             resource_schema::<ScenarioStateSnapshot>()?,
+            resource_schema::<EventStreamSnapshot>()?,
         ],
         PublicErrorSchema::current(),
         PublicCapabilitySchema::current(),

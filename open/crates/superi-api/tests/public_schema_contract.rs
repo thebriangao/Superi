@@ -15,6 +15,8 @@ use superi_core::settings::SemanticVersion;
 
 const COMMANDS: &[&str] = &[
     "superi.audio.automation.transaction.execute",
+    "superi.events.subscription.close",
+    "superi.events.subscription.open",
     "superi.jobs.cancel",
     "superi.jobs.cancel_all",
     "superi.jobs.pause",
@@ -35,6 +37,7 @@ const QUERIES: &[&str] = &[
     "superi.editor.state.get",
     "superi.engine.integration.validation.get",
     "superi.engine.introspection.get",
+    "superi.events.subscription.poll",
     "superi.jobs.get",
     "superi.media.capabilities.get",
     "superi.project.recovery.compare",
@@ -58,6 +61,7 @@ const RESOURCES: &[&str] = &[
     "superi.editor.state",
     "superi.engine.integration.validation",
     "superi.engine.introspection",
+    "superi.events.subscription",
     "superi.jobs",
     "superi.media.capabilities",
     "superi.project.history",
@@ -309,7 +313,9 @@ fn names<T>(values: &[T], name: impl Fn(&T) -> &str) -> Vec<&str> {
 }
 
 fn expected_domain_version(name: &str) -> SemanticVersion {
-    if name.starts_with("superi.media.capabilities") {
+    if name == "superi.api.schema.get" {
+        PUBLIC_API_SCHEMA_VERSION
+    } else if name.starts_with("superi.media.capabilities") {
         SemanticVersion::new(2, 0, 0)
     } else {
         SemanticVersion::new(1, 0, 0)

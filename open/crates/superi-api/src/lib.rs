@@ -6,6 +6,7 @@ pub mod api;
 pub mod audio_automation;
 pub mod commands;
 pub mod editor;
+pub mod event_stream;
 pub mod events;
 pub mod jobs;
 pub mod project;

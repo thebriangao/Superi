@@ -3,13 +3,25 @@
 use superi_core::settings::SemanticVersion;
 
 /// Schema version for the complete public API catalog.
-pub const PUBLIC_API_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
+pub const PUBLIC_API_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 1, 0);
 
 /// Schema version for structured public API failures.
 pub const PUBLIC_ERROR_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
 
 /// JSON-RPC method for retrieving the complete public API catalog.
 pub const GET_PUBLIC_API_SCHEMA_METHOD: &str = "superi.api.schema.get";
+
+/// Schema version for ordered bounded public event delivery.
+pub const EVENT_STREAM_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
+
+/// JSON-RPC command for registering one independent event subscriber.
+pub const OPEN_EVENT_SUBSCRIPTION_METHOD: &str = "superi.events.subscription.open";
+
+/// JSON-RPC command for removing one independent event subscriber.
+pub const CLOSE_EVENT_SUBSCRIPTION_METHOD: &str = "superi.events.subscription.close";
+
+/// JSON-RPC query for non-destructive bounded event replay.
+pub const POLL_EVENT_SUBSCRIPTION_METHOD: &str = "superi.events.subscription.poll";
 
 /// Schema version for the generic authored project command surface.
 pub const PROJECT_EDITOR_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
