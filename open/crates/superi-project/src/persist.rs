@@ -666,7 +666,7 @@ pub(crate) struct PreparedProject {
     manifest_digest: [u8; 32],
 }
 
-struct PreparedGraph {
+pub(crate) struct PreparedGraph {
     graph_id: GraphId,
     kind: StoredGraphKind,
     root_timeline_id: Option<TimelineId>,
@@ -676,7 +676,7 @@ struct PreparedGraph {
     digest: [u8; 32],
 }
 
-struct PreparedExtension {
+pub(crate) struct PreparedExtension {
     extension_id: String,
     record_id: String,
     metadata_document: Vec<u8>,
@@ -803,6 +803,94 @@ impl PreparedProject {
         };
         prepared.manifest_digest = manifest_digest(&prepared);
         Ok(prepared)
+    }
+
+    pub(crate) fn timeline_document(&self) -> &[u8] {
+        &self.timeline_document
+    }
+
+    pub(crate) const fn timeline_digest(&self) -> [u8; 32] {
+        self.timeline_digest
+    }
+
+    pub(crate) fn settings_document(&self) -> &[u8] {
+        &self.settings_document
+    }
+
+    pub(crate) const fn settings_digest(&self) -> [u8; 32] {
+        self.settings_digest
+    }
+
+    pub(crate) fn audio_document(&self) -> &[u8] {
+        &self.audio_document
+    }
+
+    pub(crate) const fn audio_digest(&self) -> [u8; 32] {
+        self.audio_digest
+    }
+
+    pub(crate) fn extensions(&self) -> &[PreparedExtension] {
+        &self.extensions
+    }
+
+    pub(crate) fn graphs(&self) -> &[PreparedGraph] {
+        &self.graphs
+    }
+}
+
+impl PreparedExtension {
+    pub(crate) fn extension_id(&self) -> &str {
+        &self.extension_id
+    }
+
+    pub(crate) fn record_id(&self) -> &str {
+        &self.record_id
+    }
+
+    pub(crate) fn metadata_document(&self) -> &[u8] {
+        &self.metadata_document
+    }
+
+    pub(crate) const fn metadata_digest(&self) -> [u8; 32] {
+        self.metadata_digest
+    }
+
+    pub(crate) fn payload(&self) -> &[u8] {
+        &self.payload
+    }
+
+    pub(crate) const fn payload_digest(&self) -> [u8; 32] {
+        self.payload_digest
+    }
+}
+
+impl PreparedGraph {
+    pub(crate) const fn graph_id(&self) -> GraphId {
+        self.graph_id
+    }
+
+    pub(crate) const fn kind(&self) -> StoredGraphKind {
+        self.kind
+    }
+
+    pub(crate) const fn root_timeline_id(&self) -> Option<TimelineId> {
+        self.root_timeline_id
+    }
+
+    pub(crate) fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    pub(crate) const fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    pub(crate) fn document(&self) -> &[u8] {
+        &self.document
+    }
+
+    pub(crate) const fn digest(&self) -> [u8; 32] {
+        self.digest
     }
 }
 

@@ -2,7 +2,7 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 691d43b0d09193a79fb778dd8b1c2d6db2cbc21a44281b623994c4440bac3851
+source_hash: 4c0d5d455fe58e39e2dab0122934556d3ac1672422021d3a359f1882c5f50889
 source_files: 63
 mapped_at_commit: working-tree
 ---
@@ -30,7 +30,8 @@ coherent work admission, bounded cross-domain playback control, canonical logica
 control, revision-fenced project mutation plus undo and redo, authoritative project extension and
 settings inspection and transactions, authored audio automation inspection and transactions, crash
 recovery discovery, comparison, durable restore, and dismissal, read-only whole-engine
-introspection and integration validation, and ordered replacement events. Validation composes the
+introspection and integration validation, deterministic semantic project diagnostics inspection,
+and ordered replacement events. Validation composes the
 canonical introspection snapshot with exact lifecycle, recovery, scenario, playback, and export
 evidence without polling a runtime owner or creating a second mutable state model.
 Native GPU presentation, timeline-owned decoded-audio rendering, export muxing and publication,
@@ -77,7 +78,8 @@ through the existing dispatcher.
   optional exact resource accounting, and dispatcher-owned lifecycle and recovery state into
   read-only introspection and integration validation snapshots without advancing a command or event
   sequence. It optionally owns one authoritative project document, exposes immutable project
-  snapshots, routes settings inspection and optimistic transactions with dynamic no-op event
+  snapshots, computes eventless versioned semantic project diagnostics from the selected history
+  snapshot, routes settings inspection and optimistic transactions with dynamic no-op event
   reservation, optionally owns authored audio automation with the same dynamic event reservation,
   and optionally attaches one exact file-backed recovery coordinator whose discover, restore, and
   dismiss commands publish correlated complete recovery state.
@@ -213,7 +215,10 @@ through the existing dispatcher.
   exclusive project-history attachment, project command and event correlation, stale atomicity,
   no-op event suppression, unknown extension command dispatch and typed results, exact extension
   undo and redo, one correlated event for a compound project command, and
-  event-backpressure preflight before project mutation.
+  event-backpressure preflight before project mutation. It also proves typed project diagnostics
+  inspection through the full dispatcher, missing-project classification, successful command
+  sequencing, no event or history mutation, authored-change sensitivity, and undo restoration of
+  the prior semantic hash under a newer document revision.
 - `open/crates/superi-engine/tests/engine_introspection_contract.rs`: Proves EngineControl-owned
   read-only observation, unchanged scenario and event state, deterministic capability and resource
   projection, coherent normal admission, playback-only, rendering-plus-export, and export-only
@@ -346,6 +351,10 @@ authored changes publish a complete `ProjectStateChanged` replacement event with
 command sequence, event sequence, and caller transaction correlation. `attach_project` installs the
 same exclusive owner with default history capacity for the public settings path, and
 `project_snapshot` returns its selected immutable project without exposing mutable ownership.
+`InspectProjectDiagnostics` computes `superi-project::ProjectDiagnostics` from that exact selected
+history snapshot and returns `EngineCommandResult::ProjectDiagnostics`. It advances only the
+successful command sequence, emits no event, changes no history or project state, and reports
+unavailable when no project owner is attached.
 `InspectProjectSettings` and `ExecuteProjectSettings` return resolved settings state, record semantic
 changes in the shared history, and publish correlated `ProjectSettingsChanged` replacement events.
 `attach_audio_automation` installs one exclusive automation owner on the full dispatcher.
@@ -679,6 +688,13 @@ complete `ProjectSettingsChanged` replacement correlated to the caller transacti
 revision. A no-op succeeds even when the event queue is full, advances no project revision, and
 publishes nothing. Missing projects, off-domain calls, stale revisions, invalid values, and full
 queues before a real mutation leave the authoritative project unchanged.
+
+`InspectProjectDiagnostics` is another read-only command over that owner. The dispatcher borrows
+the selected immutable history snapshot, delegates all canonical preparation and semantic hash
+framing to `superi-project`, returns one typed complete diagnostics report, and commits only its
+successful command sequence. It reserves no event capacity and does not alter the project revision,
+undo or redo depth, selected snapshot, lifecycle, recovery state, or event queue. A synchronous
+preparation or missing-owner failure advances no sequence.
 
 Authored automation follows the same serialized publication law without entering project history.
 The full dispatcher consumes one `AudioAutomationState` owner and rejects duplicate or scenario-only
@@ -1082,8 +1098,9 @@ audio mutation, so their user intent remains attached without synthesis.
   and immutable snapshots consumed by settings dispatch, command history, compound transactions,
   and resource preparation, including snapshots reconstructed by its schema migration path. It
   supplies the checked document edit and restoration seams, authored media commands, draft
-  validation, authoritative settings keys and defaults, durable clip-mix aggregate, and typed
-  autosave controller exercised by the selected-history-state consumer contract. Project remains
+  validation, authoritative settings keys and defaults, durable clip-mix aggregate, versioned
+  semantic diagnostics over canonical prepared evidence, and the typed autosave controller
+  exercised by the selected-history-state consumer contract. Project remains
   authoritative for settings keys, validation, defaults, persistence, autosave scheduling,
   recovery-point publication, pruning, recovery discovery, semantic comparison, candidate
   classification, and exact dismissal, while engine owns typed subsystem resolution, bounded
@@ -1135,6 +1152,15 @@ audio mutation, so their user intent remains attached without synthesis.
 - Project history is session-local operational state and never enters project snapshots or SQLite.
   The selected immutable snapshot remains the only durable project state, so database reload starts
   with empty history around the loaded revision.
+- Project diagnostics inspection requires the same attached history owner and EngineControl domain.
+  It delegates semantic hashing to project, advances only the successful command sequence, emits no
+  event, reserves no event capacity, and changes no project snapshot, document revision, history
+  depth, lifecycle state, or recovery state. A missing project or preparation failure advances
+  nothing.
+- The returned semantic hash excludes the outer document revision, so undo or recovery can restore
+  the prior hash under a newer optimistic revision. Engine must not add session history, command
+  sequence, transaction ID, lifecycle state, runtime readiness, or event state to project-owned
+  diagnostics.
 - Autosave policy, elapsed time, retention, filesystem publication, and recovery-point ownership
   remain in `superi-project`. Engine supplies only an immutable selected snapshot in its consumer
   proof. No engine dispatcher, lifecycle action, worker, or execution domain may perform blocking
@@ -1363,7 +1389,7 @@ two redo recovery at revision 8, rejected-action atomicity, payload digest failu
 bound. They also prove the shared four-entry snapshot store evicts the oldest action and clears redo
 only after a successful post-undo branch.
 
-Eight general dispatcher contracts prove atomic multi-action rollback and commit, one revision and one undo
+Ten general dispatcher contracts prove atomic multi-action rollback and commit, one revision and one undo
 unit, optimistic conflict rejection, matching complete replacement state events, sequence ordering,
 full-queue rejection before mutation, off-domain rejection before mutation, coherent playback,
 rendering, and export admission through healthy and degraded states, recovery, stale permit
@@ -1375,7 +1401,10 @@ suppression, and project plus history
 preservation when event backpressure rejects a command. The same dispatcher proof sends an unknown
 extension record through the real project history, observes its typed result and replacement event,
 suppresses an equal no-op, rejects a stale command, and preserves exact bytes through undo, redo,
-and project reload.
+and project reload. The project diagnostics proof uses the full lifecycle dispatcher, rejects a
+missing attachment without sequence movement, returns one typed eventless report, preserves exact
+history state, changes its semantic hash after a media mutation, and restores the prior hash through
+undo under a newer outer document revision.
 
 Two audio automation dispatcher contracts prove exclusive lifecycle-owned state attachment,
 inspection command ordering, one event per semantic transaction, stale and invalid atomicity,
@@ -1583,14 +1612,16 @@ The typed dispatcher is the substantive engine-wide control seam for current sce
 classified failure and recovery, sleep, wake, shutdown, restart, work admission, capability and
 health observation, interactive transport, logical export, typed project media, extension, and
 compound mutation, project undo and redo, authoritative project settings inspection and mutation,
-authored audio automation inspection and mutation, and read-only integration validation operations.
+authored audio automation inspection and mutation, deterministic semantic project diagnostics
+inspection, and read-only integration validation operations.
 It also owns crash recovery discovery, complete
 semantic comparison, durable restoration, and exact dismissal through one optional file-backed
 coordinator. The optional project attachment owns one real `ProjectDocument`, returns complete
 typed history state, records settings, media, extension, and compound
 mutations in that shared history, and publishes correlated full replacement events for authored
 changes. Its introspection and validation snapshots expose coherent adaptation and action evidence
-without adding mutation authority.
+without adding mutation authority. Its project diagnostics command exposes project-owned canonical
+hash and component evidence without an event, history entry, or second semantic model.
 Playback crosses
 one bounded nonblocking bridge to its real domain owner. Logical export state remains in the
 canonical queue behind a type-erased dispatcher controller, while prepared executors receive fresh
@@ -1683,6 +1714,11 @@ and published by one outer project edit. Keep extension payloads opaque, preserv
 capability, lifecycle, and failure meaning exactly, and never persist derived supervisor readiness
 into authored extension state. Add later command adapters without placing history stacks
 in project, timeline, graph, audio, API, or CLI owners.
+Keep `InspectProjectDiagnostics` bound to the selected immutable history snapshot and delegate all
+hash framing, component evidence, versioning, and exclusions to `superi-project`. Preserve its typed
+complete result, successful command sequencing, missing-owner failure, eventless behavior, and zero
+history or project mutation. Do not copy the project hash algorithm or build an engine-private
+diagnostics digest.
 Keep the selected immutable snapshot directly consumable by the project-owned autosave command. A
 future background I/O integration may route that public surface, but must not duplicate policy,
 publication, naming, or retention in engine and must not block EngineControl, Playback, Render, or

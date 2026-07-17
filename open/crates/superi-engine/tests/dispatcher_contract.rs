@@ -32,11 +32,92 @@ use superi_project::extensions::{
     ProjectExtensionLifecycle, ProjectExtensionRecord, ProjectExtensionRecordId,
 };
 use superi_project::media::{PortableRelativePath, ProjectMediaCommand, ReferencedMediaPath};
-use superi_project::ProjectDatabase;
+use superi_project::{ProjectDatabase, ProjectDiagnostics};
 use superi_timeline::model::{EditorialProject, LinkedMediaReference, Timeline};
 
 const HISTORY_MEDIA: MediaId = MediaId::from_raw(0x801);
 const HISTORY_ROOT: TimelineId = TimelineId::from_raw(0x802);
+
+#[test]
+fn project_diagnostics_are_eventless_and_follow_history_restore() {
+    let _domain = ExecutionDomain::EngineControl
+        .enter_current()
+        .expect("test owns engine control");
+    let mut dispatcher = EngineCommandDispatcher::new().expect("dispatcher owns one lifecycle");
+
+    let missing = dispatch(
+        &mut dispatcher,
+        "diagnostics-missing-project",
+        EngineCommand::InspectProjectDiagnostics,
+    )
+    .unwrap_err();
+    assert_eq!(missing.category(), ErrorCategory::Unavailable);
+    assert!(dispatcher.drain_events().unwrap().is_empty());
+
+    dispatcher
+        .attach_project_history(project_document(), 2)
+        .unwrap();
+    let before = dispatcher.project_history_state().unwrap();
+    let baseline = dispatch(
+        &mut dispatcher,
+        "diagnostics-baseline",
+        EngineCommand::InspectProjectDiagnostics,
+    )
+    .unwrap();
+    assert_eq!(baseline.command_sequence(), 1);
+    let baseline = project_diagnostics_result(baseline.result()).clone();
+    assert_eq!(dispatcher.project_history_state().unwrap(), before);
+    assert!(dispatcher.drain_events().unwrap().is_empty());
+
+    let changed = dispatch(
+        &mut dispatcher,
+        "diagnostics-change-media",
+        EngineCommand::ExecuteProjectHistory(ProjectHistoryCommand::apply(
+            baseline.observed_document_revision(),
+            ProjectMutation::media(ProjectMediaCommand::set_path(
+                HISTORY_MEDIA,
+                ReferencedMediaPath::project_relative(
+                    PortableRelativePath::new("Media/relinked-source.webm").unwrap(),
+                ),
+            )),
+        )),
+    )
+    .unwrap();
+    assert_eq!(changed.command_sequence(), 2);
+    assert_eq!(dispatcher.drain_events().unwrap().len(), 1);
+
+    let changed = dispatch(
+        &mut dispatcher,
+        "diagnostics-changed",
+        EngineCommand::InspectProjectDiagnostics,
+    )
+    .unwrap();
+    assert_eq!(changed.command_sequence(), 3);
+    let changed = project_diagnostics_result(changed.result()).clone();
+    assert_ne!(changed.content_hash(), baseline.content_hash());
+    assert!(dispatcher.drain_events().unwrap().is_empty());
+
+    dispatch(
+        &mut dispatcher,
+        "diagnostics-undo",
+        EngineCommand::ExecuteProjectHistory(ProjectHistoryCommand::undo(
+            changed.observed_document_revision(),
+        )),
+    )
+    .unwrap();
+    assert_eq!(dispatcher.drain_events().unwrap().len(), 1);
+    let restored = dispatch(
+        &mut dispatcher,
+        "diagnostics-restored",
+        EngineCommand::InspectProjectDiagnostics,
+    )
+    .unwrap();
+    assert_eq!(restored.command_sequence(), 5);
+    let restored = project_diagnostics_result(restored.result());
+    assert_eq!(restored.content_hash(), baseline.content_hash());
+    assert!(restored.observed_document_revision() > baseline.observed_document_revision());
+    assert!(dispatcher.drain_events().unwrap().is_empty());
+}
 
 #[test]
 fn scenario_transactions_publish_once_rollback_completely_and_undo_as_one_unit() {
@@ -1095,6 +1176,13 @@ fn project_history_result(result: &EngineCommandResult) -> &ProjectHistoryOutcom
     match result {
         EngineCommandResult::ProjectHistory(outcome) => outcome,
         _ => panic!("expected project history result"),
+    }
+}
+
+fn project_diagnostics_result(result: &EngineCommandResult) -> &ProjectDiagnostics {
+    match result {
+        EngineCommandResult::ProjectDiagnostics(diagnostics) => diagnostics,
+        _ => panic!("expected project diagnostics result"),
     }
 }
 

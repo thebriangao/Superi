@@ -21,7 +21,7 @@ use superi_concurrency::threads::ExecutionDomain;
 use superi_core::diagnostics::DiagnosticEvent;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_project::document::{ProjectDocument, ProjectSnapshot};
-use superi_project::ProjectDatabase;
+use superi_project::{ProjectDatabase, ProjectDiagnostics};
 
 use crate::command::{
     ScenarioAction, ScenarioEngine, ScenarioSnapshot, MAX_SCENARIO_TRANSACTION_ACTIONS,
@@ -362,6 +362,8 @@ pub enum EngineCommand {
     ExecuteProjectHistory(ProjectHistoryCommand),
     /// Inspect current authored-project state and history without mutation.
     InspectProjectHistory,
+    /// Inspect deterministic semantic project identity and component evidence without mutation.
+    InspectProjectDiagnostics,
     /// Inspect the attached project's durable and resolved settings.
     InspectProjectSettings,
     /// Commit one optimistic project settings transaction.
@@ -494,6 +496,8 @@ pub enum EngineCommandResult {
     Scenario(Box<ScenarioSnapshot>),
     /// Complete authored-project state, history metadata, and semantic command evidence.
     ProjectHistory(Box<ProjectHistoryOutcome>),
+    /// Deterministic semantic project identity and ordered component evidence.
+    ProjectDiagnostics(Box<ProjectDiagnostics>),
     /// Complete durable and resolved project settings state.
     ProjectSettings(Box<ProjectSettingsState>),
     /// Complete replacement state for every authored audio automation lane.
@@ -1407,6 +1411,15 @@ impl EngineCommandDispatcher {
                 )),
                 event: None,
             }),
+            EngineCommand::InspectProjectDiagnostics => {
+                let snapshot = self.project_history_ref()?.project_snapshot();
+                Ok(CommandExecution {
+                    result: EngineCommandResult::ProjectDiagnostics(Box::new(
+                        ProjectDiagnostics::from_snapshot(&snapshot)?,
+                    )),
+                    event: None,
+                })
+            }
             EngineCommand::InspectProjectSettings => {
                 let state = ProjectSettingsState::from_snapshot(&self.project_snapshot()?)?;
                 Ok(CommandExecution {

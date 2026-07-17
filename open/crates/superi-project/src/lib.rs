@@ -6,11 +6,12 @@
 //! opaque extension-state envelopes, stable project serialization, checked schema migration, atomic save
 //! publication, portable referenced-media paths, MediaId-keyed relink commands, and
 //! deterministic project autosave scheduling and retention, read-only whole-project
-//! integrity validation and repair reporting, crash recovery discovery, complete semantic
-//! comparison, restoration, and durable dismissal are implemented against that same
-//! authoritative store.
+//! integrity validation and repair reporting, deterministic semantic project hashing with
+//! ordered component diagnostics, crash recovery discovery, complete semantic comparison,
+//! restoration, and durable dismissal are implemented against that same authoritative store.
 
 pub mod autosave;
+pub mod diagnostics;
 pub mod document;
 pub mod extensions;
 pub mod integrity;
@@ -25,6 +26,10 @@ pub use autosave::{
     ProjectAutosaveArtifact, ProjectAutosaveCommand, ProjectAutosaveController,
     ProjectAutosaveDisposition, ProjectAutosaveOperation, ProjectAutosaveOutcome,
     ProjectAutosavePolicy, ProjectAutosaveState, MAX_PROJECT_AUTOSAVE_RETENTION,
+};
+pub use diagnostics::{
+    ProjectComponentEvidence, ProjectDiagnosticComponent, ProjectDiagnostics, ProjectDigest,
+    ProjectGraphScope, PROJECT_HASH_ALGORITHM, PROJECT_HASH_FORMAT_REVISION,
 };
 pub use integrity::{
     execute_project_integrity_command, ProjectIntegrityCommand, ProjectIntegrityFinding,

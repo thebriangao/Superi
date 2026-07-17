@@ -2,8 +2,8 @@
 module_id: superi-project
 source_paths:
   - open/crates/superi-project
-source_hash: 006d8576a88a176cc32c134432aabe7dc67c961153ef26ad8535d356b4c23837
-source_files: 22
+source_hash: bab229b018f3b71a31ffd32a4189fb69f9b2648c84f4a851279833696ac6f585
+source_files: 24
 mapped_at_commit: working-tree
 ---
 
@@ -12,7 +12,9 @@ mapped_at_commit: working-tree
 `superi-project` owns the coherent whole-project aggregate, authoritative versioned project
 settings, authored clip-mix state, durable opaque extension records, stable schema-4 SQLite
 serialization, ordered forward migration from supported older project schemas, and read-only
-project integrity validation with deterministic repair reporting. One `ProjectDocument` combines
+project integrity validation with deterministic repair reporting. It also owns versioned semantic
+project hashing and ordered component diagnostics over the same canonical prepared evidence. One
+`ProjectDocument` combines
 the validated
 editorial project, selected root timeline, retained compiled timeline graphs, optional named
 standalone editable graphs, complete timeline, color, audio, cache, proxy, and render settings,
@@ -65,8 +67,16 @@ manifest, semantic reconstruction, aggregate, and source-stability checks. It pe
 migration, file creation, salvage, or authority change. A restore recommendation points callers to
 the independently validated recovery path rather than opening another mutation surface.
 
+The project diagnostics boundary computes one domain-separated SHA-256 content identity from
+canonical timeline, settings, clip-mix, extension, and retained graph evidence. It includes stable
+project, root, component codec, primitive schema, extension identity and payload-schema, and graph
+scope meaning. It deliberately excludes the outer `ProjectDocument` revision, database schema and
+manifest, file path, active save identity, autosave generation, and SQLite page layout. The report
+retains the observed outer revision only for correlation and exposes immutable components in fixed
+family order followed by stable extension and graph identity order.
+
 This module does not own command-history storage, branching, or selection policy. It also does not
-yet own persisted command logs, engine restoration transactions, runtime readiness, plugin process
+own persisted command logs, engine restoration transactions, runtime readiness, plugin process
 state, or direct file commands in the public API and CLI.
 Those remain assigned to their engine, API, or later project checkpoints.
 
@@ -84,6 +94,10 @@ Those remain assigned to their engine, API, or later project checkpoints.
   graphs, authored clip-mix state, ordered extension records, revision fencing, checked
   reconstruction and restoration, fresh monotonic restore publication, and complete relationship
   validation.
+- `open/crates/superi-project/src/diagnostics.rs`: Implements versioned semantic project hashing,
+  immutable SHA-256 digest and component-evidence values, stable graph scope and component
+  vocabularies, canonical ordering, explicit hash framing, and snapshot diagnostics built from the
+  persistence preparation path without depending on database bytes or outer document revision.
 - `open/crates/superi-project/src/extensions.rs`: Owns bounded compound extension identities, open
   namespaced plugin, effect, AI artifact metadata, and future kinds, opaque payload envelopes,
   requested and granted capabilities, user-controlled lifecycle, structured failure evidence, and
@@ -94,9 +108,10 @@ Those remain assigned to their engine, API, or later project checkpoints.
   application and schema identity checks, registered current and legacy reconstruction, component
   finding classification, verified identity, source-stability fencing, and safe repair dispositions.
 - `open/crates/superi-project/src/lib.rs`: Documents the implemented aggregate, schema-4
-  persistence, migration, settings, extension state, atomic save, referenced-media, and integrity
+  persistence, migration, settings, extension state, semantic diagnostics, atomic save,
+  referenced-media, and integrity
   boundaries, exports public project modules, keeps migration and save mechanics private, and
-  re-exports the database, save, autosave, integrity, and stable format surfaces.
+  re-exports the database, save, autosave, integrity, diagnostics, and stable format surfaces.
 - `open/crates/superi-project/src/migrate.rs`: Owns exact schema-0, schema-1, and frozen schema-2
   and schema-3 contracts, the contiguous 0-to-1-to-2-to-3-to-4 migration registry, secured
   compatibility decoding, root-rate-derived settings defaults, canonical empty-audio and empty
@@ -131,6 +146,10 @@ Those remain assigned to their engine, API, or later project checkpoints.
   concurrent snapshots, ordinary graph editing, atomic failure behavior, compilation freshness,
   standalone graph identity, checked reconstruction, revision-fenced whole-snapshot restoration,
   monotonic restore publication, exhaustion atomicity, and graph identity checks.
+- `open/crates/superi-project/tests/diagnostics_contract.rs`: Proves version constants, equivalent
+  construction-order identity, media ID and fingerprint sensitivity, rejected relink evidence,
+  exact first changed component families, outer-revision exclusion, monotonic restore equality,
+  and identical semantics after reload from byte-different SQLite page layouts and paths.
 - `open/crates/superi-project/tests/integrity_contract.rs`: Proves one deterministic command surface
   across editor, script, and headless roles, valid current and supported legacy reconstruction,
   migration reporting, complete component corruption classification, stable bounded evidence,
@@ -176,10 +195,10 @@ Those remain assigned to their engine, API, or later project checkpoints.
 
 ## Public surface
 
-The crate root exports `autosave`, `document`, `extensions`, `integrity`, `media`, `persist`,
+The crate root exports `autosave`, `diagnostics`, `document`, `extensions`, `integrity`, `media`, `persist`,
 `recovery`, and `settings`, keeps save mechanics private, and re-exports the stable persistence,
-save, autosave, integrity, and recovery authorities, project format constants, and media path
-target format identifier.
+save, autosave, integrity, diagnostics, and recovery authorities, project format and semantic hash
+constants, and the media path target format identifier.
 
 - `ProjectDocument::new` accepts one `EditorialProject` and selected `TimelineId`, compiles that
   root through `superi_timeline::compile_timeline`, derives deterministic settings from its edit
@@ -309,6 +328,18 @@ target format identifier.
 - `ProjectRepairDisposition` distinguishes no action, checked forward migration, validated recovery,
   inspection retry, access correction, newer application use, and manual recovery. It reports a safe
   next action only and grants no repair or publication authority.
+- `ProjectDigest` is one immutable 32-byte SHA-256 value with exact byte access and canonical
+  lowercase hexadecimal display. `ProjectComponentEvidence` pairs a canonical encoded byte length
+  with one such digest.
+- `ProjectGraphScope` distinguishes one timeline-root compilation from one named standalone graph.
+  `ProjectDiagnosticComponent` exposes permanent family codes and typed timeline, settings,
+  clip-mix, extension metadata plus payload, and graph evidence. Extension records retain typed
+  compound identity and payload schema; graph records retain identity, scope, graph revision, codec
+  revision, and canonical evidence.
+- `ProjectDiagnostics::from_snapshot` invokes the same bounded canonical preparation used by
+  persistence, then publishes project and root identity, observed outer revision, stable primitive
+  revision, hash algorithm, hash format revision, aggregate content hash, and immutable ordered
+  components. `PROJECT_HASH_ALGORITHM` is `sha256` and `PROJECT_HASH_FORMAT_REVISION` is `1`.
 - `PROJECT_APPLICATION_ID`, `PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION`,
   `PROJECT_SCHEMA_REVISION`, `PROJECT_FORMAT`, and `PROJECT_FORMAT_VERSION` identify application
   `SUPR`, supported source schema `0`, current schema `4`, `superi.project`, and `1.3.0`.
@@ -370,6 +401,25 @@ Prepared schema-4 serialization preserves that exact published state:
    integrity, canonical component and extension metadata decoding, exact payload validation,
    checked aggregate reconstruction, and exact `ProjectSnapshot` equality. File candidates also
    pass a full SQLite integrity check after commit.
+
+Semantic diagnostics reuse preparation without reusing the private manifest identity:
+
+1. `ProjectDiagnostics::from_snapshot` calls `PreparedProject::from_snapshot`, so timeline,
+   settings, clip-mix, extension metadata, opaque payload, and graph bytes and digests come from the
+   exact canonical encoders and bounds used by persistence.
+2. The public component list always begins with timeline, settings, and clip mix. Extensions follow
+   in compound key order and graphs follow in `GraphId` order, preserving typed extension payload
+   schema and timeline or named standalone graph scope beside byte evidence.
+3. A revision-1 domain-separated framing length-prefixes the SHA-256 algorithm code, hash format
+   revision, stable primitive revision, project and selected-root identities, component count, each
+   family tag, every relevant codec revision and semantic identity, exact byte length, and canonical
+   digest.
+4. The outer document revision is copied into the report for optimistic-command correlation but is
+   never framed into the content hash. Private manifest, SQLite schema, file path, active database
+   identity, save destination, autosave generation, and page layout are also excluded.
+5. A content mutation therefore changes the aggregate hash and exposes the exact changed component
+   family, while undo or recovery of equal authored meaning restores the prior hash even though the
+   new outer revision remains monotonic.
 
 File publication adds one explicit commit boundary:
 
@@ -543,8 +593,9 @@ and acquires the exact reachable source and decoder set before one resources pub
   strict Serde support for `TimelineGraphValue` inside graph component documents.
 - Exact `rusqlite` 0.32.1 supplies safe SQLite access with bundled SQLite 3.46.0 and no public SQL or
   connection type leakage. Its bundled feature also exposes modern defensive configuration.
-- Exact `sha2` 0.10.9 supplies component and project manifest integrity without defining the later
-  public dirty-state hash.
+- Exact `sha2` 0.10.9 supplies component and private manifest integrity plus the separately
+  domain-separated public semantic project hash. The two digest domains have different inputs and
+  authority.
 - Exact `fs4` 1.1.0 supplies synchronization-only nonblocking operating-system file locks for the
   persistent sibling writer-lock entry without adding networking, process discovery, or public API
   types.
@@ -556,8 +607,9 @@ and acquires the exact reachable source and decoder set before one resources pub
   existing subsystem types, dispatches authoritative settings transactions, exclusively owns
   bounded command history and compound transactions over the checked whole-snapshot restore seam,
   routes extension commands and typed results through the same dispatcher and event owner,
-  and supplies the real selected history snapshot used by the autosave consumer contract after
-  apply, undo, and redo.
+  supplies the real selected history snapshot used by the autosave consumer contract after apply,
+  undo, and redo, and exposes eventless `InspectProjectDiagnostics` results from that same attached
+  history snapshot.
 - `superi-api` consumes project settings and recovery only through engine-owned re-exports and
   dispatcher commands. API and CLI do not yet expose database file commands. Later file commands
   must wrap this owner instead of creating another project or database authority.
@@ -619,7 +671,19 @@ and acquires the exact reachable source and decoder set before one resources pub
   interprets only recognized filesystem target syntax, preserves unknown locators, and never derives
   identity from a path. Relative resolution is lexical and requires an absolute project file path;
   foreign-platform absolute targets and future target versions fail explicitly.
-- The project manifest is private integrity evidence. It is not C014's public dirty-state hash.
+- The project manifest remains private storage-integrity evidence and includes the outer document
+  revision plus schema and format identity. It is never exposed or reused as the public semantic
+  project hash.
+- The public semantic hash is explicitly revisioned and domain separated. It covers stable
+  primitive and component codec revisions, project and selected-root identity, canonical component
+  lengths and digests, extension compound identity and payload schema, and graph identity, scope,
+  revision, and canonical evidence.
+- The observed outer document revision is correlation evidence only. Equal authored meaning after
+  undo, recovery, save, copy, backup, migration to current canonical bytes, or reopen must retain the
+  same content hash even when the document revision, destination path, or SQLite layout differs.
+- Components are immutable and ordered by fixed family, then extension compound identity, then
+  graph identity. Callers can identify the first changed component without parsing private SQLite
+  rows or opaque payload bytes.
 - Wrong application identity, future schema or format versions, and read-only legacy open are
   unsupported. Malformed, noncanonical current state, tampered, missing, extra, or inconsistent
   stored state is corrupt data.
@@ -632,8 +696,9 @@ and acquires the exact reachable source and decoder set before one resources pub
 - Integrity findings and evidence are deterministic and bounded. Truncation or source mutation makes
   the report indeterminate, and a recovery disposition is guidance to the separately validated
   recovery controller rather than direct mutation permission.
-- Semantic row order, component bytes, and manifest digest are deterministic. SQLite page layout is
-  not a public deterministic contract.
+- Semantic row order, canonical component bytes, private manifest digest, and public semantic hash
+  framing are deterministic. SQLite page layout is not a public deterministic contract and never
+  enters semantic diagnostics.
 - `create`, backup, and require-absent publication do not overwrite an existing path. Migration
   changes only the already opened source database after the complete legacy document is checked and
   only at commit. Replace-existing accepts only a validated project and preserves destination
@@ -751,6 +816,14 @@ preservation, restart discovery,
 and recognized tombstone cleanup. Private classification coverage proves retryable and terminal
 source evidence is retained rather than downgraded.
 
+`diagnostics_contract.rs` contains three public contracts. They prove fixed SHA-256 algorithm and
+hash-format revision identity, construction-order-independent reports, stable lowercase digest
+display, media ID, fingerprint, target, and rejected-relink sensitivity, and exact timeline,
+settings, clip-mix, extension, and graph component difference visibility. They also prove that
+monotonic snapshot restoration recovers the prior semantic hash under a newer observed document
+revision and that two different file paths with byte-different SQLite page layouts reload to one
+equal diagnostics report.
+
 `integrity_contract.rs` contains six public tests. They prove deterministic editor, script, and
 headless interpretation; full current-schema identity; complete linked-media, retained-graph,
 settings, authored-audio, and opaque-extension reconstruction; schema-0 migration reporting without mutation;
@@ -791,9 +864,12 @@ now discovers, validates, compares, classifies, and durably dismisses those exac
 without exposing filesystem identity or creating a second store. The public integrity command adds
 complete current and supported legacy reconstruction, deterministic bounded evidence, verified
 identity, and repair reporting without creating another database or recovery authority.
+The public semantic diagnostics surface now adds a versioned SHA-256 content identity and ordered
+typed component evidence over canonical prepared state, and the engine dispatcher consumes it
+without events or history mutation.
 
 Additional schema revisions beyond 4, persisted history or command logs, authenticated integrity,
-dirty-state hashing, public database adaptation, CLI, and scripting remain absent.
+public database adaptation, CLI, and scripting remain absent.
 Autosave policy is process-local and recovery roots are caller selected; no background timer,
 persistent scheduler, wire adapter, runtime registry, plugin worker, or automatic recovery choice
 is claimed. Exact schemas 0, 1, 2, and 3 are the supported predecessors. Future, older unknown, or
@@ -808,7 +884,9 @@ only the named destination entry without mutating the original active link.
 
 Bundled SQLite increases the locked build graph and must remain pinned to the Rust 1.80-compatible
 rusqlite 0.32.1 path unless a separately verified upgrade changes that decision. Integrity digests
-detect changes but do not authenticate malicious files. The `data_version` fence detects changes
+and semantic project hashes detect changes but do not authenticate malicious files. Hash equality
+means equal canonical authored evidence under one declared framing revision, not file identity,
+runtime readiness, safe mergeability, or storage integrity. The `data_version` fence detects changes
 visible to the open connection but does not claim a cross-process filesystem replacement lock.
 Defensive configuration, strict schema inspection, bounds, and checked domain reconstruction remain
 mandatory for untrusted projects.
@@ -841,6 +919,13 @@ registered schema readers, canonical component codecs, and checked aggregate rec
 finding or disposition codes only as stable semantic contracts, preserve bounded deterministic
 evidence and explicit indeterminate state, and route any actual repair through the existing migration,
 save, or validated recovery authority instead of adding mutation to the integrity command.
+
+Keep semantic diagnostics on `PreparedProject` canonical evidence and separate from the private
+manifest. Any input, ordering, tag, field framing, algorithm, or interpretation change requires an
+explicit new `PROJECT_HASH_FORMAT_REVISION` and compatibility decision. Never add outer document
+revision, paths, save identity, autosave generations, SQLite schema or page layout, runtime state,
+or process state to the semantic content hash. Preserve typed component evidence and the eventless
+engine consumer together.
 
 Refresh this map after any project source, manifest, public consumer, schema, or test change. Reread
 every changed file and relevant component interface through EOF, reconcile prose before recomputing
