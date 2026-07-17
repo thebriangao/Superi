@@ -31,9 +31,14 @@ pub mod media;
 pub mod nodes;
 pub mod playback;
 pub mod plugins;
+pub mod project_settings;
 pub mod proxy_substitution;
 pub mod render;
 pub mod resource_arbitration;
 pub mod resources;
 pub mod transport;
 pub mod validation;
+
+#[cfg(feature = "test-support")]
+#[doc(hidden)]
+pub mod test_support;

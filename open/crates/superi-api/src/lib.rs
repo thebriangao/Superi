@@ -5,6 +5,7 @@
 pub mod api;
 pub mod commands;
 pub mod events;
+pub mod project;
 pub mod scenario;
 pub mod scripting;
 pub mod validation;

@@ -8,6 +8,7 @@ use std::collections::VecDeque;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_project::document::{ProjectDocument, ProjectSnapshot};
 use superi_project::media::{ProjectMediaCommand, ProjectMediaCommandResult};
+use superi_project::settings::ProjectSettingsTransaction;
 
 const COMPONENT: &str = "superi-engine.history";
 
@@ -102,6 +103,8 @@ impl<S, M> SnapshotHistory<S, M> {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum ProjectMutationKind {
+    /// Change one or more durable project settings atomically.
+    ProjectSettings,
     /// Replace the active referenced-media path.
     SetMediaPath,
     /// Mark one referenced-media path unavailable.
@@ -115,6 +118,7 @@ impl ProjectMutationKind {
     #[must_use]
     pub const fn code(self) -> &'static str {
         match self {
+            Self::ProjectSettings => "project_settings",
             Self::SetMediaPath => "set_media_path",
             Self::MarkMediaMissing => "mark_media_missing",
             Self::ConsiderMediaRelink => "consider_media_relink",
@@ -353,6 +357,37 @@ impl ProjectCommandHistory {
             action_result: None,
             authored_state_changed: false,
         }
+    }
+
+    /// Captures the selected authoritative project snapshot.
+    #[must_use]
+    pub(crate) fn project_snapshot(&self) -> ProjectSnapshot {
+        self.document.snapshot()
+    }
+
+    /// Reports whether one valid settings transaction would publish a new project revision.
+    pub(crate) fn settings_will_change(
+        &self,
+        transaction: &ProjectSettingsTransaction,
+    ) -> Result<bool> {
+        let prior_revision = self.document.revision();
+        let mut candidate = self.document.clone();
+        let snapshot = candidate.execute_settings_transaction(transaction.clone())?;
+        Ok(snapshot.revision() != prior_revision)
+    }
+
+    /// Executes one settings transaction through the same document and history owner.
+    pub(crate) fn execute_settings_transaction(
+        &mut self,
+        transaction: ProjectSettingsTransaction,
+    ) -> Result<ProjectSnapshot> {
+        let before = self.document.snapshot();
+        let after = self.document.execute_settings_transaction(transaction)?;
+        if after.revision() != before.revision() {
+            self.history
+                .record(before, after.clone(), ProjectMutationKind::ProjectSettings);
+        }
+        Ok(after)
     }
 
     /// Executes one revision-fenced mutation, undo, or redo command atomically.

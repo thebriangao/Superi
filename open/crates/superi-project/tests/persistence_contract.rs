@@ -10,6 +10,7 @@ use superi_graph::mutate::{EditableGraph, GraphMutation, GraphTransaction, Typed
 use superi_graph::serialize::GRAPH_DOCUMENT_FORMAT_REVISION;
 use superi_graph::value::GraphValue;
 use superi_project::document::{ProjectDocument, ProjectGraph, StandaloneProjectGraph};
+use superi_project::settings::PROJECT_SETTINGS_FORMAT_REVISION;
 use superi_project::{
     ProjectDatabase, PROJECT_APPLICATION_ID, PROJECT_FORMAT, PROJECT_FORMAT_VERSION,
     PROJECT_SCHEMA_REVISION,
@@ -314,6 +315,7 @@ struct DatabaseEvidence {
     schema: Vec<(String, String)>,
     metadata: (String, String, i64, Vec<u8>, String, Vec<u8>, Vec<u8>),
     timeline: (i64, i64, Vec<u8>, Vec<u8>),
+    settings: (i64, i64, Vec<u8>, Vec<u8>),
     graphs: Vec<GraphEvidence>,
 }
 
@@ -364,6 +366,13 @@ fn database_evidence(path: &Path) -> DatabaseEvidence {
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )
         .unwrap();
+    let settings = connection
+        .query_row(
+            "SELECT format_revision, byte_length, sha256, document FROM settings_component",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .unwrap();
     let graphs = {
         let mut statement = connection
             .prepare(
@@ -396,6 +405,7 @@ fn database_evidence(path: &Path) -> DatabaseEvidence {
         schema,
         metadata,
         timeline,
+        settings,
         graphs,
     }
 }
@@ -437,6 +447,7 @@ fn schema_identity_and_semantic_rows_are_explicit_and_deterministic() {
         vec![
             ("table".to_owned(), "graph_components".to_owned()),
             ("table".to_owned(), "project_metadata".to_owned()),
+            ("table".to_owned(), "settings_component".to_owned()),
             ("table".to_owned(), "timeline_component".to_owned()),
         ]
     );
@@ -453,6 +464,12 @@ fn schema_identity_and_semantic_rows_are_explicit_and_deterministic() {
     assert_eq!(first.timeline.0, i64::from(TIMELINE_STATE_FORMAT_REVISION));
     assert_eq!(first.timeline.1 as usize, first.timeline.3.len());
     assert_eq!(first.timeline.2.len(), 32);
+    assert_eq!(
+        first.settings.0,
+        i64::from(PROJECT_SETTINGS_FORMAT_REVISION)
+    );
+    assert_eq!(first.settings.1 as usize, first.settings.3.len());
+    assert_eq!(first.settings.2.len(), 32);
     assert_eq!(first.graphs.len(), 2);
     for graph in &first.graphs {
         assert_eq!(
@@ -562,7 +579,7 @@ fn unsupported_corrupt_and_extra_database_state_is_rejected() {
         ),
         (
             "future-schema",
-            "PRAGMA user_version = 2",
+            "PRAGMA user_version = 3",
             ErrorCategory::Unsupported,
             true,
         ),
@@ -585,6 +602,12 @@ fn unsupported_corrupt_and_extra_database_state_is_rejected() {
             false,
         ),
         (
+            "settings-bytes",
+            "UPDATE settings_component SET document = zeroblob(byte_length)",
+            ErrorCategory::CorruptData,
+            false,
+        ),
+        (
             "manifest",
             "UPDATE project_metadata SET manifest_sha256 = zeroblob(32)",
             ErrorCategory::CorruptData,
@@ -593,6 +616,12 @@ fn unsupported_corrupt_and_extra_database_state_is_rejected() {
         (
             "missing-timeline",
             "DELETE FROM timeline_component",
+            ErrorCategory::CorruptData,
+            false,
+        ),
+        (
+            "missing-settings",
+            "DELETE FROM settings_component",
             ErrorCategory::CorruptData,
             false,
         ),

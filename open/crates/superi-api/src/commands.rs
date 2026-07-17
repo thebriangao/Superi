@@ -3,12 +3,13 @@
 use serde::{Deserialize, Serialize};
 
 use crate::api::{EngineIntrospectionSnapshot, MediaCapabilitiesSnapshot};
+use crate::project::{ProjectSettingMutation, ProjectSettingsSnapshot};
 use crate::scenario::{ScenarioActionResult, ScenarioTransactionResult, SliceAction};
 use crate::validation::IntegrationValidationSnapshot;
 use crate::version::{
-    EXECUTE_SCENARIO_ACTION_METHOD, EXECUTE_SCENARIO_TRANSACTION_METHOD,
-    GET_ENGINE_INTEGRATION_VALIDATION_METHOD, GET_ENGINE_INTROSPECTION_METHOD,
-    GET_MEDIA_CAPABILITIES_METHOD,
+    EXECUTE_PROJECT_SETTINGS_TRANSACTION_METHOD, EXECUTE_SCENARIO_ACTION_METHOD,
+    EXECUTE_SCENARIO_TRANSACTION_METHOD, GET_ENGINE_INTEGRATION_VALIDATION_METHOD,
+    GET_ENGINE_INTROSPECTION_METHOD, GET_MEDIA_CAPABILITIES_METHOD, GET_PROJECT_SETTINGS_METHOD,
 };
 
 /// One typed public API command and its response contract.
@@ -18,6 +19,129 @@ pub trait ApiCommand {
 
     /// Permanent namespaced JSON-RPC method name.
     const METHOD: &'static str;
+}
+
+/// Structured parameters for the authoritative project settings query.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GetProjectSettings {}
+
+impl GetProjectSettings {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {}
+    }
+}
+
+impl ApiCommand for GetProjectSettings {
+    type Response = GetProjectSettingsResult;
+
+    const METHOD: &'static str = GET_PROJECT_SETTINGS_METHOD;
+}
+
+/// Successful response to [`GetProjectSettings`].
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GetProjectSettingsResult {
+    snapshot: ProjectSettingsSnapshot,
+}
+
+impl GetProjectSettingsResult {
+    pub(crate) const fn new(snapshot: ProjectSettingsSnapshot) -> Self {
+        Self { snapshot }
+    }
+
+    #[must_use]
+    pub const fn snapshot(&self) -> &ProjectSettingsSnapshot {
+        &self.snapshot
+    }
+}
+
+/// One caller-owned optimistic project settings transaction.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExecuteProjectSettingsTransaction {
+    transaction_id: String,
+    expected_revision: u64,
+    mutations: Vec<ProjectSettingMutation>,
+}
+
+impl ExecuteProjectSettingsTransaction {
+    #[must_use]
+    pub fn new(
+        transaction_id: impl Into<String>,
+        expected_revision: u64,
+        mutations: Vec<ProjectSettingMutation>,
+    ) -> Self {
+        Self {
+            transaction_id: transaction_id.into(),
+            expected_revision,
+            mutations,
+        }
+    }
+
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    #[must_use]
+    pub const fn expected_revision(&self) -> u64 {
+        self.expected_revision
+    }
+
+    #[must_use]
+    pub fn mutations(&self) -> &[ProjectSettingMutation] {
+        &self.mutations
+    }
+
+    pub(crate) fn into_parts(self) -> (String, u64, Vec<ProjectSettingMutation>) {
+        (self.transaction_id, self.expected_revision, self.mutations)
+    }
+}
+
+impl ApiCommand for ExecuteProjectSettingsTransaction {
+    type Response = ExecuteProjectSettingsTransactionResult;
+
+    const METHOD: &'static str = EXECUTE_PROJECT_SETTINGS_TRANSACTION_METHOD;
+}
+
+/// Successful response to one project settings transaction.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExecuteProjectSettingsTransactionResult {
+    transaction_id: String,
+    command_sequence: u64,
+    snapshot: ProjectSettingsSnapshot,
+}
+
+impl ExecuteProjectSettingsTransactionResult {
+    pub(crate) const fn new(
+        transaction_id: String,
+        command_sequence: u64,
+        snapshot: ProjectSettingsSnapshot,
+    ) -> Self {
+        Self {
+            transaction_id,
+            command_sequence,
+            snapshot,
+        }
+    }
+
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    #[must_use]
+    pub const fn command_sequence(&self) -> u64 {
+        self.command_sequence
+    }
+
+    #[must_use]
+    pub const fn snapshot(&self) -> &ProjectSettingsSnapshot {
+        &self.snapshot
+    }
 }
 
 /// Structured parameters for a media capability query.

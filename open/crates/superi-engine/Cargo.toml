@@ -12,6 +12,7 @@ workspace = true
 [features]
 default = []
 os-codecs = ["dep:superi-codecs-platform"]
+test-support = []
 vendor-codecs = ["dep:superi-codecs-vendor"]
 
 [dependencies]

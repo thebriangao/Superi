@@ -2,6 +2,19 @@
 
 use superi_core::settings::SemanticVersion;
 
+/// Schema version for authoritative project settings replacement snapshots.
+pub const PROJECT_SETTINGS_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
+
+/// JSON-RPC method for querying authoritative project settings.
+pub const GET_PROJECT_SETTINGS_METHOD: &str = "superi.project.settings.get";
+
+/// JSON-RPC method for one atomic project settings transaction.
+pub const EXECUTE_PROJECT_SETTINGS_TRANSACTION_METHOD: &str =
+    "superi.project.settings.transaction.execute";
+
+/// Ordered event name for authoritative project settings changes.
+pub const PROJECT_SETTINGS_CHANGED_EVENT: &str = "superi.project.settings.changed";
+
 /// Schema version for media capability snapshots.
 pub const MEDIA_CAPABILITIES_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(2, 0, 0);
 

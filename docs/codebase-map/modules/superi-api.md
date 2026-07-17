@@ -2,37 +2,42 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: caf4fccb308f1c0195ecd375dc4e969a3d684f08c6292a63e9df554994ce4f9d
-source_files: 14
+source_hash: da70bb2640f3c68e3018e462f80b0c0e5eff6ae2dc7efe73e75b3b4cf10766df
+source_files: 16
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
 `superi-api` owns the transport-neutral public boundary for UI, scripting, extension, CLI, and
-automation clients. Four public slices are implemented: media capability introspection, complete
+automation clients. Five public slices are implemented: media capability introspection, complete
 engine capability and health introspection for adaptive clients, canonical editorial scenario
-control through revision-fenced typed transactions and ordered full-state events, and coherent
-read-only integration validation. Wire transport, subscriptions, scripting, cancellation,
-persistence, and broad editor operations remain absent. The engine now exposes typed project
-command-history results and replacement events below this crate, but this API does not yet project
-that surface.
+control through revision-fenced typed transactions and ordered full-state events, coherent
+read-only integration validation, and durable project settings inspection and optimistic mutation
+through the full engine dispatcher. Wire transport, subscriptions, scripting, cancellation, broad
+editor operations, and project database file commands remain absent. The engine also exposes typed
+project command-history results and replacement events below this crate, but this API does not yet
+project that surface.
 
 ## Source inventory
 
 - `open/crates/superi-api/Cargo.toml`: Declares production `serde`, `superi-core`, and
-  `superi-engine` dependencies plus test-only `serde_json`, `sha2`, `superi-media-io`, and
-  `superi-concurrency` for the real EngineControl introspection and validation contracts.
+  `superi-engine` dependencies, enabling the engine's narrow test-support fixture for this crate's
+  public contract tests, plus test-only `serde_json`, `sha2`, `superi-media-io`, and
+  `superi-concurrency` for real EngineControl contracts.
 - `open/crates/superi-api/src/api.rs`: Implements public media and complete engine introspection
   snapshots, strict engine-neutral projection including project, device, sleep, and wake state,
   independent revisions, query state, and full-replacement change events.
-- `open/crates/superi-api/src/commands.rs`: Defines `ApiCommand`, media, engine introspection, and
-  integration validation query types, plus typed one-action and ordered transaction scenario
-  commands.
+- `open/crates/superi-api/src/commands.rs`: Defines `ApiCommand`, media, engine introspection,
+  integration validation, and project settings query types, plus typed one-action scenario and
+  ordered scenario or project settings transaction commands.
 - `open/crates/superi-api/src/events.rs`: Defines `ApiEvent`, media and engine introspection change
-  events, and the ordered full-replacement scenario state event.
-- `open/crates/superi-api/src/lib.rs`: Exposes API, command, event, scenario, scripting, validation,
-  and version modules.
+  events, and ordered full-replacement scenario and project settings state events.
+- `open/crates/superi-api/src/lib.rs`: Exposes API, command, event, project settings, scenario,
+  scripting, validation, and version modules.
+- `open/crates/superi-api/src/project.rs`: Implements strict project setting values and mutations,
+  complete replacement snapshots, and the caller-owned dispatcher facade for settings inspection,
+  optimistic transactions, and ordered event draining.
 - `open/crates/superi-api/src/scenario.rs`: Implements strict canonical action documents, public
   editorial state and graph projections, reversible operation evidence, structured failures, and
   the mutable dispatcher-backed `ScenarioApi` facade with optimistic transactions and event drain.
@@ -41,7 +46,7 @@ that surface.
   nested introspection, exact lifecycle and recovery actions, workflow permits or denials, scenario
   reversal capacity, endpoint replacement state, and coherence findings through typed read-only
   accessors. It also provides the standalone starting-engine query owner used by the CLI.
-- `open/crates/superi-api/src/version.rs`: Owns all four schema revisions and permanent method and
+- `open/crates/superi-api/src/version.rs`: Owns all five schema revisions and permanent method and
   event names.
 - `open/crates/superi-api/tests/media_capabilities_contract.rs`: Covers deterministic capability
   projection, strict serialization, change events, codec rows, and default registry integration.
@@ -55,6 +60,9 @@ that surface.
 - `open/crates/superi-api/tests/integration_validation_contract.rs`: Covers strict versioned JSON,
   nested canonical introspection, exact startup, sleep, wake, and recovery action projection,
   coherent degraded workflow admission, and user-safe active failure state.
+- `open/crates/superi-api/tests/project_settings_contract.rs`: Covers the real public-to-engine-to-
+  project settings path, strict values and transactions, full replacement events, exact project
+  revision correlation, and permanent namespaced contracts.
 - `open/crates/superi-api/tests/scenario_contract.rs`: Covers the strict canonical schema, complete
   state projection, exact undo plus redo evidence, and structured last-valid-state failures.
 
@@ -97,6 +105,14 @@ scenario reversal, exact lifecycle and recovery action tokens, revision-scoped w
 playback transport, export queue, and finding state. `IntegrationValidationApi` owns only that
 immutable public observation. Live UI and test hosts construct it from their dispatcher snapshot,
 while `from_fresh_engine` provides the standalone starting-engine observation used by the CLI.
+
+The project settings surface is schema `1.0.0`, with methods
+`superi.project.settings.get` and `superi.project.settings.transaction.execute` and event
+`superi.project.settings.changed`. `ProjectSettingsSnapshot` carries project identity, the
+authoritative document revision, and the complete canonical key map. Strict Boolean, integer, and
+text values preserve the shared setting representation without coercion. Transactions carry one
+bounded caller identity, an exact expected project revision, and ordered set or remove mutations.
+The result and event both return the complete replacement snapshot.
 
 ## Architecture and data flow
 
@@ -171,14 +187,31 @@ export owner, and does not poll an endpoint. It preserves the canonical introspe
 exact action and recovery tokens, full replacement endpoint observations, stable unknown fallbacks,
 and deterministic coherence findings from the engine result.
 
+Project settings use the full authoritative dispatcher rather than a parallel API-owned state:
+
+```text
+GetProjectSettings or ordered settings transaction
+  -> ProjectSettingsApi
+  -> EngineCommandDispatcher with attached ProjectCommandHistory owning ProjectDocument
+  -> project-owned validation and atomic document publication
+  -> complete ProjectSettingsSnapshot result
+  -> optional ordered ProjectSettingsChanged replacement event
+```
+
+Inspection is read-only. A successful semantic transaction advances the project document once and
+emits one event correlated to the command and caller transaction. A no-op preserves the project
+revision and emits nothing. Failed or stale transactions leave project state, command sequencing,
+and the event queue unchanged.
+
 ## Dependencies and consumers
 
 - `serde` supplies strict snake-case and tagged serialized shapes with unknown-field rejection.
 - `superi-core` supplies semantic versions, exact frame rates, and the classified error model.
 - `superi-engine` supplies capability declarations, complete immutable health and readiness state,
   canonical transactional state, typed dispatch, ordered replacement events, and integration
-  validation observations. Its project-history vocabulary is an intentionally unprojected
-  downstream addition, so no public client can invoke or inspect that state through this crate yet.
+  validation observations. It also re-exports the project setting mutation vocabulary and owns the
+  only API-to-project settings command path, so this public crate has no direct project dependency.
+  Its broader project-history vocabulary remains an intentionally unprojected downstream surface.
 - `serde_json`, `sha2`, `superi-media-io`, and `superi-concurrency` are test dependencies for wire,
   digest, registry, and EngineControl ownership contracts.
 - `superi-cli` is the first production Rust consumer of both `ScenarioApi` and
@@ -191,8 +224,9 @@ No transport, UI, shell, scripting runtime, extension host, or closed-tier clien
 - Public types own their wire schema and do not expose media-I/O or GPU implementation types.
 - Strict objects reject unknown fields. Non-exhaustive Rust enums require downstream fallback.
 - Inspect never changes revision or history.
-- The current inspect invariant applies to scenario and read-only public surfaces. Engine project
-  inspection remains inaccessible until a versioned API-owned schema is added.
+- The current inspect invariant applies to scenario and read-only public surfaces. Project settings
+  inspection is public, while broader engine project-history inspection remains inaccessible until
+  a versioned API-owned schema is added.
 - Rejected actions and transactions return the complete last valid state and do not mutate engine
   state, command sequencing, history, or the event stream.
 - Public scenario mutations use an exact expected revision. A successful transaction is one engine
@@ -219,6 +253,12 @@ No transport, UI, shell, scripting runtime, extension host, or closed-tier clien
   projected exactly beside the nested canonical introspection state. Unknown future variants remain
   explicit.
 - `os-codecs` changes engine registry assembly but not either public schema.
+- Project settings expose only shared scalar values and complete replacement state. They do not
+  expose `ProjectDocument`, SQLite, timeline, color, audio, cache, proxy, or render implementation
+  types.
+- Project settings inspection and mutation use the dispatcher-attached authoritative project.
+  Optimistic revision conflicts, invalid keys, invalid value types, and cross-field failures publish
+  no event. A successful no-op advances neither project nor event state.
 
 ## Tests and verification
 
@@ -254,17 +294,25 @@ safe active failure projection through the same typed accessors available to UI 
 They do not claim a wire server, production UI, worker polling, platform rendering, or long-session
 recovery soak.
 
+Two project settings contracts drive a caller-owned full dispatcher with a real project document.
+They prove schema `1.0.0`, strict JSON, complete defaults, an atomic two-key audio update, exact
+project revision and command correlation, one full replacement event, and all three permanent
+names. They do not claim wire delivery, database file operations, audio device reconfiguration, or
+render execution.
+
 ## Current status and risks
 
-The API now has four substantive surfaces, but it is still far from the promised unified
+The API now has five substantive surfaces, but it is still far from the promised unified
 editor API. Engine introspection gives clients a coherent adaptation view without adding mutation
 authority, and integration validation extends that same state with precise action and endpoint
-evidence. Scenario schema 1 is deliberately narrow and fixed to one canonical edit. Its reference
+evidence. Project settings are the first broad project-owned mutation surface and retain exact
+durable scalar meaning, but do not yet expose project file open, save, recovery, or general timeline
+edits. Scenario schema 1 remains deliberately narrow and fixed to one canonical edit. Its reference
 state proves transactional control semantics, not production timeline, graph, or media ownership.
-The engine's new project command-history owner provides production Rust apply, undo, redo, state,
-and replacement-event behavior for current project media commands, but this crate exposes none of
-those types or methods. Project API, wire, subscription, scripting, and automation adaptation remain
-later checkpoints.
+The engine's project command-history owner provides production Rust apply, undo, redo, state, and
+replacement-event behavior for project media and settings changes. This crate reaches that owner
+through the settings facade but exposes none of its generic history types or methods. Project file
+API, wire, subscription, scripting, and automation adaptation remain later checkpoints.
 
 Integration validation schema 1 provides one coherent read-only state for CLI, UI, and tests, but
 it remains an in-process snapshot facade. The standalone helper creates a fresh starting engine for
@@ -280,7 +328,9 @@ same serialized shape.
 ## Maintenance notes
 
 Preserve strict serialization, deterministic ordering, stable permanent names, last-valid-state
-errors, revision fences, transaction and event agreement, and unknown-variant handling. Engine
-command changes require synchronized public projection, schema review, CLI consumer updates, and
-focused JSON contracts. Do not expose packets, frames, textures, fixture bytes, or engine-private
-history snapshots merely to simplify a client.
+errors, revision fences, transaction and event agreement, and unknown-variant handling. Keep
+project setting keys and validation project-owned, resolve them only in engine, and retain the API's
+dependency on engine rather than adding a direct project edge. Engine command changes require
+synchronized public projection, schema review, CLI consumer updates when applicable, and focused
+JSON contracts. Do not expose packets, frames, textures, fixture bytes, database handles, or
+engine-private history snapshots merely to simplify a client.

@@ -25,10 +25,13 @@ use superi_timeline::serialize::{
 use crate::document::{ProjectDocument, ProjectGraph, ProjectSnapshot, StandaloneProjectGraph};
 use crate::migrate::migrate_connection;
 use crate::save::ProjectSaveCommand;
+use crate::settings::{ProjectSettings, PROJECT_SETTINGS_FORMAT_REVISION};
 
 const COMPONENT: &str = "superi-project.persistence";
-const MANIFEST_DOMAIN: &[u8] = b"superi.project.manifest.v1";
+const MANIFEST_DOMAIN_V1: &[u8] = b"superi.project.manifest.v1";
+const MANIFEST_DOMAIN_V2: &[u8] = b"superi.project.manifest.v2";
 pub(crate) const MAX_COMPONENT_BYTES: usize = 64 * 1024 * 1024;
+pub(crate) const MAX_SETTINGS_COMPONENT_BYTES: usize = 1024 * 1024;
 pub(crate) const MAX_GRAPH_COUNT: usize = 4096;
 pub(crate) const MAX_STANDALONE_NAME_BYTES: usize = 16 * 1024;
 
@@ -37,15 +40,17 @@ pub const PROJECT_APPLICATION_ID: u32 = 0x5355_5052;
 /// Oldest project database schema with a registered lossless forward migration.
 pub const PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION: u32 = 0;
 /// Current monotonic project database schema revision.
-pub const PROJECT_SCHEMA_REVISION: u32 = 1;
+pub const PROJECT_SCHEMA_REVISION: u32 = 2;
 /// Stable semantic identity of the whole-project format.
 pub const PROJECT_FORMAT: &str = "superi.project";
 /// Current semantic project format version.
-pub const PROJECT_FORMAT_VERSION: &str = "1.0.0";
+pub const PROJECT_FORMAT_VERSION: &str = "1.1.0";
+pub(crate) const PROJECT_FORMAT_VERSION_SCHEMA_ONE: &str = "1.0.0";
 
 pub(crate) const PROJECT_METADATA_SCHEMA: &str = "CREATE TABLE project_metadata (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format TEXT NOT NULL CHECK (format = 'superi.project'), format_version TEXT NOT NULL, primitive_schema_revision INTEGER NOT NULL CHECK (primitive_schema_revision > 0), project_id BLOB NOT NULL CHECK (length(project_id) = 16), document_revision TEXT NOT NULL, root_timeline_id BLOB NOT NULL CHECK (length(root_timeline_id) = 16), manifest_sha256 BLOB NOT NULL CHECK (length(manifest_sha256) = 32)) STRICT";
 pub(crate) const TIMELINE_COMPONENT_SCHEMA: &str = "CREATE TABLE timeline_component (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format_revision INTEGER NOT NULL CHECK (format_revision > 0), byte_length INTEGER NOT NULL CHECK (byte_length >= 0 AND byte_length <= 67108864), sha256 BLOB NOT NULL CHECK (length(sha256) = 32), document BLOB NOT NULL CHECK (length(document) = byte_length)) STRICT";
 pub(crate) const GRAPH_COMPONENTS_SCHEMA: &str = "CREATE TABLE graph_components (graph_id BLOB PRIMARY KEY CHECK (length(graph_id) = 16), graph_kind TEXT NOT NULL CHECK (graph_kind IN ('timeline', 'standalone')), root_timeline_id BLOB CHECK (root_timeline_id IS NULL OR length(root_timeline_id) = 16), name TEXT, graph_revision TEXT NOT NULL, format_revision INTEGER NOT NULL CHECK (format_revision > 0), byte_length INTEGER NOT NULL CHECK (byte_length >= 0 AND byte_length <= 67108864), sha256 BLOB NOT NULL CHECK (length(sha256) = 32), document BLOB NOT NULL CHECK (length(document) = byte_length), CHECK ((graph_kind = 'timeline' AND root_timeline_id IS NOT NULL AND name IS NULL) OR (graph_kind = 'standalone' AND root_timeline_id IS NULL AND name IS NOT NULL AND length(name) > 0))) STRICT, WITHOUT ROWID";
+pub(crate) const SETTINGS_COMPONENT_SCHEMA: &str = "CREATE TABLE settings_component (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format_revision INTEGER NOT NULL CHECK (format_revision >= 1), byte_length INTEGER NOT NULL CHECK (byte_length >= 0 AND byte_length <= 1048576), sha256 BLOB NOT NULL CHECK (length(sha256) = 32), document BLOB NOT NULL CHECK (length(document) = byte_length)) STRICT";
 
 enum ProjectDatabaseStorage {
     File { active_path: PathBuf },
@@ -71,7 +76,7 @@ impl fmt::Debug for ProjectDatabase {
 }
 
 impl ProjectDatabase {
-    /// Creates a new schema-1 database without replacing an existing path.
+    /// Creates a new current-schema database without replacing an existing path.
     pub fn create(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         OpenOptions::new()
@@ -104,7 +109,7 @@ impl ProjectDatabase {
         })
     }
 
-    /// Creates a secured in-memory schema-1 database.
+    /// Creates a secured in-memory current-schema database.
     pub fn memory() -> Result<Self> {
         let connection = Connection::open_in_memory()
             .map_err(|source| database_error(source, "open_memory_database"))?;
@@ -278,6 +283,8 @@ pub(crate) struct PreparedProject {
     root_timeline_id: TimelineId,
     timeline_document: Vec<u8>,
     timeline_digest: [u8; 32],
+    settings_document: Vec<u8>,
+    settings_digest: [u8; 32],
     graphs: Vec<PreparedGraph>,
     manifest_digest: [u8; 32],
 }
@@ -297,6 +304,10 @@ impl PreparedProject {
         let timeline_document = serialize_timeline_state(snapshot.editorial_project())?;
         check_component_size(timeline_document.len(), "encode_timeline_component")?;
         let timeline_digest = sha256(&timeline_document);
+        let settings_document = serde_json::to_vec(snapshot.settings().snapshot())
+            .map_err(|source| settings_json_error(source, "encode_settings_component", false))?;
+        check_settings_component_size(settings_document.len(), "encode_settings_component")?;
+        let settings_digest = sha256(&settings_document);
 
         if snapshot.graphs().len() > MAX_GRAPH_COUNT {
             return Err(resource_exhausted(
@@ -348,6 +359,8 @@ impl PreparedProject {
             root_timeline_id: snapshot.root_timeline_id(),
             timeline_document,
             timeline_digest,
+            settings_document,
+            settings_digest,
             graphs,
             manifest_digest: [0; 32],
         };
@@ -459,8 +472,9 @@ pub(crate) fn initialize_connection(connection: &Connection, writable: bool) -> 
 }
 
 pub(crate) fn initialize_schema(connection: &Connection) -> Result<()> {
-    let schema =
-        format!("{PROJECT_METADATA_SCHEMA};{TIMELINE_COMPONENT_SCHEMA};{GRAPH_COMPONENTS_SCHEMA};");
+    let schema = format!(
+        "{PROJECT_METADATA_SCHEMA};{TIMELINE_COMPONENT_SCHEMA};{GRAPH_COMPONENTS_SCHEMA};{SETTINGS_COMPONENT_SCHEMA};"
+    );
     connection
         .execute_batch(&schema)
         .map_err(|source| database_error(source, "create_project_schema"))?;
@@ -473,7 +487,35 @@ pub(crate) fn initialize_schema(connection: &Connection) -> Result<()> {
     validate_identity_and_schema(connection)
 }
 
+pub(crate) fn initialize_schema_one(connection: &Connection) -> Result<()> {
+    let schema =
+        format!("{PROJECT_METADATA_SCHEMA};{TIMELINE_COMPONENT_SCHEMA};{GRAPH_COMPONENTS_SCHEMA};");
+    connection
+        .execute_batch(&schema)
+        .map_err(|source| database_error(source, "create_schema_one_project_schema"))?;
+    connection
+        .pragma_update(None, "application_id", i64::from(PROJECT_APPLICATION_ID))
+        .map_err(|source| database_error(source, "set_schema_one_application_id"))?;
+    connection
+        .pragma_update(None, "user_version", 1_i64)
+        .map_err(|source| database_error(source, "set_schema_one_revision"))?;
+    validate_schema_one_identity_and_schema(connection)
+}
+
 pub(crate) fn validate_identity_and_schema(connection: &Connection) -> Result<()> {
+    validate_schema(connection, PROJECT_SCHEMA_REVISION, true, true)
+}
+
+pub(crate) fn validate_schema_one_identity_and_schema(connection: &Connection) -> Result<()> {
+    validate_schema(connection, 1, false, false)
+}
+
+fn validate_schema(
+    connection: &Connection,
+    expected_revision: u32,
+    include_settings: bool,
+    require_current: bool,
+) -> Result<()> {
     let quick_check: String = connection
         .query_row("PRAGMA quick_check(1)", [], |row| row.get(0))
         .map_err(|source| database_error(source, "quick_check"))?;
@@ -499,7 +541,8 @@ pub(crate) fn validate_identity_and_schema(connection: &Connection) -> Result<()
             "project database uses a future schema revision",
         ));
     }
-    if schema_revision >= 0
+    if require_current
+        && schema_revision >= 0
         && schema_revision < i64::from(PROJECT_SCHEMA_REVISION)
         && schema_revision >= i64::from(PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION)
     {
@@ -508,10 +551,10 @@ pub(crate) fn validate_identity_and_schema(connection: &Connection) -> Result<()
             "project database requires writable migration",
         ));
     }
-    if schema_revision != i64::from(PROJECT_SCHEMA_REVISION) {
+    if schema_revision != i64::from(expected_revision) {
         return Err(corrupt(
             "read_schema_revision",
-            "project database does not declare schema revision 1",
+            "project database does not declare the expected schema revision",
         ));
     }
 
@@ -533,7 +576,7 @@ pub(crate) fn validate_identity_and_schema(connection: &Connection) -> Result<()
     let actual = rows
         .collect::<std::result::Result<Vec<_>, _>>()
         .map_err(|source| database_error(source, "inspect_project_schema"))?;
-    let expected = vec![
+    let mut expected = vec![
         (
             "table".to_owned(),
             "graph_components".to_owned(),
@@ -544,16 +587,23 @@ pub(crate) fn validate_identity_and_schema(connection: &Connection) -> Result<()
             "project_metadata".to_owned(),
             PROJECT_METADATA_SCHEMA.to_owned(),
         ),
-        (
-            "table".to_owned(),
-            "timeline_component".to_owned(),
-            TIMELINE_COMPONENT_SCHEMA.to_owned(),
-        ),
     ];
+    if include_settings {
+        expected.push((
+            "table".to_owned(),
+            "settings_component".to_owned(),
+            SETTINGS_COMPONENT_SCHEMA.to_owned(),
+        ));
+    }
+    expected.push((
+        "table".to_owned(),
+        "timeline_component".to_owned(),
+        TIMELINE_COMPONENT_SCHEMA.to_owned(),
+    ));
     if actual != expected {
         return Err(corrupt(
             "inspect_project_schema",
-            "project database schema objects do not match schema revision 1",
+            "project database schema objects do not match the expected schema revision",
         ));
     }
     Ok(())
@@ -596,6 +646,7 @@ pub(crate) fn write_prepared_project(
     connection
         .execute_batch(
             "DELETE FROM graph_components;\
+             DELETE FROM settings_component;\
              DELETE FROM timeline_component;\
              DELETE FROM project_metadata;",
         )
@@ -630,6 +681,19 @@ pub(crate) fn write_prepared_project(
             ],
         )
         .map_err(|source| database_error(source, "write_timeline_component"))?;
+    connection
+        .execute(
+            "INSERT INTO settings_component \
+             (singleton, format_revision, byte_length, sha256, document) \
+             VALUES (1, ?1, ?2, ?3, ?4)",
+            params![
+                i64::from(PROJECT_SETTINGS_FORMAT_REVISION),
+                prepared.settings_document.len() as i64,
+                prepared.settings_digest.as_slice(),
+                prepared.settings_document.as_slice(),
+            ],
+        )
+        .map_err(|source| database_error(source, "write_settings_component"))?;
 
     let mut statement = connection
         .prepare(
@@ -660,10 +724,103 @@ pub(crate) fn write_prepared_project(
     Ok(())
 }
 
+pub(crate) fn write_schema_one_project(
+    connection: &Connection,
+    prepared: &PreparedProject,
+) -> Result<()> {
+    connection
+        .execute_batch(
+            "DELETE FROM graph_components;\
+             DELETE FROM timeline_component;\
+             DELETE FROM project_metadata;",
+        )
+        .map_err(|source| database_error(source, "clear_schema_one_project_rows"))?;
+    connection
+        .execute(
+            "INSERT INTO project_metadata \
+             (singleton, format, format_version, primitive_schema_revision, project_id, \
+              document_revision, root_timeline_id, manifest_sha256) \
+             VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                PROJECT_FORMAT,
+                PROJECT_FORMAT_VERSION_SCHEMA_ONE,
+                i64::from(STABLE_PRIMITIVE_SCHEMA_REVISION),
+                prepared.project_id.to_bytes().as_slice(),
+                prepared.revision.to_string(),
+                prepared.root_timeline_id.to_bytes().as_slice(),
+                manifest_digest_v1(prepared).as_slice(),
+            ],
+        )
+        .map_err(|source| database_error(source, "write_schema_one_project_metadata"))?;
+    connection
+        .execute(
+            "INSERT INTO timeline_component \
+             (singleton, format_revision, byte_length, sha256, document) \
+             VALUES (1, ?1, ?2, ?3, ?4)",
+            params![
+                i64::from(TIMELINE_STATE_FORMAT_REVISION),
+                prepared.timeline_document.len() as i64,
+                prepared.timeline_digest.as_slice(),
+                prepared.timeline_document.as_slice(),
+            ],
+        )
+        .map_err(|source| database_error(source, "write_schema_one_timeline_component"))?;
+    write_graph_rows(connection, prepared, "prepare_schema_one_graph_components")
+}
+
+fn write_graph_rows(
+    connection: &Connection,
+    prepared: &PreparedProject,
+    prepare_operation: &'static str,
+) -> Result<()> {
+    let mut statement = connection
+        .prepare(
+            "INSERT INTO graph_components \
+             (graph_id, graph_kind, root_timeline_id, name, graph_revision, format_revision, \
+              byte_length, sha256, document) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        )
+        .map_err(|source| database_error(source, prepare_operation))?;
+    for graph in &prepared.graphs {
+        let root_timeline_id = graph
+            .root_timeline_id
+            .map(|value| value.to_bytes().to_vec());
+        statement
+            .execute(params![
+                graph.graph_id.to_bytes().as_slice(),
+                graph.kind.as_str(),
+                root_timeline_id,
+                graph.name.as_deref(),
+                graph.revision.to_string(),
+                i64::from(GRAPH_DOCUMENT_FORMAT_REVISION),
+                graph.document.len() as i64,
+                graph.digest.as_slice(),
+                graph.document.as_slice(),
+            ])
+            .map_err(|source| database_error(source, "write_schema_one_graph_component"))?;
+    }
+    Ok(())
+}
+
 pub(crate) fn load_connection(connection: &Connection) -> Result<ProjectDocument> {
     validate_identity_and_schema(connection)?;
+    load_checked_connection(connection, true)
+}
+
+pub(crate) fn load_schema_one_connection(connection: &Connection) -> Result<ProjectDocument> {
+    validate_schema_one_identity_and_schema(connection)?;
+    load_checked_connection(connection, false)
+}
+
+fn load_checked_connection(
+    connection: &Connection,
+    includes_settings: bool,
+) -> Result<ProjectDocument> {
     require_row_count(connection, "project_metadata", 1)?;
     require_row_count(connection, "timeline_component", 1)?;
+    if includes_settings {
+        require_row_count(connection, "settings_component", 1)?;
+    }
 
     let metadata = connection
         .query_row(
@@ -684,7 +841,12 @@ pub(crate) fn load_connection(connection: &Connection) -> Result<ProjectDocument
             },
         )
         .map_err(|source| database_error(source, "read_project_metadata"))?;
-    if metadata.0 != PROJECT_FORMAT || metadata.1 != PROJECT_FORMAT_VERSION {
+    let expected_format_version = if includes_settings {
+        PROJECT_FORMAT_VERSION
+    } else {
+        PROJECT_FORMAT_VERSION_SCHEMA_ONE
+    };
+    if metadata.0 != PROJECT_FORMAT || metadata.1 != expected_format_version {
         return Err(unsupported(
             "read_project_metadata",
             "project uses an unsupported semantic format version",
@@ -699,7 +861,7 @@ pub(crate) fn load_connection(connection: &Connection) -> Result<ProjectDocument
     if metadata.2 != i64::from(STABLE_PRIMITIVE_SCHEMA_REVISION) {
         return Err(corrupt(
             "read_project_metadata",
-            "project primitive revision does not match schema revision 1",
+            "project primitive revision does not match the database schema",
         ));
     }
     let project_id = ProjectId::from_bytes(fixed_bytes::<16>(
@@ -747,6 +909,37 @@ pub(crate) fn load_connection(connection: &Connection) -> Result<ProjectDocument
     )?;
     let timeline_digest =
         fixed_bytes::<32>(timeline.2, "read_timeline_component", "timeline digest")?;
+
+    let settings = if includes_settings {
+        let row = connection
+            .query_row(
+                "SELECT format_revision, byte_length, sha256, document \
+                 FROM settings_component WHERE singleton = 1",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, Vec<u8>>(2)?,
+                        row.get::<_, Vec<u8>>(3)?,
+                    ))
+                },
+            )
+            .map_err(|source| database_error(source, "read_settings_component"))?;
+        let format_revision = supported_revision(
+            row.0,
+            PROJECT_SETTINGS_FORMAT_REVISION,
+            "read_settings_component",
+        )?;
+        validate_settings_component(row.1, &row.2, &row.3, "read_settings_component")?;
+        Some((
+            format_revision,
+            row.3,
+            fixed_bytes::<32>(row.2, "read_settings_component", "settings digest")?,
+        ))
+    } else {
+        None
+    };
 
     let graph_count: i64 = connection
         .query_row("SELECT COUNT(*) FROM graph_components", [], |row| {
@@ -852,10 +1045,23 @@ pub(crate) fn load_connection(connection: &Connection) -> Result<ProjectDocument
         root_timeline_id,
         timeline_document: timeline.3,
         timeline_digest,
+        settings_document: settings
+            .as_ref()
+            .map(|(_, document, _)| document.clone())
+            .unwrap_or_default(),
+        settings_digest: settings
+            .as_ref()
+            .map(|(_, _, digest)| *digest)
+            .unwrap_or([0; 32]),
         graphs,
         manifest_digest: stored_manifest,
     };
-    if manifest_digest(&prepared) != stored_manifest {
+    let expected_manifest = if includes_settings {
+        manifest_digest(&prepared)
+    } else {
+        manifest_digest_v1(&prepared)
+    };
+    if expected_manifest != stored_manifest {
         return Err(corrupt(
             "verify_project_manifest",
             "project manifest digest does not match the stored components",
@@ -869,7 +1075,7 @@ pub(crate) fn load_connection(connection: &Connection) -> Result<ProjectDocument
     {
         return Err(corrupt(
             "decode_timeline_component",
-            "timeline component is not canonical for schema revision 1",
+            "timeline component is not canonical for the project schema",
         ));
     }
     let editorial_project = timeline_load.into_project();
@@ -880,6 +1086,41 @@ pub(crate) fn load_connection(connection: &Connection) -> Result<ProjectDocument
         ));
     }
 
+    let project_settings = if let Some((format_revision, _, _)) = settings {
+        if format_revision != PROJECT_SETTINGS_FORMAT_REVISION {
+            return Err(corrupt(
+                "decode_settings_component",
+                "settings component revision is not canonical",
+            ));
+        }
+        let snapshot: superi_core::settings::SettingsSnapshot =
+            serde_json::from_slice(&prepared.settings_document)
+                .map_err(|source| settings_json_error(source, "decode_settings_component", true))?;
+        let project_settings = ProjectSettings::from_snapshot(snapshot)
+            .map_err(|source| stored_state_error(source, "validate_settings_component"))?;
+        let canonical = serde_json::to_vec(project_settings.snapshot())
+            .map_err(|source| settings_json_error(source, "encode_settings_component", false))?;
+        if canonical != prepared.settings_document {
+            return Err(corrupt(
+                "decode_settings_component",
+                "settings component is not canonical for the project schema",
+            ));
+        }
+        project_settings
+    } else {
+        let root_edit_rate = editorial_project
+            .timeline(prepared.root_timeline_id)
+            .ok_or_else(|| {
+                corrupt(
+                    "derive_schema_one_settings",
+                    "schema-1 project root timeline is missing",
+                )
+            })?
+            .edit_rate();
+        ProjectSettings::defaults(root_edit_rate)
+            .map_err(|source| stored_state_error(source, "derive_schema_one_settings"))?
+    };
+
     let mut restored_graphs = Vec::with_capacity(prepared.graphs.len());
     for graph in prepared.graphs {
         let graph_load = deserialize_graph::<CompiledTimelineGraphValue>(&graph.document)
@@ -889,7 +1130,7 @@ pub(crate) fn load_connection(connection: &Connection) -> Result<ProjectDocument
         {
             return Err(corrupt(
                 "decode_graph_component",
-                "graph component is not canonical for schema revision 1",
+                "graph component is not canonical for the project schema",
             ));
         }
         let editable = graph_load.into_graph();
@@ -919,10 +1160,11 @@ pub(crate) fn load_connection(connection: &Connection) -> Result<ProjectDocument
         };
         restored_graphs.push(restored);
     }
-    ProjectDocument::from_parts(
+    ProjectDocument::from_parts_with_settings(
         prepared.revision,
         editorial_project,
         prepared.root_timeline_id,
+        project_settings,
         restored_graphs,
     )
     .map_err(|source| stored_state_error(source, "restore_project_document"))
@@ -967,6 +1209,35 @@ fn validate_component(
     Ok(())
 }
 
+fn validate_settings_component(
+    stored_length: i64,
+    stored_digest: &[u8],
+    document: &[u8],
+    operation: &'static str,
+) -> Result<()> {
+    let stored_length = usize::try_from(stored_length)
+        .map_err(|_| corrupt(operation, "settings component length is not representable"))?;
+    check_settings_component_size(stored_length, operation)?;
+    if stored_length != document.len() {
+        return Err(corrupt(
+            operation,
+            "settings component length does not match its stored evidence",
+        ));
+    }
+    let stored_digest = fixed_bytes::<32>(
+        stored_digest.to_vec(),
+        operation,
+        "settings component digest",
+    )?;
+    if sha256(document) != stored_digest {
+        return Err(corrupt(
+            operation,
+            "settings component digest does not match its stored bytes",
+        ));
+    }
+    Ok(())
+}
+
 fn supported_revision(value: i64, current: u32, operation: &'static str) -> Result<u32> {
     if value > i64::from(current) {
         return Err(unsupported(
@@ -977,7 +1248,7 @@ fn supported_revision(value: i64, current: u32, operation: &'static str) -> Resu
     if value != i64::from(current) {
         return Err(corrupt(
             operation,
-            "component revision does not match project schema revision 1",
+            "component revision does not match the project schema",
         ));
     }
     Ok(current)
@@ -988,6 +1259,16 @@ pub(crate) fn check_component_size(bytes: usize, operation: &'static str) -> Res
         return Err(resource_exhausted(
             operation,
             "project component exceeds the stable schema size limit",
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn check_settings_component_size(bytes: usize, operation: &'static str) -> Result<()> {
+    if bytes > MAX_SETTINGS_COMPONENT_BYTES {
+        return Err(resource_exhausted(
+            operation,
+            "project settings component exceeds the stable schema size limit",
         ));
     }
     Ok(())
@@ -1022,11 +1303,37 @@ fn sha256(bytes: &[u8]) -> [u8; 32] {
 }
 
 fn manifest_digest(project: &PreparedProject) -> [u8; 32] {
+    manifest_digest_for(
+        project,
+        MANIFEST_DOMAIN_V2,
+        PROJECT_FORMAT_VERSION,
+        PROJECT_SCHEMA_REVISION,
+        true,
+    )
+}
+
+fn manifest_digest_v1(project: &PreparedProject) -> [u8; 32] {
+    manifest_digest_for(
+        project,
+        MANIFEST_DOMAIN_V1,
+        PROJECT_FORMAT_VERSION_SCHEMA_ONE,
+        1,
+        false,
+    )
+}
+
+fn manifest_digest_for(
+    project: &PreparedProject,
+    domain: &[u8],
+    format_version: &str,
+    schema_revision: u32,
+    include_settings: bool,
+) -> [u8; 32] {
     let mut hasher = Sha256::new();
-    manifest_field(&mut hasher, MANIFEST_DOMAIN);
+    manifest_field(&mut hasher, domain);
     manifest_field(&mut hasher, PROJECT_FORMAT.as_bytes());
-    manifest_field(&mut hasher, PROJECT_FORMAT_VERSION.as_bytes());
-    manifest_field(&mut hasher, &PROJECT_SCHEMA_REVISION.to_be_bytes());
+    manifest_field(&mut hasher, format_version.as_bytes());
+    manifest_field(&mut hasher, &schema_revision.to_be_bytes());
     manifest_field(&mut hasher, &STABLE_PRIMITIVE_SCHEMA_REVISION.to_be_bytes());
     manifest_field(&mut hasher, &project.project_id.to_bytes());
     manifest_field(&mut hasher, &project.revision.to_be_bytes());
@@ -1037,6 +1344,14 @@ fn manifest_digest(project: &PreparedProject) -> [u8; 32] {
         &(project.timeline_document.len() as u64).to_be_bytes(),
     );
     manifest_field(&mut hasher, &project.timeline_digest);
+    if include_settings {
+        manifest_field(&mut hasher, &PROJECT_SETTINGS_FORMAT_REVISION.to_be_bytes());
+        manifest_field(
+            &mut hasher,
+            &(project.settings_document.len() as u64).to_be_bytes(),
+        );
+        manifest_field(&mut hasher, &project.settings_digest);
+    }
     manifest_field(&mut hasher, &(project.graphs.len() as u64).to_be_bytes());
     for graph in &project.graphs {
         manifest_field(&mut hasher, &graph.graph_id.to_bytes());
@@ -1189,6 +1504,28 @@ pub(crate) fn stored_state_error(source: Error, operation: &'static str) -> Erro
         source,
     )
     .with_context(ErrorContext::new(COMPONENT, operation))
+}
+
+fn settings_json_error(
+    source: serde_json::Error,
+    operation: &'static str,
+    stored_input: bool,
+) -> Error {
+    let (category, recoverability, message) = if stored_input {
+        (
+            ErrorCategory::CorruptData,
+            Recoverability::UserCorrectable,
+            "stored project settings are not valid strict JSON",
+        )
+    } else {
+        (
+            ErrorCategory::Internal,
+            Recoverability::Terminal,
+            "validated project settings could not be serialized",
+        )
+    };
+    Error::with_source(category, recoverability, message, source)
+        .with_context(ErrorContext::new(COMPONENT, operation))
 }
 
 pub(crate) fn project_error(

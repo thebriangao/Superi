@@ -11,6 +11,8 @@ use superi_timeline::compile::{
 };
 use superi_timeline::model::EditorialProject;
 
+use crate::settings::{ProjectSettings, ProjectSettingsTransaction};
+
 const COMPONENT: &str = "superi-project.document";
 
 /// One graph retained as ordinary editable project state.
@@ -185,10 +187,17 @@ impl ProjectDocument {
     /// Creates a project document and compiles its selected root timeline.
     pub fn new(editorial_project: EditorialProject, root_timeline_id: TimelineId) -> Result<Self> {
         let compilation = compile_timeline(&editorial_project, root_timeline_id)?;
-        Self::from_parts(
+        let settings = ProjectSettings::defaults(
+            editorial_project
+                .timeline(root_timeline_id)
+                .expect("timeline compilation validated the selected root")
+                .edit_rate(),
+        )?;
+        Self::from_parts_with_settings(
             0,
             editorial_project,
             root_timeline_id,
+            settings,
             [ProjectGraph::Timeline(compilation)],
         )
     }
@@ -202,6 +211,40 @@ impl ProjectDocument {
         revision: u64,
         editorial_project: EditorialProject,
         root_timeline_id: TimelineId,
+        graphs: G,
+    ) -> Result<Self>
+    where
+        G: IntoIterator<Item = ProjectGraph>,
+    {
+        let root_edit_rate = editorial_project
+            .timeline(root_timeline_id)
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorCategory::NotFound,
+                    Recoverability::UserCorrectable,
+                    "selected root timeline was not found in the editorial project",
+                )
+                .with_context(
+                    ErrorContext::new(COMPONENT, "restore_document")
+                        .with_field("timeline_id", root_timeline_id.to_string()),
+                )
+            })?
+            .edit_rate();
+        Self::from_parts_with_settings(
+            revision,
+            editorial_project,
+            root_timeline_id,
+            ProjectSettings::defaults(root_edit_rate)?,
+            graphs,
+        )
+    }
+
+    /// Restores a complete aggregate with explicit validated project settings.
+    pub fn from_parts_with_settings<G>(
+        revision: u64,
+        editorial_project: EditorialProject,
+        root_timeline_id: TimelineId,
+        settings: ProjectSettings,
         graphs: G,
     ) -> Result<Self>
     where
@@ -225,6 +268,7 @@ impl ProjectDocument {
         let state = ProjectState {
             editorial_project,
             root_timeline_id,
+            settings,
             graphs: graphs_by_id,
         };
         state.validate("restore_document")?;
@@ -256,6 +300,12 @@ impl ProjectDocument {
     #[must_use]
     pub fn editorial_project(&self) -> &EditorialProject {
         &self.state.editorial_project
+    }
+
+    /// Returns the authoritative project settings at this revision.
+    #[must_use]
+    pub fn settings(&self) -> &ProjectSettings {
+        &self.state.settings
     }
 
     /// Iterates retained graphs in stable identity order.
@@ -322,6 +372,19 @@ impl ProjectDocument {
         self.revision = next_revision;
         self.state = Arc::new(candidate);
         Ok(self.snapshot())
+    }
+
+    /// Applies one strict project settings transaction through whole-project publication.
+    pub fn execute_settings_transaction(
+        &mut self,
+        transaction: ProjectSettingsTransaction,
+    ) -> Result<ProjectSnapshot> {
+        let expected_revision = transaction.expected_revision();
+        self.edit(expected_revision, move |draft| {
+            let settings = draft.settings().apply(transaction)?;
+            draft.replace_settings(settings);
+            Ok(())
+        })
     }
 
     /// Restores one validated historical state under a fresh document revision.
@@ -411,6 +474,12 @@ impl ProjectSnapshot {
         &self.state.editorial_project
     }
 
+    /// Returns the captured authoritative project settings.
+    #[must_use]
+    pub fn settings(&self) -> &ProjectSettings {
+        &self.state.settings
+    }
+
     /// Iterates captured graphs in stable identity order.
     pub fn graphs(&self) -> impl ExactSizeIterator<Item = &ProjectGraph> {
         self.state.graphs.values()
@@ -464,6 +533,17 @@ impl ProjectDraft<'_> {
     /// Returns mutable editorial access through its checked edit surface.
     pub fn editorial_project_mut(&mut self) -> &mut EditorialProject {
         &mut self.state.editorial_project
+    }
+
+    /// Returns the candidate project settings.
+    #[must_use]
+    pub const fn settings(&self) -> &ProjectSettings {
+        &self.state.settings
+    }
+
+    /// Replaces the candidate with another fully validated settings snapshot.
+    pub fn replace_settings(&mut self, settings: ProjectSettings) {
+        self.state.settings = settings;
     }
 
     /// Iterates candidate graphs in stable identity order.
@@ -626,6 +706,7 @@ impl ProjectDraft<'_> {
 struct ProjectState {
     editorial_project: EditorialProject,
     root_timeline_id: TimelineId,
+    settings: ProjectSettings,
     graphs: BTreeMap<GraphId, ProjectGraph>,
 }
 

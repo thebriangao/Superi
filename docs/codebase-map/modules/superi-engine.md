@@ -2,8 +2,8 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 761310876a5cceec69f0c31f4a4baad5e495c4abcc541fd8bd85713c5a75f4cf
-source_files: 54
+source_hash: 23e012ef16a9953fda7a5c7cd83659ba9d40f82afa06c8c5daf19be46074885c
+source_files: 57
 mapped_at_commit: working-tree
 ---
 
@@ -21,27 +21,29 @@ discovery and isolated-worker supervision, coherent plugin availability across p
 and export, deterministic project, device, sleep, wake, shutdown, and restart lifecycle,
 bounded logical export job orchestration, classified cross-subsystem failure propagation
 and recovery, shared finite-resource arbitration across decode, GPU, cache, audio, AI, and export
-work, atomic timeline plus clip-mix edits, and bounded engine-owned command history over the
-currently authored project command surface. An engine-wide typed command dispatcher
+work, atomic timeline plus clip-mix edits, typed resolution of durable project settings, and bounded
+engine-owned command history over the currently authored project command surface. An engine-wide typed command dispatcher
 coordinates canonical scenario transactions, lifecycle state changes, failure and recovery control,
 coherent work admission, bounded cross-domain playback control, canonical logical export-job
-control, revision-fenced project mutation plus undo and redo, read-only whole-engine introspection
-and integration validation, and ordered replacement events. Validation composes the canonical
-introspection snapshot with exact lifecycle, recovery,
-scenario, playback, and export evidence without polling a runtime owner or creating a second mutable
-state model.
+control, revision-fenced project mutation plus undo and redo, authoritative project settings
+inspection and transactions, read-only whole-engine
+introspection and integration validation, and ordered replacement events. Validation composes the
+canonical introspection snapshot with exact lifecycle, recovery, scenario, playback, and export
+evidence without polling a runtime owner or creating a second mutable state model.
 Native GPU presentation, timeline-owned decoded-audio rendering, export muxing and publication,
 compound cross-subsystem project transactions, wire adaptation, and general project nodes remain
 incomplete.
 
 The scenario command path remains a bounded reference owner for contract conformance. The project
-history path instead wraps the real `superi-project` document and media command owners, without
+history path instead wraps the real `superi-project` document, media command, and settings owners,
+without
 replacing timeline, graph, media, color, render, persistence, or muxing policy.
 
 ## Source inventory
 
 - `open/crates/superi-engine/Cargo.toml`: Declares subsystem dependencies, optional codec features,
-  production `sha2`, and test-only `pollster` plus `rusqlite` for exact project database fixtures.
+  production `sha2`, a narrow empty-project `test-support` feature for upper-tier public contracts,
+  and test-only `pollster` plus `rusqlite` for exact project database fixtures.
 - `open/crates/superi-engine/src/audio_mix.rs`: Applies timeline edit batches and audio clip-mix
   identity reconciliation against cloned subsystem states, publishing both only after timeline and
   mix revisions, fragment inheritance, replacement transfer, and removal all validate.
@@ -67,7 +69,9 @@ replacing timeline, graph, media, color, render, persistence, or muxing policy.
   owner. It composes declaration-only media state,
   optional exact resource accounting, and dispatcher-owned lifecycle and recovery state into
   read-only introspection and integration validation snapshots without advancing a command or event
-  sequence.
+  sequence. It optionally owns one authoritative project document, exposes immutable project
+  snapshots, and routes settings inspection and optimistic transactions with dynamic no-op event
+  reservation.
 - `open/crates/superi-engine/src/error.rs`: Implements EngineControl-owned classified failure
   propagation, immutable actionable records, bounded diagnostic history, exact recovery-intent
   validation, failed-recovery reclassification, and coherent lifecycle routing without copying
@@ -89,14 +93,14 @@ replacing timeline, graph, media, color, render, persistence, or muxing policy.
   for CPU-addressable decoded video and retains the frame's complete color pipeline beside the GPU owner.
 - `open/crates/superi-engine/src/history.rs`: Implements one shared bounded immutable before-and-after
   snapshot store, stable typed project mutations and history actions, revision-fenced apply, undo,
-  and redo, oldest-entry eviction, failure and no-op branch preservation, and the exclusive
-  `ProjectCommandHistory` owner over one real `ProjectDocument`.
+  and redo, settings transaction recording, oldest-entry eviction, failure and no-op branch
+  preservation, and the exclusive `ProjectCommandHistory` owner over one real `ProjectDocument`.
 - `open/crates/superi-engine/src/introspection.rs`: Implements deterministic API-neutral backend and
   codec capability records plus complete immutable engine snapshots containing optional exact
   resource accounting, lifecycle and recovery revisions, health, canonical subsystem state,
   coherent playback, rendering, and export readiness, and user-safe active failure projections.
 - `open/crates/superi-engine/src/lib.rs`: Documents the implemented orchestration boundaries and
-  exposes twenty-three engine modules.
+  exposes twenty-four engine modules, and conditionally exposes the hidden test-support fixture.
 - `open/crates/superi-engine/src/lifecycle.rs`: Implements the EngineControl-owned lifecycle state
   machine, canonical subsystem dependency plan, exact action tokens, immutable generated snapshots,
   explicit project and device coordination, reverse sleep preparation, forward wake revalidation,
@@ -116,6 +120,10 @@ replacing timeline, graph, media, color, render, persistence, or muxing policy.
   ownership, exact permission narrowing, classified failure retention, restart and quarantine
   recovery, active graph-registry rebuilding, and one availability resolver for playback,
   rendering, and export.
+- `open/crates/superi-engine/src/project_settings.rs`: Resolves one authoritative project settings
+  snapshot into existing exact timeline, timecode, color identity, audio timebase and ordered
+  channel layout, cache budget, proxy quality, render format, alpha, target, and fingerprint types;
+  it re-exports the project-owned mutation and transaction vocabulary for upper-tier dispatchers.
 - `open/crates/superi-engine/src/proxy_substitution.rs`: Validates exact proxy purpose, source
   fingerprint, source revision, packet integrity, and stream metadata; translates cache quality to
   scheduler quality; consumes deterministic derived selection; lazily opens verified original
@@ -131,6 +139,8 @@ replacing timeline, graph, media, color, render, persistence, or muxing policy.
   fingerprint-bound local source requests, binds and verifies project fingerprints, probes and
   opens each source, selects and creates each decoder once, retains policy evidence, and publishes
   one all-or-nothing owner bundle.
+- `open/crates/superi-engine/src/test_support.rs`: Feature-gated hidden construction of a minimal
+  valid project document for upper-tier API contract tests, without widening dependency direction.
 - `open/crates/superi-engine/src/transport.rs`: Implements playback-domain pause, play, seek,
   superseding scrub, exact frame step, reduced signed rate, direction, half-open loop, rational
   clock cadence, prediction replanning, protected discontinuities, bounded ordinary late-frame
@@ -236,8 +246,13 @@ replacing timeline, graph, media, color, render, persistence, or muxing policy.
   and failure state after ordered events are drained.
 - `open/crates/superi-engine/tests/project_history_contract.rs`: Proves real project media mutation,
   full-project undo and redo, branch clearing only after a successful authored change, failure and
-  no-op preservation, bounded oldest-entry eviction, monotonic revision exhaustion, schema-1 SQLite
+  no-op preservation, bounded oldest-entry eviction, monotonic revision exhaustion, schema-2 SQLite
   durability of the selected snapshot, and the real media resource consumer after reversal.
+- `open/crates/superi-engine/tests/project_settings_dispatcher_contract.rs`: Proves authoritative
+  project attachment, exact typed resolution for all six policy domains, optimistic transactions,
+  no-op event suppression under a full queue, invalid and stale rollback, ordered replacement
+  events, missing-project failures, EngineControl ownership, and settings undo plus redo through the
+  shared project history owner without authored-audio drift.
 - `open/crates/superi-engine/tests/scenario_contract.rs`: Exact canonical state, atomicity, bounds,
   operation log, reversal proof, bounded oldest-entry eviction, and redo clearing after a successful
   post-undo branch.
@@ -256,8 +271,8 @@ intentionally absent from engine mutations.
 `history` exposes the production Rust project command-history surface:
 
 - `ProjectMutation` currently wraps every authored `ProjectMediaCommand`, while
-  `ProjectMutationKind` provides permanent typed classification for path replacement, missing-state,
-  and fingerprint-checked relink actions.
+  `ProjectMutationKind` provides permanent typed classification for project settings, path
+  replacement, missing-state, and fingerprint-checked relink actions.
 - `ProjectHistoryCommand` carries one exact expected document revision and a typed apply, undo, or
   redo action. `ProjectHistoryActionResult` preserves the project owner's semantic media result and
   the mutation kind reversed or reapplied.
@@ -267,7 +282,8 @@ intentionally absent from engine mutations.
   state-change flag. Inspection therefore shares the same complete result shape without mutation.
 - `ProjectCommandHistory` exclusively owns one `ProjectDocument`. The default capacity is 64,
   explicit capacity is bounded from 1 through 4096, and retained entries are session-local immutable
-  before and after snapshots while only the selected project snapshot remains durable.
+  before and after snapshots while only the selected project snapshot remains durable. Dispatcher
+  settings transactions publish through this same document and enter the same history.
 
 `dispatcher` exposes `EngineTransactionId`, `ScenarioTransaction`, `EngineCommandRequest`, the
 non-exhaustive `EngineCommand` and `EngineCommandResult` vocabularies, classified
@@ -280,8 +296,12 @@ by the narrow public reference API. `attach_project_history` installs exactly on
 project command owner, and `project_history_state` reads its immutable typed state. The
 `ExecuteProjectHistory` and `InspectProjectHistory` commands return `ProjectHistory` results;
 authored changes publish a complete `ProjectStateChanged` replacement event with project revision,
-command sequence, event sequence, and caller transaction correlation. `introspection_snapshot`
-composes current declaration-only
+command sequence, event sequence, and caller transaction correlation. `attach_project` installs the
+same exclusive owner with default history capacity for the public settings path, and
+`project_snapshot` returns its selected immutable project without exposing mutable ownership.
+`InspectProjectSettings` and `ExecuteProjectSettings` return resolved settings state, record semantic
+changes in the shared history, and publish correlated `ProjectSettingsChanged` replacement events.
+`introspection_snapshot` composes current declaration-only
 media capabilities, optional exact shared-resource accounting, and dispatcher-owned lifecycle and
 recovery state without dispatching a command or publishing an event.
 `integration_validation_snapshot` composes that exact introspection state with scenario reversal,
@@ -291,6 +311,13 @@ registry for the CLI, while application and test hosts use their existing dispat
 monotonic, each event identifies its originating command sequence, and event draining returns
 complete ordered replacement state with scenario, project, lifecycle, playback, or export
 correlation.
+
+`project_settings` exposes `ProjectSettingsState`, `ResolvedProjectSettings`, typed timeline,
+color, audio, cache, proxy, and render policy values, and the project-owned mutation and transaction
+vocabulary. Resolution maps durable scalar settings into existing subsystem contracts without
+rewriting authored timeline or graph state. Built-in ACEScg and pinned color identities remain
+explicit; audio retains an exact sample timebase and ordered `ChannelLayout`; render policy retains
+one deterministic `RenderSettingsFingerprint` for cache and execution identity.
 
 `validation` exposes `EngineIntegrationCondition`, stable coherence finding codes,
 `EngineWorkflowValidation`, endpoint-specific playback and export validation state, and
@@ -474,10 +501,11 @@ successful new authored change. History is process-local operational state: proj
 persistence stores the selected snapshot through its existing schema and never serializes stacks,
 capacity, or command metadata.
 
-The currently authored project mutation vocabulary contains all three real project media commands.
-Timeline edit aggregation, clip-mix composition, graph edits, settings, and other cross-owner
-transactions require later typed adapters and the compound transaction owner. They do not bypass
-this history surface or gain an implicit undo stack in their domain crates.
+The typed `ProjectMutation` vocabulary contains all three real project media commands. The same
+history owner also records project settings transactions as `ProjectSettings` changes through the
+project-owned validation path. Timeline edit aggregation, clip-mix composition, graph edits, and
+other cross-owner transactions require later typed adapters and the compound transaction owner.
+They do not bypass this history surface or gain an implicit undo stack in their domain crates.
 
 ### Engine command dispatch and event publication
 
@@ -523,6 +551,23 @@ fresh worker attempt. Poll compares complete state around the canonical queue re
 revisioned full replacement event for observed progress, status, dependency, result, or failure
 changes. Inspection has no event, while pause, cancel, and removal remain available during
 degradation. Executor closures and typed artifacts never enter the command or event stream.
+
+The optional project owner follows the same stable dispatcher boundary. `InspectProjectSettings`
+resolves one immutable snapshot without mutation or an event. `ExecuteProjectSettings` first
+validates the transaction against a cloned project to determine whether semantic state can change,
+then reserves event capacity only for a real change. Actual publication reuses
+`ProjectCommandHistory::execute_settings_transaction`, which delegates to the project document,
+records a semantic change in the shared history, resolves the resulting snapshot, and emits one
+complete `ProjectSettingsChanged` replacement correlated to the caller transaction and project
+revision. A no-op succeeds even when the event queue is full, advances no project revision, and
+publishes nothing. Missing projects, off-domain calls, stale revisions, invalid values, and full
+queues before a real mutation leave the authoritative project unchanged.
+
+Settings resolution is read-only and preserves subsystem ownership. Timeline values become exact
+`FrameRate` and `TimecodeFormat`; color remains built-in or pinned identity; audio becomes one
+`Timebase` and ordered `ChannelLayout`; cache becomes automatic or an exact `CacheBudgetLimit`;
+proxy becomes disabled or one `DerivedMediaQuality`; and render becomes exact rate, extent, pixel,
+alpha, color-target, and stable fingerprint values. No owner is reconfigured merely by inspection.
 
 ### Coherent integration validation
 
@@ -874,8 +919,9 @@ audio mutation, so their user intent remains attached without synthesis.
 
 ## Dependencies and consumers
 
-- `superi-core` supplies errors, identifiers, geometry, and exact time used directly by canonical
-  commands, introspection, upload, playback prediction, foreground pixel and alpha meaning, and
+- `superi-core` supplies errors, identifiers, geometry, exact time and timecode, shared settings,
+  and pixel and channel values used directly by canonical commands, project settings resolution,
+  introspection, upload, playback prediction, foreground pixel and alpha meaning, and
   retained lifecycle failure evidence. Resource arbitration consumes the same classified error
   vocabulary while keeping finite-capacity degradation typed and local. Error propagation
   additionally consumes core-owned
@@ -906,21 +952,23 @@ audio mutation, so their user intent remains attached without synthesis.
   `IsolatedOfxAdapter` contract, typed requests, graph projection, and plugin lifecycle state that a
   future engine worker supervisor can consume, but engine implements no adapter, native discovery,
   transport, or production command integration. AI remains a declared dependency without
-  production command integration. Project supplies the implemented immutable whole-project
-  snapshot consumed by resource preparation, including snapshots reconstructed by its schema
-  migration path. It also supplies the checked document restoration seam and authored media
-  commands wrapped by `ProjectCommandHistory`; engine owns the bounded session history and never
-  duplicates project validation or persistence. Test-only rusqlite creates the exact legacy
-  database fixture without entering the engine runtime graph, and its referenced-media path adapter
-  constructs local `SourceRequest` values. Engine lifecycle still names only abstract project
-  quiescence, and engine implements neither project persistence nor a parallel project state model.
+  production command integration. Project supplies the implemented mutable whole-project document
+  and immutable snapshots consumed by settings dispatch, command history, and resource preparation,
+  including snapshots reconstructed by its schema migration path. It supplies the checked document
+  restoration seam and authored media commands wrapped by `ProjectCommandHistory`; project remains
+  authoritative for settings keys, validation, defaults, and persistence, while engine owns typed
+  subsystem resolution and bounded session history.
+  Test-only rusqlite creates the exact legacy database fixture without entering the engine runtime
+  graph, and its referenced-media path adapter constructs local `SourceRequest` values. Engine
+  lifecycle still names only abstract project quiescence, and engine implements neither persistence
+  nor a parallel project model.
 - `superi-api` consumes dispatcher transactions and events plus command, media capability, and
   complete engine introspection and integration validation snapshots, preserving public adaptation,
-  validation, and scenario seams without exposing engine-private owners. Playback and logical export
-  mutation remain outside the public protocol, while their latest replacement state is visible
-  through the read-only validation query. The new typed project-history commands and replacement
-  events are currently Rust-only engine contracts; public wire projection belongs to later API and
-  scripting checkpoints.
+  validation, scenario, and project settings seams without exposing engine-private owners. The API
+  depends only on engine for project settings and therefore does not reverse the reviewed runtime
+  graph. Playback and logical export mutation remain outside the public protocol, while their latest
+  replacement state is visible through the read-only validation query. The broader typed project
+  history commands and replacement events remain Rust-only engine contracts.
 - Cache and GPU retain their own exact local budget enforcement, audio retains its preallocated
   callback-safe queue, media I/O retains decoded value and lifecycle ownership, and export retains
   logical job and publication ownership. The engine arbiter composes a higher shared managed-byte
@@ -959,6 +1007,16 @@ audio mutation, so their user intent remains attached without synthesis.
 - The lifecycle-attached dispatcher requires EngineControl for inspection, command execution, and
   event draining. Scenario-only mode is an explicit narrow compatibility boundary. Playback
   execution crosses only the bounded bridge and requires Playback on the executor side.
+- An attached project document remains the sole mutable settings owner. Inspection returns one
+  resolved immutable replacement state; optimistic mutation delegates validation and publication to
+  project and cannot create an engine-private settings model.
+- A semantic settings mutation reserves event capacity before publication and emits one complete
+  replacement event. Invalid, stale, off-domain, missing-project, or saturated-queue mutation
+  attempts publish nothing. A no-op requires no event capacity and advances neither project nor
+  event sequence.
+- Runtime resolution is deterministic and read-only. Audio sample timing and ordered channel
+  meaning, color identity, cache bounds, proxy quality, render rate, extent, pixel, alpha, and color
+  target remain explicit typed values; inspection does not reconfigure any subsystem.
 - At most one playback command may be pending. Its event capacity and sequence are reserved before
   enqueue, and no later state-changing command may overtake it. Every accepted playback command
   yields complete replacement state, including bounded failure evidence when execution fails.
@@ -1158,8 +1216,17 @@ Three project-history contracts execute the real project media command owner thr
 and redo. They prove full aggregate reversal, typed outcomes, monotonic revision fences, failed and
 idempotent branch preservation, redo clearing after a new authored change, capacity validation,
 oldest-entry eviction, and revision-exhaustion atomicity. The durability proof writes the selected
-snapshot to schema-1 SQLite, reloads with empty session history, and passes the canonical AV1 fixture
+snapshot to schema-2 SQLite, reloads with empty session history, and passes the canonical AV1 fixture
 through `acquire_project_resources` after reversal.
+
+Three project settings dispatcher contracts attach one real project document and prove complete
+default inspection, exact typed resolution across timeline, color, audio, cache, proxy, and render,
+one atomic optimistic mutation, and an ordered full replacement event. They also prove no-op success
+with a saturated event queue, invalid and stale rollback, full-queue rejection before a real change,
+missing-project failure, EngineControl enforcement, and unchanged authored editorial state. They
+also prove settings changes enter the shared project history, undo and redo restore complete
+settings without authored-audio drift, and scenario-only history attachment cannot invoke the
+full-dispatcher settings surface.
 
 Two engine-introspection contracts use the real registry, dispatcher, lifecycle, error coordinator,
 and resource arbiter. They prove read-only ownership, exact optional accounting, canonical ordering,
@@ -1321,10 +1388,11 @@ with production project history, but its scenario model remains separate referen
 The typed dispatcher is the substantive engine-wide control seam for current scenario, lifecycle,
 classified failure and recovery, sleep, wake, shutdown, restart, work admission, capability and
 health observation, interactive transport, logical export, typed project media mutation, project
-undo and redo, and read-only integration validation operations. The optional project attachment owns
-one real `ProjectDocument`, returns complete typed history state, and publishes correlated full
-replacement events for authored changes. Its introspection and validation snapshots expose coherent
-adaptation and action evidence without making project state editable through either public surface.
+undo and redo, authoritative project settings inspection and mutation, and read-only integration
+validation operations. The optional project attachment owns one real `ProjectDocument`, returns
+complete typed history state, records settings and media mutations in that shared history, and
+publishes correlated full replacement events for authored changes. Its introspection and validation
+snapshots expose coherent adaptation and action evidence without adding mutation authority.
 Playback crosses
 one bounded nonblocking bridge to its real domain owner. Logical export state remains in the
 canonical queue behind a type-erased dispatcher controller, while prepared executors receive fresh
@@ -1332,6 +1400,11 @@ revision-scoped permits and render-export revalidates one before publication. Th
 scenario projection remains intentionally narrower than the full Rust engine vocabulary and does
 not yet expose project history, while the strict validation projection exposes the coherent state
 needed by public clients without opening a mutation path.
+
+Typed project settings resolution and dispatcher control are substantive and test-backed. They
+preserve durable authored scalar meaning and expose one real API path, but resolution does not
+automatically reconfigure live timeline, color, audio, cache, proxy, or render owners. Project
+database open, save, and recovery commands remain outside engine and API.
 
 One orchestration file remains a documentation-only placeholder. Source registration, timeline
 media preparation, deterministic lifecycle, classified failure propagation and recovery,
@@ -1364,9 +1437,9 @@ and resolver are synchronous and caller-owned, and no application or API path in
 Clip-mix reconciliation is substantive but currently entered by Rust callers rather than the public
 API or playback controller. Lifecycle is a production control-plane contract that now names project
 and device boundaries across sleep and wake, but later platform callbacks, additional typed project
-mutation adapters, compound transactions, native device owners, render submission, export
-publication, and arbitration consumers still must perform concrete actions before acknowledging it.
-The shared arbiter is a substantive opt-in
+mutation adapters, project lifecycle and compound transaction workers, native device owners, render
+submission, export publication, and arbitration consumers still must perform concrete actions before
+acknowledging it. The shared arbiter is a substantive opt-in
 engine contract, but current playback, render-export, cache, GPU, audio, and AI owners do not yet
 install their reclaimers or bind every live resource automatically.
 
@@ -1398,6 +1471,12 @@ snapshots only after successful semantic changes, preflight dispatcher event cap
 mutation, preserve both branches on failure and no-op, and restore only through the project-owned
 revision-fenced monotonic seam. Add later command adapters and compound transactions without placing
 history stacks in project, timeline, graph, audio, API, or CLI owners.
+Keep settings keys, defaults, candidate validation, and persistence project-owned. Engine may only
+resolve validated snapshots into existing subsystem types and dispatch transactions through the
+same `ProjectCommandHistory` document owner. Preserve dynamic no-op event reservation, complete
+replacement events, exact project revision correlation, and the API-to-engine-to-project dependency
+direction. Add later command adapters and compound transactions without placing history stacks in
+project, timeline, graph, audio, API, or CLI owners.
 Keep derived
 request canonicalization synchronized with every media format field that can change encoder output,
 and keep codec selection, cancellation, complete publication, proxy admission, scheduler-owned

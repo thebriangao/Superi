@@ -10,10 +10,11 @@ use superi_timeline::serialize::{deserialize_timeline_state, TIMELINE_STATE_FORM
 
 use crate::document::{ProjectDocument, ProjectGraph, StandaloneProjectGraph};
 use crate::persist::{
-    check_component_size, corrupt, database_error, fixed_bytes, initialize_schema, load_connection,
-    parse_revision, project_error, stored_state_error, unsupported, validate_identity_and_schema,
-    write_prepared_project, PreparedProject, StoredGraphKind, MAX_GRAPH_COUNT,
-    MAX_STANDALONE_NAME_BYTES, PROJECT_APPLICATION_ID, PROJECT_FORMAT,
+    check_component_size, corrupt, database_error, fixed_bytes, initialize_schema,
+    initialize_schema_one, load_connection, load_schema_one_connection, parse_revision,
+    project_error, stored_state_error, unsupported, validate_identity_and_schema,
+    write_prepared_project, write_schema_one_project, PreparedProject, StoredGraphKind,
+    MAX_GRAPH_COUNT, MAX_STANDALONE_NAME_BYTES, PROJECT_APPLICATION_ID, PROJECT_FORMAT,
     PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION, PROJECT_SCHEMA_REVISION,
 };
 
@@ -31,11 +32,18 @@ struct MigrationStep {
     apply: MigrationFunction,
 }
 
-const MIGRATIONS: &[MigrationStep] = &[MigrationStep {
-    source: 0,
-    target: 1,
-    apply: migrate_schema_zero_to_one,
-}];
+const MIGRATIONS: &[MigrationStep] = &[
+    MigrationStep {
+        source: 0,
+        target: 1,
+        apply: migrate_schema_zero_to_one,
+    },
+    MigrationStep {
+        source: 1,
+        target: 2,
+        apply: migrate_schema_one_to_two,
+    },
+];
 
 pub(crate) fn migrate_connection(connection: &mut Connection) -> Result<u32> {
     migrate_connection_with_guard(connection, |_| Ok(()))
@@ -164,6 +172,32 @@ fn migrate_schema_zero_to_one(connection: &Connection) -> Result<()> {
              DROP TABLE project_metadata;",
         )
         .map_err(|source| database_error(source, "replace_legacy_project_schema"))?;
+    initialize_schema_one(connection)?;
+    write_schema_one_project(connection, &prepared)?;
+    let migrated = load_schema_one_connection(connection)?;
+    if migrated.snapshot() != expected {
+        return Err(project_error(
+            ErrorCategory::Internal,
+            Recoverability::Terminal,
+            "verify_project_migration",
+            "migrated project did not reproduce the complete legacy snapshot",
+        ));
+    }
+    Ok(())
+}
+
+fn migrate_schema_one_to_two(connection: &Connection) -> Result<()> {
+    let schema_one = load_schema_one_connection(connection)?;
+    let expected = schema_one.snapshot();
+    let prepared = PreparedProject::from_snapshot(&expected)?;
+
+    connection
+        .execute_batch(
+            "DROP TABLE graph_components;\
+             DROP TABLE timeline_component;\
+             DROP TABLE project_metadata;",
+        )
+        .map_err(|source| database_error(source, "replace_schema_one_project_schema"))?;
     initialize_schema(connection)?;
     write_prepared_project(connection, &prepared)?;
     let migrated = load_connection(connection)?;
@@ -171,8 +205,8 @@ fn migrate_schema_zero_to_one(connection: &Connection) -> Result<()> {
         return Err(project_error(
             ErrorCategory::Internal,
             Recoverability::Terminal,
-            "verify_project_migration",
-            "migrated project did not reproduce the complete legacy snapshot",
+            "verify_schema_two_project_migration",
+            "schema-2 project did not reproduce the complete schema-1 snapshot",
         ));
     }
     Ok(())
@@ -616,9 +650,11 @@ mod tests {
     #[test]
     fn registry_is_contiguous_and_precommit_interruption_rolls_back_schema_rewrite() {
         validate_registry().unwrap();
-        assert_eq!(MIGRATIONS.len(), 1);
+        assert_eq!(MIGRATIONS.len(), 2);
         assert_eq!(MIGRATIONS[0].source, 0);
-        assert_eq!(MIGRATIONS[0].target, PROJECT_SCHEMA_REVISION);
+        assert_eq!(MIGRATIONS[0].target, 1);
+        assert_eq!(MIGRATIONS[1].source, 1);
+        assert_eq!(MIGRATIONS[1].target, PROJECT_SCHEMA_REVISION);
 
         let (mut connection, expected) = legacy_connection();
         let error = migrate_connection_with_guard(&mut connection, |_| {
@@ -646,5 +682,34 @@ mod tests {
             PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION
         );
         assert_eq!(load_connection(&connection).unwrap().snapshot(), expected);
+    }
+
+    #[test]
+    fn schema_one_projects_gain_deterministic_root_derived_settings() {
+        let (_, expected) = legacy_connection();
+        let mut connection = Connection::open_in_memory().unwrap();
+        initialize_schema_one(&connection).unwrap();
+        let prepared = PreparedProject::from_snapshot(&expected).unwrap();
+        write_schema_one_project(&connection, &prepared).unwrap();
+        assert_eq!(
+            load_schema_one_connection(&connection).unwrap().snapshot(),
+            expected
+        );
+
+        assert_eq!(migrate_connection(&mut connection).unwrap(), 1);
+        let migrated = load_connection(&connection).unwrap();
+        assert_eq!(migrated.snapshot(), expected);
+        assert_eq!(
+            migrated
+                .settings()
+                .integer(crate::settings::TIMELINE_RATE_NUMERATOR_KEY),
+            Some(24)
+        );
+        assert_eq!(
+            migrated
+                .settings()
+                .integer(crate::settings::AUDIO_SAMPLE_RATE_KEY),
+            Some(48_000)
+        );
     }
 }

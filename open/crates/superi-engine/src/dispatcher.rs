@@ -13,7 +13,7 @@ use std::time::Instant;
 use superi_concurrency::threads::ExecutionDomain;
 use superi_core::diagnostics::DiagnosticEvent;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
-use superi_project::document::ProjectDocument;
+use superi_project::document::{ProjectDocument, ProjectSnapshot};
 
 use crate::command::{
     ScenarioAction, ScenarioEngine, ScenarioSnapshot, MAX_SCENARIO_TRANSACTION_ACTIONS,
@@ -35,6 +35,7 @@ use crate::lifecycle::{
     EngineLifecycle, EngineLifecycleAction, EngineLifecycleActionKind, EngineLifecycleSnapshot,
     EngineSubsystem, EngineWorkAdmission, EngineWorkKind, EngineWorkPermit,
 };
+use crate::project_settings::{ProjectSettingsState, ProjectSettingsTransaction};
 use crate::resource_arbitration::ResourceArbitrationSnapshot;
 use crate::transport::{PlaybackTransport, PlaybackTransportCommand, PlaybackTransportSnapshot};
 use crate::validation::EngineIntegrationValidationSnapshot;
@@ -349,6 +350,10 @@ pub enum EngineCommand {
     ExecuteProjectHistory(ProjectHistoryCommand),
     /// Inspect current authored-project state and history without mutation.
     InspectProjectHistory,
+    /// Inspect the attached project's durable and resolved settings.
+    InspectProjectSettings,
+    /// Commit one optimistic project settings transaction.
+    ExecuteProjectSettings(ProjectSettingsTransaction),
     /// Inspect current lifecycle state without mutation.
     InspectLifecycle,
     /// Inspect complete classified failure and recovery state without mutation.
@@ -420,6 +425,7 @@ impl EngineCommand {
     const fn emits_state_event(&self) -> bool {
         match self {
             Self::ExecuteExportJob(command) => command.may_change_state(),
+            Self::ExecuteProjectSettings(_) => true,
             _ => matches!(
                 self,
                 Self::ExecuteScenario(_)
@@ -468,6 +474,8 @@ pub enum EngineCommandResult {
     Scenario(Box<ScenarioSnapshot>),
     /// Complete authored-project state, history metadata, and semantic command evidence.
     ProjectHistory(Box<ProjectHistoryOutcome>),
+    /// Complete durable and resolved project settings state.
+    ProjectSettings(Box<ProjectSettingsState>),
     /// Complete lifecycle state.
     Lifecycle(Box<EngineLifecycleSnapshot>),
     /// Complete classified failure, recovery, and coherent lifecycle state.
@@ -521,6 +529,8 @@ pub enum EngineEvent {
     ScenarioStateChanged(Box<ScenarioSnapshot>),
     /// Authored project state changed atomically.
     ProjectStateChanged(Box<ProjectHistoryState>),
+    /// Authoritative project settings changed atomically.
+    ProjectSettingsChanged(Box<ProjectSettingsState>),
     /// Lifecycle state changed atomically.
     LifecycleStateChanged(Box<EngineLifecycleSnapshot>),
     /// Classified failure, recovery, and lifecycle state changed atomically.
@@ -823,6 +833,33 @@ impl EngineCommandDispatcher {
         }
     }
 
+    /// Attaches the authoritative project document to the full engine owner.
+    pub fn attach_project(&mut self, project: ProjectDocument) -> Result<()> {
+        self.require_owner()?;
+        if self.lifecycle.is_none() {
+            return Err(unavailable(
+                "attach_project",
+                "project settings require the full lifecycle-attached dispatcher",
+            ));
+        }
+        if self.project_history.is_some() {
+            return Err(conflict(
+                "attach_project",
+                "a project document is already attached to this dispatcher",
+            ));
+        }
+        ProjectSettingsState::from_snapshot(&project.snapshot())?;
+        self.project_history = Some(ProjectCommandHistory::new(project));
+        Ok(())
+    }
+
+    /// Returns the attached authoritative project snapshot without mutation.
+    pub fn project_snapshot(&self) -> Result<ProjectSnapshot> {
+        self.require_owner()?;
+        self.require_project_settings_owner()?;
+        Ok(self.project_history_ref()?.project_snapshot())
+    }
+
     /// Attaches the canonical bounded logical export queue and returns its typed runtime handle.
     ///
     /// Construction and later command dispatch require EngineControl. Executor preparation and
@@ -867,6 +904,7 @@ impl EngineCommandDispatcher {
                 "project command history is already attached to this dispatcher",
             ));
         }
+        ProjectSettingsState::from_snapshot(&document.snapshot())?;
         self.project_history = Some(ProjectCommandHistory::with_capacity(document, capacity)?);
         Ok(())
     }
@@ -976,7 +1014,12 @@ impl EngineCommandDispatcher {
             transaction_id,
             command,
         } = request;
-        let emits_state_event = command.emits_state_event();
+        let emits_state_event = match &command {
+            EngineCommand::ExecuteProjectSettings(transaction) => {
+                self.project_settings_will_change(transaction)?
+            }
+            _ => command.emits_state_event(),
+        };
         if emits_state_event && self.pending_playback.is_some() {
             return Err(conflict(
                 "serialize_state_command",
@@ -1020,6 +1063,9 @@ impl EngineCommandDispatcher {
                 }
                 EngineEvent::ProjectStateChanged(state) => {
                     (Some(state.snapshot().revision()), None, None, None, None)
+                }
+                EngineEvent::ProjectSettingsChanged(state) => {
+                    (Some(state.project_revision()), None, None, None, None)
                 }
                 EngineEvent::LifecycleStateChanged(snapshot) => {
                     (None, Some(snapshot.state_revision()), None, None, None)
@@ -1243,6 +1289,27 @@ impl EngineCommandDispatcher {
                 )),
                 event: None,
             }),
+            EngineCommand::InspectProjectSettings => {
+                let state = ProjectSettingsState::from_snapshot(&self.project_snapshot()?)?;
+                Ok(CommandExecution {
+                    result: EngineCommandResult::ProjectSettings(Box::new(state)),
+                    event: None,
+                })
+            }
+            EngineCommand::ExecuteProjectSettings(transaction) => {
+                self.require_project_settings_owner()?;
+                let prior_revision = self.project_history_ref()?.project_snapshot().revision();
+                let snapshot = self
+                    .project_history_mut()?
+                    .execute_settings_transaction(transaction)?;
+                let state = ProjectSettingsState::from_snapshot(&snapshot)?;
+                let event = (snapshot.revision() != prior_revision)
+                    .then(|| EngineEvent::ProjectSettingsChanged(Box::new(state.clone())));
+                Ok(CommandExecution {
+                    result: EngineCommandResult::ProjectSettings(Box::new(state)),
+                    event,
+                })
+            }
             EngineCommand::InspectLifecycle => {
                 let snapshot = self.lifecycle_snapshot()?;
                 Ok(CommandExecution {
@@ -1526,6 +1593,25 @@ impl EngineCommandDispatcher {
                     "logical export jobs must reach final state before export teardown completes",
                 ));
             }
+        }
+        Ok(())
+    }
+
+    fn project_settings_will_change(
+        &self,
+        transaction: &ProjectSettingsTransaction,
+    ) -> Result<bool> {
+        self.require_project_settings_owner()?;
+        self.project_history_ref()?
+            .settings_will_change(transaction)
+    }
+
+    fn require_project_settings_owner(&self) -> Result<()> {
+        if self.lifecycle.is_none() {
+            return Err(unavailable(
+                "require_project_settings",
+                "project settings require the full lifecycle-attached dispatcher",
+            ));
         }
         Ok(())
     }
