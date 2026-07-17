@@ -9,8 +9,8 @@ use superi_core::time::{RationalTime, Timebase};
 use superi_graph::mutate::EditableGraph;
 use superi_project::document::{ProjectDocument, ProjectGraph, StandaloneProjectGraph};
 use superi_project::{
-    ProjectDatabase, PROJECT_APPLICATION_ID, PROJECT_FORMAT_VERSION,
-    PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION, PROJECT_SCHEMA_REVISION,
+    ProjectDatabase, ProjectDestinationCollision, ProjectSaveCommand, PROJECT_APPLICATION_ID,
+    PROJECT_FORMAT_VERSION, PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION, PROJECT_SCHEMA_REVISION,
 };
 use superi_timeline::compile::CompiledTimelineGraphValue;
 use superi_timeline::model::{EditorialProject, Timeline};
@@ -282,6 +282,9 @@ fn legacy_evidence(path: &Path) -> LegacyEvidence {
 fn supported_legacy_project_migrates_canonically_and_remains_editable() {
     assert_eq!(PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION, 0);
     let artifact = TempProject::new("supported");
+    let save_as = TempProject::new("save-as");
+    let copy = TempProject::new("copy");
+    let backup = TempProject::new("backup");
     let expected = project_document();
     create_current(artifact.path(), &expected);
     downgrade_to_schema_zero(artifact.path(), true);
@@ -306,37 +309,76 @@ fn supported_legacy_project_migrates_canonically_and_remains_editable() {
         })
         .unwrap();
     database.replace(&migrated.snapshot()).unwrap();
+    let source_bytes_before_publications = std::fs::read(artifact.path()).unwrap();
+    database
+        .execute_save_command(
+            ProjectSaveCommand::SaveCopy {
+                destination: copy.path().to_path_buf(),
+                collision: ProjectDestinationCollision::RequireAbsent,
+            },
+            &migrated.snapshot(),
+        )
+        .unwrap();
+    database
+        .execute_save_command(
+            ProjectSaveCommand::Backup {
+                destination: backup.path().to_path_buf(),
+            },
+            &migrated.snapshot(),
+        )
+        .unwrap();
+    database
+        .execute_save_command(
+            ProjectSaveCommand::SaveAs {
+                destination: save_as.path().to_path_buf(),
+                collision: ProjectDestinationCollision::RequireAbsent,
+            },
+            &migrated.snapshot(),
+        )
+        .unwrap();
+    assert_eq!(
+        std::fs::read(artifact.path()).unwrap(),
+        source_bytes_before_publications
+    );
+    assert!(database.was_migrated());
+    assert_eq!(database.source_schema_revision(), 0);
+    assert_eq!(
+        database.active_path(),
+        Some(std::fs::canonicalize(save_as.path()).unwrap().as_path())
+    );
     drop(database);
 
-    let reopened = ProjectDatabase::open_read_only(artifact.path()).unwrap();
-    assert_eq!(reopened.load().unwrap().snapshot(), migrated.snapshot());
-    let connection = Connection::open(artifact.path()).unwrap();
-    let schema_revision: i64 = connection
-        .pragma_query_value(None, "user_version", |row| row.get(0))
-        .unwrap();
-    let format_version: String = connection
-        .query_row("SELECT format_version FROM project_metadata", [], |row| {
-            row.get(0)
-        })
-        .unwrap();
-    assert_eq!(schema_revision, i64::from(PROJECT_SCHEMA_REVISION));
-    assert_eq!(format_version, PROJECT_FORMAT_VERSION);
-    let timeline_revision: i64 = connection
-        .query_row(
-            "SELECT format_revision FROM timeline_component",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert_eq!(timeline_revision, 1);
-    let noncurrent_graphs: i64 = connection
-        .query_row(
-            "SELECT COUNT(*) FROM graph_components WHERE format_revision != 1",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert_eq!(noncurrent_graphs, 0);
+    for path in [artifact.path(), save_as.path(), copy.path(), backup.path()] {
+        let reopened = ProjectDatabase::open_read_only(path).unwrap();
+        assert_eq!(reopened.load().unwrap().snapshot(), migrated.snapshot());
+        let connection = Connection::open(path).unwrap();
+        let schema_revision: i64 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        let format_version: String = connection
+            .query_row("SELECT format_version FROM project_metadata", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(schema_revision, i64::from(PROJECT_SCHEMA_REVISION));
+        assert_eq!(format_version, PROJECT_FORMAT_VERSION);
+        let timeline_revision: i64 = connection
+            .query_row(
+                "SELECT format_revision FROM timeline_component",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(timeline_revision, 1);
+        let noncurrent_graphs: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM graph_components WHERE format_revision != 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(noncurrent_graphs, 0);
+    }
 }
 
 #[test]

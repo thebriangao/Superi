@@ -7,7 +7,7 @@
 
 use std::fmt;
 use std::fs::OpenOptions;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use rusqlite::config::DbConfig;
@@ -24,6 +24,7 @@ use superi_timeline::serialize::{
 
 use crate::document::{ProjectDocument, ProjectGraph, ProjectSnapshot, StandaloneProjectGraph};
 use crate::migrate::migrate_connection;
+use crate::save::ProjectSaveCommand;
 
 const COMPONENT: &str = "superi-project.persistence";
 const MANIFEST_DOMAIN: &[u8] = b"superi.project.manifest.v1";
@@ -46,9 +47,14 @@ pub(crate) const PROJECT_METADATA_SCHEMA: &str = "CREATE TABLE project_metadata 
 pub(crate) const TIMELINE_COMPONENT_SCHEMA: &str = "CREATE TABLE timeline_component (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format_revision INTEGER NOT NULL CHECK (format_revision > 0), byte_length INTEGER NOT NULL CHECK (byte_length >= 0 AND byte_length <= 67108864), sha256 BLOB NOT NULL CHECK (length(sha256) = 32), document BLOB NOT NULL CHECK (length(document) = byte_length)) STRICT";
 pub(crate) const GRAPH_COMPONENTS_SCHEMA: &str = "CREATE TABLE graph_components (graph_id BLOB PRIMARY KEY CHECK (length(graph_id) = 16), graph_kind TEXT NOT NULL CHECK (graph_kind IN ('timeline', 'standalone')), root_timeline_id BLOB CHECK (root_timeline_id IS NULL OR length(root_timeline_id) = 16), name TEXT, graph_revision TEXT NOT NULL, format_revision INTEGER NOT NULL CHECK (format_revision > 0), byte_length INTEGER NOT NULL CHECK (byte_length >= 0 AND byte_length <= 67108864), sha256 BLOB NOT NULL CHECK (length(sha256) = 32), document BLOB NOT NULL CHECK (length(document) = byte_length), CHECK ((graph_kind = 'timeline' AND root_timeline_id IS NOT NULL AND name IS NULL) OR (graph_kind = 'standalone' AND root_timeline_id IS NULL AND name IS NOT NULL AND length(name) > 0))) STRICT, WITHOUT ROWID";
 
-/// One secured connection to a stable whole-project database.
+enum ProjectDatabaseStorage {
+    File { active_path: PathBuf },
+    Memory { connection: Connection },
+}
+
+/// One secured authority over a stable whole-project database.
 pub struct ProjectDatabase {
-    connection: Connection,
+    storage: ProjectDatabaseStorage,
     writable: bool,
     source_schema_revision: u32,
 }
@@ -57,6 +63,7 @@ impl fmt::Debug for ProjectDatabase {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("ProjectDatabase")
+            .field("active_path", &self.active_path())
             .field("writable", &self.writable)
             .field("source_schema_revision", &self.source_schema_revision)
             .finish_non_exhaustive()
@@ -73,23 +80,25 @@ impl ProjectDatabase {
             .open(path)
             .map_err(|source| create_path_error(source, "create_database"))?;
 
-        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
-        let connection = match Connection::open_with_flags(path, flags) {
+        let connection = match open_file_connection(path, true) {
             Ok(connection) => connection,
-            Err(source) => {
+            Err(error) => {
                 let _ = std::fs::remove_file(path);
-                return Err(database_error(source, "open_created_database"));
+                return Err(error);
             }
         };
-        if let Err(error) =
-            initialize_connection(&connection, true).and_then(|()| initialize_schema(&connection))
-        {
+        if let Err(error) = initialize_schema(&connection) {
             drop(connection);
             let _ = std::fs::remove_file(path);
             return Err(error);
         }
+        if let Err(error) = close_connection(connection, "close_created_database") {
+            let _ = std::fs::remove_file(path);
+            return Err(error);
+        }
+        let active_path = canonicalize_project_path(path, "canonicalize_created_database")?;
         Ok(Self {
-            connection,
+            storage: ProjectDatabaseStorage::File { active_path },
             writable: true,
             source_schema_revision: PROJECT_SCHEMA_REVISION,
         })
@@ -102,7 +111,7 @@ impl ProjectDatabase {
         initialize_connection(&connection, true)?;
         initialize_schema(&connection)?;
         Ok(Self {
-            connection,
+            storage: ProjectDatabaseStorage::Memory { connection },
             writable: true,
             source_schema_revision: PROJECT_SCHEMA_REVISION,
         })
@@ -113,13 +122,13 @@ impl ProjectDatabase {
     /// Current projects are validated without mutation. Every registered older
     /// schema is upgraded to the current schema in one immediate transaction.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
-        let mut connection = Connection::open_with_flags(path, flags)
-            .map_err(|source| database_error(source, "open_writable_database"))?;
-        initialize_connection(&connection, true)?;
+        let active_path =
+            canonicalize_project_path(path.as_ref(), "canonicalize_writable_database")?;
+        let mut connection = open_file_connection(&active_path, true)?;
         let source_schema_revision = migrate_connection(&mut connection)?;
+        close_connection(connection, "close_writable_database")?;
         Ok(Self {
-            connection,
+            storage: ProjectDatabaseStorage::File { active_path },
             writable: true,
             source_schema_revision,
         })
@@ -127,16 +136,25 @@ impl ProjectDatabase {
 
     /// Opens an existing `.superi` database without write authority.
     pub fn open_read_only(path: impl AsRef<Path>) -> Result<Self> {
-        let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
-        let connection = Connection::open_with_flags(path, flags)
-            .map_err(|source| database_error(source, "open_read_only_database"))?;
-        initialize_connection(&connection, false)?;
+        let active_path =
+            canonicalize_project_path(path.as_ref(), "canonicalize_read_only_database")?;
+        let connection = open_file_connection(&active_path, false)?;
         validate_identity_and_schema(&connection)?;
+        close_connection(connection, "close_read_only_database")?;
         Ok(Self {
-            connection,
+            storage: ProjectDatabaseStorage::File { active_path },
             writable: false,
             source_schema_revision: PROJECT_SCHEMA_REVISION,
         })
+    }
+
+    /// Returns the absolute path that currently owns project-relative state.
+    #[must_use]
+    pub fn active_path(&self) -> Option<&Path> {
+        match &self.storage {
+            ProjectDatabaseStorage::File { active_path } => Some(active_path),
+            ProjectDatabaseStorage::Memory { .. } => None,
+        }
     }
 
     /// Returns the schema revision observed when this connection was opened.
@@ -166,9 +184,17 @@ impl ProjectDatabase {
             ));
         }
 
+        if matches!(self.storage, ProjectDatabaseStorage::File { .. }) {
+            return self
+                .execute_save_command(ProjectSaveCommand::Save, snapshot)
+                .map(|_| ());
+        }
+
+        let ProjectDatabaseStorage::Memory { connection } = &mut self.storage else {
+            unreachable!("file-backed storage returned before memory replacement")
+        };
         let prepared = PreparedProject::from_snapshot(snapshot)?;
-        let transaction = self
-            .connection
+        let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|source| database_error(source, "begin_replace_project"))?;
         write_prepared_project(&transaction, &prepared)?;
@@ -188,16 +214,39 @@ impl ProjectDatabase {
 
     /// Loads one fully checked project document or publishes no partial state.
     pub fn load(&self) -> Result<ProjectDocument> {
-        let transaction = self
-            .connection
-            .unchecked_transaction()
-            .map_err(|source| database_error(source, "begin_load_project"))?;
-        let document = load_connection(&transaction)?;
-        transaction
-            .commit()
-            .map_err(|source| database_error(source, "finish_load_project"))?;
-        Ok(document)
+        match &self.storage {
+            ProjectDatabaseStorage::Memory { connection } => load_from_connection(connection),
+            ProjectDatabaseStorage::File { active_path } => {
+                let connection = open_file_connection(active_path, false)?;
+                let loaded = load_from_connection(&connection);
+                let closed = close_connection(connection, "close_loaded_database");
+                match (loaded, closed) {
+                    (Ok(document), Ok(())) => Ok(document),
+                    (Err(error), _) | (Ok(_), Err(error)) => Err(error),
+                }
+            }
+        }
     }
+
+    pub(crate) const fn is_writable(&self) -> bool {
+        self.writable
+    }
+
+    pub(crate) fn rebind_after_save_as(&mut self, active_path: PathBuf) {
+        self.storage = ProjectDatabaseStorage::File { active_path };
+        self.writable = true;
+    }
+}
+
+fn load_from_connection(connection: &Connection) -> Result<ProjectDocument> {
+    let transaction = connection
+        .unchecked_transaction()
+        .map_err(|source| database_error(source, "begin_load_project"))?;
+    let document = load_connection(&transaction)?;
+    transaction
+        .commit()
+        .map_err(|source| database_error(source, "finish_load_project"))?;
+    Ok(document)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -307,7 +356,42 @@ impl PreparedProject {
     }
 }
 
-fn initialize_connection(connection: &Connection, writable: bool) -> Result<()> {
+pub(crate) fn open_file_connection(path: &Path, writable: bool) -> Result<Connection> {
+    let access = if writable {
+        OpenFlags::SQLITE_OPEN_READ_WRITE
+    } else {
+        OpenFlags::SQLITE_OPEN_READ_ONLY
+    };
+    let connection = Connection::open_with_flags(path, access | OpenFlags::SQLITE_OPEN_NO_MUTEX)
+        .map_err(|source| {
+            database_error(
+                source,
+                if writable {
+                    "open_writable_database"
+                } else {
+                    "open_read_only_database"
+                },
+            )
+            .with_context(
+                ErrorContext::new(COMPONENT, "open_project_path")
+                    .with_field("path", path.display().to_string()),
+            )
+        })?;
+    initialize_connection(&connection, writable)?;
+    Ok(connection)
+}
+
+pub(crate) fn close_connection(connection: Connection, operation: &'static str) -> Result<()> {
+    connection
+        .close()
+        .map_err(|(_, source)| database_error(source, operation))
+}
+
+fn canonicalize_project_path(path: &Path, operation: &'static str) -> Result<PathBuf> {
+    std::fs::canonicalize(path).map_err(|source| path_error(source, operation, path))
+}
+
+pub(crate) fn initialize_connection(connection: &Connection, writable: bool) -> Result<()> {
     connection
         .busy_timeout(Duration::from_secs(5))
         .map_err(|source| database_error(source, "configure_busy_timeout"))?;
@@ -470,6 +554,36 @@ pub(crate) fn validate_identity_and_schema(connection: &Connection) -> Result<()
         return Err(corrupt(
             "inspect_project_schema",
             "project database schema objects do not match schema revision 1",
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_full_integrity(connection: &Connection) -> Result<()> {
+    let integrity: String = connection
+        .query_row("PRAGMA integrity_check(1)", [], |row| row.get(0))
+        .map_err(|source| database_error(source, "integrity_check"))?;
+    if integrity != "ok" {
+        return Err(corrupt(
+            "integrity_check",
+            "SQLite full integrity check failed",
+        ));
+    }
+
+    let mut statement = connection
+        .prepare("PRAGMA foreign_key_check")
+        .map_err(|source| database_error(source, "foreign_key_check"))?;
+    let mut rows = statement
+        .query([])
+        .map_err(|source| database_error(source, "foreign_key_check"))?;
+    if rows
+        .next()
+        .map_err(|source| database_error(source, "foreign_key_check"))?
+        .is_some()
+    {
+        return Err(corrupt(
+            "foreign_key_check",
+            "SQLite foreign key consistency check failed",
         ));
     }
     Ok(())
@@ -985,6 +1099,29 @@ fn create_path_error(source: std::io::Error, operation: &'static str) -> Error {
     };
     Error::with_source(category, recoverability, message, source)
         .with_context(ErrorContext::new(COMPONENT, operation))
+}
+
+fn path_error(source: std::io::Error, operation: &'static str, path: &Path) -> Error {
+    let (category, recoverability, message) = match source.kind() {
+        std::io::ErrorKind::NotFound => (
+            ErrorCategory::NotFound,
+            Recoverability::UserCorrectable,
+            "project database path does not exist",
+        ),
+        std::io::ErrorKind::PermissionDenied => (
+            ErrorCategory::PermissionDenied,
+            Recoverability::UserCorrectable,
+            "project database path is not accessible",
+        ),
+        _ => (
+            ErrorCategory::Unavailable,
+            Recoverability::Retryable,
+            "project database path could not be resolved",
+        ),
+    };
+    Error::with_source(category, recoverability, message, source).with_context(
+        ErrorContext::new(COMPONENT, operation).with_field("path", path.display().to_string()),
+    )
 }
 
 pub(crate) fn database_error(source: rusqlite::Error, operation: &'static str) -> Error {

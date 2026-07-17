@@ -48,12 +48,13 @@ editable graph instances.
 
 Concrete cache storage, exact byte and frame admission, precise edit cleanup, and bounded
 background render dispatch remain owned by `superi-cache`; invalidation invocation,
-ROI-plan evaluator orchestration, project storage, and a production runtime node catalog remain
-absent or placeholders. The
+ROI-plan evaluator orchestration, and a production runtime node catalog remain absent or
+placeholders. `superi-project` owns whole-project storage and now places canonical graph documents
+inside complete atomically published project candidates. The
 implemented storage, schema, validation, mutation, invalidation, ROI planning, scheduling, cache
 identity, diagnostics, document, parameter evaluator, compiler seam, and shared interactive and
 headless evaluator surfaces must not be interpreted as a working production render path or atomic
-project save system.
+project save system inside this graph crate.
 
 ## Source inventory
 
@@ -709,8 +710,9 @@ The graph document flow is:
    cardinality, and acyclicity before the persisted revision becomes visible.
 5. The returned `GraphLoad<T>` supplies the exact checked graph and canonical current document, so
    an editor, script, or headless caller can save an upgrade without maintaining a second model.
-6. Project persistence may place those bytes in a crash-safe container later. The graph codec does
-   not claim filesystem interruption handling beyond rejecting incomplete document bytes.
+6. Project persistence places those bytes in a complete current-schema SQLite candidate and owns
+   atomic file publication. The graph codec does not claim filesystem interruption handling beyond
+   rejecting incomplete document bytes.
 
 The dependency invalidation flow is:
 
@@ -1227,8 +1229,9 @@ and editable expression source through save and load. Missing-node resolution no
 current schema availability without changing those bytes or that editable state, retains absent or
 incompatible nodes as typed placeholders, and gives every caller one deterministic degraded
 evaluation result until exact schemas return. Exact schemas then enable the shared interactive and
-headless evaluation snapshot without a graph rewrite. The crate cannot store a project atomically,
-own concrete cached values, persist cache data, bind
+headless evaluation snapshot without a graph rewrite. This crate does not own atomic project
+storage; `superi-project` now publishes these canonical documents through its complete-candidate
+save surface. Graph also does not own concrete cached values, persist cache data, bind
 plugin implementations, or render production values. Timeline compilation, project document
 retention, engine preparation retention, and memory cache retention are now real downstream
 consumers. Effects is a concrete downstream schema, expression,

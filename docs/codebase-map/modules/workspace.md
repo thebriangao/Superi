@@ -719,7 +719,7 @@ The project schema owner consumes exact rusqlite 0.32.1 with default features di
 SQLite enabled. It also consumes the existing exact SHA-256 pin. Rusqlite and libsqlite3-sys are
 MIT-licensed, SQLite is public domain, and the bundled path performs no runtime discovery or
 network operation. The dependency remains below project and does not change any internal Superi
-crate edge. Fresh `cargo +1.80.1 check -p superi-project --locked` proves the selected resolution on
+crate edge. Fresh `cargo +1.80.0 check -p superi-project --locked --offline` proves the selected resolution on
 the declared compiler floor. Project's test-only JSON edge builds supported schema-0 component
 fixtures, while engine's test-only direct rusqlite edge builds an exact legacy database around the
 existing real resource-acquisition consumer. Both packages were already locked and neither edge
@@ -909,9 +909,9 @@ The documents deliberately point into other modules:
   acquisition classes behind media interfaces.
 - `superi-graph`, `superi-cache`, `superi-color`, `superi-effects`, `superi-timeline`, `superi-audio`,
   and `superi-ai` own evaluation and capability layers.
-- `superi-project` owns aggregate validation, checked snapshot restoration, and persistence;
-  `superi-engine` owns bounded session command history and integration; `superi-api` owns the stable
-  public seam; and `superi-cli` is the headless consumer.
+- `superi-project` owns aggregate validation, checked snapshot restoration, database persistence,
+  and atomic file publication; `superi-engine` owns bounded session command history and integration;
+  `superi-api` owns the stable public seam; and `superi-cli` is the headless consumer.
 - `superi-fixture-tool` validates repository fixture policy but does not enter runtime engine flow.
 - `superi-dependency-check` validates the runtime Cargo graph but does not enter runtime engine flow.
 - `superi-boundary-tool` validates source boundaries but does not enter runtime engine flow.
@@ -1172,17 +1172,20 @@ introspection ownership contract without changing the production runtime graph.
 The effects crate now owns a substantive graph-native authoring SDK, exact animation curves,
 complete reusable presets, explicit checked schema migration, and strict authored wires. Its preset
 lockfile change records direct runtime use of already-resolved JSON and SHA-256 packages for
-canonical integrity-protected documents, while atomic project persistence and production native
+canonical integrity-protected documents, while effects-to-project integration and production native
 plugin execution remain incomplete. The effects-side isolated OpenFX contract and engine-side
 bundle discovery, launch coordination, containment, and graph availability are implemented, while
 concrete platform transport, native OFX ABI adapters, and GPU-handle IPC remain absent.
 The project crate now owns a stable schema-1 SQLite application database with deterministic
-timeline and graph component rows, SHA-256 evidence, transactional replacement, checked reload,
+timeline and graph component rows, SHA-256 evidence, checked in-memory replacement, checked reload,
 durable nonoverwriting create, read-only reopen, and an ordered exact schema-0-to-schema-1 migration
-inside one immediate transaction. The lockfile records exact rusqlite 0.32.1 and libsqlite3-sys
-0.30.1 with bundled SQLite, plus project JSON and engine rusqlite test edges. Additional project
-schema revisions, synchronized temporary publication, atomic destination replacement, autosave, and
-recovery remain incomplete.
+inside one immediate transaction. It also owns one typed save, save-as, copy, and backup surface that
+builds, validates, closes, synchronizes, and atomically publishes complete same-parent current-schema
+candidates under explicit collision policy, with active-path rebinding and honest postpublication
+state. The lockfile records exact rusqlite 0.32.1 and libsqlite3-sys 0.30.1 with bundled SQLite, plus
+project JSON and engine rusqlite test edges. Additional project schema revisions, settings, persisted
+command logs, autosave, recovery journals, modified-since-open conflict policy, API adaptation, and
+CLI exposure remain incomplete.
 The engine now owns a production Rust project command-history boundary around that aggregate. It
 records successful authored media changes as bounded immutable before-and-after units, restores
 undo and redo targets through project validation with fresh monotonic revisions, persists only the
@@ -1190,7 +1193,7 @@ selected snapshot through the existing database, and exposes typed dispatcher re
 replacement events. Compound cross-subsystem transactions and all public project-history wire, API,
 CLI, scripting, logging, and automation adapters remain incomplete.
 The synchronized remote revision before this checkpoint is
-`755398c118357ede40275e4086e3580353d7e1b8`.
+`7401db7dc35d59663878cdf5f6c240fa87bef0ca`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
 root README, deny policy, and structure guide with license-audit CI. Commit
 `e0b3af9f099f527a8544d1b0317896640969903b` added the executable dependency-policy contract and its
@@ -1296,7 +1299,7 @@ The largest current risk is cross-document drift:
 - `open/rust-toolchain.toml` follows floating `stable`, while workspace package metadata promises a
   Rust 1.80 floor. The hosted workflow still installs floating stable and there is no recurring
   Rust 1.80 lane. The text checkpoint freshly checks the affected `superi-effects` all-target graph
-  and the project persistence checkpoint freshly checks `superi-project` with Cargo and Rust 1.80
+  and the project persistence checkpoint freshly checks `superi-project` with Cargo and Rust 1.80.0
   against the locked compatible dependency resolution, but those focused local proofs are not a
   recurring whole-workspace hosted guarantee.
 - The dependency-policy workflow uses third-party actions by major version tags rather than commit
@@ -1346,7 +1349,7 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`d0037f60b3a220dc97aab3fcc51870548a46c2ac` when the map was refreshed. Its hash describes the exact
+`7401db7dc35d59663878cdf5f6c240fa87bef0ca` when the map was refreshed. Its hash describes the exact
 145 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes

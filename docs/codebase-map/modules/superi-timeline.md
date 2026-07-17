@@ -584,9 +584,10 @@ Timeline document flow preserves those owners without becoming a project contain
 5. The published project revision and exact relink evidence use narrow crate-private restoration
    seams, followed by whole-project validation. Canonical current bytes are regenerated from the
    validated project, so successful migration never returns stale or unchecked input bytes.
-6. The API performs no file I/O and mutates no caller-owned project. The `superi-project` schema-1
-   transaction stores accepted canonical bytes with independent length and SHA-256 evidence, while
-   autosave, destination replacement, and journal recovery remain later project policies.
+6. The API performs no file I/O and mutates no caller-owned project. `superi-project` stores accepted
+   canonical bytes with independent length and SHA-256 evidence inside a complete current-schema
+   candidate, then owns atomic save, save-as, copy, and backup publication. Autosave and recovery
+   journals remain later project policies.
 7. Compiled timeline graph values project through a separate strict tagged wire in this module.
    The graph codec preserves those values and revisions, and project joins the decoded editable
    graph to freshly derived trusted provenance through `TimelineGraphCompilation::with_graph`.
@@ -879,12 +880,12 @@ shared processing-value coexistence, plus production OTIO 0.18.1 reading,
 writing, opaque preservation, stable diagnostics, and a headless consumer are also test-backed.
 Strict canonical timeline documents, revision 0 migration, checked recovery, continued editing
 after load, and strict compiled graph-value round trips are test-backed. `superi-project` now stores
-canonical timeline and compiled graph components in stable SQLite schema 1. Effects has compatible
+canonical timeline and compiled graph components in stable SQLite schema 1 and atomically publishes
+complete save, save-as, copy, and backup files. Effects has compatible
 graph-native transition authoring and a bounded oracle, but the production binder from this
 timeline-owned state to those visual schemas is absent. Graph evaluation, fit-to-fill,
 grouped-source compound synthesis, timeline command adaptation into engine history, multicam mixing
-and runtime playback, atomic save publication, autosave, recovery orchestration, and API integration
-remain absent. Engine
+and runtime playback, autosave, recovery orchestration, and API integration remain absent. Engine
 preparation integration now consumes and retains the compiled graph, and engine transport consumes
 the standalone signed rate value, but no
 owner yet binds that prepared native timeline graph to decoded playback, multicam mixing, or render
