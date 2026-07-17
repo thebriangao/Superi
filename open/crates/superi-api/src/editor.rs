@@ -9,8 +9,13 @@ use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Res
 use superi_core::settings::SemanticVersion;
 use superi_engine::editor as engine;
 
-use crate::commands::{ApiCommand, GetEditorState, GetEditorStateResult};
+use crate::commands::{ApiCommand, GetEditorState};
 use crate::events::ProjectStateChanged;
+use crate::permissions::{
+    ApiFilesystemAccess, ApiFilesystemPath, ApiFilesystemPlatform, ApiPermissionContext,
+    ApiPermissionKind, ApiPermissionRequirement, ApiPermissionRequirementMode,
+    ApiPermissionRequirements, ApiPluginOperation,
+};
 use crate::schema::{ApiResource, PublicMethodKind};
 use crate::version::{
     EXECUTE_PROJECT_COMMAND_METHOD, PROJECT_EDITOR_SCHEMA_VERSION, PROJECT_HISTORY_RESOURCE,
@@ -110,6 +115,21 @@ impl ApiCommand for ExecuteProjectCommand {
     const METHOD: &'static str = EXECUTE_PROJECT_COMMAND_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Command;
     const SCHEMA_VERSION: SemanticVersion = PROJECT_EDITOR_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode =
+        ApiPermissionRequirementMode::PayloadDependent;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] =
+        &[ApiPermissionKind::Filesystem, ApiPermissionKind::Plugin];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        let ProjectCommand::Apply { actions } = &self.command else {
+            return Ok(ApiPermissionRequirements::none());
+        };
+        let mut requirements = Vec::new();
+        for action in actions {
+            action.append_permission_requirements(&mut requirements)?;
+        }
+        ApiPermissionRequirements::new(requirements)
+    }
 }
 
 /// Stable typed mutation category retained by project history.
@@ -2162,6 +2182,19 @@ pub enum EditorMediaPathPlatform {
 }
 
 impl EditorMediaPath {
+    fn permission_path(&self) -> Result<ApiFilesystemPath> {
+        match self {
+            Self::ProjectRelative { path } => ApiFilesystemPath::project_relative(path.clone()),
+            Self::Absolute { platform, path } => ApiFilesystemPath::absolute(
+                match platform {
+                    EditorMediaPathPlatform::Unix => ApiFilesystemPlatform::Unix,
+                    EditorMediaPathPlatform::Windows => ApiFilesystemPlatform::Windows,
+                },
+                path.clone(),
+            ),
+        }
+    }
+
     fn into_engine(self) -> Result<engine::ReferencedMediaPath> {
         let target = match self {
             Self::ProjectRelative { path } => {
@@ -2481,6 +2514,51 @@ pub enum EditorExtensionMutation {
 }
 
 impl EditorExtensionMutation {
+    fn append_permission_requirements(
+        &self,
+        requirements: &mut Vec<ApiPermissionRequirement>,
+    ) -> Result<()> {
+        match self {
+            Self::Upsert { record } => {
+                requirements.push(ApiPermissionRequirement::plugin(
+                    ApiPluginOperation::ManageState,
+                    record.extension_id.clone(),
+                )?);
+                requirements.push(ApiPermissionRequirement::plugin(
+                    ApiPluginOperation::ManageLifecycle,
+                    record.extension_id.clone(),
+                )?);
+                if !record.granted_capabilities.is_empty() {
+                    requirements.push(ApiPermissionRequirement::plugin_delegation(
+                        record.extension_id.clone(),
+                        record.granted_capabilities.clone(),
+                    )?);
+                }
+            }
+            Self::Remove { key } | Self::RecordFailure { key, .. } | Self::ClearFailure { key } => {
+                requirements.push(ApiPermissionRequirement::plugin(
+                    ApiPluginOperation::ManageState,
+                    key.extension_id.clone(),
+                )?);
+            }
+            Self::SetLifecycle { key, .. } => {
+                requirements.push(ApiPermissionRequirement::plugin(
+                    ApiPluginOperation::ManageLifecycle,
+                    key.extension_id.clone(),
+                )?);
+            }
+            Self::SetGrantedCapabilities {
+                key, capabilities, ..
+            } => {
+                requirements.push(ApiPermissionRequirement::plugin_delegation(
+                    key.extension_id.clone(),
+                    capabilities.clone(),
+                )?);
+            }
+        }
+        Ok(())
+    }
+
     fn into_engine(self) -> Result<engine::ProjectExtensionCommand> {
         match self {
             Self::Upsert { record } => Ok(engine::ProjectExtensionCommand::upsert(
@@ -2552,6 +2630,32 @@ pub enum ProjectAction {
 }
 
 impl ProjectAction {
+    fn append_permission_requirements(
+        &self,
+        requirements: &mut Vec<ApiPermissionRequirement>,
+    ) -> Result<()> {
+        match self {
+            Self::MutateMedia { mutation } => match mutation {
+                EditorMediaMutation::SetPath { path, .. }
+                | EditorMediaMutation::ConsiderRelink { path, .. } => {
+                    requirements.push(ApiPermissionRequirement::filesystem(
+                        ApiFilesystemAccess::Read,
+                        path.permission_path()?,
+                    ));
+                }
+                EditorMediaMutation::MarkMissing { .. } => {}
+            },
+            Self::MutateExtension { mutation } => {
+                mutation.append_permission_requirements(requirements)?;
+            }
+            Self::SelectRootTimeline { .. }
+            | Self::EditTimeline { .. }
+            | Self::MutateGraph { .. }
+            | Self::MutateClipMix { .. } => {}
+        }
+        Ok(())
+    }
+
     fn into_engine(self) -> Result<engine::CompoundProjectAction> {
         match self {
             Self::SelectRootTimeline { timeline_id } => {
@@ -2598,6 +2702,7 @@ impl ProjectAction {
 pub struct ProjectEditorApi {
     dispatcher: engine::EngineCommandDispatcher,
     pending_event_evidence: BTreeMap<u64, ProjectCommandEvidence>,
+    permissions: Arc<ApiPermissionContext>,
 }
 
 mod request_sealed {
@@ -2605,20 +2710,15 @@ mod request_sealed {
 }
 
 /// One request accepted by the single stable project editor facade.
-pub trait ProjectEditorRequest: request_sealed::Sealed {
-    /// Successful typed response for this request.
-    type Response;
-
+pub trait ProjectEditorRequest: request_sealed::Sealed + ApiCommand {
     #[doc(hidden)]
-    fn dispatch(self, api: &mut ProjectEditorApi) -> Result<Self::Response>;
+    fn dispatch(self, api: &mut ProjectEditorApi) -> Result<<Self as ApiCommand>::Response>;
 }
 
 impl request_sealed::Sealed for ExecuteProjectCommand {}
 
 impl ProjectEditorRequest for ExecuteProjectCommand {
-    type Response = ExecuteProjectCommandResult;
-
-    fn dispatch(self, api: &mut ProjectEditorApi) -> Result<Self::Response> {
+    fn dispatch(self, api: &mut ProjectEditorApi) -> Result<<Self as ApiCommand>::Response> {
         api.execute_project_command(self)
     }
 }
@@ -2626,9 +2726,7 @@ impl ProjectEditorRequest for ExecuteProjectCommand {
 impl request_sealed::Sealed for GetEditorState {}
 
 impl ProjectEditorRequest for GetEditorState {
-    type Response = GetEditorStateResult;
-
-    fn dispatch(self, api: &mut ProjectEditorApi) -> Result<Self::Response> {
+    fn dispatch(self, api: &mut ProjectEditorApi) -> Result<<Self as ApiCommand>::Response> {
         crate::state::execute_editor_state(&mut api.dispatcher, self)
     }
 }
@@ -2636,15 +2734,28 @@ impl ProjectEditorRequest for GetEditorState {
 impl ProjectEditorApi {
     /// Takes ownership of one dispatcher with an attached authoritative project.
     pub fn new(dispatcher: engine::EngineCommandDispatcher) -> Result<Self> {
+        Self::new_with_permissions(dispatcher, Arc::new(ApiPermissionContext::default()))
+    }
+
+    /// Takes ownership of one dispatcher and binds explicit host permission authority.
+    pub fn new_with_permissions(
+        dispatcher: engine::EngineCommandDispatcher,
+        permissions: Arc<ApiPermissionContext>,
+    ) -> Result<Self> {
         let _ = dispatcher.project_history_state()?;
         Ok(Self {
             dispatcher,
             pending_event_evidence: BTreeMap::new(),
+            permissions,
         })
     }
 
     /// Executes one stable authored command or complete replacement-state query.
-    pub fn execute<R: ProjectEditorRequest>(&mut self, request: R) -> Result<R::Response> {
+    pub fn execute<R: ProjectEditorRequest>(
+        &mut self,
+        request: R,
+    ) -> Result<<R as ApiCommand>::Response> {
+        self.permissions.authorize_command(&request)?;
         request.dispatch(self)
     }
 

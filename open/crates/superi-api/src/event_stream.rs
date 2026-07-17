@@ -13,6 +13,9 @@ use crate::events::{
     MediaCapabilitiesChanged, ProjectRecoveryChanged, ProjectSettingsChanged, ProjectStateChanged,
     ScenarioStateChanged,
 };
+use crate::permissions::{
+    ApiPermissionKind, ApiPermissionRequirementMode, ApiPermissionRequirements,
+};
 use crate::schema::{ApiResource, PublicMethodKind};
 use crate::version::{
     ASYNC_JOBS_SCHEMA_VERSION, AUDIO_AUTOMATION_SCHEMA_VERSION, CLOSE_EVENT_SUBSCRIPTION_METHOD,
@@ -890,6 +893,12 @@ impl ApiCommand for OpenEventSubscription {
     const METHOD: &'static str = OPEN_EVENT_SUBSCRIPTION_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Command;
     const SCHEMA_VERSION: SemanticVersion = EVENT_STREAM_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode = ApiPermissionRequirementMode::None;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        Ok(ApiPermissionRequirements::none())
+    }
 }
 
 /// Successful subscriber registration and its caller-held initial cursor.
@@ -964,6 +973,12 @@ impl ApiCommand for CloseEventSubscription {
     const METHOD: &'static str = CLOSE_EVENT_SUBSCRIPTION_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Command;
     const SCHEMA_VERSION: SemanticVersion = EVENT_STREAM_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode = ApiPermissionRequirementMode::None;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        Ok(ApiPermissionRequirements::none())
+    }
 }
 
 /// Successful subscriber removal.
@@ -1076,6 +1091,12 @@ impl ApiCommand for PollEvents {
     const METHOD: &'static str = POLL_EVENT_SUBSCRIPTION_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Query;
     const SCHEMA_VERSION: SemanticVersion = EVENT_STREAM_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode = ApiPermissionRequirementMode::None;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        Ok(ApiPermissionRequirements::none())
+    }
 }
 
 /// One successful bounded replay result.

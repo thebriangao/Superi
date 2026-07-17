@@ -1,11 +1,16 @@
 //! Stable public command vocabulary.
 
 use serde::{Deserialize, Serialize};
+use superi_core::error::Result;
 use superi_core::settings::SemanticVersion;
 
 use crate::api::{EngineIntrospectionSnapshot, MediaCapabilitiesSnapshot};
 use crate::audio_automation::{AudioAutomationMutation, AudioAutomationSnapshot};
 use crate::jobs::{AsyncJobHandle, AsyncJobsResult};
+use crate::permissions::{
+    ApiDestructiveOperation, ApiFilesystemAccess, ApiFilesystemPath, ApiPermissionKind,
+    ApiPermissionRequirement, ApiPermissionRequirementMode, ApiPermissionRequirements,
+};
 use crate::project::{ProjectSettingMutation, ProjectSettingsSnapshot};
 use crate::recovery::{ProjectRecoveryComparisonSnapshot, ProjectRecoverySnapshot};
 use crate::scenario::{ScenarioActionResult, ScenarioTransactionResult, SliceAction};
@@ -40,6 +45,15 @@ pub trait ApiCommand {
 
     /// Version of the method request and response contract.
     const SCHEMA_VERSION: SemanticVersion;
+
+    /// Whether permission requirements are absent, static, or payload-dependent.
+    const PERMISSION_MODE: ApiPermissionRequirementMode;
+
+    /// Every permission kind this method may require in stable order.
+    const PERMISSION_KINDS: &'static [ApiPermissionKind];
+
+    /// Derives the exact canonical requirements from this complete typed payload.
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements>;
 }
 
 /// Strict query for complete retained asynchronous job state.
@@ -75,10 +89,16 @@ impl ApiCommand for GetAsyncJobs {
     const METHOD: &'static str = GET_ASYNC_JOBS_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Query;
     const SCHEMA_VERSION: SemanticVersion = ASYNC_JOBS_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode = ApiPermissionRequirementMode::None;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        Ok(ApiPermissionRequirements::none())
+    }
 }
 
 macro_rules! define_async_job_command {
-    ($(#[$metadata:meta])* $name:ident, $method:ident) => {
+    ($(#[$metadata:meta])* $name:ident, $method:ident, $mode:expr, $kinds:expr, $operation:expr) => {
         $(#[$metadata])*
         #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
         #[serde(deny_unknown_fields)]
@@ -120,6 +140,18 @@ macro_rules! define_async_job_command {
             const METHOD: &'static str = $method;
             const KIND: PublicMethodKind = PublicMethodKind::Command;
             const SCHEMA_VERSION: SemanticVersion = ASYNC_JOBS_SCHEMA_VERSION;
+            const PERMISSION_MODE: ApiPermissionRequirementMode = $mode;
+            const PERMISSION_KINDS: &'static [ApiPermissionKind] = $kinds;
+
+            fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+                let operation: Option<ApiDestructiveOperation> = $operation;
+                match operation {
+                    Some(operation) => ApiPermissionRequirements::new([
+                        ApiPermissionRequirement::destructive(operation),
+                    ]),
+                    None => Ok(ApiPermissionRequirements::none()),
+                }
+            }
         }
     };
 }
@@ -127,27 +159,42 @@ macro_rules! define_async_job_command {
 define_async_job_command!(
     /// Strict command for cooperatively pausing one asynchronous job.
     PauseAsyncJob,
-    PAUSE_ASYNC_JOB_METHOD
+    PAUSE_ASYNC_JOB_METHOD,
+    ApiPermissionRequirementMode::None,
+    &[],
+    None
 );
 define_async_job_command!(
     /// Strict command for resuming one fully paused asynchronous job.
     ResumeAsyncJob,
-    RESUME_ASYNC_JOB_METHOD
+    RESUME_ASYNC_JOB_METHOD,
+    ApiPermissionRequirementMode::None,
+    &[],
+    None
 );
 define_async_job_command!(
     /// Strict command for retrying one nonterminal failed asynchronous job.
     RetryAsyncJob,
-    RETRY_ASYNC_JOB_METHOD
+    RETRY_ASYNC_JOB_METHOD,
+    ApiPermissionRequirementMode::None,
+    &[],
+    None
 );
 define_async_job_command!(
     /// Strict command for cooperatively cancelling one asynchronous job.
     CancelAsyncJob,
-    CANCEL_ASYNC_JOB_METHOD
+    CANCEL_ASYNC_JOB_METHOD,
+    ApiPermissionRequirementMode::Static,
+    &[ApiPermissionKind::Destructive],
+    Some(ApiDestructiveOperation::CancelAsyncJob)
 );
 define_async_job_command!(
     /// Strict command for removing one finalized asynchronous job.
     RemoveAsyncJob,
-    REMOVE_ASYNC_JOB_METHOD
+    REMOVE_ASYNC_JOB_METHOD,
+    ApiPermissionRequirementMode::Static,
+    &[ApiPermissionKind::Destructive],
+    Some(ApiDestructiveOperation::RemoveAsyncJob)
 );
 
 /// Strict command for cooperatively cancelling every unfinished asynchronous job.
@@ -183,6 +230,14 @@ impl ApiCommand for CancelAllAsyncJobs {
     const METHOD: &'static str = CANCEL_ALL_ASYNC_JOBS_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Command;
     const SCHEMA_VERSION: SemanticVersion = ASYNC_JOBS_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode = ApiPermissionRequirementMode::Static;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[ApiPermissionKind::Destructive];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        ApiPermissionRequirements::new([ApiPermissionRequirement::destructive(
+            ApiDestructiveOperation::CancelAsyncJob,
+        )])
+    }
 }
 
 /// Strict query for one complete editor replacement snapshot.
@@ -218,6 +273,12 @@ impl ApiCommand for GetEditorState {
     const METHOD: &'static str = GET_EDITOR_STATE_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Query;
     const SCHEMA_VERSION: SemanticVersion = EDITOR_STATE_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode = ApiPermissionRequirementMode::None;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        Ok(ApiPermissionRequirements::none())
+    }
 }
 
 /// Successful complete editor-state query.
@@ -292,6 +353,12 @@ impl ApiCommand for GetProjectRecovery {
     const METHOD: &'static str = GET_PROJECT_RECOVERY_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Query;
     const SCHEMA_VERSION: SemanticVersion = PROJECT_RECOVERY_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode = ApiPermissionRequirementMode::None;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        Ok(ApiPermissionRequirements::none())
+    }
 }
 
 /// Successful complete recovery-state query.
@@ -385,6 +452,12 @@ impl ApiCommand for CompareProjectRecovery {
     const METHOD: &'static str = COMPARE_PROJECT_RECOVERY_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Query;
     const SCHEMA_VERSION: SemanticVersion = PROJECT_RECOVERY_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode = ApiPermissionRequirementMode::None;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        Ok(ApiPermissionRequirements::none())
+    }
 }
 
 /// Successful semantic recovery comparison.
@@ -495,6 +568,14 @@ impl ApiCommand for RestoreProjectRecovery {
     const METHOD: &'static str = RESTORE_PROJECT_RECOVERY_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Command;
     const SCHEMA_VERSION: SemanticVersion = PROJECT_RECOVERY_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode = ApiPermissionRequirementMode::Static;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[ApiPermissionKind::Destructive];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        ApiPermissionRequirements::new([ApiPermissionRequirement::destructive(
+            ApiDestructiveOperation::RestoreProjectRecovery,
+        )])
+    }
 }
 
 /// Successful durable recovery restore result.
@@ -596,6 +677,14 @@ impl ApiCommand for DismissProjectRecovery {
     const METHOD: &'static str = DISMISS_PROJECT_RECOVERY_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Command;
     const SCHEMA_VERSION: SemanticVersion = PROJECT_RECOVERY_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode = ApiPermissionRequirementMode::Static;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[ApiPermissionKind::Destructive];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        ApiPermissionRequirements::new([ApiPermissionRequirement::destructive(
+            ApiDestructiveOperation::DismissProjectRecovery,
+        )])
+    }
 }
 
 /// Successful durable recovery dismissal result.
@@ -663,6 +752,12 @@ impl ApiCommand for GetAudioAutomation {
     const METHOD: &'static str = GET_AUDIO_AUTOMATION_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Query;
     const SCHEMA_VERSION: SemanticVersion = AUDIO_AUTOMATION_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode = ApiPermissionRequirementMode::None;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        Ok(ApiPermissionRequirements::none())
+    }
 }
 
 /// Successful response to [`GetAudioAutomation`].
@@ -739,6 +834,26 @@ impl ApiCommand for ExecuteAudioAutomationTransaction {
     const METHOD: &'static str = EXECUTE_AUDIO_AUTOMATION_TRANSACTION_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Command;
     const SCHEMA_VERSION: SemanticVersion = AUDIO_AUTOMATION_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode =
+        ApiPermissionRequirementMode::PayloadDependent;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[ApiPermissionKind::Destructive];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        let destructive = self.mutations.iter().any(|mutation| {
+            matches!(
+                mutation,
+                AudioAutomationMutation::RemoveLane { .. }
+                    | AudioAutomationMutation::RemoveKeyframe { .. }
+            )
+        });
+        if destructive {
+            ApiPermissionRequirements::new([ApiPermissionRequirement::destructive(
+                ApiDestructiveOperation::RemoveAudioAutomation,
+            )])
+        } else {
+            Ok(ApiPermissionRequirements::none())
+        }
+    }
 }
 
 /// Successful response to one authored audio automation transaction.
@@ -800,6 +915,12 @@ impl ApiCommand for GetProjectSettings {
     const METHOD: &'static str = GET_PROJECT_SETTINGS_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Query;
     const SCHEMA_VERSION: SemanticVersion = PROJECT_SETTINGS_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode = ApiPermissionRequirementMode::None;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        Ok(ApiPermissionRequirements::none())
+    }
 }
 
 /// Successful response to [`GetProjectSettings`].
@@ -869,6 +990,12 @@ impl ApiCommand for ExecuteProjectSettingsTransaction {
     const METHOD: &'static str = EXECUTE_PROJECT_SETTINGS_TRANSACTION_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Command;
     const SCHEMA_VERSION: SemanticVersion = PROJECT_SETTINGS_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode = ApiPermissionRequirementMode::None;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        Ok(ApiPermissionRequirements::none())
+    }
 }
 
 /// Successful response to one project settings transaction.
@@ -928,6 +1055,12 @@ impl ApiCommand for GetMediaCapabilities {
     const METHOD: &'static str = GET_MEDIA_CAPABILITIES_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Query;
     const SCHEMA_VERSION: SemanticVersion = MEDIA_CAPABILITIES_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode = ApiPermissionRequirementMode::None;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        Ok(ApiPermissionRequirements::none())
+    }
 }
 
 /// Typed request for one coherent engine integration validation snapshot.
@@ -949,6 +1082,12 @@ impl ApiCommand for GetEngineIntegrationValidation {
     const METHOD: &'static str = GET_ENGINE_INTEGRATION_VALIDATION_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Query;
     const SCHEMA_VERSION: SemanticVersion = ENGINE_INTEGRATION_VALIDATION_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode = ApiPermissionRequirementMode::None;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        Ok(ApiPermissionRequirements::none())
+    }
 }
 
 /// Successful coherent engine integration validation query.
@@ -1008,6 +1147,12 @@ impl ApiCommand for GetEngineIntrospection {
     const METHOD: &'static str = GET_ENGINE_INTROSPECTION_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Query;
     const SCHEMA_VERSION: SemanticVersion = ENGINE_INTROSPECTION_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode = ApiPermissionRequirementMode::None;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        Ok(ApiPermissionRequirements::none())
+    }
 }
 
 /// Successful response to [`GetEngineIntrospection`].
@@ -1060,6 +1205,13 @@ impl ApiCommand for ExecuteScenarioAction {
     const METHOD: &'static str = EXECUTE_SCENARIO_ACTION_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Command;
     const SCHEMA_VERSION: SemanticVersion = SLICE_SCENARIO_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode =
+        ApiPermissionRequirementMode::PayloadDependent;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[ApiPermissionKind::Filesystem];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        scenario_permission_requirements(std::slice::from_ref(&self.action))
+    }
 }
 
 /// Typed request to commit one optimistic ordered scenario transaction.
@@ -1115,4 +1267,24 @@ impl ApiCommand for ExecuteScenarioTransaction {
     const METHOD: &'static str = EXECUTE_SCENARIO_TRANSACTION_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Command;
     const SCHEMA_VERSION: SemanticVersion = SLICE_SCENARIO_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode =
+        ApiPermissionRequirementMode::PayloadDependent;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[ApiPermissionKind::Filesystem];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        scenario_permission_requirements(&self.actions)
+    }
+}
+
+fn scenario_permission_requirements(actions: &[SliceAction]) -> Result<ApiPermissionRequirements> {
+    let mut requirements = Vec::new();
+    for action in actions {
+        if let SliceAction::ImportClip { path, .. } = action {
+            requirements.push(ApiPermissionRequirement::filesystem(
+                ApiFilesystemAccess::Read,
+                ApiFilesystemPath::native(path.clone())?,
+            ));
+        }
+    }
+    ApiPermissionRequirements::new(requirements)
 }

@@ -1,6 +1,7 @@
 //! Stable transport-neutral authored audio automation adapter.
 
 use std::str::FromStr;
+use std::sync::Arc;
 
 use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
@@ -20,6 +21,7 @@ use crate::commands::{
     GetAudioAutomationResult,
 };
 use crate::events::AudioAutomationChanged;
+use crate::permissions::ApiPermissionContext;
 use crate::version::AUDIO_AUTOMATION_SCHEMA_VERSION;
 
 const COMPONENT: &str = "superi-api.audio-automation";
@@ -416,18 +418,31 @@ impl AudioAutomationSnapshot {
 /// Mutable public facade around one full engine dispatcher with attached automation state.
 pub struct AudioAutomationApi {
     dispatcher: EngineCommandDispatcher,
+    permissions: Arc<ApiPermissionContext>,
 }
 
 impl AudioAutomationApi {
     /// Takes ownership of a dispatcher with one attached automation owner.
     pub fn new(dispatcher: EngineCommandDispatcher) -> Result<Self> {
+        Self::new_with_permissions(dispatcher, Arc::new(ApiPermissionContext::default()))
+    }
+
+    /// Takes ownership of an automation dispatcher and binds host permission authority.
+    pub fn new_with_permissions(
+        dispatcher: EngineCommandDispatcher,
+        permissions: Arc<ApiPermissionContext>,
+    ) -> Result<Self> {
         let snapshot = dispatcher.audio_automation_snapshot()?;
         let _ = public_snapshot(&snapshot)?;
-        Ok(Self { dispatcher })
+        Ok(Self {
+            dispatcher,
+            permissions,
+        })
     }
 
     /// Executes the stable complete automation query through the engine dispatcher.
-    pub fn execute(&mut self, _command: GetAudioAutomation) -> Result<GetAudioAutomationResult> {
+    pub fn execute(&mut self, command: GetAudioAutomation) -> Result<GetAudioAutomationResult> {
+        self.permissions.authorize_command(&command)?;
         let outcome = self.dispatcher.dispatch(EngineCommandRequest::new(
             EngineTransactionId::new("audio-automation-get")?,
             EngineCommand::InspectAudioAutomation,
@@ -443,6 +458,7 @@ impl AudioAutomationApi {
         &mut self,
         command: ExecuteAudioAutomationTransaction,
     ) -> Result<ExecuteAudioAutomationTransactionResult> {
+        self.permissions.authorize_command(&command)?;
         let (transaction_id, expected_revision, mutations) = command.into_parts();
         let mutations = mutations
             .into_iter()

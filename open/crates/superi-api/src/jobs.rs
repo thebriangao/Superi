@@ -2,6 +2,7 @@
 
 use std::fmt;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -23,6 +24,7 @@ use crate::commands::{
     ResumeAsyncJob, RetryAsyncJob,
 };
 use crate::events::AsyncJobsChanged;
+use crate::permissions::ApiPermissionContext;
 use crate::version::ASYNC_JOBS_SCHEMA_VERSION;
 
 const COMPONENT: &str = "superi-api.jobs";
@@ -514,17 +516,31 @@ impl AsyncJobsResult {
 /// Mutable public facade around one engine dispatcher with an attached export queue.
 pub struct AsyncJobsApi {
     dispatcher: EngineCommandDispatcher,
+    permissions: Arc<ApiPermissionContext>,
 }
 
 impl AsyncJobsApi {
     /// Takes ownership of one dispatcher used for all public job operations.
     #[must_use]
-    pub const fn new(dispatcher: EngineCommandDispatcher) -> Self {
-        Self { dispatcher }
+    pub fn new(dispatcher: EngineCommandDispatcher) -> Self {
+        Self::new_with_permissions(dispatcher, Arc::new(ApiPermissionContext::default()))
+    }
+
+    /// Takes ownership of one dispatcher and binds explicit host permission authority.
+    #[must_use]
+    pub const fn new_with_permissions(
+        dispatcher: EngineCommandDispatcher,
+        permissions: Arc<ApiPermissionContext>,
+    ) -> Self {
+        Self {
+            dispatcher,
+            permissions,
+        }
     }
 
     /// Queries complete retained job replacement state without changing it.
     pub fn execute(&mut self, command: GetAsyncJobs) -> Result<AsyncJobsResult> {
+        self.permissions.authorize_command(&command)?;
         self.dispatch_export(
             command.into_transaction_id(),
             EngineExportJobCommand::InspectAll,
@@ -534,6 +550,7 @@ impl AsyncJobsApi {
 
     /// Requests cooperative pause for one job.
     pub fn pause(&mut self, command: PauseAsyncJob) -> Result<AsyncJobsResult> {
+        self.permissions.authorize_command(&command)?;
         let (transaction_id, handle) = command.into_parts();
         self.dispatch_export(
             transaction_id,
@@ -544,6 +561,7 @@ impl AsyncJobsApi {
 
     /// Resumes one fully paused job with a fresh attempt.
     pub fn resume(&mut self, command: ResumeAsyncJob) -> Result<AsyncJobsResult> {
+        self.permissions.authorize_command(&command)?;
         let (transaction_id, handle) = command.into_parts();
         self.dispatch_export(
             transaction_id,
@@ -554,6 +572,7 @@ impl AsyncJobsApi {
 
     /// Retries one nonterminal failed job with a fresh attempt.
     pub fn retry(&mut self, command: RetryAsyncJob) -> Result<AsyncJobsResult> {
+        self.permissions.authorize_command(&command)?;
         let (transaction_id, handle) = command.into_parts();
         self.dispatch_export(
             transaction_id,
@@ -564,6 +583,7 @@ impl AsyncJobsApi {
 
     /// Requests cooperative cancellation for one job.
     pub fn cancel(&mut self, command: CancelAsyncJob) -> Result<AsyncJobsResult> {
+        self.permissions.authorize_command(&command)?;
         let (transaction_id, handle) = command.into_parts();
         self.dispatch_export(
             transaction_id,
@@ -574,6 +594,7 @@ impl AsyncJobsApi {
 
     /// Requests cooperative cancellation for every unfinished job.
     pub fn cancel_all(&mut self, command: CancelAllAsyncJobs) -> Result<AsyncJobsResult> {
+        self.permissions.authorize_command(&command)?;
         self.dispatch_export(
             command.into_transaction_id(),
             EngineExportJobCommand::CancelAll,
@@ -583,6 +604,7 @@ impl AsyncJobsApi {
 
     /// Removes one finalized job with no retained dependent.
     pub fn remove(&mut self, command: RemoveAsyncJob) -> Result<AsyncJobsResult> {
+        self.permissions.authorize_command(&command)?;
         let (transaction_id, handle) = command.into_parts();
         self.dispatch_export(
             transaction_id,

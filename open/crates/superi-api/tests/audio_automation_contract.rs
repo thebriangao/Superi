@@ -31,6 +31,48 @@ fn keyframe(sample: i64, value: f32) -> AudioAutomationKeyframe {
 }
 
 #[test]
+fn denied_audio_removal_preserves_replacement_state_and_events() {
+    let _domain = ExecutionDomain::EngineControl
+        .enter_current()
+        .expect("test owns engine control");
+    let mut dispatcher = EngineCommandDispatcher::new().unwrap();
+    dispatcher
+        .attach_audio_automation(AudioAutomationState::new())
+        .unwrap();
+    let mut api = AudioAutomationApi::new(dispatcher).unwrap();
+    let before = api
+        .execute_transaction(ExecuteAudioAutomationTransaction::new(
+            "permission-create",
+            0,
+            vec![AudioAutomationMutation::CreateLane {
+                target: target(),
+                sample_rate: RATE,
+                default_gain: 1.0,
+            }],
+        ))
+        .unwrap()
+        .snapshot()
+        .clone();
+    api.drain_events().unwrap();
+
+    let failure = api
+        .execute_transaction(ExecuteAudioAutomationTransaction::new(
+            "permission-remove-denied",
+            before.revision(),
+            vec![AudioAutomationMutation::RemoveLane { target: target() }],
+        ))
+        .unwrap_err();
+    assert_eq!(failure.category(), ErrorCategory::PermissionDenied);
+    assert!(api.drain_events().unwrap().is_empty());
+    let after = api
+        .execute(GetAudioAutomation::new())
+        .unwrap()
+        .snapshot()
+        .clone();
+    assert_eq!(after, before);
+}
+
+#[test]
 fn one_strict_public_surface_controls_observes_and_emits_audio_automation() {
     let _domain = ExecutionDomain::EngineControl
         .enter_current()

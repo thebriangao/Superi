@@ -1,12 +1,16 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use superi_api::commands::{
     ApiCommand, CompareProjectRecovery, DismissProjectRecovery, GetProjectRecovery,
     RestoreProjectRecovery,
 };
 use superi_api::events::{ApiEvent, ProjectRecoveryChanged};
+use superi_api::permissions::{
+    ApiDestructiveOperation, ApiPermissionContext, ApiPermissionEffect, ApiPermissionRule,
+};
 use superi_api::recovery::ProjectRecoveryApi;
 use superi_api::version::{
     COMPARE_PROJECT_RECOVERY_METHOD, DISMISS_PROJECT_RECOVERY_METHOD, GET_PROJECT_RECOVERY_METHOD,
@@ -54,6 +58,57 @@ impl Drop for TempDirectory {
 }
 
 #[test]
+fn denied_recovery_mutations_preserve_catalog_state_files_and_events() {
+    let _domain = ExecutionDomain::EngineControl.enter_current().unwrap();
+    let directory = TempDirectory::new();
+    let active_path = directory.child("active.superi");
+    let (dispatcher, candidate) = project_recovery_dispatcher_fixture(
+        PROJECT,
+        ROOT,
+        Timebase::integer(24).unwrap(),
+        directory.path(),
+        &active_path,
+    )
+    .unwrap();
+    let mut api = ProjectRecoveryApi::new(dispatcher).unwrap();
+    let before = api
+        .execute(GetProjectRecovery::new("permission-before"))
+        .unwrap()
+        .snapshot()
+        .clone();
+    api.drain_events().unwrap();
+    let candidate_id = before.candidates()[0].candidate_id();
+    let catalog_revision = before.catalog_revision();
+
+    let restore = api
+        .restore(RestoreProjectRecovery::new(
+            "permission-restore-denied",
+            catalog_revision,
+            before.project_revision(),
+            candidate_id,
+        ))
+        .unwrap_err();
+    assert_eq!(restore.category(), ErrorCategory::PermissionDenied);
+    let dismiss = api
+        .dismiss(DismissProjectRecovery::new(
+            "permission-dismiss-denied",
+            catalog_revision,
+            candidate_id,
+        ))
+        .unwrap_err();
+    assert_eq!(dismiss.category(), ErrorCategory::PermissionDenied);
+    assert!(api.drain_events().unwrap().is_empty());
+    assert!(candidate.exists());
+
+    let after = api
+        .execute(GetProjectRecovery::new("permission-after"))
+        .unwrap()
+        .snapshot()
+        .clone();
+    assert_eq!(after, before);
+}
+
+#[test]
 fn one_strict_public_surface_discovers_compares_restores_and_dismisses_safely() {
     let _domain = ExecutionDomain::EngineControl.enter_current().unwrap();
     let directory = TempDirectory::new();
@@ -74,7 +129,22 @@ fn one_strict_public_surface_discovers_compares_restores_and_dismisses_safely() 
         b"not a sqlite database and contains private source detail",
     )
     .unwrap();
-    let mut api = ProjectRecoveryApi::new(dispatcher).unwrap();
+    let permissions = ApiPermissionContext::new(
+        "superi.test.project-recovery",
+        [
+            ApiPermissionRule::destructive(
+                ApiPermissionEffect::Allow,
+                ApiDestructiveOperation::RestoreProjectRecovery,
+            ),
+            ApiPermissionRule::destructive(
+                ApiPermissionEffect::Allow,
+                ApiDestructiveOperation::DismissProjectRecovery,
+            ),
+        ],
+    )
+    .unwrap();
+    let mut api =
+        ProjectRecoveryApi::new_with_permissions(dispatcher, Arc::new(permissions)).unwrap();
 
     let discovered = api
         .execute(GetProjectRecovery::new("public-recovery-discover"))

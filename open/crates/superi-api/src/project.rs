@@ -1,6 +1,7 @@
 //! Stable transport-neutral project settings command adapter.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
@@ -20,6 +21,7 @@ use crate::commands::{
     GetProjectSettingsResult,
 };
 use crate::events::ProjectSettingsChanged;
+use crate::permissions::ApiPermissionContext;
 use crate::version::PROJECT_SETTINGS_SCHEMA_VERSION;
 
 const COMPONENT: &str = "superi-api.project-settings";
@@ -116,17 +118,30 @@ impl ProjectSettingsSnapshot {
 /// Mutable public facade around one caller-supplied full engine dispatcher.
 pub struct ProjectSettingsApi {
     dispatcher: EngineCommandDispatcher,
+    permissions: Arc<ApiPermissionContext>,
 }
 
 impl ProjectSettingsApi {
     /// Takes ownership of a dispatcher with one attached project.
     pub fn new(dispatcher: EngineCommandDispatcher) -> Result<Self> {
+        Self::new_with_permissions(dispatcher, Arc::new(ApiPermissionContext::default()))
+    }
+
+    /// Takes ownership of a project dispatcher and binds host permission authority.
+    pub fn new_with_permissions(
+        dispatcher: EngineCommandDispatcher,
+        permissions: Arc<ApiPermissionContext>,
+    ) -> Result<Self> {
         let _ = dispatcher.project_snapshot()?;
-        Ok(Self { dispatcher })
+        Ok(Self {
+            dispatcher,
+            permissions,
+        })
     }
 
     /// Executes the stable project settings query through the engine dispatcher.
-    pub fn execute(&mut self, _command: GetProjectSettings) -> Result<GetProjectSettingsResult> {
+    pub fn execute(&mut self, command: GetProjectSettings) -> Result<GetProjectSettingsResult> {
+        self.permissions.authorize_command(&command)?;
         let outcome = self.dispatcher.dispatch(EngineCommandRequest::new(
             EngineTransactionId::new("project-settings-get")?,
             EngineCommand::InspectProjectSettings,
@@ -142,6 +157,7 @@ impl ProjectSettingsApi {
         &mut self,
         command: ExecuteProjectSettingsTransaction,
     ) -> Result<ExecuteProjectSettingsTransactionResult> {
+        self.permissions.authorize_command(&command)?;
         let (transaction_id, expected_revision, mutations) = command.into_parts();
         let mutations = mutations
             .into_iter()

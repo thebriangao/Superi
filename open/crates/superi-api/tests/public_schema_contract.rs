@@ -1,5 +1,6 @@
 use serde_json::{json, Value};
 use superi_api::commands::ApiCommand;
+use superi_api::permissions::{ApiPermissionKind, ApiPermissionRequirementMode};
 use superi_api::schema::{
     GetPublicApiSchema, GetPublicApiSchemaResult, JsonRpcFailureResponse, JsonRpcRequest,
     JsonRpcResponse, JsonRpcSuccessResponse, PublicApiError, PublicApiSchemaApi,
@@ -98,6 +99,37 @@ fn current_catalog_is_complete_versioned_sorted_and_deterministic() {
     assert_eq!(snapshot.error().categories().len(), 11);
     assert_eq!(snapshot.error().recoverabilities().len(), 4);
     assert_eq!(snapshot.capability().availability().len(), 4);
+    assert_eq!(
+        snapshot.permission().schema().version().to_string(),
+        "1.1.0"
+    );
+    assert_eq!(snapshot.permission().requirement_modes().len(), 3);
+    assert_eq!(snapshot.permission().kinds().len(), 3);
+    assert_eq!(snapshot.permission().effects().len(), 2);
+    assert_eq!(snapshot.permission().filesystem_accesses().len(), 3);
+    assert_eq!(snapshot.permission().filesystem_platforms().len(), 2);
+    assert_eq!(
+        snapshot.permission().filesystem_path_kinds(),
+        ["project_relative", "absolute"]
+    );
+    assert_eq!(
+        snapshot.permission().filesystem_scope_kinds(),
+        ["exact", "recursive"]
+    );
+    assert_eq!(snapshot.permission().plugin_operations().len(), 3);
+    assert_eq!(snapshot.permission().plugin_scope_kinds(), ["exact", "all"]);
+    assert_eq!(snapshot.permission().destructive_operations().len(), 5);
+
+    let methods = snapshot
+        .commands()
+        .iter()
+        .chain(snapshot.queries())
+        .collect::<Vec<_>>();
+    for method in &methods {
+        let (mode, kinds) = expected_permission(method.method());
+        assert_eq!(method.permission().requirement_mode(), mode);
+        assert_eq!(method.permission().possible_kinds(), kinds);
+    }
 
     assert!(snapshot
         .commands()
@@ -144,6 +176,7 @@ fn catalog_constructor_rejects_duplicates_overlap_and_incompatible_identity() {
         current.resources().to_vec(),
         current.error().clone(),
         current.capability().clone(),
+        current.permission().clone(),
     )
     .is_err());
 
@@ -158,6 +191,7 @@ fn catalog_constructor_rejects_duplicates_overlap_and_incompatible_identity() {
         current.resources().to_vec(),
         current.error().clone(),
         current.capability().clone(),
+        current.permission().clone(),
     )
     .is_err());
 
@@ -171,6 +205,7 @@ fn catalog_constructor_rejects_duplicates_overlap_and_incompatible_identity() {
         current.resources().to_vec(),
         current.error().clone(),
         current.capability().clone(),
+        current.permission().clone(),
     )
     .is_err());
     assert!(PublicApiSchemaSnapshot::try_new(
@@ -183,6 +218,7 @@ fn catalog_constructor_rejects_duplicates_overlap_and_incompatible_identity() {
         current.resources().to_vec(),
         current.error().clone(),
         current.capability().clone(),
+        current.permission().clone(),
     )
     .is_err());
 }
@@ -317,7 +353,37 @@ fn expected_domain_version(name: &str) -> SemanticVersion {
         PUBLIC_API_SCHEMA_VERSION
     } else if name.starts_with("superi.media.capabilities") {
         SemanticVersion::new(2, 0, 0)
+    } else if name == GET_PUBLIC_API_SCHEMA_METHOD {
+        PUBLIC_API_SCHEMA_VERSION.clone()
     } else {
         SemanticVersion::new(1, 0, 0)
+    }
+}
+
+fn expected_permission(
+    method: &str,
+) -> (ApiPermissionRequirementMode, &'static [ApiPermissionKind]) {
+    match method {
+        "superi.jobs.cancel"
+        | "superi.jobs.cancel_all"
+        | "superi.jobs.remove"
+        | "superi.project.recovery.dismiss"
+        | "superi.project.recovery.restore" => (
+            ApiPermissionRequirementMode::Static,
+            &[ApiPermissionKind::Destructive],
+        ),
+        "superi.audio.automation.transaction.execute" => (
+            ApiPermissionRequirementMode::PayloadDependent,
+            &[ApiPermissionKind::Destructive],
+        ),
+        "superi.project.command.execute" => (
+            ApiPermissionRequirementMode::PayloadDependent,
+            &[ApiPermissionKind::Filesystem, ApiPermissionKind::Plugin],
+        ),
+        "superi.slice.scenario.action.execute" | "superi.slice.scenario.transaction.execute" => (
+            ApiPermissionRequirementMode::PayloadDependent,
+            &[ApiPermissionKind::Filesystem],
+        ),
+        _ => (ApiPermissionRequirementMode::None, &[]),
     }
 }

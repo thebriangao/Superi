@@ -22,6 +22,15 @@ fn api_schema_is_a_deterministic_complete_public_api_consumer() {
     assert_eq!(first["events"].as_array().unwrap().len(), 8);
     assert_eq!(first["resources"].as_array().unwrap().len(), 11);
     assert_eq!(first["error"]["schema"]["version"], "1.0.0");
+    assert_eq!(first["permission"]["schema"]["version"], "1.1.0");
+    assert_eq!(first["permission"]["kinds"].as_array().unwrap().len(), 3);
+    assert_eq!(
+        first["permission"]["destructive_operations"]
+            .as_array()
+            .unwrap()
+            .len(),
+        5
+    );
     assert_eq!(
         first["capability"]["availability"]
             .as_array()
@@ -65,6 +74,20 @@ fn api_schema_is_a_deterministic_complete_public_api_consumer() {
             "superi.project.recovery.get",
             "superi.project.settings.get",
         ]
+    );
+    let project = first["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|method| method["method"] == "superi.project.command.execute")
+        .unwrap();
+    assert_eq!(
+        project["permission"]["requirement_mode"],
+        "payload_dependent"
+    );
+    assert_eq!(
+        project["permission"]["possible_kinds"],
+        serde_json::json!(["filesystem", "plugin"])
     );
 }
 

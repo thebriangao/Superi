@@ -1,10 +1,15 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use superi_api::commands::{ApiCommand, ExecuteScenarioAction};
+use superi_api::permissions::{
+    ApiFilesystemAccess, ApiFilesystemPath, ApiFilesystemScope, ApiPermissionContext,
+    ApiPermissionEffect, ApiPermissionRule,
+};
 use superi_api::scenario::{
     ScenarioApi, ScenarioDocument, ScenarioPhase, SliceActionKind, SliceImplementation,
     MAX_SCENARIO_ACTIONS,
@@ -46,7 +51,7 @@ fn api_projects_complete_canonical_state_and_reversible_operation_evidence() {
     fs::write(&source, b"canonical api fixture").unwrap();
     let scenario: ScenarioDocument =
         serde_json::from_value(canonical_scenario_value(&source)).unwrap();
-    let mut api = ScenarioApi::new();
+    let mut api = scenario_api_for(&source);
     let mut results = Vec::new();
 
     for action in scenario.actions() {
@@ -174,7 +179,7 @@ fn api_failures_do_not_publish_private_paths_or_raw_engine_context() {
         }]
     }))
     .unwrap();
-    let mut api = ScenarioApi::new();
+    let mut api = scenario_api_for(Path::new(private_path));
 
     let error = api
         .execute(ExecuteScenarioAction::new(scenario.actions()[0].clone()))
@@ -244,6 +249,21 @@ fn canonical_scenario_value(source: &Path) -> serde_json::Value {
             {"action": "inspect"}
         ]
     })
+}
+
+fn scenario_api_for(path: &Path) -> ScenarioApi {
+    let permissions = ApiPermissionContext::new(
+        "superi.test.scenario-contract",
+        [ApiPermissionRule::filesystem(
+            ApiPermissionEffect::Allow,
+            ApiFilesystemAccess::Read,
+            ApiFilesystemScope::exact(
+                ApiFilesystemPath::native(path.display().to_string()).unwrap(),
+            ),
+        )],
+    )
+    .unwrap();
+    ScenarioApi::new_with_permissions(Arc::new(permissions))
 }
 
 fn test_directory(label: &str) -> PathBuf {

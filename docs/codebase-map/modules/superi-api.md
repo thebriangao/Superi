@@ -2,8 +2,8 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: 47060e93d8d148befba85ee7e1158d94139cb360da6a895c2f2dbc34d1e2ea98
-source_files: 30
+source_hash: 91715b3ce92a5e2f37279beb74844b11e161bc4adaff5e0c5788ae296bb6cf69
+source_files: 32
 mapped_at_commit: working-tree
 ---
 
@@ -21,11 +21,15 @@ revision-fenced facade, and asynchronous job inspection, progress, cooperative c
 completion events over the engine-owned export queue, plus bounded ordered delivery for the complete
 public event vocabulary. The additive schema `1.1.0` catalog classifies all 26 current methods into
 15 commands and 11 queries, describes all eight events and 11 replacement resources, publishes the
-complete error and capability vocabularies, and defines strict data-only JSON-RPC 2.0 envelopes.
+complete error, capability, and permission vocabularies, and defines strict data-only JSON-RPC 2.0
+envelopes. A host-injected nonserializable permission context denies protected filesystem, plugin,
+and destructive operations by default, derives exact requirements from complete typed payloads,
+and authorizes before conversion or dispatch.
 The event stream adds API-owned registration, polling, backpressure, replay, and reconnect behavior
 without duplicating engine event ownership. Network transport, dynamic routing, push delivery,
 scripting, public job submission and typed job results, and project database file commands remain
-absent.
+absent. The generic editor and job facades project the engine's existing owners without duplicating
+state, history, scheduling, execution, or event ownership.
 
 ## Source inventory
 
@@ -39,13 +43,12 @@ absent.
 - `open/crates/superi-api/src/audio_automation.rs`: Implements strict clip-gain targets, exact
   sample times and keyframes, Read, Write, Touch, and Latch modes, every ordered mutation, complete
   replacement snapshots, canonical typed clip IDs, engine conversion, and the dispatcher-backed
-  public facade.
+  public facade with pre-dispatch destructive-removal authorization.
 - `open/crates/superi-api/src/commands.rs`: Defines versioned command and query classification on
-  `ApiCommand`, media, engine introspection,
-  integration validation, asynchronous jobs, complete editor state, project settings, project recovery, and audio
-  automation query types,
-  plus typed one-action scenario and ordered scenario, project settings, automation, compare,
-  restore, dismiss, pause, resume, retry, cancel, cancel-all, and remove commands.
+  `ApiCommand`, mandatory permission mode, possible permission kinds, and exact requirement
+  derivation for media, engine introspection, integration validation, asynchronous jobs, complete
+  editor state, project settings, project recovery, audio automation, scenario, cancellation,
+  removal, restore, and dismissal contracts.
 - `open/crates/superi-api/src/editor.rs`: Owns the strict generic project command, action, timeline,
   graph, media, clip-mix, and extension DTOs, checked engine conversion, typed history resource and
   evidence, and the dispatcher-backed apply, inspect, undo, redo, event, state-query, and persistence
@@ -53,8 +56,9 @@ absent.
 - `open/crates/superi-api/src/event_stream.rs`: Owns canonical stream and subscriber identities,
   finite retention and registration bounds, independent public sequencing, the closed eight-event
   union, command and observation correlation, immutable replay records, caller-held cursors,
-  non-destructive polling, explicit eviction and restart gaps, reset barriers, and the complete
-  authoritative replacement-resource manifest.
+  non-destructive polling, explicit permission-free classification for its three typed control
+  methods, eviction and restart gaps, reset barriers, and the complete authoritative
+  replacement-resource manifest.
 - `open/crates/superi-api/src/events.rs`: Defines versioned `ApiEvent`, media and engine introspection change
   events, and ordered full-replacement scenario, generic project history, project settings,
   project recovery, audio automation, and asynchronous job state events.
@@ -63,9 +67,13 @@ absent.
   dispatcher-backed query and cooperative control facade, host-only nonblocking runtime poll seam,
   and ordered engine event projection. It exposes result availability only as a Boolean and retains
   runtime executors and typed artifacts below the API boundary.
-- `open/crates/superi-api/src/lib.rs`: Exposes API, audio automation, command, event stream, event, project
-  editor, complete editor state, asynchronous jobs, settings, project recovery, scenario, public
-  schema, scripting, validation, and version modules.
+- `open/crates/superi-api/src/lib.rs`: Exposes API, audio automation, command, event stream, event,
+  project editor, complete editor state, asynchronous jobs, permissions, settings, project recovery,
+  scenario, public schema, scripting, validation, and version modules.
+- `open/crates/superi-api/src/permissions.rs`: Owns validated serializable rules and requirements,
+  component-aware project-relative, Unix, Windows drive, and Windows UNC scopes, exact and recursive
+  matching, plugin identity and capability delegation ceilings, destructive-operation scopes,
+  explicit deny precedence, safe denial errors, and the nonserializable host authority context.
 - `open/crates/superi-api/src/project.rs`: Implements strict project setting values and mutations,
   complete replacement snapshots, and the caller-owned dispatcher facade for settings inspection,
   optimistic transactions, and ordered event draining.
@@ -81,8 +89,9 @@ absent.
 - `open/crates/superi-api/src/schema.rs`: Owns the deterministic complete public catalog, schema
   descriptors, method and resource traits, typed schema discovery query, strict JSON-RPC 2.0
   request and response envelopes, safe structured errors, reviewed contexts, last-valid resource
-  references, capability vocabulary, and asynchronous jobs, event subscription, plus complete
-  editor-state resource registration without dynamic routing or engine state ownership.
+  references, capability and permission vocabularies, per-method permission metadata, asynchronous
+  jobs, event subscription, and complete editor-state resource registration without dynamic routing
+  or engine state ownership.
 - `open/crates/superi-api/src/scripting.rs`: Placeholder for a scripting runtime.
 - `open/crates/superi-api/src/state.rs`: Owns the strict ten-domain complete editor replacement
   snapshot, canonical authored JSON resource envelopes, bounded extension descriptors, exact audio
@@ -93,15 +102,17 @@ absent.
   accessors. It also provides the standalone starting-engine query owner used by the CLI and derives
   standalone construction failures from the shared user-safe projection.
 - `open/crates/superi-api/src/version.rs`: Owns all domain, catalog, and error schema revisions plus
-  permanent method and event names, including the complete `superi.jobs` vocabulary, editor-state
-  query, and event subscription open, close, and poll methods.
+  permanent method and event names, including catalog revision `1.1.0`, the complete `superi.jobs`
+  vocabulary, the editor-state query, and event subscription open, close, and poll methods.
 - `open/crates/superi-api/tests/async_jobs_contract.rs`: Proves strict handles, stable kind and
   weighted priority vocabulary, nonblocking progress and completion, every cooperative transition,
   cancel-all finality, deterministic ordering, dependency state, safe failure filtering, typed
-  result non-exposure, and ordered replacement events over the real engine queue.
+  result non-exposure, ordered replacement events over the real engine queue, and fail-closed
+  cancellation with unchanged state and events.
 - `open/crates/superi-api/tests/audio_automation_contract.rs`: Covers strict canonical JSON, every
   public mutation, permanent names, typed facade behavior, complete correlated events, Touch mode,
-  no-op suppression, and conversion failure atomicity through the real engine owner.
+  no-op suppression, conversion failure atomicity, and fail-closed removal with unchanged state and
+  events through the real engine owner.
 - `open/crates/superi-api/tests/media_capabilities_contract.rs`: Covers deterministic capability
   projection, strict serialization, change events, codec rows, and default registry integration.
 - `open/crates/superi-api/tests/dispatcher_contract.rs`: Covers atomic public transactions,
@@ -119,7 +130,8 @@ absent.
   identities, duplicate and exhausted registration, closed-union catalog parity, public sequence
   order, command and observation correlation, independent and idempotent replay, batch caps,
   eviction and restart recovery, complete resynchronization metadata, post-barrier delivery, close
-  isolation, strict JSON, and real editor, introspection, and asynchronous job producers.
+  isolation, strict JSON, and real editor, introspection, and asynchronous job producers, with the
+  editor producer granted only its exact generated project-relative media targets.
 - `open/crates/superi-api/tests/integration_validation_contract.rs`: Covers strict versioned JSON,
   nested canonical introspection, exact startup, sleep, wake, and recovery action projection,
   coherent degraded workflow admission, and user-safe active failure state.
@@ -130,11 +142,16 @@ absent.
   project recovery path, strict discover, compare, restore, dismiss, and event contracts, permanent
   names, path-shaped identity rejection, complete authored clip-mix comparison and restoration,
   active database publication, opaque candidates, and serialized exclusion of paths, SQLite
-  details, and raw source text.
+  details, raw source text, and denied restore or dismissal with unchanged files, state, and events.
+- `open/crates/superi-api/tests/permissions_contract.rs`: Proves filesystem component matching,
+  traversal and sibling resistance, platform separation, exact and recursive scopes, deny
+  precedence, plugin identity and delegation ceilings, destructive-operation scoping, safe errors,
+  deny-all defaults, unchanged project and scenario state on denial, and authorized event parity.
 - `open/crates/superi-api/tests/public_schema_contract.rs`: Covers exact catalog category counts and
   names, domain versions, primitive revision, canonical ordering, deterministic strict round trips,
   invalid catalog rejection, typed JSON-RPC success and failure exclusivity, all recovery classes,
-  diagnostic visibility filtering, and last-valid resource references.
+  diagnostic visibility filtering, last-valid resource references, the complete permission
+  vocabulary, and exact metadata for every method.
 - `open/crates/superi-api/tests/scenario_contract.rs`: Covers the strict canonical schema, complete
   state projection, exact undo plus redo evidence, structured last-valid-state failures, and
   negative proof that private paths and raw engine context values never serialize.
@@ -147,11 +164,13 @@ absent.
 The public schema catalog is schema `1.1.0` at query method `superi.api.schema.get`.
 `PublicApiSchemaSnapshot` records stable primitive revision 1 and JSON-RPC `2.0`, then separates 15
 mutating commands from 11 read-only queries and lists all eight current replacement events, 11
-current replacement resources, one complete error vocabulary, and one capability vocabulary in
-canonical name order. `ApiCommand` now declares method kind and schema version, `ApiEvent` declares
-payload version, and `ApiResource` centrally registers the current replacement resources. The
-explicit registration list is the supported public surface and is validated for duplicate names,
-command and query overlap, incompatible identity, malformed names, and primitive drift.
+current replacement resources, one complete error vocabulary, one capability vocabulary, and one
+permission vocabulary in canonical name order. `ApiCommand` declares method kind, schema version,
+permission requirement mode, every possible permission kind, and exact requirement derivation with
+no default classification. `ApiEvent` declares payload version, and `ApiResource` centrally
+registers the current replacement resources. The explicit registration list is the supported
+public surface and is validated for duplicate names, command and query overlap, incompatible
+identity, malformed names, and primitive drift.
 
 `JsonRpcRequest`, `JsonRpcSuccessResponse`, `JsonRpcFailureResponse`, and `JsonRpcResponse` provide
 strict serializable JSON-RPC 2.0 shapes with string IDs and typed payloads. They are data contracts,
@@ -160,6 +179,15 @@ stable application code and versioned structured data with core-owned category a
 safe title and action, reviewed actionable contexts, and an optional last-valid resource reference.
 Diagnostic conversion copies only `UserSafeError` and fields explicitly marked user-safe. Direct
 `Error` conversion requires caller-supplied reviewed contexts and never copies raw error contexts.
+
+`ApiPermissionContext` is host authority and is deliberately not serializable. Its typed rules can
+allow or deny exact or recursive filesystem scopes, exact or all plugin identities with bounded
+capability delegation, and individual destructive operations. Deny rules override matching allows,
+and no matching allow denies the protected request. Filesystem matching is lexical and
+component-aware across project-relative, Unix, Windows drive, and Windows UNC syntax. It does not
+claim symlink confinement or replace revalidation and operating-system containment at the actual I/O
+owner. Permission failures expose only the principal, method, permission kind, and operation code,
+never a target path, plugin identity, or delegated capability.
 
 The media capability surface remains schema `2.0.0`, method
 `superi.media.capabilities.get`, and event `superi.media.capabilities.changed`. It exposes strict
@@ -286,14 +314,16 @@ Public schema discovery is entirely API-owned metadata over existing contracts:
 GetPublicApiSchema
   -> PublicApiSchemaApi
   -> explicit ApiCommand, ApiEvent, and ApiResource registrations
+  -> permission mode and possible-kind metadata for every method
   -> validated canonical PublicApiSchemaSnapshot
   -> typed Rust client or superi-cli api schema
 ```
 
 The catalog does not inspect private engine enums or create runtime ownership. Existing mutating
-facades still dispatch to the canonical engine owners, while read-only facades retain their current
-projection paths. JSON-RPC envelope types can carry those typed values later without implementing
-method routing, network transport, push delivery, permissions, or version negotiation.
+facades still dispatch to the canonical engine owners after permission authorization, while
+read-only facades retain their current projection paths. JSON-RPC envelope types can carry those
+typed values later without implementing method routing, network transport, push delivery,
+authentication, or version negotiation.
 
 Ordered public delivery remains downstream of every existing typed producer:
 
@@ -312,6 +342,22 @@ by their current producers; the public sequence orders only delivery across the 
 vocabulary. A stream restart is detectable because a new owner uses a new stable stream identity.
 After a gap, clients refresh the complete manifest, adopt the returned barrier, and can receive
 events published after that barrier without ambiguity.
+
+Protected command flow is shared by every permission-bound facade:
+
+```text
+complete typed ApiCommand payload
+  -> payload-derived canonical ApiPermissionRequirements
+  -> host-injected ApiPermissionContext with deny precedence
+  -> reject without conversion, dispatch, sequence, state, file, or event change
+     or continue through the existing canonical engine owner
+```
+
+Current filesystem requirements are scenario import and generic project media path mutation. Plugin
+requirements cover durable extension state, lifecycle, and explicit capability delegation.
+Destructive requirements cover asynchronous job cancellation and removal, recovery restore and
+dismissal, and audio automation lane or keyframe removal. Unprotected siblings remain explicitly
+classified with no requirements instead of inheriting authority from a method-wide switch.
 
 Media capability conversion remains declaration-only. Engine registry records are projected into
 API-owned stable types, equal states do not advance API revision, and a semantic change emits one
@@ -477,8 +523,9 @@ messages, contexts, paths, and source chains never serialize.
   real file-backed recovery artifacts without adding API-to-project or API-to-timeline edges.
 - `superi-cli` is the first production Rust consumer of `PublicApiSchemaApi`, `ScenarioApi`, and
   `IntegrationValidationApi`. Its schema process contract consumes the job registrations without
-  reconstructing the catalog or projecting engine state directly. It does not yet expose job
-  control commands.
+  reconstructing the catalog or projecting engine state directly. Its scenario consumer binds one
+  exact read grant for the resolved canonical fixture path and no repository-wide authority. It does
+  not yet expose job control commands.
 
 No network transport, UI, shell, scripting runtime, extension host, or closed-tier client is
 present. The event stream is a transport-neutral in-process owner that a later server can expose.
@@ -490,6 +537,19 @@ present. The event stream is a transport-neutral in-process owner that a later s
 - The schema catalog is deterministic, complete for the current explicit registration list, sorted
   by permanent names, and rejects duplicates, command-query overlap, or incompatible schema and
   primitive identity.
+- Every `ApiCommand` must classify permission mode and possible kinds explicitly and derive a
+  canonical requirement set from its complete typed payload. Protected facades authorize that set
+  before conversion or dispatch, and constructors without a host context deny all protected
+  operations.
+- Permission evaluation is requirement-complete and fail closed. Every requirement needs a matching
+  allow, any matching deny wins, recursive filesystem scopes match component boundaries rather than
+  string prefixes, plugin scopes match canonical identities, and delegation cannot exceed the
+  allowed capability ceiling.
+- Permission denial advances no command sequence, project or subsystem revision, history, durable
+  recovery file, or event stream. Safe errors omit filesystem targets, plugin identities, delegated
+  capabilities, and policy rule contents.
+- Filesystem authorization is a logical public API boundary over typed lexical paths. Actual I/O
+  owners must still confine handles, resolve symlink behavior, and apply platform sandbox policy.
 - JSON-RPC request and response values require version `2.0`, string IDs, typed methods, and exactly
   one result or error branch. Event ordering and replay come only from the event stream contracts,
   not JSON-RPC IDs.
@@ -606,12 +666,13 @@ plus two redo actions, final revision 8, structured engine context, last-valid-s
 serialized exclusion of a private missing-source path and raw context values.
 
 Four public schema contracts prove the exact 15-command, 11-query, eight-event, and 11-resource
-surface, current domain versions, catalog schema `1.1.0`, error schema `1.0.0`, media schema `2.0.0`, stable
-primitive revision 1, strict deterministic catalog round trips, invalid identity and duplicate
-rejection, typed JSON-RPC exclusivity, all four recovery classes, user-safe diagnostic filtering,
-and last-valid resource identity and revision. They include every public asynchronous job and event
+surface, current domain versions, catalog schema `1.1.0`, error schema `1.0.0`, media schema `2.0.0`,
+stable primitive revision 1, strict deterministic catalog round trips, invalid identity and
+duplicate rejection, typed JSON-RPC exclusivity, all four recovery classes, user-safe diagnostic
+filtering, last-valid resource identity and revision, the complete permission vocabulary, and exact
+permission metadata for all 26 methods. They include every public asynchronous job and event
 subscription method and resource, but do not claim a network transport server, dynamic method
-routing, push delivery, permissions, generated bindings, or negotiation.
+routing, push delivery, authentication, generated bindings, or negotiation.
 
 Six event stream contracts plus one sequence-exhaustion unit test prove strict identities and wire
 values, finite configuration, duplicate and capacity rejection, exact eight-event union parity,
@@ -623,7 +684,15 @@ integration tests publish events produced by real project editor, engine introsp
 asynchronous job lifecycle paths. They do not claim network I/O, push delivery, persisted replay
 across process lifetimes, or authorization.
 
-Five asynchronous job integration contracts plus one exhaustive unit mapping drive the real
+Five focused permission contracts prove canonical and deserialized rule validation, deterministic
+requirements, explicit deny precedence, fail-closed defaults, component-aware filesystem scopes,
+project-relative traversal rejection, sibling-prefix resistance, platform separation, plugin
+identity and delegation ceilings, destructive operation matching, safe errors, unchanged project
+and scenario replacement state and events on denial, and authorized parity. The destructive-owner
+integration contracts separately prove denied job cancellation, recovery restore and dismissal, and
+audio automation removal preserve their complete state, files, and event streams.
+
+Six asynchronous job integration contracts plus one exhaustive unit mapping drive the real
 dispatcher-owned export queue. They prove canonical handle rejection, strict wire round trips,
 stable kind and weighted priority vocabulary, nonblocking progress and ordered completion events,
 pause, resume, retry, cancel, cancel-all, remove, dependency state, safe failure filtering,
@@ -660,14 +729,14 @@ project revision and command correlation, one full replacement event, and all th
 names. They do not claim wire delivery, database file operations, audio device reconfiguration, or
 render execution.
 
-Two project recovery contracts drive a caller-owned full dispatcher with a real active project
+Three project recovery contracts drive a caller-owned full dispatcher with a real active project
 database and autosave namespace. They prove all four permanent method names, the permanent event
 name, strict unknown-field rejection, opaque candidate identity, degraded corruption beside one
 valid candidate, typed comparison including authored clip-mix state, durable restore, candidate
 retention, exact later dismissal, complete replacement events, path-shaped identity rejection, and
 JSON exclusion of absolute paths, SQLite messages, and raw source text.
 
-Four audio automation contracts drive a caller-owned full dispatcher with real audio-owned state.
+Five audio automation contracts drive a caller-owned full dispatcher with real audio-owned state.
 They prove schema `1.0.0`, all three permanent names, strict request, result, snapshot, and event
 round trips, canonical clip identifiers, every supported mutation, Read, Write, Touch, and Latch
 projection, Touch behavior through the facade, no-op suppression, exact revision correlation, and
@@ -690,8 +759,11 @@ authority, and integration validation extends that same state with precise actio
 evidence. Project settings retain exact durable scalar meaning, and project recovery now exposes one
 complete strict discover, compare, restore, and dismiss surface without leaking file identity. The
 API still does not expose project file open or save, public job submission or typed results,
-network transport, dynamic routing, push delivery, permissions, generated bindings, a scripting
-runtime, or CLI editor execution.
+network transport, dynamic routing, push delivery, persisted replay, authentication,
+operating-system sandboxing, generated bindings, a scripting runtime, or CLI editor execution.
+Host-injected authorization now covers every current
+caller-selected filesystem target, plugin state and delegation mutation, and destructive job,
+recovery, and automation operation before dispatch.
 Scenario schema 1 remains deliberately narrow and fixed to one canonical edit. Its reference
 state proves transactional control semantics, not production timeline, graph, or media ownership.
 Authored clip-gain automation is a substantive strict transaction and event surface over the engine
@@ -712,11 +784,12 @@ it remains an in-process snapshot facade. The standalone helper creates a fresh 
 the CLI; a production UI must supply fresh observations from its live dispatcher. Validation does
 not supply transport, endpoint mutation, or background polling.
 
-The separate media, engine introspection, integration validation, scenario, event stream, catalog,
-and error schema versions are correct for independent surfaces. Data-only JSON-RPC framing and
-bounded retryable polling now exist, while network hosting, dynamic routing, version negotiation,
-authentication, persisted replay, and push delivery remain required before remote clients exist.
-Public scenario failure state
+The separate media, engine introspection, integration validation, scenario, event stream, catalog, and error
+schema versions are correct for independent surfaces. The catalog is `1.1.0` because permission
+metadata is additive while individual method and resource schemas retain their own versions.
+Data-only JSON-RPC framing, bounded retryable polling, and host-injected authorization now exist,
+while network hosting, dynamic routing, version negotiation, authentication, persisted replay, and
+push delivery remain required before remote clients exist. Public scenario failure state
 is boxed to keep result errors bounded while preserving the same serialized shape and now removes
 raw context values.
 
@@ -733,6 +806,11 @@ identity after owner restart, omit an authoritative state resource from reconnec
 an untyped event fallback. New state resources must declare their exact refresh method and method
 kind, and new events require strict correlation, replacement-revision validation, and real producer
 proof.
+Keep the permission context host-injected and nonserializable. Every new command or nested payload
+variant must classify its permission mode and kinds, derive exact requirements before conversion,
+publish matching catalog metadata, prove denial leaves all owned state and events unchanged, and
+prove the authorized path retains parity. Keep lexical filesystem scopes honest about symlinks and
+require actual I/O owners to revalidate and contain operating-system access.
 Keep
 project setting keys and validation project-owned, resolve them only in engine, and retain the API's
 dependency on engine rather than adding a direct project edge. Engine command changes require

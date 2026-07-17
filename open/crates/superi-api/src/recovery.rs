@@ -1,5 +1,7 @@
 //! Strict transport-neutral project crash recovery API.
 
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 use superi_core::diagnostics::UserSafeError;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
@@ -20,6 +22,7 @@ use crate::commands::{
     RestoreProjectRecovery, RestoreProjectRecoveryResult,
 };
 use crate::events::ProjectRecoveryChanged;
+use crate::permissions::ApiPermissionContext;
 use crate::version::PROJECT_RECOVERY_SCHEMA_VERSION;
 
 const COMPONENT: &str = "superi-api.project-recovery";
@@ -218,17 +221,30 @@ impl ProjectRecoveryComparisonSnapshot {
 /// Mutable public facade around one recovery-attached engine dispatcher.
 pub struct ProjectRecoveryApi {
     dispatcher: EngineCommandDispatcher,
+    permissions: Arc<ApiPermissionContext>,
 }
 
 impl ProjectRecoveryApi {
     /// Takes ownership of a full dispatcher with one attached project.
     pub fn new(dispatcher: EngineCommandDispatcher) -> Result<Self> {
+        Self::new_with_permissions(dispatcher, Arc::new(ApiPermissionContext::default()))
+    }
+
+    /// Takes ownership of a recovery dispatcher and binds explicit host permission authority.
+    pub fn new_with_permissions(
+        dispatcher: EngineCommandDispatcher,
+        permissions: Arc<ApiPermissionContext>,
+    ) -> Result<Self> {
         let _ = dispatcher.project_snapshot()?;
-        Ok(Self { dispatcher })
+        Ok(Self {
+            dispatcher,
+            permissions,
+        })
     }
 
     /// Refreshes and returns complete recovery state.
     pub fn execute(&mut self, command: GetProjectRecovery) -> Result<GetProjectRecoveryResult> {
+        self.permissions.authorize_command(&command)?;
         let transaction_id = EngineTransactionId::new(command.into_transaction_id())?;
         let outcome = self.dispatcher.dispatch(EngineCommandRequest::new(
             transaction_id,
@@ -249,6 +265,7 @@ impl ProjectRecoveryApi {
         &mut self,
         command: CompareProjectRecovery,
     ) -> Result<CompareProjectRecoveryResult> {
+        self.permissions.authorize_command(&command)?;
         let (transaction_id, catalog_revision, candidate_id) = command.into_parts();
         let candidate_id = parse_candidate_id(&candidate_id)?;
         let outcome = self.dispatcher.dispatch(EngineCommandRequest::new(
@@ -277,6 +294,7 @@ impl ProjectRecoveryApi {
         &mut self,
         command: RestoreProjectRecovery,
     ) -> Result<RestoreProjectRecoveryResult> {
+        self.permissions.authorize_command(&command)?;
         let (transaction_id, catalog_revision, project_revision, candidate_id) =
             command.into_parts();
         let candidate_id = parse_candidate_id(&candidate_id)?;
@@ -304,6 +322,7 @@ impl ProjectRecoveryApi {
         &mut self,
         command: DismissProjectRecovery,
     ) -> Result<DismissProjectRecoveryResult> {
+        self.permissions.authorize_command(&command)?;
         let (transaction_id, catalog_revision, candidate_id) = command.into_parts();
         let candidate_id = parse_candidate_id(&candidate_id)?;
         let outcome = self.dispatcher.dispatch(EngineCommandRequest::new(

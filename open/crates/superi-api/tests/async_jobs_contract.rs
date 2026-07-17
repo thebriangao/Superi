@@ -14,6 +14,9 @@ use superi_api::events::{ApiEvent, AsyncJobsChanged};
 use superi_api::jobs::{
     AsyncJobHandle, AsyncJobKind, AsyncJobPriority, AsyncJobStatus, AsyncJobsApi,
 };
+use superi_api::permissions::{
+    ApiDestructiveOperation, ApiPermissionContext, ApiPermissionEffect, ApiPermissionRule,
+};
 use superi_api::version::{
     ASYNC_JOBS_CHANGED_EVENT, ASYNC_JOBS_SCHEMA_VERSION, CANCEL_ALL_ASYNC_JOBS_METHOD,
     CANCEL_ASYNC_JOB_METHOD, GET_ASYNC_JOBS_METHOD, PAUSE_ASYNC_JOB_METHOD,
@@ -61,6 +64,40 @@ fn public_job_wire_contract_is_strict_versioned_and_namespaced() {
 }
 
 #[test]
+fn denied_job_cancellation_preserves_replacement_state_and_events() -> Result<()> {
+    let guard = ExecutionDomain::EngineControl.enter_current()?;
+    let mut dispatcher = EngineCommandDispatcher::new()?;
+    let runtime = dispatcher.attach_export_jobs::<u64>(ExportJobQueueConfig::new(1, 2, 4)?)?;
+    start_engine(&mut dispatcher)?;
+    dispatcher.drain_events()?;
+
+    let mut api = AsyncJobsApi::new(dispatcher);
+    let before = api
+        .execute(GetAsyncJobs::new("permission-before"))?
+        .snapshot()
+        .clone();
+    api.drain_events()?;
+    let failure = api
+        .cancel(CancelAsyncJob::new(
+            "permission-denied",
+            AsyncJobHandle::from(JobId::from_raw(0xc020)),
+        ))
+        .unwrap_err();
+    assert_eq!(failure.category(), ErrorCategory::PermissionDenied);
+    assert!(api.drain_events()?.is_empty());
+    let after = api
+        .execute(GetAsyncJobs::new("permission-after"))?
+        .snapshot()
+        .clone();
+    assert_eq!(after, before);
+
+    drop(api);
+    drop(guard);
+    runtime.shutdown()?;
+    Ok(())
+}
+
+#[test]
 fn public_api_projects_nonblocking_progress_and_ordered_completion_events() -> Result<()> {
     let guard = ExecutionDomain::EngineControl.enter_current()?;
     let mut dispatcher = EngineCommandDispatcher::new()?;
@@ -81,7 +118,7 @@ fn public_api_projects_nonblocking_progress_and_ordered_completion_events() -> R
     dispatcher.drain_events()?;
 
     let handle = AsyncJobHandle::from(job_id);
-    let mut api = AsyncJobsApi::new(dispatcher);
+    let mut api = jobs_api(dispatcher);
     let initial = api.execute(GetAsyncJobs::new("jobs-get"))?;
     assert_eq!(initial.transaction_id(), "jobs-get");
     assert_eq!(
@@ -189,7 +226,7 @@ fn public_pause_resume_retry_and_remove_preserve_engine_transition_policy() -> R
 
     let paused = AsyncJobHandle::from(pause_id);
     let retried = AsyncJobHandle::from(retry_id);
-    let mut api = AsyncJobsApi::new(dispatcher);
+    let mut api = jobs_api(dispatcher);
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
         let state = api.poll_runtime("host-wait-pause-running")?;
@@ -283,7 +320,7 @@ fn public_cancel_all_finalizes_every_unfinished_job_in_handle_order() -> Result<
 
     let first = AsyncJobHandle::from(first_id);
     let second = AsyncJobHandle::from(second_id);
-    let mut api = AsyncJobsApi::new(dispatcher);
+    let mut api = jobs_api(dispatcher);
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
         let state = api.poll_runtime("host-wait-cancel-all-running")?;
@@ -377,7 +414,7 @@ fn public_cancellation_is_cooperative_and_failure_snapshots_are_user_safe() -> R
 
     let cancelled = AsyncJobHandle::from(cancelled_id);
     let failed = AsyncJobHandle::from(failed_id);
-    let mut api = AsyncJobsApi::new(dispatcher);
+    let mut api = jobs_api(dispatcher);
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
         let state = api.poll_runtime("host-wait-running")?;
@@ -455,6 +492,24 @@ fn start_engine(dispatcher: &mut EngineCommandDispatcher) -> Result<()> {
     }
     assert_eq!(state.phase(), LifecyclePhase::Running);
     Ok(())
+}
+
+fn jobs_api(dispatcher: EngineCommandDispatcher) -> AsyncJobsApi {
+    let permissions = ApiPermissionContext::new(
+        "superi.test.async-jobs",
+        [
+            ApiPermissionRule::destructive(
+                ApiPermissionEffect::Allow,
+                ApiDestructiveOperation::CancelAsyncJob,
+            ),
+            ApiPermissionRule::destructive(
+                ApiPermissionEffect::Allow,
+                ApiDestructiveOperation::RemoveAsyncJob,
+            ),
+        ],
+    )
+    .unwrap();
+    AsyncJobsApi::new_with_permissions(dispatcher, Arc::new(permissions))
 }
 
 fn dispatch(

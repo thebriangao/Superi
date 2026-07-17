@@ -1,10 +1,15 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
 use superi_api::commands::{ApiCommand, ExecuteScenarioAction, ExecuteScenarioTransaction};
 use superi_api::events::{ApiEvent, ScenarioStateChanged};
+use superi_api::permissions::{
+    ApiFilesystemAccess, ApiFilesystemPath, ApiFilesystemScope, ApiPermissionContext,
+    ApiPermissionEffect, ApiPermissionRule,
+};
 use superi_api::scenario::{
     ExactFrameRate, ScenarioApi, ScenarioPhase, ScenarioTransactionResult, SliceAction,
     SliceActionKind, SliceGraphEffect,
@@ -17,7 +22,7 @@ fn typed_automation_transaction_is_atomic_revision_fenced_and_evented() {
     let source = directory.join("input.webm");
     let source_bytes = b"public dispatcher transaction fixture";
     fs::write(&source, source_bytes).unwrap();
-    let mut api = ScenarioApi::new();
+    let mut api = scenario_api_for(&source);
 
     let invalid = ExecuteScenarioTransaction::new(
         "automation-invalid",
@@ -133,7 +138,7 @@ fn legacy_action_command_routes_through_the_same_dispatcher_and_event_vocabulary
     let source = directory.join("input.webm");
     let source_bytes = b"legacy action fixture";
     fs::write(&source, source_bytes).unwrap();
-    let mut api = ScenarioApi::new();
+    let mut api = scenario_api_for(&source);
 
     let result = api
         .execute(ExecuteScenarioAction::new(import_action(
@@ -184,6 +189,21 @@ fn import_action(path: PathBuf, payload: &[u8]) -> SliceAction {
         width: 96,
         height: 54,
     }
+}
+
+fn scenario_api_for(path: &std::path::Path) -> ScenarioApi {
+    let permissions = ApiPermissionContext::new(
+        "superi.test.dispatcher-contract",
+        [ApiPermissionRule::filesystem(
+            ApiPermissionEffect::Allow,
+            ApiFilesystemAccess::Read,
+            ApiFilesystemScope::exact(
+                ApiFilesystemPath::native(path.display().to_string()).unwrap(),
+            ),
+        )],
+    )
+    .unwrap();
+    ScenarioApi::new_with_permissions(Arc::new(permissions))
 }
 
 fn test_directory(label: &str) -> PathBuf {

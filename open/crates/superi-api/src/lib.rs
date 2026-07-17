@@ -9,6 +9,7 @@ pub mod editor;
 pub mod event_stream;
 pub mod events;
 pub mod jobs;
+pub mod permissions;
 pub mod project;
 pub mod recovery;
 pub mod scenario;

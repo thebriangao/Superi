@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -15,6 +16,10 @@ use superi_api::event_stream::{
 };
 use superi_api::events::{ApiEvent, AsyncJobsChanged, ProjectStateChanged};
 use superi_api::jobs::{AsyncJobHandle, AsyncJobStatus, AsyncJobsApi};
+use superi_api::permissions::{
+    ApiFilesystemAccess, ApiFilesystemPath, ApiFilesystemScope, ApiPermissionContext,
+    ApiPermissionEffect, ApiPermissionRule,
+};
 use superi_api::schema::{ApiResource, PublicApiSchemaApi, PublicMethodKind};
 use superi_api::version::{
     CLOSE_EVENT_SUBSCRIPTION_METHOD, EVENT_STREAM_SCHEMA_VERSION, OPEN_EVENT_SUBSCRIPTION_METHOD,
@@ -460,7 +465,22 @@ fn project_events(count: u64) -> Result<Vec<ProjectStateChanged>> {
     let document = engine::ProjectDocument::new(editorial, root_timeline_id)?;
     let mut dispatcher = EngineCommandDispatcher::new()?;
     dispatcher.attach_project(document)?;
-    let mut editor = superi_api::editor::ProjectEditorApi::new(dispatcher)?;
+    let rules = (0..count)
+        .map(|revision| {
+            Ok(ApiPermissionRule::filesystem(
+                ApiPermissionEffect::Allow,
+                ApiFilesystemAccess::Read,
+                ApiFilesystemScope::exact(ApiFilesystemPath::project_relative(format!(
+                    "source-{revision}.mov"
+                ))?),
+            ))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let permissions = ApiPermissionContext::new("superi.test.event-stream", rules)?;
+    let mut editor = superi_api::editor::ProjectEditorApi::new_with_permissions(
+        dispatcher,
+        Arc::new(permissions),
+    )?;
     let mut events = Vec::new();
     for expected_revision in 0..count {
         let transaction_id = format!("event-stream-project-{expected_revision}");

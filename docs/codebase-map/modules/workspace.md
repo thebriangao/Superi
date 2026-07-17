@@ -996,8 +996,9 @@ The documents deliberately point into other modules:
   scheduling, managed recovery-point retention, and pruning;
   `superi-engine` owns bounded compound project commands, session command history, extension
   dispatch, canonical asynchronous export-job scheduling, and integration;
-  `superi-api` owns the stable public seam, including strict nonblocking job inspection and
-  cooperative control; and `superi-cli` is the headless schema consumer.
+  `superi-api` owns the stable public seam, including host-injected filesystem, plugin, and
+  destructive authorization plus strict nonblocking job inspection and cooperative control; and
+  `superi-cli` is the headless schema and exact-fixture scenario consumer.
 - `superi-fixture-tool` validates repository fixture policy but does not enter runtime engine flow.
 - `superi-dependency-check` validates the runtime Cargo graph but does not enter runtime engine flow.
 - `superi-boundary-tool` validates source boundaries but does not enter runtime engine flow.
@@ -1317,6 +1318,11 @@ GPU, image, codec, serialization, platform, and native-build dependency graph, a
 image, platform, and unsafe documents describe implemented contracts rather than empty placeholders.
 Its `superi-api` package record now includes one test-only concurrency edge for the real engine
 introspection ownership contract without changing the production runtime graph.
+The API now owns a nonserializable host permission context, typed lexical filesystem and plugin
+scopes, explicit destructive operations, deny precedence, payload-derived requirements, and schema
+`1.1.0` discovery metadata without adding a dependency. The CLI exercises that boundary with one
+exact canonical fixture-read grant; authentication, symlink confinement, and operating-system
+sandboxing remain host and I/O-owner responsibilities.
 The effects crate now owns a substantive graph-native authoring SDK, exact animation curves,
 complete reusable presets, explicit checked schema migration, and strict authored wires. Its preset
 lockfile change records direct runtime use of already-resolved JSON and SHA-256 packages for

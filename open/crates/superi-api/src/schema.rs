@@ -34,6 +34,10 @@ use crate::events::{
     ScenarioStateChanged,
 };
 use crate::jobs::AsyncJobsSnapshot;
+use crate::permissions::{
+    ApiDestructiveOperation, ApiFilesystemAccess, ApiFilesystemPlatform, ApiPermissionEffect,
+    ApiPermissionKind, ApiPermissionRequirementMode, ApiPermissionRequirements, ApiPluginOperation,
+};
 use crate::project::ProjectSettingsSnapshot;
 use crate::recovery::ProjectRecoverySnapshot;
 use crate::scenario::ScenarioStateSnapshot;
@@ -51,6 +55,7 @@ const JSON_RPC_VERSION: &str = "2.0";
 const PUBLIC_API_ERROR_CODE: i32 = -32000;
 const PUBLIC_ERROR_SCHEMA_NAME: &str = "superi.api.error";
 const PUBLIC_CAPABILITY_SCHEMA_NAME: &str = "superi.api.capability";
+const PUBLIC_PERMISSION_SCHEMA_NAME: &str = "superi.api.permission";
 
 /// Whether a public method observes state or mutates it through the engine owner.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
@@ -120,6 +125,7 @@ pub struct PublicMethodSchema {
     method: String,
     request: PublicSchemaReference,
     response: PublicSchemaReference,
+    permission: PublicMethodPermissionSchema,
 }
 
 impl PublicMethodSchema {
@@ -128,11 +134,13 @@ impl PublicMethodSchema {
         method: impl Into<String>,
         request: PublicSchemaReference,
         response: PublicSchemaReference,
+        permission: PublicMethodPermissionSchema,
     ) -> CoreResult<Self> {
         let value = Self {
             method: method.into(),
             request,
             response,
+            permission,
         };
         value.validate()?;
         Ok(value)
@@ -156,10 +164,80 @@ impl PublicMethodSchema {
         &self.response
     }
 
+    /// Returns how this method derives exact permission requirements.
+    #[must_use]
+    pub const fn permission(&self) -> &PublicMethodPermissionSchema {
+        &self.permission
+    }
+
     fn validate(&self) -> CoreResult<()> {
         validate_public_name("validate_method_schema", &self.method)?;
         self.request.validate()?;
-        self.response.validate()
+        self.response.validate()?;
+        self.permission.validate()
+    }
+}
+
+/// Permission metadata for one public method.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicMethodPermissionSchema {
+    requirement_mode: ApiPermissionRequirementMode,
+    possible_kinds: Vec<ApiPermissionKind>,
+}
+
+impl PublicMethodPermissionSchema {
+    /// Creates canonical method permission metadata.
+    pub fn new(
+        requirement_mode: ApiPermissionRequirementMode,
+        possible_kinds: impl IntoIterator<Item = ApiPermissionKind>,
+    ) -> CoreResult<Self> {
+        let value = Self {
+            requirement_mode,
+            possible_kinds: possible_kinds.into_iter().collect(),
+        };
+        value.validate()?;
+        Ok(value)
+    }
+
+    /// Returns whether requirements are absent, static, or payload-dependent.
+    #[must_use]
+    pub const fn requirement_mode(&self) -> ApiPermissionRequirementMode {
+        self.requirement_mode
+    }
+
+    /// Returns every permission kind this method may require.
+    #[must_use]
+    pub fn possible_kinds(&self) -> &[ApiPermissionKind] {
+        &self.possible_kinds
+    }
+
+    fn validate(&self) -> CoreResult<()> {
+        let canonical = self
+            .possible_kinds
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        if canonical != self.possible_kinds {
+            return Err(schema_error(
+                "validate_method_permission_schema",
+                "method permission kinds are not canonical",
+            ));
+        }
+        match self.requirement_mode {
+            ApiPermissionRequirementMode::None if self.possible_kinds.is_empty() => Ok(()),
+            ApiPermissionRequirementMode::None => Err(schema_error(
+                "validate_method_permission_schema",
+                "permission-free method declares possible permission kinds",
+            )),
+            _ if self.possible_kinds.is_empty() => Err(schema_error(
+                "validate_method_permission_schema",
+                "protected method omits its possible permission kinds",
+            )),
+            _ => Ok(()),
+        }
     }
 }
 
@@ -349,6 +427,122 @@ impl PublicCapabilitySchema {
     }
 }
 
+/// Stable permission vocabulary published for hosts and automation clients.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicPermissionSchema {
+    schema: PublicSchemaReference,
+    requirement_modes: Vec<ApiPermissionRequirementMode>,
+    kinds: Vec<ApiPermissionKind>,
+    effects: Vec<ApiPermissionEffect>,
+    filesystem_accesses: Vec<ApiFilesystemAccess>,
+    filesystem_platforms: Vec<ApiFilesystemPlatform>,
+    filesystem_path_kinds: Vec<String>,
+    filesystem_scope_kinds: Vec<String>,
+    plugin_operations: Vec<ApiPluginOperation>,
+    plugin_scope_kinds: Vec<String>,
+    destructive_operations: Vec<ApiDestructiveOperation>,
+}
+
+impl PublicPermissionSchema {
+    fn current() -> Self {
+        Self {
+            schema: PublicSchemaReference::new(
+                PUBLIC_PERMISSION_SCHEMA_NAME,
+                PUBLIC_API_SCHEMA_VERSION.clone(),
+            )
+            .expect("the built-in public permission schema name is valid"),
+            requirement_modes: ApiPermissionRequirementMode::ALL.to_vec(),
+            kinds: ApiPermissionKind::ALL.to_vec(),
+            effects: ApiPermissionEffect::ALL.to_vec(),
+            filesystem_accesses: ApiFilesystemAccess::ALL.to_vec(),
+            filesystem_platforms: ApiFilesystemPlatform::ALL.to_vec(),
+            filesystem_path_kinds: vec!["project_relative".to_owned(), "absolute".to_owned()],
+            filesystem_scope_kinds: vec!["exact".to_owned(), "recursive".to_owned()],
+            plugin_operations: ApiPluginOperation::ALL.to_vec(),
+            plugin_scope_kinds: vec!["exact".to_owned(), "all".to_owned()],
+            destructive_operations: ApiDestructiveOperation::ALL.to_vec(),
+        }
+    }
+
+    /// Returns the public permission schema identity.
+    #[must_use]
+    pub const fn schema(&self) -> &PublicSchemaReference {
+        &self.schema
+    }
+
+    /// Returns every permission requirement mode.
+    #[must_use]
+    pub fn requirement_modes(&self) -> &[ApiPermissionRequirementMode] {
+        &self.requirement_modes
+    }
+
+    /// Returns every protected permission kind.
+    #[must_use]
+    pub fn kinds(&self) -> &[ApiPermissionKind] {
+        &self.kinds
+    }
+
+    /// Returns every allow or deny rule effect.
+    #[must_use]
+    pub fn effects(&self) -> &[ApiPermissionEffect] {
+        &self.effects
+    }
+
+    /// Returns every filesystem access operation.
+    #[must_use]
+    pub fn filesystem_accesses(&self) -> &[ApiFilesystemAccess] {
+        &self.filesystem_accesses
+    }
+
+    /// Returns every filesystem platform syntax.
+    #[must_use]
+    pub fn filesystem_platforms(&self) -> &[ApiFilesystemPlatform] {
+        &self.filesystem_platforms
+    }
+
+    /// Returns every filesystem path discriminator.
+    #[must_use]
+    pub fn filesystem_path_kinds(&self) -> &[String] {
+        &self.filesystem_path_kinds
+    }
+
+    /// Returns every filesystem scope discriminator.
+    #[must_use]
+    pub fn filesystem_scope_kinds(&self) -> &[String] {
+        &self.filesystem_scope_kinds
+    }
+
+    /// Returns every plugin permission operation.
+    #[must_use]
+    pub fn plugin_operations(&self) -> &[ApiPluginOperation] {
+        &self.plugin_operations
+    }
+
+    /// Returns every plugin scope discriminator.
+    #[must_use]
+    pub fn plugin_scope_kinds(&self) -> &[String] {
+        &self.plugin_scope_kinds
+    }
+
+    /// Returns every destructive operation.
+    #[must_use]
+    pub fn destructive_operations(&self) -> &[ApiDestructiveOperation] {
+        &self.destructive_operations
+    }
+
+    fn validate(&self) -> CoreResult<()> {
+        self.schema.validate()?;
+        if self != &Self::current() {
+            return Err(schema_error(
+                "validate_permission_schema",
+                "public permission schema identity or vocabulary is incompatible",
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// The deterministic complete public API catalog.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct PublicApiSchemaSnapshot {
@@ -361,6 +555,7 @@ pub struct PublicApiSchemaSnapshot {
     resources: Vec<PublicResourceSchema>,
     error: PublicErrorSchema,
     capability: PublicCapabilitySchema,
+    permission: PublicPermissionSchema,
 }
 
 impl PublicApiSchemaSnapshot {
@@ -376,6 +571,7 @@ impl PublicApiSchemaSnapshot {
         mut resources: Vec<PublicResourceSchema>,
         error: PublicErrorSchema,
         capability: PublicCapabilitySchema,
+        permission: PublicPermissionSchema,
     ) -> CoreResult<Self> {
         if schema_version != PUBLIC_API_SCHEMA_VERSION {
             return Err(schema_error(
@@ -411,6 +607,7 @@ impl PublicApiSchemaSnapshot {
         }
         error.validate()?;
         capability.validate()?;
+        permission.validate()?;
 
         commands.sort_by(|left, right| left.method.cmp(&right.method));
         queries.sort_by(|left, right| left.method.cmp(&right.method));
@@ -457,6 +654,7 @@ impl PublicApiSchemaSnapshot {
             resources,
             error,
             capability,
+            permission,
         })
     }
 
@@ -513,6 +711,12 @@ impl PublicApiSchemaSnapshot {
     pub const fn capability(&self) -> &PublicCapabilitySchema {
         &self.capability
     }
+
+    /// Returns the stable permission vocabulary.
+    #[must_use]
+    pub const fn permission(&self) -> &PublicPermissionSchema {
+        &self.permission
+    }
 }
 
 #[derive(Deserialize)]
@@ -527,6 +731,7 @@ struct PublicApiSchemaSnapshotWire {
     resources: Vec<PublicResourceSchema>,
     error: PublicErrorSchema,
     capability: PublicCapabilitySchema,
+    permission: PublicPermissionSchema,
 }
 
 impl<'de> Deserialize<'de> for PublicApiSchemaSnapshot {
@@ -545,6 +750,7 @@ impl<'de> Deserialize<'de> for PublicApiSchemaSnapshot {
             wire.resources,
             wire.error,
             wire.capability,
+            wire.permission,
         )
         .map_err(D::Error::custom)
     }
@@ -622,6 +828,12 @@ impl ApiCommand for GetPublicApiSchema {
     const METHOD: &'static str = GET_PUBLIC_API_SCHEMA_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Query;
     const SCHEMA_VERSION: SemanticVersion = PUBLIC_API_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode = ApiPermissionRequirementMode::None;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[];
+
+    fn permission_requirements(&self) -> CoreResult<ApiPermissionRequirements> {
+        Ok(ApiPermissionRequirements::none())
+    }
 }
 
 /// Successful public schema discovery response.
@@ -1265,6 +1477,7 @@ fn current_catalog() -> CoreResult<PublicApiSchemaSnapshot> {
         ],
         PublicErrorSchema::current(),
         PublicCapabilitySchema::current(),
+        PublicPermissionSchema::current(),
     )
 }
 
@@ -1276,6 +1489,7 @@ fn register_method<C: ApiCommand>(
         C::METHOD,
         PublicSchemaReference::new(format!("{}.request", C::METHOD), C::SCHEMA_VERSION)?,
         PublicSchemaReference::new(format!("{}.response", C::METHOD), C::SCHEMA_VERSION)?,
+        PublicMethodPermissionSchema::new(C::PERMISSION_MODE, C::PERMISSION_KINDS.iter().copied())?,
     )?;
     match C::KIND {
         PublicMethodKind::Command => commands.push(descriptor),

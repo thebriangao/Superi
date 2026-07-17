@@ -2,7 +2,7 @@
 module_id: superi-cli
 source_paths:
   - open/crates/superi-cli
-source_hash: 0362633432ba00705fe64cf214d1cfd4493c7afa3712686516994f5ef3b125c9
+source_hash: b93df081b721dcab2e86a659edb10c6d99e5744e52013f7f199d497a65832a60
 source_files: 8
 mapped_at_commit: working-tree
 ---
@@ -24,9 +24,11 @@ deterministic JSON snapshot containing canonical introspection, scenario reversa
 recovery actions, workflow admission, playback, and export state.
 The exact `api schema` command is a third public API consumer. It asks `PublicApiSchemaApi` for the
 same deterministic catalog used by typed clients and prints all current command, query, event,
-resource, error, and capability schemas, including the complete asynchronous job control
-vocabulary, complete editor-state discovery, and bounded event subscription control and polling,
-without reconstructing registry data in the CLI.
+resource, error, capability, and permission schemas, including the complete asynchronous job
+control vocabulary, complete editor-state discovery, and bounded event subscription control and
+polling, without reconstructing registry data in the CLI. The canonical scenario consumer binds one
+exact read permission for its resolved canonical fixture and grants no repository-wide filesystem
+authority.
 
 The production project command-history surface is now available through `superi-api`, but this
 binary does not yet route its apply, inspect, undo, or redo commands. Its current reversal proof
@@ -46,8 +48,9 @@ production owner is explicit in stage diagnostics and the artifact name.
   digest reporting, instrumentation integration, undo plus redo proof, expectation observation
   wiring, active-feature reporting, checkout-independent project-state normalization,
   revision-fenced transaction and event agreement, collision-safe publication, structured exit
-  errors, exact `api schema` and `engine validate` dispatch with strict JSON output, and focused
-  portable-digest and dispatcher-consumer contracts.
+  errors including preserved `permission_denied` classification, exact `api schema` and `engine
+  validate` dispatch with strict JSON output, explicit exact fixture-read permission binding, and
+  focused portable-digest and dispatcher-consumer contracts.
 - `open/crates/superi-cli/src/expectations.rs`: Strictly resolves the derived slice expectation
   fixture, validates both parent identities, reference frames, synchronized PCM samples,
   timestamps, project states, and export metadata, then returns stable contract evidence. Focused
@@ -57,10 +60,10 @@ production owner is explicit in stage diagnostics and the artifact name.
 - `open/crates/superi-cli/src/main.rs`: Passes process arguments to the private command owner and
   exits with its exact status.
 - `open/crates/superi-cli/tests/api_schema_cli_contract.rs`: Proves deterministic exact schema
-  discovery output, catalog and primitive identity, all six schema categories, exact current counts
-  and method names including the generic project command, asynchronous job query and controls,
-  complete editor-state discovery, and event subscription open, close, and poll, plus help coverage
-  and invalid usage status.
+  discovery output, catalog and primitive identity, all seven schema categories, exact current counts
+  and method names including the generic project command, asynchronous job query and controls, and
+  complete editor-state discovery, event subscription open, close, and poll, plus the permission
+  vocabulary and per-method metadata, help coverage, and invalid usage status.
 - `open/crates/superi-cli/tests/scenario_runner.rs`: Provides process contracts for two-run
   reproducibility, exact state and schema 1.1.0 report contents, all-stage timing and nonzero
   resident-memory evidence, exact expectation evidence, honest stub evidence, collision
@@ -93,8 +96,9 @@ superi-cli api schema
 
 Schema discovery success prints exactly one strict `PublicApiSchemaSnapshot` JSON value containing
 catalog schema `1.1.0`, stable primitive revision 1, JSON-RPC `2.0`, 15 commands, 11 queries,
-eight events, 11 resources, one error schema, and one capability schema in canonical order. It
-starts no engine, routes no operation, and owns no transport or registry state.
+eight events, 11 resources, one error schema, one capability schema, and one permission schema in
+canonical order. Every method carries its permission mode and possible kinds. Discovery starts no
+engine, routes no operation, and owns no transport, permission authority, or registry state.
 
 Validation success prints exactly one strict `GetEngineIntegrationValidationResult` JSON value to
 stdout. Incoherent validation or query failure is one structured `engine.validate` stage error and
@@ -119,10 +123,13 @@ count, and SHA-256, and only then creates the artifact directory. During final v
 the strict `slice/expectations` version 2 fixture with separate bounds for manifests, JSON, RGBA,
 and WAVE payloads. It verifies source and audio parent-manifest hashes before consuming expectations.
 
-Execution uses `ScenarioApi` exclusively:
+Execution uses `ScenarioApi` exclusively. After strict fixture resolution, the CLI creates one
+nonserializable host permission context with an exact read grant for that resolved canonical input
+path and binds it to the facade before import:
 
 ```text
 fixture.resolve
+  -> exact ApiFilesystemScope read grant
   -> media.import
   -> timeline.edit
   -> timeline.compile
@@ -151,8 +158,9 @@ PublicApiSchemaApi
 ```
 
 The CLI neither duplicates the explicit API registration list nor imports engine types for schema
-discovery. It discovers the public asynchronous job and event stream schemas but exposes no job or
-subscription query, control, submission, polling, waiting, or result command of its own.
+discovery. It discovers the public permission, asynchronous job, and event stream schemas but
+exposes no policy parser, job or subscription query, control, submission, polling, waiting, or
+result command of its own.
 
 The CLI imports only `superi-api` for this path. The engine owns its legal execution domain and
 canonical temporary dispatcher behind that public facade, so the CLI does not project engine state,
@@ -201,8 +209,8 @@ success.
 ## Dependencies and consumers
 
 - `superi-api` supplies all three public boundaries used by the binary: deterministic schema
-  discovery including asynchronous job control metadata, revisioned scenario transactions, and
-  immutable coherent integration validation.
+  discovery including permission and asynchronous job control metadata, revisioned permission-bound
+  scenario transactions, and immutable coherent integration validation.
 - Engine project-history types are deliberately not a dependency. The CLI continues to depend only
   on `superi-api`; the generic editor contract is discoverable, while project apply, undo, redo,
   scripting, and automation command routing remain absent from this binary.
@@ -244,6 +252,9 @@ harness are its current consumers.
   and effect.
 - Every CLI mutation is revision fenced and must produce exactly one matching complete-state event
   before stage execution continues. A mismatch is a terminal internal stage failure.
+- The canonical import facade receives only one exact read grant for the already resolved fixture.
+  Permission denial retains its public category, and the CLI never grants a home, checkout, fixture
+  directory, or recursive repository scope.
 - Contract stubs are never called runtime, and the non-playable artifact is never called WebM
   output.
 - Stage order, implementation identity, input and output summaries, diagnostics, state, and artifact
@@ -258,8 +269,8 @@ harness are its current consumers.
   changes no scenario, lifecycle, recovery, playback, or export state. It succeeds only when the
   strict public snapshot reports coherent state.
 - `api schema` accepts no options, is deterministic across processes, consumes only the API-owned
-  catalog, and changes no engine or project state. Discovering job methods does not attach, poll, or
-  control an engine queue.
+  catalog, and changes no engine or project state. Discovering permission metadata or job methods
+  does not create host authority, attach, poll, or control an engine queue.
 
 ## Tests and verification
 
@@ -296,10 +307,11 @@ empty coherence findings, help coverage, and precise invalid usage. They do not 
 application session, UI rendering, endpoint polling, or long-session recovery.
 
 Two API schema process contracts prove deterministic semantics across separate invocations, exact
-catalog, primitive, and JSON-RPC identity, all six schema sections, exact current counts and method
+catalog, primitive, and JSON-RPC identity, all seven schema sections, exact current counts and method
 names including the generic editor registration, every asynchronous job query and control, and
-`superi.editor.state.get` plus event subscription open, close, and poll, plus help coverage and
-precise invalid usage. They do not prove method routing, wire transport, event delivery, job
+`superi.editor.state.get`, event subscription open, close, and poll, the complete permission
+vocabulary, and exact method permission metadata, plus help coverage and precise invalid usage.
+They do not prove method routing, wire transport, event delivery, host policy persistence, job
 execution, scripting, or broad CLI parity.
 
 ## Current status and risks
@@ -323,6 +335,11 @@ Schema discovery also exposes bounded event registration and polling, but the CL
 no live stream owner or subscriber command. A later headless client can consume the same API-owned
 stream identity, cursor, gap, and resynchronization contracts without rebuilding event ordering.
 
+The canonical scenario path now exercises the same fail-closed permission boundary as other typed
+clients while retaining exact behavior under its narrow fixture grant. The CLI does not own a
+general policy file, user identity, operating-system sandbox, or plugin authority; those remain host
+responsibilities outside this process contract.
+
 `engine validate` currently constructs a fresh starting engine, so it proves the shared public
 query and strict state projection rather than attaching to an already running application process.
 The same facade is ready for a UI or test host that owns a live canonical dispatcher.
@@ -344,7 +361,9 @@ inside each destination directory.
 Keep argument order, scenario identity, exit statuses, artifact name, report fields, stage IDs, and
 stub disclosure synchronized with `docs/vertical-slice.md`, process contracts, isolated CI, and
 public guidance. Keep `api schema` delegated to `PublicApiSchemaApi`; never reconstruct method,
-event, resource, error, or capability declarations in CLI code. Keep both hosted build jobs
+event, resource, error, capability, or permission declarations in CLI code. Preserve the exact
+resolved fixture read grant when the scenario path changes and never broaden it for convenience.
+Keep both hosted build jobs
 synchronized with the locked fixture and normalized slice commands. Keep every mutation behind the
 typed transaction helper and preserve exact result and event agreement. Keep stage probes around
 each stage when its stub is replaced so the fixed

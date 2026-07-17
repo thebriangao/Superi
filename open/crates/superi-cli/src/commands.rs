@@ -6,6 +6,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use crate::instrumentation::{
     InstrumentationSummary, ProcessMemorySampler, StageInstrumentation, StageProbe,
@@ -14,6 +15,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use superi_api::commands::{ExecuteScenarioTransaction, GetEngineIntegrationValidation};
+use superi_api::permissions::{
+    ApiFilesystemAccess, ApiFilesystemPath, ApiFilesystemScope, ApiPermissionContext,
+    ApiPermissionEffect, ApiPermissionRule,
+};
 use superi_api::scenario::{ExactFrameRate, ScenarioApi, SliceAction, SliceGraphEffect};
 use superi_api::schema::{GetPublicApiSchema, PublicApiSchemaApi, PublicApiSchemaSnapshot};
 use superi_api::validation::IntegrationValidationApi;
@@ -333,7 +338,7 @@ fn run_slice(artifact_dir: &Path, report_path: &Path) -> Result<Value, CliFailur
     }];
 
     create_artifact_directory(artifact_dir)?;
-    let mut api = ScenarioApi::new();
+    let mut api = scenario_api_for_fixture(&fixture.payload_path)?;
 
     let import_probe = begin_stage(&mut memory_sampler, "media.import")?;
     execute_action(
@@ -794,9 +799,38 @@ fn execute_action(
     Ok(serde_json::to_value(result).expect("API result is serializable"))
 }
 
+fn scenario_api_for_fixture(path: &Path) -> Result<ScenarioApi, CliFailure> {
+    let target = ApiFilesystemPath::native(path.display().to_string()).map_err(|error| {
+        CliFailure::stage(
+            "fixture.resolve",
+            failure_category(error.category().code()),
+            failure_recoverability(error.recoverability().code()),
+            "canonical fixture path cannot be represented by API permission policy",
+        )
+    })?;
+    let permissions = ApiPermissionContext::new(
+        "superi.cli.slice-runner",
+        [ApiPermissionRule::filesystem(
+            ApiPermissionEffect::Allow,
+            ApiFilesystemAccess::Read,
+            ApiFilesystemScope::exact(target),
+        )],
+    )
+    .map_err(|error| {
+        CliFailure::stage(
+            "fixture.resolve",
+            failure_category(error.category().code()),
+            failure_recoverability(error.recoverability().code()),
+            "canonical fixture permission policy is invalid",
+        )
+    })?;
+    Ok(ScenarioApi::new_with_permissions(Arc::new(permissions)))
+}
+
 fn failure_category(value: &str) -> &'static str {
     match value {
         "invalid_input" => "invalid_input",
+        "permission_denied" => "permission_denied",
         "not_found" => "not_found",
         "conflict" => "conflict",
         "unsupported" => "unsupported",
@@ -1341,8 +1375,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        digest_json, execute_action, portable_project_state, ExactFrameRate, ScenarioApi,
-        SliceAction, PORTABLE_FIXTURE_PATH, TEMPORARY_FILE_COUNTER,
+        digest_json, execute_action, portable_project_state, scenario_api_for_fixture,
+        ExactFrameRate, SliceAction, PORTABLE_FIXTURE_PATH, TEMPORARY_FILE_COUNTER,
     };
     use std::sync::atomic::Ordering;
 
@@ -1373,7 +1407,8 @@ mod tests {
         ));
         let bytes = b"cli dispatcher fixture";
         std::fs::write(&source, bytes).unwrap();
-        let mut api = ScenarioApi::new();
+        let mut api = scenario_api_for_fixture(&source)
+            .unwrap_or_else(|failure| panic!("fixture policy failed: {}", failure.message));
 
         let value = execute_action(
             &mut api,

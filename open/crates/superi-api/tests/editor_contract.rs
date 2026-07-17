@@ -1,6 +1,7 @@
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::{json, Value};
+use std::sync::Arc;
 use superi_api::commands::ApiCommand;
 use superi_api::editor::{
     EditorChannelMap, EditorChannelPosition, EditorClipMixControls, EditorClipMixMutation,
@@ -8,6 +9,10 @@ use superi_api::editor::{
     ProjectAction, ProjectCommand, ProjectCommandEvidence, TimelineEditOperation,
 };
 use superi_api::events::{ApiEvent, ProjectStateChanged};
+use superi_api::permissions::{
+    ApiPermissionContext, ApiPermissionEffect, ApiPermissionRule, ApiPluginOperation,
+    ApiPluginScope,
+};
 use superi_api::schema::ApiResource;
 use superi_api::version::{
     EXECUTE_PROJECT_COMMAND_METHOD, PROJECT_EDITOR_SCHEMA_VERSION, PROJECT_HISTORY_RESOURCE,
@@ -72,6 +77,29 @@ fn project_api() -> superi_api::editor::ProjectEditorApi {
     let mut dispatcher = engine::EngineCommandDispatcher::new().unwrap();
     dispatcher.attach_project(project_document()).unwrap();
     superi_api::editor::ProjectEditorApi::new(dispatcher).unwrap()
+}
+
+fn extension_permissions() -> Arc<ApiPermissionContext> {
+    Arc::new(
+        ApiPermissionContext::new(
+            "superi.test.editor-contract",
+            [
+                ApiPermissionRule::plugin(
+                    ApiPermissionEffect::Allow,
+                    ApiPluginOperation::ManageState,
+                    ApiPluginScope::exact("example.public-editor").unwrap(),
+                )
+                .unwrap(),
+                ApiPermissionRule::plugin(
+                    ApiPermissionEffect::Allow,
+                    ApiPluginOperation::ManageLifecycle,
+                    ApiPluginScope::exact("example.public-editor").unwrap(),
+                )
+                .unwrap(),
+            ],
+        )
+        .unwrap(),
+    )
 }
 
 fn exact_time(value: i64, numerator: u32) -> Value {
@@ -442,7 +470,11 @@ fn one_public_command_is_atomic_durable_correlated_and_undoable() {
 
     let mut dispatcher = engine::EngineCommandDispatcher::new().unwrap();
     dispatcher.attach_project(document).unwrap();
-    let mut api = superi_api::editor::ProjectEditorApi::new(dispatcher).unwrap();
+    let mut api = superi_api::editor::ProjectEditorApi::new_with_permissions(
+        dispatcher,
+        extension_permissions(),
+    )
+    .unwrap();
     let request: ExecuteProjectCommand = serde_json::from_value(json!({
         "transaction_id": "public-mixed-apply",
         "expected_project_revision": 0,

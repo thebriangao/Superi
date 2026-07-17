@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use superi_core::diagnostics::UserSafeError;
@@ -21,6 +22,7 @@ use superi_engine::dispatcher::{
 
 use crate::commands::{ExecuteScenarioAction, ExecuteScenarioTransaction};
 use crate::events::ScenarioStateChanged;
+use crate::permissions::ApiPermissionContext;
 use crate::version::SLICE_SCENARIO_SCHEMA_VERSION;
 
 /// Maximum actions accepted in one scenario document.
@@ -873,6 +875,7 @@ impl ScenarioFailure {
 pub struct ScenarioApi {
     dispatcher: EngineCommandDispatcher,
     legacy_transaction_sequence: u64,
+    permissions: Arc<ApiPermissionContext>,
 }
 
 impl ScenarioApi {
@@ -880,6 +883,16 @@ impl ScenarioApi {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Creates an empty scenario API bound to explicit host permission authority.
+    #[must_use]
+    pub fn new_with_permissions(permissions: Arc<ApiPermissionContext>) -> Self {
+        Self {
+            dispatcher: EngineCommandDispatcher::scenario_only(),
+            legacy_transaction_sequence: 0,
+            permissions,
+        }
     }
 
     /// Returns the complete current public state.
@@ -942,6 +955,9 @@ impl ScenarioApi {
         &mut self,
         command: ExecuteScenarioTransaction,
     ) -> Result<ScenarioTransactionResult, ScenarioFailure> {
+        if let Err(error) = self.permissions.authorize_command(&command) {
+            return Err(ScenarioFailure::from_error(&error, self.snapshot()));
+        }
         let (transaction_id, expected_revision, actions) = command.into_parts();
         let action_kinds = actions.iter().map(SliceAction::kind).collect::<Vec<_>>();
         let inspect_count = actions
@@ -1032,10 +1048,7 @@ impl ScenarioApi {
 
 impl Default for ScenarioApi {
     fn default() -> Self {
-        Self {
-            dispatcher: EngineCommandDispatcher::scenario_only(),
-            legacy_transaction_sequence: 0,
-        }
+        Self::new_with_permissions(Arc::new(ApiPermissionContext::default()))
     }
 }
 
