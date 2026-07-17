@@ -7,6 +7,7 @@ pub mod audio_automation;
 pub mod commands;
 pub mod editor;
 pub mod events;
+pub mod jobs;
 pub mod project;
 pub mod recovery;
 pub mod scenario;

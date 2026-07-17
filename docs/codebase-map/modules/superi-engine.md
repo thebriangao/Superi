@@ -1174,13 +1174,15 @@ audio mutation, so their user intent remains attached without synthesis.
   complete engine introspection and integration validation snapshots, preserving public adaptation,
   validation, scenario, project settings, project recovery, and authored audio automation seams
   without exposing engine-private owners. The API depends only on engine for generic project
-  control, settings, recovery, and audio automation and therefore does not reverse the reviewed
-  runtime graph.
-  Playback and logical export mutation remain outside the public
-  protocol, while their latest
-  replacement state is visible through the read-only validation query. Generic project history is
-  projected through strict API-owned DTOs, typed evidence, and correlated replacement events, while
-  recovery is projected through opaque identities and user-safe findings.
+  control, settings, recovery, audio automation, and asynchronous job control and therefore does
+  not reverse the reviewed runtime graph. Logical export inspection, pause, resume, retry, cancel,
+  cancel-all, and
+  finalized removal now project through API-owned strict job contracts over the same dispatcher and
+  canonical queue. Submission, host polling, waiting, executor bindings, and typed artifact access
+  remain outside the public protocol, while the latest playback and export replacement state also
+  remains visible through the read-only validation query. Generic project history is projected
+  through strict API-owned DTOs, typed evidence, and correlated replacement events, while recovery
+  is projected through opaque identities and user-safe findings.
 - Cache and GPU retain their own exact local budget enforcement, audio retains its preallocated
   callback-safe queue, media I/O retains decoded value and lifecycle ownership, and export retains
   logical job and publication ownership. The engine arbiter composes a higher shared managed-byte
@@ -1719,6 +1721,8 @@ revision-scoped permits and render-export revalidates one before publication. Th
 scenario projection remains intentionally narrow, while the separate generic project facade now
 projects complete current authored-operation control and minimum typed history state through the
 curated engine seam. The strict validation projection remains read-only coherent state.
+The public asynchronous job facade now projects queue control and full replacement events without
+moving scheduler, poll, executor, or typed-result ownership out of engine.
 
 Typed project settings resolution and dispatcher control are substantive and test-backed. They
 preserve durable authored scalar meaning and expose one real API path, but resolution does not
@@ -1769,7 +1773,9 @@ Export still requires caller-supplied graph, delivery, and audio stage owners an
 streams without muxing or persistence. The export queue retains results in process memory, uses
 cooperative checkpoints, and requires an explicit blocking-safe shutdown; it is not a persistent or
 crash-recoverable scheduler. Its generic executor preparation and typed results remain process-local
-runtime bindings, and no application or wire API path invokes them yet. The derived-media driver
+runtime bindings. The stable API can inspect and control retained queue state, but no public or CLI
+surface submits prepared work, polls the host runtime, waits, retrieves typed artifacts, or publishes
+files. The derived-media driver
 and resolver are synchronous and caller-owned, and no application or API path invokes them yet.
 Clip-mix reconciliation, extension mutation, and compound project mutation are substantive and now
 entered by the generic public API as well as Rust callers, but not by the playback controller.
@@ -1866,7 +1872,9 @@ history final, all controls nonblocking on EngineControl, and worker joining con
 blocking-safe shutdown after every logical job is final. Route every logical export action through the dispatcher, require fresh
 admission for submit and recovery attempts, emit full revisioned replacement state for explicit and
 automated transitions, and keep runtime executor bindings plus typed artifacts outside stable event
-payloads.
+payloads. Keep the public API as a strict projection of those dispatcher commands and envelopes,
+never a second queue, and keep host polling, submission, waiting, and typed result access out of the
+transport catalog until their owning product workflows exist.
 Keep resource classes complete and stable, preserve exact shared and class accounting, keep unused
 floors borrowable without reclaiming protected capacity, invoke cooperative owners only in the
 documented order, and measure progress from reservation release rather than callback claims. Bind

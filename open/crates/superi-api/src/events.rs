@@ -6,14 +6,16 @@ use superi_core::settings::SemanticVersion;
 use crate::api::{EngineIntrospectionSnapshot, MediaCapabilitiesSnapshot};
 use crate::audio_automation::AudioAutomationSnapshot;
 use crate::editor::{ProjectCommandEvidence, ProjectHistorySnapshot};
+use crate::jobs::AsyncJobsSnapshot;
 use crate::project::ProjectSettingsSnapshot;
 use crate::recovery::ProjectRecoverySnapshot;
 use crate::scenario::ScenarioStateSnapshot;
 use crate::version::{
-    AUDIO_AUTOMATION_CHANGED_EVENT, AUDIO_AUTOMATION_SCHEMA_VERSION,
-    ENGINE_INTROSPECTION_CHANGED_EVENT, ENGINE_INTROSPECTION_SCHEMA_VERSION,
-    MEDIA_CAPABILITIES_CHANGED_EVENT, MEDIA_CAPABILITIES_SCHEMA_VERSION,
-    PROJECT_EDITOR_SCHEMA_VERSION, PROJECT_RECOVERY_CHANGED_EVENT, PROJECT_RECOVERY_SCHEMA_VERSION,
+    ASYNC_JOBS_CHANGED_EVENT, ASYNC_JOBS_SCHEMA_VERSION, AUDIO_AUTOMATION_CHANGED_EVENT,
+    AUDIO_AUTOMATION_SCHEMA_VERSION, ENGINE_INTROSPECTION_CHANGED_EVENT,
+    ENGINE_INTROSPECTION_SCHEMA_VERSION, MEDIA_CAPABILITIES_CHANGED_EVENT,
+    MEDIA_CAPABILITIES_SCHEMA_VERSION, PROJECT_EDITOR_SCHEMA_VERSION,
+    PROJECT_RECOVERY_CHANGED_EVENT, PROJECT_RECOVERY_SCHEMA_VERSION,
     PROJECT_SETTINGS_CHANGED_EVENT, PROJECT_SETTINGS_SCHEMA_VERSION, PROJECT_STATE_CHANGED_EVENT,
     SCENARIO_STATE_CHANGED_EVENT, SLICE_SCENARIO_SCHEMA_VERSION,
 };
@@ -92,6 +94,70 @@ impl ProjectStateChanged {
 impl ApiEvent for ProjectStateChanged {
     const NAME: &'static str = PROJECT_STATE_CHANGED_EVENT;
     const SCHEMA_VERSION: SemanticVersion = PROJECT_EDITOR_SCHEMA_VERSION;
+}
+
+/// Complete asynchronous job replacement state after one observable transition.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AsyncJobsChanged {
+    sequence: u64,
+    command_sequence: u64,
+    transaction_id: String,
+    jobs_revision: u64,
+    snapshot: AsyncJobsSnapshot,
+}
+
+impl AsyncJobsChanged {
+    pub(crate) const fn new(
+        sequence: u64,
+        command_sequence: u64,
+        transaction_id: String,
+        jobs_revision: u64,
+        snapshot: AsyncJobsSnapshot,
+    ) -> Self {
+        Self {
+            sequence,
+            command_sequence,
+            transaction_id,
+            jobs_revision,
+            snapshot,
+        }
+    }
+
+    /// Returns the monotonic engine event sequence.
+    #[must_use]
+    pub const fn sequence(&self) -> u64 {
+        self.sequence
+    }
+
+    /// Returns the successful engine command sequence.
+    #[must_use]
+    pub const fn command_sequence(&self) -> u64 {
+        self.command_sequence
+    }
+
+    /// Returns the caller-owned transaction identity.
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    /// Returns the engine-owned asynchronous job state revision.
+    #[must_use]
+    pub const fn jobs_revision(&self) -> u64 {
+        self.jobs_revision
+    }
+
+    /// Returns complete retained replacement state.
+    #[must_use]
+    pub const fn snapshot(&self) -> &AsyncJobsSnapshot {
+        &self.snapshot
+    }
+}
+
+impl ApiEvent for AsyncJobsChanged {
+    const NAME: &'static str = ASYNC_JOBS_CHANGED_EVENT;
+    const SCHEMA_VERSION: SemanticVersion = ASYNC_JOBS_SCHEMA_VERSION;
 }
 
 /// Full replacement project recovery state after discovery, restore, or dismissal.

@@ -17,26 +17,29 @@ use superi_core::settings::{ComponentId, FeatureAvailability, SemanticVersion};
 use crate::api::{EngineIntrospectionSnapshot, MediaCapabilitiesSnapshot};
 use crate::audio_automation::AudioAutomationSnapshot;
 use crate::commands::{
-    ApiCommand, CompareProjectRecovery, DismissProjectRecovery, ExecuteAudioAutomationTransaction,
-    ExecuteProjectSettingsTransaction, ExecuteScenarioAction, ExecuteScenarioTransaction,
-    GetAudioAutomation, GetEngineIntegrationValidation, GetEngineIntrospection,
-    GetMediaCapabilities, GetProjectRecovery, GetProjectSettings, RestoreProjectRecovery,
+    ApiCommand, CancelAllAsyncJobs, CancelAsyncJob, CompareProjectRecovery, DismissProjectRecovery,
+    ExecuteAudioAutomationTransaction, ExecuteProjectSettingsTransaction, ExecuteScenarioAction,
+    ExecuteScenarioTransaction, GetAsyncJobs, GetAudioAutomation, GetEngineIntegrationValidation,
+    GetEngineIntrospection, GetMediaCapabilities, GetProjectRecovery, GetProjectSettings,
+    PauseAsyncJob, RemoveAsyncJob, RestoreProjectRecovery, ResumeAsyncJob, RetryAsyncJob,
 };
 use crate::editor::{ExecuteProjectCommand, ProjectHistorySnapshot};
 use crate::events::{
-    ApiEvent, AudioAutomationChanged, EngineIntrospectionChanged, MediaCapabilitiesChanged,
-    ProjectRecoveryChanged, ProjectSettingsChanged, ProjectStateChanged, ScenarioStateChanged,
+    ApiEvent, AsyncJobsChanged, AudioAutomationChanged, EngineIntrospectionChanged,
+    MediaCapabilitiesChanged, ProjectRecoveryChanged, ProjectSettingsChanged, ProjectStateChanged,
+    ScenarioStateChanged,
 };
+use crate::jobs::AsyncJobsSnapshot;
 use crate::project::ProjectSettingsSnapshot;
 use crate::recovery::ProjectRecoverySnapshot;
 use crate::scenario::ScenarioStateSnapshot;
 use crate::validation::IntegrationValidationSnapshot;
 use crate::version::{
-    AUDIO_AUTOMATION_SCHEMA_VERSION, ENGINE_INTEGRATION_VALIDATION_SCHEMA_VERSION,
-    ENGINE_INTROSPECTION_SCHEMA_VERSION, GET_PUBLIC_API_SCHEMA_METHOD,
-    MEDIA_CAPABILITIES_SCHEMA_VERSION, PROJECT_RECOVERY_SCHEMA_VERSION,
-    PROJECT_SETTINGS_SCHEMA_VERSION, PUBLIC_API_SCHEMA_VERSION, PUBLIC_ERROR_SCHEMA_VERSION,
-    SLICE_SCENARIO_SCHEMA_VERSION,
+    ASYNC_JOBS_SCHEMA_VERSION, AUDIO_AUTOMATION_SCHEMA_VERSION,
+    ENGINE_INTEGRATION_VALIDATION_SCHEMA_VERSION, ENGINE_INTROSPECTION_SCHEMA_VERSION,
+    GET_PUBLIC_API_SCHEMA_METHOD, MEDIA_CAPABILITIES_SCHEMA_VERSION,
+    PROJECT_RECOVERY_SCHEMA_VERSION, PROJECT_SETTINGS_SCHEMA_VERSION, PUBLIC_API_SCHEMA_VERSION,
+    PUBLIC_ERROR_SCHEMA_VERSION, SLICE_SCENARIO_SCHEMA_VERSION,
 };
 
 const JSON_RPC_VERSION: &str = "2.0";
@@ -548,6 +551,11 @@ pub trait ApiResource {
     const RESOURCE: &'static str;
     /// Payload schema version.
     const SCHEMA_VERSION: SemanticVersion;
+}
+
+impl ApiResource for AsyncJobsSnapshot {
+    const RESOURCE: &'static str = "superi.jobs";
+    const SCHEMA_VERSION: SemanticVersion = ASYNC_JOBS_SCHEMA_VERSION;
 }
 
 impl ApiResource for ProjectRecoverySnapshot {
@@ -1189,6 +1197,13 @@ fn current_catalog() -> CoreResult<PublicApiSchemaSnapshot> {
     let mut commands = Vec::new();
     let mut queries = Vec::new();
 
+    register_method::<GetAsyncJobs>(&mut commands, &mut queries)?;
+    register_method::<PauseAsyncJob>(&mut commands, &mut queries)?;
+    register_method::<ResumeAsyncJob>(&mut commands, &mut queries)?;
+    register_method::<RetryAsyncJob>(&mut commands, &mut queries)?;
+    register_method::<CancelAsyncJob>(&mut commands, &mut queries)?;
+    register_method::<CancelAllAsyncJobs>(&mut commands, &mut queries)?;
+    register_method::<RemoveAsyncJob>(&mut commands, &mut queries)?;
     register_method::<GetProjectRecovery>(&mut commands, &mut queries)?;
     register_method::<ExecuteProjectCommand>(&mut commands, &mut queries)?;
     register_method::<CompareProjectRecovery>(&mut commands, &mut queries)?;
@@ -1213,6 +1228,7 @@ fn current_catalog() -> CoreResult<PublicApiSchemaSnapshot> {
         queries,
         vec![
             event_schema::<ProjectStateChanged>()?,
+            event_schema::<AsyncJobsChanged>()?,
             event_schema::<ProjectRecoveryChanged>()?,
             event_schema::<AudioAutomationChanged>()?,
             event_schema::<ProjectSettingsChanged>()?,
@@ -1222,6 +1238,7 @@ fn current_catalog() -> CoreResult<PublicApiSchemaSnapshot> {
         ],
         vec![
             resource_schema::<ProjectHistorySnapshot>()?,
+            resource_schema::<AsyncJobsSnapshot>()?,
             resource_schema::<ProjectRecoverySnapshot>()?,
             resource_schema::<AudioAutomationSnapshot>()?,
             resource_schema::<ProjectSettingsSnapshot>()?,

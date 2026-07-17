@@ -5,21 +5,23 @@ use superi_core::settings::SemanticVersion;
 
 use crate::api::{EngineIntrospectionSnapshot, MediaCapabilitiesSnapshot};
 use crate::audio_automation::{AudioAutomationMutation, AudioAutomationSnapshot};
+use crate::jobs::{AsyncJobHandle, AsyncJobsResult};
 use crate::project::{ProjectSettingMutation, ProjectSettingsSnapshot};
 use crate::recovery::{ProjectRecoveryComparisonSnapshot, ProjectRecoverySnapshot};
 use crate::scenario::{ScenarioActionResult, ScenarioTransactionResult, SliceAction};
 use crate::schema::PublicMethodKind;
 use crate::validation::IntegrationValidationSnapshot;
 use crate::version::{
-    AUDIO_AUTOMATION_SCHEMA_VERSION, COMPARE_PROJECT_RECOVERY_METHOD,
-    DISMISS_PROJECT_RECOVERY_METHOD, ENGINE_INTEGRATION_VALIDATION_SCHEMA_VERSION,
-    ENGINE_INTROSPECTION_SCHEMA_VERSION, EXECUTE_AUDIO_AUTOMATION_TRANSACTION_METHOD,
-    EXECUTE_PROJECT_SETTINGS_TRANSACTION_METHOD, EXECUTE_SCENARIO_ACTION_METHOD,
-    EXECUTE_SCENARIO_TRANSACTION_METHOD, GET_AUDIO_AUTOMATION_METHOD,
-    GET_ENGINE_INTEGRATION_VALIDATION_METHOD, GET_ENGINE_INTROSPECTION_METHOD,
-    GET_MEDIA_CAPABILITIES_METHOD, GET_PROJECT_RECOVERY_METHOD, GET_PROJECT_SETTINGS_METHOD,
-    MEDIA_CAPABILITIES_SCHEMA_VERSION, PROJECT_RECOVERY_SCHEMA_VERSION,
-    PROJECT_SETTINGS_SCHEMA_VERSION, RESTORE_PROJECT_RECOVERY_METHOD,
+    ASYNC_JOBS_SCHEMA_VERSION, AUDIO_AUTOMATION_SCHEMA_VERSION, CANCEL_ALL_ASYNC_JOBS_METHOD,
+    CANCEL_ASYNC_JOB_METHOD, COMPARE_PROJECT_RECOVERY_METHOD, DISMISS_PROJECT_RECOVERY_METHOD,
+    ENGINE_INTEGRATION_VALIDATION_SCHEMA_VERSION, ENGINE_INTROSPECTION_SCHEMA_VERSION,
+    EXECUTE_AUDIO_AUTOMATION_TRANSACTION_METHOD, EXECUTE_PROJECT_SETTINGS_TRANSACTION_METHOD,
+    EXECUTE_SCENARIO_ACTION_METHOD, EXECUTE_SCENARIO_TRANSACTION_METHOD, GET_ASYNC_JOBS_METHOD,
+    GET_AUDIO_AUTOMATION_METHOD, GET_ENGINE_INTEGRATION_VALIDATION_METHOD,
+    GET_ENGINE_INTROSPECTION_METHOD, GET_MEDIA_CAPABILITIES_METHOD, GET_PROJECT_RECOVERY_METHOD,
+    GET_PROJECT_SETTINGS_METHOD, MEDIA_CAPABILITIES_SCHEMA_VERSION, PAUSE_ASYNC_JOB_METHOD,
+    PROJECT_RECOVERY_SCHEMA_VERSION, PROJECT_SETTINGS_SCHEMA_VERSION, REMOVE_ASYNC_JOB_METHOD,
+    RESTORE_PROJECT_RECOVERY_METHOD, RESUME_ASYNC_JOB_METHOD, RETRY_ASYNC_JOB_METHOD,
     SLICE_SCENARIO_SCHEMA_VERSION,
 };
 
@@ -36,6 +38,149 @@ pub trait ApiCommand {
 
     /// Version of the method request and response contract.
     const SCHEMA_VERSION: SemanticVersion;
+}
+
+/// Strict query for complete retained asynchronous job state.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GetAsyncJobs {
+    transaction_id: String,
+}
+
+impl GetAsyncJobs {
+    /// Creates one asynchronous job state query.
+    #[must_use]
+    pub fn new(transaction_id: impl Into<String>) -> Self {
+        Self {
+            transaction_id: transaction_id.into(),
+        }
+    }
+
+    /// Returns the caller-owned transaction identity.
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    pub(crate) fn into_transaction_id(self) -> String {
+        self.transaction_id
+    }
+}
+
+impl ApiCommand for GetAsyncJobs {
+    type Response = AsyncJobsResult;
+
+    const METHOD: &'static str = GET_ASYNC_JOBS_METHOD;
+    const KIND: PublicMethodKind = PublicMethodKind::Query;
+    const SCHEMA_VERSION: SemanticVersion = ASYNC_JOBS_SCHEMA_VERSION;
+}
+
+macro_rules! define_async_job_command {
+    ($(#[$metadata:meta])* $name:ident, $method:ident) => {
+        $(#[$metadata])*
+        #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+        #[serde(deny_unknown_fields)]
+        pub struct $name {
+            transaction_id: String,
+            handle: AsyncJobHandle,
+        }
+
+        impl $name {
+            /// Creates one strict asynchronous job control command.
+            #[must_use]
+            pub fn new(transaction_id: impl Into<String>, handle: AsyncJobHandle) -> Self {
+                Self {
+                    transaction_id: transaction_id.into(),
+                    handle,
+                }
+            }
+
+            /// Returns the caller-owned transaction identity.
+            #[must_use]
+            pub fn transaction_id(&self) -> &str {
+                &self.transaction_id
+            }
+
+            /// Returns the exact logical job handle.
+            #[must_use]
+            pub const fn handle(&self) -> &AsyncJobHandle {
+                &self.handle
+            }
+
+            pub(crate) fn into_parts(self) -> (String, AsyncJobHandle) {
+                (self.transaction_id, self.handle)
+            }
+        }
+
+        impl ApiCommand for $name {
+            type Response = AsyncJobsResult;
+
+            const METHOD: &'static str = $method;
+            const KIND: PublicMethodKind = PublicMethodKind::Command;
+            const SCHEMA_VERSION: SemanticVersion = ASYNC_JOBS_SCHEMA_VERSION;
+        }
+    };
+}
+
+define_async_job_command!(
+    /// Strict command for cooperatively pausing one asynchronous job.
+    PauseAsyncJob,
+    PAUSE_ASYNC_JOB_METHOD
+);
+define_async_job_command!(
+    /// Strict command for resuming one fully paused asynchronous job.
+    ResumeAsyncJob,
+    RESUME_ASYNC_JOB_METHOD
+);
+define_async_job_command!(
+    /// Strict command for retrying one nonterminal failed asynchronous job.
+    RetryAsyncJob,
+    RETRY_ASYNC_JOB_METHOD
+);
+define_async_job_command!(
+    /// Strict command for cooperatively cancelling one asynchronous job.
+    CancelAsyncJob,
+    CANCEL_ASYNC_JOB_METHOD
+);
+define_async_job_command!(
+    /// Strict command for removing one finalized asynchronous job.
+    RemoveAsyncJob,
+    REMOVE_ASYNC_JOB_METHOD
+);
+
+/// Strict command for cooperatively cancelling every unfinished asynchronous job.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CancelAllAsyncJobs {
+    transaction_id: String,
+}
+
+impl CancelAllAsyncJobs {
+    /// Creates one cancel-all command.
+    #[must_use]
+    pub fn new(transaction_id: impl Into<String>) -> Self {
+        Self {
+            transaction_id: transaction_id.into(),
+        }
+    }
+
+    /// Returns the caller-owned transaction identity.
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    pub(crate) fn into_transaction_id(self) -> String {
+        self.transaction_id
+    }
+}
+
+impl ApiCommand for CancelAllAsyncJobs {
+    type Response = AsyncJobsResult;
+
+    const METHOD: &'static str = CANCEL_ALL_ASYNC_JOBS_METHOD;
+    const KIND: PublicMethodKind = PublicMethodKind::Command;
+    const SCHEMA_VERSION: SemanticVersion = ASYNC_JOBS_SCHEMA_VERSION;
 }
 
 /// Structured command for refreshing project crash recovery state.

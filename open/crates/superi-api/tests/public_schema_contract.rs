@@ -15,6 +15,12 @@ use superi_core::settings::SemanticVersion;
 
 const COMMANDS: &[&str] = &[
     "superi.audio.automation.transaction.execute",
+    "superi.jobs.cancel",
+    "superi.jobs.cancel_all",
+    "superi.jobs.pause",
+    "superi.jobs.remove",
+    "superi.jobs.resume",
+    "superi.jobs.retry",
     "superi.project.command.execute",
     "superi.project.recovery.dismiss",
     "superi.project.recovery.restore",
@@ -28,6 +34,7 @@ const QUERIES: &[&str] = &[
     "superi.audio.automation.get",
     "superi.engine.integration.validation.get",
     "superi.engine.introspection.get",
+    "superi.jobs.get",
     "superi.media.capabilities.get",
     "superi.project.recovery.compare",
     "superi.project.recovery.get",
@@ -37,6 +44,7 @@ const QUERIES: &[&str] = &[
 const EVENTS: &[&str] = &[
     "superi.audio.automation.changed",
     "superi.engine.introspection.changed",
+    "superi.jobs.changed",
     "superi.media.capabilities.changed",
     "superi.project.recovery.changed",
     "superi.project.settings.changed",
@@ -48,6 +56,7 @@ const RESOURCES: &[&str] = &[
     "superi.audio.automation",
     "superi.engine.integration.validation",
     "superi.engine.introspection",
+    "superi.jobs",
     "superi.media.capabilities",
     "superi.project.history",
     "superi.project.recovery",

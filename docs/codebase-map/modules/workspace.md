@@ -995,8 +995,9 @@ The documents deliberately point into other modules:
   active-generation conflict detection, cooperative replacement locking, deterministic autosave
   scheduling, managed recovery-point retention, and pruning;
   `superi-engine` owns bounded compound project commands, session command history, extension
-  dispatch, and integration;
-  `superi-api` owns the stable public seam; and `superi-cli` is the headless consumer.
+  dispatch, canonical asynchronous export-job scheduling, and integration;
+  `superi-api` owns the stable public seam, including strict nonblocking job inspection and
+  cooperative control; and `superi-cli` is the headless schema consumer.
 - `superi-fixture-tool` validates repository fixture policy but does not enter runtime engine flow.
 - `superi-dependency-check` validates the runtime Cargo graph but does not enter runtime engine flow.
 - `superi-boundary-tool` validates source boundaries but does not enter runtime engine flow.
@@ -1014,6 +1015,10 @@ of open runtime behavior.
   and Superi Max depends on open Superi rather than the reverse.
 - The public API is transport-neutral, versioned, typed, and shared by every client. Bulk media does
   not cross JSON-RPC or webview IPC.
+- Public asynchronous job state is a strict projection of the engine-owned queue. Handles,
+  progress, dependencies, cooperative controls, and ordered full replacement events may cross the
+  public seam, while executors, host polling, waits, typed artifacts, and process-local queue
+  ownership do not.
 - Authored project changes use one typed engine command-history surface. Retained before and after
   snapshots are bounded session state, the selected project snapshot is the only durable state, and
   domain crates do not own competing undo stacks.
@@ -1162,6 +1167,12 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   timeline, graph, media, clip-mix, and extension mutation. A real mixed fixture proves one revision,
   one history unit, one correlated event, exact database reload, and fresh undo plus redo revisions
   without claiming C017 full snapshots, CLI routing, scripting, subscriptions, or wire transport.
+- The asynchronous job API contracts build on that canonical queue rather than introducing another
+  scheduler. Focused API, schema, and CLI consumer proof covers strict handles, stable weighted
+  priorities, unit progress, every cooperative control, deterministic dependency and handle order,
+  user-safe failures, ordered completion events, and typed-result non-exposure. Public submission,
+  host polling as a wire method, typed artifact retrieval, persistent queue recovery, muxing, and
+  publication remain outside this checkpoint.
 
 - The focused effects preset contract verifies the runtime JSON and SHA-256 edges through canonical
   current documents, legacy migration, integrity rejection, and exact graph reload. Crate-wide
@@ -1407,8 +1418,10 @@ Engine render-export consumes an acquired media owner through exact seek, comple
 decode drain and flush, immutable graph evaluation, caller-owned delivery color or audio processing,
 one-shot encoder selection, encode drain and flush, exact provenance and packet validation, and
 fresh-context reset recovery. It returns complete in-memory elementary packet streams only after a
-current lifecycle permit is rechecked. Container muxing and publication, arbitrary stream counts,
-native GPU readback, and application or public API integration remain separate gaps.
+current lifecycle permit is rechecked. The stable API now inspects and cooperatively controls jobs
+already attached to the canonical export queue, but it does not submit prepared executors, expose
+host polling or typed results, mux, or publish artifacts. Container muxing and publication,
+arbitrary stream counts, native GPU readback, and application submission remain separate gaps.
 
 The effects crate now provides a substantive graph-native authoring SDK. It composes canonical graph
 schemas, editable nodes, deterministic registry snapshots, and snapshot-bound compiler translation,
@@ -1436,8 +1449,9 @@ The largest current risk is cross-document drift:
   now composes prepared graph, cache, CPU display color, bounded audio, audio-master A/V
   coordination, worker, and viewport contracts, including deterministic late correction and
   discontinuity recovery, and exact interactive transport now controls that prepared path. Decoded
-  source and audio binding, native presentation, render and export orchestration, and public dispatch
-  remain open, so those additions do not close the broader paths. The current contract-conformant
+  source and audio binding, native presentation, application export submission, artifact
+  publication, and broad public dispatch remain open. Public asynchronous job inspection and
+  cooperative control alone do not close those broader paths. The current contract-conformant
   run must not be reported as product or runtime conformance.
   Boundary samples are not continuous intra-stage peaks, constrained-device thresholds, or
   long-session soak proof.

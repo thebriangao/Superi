@@ -17,10 +17,10 @@ fn api_schema_is_a_deterministic_complete_public_api_consumer() {
     assert_eq!(first["schema_version"], "1.0.0");
     assert_eq!(first["primitive_schema_revision"], 1);
     assert_eq!(first["json_rpc_version"], "2.0");
-    assert_eq!(first["commands"].as_array().unwrap().len(), 7);
-    assert_eq!(first["queries"].as_array().unwrap().len(), 8);
-    assert_eq!(first["events"].as_array().unwrap().len(), 7);
-    assert_eq!(first["resources"].as_array().unwrap().len(), 8);
+    assert_eq!(first["commands"].as_array().unwrap().len(), 13);
+    assert_eq!(first["queries"].as_array().unwrap().len(), 9);
+    assert_eq!(first["events"].as_array().unwrap().len(), 8);
+    assert_eq!(first["resources"].as_array().unwrap().len(), 9);
     assert_eq!(first["error"]["schema"]["version"], "1.0.0");
     assert_eq!(
         first["capability"]["availability"]
@@ -34,6 +34,12 @@ fn api_schema_is_a_deterministic_complete_public_api_consumer() {
         names(&first, "commands", "method"),
         vec![
             "superi.audio.automation.transaction.execute",
+            "superi.jobs.cancel",
+            "superi.jobs.cancel_all",
+            "superi.jobs.pause",
+            "superi.jobs.remove",
+            "superi.jobs.resume",
+            "superi.jobs.retry",
             "superi.project.command.execute",
             "superi.project.recovery.dismiss",
             "superi.project.recovery.restore",
@@ -49,6 +55,7 @@ fn api_schema_is_a_deterministic_complete_public_api_consumer() {
             "superi.audio.automation.get",
             "superi.engine.integration.validation.get",
             "superi.engine.introspection.get",
+            "superi.jobs.get",
             "superi.media.capabilities.get",
             "superi.project.recovery.compare",
             "superi.project.recovery.get",

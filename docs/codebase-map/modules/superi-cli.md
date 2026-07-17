@@ -2,7 +2,7 @@
 module_id: superi-cli
 source_paths:
   - open/crates/superi-cli
-source_hash: d6366f73b92f11eb7fb89da9d8e8440cc5e377ce79d969e2ae38aca9fcdbc95e
+source_hash: 9fda656e12744bf2dce3484cd4662df974b5c9240d18e2694040d8496a7e4742
 source_files: 8
 mapped_at_commit: working-tree
 ---
@@ -24,7 +24,8 @@ deterministic JSON snapshot containing canonical introspection, scenario reversa
 recovery actions, workflow admission, playback, and export state.
 The exact `api schema` command is a third public API consumer. It asks `PublicApiSchemaApi` for the
 same deterministic catalog used by typed clients and prints all current command, query, event,
-resource, error, and capability schemas without reconstructing registry data in the CLI.
+resource, error, and capability schemas, including the complete asynchronous job control
+vocabulary, without reconstructing registry data in the CLI.
 
 The production project command-history surface is now available through `superi-api`, but this
 binary does not yet route its apply, inspect, undo, or redo commands. Its current reversal proof
@@ -56,8 +57,8 @@ production owner is explicit in stage diagnostics and the artifact name.
   exits with its exact status.
 - `open/crates/superi-cli/tests/api_schema_cli_contract.rs`: Proves deterministic exact schema
   discovery output, catalog and primitive identity, all six schema categories, exact current counts
-  including the generic project command, event, and resource, command method names, help coverage,
-  and invalid usage status.
+  and method names including the generic project command and asynchronous job query and controls,
+  help coverage, and invalid usage status.
 - `open/crates/superi-cli/tests/scenario_runner.rs`: Provides process contracts for two-run
   reproducibility, exact state and schema 1.1.0 report contents, all-stage timing and nonzero
   resident-memory evidence, exact expectation evidence, honest stub evidence, collision
@@ -89,8 +90,8 @@ superi-cli api schema
 ```
 
 Schema discovery success prints exactly one strict `PublicApiSchemaSnapshot` JSON value containing
-catalog schema `1.0.0`, stable primitive revision 1, JSON-RPC `2.0`, seven commands, eight queries,
-seven events, eight resources, one error schema, and one capability schema in canonical order. It
+catalog schema `1.0.0`, stable primitive revision 1, JSON-RPC `2.0`, 13 commands, nine queries,
+eight events, nine resources, one error schema, and one capability schema in canonical order. It
 starts no engine, routes no operation, and owns no transport or registry state.
 
 Validation success prints exactly one strict `GetEngineIntegrationValidationResult` JSON value to
@@ -148,7 +149,8 @@ PublicApiSchemaApi
 ```
 
 The CLI neither duplicates the explicit API registration list nor imports engine types for schema
-discovery.
+discovery. It discovers the public asynchronous job schema but exposes no job query, control,
+submission, polling, waiting, or result command of its own.
 
 The CLI imports only `superi-api` for this path. The engine owns its legal execution domain and
 canonical temporary dispatcher behind that public facade, so the CLI does not project engine state,
@@ -197,7 +199,8 @@ success.
 ## Dependencies and consumers
 
 - `superi-api` supplies all three public boundaries used by the binary: deterministic schema
-  discovery, revisioned scenario transactions, and immutable coherent integration validation.
+  discovery including asynchronous job control metadata, revisioned scenario transactions, and
+  immutable coherent integration validation.
 - Engine project-history types are deliberately not a dependency. The CLI continues to depend only
   on `superi-api`; the generic editor contract is discoverable, while project apply, undo, redo,
   scripting, and automation command routing remain absent from this binary.
@@ -253,7 +256,8 @@ harness are its current consumers.
   changes no scenario, lifecycle, recovery, playback, or export state. It succeeds only when the
   strict public snapshot reports coherent state.
 - `api schema` accepts no options, is deterministic across processes, consumes only the API-owned
-  catalog, and changes no engine or project state.
+  catalog, and changes no engine or project state. Discovering job methods does not attach, poll, or
+  control an engine queue.
 
 ## Tests and verification
 
@@ -290,10 +294,10 @@ empty coherence findings, help coverage, and precise invalid usage. They do not 
 application session, UI rendering, endpoint polling, or long-session recovery.
 
 Two API schema process contracts prove deterministic semantics across separate invocations, exact
-catalog, primitive, and JSON-RPC identity, all six schema sections, exact current counts including
-the generic editor registration and command
-names, help coverage, and precise invalid usage. They do not prove method routing, wire transport,
-event delivery, scripting, or broad CLI parity.
+catalog, primitive, and JSON-RPC identity, all six schema sections, exact current counts and method
+names including the generic editor registration and every asynchronous job query and control, help
+coverage, and precise invalid usage. They do not prove method routing, wire transport, event
+delivery, job execution, scripting, or broad CLI parity.
 
 ## Current status and risks
 
@@ -306,6 +310,11 @@ because the current media stage does not open it.
 Engine now has a bounded real-project command owner and the API has a strict generic adapter, but
 the CLI exposes no project history execution command. A later CLI checkpoint can consume the API
 adapter without violating this binary's dependency tier or importing engine types.
+
+Schema discovery now exposes the stable asynchronous job catalog, but the CLI intentionally has no
+job-control parser or runtime attachment. A future headless job workflow must consume the same
+API-owned query, command, replacement event, and resource contracts rather than importing the
+engine queue or adding a second scheduler.
 
 `engine validate` currently constructs a fresh starting engine, so it proves the shared public
 query and strict state projection rather than attaching to an already running application process.

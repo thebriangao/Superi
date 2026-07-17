@@ -23,6 +23,33 @@ pub const PROJECT_STATE_CHANGED_EVENT: &str = "superi.project.state.changed";
 /// Replacement resource name for generic project history state.
 pub const PROJECT_HISTORY_RESOURCE: &str = "superi.project.history";
 
+/// Schema version for public asynchronous job replacement snapshots.
+pub const ASYNC_JOBS_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
+
+/// JSON-RPC method for querying every retained asynchronous job.
+pub const GET_ASYNC_JOBS_METHOD: &str = "superi.jobs.get";
+
+/// JSON-RPC method for cooperatively pausing one asynchronous job.
+pub const PAUSE_ASYNC_JOB_METHOD: &str = "superi.jobs.pause";
+
+/// JSON-RPC method for resuming one fully paused asynchronous job.
+pub const RESUME_ASYNC_JOB_METHOD: &str = "superi.jobs.resume";
+
+/// JSON-RPC method for retrying one nonterminal failed asynchronous job.
+pub const RETRY_ASYNC_JOB_METHOD: &str = "superi.jobs.retry";
+
+/// JSON-RPC method for cooperatively cancelling one asynchronous job.
+pub const CANCEL_ASYNC_JOB_METHOD: &str = "superi.jobs.cancel";
+
+/// JSON-RPC method for cooperatively cancelling every unfinished asynchronous job.
+pub const CANCEL_ALL_ASYNC_JOBS_METHOD: &str = "superi.jobs.cancel_all";
+
+/// JSON-RPC method for removing one finalized asynchronous job.
+pub const REMOVE_ASYNC_JOB_METHOD: &str = "superi.jobs.remove";
+
+/// Ordered event name for complete asynchronous job replacement state.
+pub const ASYNC_JOBS_CHANGED_EVENT: &str = "superi.jobs.changed";
+
 /// Schema version for authored audio automation replacement snapshots.
 pub const AUDIO_AUTOMATION_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
 
