@@ -411,6 +411,26 @@ impl ProjectCommandHistory {
         Ok(after)
     }
 
+    /// Prepares one recovery replacement without changing live history state.
+    pub(crate) fn prepare_recovery_restore(
+        &self,
+        expected_revision: u64,
+        target: &ProjectSnapshot,
+    ) -> Result<ProjectDocument> {
+        require_revision(expected_revision, self.document.revision())?;
+        let mut candidate = self.document.clone();
+        candidate.restore_snapshot(expected_revision, target)?;
+        Ok(candidate)
+    }
+
+    /// Commits an already validated and durably published recovery replacement.
+    pub(crate) fn commit_recovery_restore(&mut self, document: ProjectDocument) {
+        debug_assert_eq!(document.project_id(), self.document.project_id());
+        let capacity = self.history.capacity();
+        self.document = document;
+        self.history = SnapshotHistory::new(capacity);
+    }
+
     /// Executes one revision-fenced mutation, undo, or redo command atomically.
     pub fn execute(&mut self, command: ProjectHistoryCommand) -> Result<ProjectHistoryOutcome> {
         require_revision(command.expected_revision, self.document.revision())?;

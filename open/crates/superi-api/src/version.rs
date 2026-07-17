@@ -2,6 +2,24 @@
 
 use superi_core::settings::SemanticVersion;
 
+/// Schema version for project crash recovery state and comparison payloads.
+pub const PROJECT_RECOVERY_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
+
+/// JSON-RPC method for refreshing project crash recovery state.
+pub const GET_PROJECT_RECOVERY_METHOD: &str = "superi.project.recovery.get";
+
+/// JSON-RPC method for comparing one recovery candidate with current state.
+pub const COMPARE_PROJECT_RECOVERY_METHOD: &str = "superi.project.recovery.compare";
+
+/// JSON-RPC method for restoring one recovery candidate.
+pub const RESTORE_PROJECT_RECOVERY_METHOD: &str = "superi.project.recovery.restore";
+
+/// JSON-RPC method for durably dismissing one recovery candidate.
+pub const DISMISS_PROJECT_RECOVERY_METHOD: &str = "superi.project.recovery.dismiss";
+
+/// Ordered event name for complete project recovery replacement state.
+pub const PROJECT_RECOVERY_CHANGED_EVENT: &str = "superi.project.recovery.changed";
+
 /// Schema version for authoritative project settings replacement snapshots.
 pub const PROJECT_SETTINGS_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
 

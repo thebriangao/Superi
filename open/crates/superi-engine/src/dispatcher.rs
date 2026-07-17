@@ -7,6 +7,7 @@
 //! API and shell concerns.
 
 use std::collections::VecDeque;
+use std::path::Path;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TryRecvError, TrySendError};
 use std::time::Instant;
 
@@ -14,6 +15,7 @@ use superi_concurrency::threads::ExecutionDomain;
 use superi_core::diagnostics::DiagnosticEvent;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_project::document::{ProjectDocument, ProjectSnapshot};
+use superi_project::ProjectDatabase;
 
 use crate::command::{
     ScenarioAction, ScenarioEngine, ScenarioSnapshot, MAX_SCENARIO_TRANSACTION_ACTIONS,
@@ -34,6 +36,10 @@ use crate::introspection::{EngineIntrospectionSnapshot, MediaCapabilities};
 use crate::lifecycle::{
     EngineLifecycle, EngineLifecycleAction, EngineLifecycleActionKind, EngineLifecycleSnapshot,
     EngineSubsystem, EngineWorkAdmission, EngineWorkKind, EngineWorkPermit,
+};
+use crate::project_recovery::{
+    ProjectRecoveryCommand, ProjectRecoveryCoordinator, ProjectRecoveryOutcome,
+    ProjectRecoveryState,
 };
 use crate::project_settings::{ProjectSettingsState, ProjectSettingsTransaction};
 use crate::resource_arbitration::ResourceArbitrationSnapshot;
@@ -354,6 +360,8 @@ pub enum EngineCommand {
     InspectProjectSettings,
     /// Commit one optimistic project settings transaction.
     ExecuteProjectSettings(ProjectSettingsTransaction),
+    /// Execute one crash recovery discovery, comparison, restore, or dismissal command.
+    ExecuteProjectRecovery(ProjectRecoveryCommand),
     /// Inspect current lifecycle state without mutation.
     InspectLifecycle,
     /// Inspect complete classified failure and recovery state without mutation.
@@ -426,10 +434,12 @@ impl EngineCommand {
         match self {
             Self::ExecuteExportJob(command) => command.may_change_state(),
             Self::ExecuteProjectSettings(_) => true,
+            Self::ExecuteProjectRecovery(ProjectRecoveryCommand::Compare { .. }) => false,
             _ => matches!(
                 self,
                 Self::ExecuteScenario(_)
                     | Self::ExecuteProjectHistory(_)
+                    | Self::ExecuteProjectRecovery(_)
                     | Self::CompleteLifecycleAction(_)
                     | Self::FailLifecycleAction { .. }
                     | Self::ReportRuntimeFailure { .. }
@@ -476,6 +486,8 @@ pub enum EngineCommandResult {
     ProjectHistory(Box<ProjectHistoryOutcome>),
     /// Complete durable and resolved project settings state.
     ProjectSettings(Box<ProjectSettingsState>),
+    /// Complete project crash recovery command outcome.
+    ProjectRecovery(Box<ProjectRecoveryOutcome>),
     /// Complete lifecycle state.
     Lifecycle(Box<EngineLifecycleSnapshot>),
     /// Complete classified failure, recovery, and coherent lifecycle state.
@@ -531,6 +543,8 @@ pub enum EngineEvent {
     ProjectStateChanged(Box<ProjectHistoryState>),
     /// Authoritative project settings changed atomically.
     ProjectSettingsChanged(Box<ProjectSettingsState>),
+    /// Project crash recovery state changed atomically.
+    ProjectRecoveryStateChanged(Box<ProjectRecoveryState>),
     /// Lifecycle state changed atomically.
     LifecycleStateChanged(Box<EngineLifecycleSnapshot>),
     /// Classified failure, recovery, and lifecycle state changed atomically.
@@ -742,6 +756,7 @@ struct PendingPlaybackCommand {
 pub struct EngineCommandDispatcher {
     scenario: ScenarioEngine,
     project_history: Option<ProjectCommandHistory>,
+    project_recovery: Option<ProjectRecoveryCoordinator>,
     lifecycle: Option<EngineLifecycle>,
     errors: Option<EngineErrorCoordinator>,
     recovery_state_revision: u64,
@@ -771,6 +786,7 @@ impl EngineCommandDispatcher {
         Ok(Self {
             scenario: ScenarioEngine::new(),
             project_history: None,
+            project_recovery: None,
             lifecycle: Some(lifecycle),
             errors: Some(errors),
             recovery_state_revision: 0,
@@ -817,6 +833,7 @@ impl EngineCommandDispatcher {
         Self {
             scenario: ScenarioEngine::new(),
             project_history: None,
+            project_recovery: None,
             lifecycle: None,
             errors: None,
             recovery_state_revision: 0,
@@ -906,6 +923,33 @@ impl EngineCommandDispatcher {
         }
         ProjectSettingsState::from_snapshot(&document.snapshot())?;
         self.project_history = Some(ProjectCommandHistory::with_capacity(document, capacity)?);
+        Ok(())
+    }
+
+    /// Attaches file-backed crash recovery to the authoritative project owner.
+    ///
+    /// The supplied database must reproduce the attached project exactly. Recovery
+    /// then owns that database so restore publication cannot bypass serialized
+    /// engine state.
+    pub fn attach_project_recovery(
+        &mut self,
+        database: ProjectDatabase,
+        recovery_root: impl AsRef<Path>,
+    ) -> Result<()> {
+        self.require_owner()?;
+        self.require_project_settings_owner()?;
+        if self.project_recovery.is_some() {
+            return Err(conflict(
+                "attach_project_recovery",
+                "project recovery is already attached to this dispatcher",
+            ));
+        }
+        let current = self.project_history_ref()?.project_snapshot();
+        self.project_recovery = Some(ProjectRecoveryCoordinator::new(
+            database,
+            recovery_root,
+            &current,
+        )?);
         Ok(())
     }
 
@@ -1065,6 +1109,9 @@ impl EngineCommandDispatcher {
                     (Some(state.snapshot().revision()), None, None, None, None)
                 }
                 EngineEvent::ProjectSettingsChanged(state) => {
+                    (Some(state.project_revision()), None, None, None, None)
+                }
+                EngineEvent::ProjectRecoveryStateChanged(state) => {
                     (Some(state.project_revision()), None, None, None, None)
                 }
                 EngineEvent::LifecycleStateChanged(snapshot) => {
@@ -1307,6 +1354,20 @@ impl EngineCommandDispatcher {
                     .then(|| EngineEvent::ProjectSettingsChanged(Box::new(state.clone())));
                 Ok(CommandExecution {
                     result: EngineCommandResult::ProjectSettings(Box::new(state)),
+                    event,
+                })
+            }
+            EngineCommand::ExecuteProjectRecovery(command) => {
+                let operation = command.operation();
+                let (recovery, history) = self.project_recovery_parts()?;
+                let outcome = recovery.execute(history, command)?;
+                let event = (operation
+                    != crate::project_recovery::ProjectRecoveryOperation::Compare)
+                    .then(|| {
+                        EngineEvent::ProjectRecoveryStateChanged(Box::new(outcome.state().clone()))
+                    });
+                Ok(CommandExecution {
+                    result: EngineCommandResult::ProjectRecovery(Box::new(outcome)),
                     event,
                 })
             }
@@ -1632,6 +1693,18 @@ impl EngineCommandDispatcher {
             .ok_or_else(missing_project_history)
     }
 
+    fn project_recovery_parts(
+        &mut self,
+    ) -> Result<(&mut ProjectRecoveryCoordinator, &mut ProjectCommandHistory)> {
+        match (
+            self.project_recovery.as_mut(),
+            self.project_history.as_mut(),
+        ) {
+            (Some(recovery), Some(history)) => Ok((recovery, history)),
+            _ => Err(missing_project_recovery()),
+        }
+    }
+
     fn lifecycle_mut(&mut self) -> Result<&mut EngineLifecycle> {
         self.lifecycle.as_mut().ok_or_else(missing_lifecycle)
     }
@@ -1752,6 +1825,15 @@ fn missing_project_history() -> Error {
         "project commands require an attached project command history",
     )
     .with_context(ErrorContext::new(COMPONENT, "require_project_history"))
+}
+
+fn missing_project_recovery() -> Error {
+    Error::new(
+        ErrorCategory::Unavailable,
+        Recoverability::Degraded,
+        "project recovery commands require an attached recovery owner",
+    )
+    .with_context(ErrorContext::new(COMPONENT, "require_project_recovery"))
 }
 
 fn bounded_utf8_prefix(value: &str, maximum_bytes: usize) -> String {

@@ -4,12 +4,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::{EngineIntrospectionSnapshot, MediaCapabilitiesSnapshot};
 use crate::project::{ProjectSettingMutation, ProjectSettingsSnapshot};
+use crate::recovery::{ProjectRecoveryComparisonSnapshot, ProjectRecoverySnapshot};
 use crate::scenario::{ScenarioActionResult, ScenarioTransactionResult, SliceAction};
 use crate::validation::IntegrationValidationSnapshot;
 use crate::version::{
+    COMPARE_PROJECT_RECOVERY_METHOD, DISMISS_PROJECT_RECOVERY_METHOD,
     EXECUTE_PROJECT_SETTINGS_TRANSACTION_METHOD, EXECUTE_SCENARIO_ACTION_METHOD,
     EXECUTE_SCENARIO_TRANSACTION_METHOD, GET_ENGINE_INTEGRATION_VALIDATION_METHOD,
-    GET_ENGINE_INTROSPECTION_METHOD, GET_MEDIA_CAPABILITIES_METHOD, GET_PROJECT_SETTINGS_METHOD,
+    GET_ENGINE_INTROSPECTION_METHOD, GET_MEDIA_CAPABILITIES_METHOD, GET_PROJECT_RECOVERY_METHOD,
+    GET_PROJECT_SETTINGS_METHOD, RESTORE_PROJECT_RECOVERY_METHOD,
 };
 
 /// One typed public API command and its response contract.
@@ -19,6 +22,381 @@ pub trait ApiCommand {
 
     /// Permanent namespaced JSON-RPC method name.
     const METHOD: &'static str;
+}
+
+/// Structured command for refreshing project crash recovery state.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GetProjectRecovery {
+    transaction_id: String,
+}
+
+impl GetProjectRecovery {
+    #[must_use]
+    pub fn new(transaction_id: impl Into<String>) -> Self {
+        Self {
+            transaction_id: transaction_id.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    pub(crate) fn into_transaction_id(self) -> String {
+        self.transaction_id
+    }
+}
+
+impl ApiCommand for GetProjectRecovery {
+    type Response = GetProjectRecoveryResult;
+
+    const METHOD: &'static str = GET_PROJECT_RECOVERY_METHOD;
+}
+
+/// Successful complete recovery-state query.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GetProjectRecoveryResult {
+    transaction_id: String,
+    command_sequence: u64,
+    snapshot: ProjectRecoverySnapshot,
+}
+
+impl GetProjectRecoveryResult {
+    pub(crate) const fn new(
+        transaction_id: String,
+        command_sequence: u64,
+        snapshot: ProjectRecoverySnapshot,
+    ) -> Self {
+        Self {
+            transaction_id,
+            command_sequence,
+            snapshot,
+        }
+    }
+
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    #[must_use]
+    pub const fn command_sequence(&self) -> u64 {
+        self.command_sequence
+    }
+
+    #[must_use]
+    pub const fn snapshot(&self) -> &ProjectRecoverySnapshot {
+        &self.snapshot
+    }
+}
+
+/// Strict command for comparing one recovery candidate.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompareProjectRecovery {
+    transaction_id: String,
+    expected_catalog_revision: u64,
+    candidate_id: String,
+}
+
+impl CompareProjectRecovery {
+    #[must_use]
+    pub fn new(
+        transaction_id: impl Into<String>,
+        expected_catalog_revision: u64,
+        candidate_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            transaction_id: transaction_id.into(),
+            expected_catalog_revision,
+            candidate_id: candidate_id.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    #[must_use]
+    pub const fn expected_catalog_revision(&self) -> u64 {
+        self.expected_catalog_revision
+    }
+
+    #[must_use]
+    pub fn candidate_id(&self) -> &str {
+        &self.candidate_id
+    }
+
+    pub(crate) fn into_parts(self) -> (String, u64, String) {
+        (
+            self.transaction_id,
+            self.expected_catalog_revision,
+            self.candidate_id,
+        )
+    }
+}
+
+impl ApiCommand for CompareProjectRecovery {
+    type Response = CompareProjectRecoveryResult;
+
+    const METHOD: &'static str = COMPARE_PROJECT_RECOVERY_METHOD;
+}
+
+/// Successful semantic recovery comparison.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompareProjectRecoveryResult {
+    transaction_id: String,
+    command_sequence: u64,
+    snapshot: ProjectRecoverySnapshot,
+    comparison: ProjectRecoveryComparisonSnapshot,
+}
+
+impl CompareProjectRecoveryResult {
+    pub(crate) const fn new(
+        transaction_id: String,
+        command_sequence: u64,
+        snapshot: ProjectRecoverySnapshot,
+        comparison: ProjectRecoveryComparisonSnapshot,
+    ) -> Self {
+        Self {
+            transaction_id,
+            command_sequence,
+            snapshot,
+            comparison,
+        }
+    }
+
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    #[must_use]
+    pub const fn command_sequence(&self) -> u64 {
+        self.command_sequence
+    }
+
+    #[must_use]
+    pub const fn snapshot(&self) -> &ProjectRecoverySnapshot {
+        &self.snapshot
+    }
+
+    #[must_use]
+    pub const fn comparison(&self) -> &ProjectRecoveryComparisonSnapshot {
+        &self.comparison
+    }
+}
+
+/// Strict optimistic command for restoring one recovery candidate.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RestoreProjectRecovery {
+    transaction_id: String,
+    expected_catalog_revision: u64,
+    expected_project_revision: u64,
+    candidate_id: String,
+}
+
+impl RestoreProjectRecovery {
+    #[must_use]
+    pub fn new(
+        transaction_id: impl Into<String>,
+        expected_catalog_revision: u64,
+        expected_project_revision: u64,
+        candidate_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            transaction_id: transaction_id.into(),
+            expected_catalog_revision,
+            expected_project_revision,
+            candidate_id: candidate_id.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    #[must_use]
+    pub const fn expected_catalog_revision(&self) -> u64 {
+        self.expected_catalog_revision
+    }
+
+    #[must_use]
+    pub const fn expected_project_revision(&self) -> u64 {
+        self.expected_project_revision
+    }
+
+    #[must_use]
+    pub fn candidate_id(&self) -> &str {
+        &self.candidate_id
+    }
+
+    pub(crate) fn into_parts(self) -> (String, u64, u64, String) {
+        (
+            self.transaction_id,
+            self.expected_catalog_revision,
+            self.expected_project_revision,
+            self.candidate_id,
+        )
+    }
+}
+
+impl ApiCommand for RestoreProjectRecovery {
+    type Response = RestoreProjectRecoveryResult;
+
+    const METHOD: &'static str = RESTORE_PROJECT_RECOVERY_METHOD;
+}
+
+/// Successful durable recovery restore result.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RestoreProjectRecoveryResult {
+    transaction_id: String,
+    command_sequence: u64,
+    restored: bool,
+    snapshot: ProjectRecoverySnapshot,
+}
+
+impl RestoreProjectRecoveryResult {
+    pub(crate) const fn new(
+        transaction_id: String,
+        command_sequence: u64,
+        restored: bool,
+        snapshot: ProjectRecoverySnapshot,
+    ) -> Self {
+        Self {
+            transaction_id,
+            command_sequence,
+            restored,
+            snapshot,
+        }
+    }
+
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    #[must_use]
+    pub const fn command_sequence(&self) -> u64 {
+        self.command_sequence
+    }
+
+    #[must_use]
+    pub const fn restored(&self) -> bool {
+        self.restored
+    }
+
+    #[must_use]
+    pub const fn snapshot(&self) -> &ProjectRecoverySnapshot {
+        &self.snapshot
+    }
+}
+
+/// Strict optimistic command for dismissing one recovery candidate.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DismissProjectRecovery {
+    transaction_id: String,
+    expected_catalog_revision: u64,
+    candidate_id: String,
+}
+
+impl DismissProjectRecovery {
+    #[must_use]
+    pub fn new(
+        transaction_id: impl Into<String>,
+        expected_catalog_revision: u64,
+        candidate_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            transaction_id: transaction_id.into(),
+            expected_catalog_revision,
+            candidate_id: candidate_id.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    #[must_use]
+    pub const fn expected_catalog_revision(&self) -> u64 {
+        self.expected_catalog_revision
+    }
+
+    #[must_use]
+    pub fn candidate_id(&self) -> &str {
+        &self.candidate_id
+    }
+
+    pub(crate) fn into_parts(self) -> (String, u64, String) {
+        (
+            self.transaction_id,
+            self.expected_catalog_revision,
+            self.candidate_id,
+        )
+    }
+}
+
+impl ApiCommand for DismissProjectRecovery {
+    type Response = DismissProjectRecoveryResult;
+
+    const METHOD: &'static str = DISMISS_PROJECT_RECOVERY_METHOD;
+}
+
+/// Successful durable recovery dismissal result.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DismissProjectRecoveryResult {
+    transaction_id: String,
+    command_sequence: u64,
+    dismissed: bool,
+    snapshot: ProjectRecoverySnapshot,
+}
+
+impl DismissProjectRecoveryResult {
+    pub(crate) const fn new(
+        transaction_id: String,
+        command_sequence: u64,
+        dismissed: bool,
+        snapshot: ProjectRecoverySnapshot,
+    ) -> Self {
+        Self {
+            transaction_id,
+            command_sequence,
+            dismissed,
+            snapshot,
+        }
+    }
+
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    #[must_use]
+    pub const fn command_sequence(&self) -> u64 {
+        self.command_sequence
+    }
+
+    #[must_use]
+    pub const fn dismissed(&self) -> bool {
+        self.dismissed
+    }
+
+    #[must_use]
+    pub const fn snapshot(&self) -> &ProjectRecoverySnapshot {
+        &self.snapshot
+    }
 }
 
 /// Structured parameters for the authoritative project settings query.

@@ -5,8 +5,9 @@
 //! named standalone graphs, durable project settings and authored clip-mix state,
 //! stable schema-3 project serialization, checked schema migration, atomic save
 //! publication, portable referenced-media paths, MediaId-keyed relink commands, and
-//! deterministic project autosave scheduling and retention are implemented. Recovery
-//! remains staged in its dedicated module.
+//! deterministic project autosave scheduling and retention are implemented. Crash
+//! recovery discovery, complete semantic comparison, restoration, and durable
+//! dismissal consume that same authoritative store.
 
 pub mod autosave;
 pub mod document;
@@ -26,6 +27,11 @@ pub use media::MEDIA_PATH_TARGET_FORMAT;
 pub use persist::{
     ProjectDatabase, PROJECT_APPLICATION_ID, PROJECT_FORMAT, PROJECT_FORMAT_VERSION,
     PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION, PROJECT_SCHEMA_REVISION,
+};
+pub use recovery::{
+    ProjectRecoveryCandidate, ProjectRecoveryCandidateId, ProjectRecoveryCatalog,
+    ProjectRecoveryComparison, ProjectRecoveryController, ProjectRecoveryFinding,
+    ProjectRecoveryNextAction,
 };
 pub use save::{
     ProjectDestinationCollision, ProjectSaveCommand, ProjectSaveOperation, ProjectSaveOutcome,

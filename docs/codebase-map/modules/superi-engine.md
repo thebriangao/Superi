@@ -2,8 +2,8 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 049fe97af7914673ca89dff8460c3043ab3ef77770d39ae7175b089f49426bb5
-source_files: 60
+source_hash: d8102f3c8873d9d183cf65d9f21e58fd27d2abc590ba00dee508049811137cc4
+source_files: 62
 mapped_at_commit: working-tree
 ---
 
@@ -27,8 +27,9 @@ engine-owned command history over that project surface. An engine-wide typed com
 coordinates canonical scenario transactions, lifecycle state changes, failure and recovery control,
 coherent work admission, bounded cross-domain playback control, canonical logical export-job
 control, revision-fenced project mutation plus undo and redo, authoritative project settings
-inspection and transactions, read-only whole-engine
-introspection and integration validation, and ordered replacement events. Validation composes the
+inspection and transactions, crash recovery discovery, comparison, durable restore, and dismissal,
+read-only whole-engine introspection and integration validation, and ordered replacement events.
+Validation composes the
 canonical introspection snapshot with exact lifecycle, recovery, scenario, playback, and export
 evidence without polling a runtime owner or creating a second mutable state model.
 Native GPU presentation, timeline-owned decoded-audio rendering, export muxing and publication,
@@ -36,12 +37,12 @@ wire adaptation, and general project nodes remain incomplete.
 
 The scenario command path remains a bounded reference owner for contract conformance. The project
 history path instead wraps the real `superi-project` document, media command, and settings owners,
-without
-replacing timeline, graph, media, color, render, persistence, or muxing policy.
+without replacing timeline, graph, media, color, render, persistence, or muxing policy.
 The selected immutable snapshot from that history path is also the real consumer input for the
-project-owned autosave contract. Engine production source does not own autosave policy, filesystem
-publication, retention, scheduling, or recovery choice, and no dispatcher or wire command is added
-by that proof.
+project-owned autosave contract. Engine production source does not own autosave policy, publication,
+retention, or scheduling. Its focused recovery coordinator instead owns the active file-backed
+database attachment and composes the project recovery catalog with monotonic history restoration
+through the existing dispatcher.
 
 ## Source inventory
 
@@ -74,8 +75,9 @@ by that proof.
   optional exact resource accounting, and dispatcher-owned lifecycle and recovery state into
   read-only introspection and integration validation snapshots without advancing a command or event
   sequence. It optionally owns one authoritative project document, exposes immutable project
-  snapshots, and routes settings inspection and optimistic transactions with dynamic no-op event
-  reservation.
+  snapshots, routes settings inspection and optimistic transactions with dynamic no-op event
+  reservation, and optionally attaches one exact file-backed recovery coordinator whose discover,
+  restore, and dismiss commands publish correlated complete recovery state.
 - `open/crates/superi-engine/src/error.rs`: Implements EngineControl-owned classified failure
   propagation, immutable actionable records, bounded diagnostic history, exact recovery-intent
   validation, failed-recovery reclassification, and coherent lifecycle routing without copying
@@ -98,7 +100,9 @@ by that proof.
 - `open/crates/superi-engine/src/history.rs`: Implements one shared bounded immutable before-and-after
   snapshot store, stable typed media, settings, and compound project mutations and history actions,
   revision-fenced apply, undo, and redo, oldest-entry eviction, failure and no-op branch
-  preservation, and the exclusive `ProjectCommandHistory` owner over one real `ProjectDocument`.
+  preservation, the exclusive `ProjectCommandHistory` owner over one real `ProjectDocument`, and an
+  internal prepare-then-commit recovery replacement that resets session history only after durable
+  active-project publication.
 - `open/crates/superi-engine/src/introspection.rs`: Implements deterministic API-neutral backend and
   codec capability records plus complete immutable engine snapshots containing optional exact
   resource accounting, lifecycle and recovery revisions, health, canonical subsystem state,
@@ -128,6 +132,10 @@ by that proof.
   snapshot into existing exact timeline, timecode, color identity, audio timebase and ordered
   channel layout, cache budget, proxy quality, render format, alpha, target, and fingerprint types;
   it re-exports the project-owned mutation and transaction vocabulary for upper-tier dispatchers.
+- `open/crates/superi-engine/src/project_recovery.rs`: Owns the typed discover, compare, restore,
+  and dismiss command vocabulary, complete recovery replacement state, exact attachment of one
+  file-backed active database and project recovery catalog, prepare-before-publish restoration, and
+  infallible postpublication history replacement.
 - `open/crates/superi-engine/src/project_transaction.rs`: Implements the bounded whole-project
   transaction vocabulary, one outer project publication, ordered action results, timeline and
   clip-mix reconciliation, three-way retained graph preservation, per-action aggregate validation,
@@ -148,7 +156,8 @@ by that proof.
   opens each source, selects and creates each decoder once, retains policy evidence, and publishes
   one all-or-nothing owner bundle.
 - `open/crates/superi-engine/src/test_support.rs`: Feature-gated hidden construction of a minimal
-  valid project document for upper-tier API contract tests, without widening dependency direction.
+  valid project document and one real file-backed recovery dispatcher fixture for upper-tier API
+  contract tests, without widening dependency direction.
 - `open/crates/superi-engine/src/transport.rs`: Implements playback-domain pause, play, seek,
   superseding scrub, exact frame step, reduced signed rate, direction, half-open loop, rational
   clock cadence, prediction replanning, protected discontinuities, bounded ordinary late-frame
@@ -261,6 +270,12 @@ by that proof.
   history state after authored apply, undo, and redo reaches the project-owned autosave command
   surface as complete current-schema recovery points, including exact revisions, settings, media
   references, editorial state, and retained graphs, without adding an engine autosave owner.
+- `open/crates/superi-engine/tests/project_recovery_dispatcher_contract.rs`: Proves one
+  EngineControl command surface for discovery, complete semantic comparison including authored
+  clip-mix state, durable monotonic restore, and
+  exact dismissal; active database reopen equality; empty restored session history; candidate
+  retention; persistence-failure atomicity; stale and terminal classification; and event-queue
+  backpressure before every persistent mutation.
 - `open/crates/superi-engine/tests/project_settings_dispatcher_contract.rs`: Proves authoritative
   project attachment, exact typed resolution for all six policy domains, optimistic transactions,
   no-op event suppression under a full queue, invalid and stale rollback, ordered replacement
@@ -301,7 +316,9 @@ intentionally absent from engine mutations.
 - `ProjectCommandHistory` exclusively owns one `ProjectDocument`. The default capacity is 64,
   explicit capacity is bounded from 1 through 4096, and retained entries are session-local immutable
   before and after snapshots while only the selected project snapshot remains durable. Dispatcher
-  settings transactions publish through this same document and enter the same history.
+  settings transactions publish through this same document and enter the same history. Recovery
+  prepares a cloned restored document behind the exact current revision and commits it with empty
+  undo and redo branches only after the active project database publishes the same snapshot.
 
 `dispatcher` exposes `EngineTransactionId`, `ScenarioTransaction`, `EngineCommandRequest`, the
 non-exhaustive `EngineCommand` and `EngineCommandResult` vocabularies, classified
@@ -319,6 +336,10 @@ same exclusive owner with default history capacity for the public settings path,
 `project_snapshot` returns its selected immutable project without exposing mutable ownership.
 `InspectProjectSettings` and `ExecuteProjectSettings` return resolved settings state, record semantic
 changes in the shared history, and publish correlated `ProjectSettingsChanged` replacement events.
+`attach_project_recovery` consumes one file-backed `ProjectDatabase` only when it exactly matches the
+attached history snapshot. `ExecuteProjectRecovery` accepts typed discover, compare, restore, and
+dismiss commands. It returns one `ProjectRecoveryOutcome`; discover, restore, and dismiss publish a
+complete `ProjectRecoveryStateChanged` event, while comparison remains read-only and event-free.
 `introspection_snapshot` composes current declaration-only
 media capabilities, optional exact shared-resource accounting, and dispatcher-owned lifecycle and
 recovery state without dispatching a command or publishing an event.
@@ -336,6 +357,13 @@ vocabulary. Resolution maps durable scalar settings into existing subsystem cont
 rewriting authored timeline or graph state. Built-in ACEScg and pinned color identities remain
 explicit; audio retains an exact sample timebase and ordered `ChannelLayout`; render policy retains
 one deterministic `RenderSettingsFingerprint` for cache and execution identity.
+
+`project_recovery` exposes stable `ProjectRecoveryOperation` and `ProjectRecoveryCommand` values,
+opaque project-owned candidate identity, complete aggregate `ProjectRecoveryComparison`, complete
+`ProjectRecoveryState`, and `ProjectRecoveryOutcome`. The internal coordinator binds the exact
+project catalog to the authoritative history and active file-backed database. Restore fully loads
+and prepares a monotonic candidate document, publishes it through `ProjectDatabase::replace`, then
+commits the prepared in-memory document without a fallible step or retained prior-session history.
 
 `validation` exposes `EngineIntegrationCondition`, stable coherence finding codes,
 `EngineWorkflowValidation`, endpoint-specific playback and export validation state, and
@@ -556,20 +584,43 @@ survive. This is a real cross-crate consumer proof, not an engine dispatcher int
 background I/O host must own the controller and route typed commands without blocking EngineControl,
 Playback, Render, or Audio.
 
+### Project crash recovery transaction
+
+The dispatcher may attach one `ProjectRecoveryCoordinator` only after a real project history is
+present and only when the supplied file-backed `ProjectDatabase` reloads to the exact selected
+snapshot. The coordinator owns that database handle and the project-owned recovery catalog together,
+so no restore path can publish durable state outside serialized EngineControl commands.
+
+Discovery delegates exact namespace scanning and classification to `superi-project` and returns one
+complete state beside the current project history. Comparison is read-only and uses the current
+selected snapshot, including editorial, settings, authored clip-mix, root, and retained graph state.
+Restore first revalidates and loads the candidate, computes that typed comparison evidence, clones
+the current document, and applies `restore_snapshot` behind both catalog and project revision fences.
+A changed prepared snapshot is published through `ProjectDatabase::replace` before the in-memory
+history is swapped and reset. Persistent failure therefore leaves disk, history, candidate, command
+sequence, and event stream unchanged. Dismiss delegates the exact synchronized tombstone transition
+to the project owner and retains the active project unchanged.
+
+Discover, restore, and dismiss reserve command and event sequence space plus bounded queue capacity
+before filesystem mutation, then emit one complete replacement recovery state correlated to the
+caller transaction. Compare advances only the successful command sequence and emits no event.
+Candidates remain after restore until a separate revision-fenced dismissal succeeds.
+
 ### Engine command dispatch and event publication
 
 One `EngineCommandRequest` combines a validated caller transaction identity with one typed command.
 Scenario execution requires an exact expected revision and one to 64 ordered actions. Lifecycle
 inspection and mutation, operation-labeled classified failure, exact recovery start, completion,
 failure and inspection, shutdown, restart, work admission, permit validation, stable interactive
-transport control, attached project apply, undo, redo, and inspection, and every logical export
+transport control, attached project apply, undo, redo, recovery discovery, comparison, restoration,
+dismissal, and inspection, and every logical export
 queue action all route through the same dispatcher
 rather than creating parallel control paths. The lifecycle-attached owner checks EngineControl
 before observing or mutating authoritative state.
 
 Before a state-changing command executes, the dispatcher reserves bounded event capacity and
 checks command and event sequence exhaustion. Success advances the command sequence once and emits
-one full replacement scenario, project, lifecycle, or recovery event when state changed. Project
+one full replacement scenario, project, project-recovery, lifecycle, or recovery event when state changed. Project
 commands publish no event for a semantic no-op, and event capacity is preflighted before the
 document or either history branch can change. Recovery state has
 its own monotonic revision and contains the coherent lifecycle snapshot, active failures in
@@ -1007,19 +1058,23 @@ audio mutation, so their user intent remains attached without synthesis.
   supplies the checked document edit and restoration seams, authored media commands, draft
   validation, authoritative settings keys and defaults, durable clip-mix aggregate, and typed
   autosave controller exercised by the selected-history-state consumer contract. Project remains
-  authoritative for persistence, autosave scheduling, recovery-point publication, and pruning,
-  while engine owns typed subsystem resolution and bounded session history without duplicating
-  project validation or persistence. Test-only rusqlite creates the exact legacy
-  database fixture without entering the engine runtime graph, and its referenced-media path adapter
-  constructs local `SourceRequest` values. Engine lifecycle still names only abstract project
-  quiescence, and engine implements neither project persistence nor a parallel project state model.
+  authoritative for settings keys, validation, defaults, persistence, autosave scheduling,
+  recovery-point publication, pruning, recovery discovery, semantic comparison, candidate
+  classification, and exact dismissal, while engine owns typed subsystem resolution, bounded
+  session history, active-database attachment, and the durable restoration transaction.
+  Test-only rusqlite creates the exact legacy database fixture without entering the engine runtime
+  graph, and its referenced-media path adapter constructs local `SourceRequest` values. Engine
+  lifecycle still names only abstract project quiescence, and engine implements neither persistence
+  nor a parallel project model.
 - `superi-api` consumes dispatcher transactions and events plus command, media capability, and
   complete engine introspection and integration validation snapshots, preserving public adaptation,
-  validation, scenario, and project settings seams without exposing engine-private owners. The API
-  depends only on engine for project settings and therefore does not reverse the reviewed runtime
-  graph. Playback and logical export mutation remain outside the public protocol, while their latest
+  validation, scenario, project settings, and project recovery seams without exposing engine-private
+  owners. The API depends only on engine for project settings and recovery and therefore does not
+  reverse the reviewed runtime graph. Playback and logical export mutation remain outside the public
+  protocol, while their latest
   replacement state is visible through the read-only validation query. The broader typed project
-  history commands and replacement events remain Rust-only engine contracts.
+  history commands and replacement events remain Rust-only engine contracts, while recovery is
+  projected through opaque identities and user-safe findings.
 - Cache and GPU retain their own exact local budget enforcement, audio retains its preallocated
   callback-safe queue, media I/O retains decoded value and lifecycle ownership, and export retains
   logical job and publication ownership. The engine arbiter composes a higher shared managed-byte
@@ -1053,6 +1108,18 @@ audio mutation, so their user intent remains attached without synthesis.
   remain in `superi-project`. Engine supplies only an immutable selected snapshot in its consumer
   proof. No engine dispatcher, lifecycle action, worker, or execution domain may perform blocking
   autosave filesystem work inline.
+- Project recovery requires the full lifecycle-attached EngineControl dispatcher, one attached
+  project history, and one file-backed database that reloads to the exact selected snapshot. Only
+  the project owner scans, opens, compares, or dismisses recovery files; engine coordinates the
+  active database and history transaction without exposing paths.
+- Recovery comparison covers the complete durable aggregate, including editorial, settings,
+  authored clip-mix, selected-root, and retained graph state, while remaining read-only and event-free.
+- Restore requires exact catalog and current project revisions. It prepares all fallible project
+  validation before publication, publishes the monotonic snapshot before the infallible history
+  swap, resets undo and redo only for a semantic change, and never dismisses the source candidate.
+- Discover, restore, and dismiss reserve event capacity and sequence space before work. Any stale,
+  persistence, terminal, ownership, or saturated-queue failure leaves active disk state, project
+  history, recovery catalog, candidate files, command sequence, and events coherent.
 - Transaction IDs, pending events, retained error messages, and copied context frames are hard
   bounded. Successful command and event sequences are independently monotonic, each event retains
   its originating command sequence, and both exhaustion paths are checked before mutation.
@@ -1285,6 +1352,14 @@ settings and referenced-media state, while generation evidence advances from one
 This proves consumer compatibility only; it does not add engine scheduling, worker, dispatcher,
 wire, or recovery-selection behavior.
 
+Three project recovery dispatcher contracts attach a real file-backed active database and the exact
+project autosave namespace. They prove discovery, read-only semantic comparison, monotonic durable
+restore including authored clip-mix state with empty new-session history, source-candidate retention,
+exact later dismissal, complete replacement event correlation, and exact database reopen equality.
+Read-only persistence failure,
+stale fences, terminal revision exhaustion, and a full 64-event queue all preserve disk, history,
+candidate, sequences, and events before authority changes.
+
 Three project settings dispatcher contracts attach one real project document and prove complete
 default inspection, exact typed resolution across timeline, color, audio, cache, proxy, and render,
 one atomic optimistic mutation, and an ordered full replacement event. They also prove no-op success
@@ -1460,8 +1535,10 @@ The typed dispatcher is the substantive engine-wide control seam for current sce
 classified failure and recovery, sleep, wake, shutdown, restart, work admission, capability and
 health observation, interactive transport, logical export, typed project media and compound
 mutation, project undo and redo, authoritative project settings inspection and mutation, and
-read-only integration validation operations. The optional project attachment owns one real
-`ProjectDocument`, returns complete typed history state, records settings, media, and compound
+read-only integration validation operations. It also owns crash recovery discovery, complete
+semantic comparison, durable restoration, and exact dismissal through one optional file-backed
+coordinator. The optional project attachment owns one real `ProjectDocument`, returns complete typed
+history state, records settings, media, and compound
 mutations in that shared history, and publishes correlated full replacement events for authored
 changes. Its introspection and validation snapshots expose coherent adaptation and action evidence
 without adding mutation authority.
@@ -1476,9 +1553,9 @@ needed by public clients without opening a mutation path.
 Typed project settings resolution and dispatcher control are substantive and test-backed. They
 preserve durable authored scalar meaning and expose one real API path, but resolution does not
 automatically reconfigure live timeline, color, audio, cache, proxy, or render owners. Project
-database open and save commands, autosave control, and recovery commands remain outside engine and
-API. The selected-history autosave contract proves exact snapshot compatibility without creating a
-production engine owner for those operations.
+database open and save commands and autosave scheduling remain outside engine and API. Recovery
+commands are implemented and test-backed through the existing dispatcher, but no background
+autosave worker, open-project shell, CLI adapter, or cross-process lock owner is claimed.
 
 One orchestration file remains a documentation-only placeholder. Source registration, timeline
 media preparation, deterministic lifecycle, classified failure propagation and recovery,
@@ -1548,8 +1625,12 @@ and published by one outer project edit. Add later command adapters without plac
 in project, timeline, graph, audio, API, or CLI owners.
 Keep the selected immutable snapshot directly consumable by the project-owned autosave command. A
 future background I/O integration may route that public surface, but must not duplicate policy,
-publication, naming, retention, or recovery choice in engine and must not block EngineControl,
-Playback, Render, or Audio.
+publication, naming, or retention in engine and must not block EngineControl, Playback, Render, or
+Audio. Keep project recovery behind the one dispatcher-attached coordinator, preserve exact database
+and history agreement at attachment, reserve sequences and events before filesystem mutation, and
+publish the prepared active database before committing restored history. Recovery paths must retain
+opaque identity, complete durable aggregate comparison, candidate-after-restore, and separate
+explicit dismissal behavior.
 Keep settings keys, defaults, candidate validation, and persistence project-owned. Engine may only
 resolve validated snapshots into existing subsystem types and dispatch transactions through the
 same `ProjectCommandHistory` document owner. Preserve dynamic no-op event reservation, complete

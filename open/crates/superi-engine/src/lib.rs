@@ -31,6 +31,7 @@ pub mod media;
 pub mod nodes;
 pub mod playback;
 pub mod plugins;
+pub mod project_recovery;
 pub mod project_settings;
 pub mod project_transaction;
 pub mod proxy_substitution;
