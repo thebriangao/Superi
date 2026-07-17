@@ -11,6 +11,12 @@ use std::path::Path;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TryRecvError, TrySendError};
 use std::time::Instant;
 
+pub use superi_audio::automation::{
+    AudioAutomationActivePassSnapshot, AudioAutomationKeyframe, AudioAutomationLaneSnapshot,
+    AudioAutomationMode, AudioAutomationMutation, AudioAutomationSnapshot, AudioAutomationState,
+    AudioAutomationTarget, AudioAutomationTransaction, MAX_AUDIO_AUTOMATION_KEYFRAMES,
+    MAX_AUDIO_AUTOMATION_LANES, MAX_AUDIO_AUTOMATION_MUTATIONS,
+};
 use superi_concurrency::threads::ExecutionDomain;
 use superi_core::diagnostics::DiagnosticEvent;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
@@ -360,6 +366,10 @@ pub enum EngineCommand {
     InspectProjectSettings,
     /// Commit one optimistic project settings transaction.
     ExecuteProjectSettings(ProjectSettingsTransaction),
+    /// Inspect complete authored audio automation state without mutation.
+    InspectAudioAutomation,
+    /// Commit one optimistic ordered audio automation transaction.
+    ExecuteAudioAutomation(AudioAutomationTransaction),
     /// Execute one crash recovery discovery, comparison, restore, or dismissal command.
     ExecuteProjectRecovery(ProjectRecoveryCommand),
     /// Inspect current lifecycle state without mutation.
@@ -433,7 +443,7 @@ impl EngineCommand {
     const fn emits_state_event(&self) -> bool {
         match self {
             Self::ExecuteExportJob(command) => command.may_change_state(),
-            Self::ExecuteProjectSettings(_) => true,
+            Self::ExecuteProjectSettings(_) | Self::ExecuteAudioAutomation(_) => true,
             Self::ExecuteProjectRecovery(ProjectRecoveryCommand::Compare { .. }) => false,
             _ => matches!(
                 self,
@@ -486,6 +496,8 @@ pub enum EngineCommandResult {
     ProjectHistory(Box<ProjectHistoryOutcome>),
     /// Complete durable and resolved project settings state.
     ProjectSettings(Box<ProjectSettingsState>),
+    /// Complete replacement state for every authored audio automation lane.
+    AudioAutomation(Box<AudioAutomationSnapshot>),
     /// Complete project crash recovery command outcome.
     ProjectRecovery(Box<ProjectRecoveryOutcome>),
     /// Complete lifecycle state.
@@ -543,6 +555,8 @@ pub enum EngineEvent {
     ProjectStateChanged(Box<ProjectHistoryState>),
     /// Authoritative project settings changed atomically.
     ProjectSettingsChanged(Box<ProjectSettingsState>),
+    /// Authoritative audio automation state changed atomically.
+    AudioAutomationStateChanged(Box<AudioAutomationSnapshot>),
     /// Project crash recovery state changed atomically.
     ProjectRecoveryStateChanged(Box<ProjectRecoveryState>),
     /// Lifecycle state changed atomically.
@@ -571,6 +585,7 @@ pub struct EngineEventEnvelope {
     playback_epoch: Option<u64>,
     export_state_revision: Option<u64>,
     recovery_state_revision: Option<u64>,
+    audio_automation_revision: Option<u64>,
     event: EngineEvent,
 }
 
@@ -621,6 +636,12 @@ impl EngineEventEnvelope {
     #[must_use]
     pub const fn recovery_state_revision(&self) -> Option<u64> {
         self.recovery_state_revision
+    }
+
+    /// Returns the resulting authored audio automation revision.
+    #[must_use]
+    pub const fn audio_automation_revision(&self) -> Option<u64> {
+        self.audio_automation_revision
     }
 
     /// Returns the typed full replacement state.
@@ -756,6 +777,7 @@ struct PendingPlaybackCommand {
 pub struct EngineCommandDispatcher {
     scenario: ScenarioEngine,
     project_history: Option<ProjectCommandHistory>,
+    audio_automation: Option<AudioAutomationState>,
     project_recovery: Option<ProjectRecoveryCoordinator>,
     lifecycle: Option<EngineLifecycle>,
     errors: Option<EngineErrorCoordinator>,
@@ -786,6 +808,7 @@ impl EngineCommandDispatcher {
         Ok(Self {
             scenario: ScenarioEngine::new(),
             project_history: None,
+            audio_automation: None,
             project_recovery: None,
             lifecycle: Some(lifecycle),
             errors: Some(errors),
@@ -833,6 +856,7 @@ impl EngineCommandDispatcher {
         Self {
             scenario: ScenarioEngine::new(),
             project_history: None,
+            audio_automation: None,
             project_recovery: None,
             lifecycle: None,
             errors: None,
@@ -868,6 +892,33 @@ impl EngineCommandDispatcher {
         ProjectSettingsState::from_snapshot(&project.snapshot())?;
         self.project_history = Some(ProjectCommandHistory::new(project));
         Ok(())
+    }
+
+    /// Attaches the exclusive authored audio automation owner to the full engine dispatcher.
+    ///
+    /// The state is consumed so later changes cannot bypass serialized engine commands.
+    pub fn attach_audio_automation(&mut self, state: AudioAutomationState) -> Result<()> {
+        self.require_owner()?;
+        if self.lifecycle.is_none() {
+            return Err(unavailable(
+                "attach_audio_automation",
+                "audio automation requires the full lifecycle-attached dispatcher",
+            ));
+        }
+        if self.audio_automation.is_some() {
+            return Err(conflict(
+                "attach_audio_automation",
+                "audio automation state is already attached to this dispatcher",
+            ));
+        }
+        self.audio_automation = Some(state);
+        Ok(())
+    }
+
+    /// Returns complete authored audio automation state without mutation.
+    pub fn audio_automation_snapshot(&self) -> Result<AudioAutomationSnapshot> {
+        self.require_owner()?;
+        Ok(self.audio_automation_ref()?.snapshot())
     }
 
     /// Returns the attached authoritative project snapshot without mutation.
@@ -1062,6 +1113,9 @@ impl EngineCommandDispatcher {
             EngineCommand::ExecuteProjectSettings(transaction) => {
                 self.project_settings_will_change(transaction)?
             }
+            EngineCommand::ExecuteAudioAutomation(transaction) => {
+                self.audio_automation_will_change(transaction)?
+            }
             _ => command.emits_state_event(),
         };
         if emits_state_event && self.pending_playback.is_some() {
@@ -1101,34 +1155,49 @@ impl EngineCommandDispatcher {
                 playback_epoch,
                 export_state_revision,
                 recovery_state_revision,
+                audio_automation_revision,
             ) = match &event {
                 EngineEvent::ScenarioStateChanged(snapshot) => {
-                    (Some(snapshot.revision()), None, None, None, None)
+                    (Some(snapshot.revision()), None, None, None, None, None)
                 }
-                EngineEvent::ProjectStateChanged(state) => {
-                    (Some(state.snapshot().revision()), None, None, None, None)
-                }
+                EngineEvent::ProjectStateChanged(state) => (
+                    Some(state.snapshot().revision()),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
                 EngineEvent::ProjectSettingsChanged(state) => {
-                    (Some(state.project_revision()), None, None, None, None)
+                    (Some(state.project_revision()), None, None, None, None, None)
+                }
+                EngineEvent::AudioAutomationStateChanged(snapshot) => {
+                    (None, None, None, None, None, Some(snapshot.revision()))
                 }
                 EngineEvent::ProjectRecoveryStateChanged(state) => {
-                    (Some(state.project_revision()), None, None, None, None)
+                    (Some(state.project_revision()), None, None, None, None, None)
                 }
-                EngineEvent::LifecycleStateChanged(snapshot) => {
-                    (None, Some(snapshot.state_revision()), None, None, None)
-                }
+                EngineEvent::LifecycleStateChanged(snapshot) => (
+                    None,
+                    Some(snapshot.state_revision()),
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
                 EngineEvent::RecoveryStateChanged(state) => (
                     None,
                     Some(state.lifecycle().state_revision()),
                     None,
                     None,
                     Some(state.revision()),
+                    None,
                 ),
                 EngineEvent::PlaybackStateChanged { snapshot, .. } => {
-                    (None, None, Some(snapshot.epoch()), None, None)
+                    (None, None, Some(snapshot.epoch()), None, None, None)
                 }
                 EngineEvent::ExportJobsStateChanged(state) => {
-                    (None, None, None, Some(state.revision()), None)
+                    (None, None, None, Some(state.revision()), None, None)
                 }
             };
             self.events.push_back(EngineEventEnvelope {
@@ -1140,6 +1209,7 @@ impl EngineCommandDispatcher {
                 playback_epoch,
                 export_state_revision,
                 recovery_state_revision,
+                audio_automation_revision,
                 event,
             });
             self.event_sequence = sequence;
@@ -1272,6 +1342,7 @@ impl EngineCommandDispatcher {
             playback_epoch: Some(snapshot.epoch()),
             export_state_revision: None,
             recovery_state_revision: None,
+            audio_automation_revision: None,
             event: EngineEvent::PlaybackStateChanged {
                 snapshot: Box::new(snapshot),
                 failure: completion.failure,
@@ -1368,6 +1439,22 @@ impl EngineCommandDispatcher {
                     });
                 Ok(CommandExecution {
                     result: EngineCommandResult::ProjectRecovery(Box::new(outcome)),
+                    event,
+                })
+            }
+            EngineCommand::InspectAudioAutomation => Ok(CommandExecution {
+                result: EngineCommandResult::AudioAutomation(Box::new(
+                    self.audio_automation_snapshot()?,
+                )),
+                event: None,
+            }),
+            EngineCommand::ExecuteAudioAutomation(transaction) => {
+                let prior_revision = self.audio_automation_ref()?.revision();
+                let snapshot = self.audio_automation_mut()?.apply(transaction)?;
+                let event = (snapshot.revision() != prior_revision)
+                    .then(|| EngineEvent::AudioAutomationStateChanged(Box::new(snapshot.clone())));
+                Ok(CommandExecution {
+                    result: EngineCommandResult::AudioAutomation(Box::new(snapshot)),
                     event,
                 })
             }
@@ -1667,6 +1754,13 @@ impl EngineCommandDispatcher {
             .settings_will_change(transaction)
     }
 
+    fn audio_automation_will_change(
+        &self,
+        transaction: &AudioAutomationTransaction,
+    ) -> Result<bool> {
+        self.audio_automation_ref()?.would_change(transaction)
+    }
+
     fn require_project_settings_owner(&self) -> Result<()> {
         if self.lifecycle.is_none() {
             return Err(unavailable(
@@ -1691,6 +1785,18 @@ impl EngineCommandDispatcher {
         self.project_history
             .as_mut()
             .ok_or_else(missing_project_history)
+    }
+
+    fn audio_automation_ref(&self) -> Result<&AudioAutomationState> {
+        self.audio_automation
+            .as_ref()
+            .ok_or_else(missing_audio_automation)
+    }
+
+    fn audio_automation_mut(&mut self) -> Result<&mut AudioAutomationState> {
+        self.audio_automation
+            .as_mut()
+            .ok_or_else(missing_audio_automation)
     }
 
     fn project_recovery_parts(
@@ -1825,6 +1931,15 @@ fn missing_project_history() -> Error {
         "project commands require an attached project command history",
     )
     .with_context(ErrorContext::new(COMPONENT, "require_project_history"))
+}
+
+fn missing_audio_automation() -> Error {
+    Error::new(
+        ErrorCategory::Unavailable,
+        Recoverability::Degraded,
+        "audio automation commands require attached authored state",
+    )
+    .with_context(ErrorContext::new(COMPONENT, "require_audio_automation"))
 }
 
 fn missing_project_recovery() -> Error {

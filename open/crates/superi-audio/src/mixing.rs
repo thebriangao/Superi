@@ -3,7 +3,8 @@
 //! [`ClipMixState`] is edited transactionally away from the audio callback. A cloned
 //! [`ClipMixSnapshot`] resolves project-wide solo state and prepares a fixed routing matrix for a
 //! [`ClipMixProcessor`]. The processor then applies channel mapping, equal-power stereo pan, phase,
-//! linear gain, and exact sample fades without allocating or locking in `process`.
+//! prepared clip-gain automation or fixed linear gain, and exact sample fades without allocating or
+//! locking in `process`.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -12,6 +13,9 @@ use superi_core::ids::ClipId;
 use superi_core::pixel::{ChannelLayout, ChannelPosition};
 use superi_core::time::SampleTime;
 
+use crate::automation::{
+    AudioAutomationSnapshot, AudioAutomationTarget, PreparedAudioAutomationCurve,
+};
 use crate::graph::{AudioProcessBlock, AudioProcessor};
 
 const COMPONENT: &str = "superi-audio.mixing";
@@ -502,6 +506,35 @@ impl ClipMixSnapshot {
         start_time: SampleTime,
         frame_count: u64,
     ) -> Result<ClipMixProcessor> {
+        self.prepare_processor_with_curve(clip_id, start_time, frame_count, None)
+    }
+
+    /// Prepares one clip processor whose linear gain follows an immutable automation snapshot.
+    ///
+    /// A missing lane preserves the clip's fixed mix gain. A matching lane replaces that fixed
+    /// gain at every exact absolute sample while retaining the existing routing, pan, phase, mute,
+    /// solo, and fade behavior.
+    pub fn prepare_processor_with_automation(
+        &self,
+        clip_id: ClipId,
+        start_time: SampleTime,
+        frame_count: u64,
+        automation: &AudioAutomationSnapshot,
+    ) -> Result<ClipMixProcessor> {
+        let curve = automation.prepare_curve(
+            AudioAutomationTarget::clip_gain(clip_id),
+            start_time.sample_rate(),
+        )?;
+        self.prepare_processor_with_curve(clip_id, start_time, frame_count, curve)
+    }
+
+    fn prepare_processor_with_curve(
+        &self,
+        clip_id: ClipId,
+        start_time: SampleTime,
+        frame_count: u64,
+        automation: Option<PreparedAudioAutomationCurve>,
+    ) -> Result<ClipMixProcessor> {
         let controls = self.controls.get(&clip_id).ok_or_else(|| {
             not_found(
                 "prepare_clip_mix",
@@ -576,6 +609,7 @@ impl ClipMixSnapshot {
             matrix,
             phase,
             gain: controls.gain,
+            automation,
             fade_in_frames: controls.fade_in_frames,
             fade_out_frames: controls.fade_out_frames,
             pan: controls.pan,
@@ -597,6 +631,7 @@ pub struct ClipMixProcessor {
     matrix: Vec<f32>,
     phase: Vec<f32>,
     gain: f32,
+    automation: Option<PreparedAudioAutomationCurve>,
     fade_in_frames: u64,
     fade_out_frames: u64,
     pan: f32,
@@ -706,8 +741,12 @@ impl AudioProcessor for ClipMixProcessor {
                 self.fade_in_frames,
                 self.fade_out_frames,
             );
+            let gain = self
+                .automation
+                .as_ref()
+                .map_or(self.gain, |curve| curve.gain_at_sample(absolute));
             for (sample, phase) in output_frame.iter_mut().zip(&self.phase) {
-                *sample *= self.gain * envelope * phase;
+                *sample *= gain * envelope * phase;
             }
         }
         Ok(())

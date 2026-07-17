@@ -2,8 +2,8 @@
 module_id: superi-audio
 source_paths:
   - open/crates/superi-audio
-source_hash: bfe61f3ab3ed84d1fc6487441d864fc8318b51adde81cbccec6ba8ab16300da7
-source_files: 25
+source_hash: af1bcdead4b62c3d5d7c99f2696990e534354c9ded5abe9fbed22c0205763b68
+source_files: 27
 mapped_at_commit: working-tree
 ---
 
@@ -21,8 +21,10 @@ devices and moves normalized interleaved samples through a fixed-capacity lock-f
 platform callbacks. Audio-owned clip mix state adds transactional gain,
 fades, pan, mute, solo, phase, and semantic channel mapping with immutable prepared snapshots. A
 strict canonical codec preserves that authored state with exact f32 bit patterns, an explicit
-format revision, and a SHA-256 payload digest while rejecting unknown or noncanonical input. Its
-prepared sinc converter maps fixed device-output blocks to exact variable source consumption while
+format revision, and a SHA-256 payload digest while rejecting unknown or noncanonical input.
+Revisioned clip-gain automation owns exact keyframes plus Read, Write, Touch, and Latch behavior,
+then prepares immutable curves for absolute-sample evaluation through the existing clip processor.
+Its prepared sinc converter maps fixed device-output blocks to exact variable source consumption while
 retaining each independent sample clock and smoothly correcting bounded device-rate error.
 Common mono, stereo, quad, 5.1, and 7.1 layouts compose the core semantic order, and explicit
 prepared speaker or discrete conversion nodes adapt channels without implicit graph routing.
@@ -42,7 +44,7 @@ All processing paths enforce the platform-owned audio execution domain, but thei
 remain separate. Graph editing and preparation allocate outside callbacks. Schedule construction and
 transport reanchoring also occur outside callbacks. Resampler and meter construction and scratch
 allocation remain outside callbacks. Device discovery and stream setup remain on control threads.
-Decoded sample binding to the real prepared graph, automation, plugins, and complete timeline
+Decoded sample binding to the real prepared graph, plugin automation, plugins, and complete timeline
 audio-graph orchestration remain separate concerns. Engine foreground playback feeds the existing
 bounded output producer and paces video from its paired presentation clock. Engine transport
 requests queued-audio discard through an atomic generation handshake without moving queue ownership
@@ -55,6 +57,9 @@ encoding, but it does not yet adapt decoded blocks into `PreparedAudioGraph`.
 - `open/crates/superi-audio/Cargo.toml`: Declares dependencies on `superi-core`,
   `superi-concurrency`, exact CPAL 0.17.3, ringbuf 0.4.8, default-feature-free rubato 0.16.2,
   serde, serde_json, and sha2.
+- `open/crates/superi-audio/src/automation.rs`: Implements bounded revisioned clip-gain lanes,
+  exact keyframes, Read, Write, Touch, and Latch state, half-open region replacement, immutable
+  snapshots, and prepared allocation-free absolute-sample curve evaluation.
 - `open/crates/superi-audio/src/channels.rs`: Defines the common-layout catalog, explicit speaker
   and discrete interpretations, control-side conversion-matrix preparation, and allocation-free
   exact-layout processing with fail-closed validation.
@@ -71,9 +76,9 @@ encoding, but it does not yet adapt decoded blocks into `PreparedAudioGraph`.
   master preparation; borrowed ordered multi-input views; preallocated intermediate buffers; and
   exact consecutive block processing on the audio domain.
 - `open/crates/superi-audio/src/hosting.rs`: Placeholder for additive VST3 and Audio Unit hosting.
-- `open/crates/superi-audio/src/lib.rs`: Documents the implemented graph, channel, routing,
-  scheduling, capture, playback, conversion, effects, and metering boundaries and exports the
-  twelve audio concern modules.
+- `open/crates/superi-audio/src/lib.rs`: Documents the implemented automation, graph, channel,
+  routing, scheduling, capture, playback, conversion, effects, and metering boundaries and exports
+  the thirteen audio concern modules.
 - `open/crates/superi-audio/src/metering.rs`: Implements transparent prepared graph metering,
   per-channel sample peak, RMS and true peak, stereo phase correlation, bounded spectrum analysis,
   K-weighted EBU windows, ITU programme gating, coherent lock-free snapshots, and explicit history
@@ -98,6 +103,9 @@ encoding, but it does not yet adapt decoded blocks into `PreparedAudioGraph`.
   publication.
 - `open/crates/superi-audio/tests/audio_graph_contract.rs`: Proves graph topology, validation,
   preparation, exact bounded processing, continuity, channel order, and domain ownership.
+- `open/crates/superi-audio/tests/audio_automation_contract.rs`: Proves revisioned exact keyframes,
+  Read, Write, Touch, and Latch region semantics, invalid and overflow atomicity, and
+  partition-independent automated gain through a real source, clip, submix, and master graph.
 - `open/crates/superi-audio/tests/channel_layout_contract.rs`: Proves common semantic order,
   documented speaker coefficients, discrete copy, drop, and zero-fill behavior, fail-closed
   validation, and exact consecutive sample time through an explicit prepared graph node.
@@ -133,9 +141,17 @@ encoding, but it does not yet adapt decoded blocks into `PreparedAudioGraph`.
 
 ## Public surface
 
-The crate root exports `capture`, `channels`, `effects`, `graph`, `hosting`, `metering`, `mixing`,
-`playback`, `resample`, `routing`, `serialize`, and `sync`. Every module except the hosting
+The crate root exports `automation`, `capture`, `channels`, `effects`, `graph`, `hosting`,
+`metering`, `mixing`, `playback`, `resample`, `routing`, `serialize`, and `sync`. Every module except the hosting
 placeholder contains substantive behavior.
+
+`automation` exposes typed `AudioAutomationTarget` addresses, validated exact keyframes,
+professional `AudioAutomationMode` values, bounded ordered mutations and transactions,
+revisioned `AudioAutomationState`, immutable complete snapshots, and
+`PreparedAudioAutomationCurve`. State supports no-op suppression and atomic candidate validation.
+Write replaces the full played pass, Touch replaces only physical-touch regions, and Latch holds
+the most recent touched value through the exact pass end. Prepared curves interpolate finite linear
+gain from absolute signed sample coordinates without callback mutation or allocation.
 
 `capture` exposes validated opaque `InputDeviceId` values, exact capability ranges and stream
 configurations, partial discovery failures, atomic `CaptureControl`, bounded `CaptureReader` and
@@ -202,6 +218,8 @@ consumer applies that generation. `discover_output_devices` performs real host e
 identity-preserving `ClipMixMutation` values, immutable `ClipMixSnapshot`, and prepared
 `ClipMixProcessor`. State mutations set, inherit, transfer, or remove complete intent atomically.
 Preparation binds one clip identity to an exact `SampleTime` interval and fixed layouts.
+`prepare_processor_with_automation` explicitly binds a matching prepared clip-gain curve and leaves
+the existing fixed-gain preparation method unchanged when automation is absent.
 
 `serialize` exposes `serialize_clip_mix_state` and `deserialize_clip_mix_state`. The codec emits one
 canonical `superi.clip-mix` revision 1 JSON envelope, stores every f32 as its exact bit pattern,
@@ -274,6 +292,15 @@ channels, applies the W3C equal-power stereo equations, multiplies bounded linea
 endpoint-inclusive sample fades, applies per-destination phase, and honors one snapshot-wide solo
 decision. Its successful callback path allocates nothing and takes no lock.
 
+Automation mutation stays on a control owner. One ordered transaction applies to a cloned bounded
+candidate, validates complete lane and keyframe capacity, and advances one revision only for a
+semantic change. Active passes retain their baseline curve and exact half-open write regions;
+completed publication inserts boundary points that preserve untouched interpolation immediately
+before and after every replacement. Snapshot preparation validates the lane clock once and copies
+effective points into immutable storage. `ClipMixProcessor` then chooses the prepared automated gain
+or its existing fixed gain for each absolute frame before applying unchanged fades, phase, pan,
+mute, solo, channel mapping, and graph routing.
+
 Clip-mix serialization is a control-path operation over authored state only. Encoding walks stable
 clip identity order, represents all float values as exact bits, hashes the canonical payload, and
 then emits the strict envelope. Decoding validates byte and entry ceilings, the envelope and
@@ -321,6 +348,9 @@ and spectrum values, and performs the two-stage integrated loudness gate without
   Exact-float and canonical-byte policy remains owned by `superi-audio::serialize`.
 - `superi-engine::audio_mix` owns production timeline edit and clip-mix identity reconciliation.
   No production adapter yet binds decoded media into the schedule or prepared graph.
+- `superi-engine::dispatcher` owns optional lifecycle-scoped automation state, serialized
+  inspection and transaction execution, dynamic no-op event reservation, and complete replacement
+  events. `superi-api` projects that engine boundary without a direct dependency on this crate.
 - `superi-project` owns clip-mix state inside the durable project aggregate and stores the canonical
   codec bytes as the singleton schema-3 audio component. Engine project command history restores
   authored clip-mix snapshots, while audio device, callback, meter, resampler, and prepared graph
@@ -430,6 +460,16 @@ and spectrum values, and performs the two-stage integrated loudness gate without
   timeline and audio revision fences.
 - Nonzero pan requires canonical stereo output. Gain and route coefficients are finite and bounded;
   fades use exact integer sample lengths and must fit the prepared clip interval.
+- Automation transactions contain one to 64 ordered mutations, retain at most 4096 lanes and
+  1,048,576 keyframes, use one exact revision fence, and publish atomically. Gains are finite in
+  `0..=64`, lane clocks are positive and fixed, pass time never moves backward, and writable
+  `i64::MAX` coordinates fail because no exclusive region end can be represented.
+- Read accepts direct authored keyframes but no write pass. Write replaces the complete half-open
+  pass, Touch replaces only touched intervals and resumes the baseline at release, and Latch holds
+  after release through the pass end. Untouched regions retain the original curve exactly.
+- Prepared automation is immutable and clock checked. Callback evaluation uses absolute sample
+  coordinates, performs no allocation, locking, dispatch, or state mutation, and is invariant to
+  block partitioning. A missing lane preserves existing fixed clip gain exactly.
 - Meter processing requires one exact-layout input, copies it before analysis, and never changes
   sample timing, routing, channel order, or continuity. Callback state and publication storage are
   preallocated, lock-free, and bounded; programme history reports saturation instead of growing.
@@ -507,11 +547,16 @@ channel identity and sample continuity, sample peak and RMS, coherent phase and 
 inter-sample true peak, calibrated 400 ms, 3 s, and integrated loudness, history saturation policy,
 and rejection of unbounded or nonsensical preparation.
 
+Four automation contracts prove exact negative and positive keyframes, interpolation, semantic
+no-ops, stale and invalid rollback, wrong clocks, maximum-coordinate rejection, exact Write, Touch,
+and Latch boundaries, active-pass snapshots, and whole-versus-split equivalence. The routed proof
+renders finite audible stereo samples through source, automated clip, submix, and master nodes.
+
 ## Current status and risks
 
 The independent audio graph, channel conversion, bus routing, sample-accurate schedule, production
 device-input and device-output substrates, durable clip-mix codec, clip mix processor, prepared sample-rate converter,
-core effects, and graph-native meter are
+revisioned clip-gain automation, core effects, and graph-native meter are
 substantive and publicly test-backed. Plugin hosting remains a documentation-only placeholder.
 Engine consumes timeline edit outcomes for atomic clip identity reconciliation and foreground
 playback feeds the bounded device producer while coordinating video from the actual audio clock.
@@ -535,8 +580,9 @@ remain a trust boundary for real-time safety and error atomicity. Physical laten
 channel routing, hot-plug, constrained-device, and soak evidence remain
 owned by the platform audio and physical test lanes. Current gain is linear rather than
 decibel-addressed, fades are linear only, and pan is the canonical stereo equal-power model.
-Effects intentionally omit automation, lookahead, tempo sync, and convolution; those require
-separate prepared control and latency contracts.
+Effects intentionally omit parameter automation, lookahead, tempo sync, and convolution; those
+require separate prepared control and latency contracts. Current automation addresses clip linear
+gain only and is not yet stored in project snapshots.
 
 ## Maintenance notes
 
@@ -567,6 +613,11 @@ before claiming timeline-owned source playback, mixing, or final delivery throug
 Keep authored clip-mix changes inside the engine compound transaction and retain complete failure
 atomicity across timeline, project, and audio revisions. Never serialize callback-owned or prepared
 runtime state into project snapshots or add an audio-local undo stack.
+
+Preserve automation's ordered candidate transaction, exact revision fence, finite bounds, baseline
+curve, half-open overwrite regions, and separate edit-versus-prepare boundary. Extend targets only
+through typed schema changes and real consumers. Never dispatch, allocate, lock, or mutate authored
+state from `ClipMixProcessor::process`, and keep the fixed-gain preparation path behavior compatible.
 
 After source changes, refresh this map's inventory, architecture, invariants, tests, hash, and file
 count from resulting behavior, then update consumer maps and validate the global map closure.

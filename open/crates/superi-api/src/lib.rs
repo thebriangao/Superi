@@ -3,6 +3,7 @@
 //! § 3.5 in `docs/architecture.md`. Depends on: superi-core, superi-engine. Status: skeleton.
 
 pub mod api;
+pub mod audio_automation;
 pub mod commands;
 pub mod events;
 pub mod project;

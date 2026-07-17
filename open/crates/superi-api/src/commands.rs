@@ -3,14 +3,16 @@
 use serde::{Deserialize, Serialize};
 
 use crate::api::{EngineIntrospectionSnapshot, MediaCapabilitiesSnapshot};
+use crate::audio_automation::{AudioAutomationMutation, AudioAutomationSnapshot};
 use crate::project::{ProjectSettingMutation, ProjectSettingsSnapshot};
 use crate::recovery::{ProjectRecoveryComparisonSnapshot, ProjectRecoverySnapshot};
 use crate::scenario::{ScenarioActionResult, ScenarioTransactionResult, SliceAction};
 use crate::validation::IntegrationValidationSnapshot;
 use crate::version::{
     COMPARE_PROJECT_RECOVERY_METHOD, DISMISS_PROJECT_RECOVERY_METHOD,
-    EXECUTE_PROJECT_SETTINGS_TRANSACTION_METHOD, EXECUTE_SCENARIO_ACTION_METHOD,
-    EXECUTE_SCENARIO_TRANSACTION_METHOD, GET_ENGINE_INTEGRATION_VALIDATION_METHOD,
+    EXECUTE_AUDIO_AUTOMATION_TRANSACTION_METHOD, EXECUTE_PROJECT_SETTINGS_TRANSACTION_METHOD,
+    EXECUTE_SCENARIO_ACTION_METHOD, EXECUTE_SCENARIO_TRANSACTION_METHOD,
+    GET_AUDIO_AUTOMATION_METHOD, GET_ENGINE_INTEGRATION_VALIDATION_METHOD,
     GET_ENGINE_INTROSPECTION_METHOD, GET_MEDIA_CAPABILITIES_METHOD, GET_PROJECT_RECOVERY_METHOD,
     GET_PROJECT_SETTINGS_METHOD, RESTORE_PROJECT_RECOVERY_METHOD,
 };
@@ -395,6 +397,140 @@ impl DismissProjectRecoveryResult {
 
     #[must_use]
     pub const fn snapshot(&self) -> &ProjectRecoverySnapshot {
+        &self.snapshot
+    }
+}
+
+/// Structured parameters for the authored audio automation query.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GetAudioAutomation {}
+
+impl GetAudioAutomation {
+    /// Creates an unfiltered complete automation query.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {}
+    }
+}
+
+impl ApiCommand for GetAudioAutomation {
+    type Response = GetAudioAutomationResult;
+
+    const METHOD: &'static str = GET_AUDIO_AUTOMATION_METHOD;
+}
+
+/// Successful response to [`GetAudioAutomation`].
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GetAudioAutomationResult {
+    snapshot: AudioAutomationSnapshot,
+}
+
+impl GetAudioAutomationResult {
+    pub(crate) const fn new(snapshot: AudioAutomationSnapshot) -> Self {
+        Self { snapshot }
+    }
+
+    /// Returns complete authored automation state.
+    #[must_use]
+    pub const fn snapshot(&self) -> &AudioAutomationSnapshot {
+        &self.snapshot
+    }
+}
+
+/// One caller-owned optimistic authored audio automation transaction.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExecuteAudioAutomationTransaction {
+    transaction_id: String,
+    expected_revision: u64,
+    mutations: Vec<AudioAutomationMutation>,
+}
+
+impl Eq for ExecuteAudioAutomationTransaction {}
+
+impl ExecuteAudioAutomationTransaction {
+    /// Creates one ordered public automation transaction.
+    #[must_use]
+    pub fn new(
+        transaction_id: impl Into<String>,
+        expected_revision: u64,
+        mutations: Vec<AudioAutomationMutation>,
+    ) -> Self {
+        Self {
+            transaction_id: transaction_id.into(),
+            expected_revision,
+            mutations,
+        }
+    }
+
+    /// Returns the caller-owned transaction identity.
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    /// Returns the required authored state revision.
+    #[must_use]
+    pub const fn expected_revision(&self) -> u64 {
+        self.expected_revision
+    }
+
+    /// Returns mutations in exact execution order.
+    #[must_use]
+    pub fn mutations(&self) -> &[AudioAutomationMutation] {
+        &self.mutations
+    }
+
+    pub(crate) fn into_parts(self) -> (String, u64, Vec<AudioAutomationMutation>) {
+        (self.transaction_id, self.expected_revision, self.mutations)
+    }
+}
+
+impl ApiCommand for ExecuteAudioAutomationTransaction {
+    type Response = ExecuteAudioAutomationTransactionResult;
+
+    const METHOD: &'static str = EXECUTE_AUDIO_AUTOMATION_TRANSACTION_METHOD;
+}
+
+/// Successful response to one authored audio automation transaction.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExecuteAudioAutomationTransactionResult {
+    transaction_id: String,
+    command_sequence: u64,
+    snapshot: AudioAutomationSnapshot,
+}
+
+impl ExecuteAudioAutomationTransactionResult {
+    pub(crate) const fn new(
+        transaction_id: String,
+        command_sequence: u64,
+        snapshot: AudioAutomationSnapshot,
+    ) -> Self {
+        Self {
+            transaction_id,
+            command_sequence,
+            snapshot,
+        }
+    }
+
+    /// Returns the caller-owned transaction identity.
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    /// Returns the successful engine command sequence.
+    #[must_use]
+    pub const fn command_sequence(&self) -> u64 {
+        self.command_sequence
+    }
+
+    /// Returns complete replacement authored automation state.
+    #[must_use]
+    pub const fn snapshot(&self) -> &AudioAutomationSnapshot {
         &self.snapshot
     }
 }

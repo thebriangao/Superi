@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: e3ca6e2bcf024d3c5a998b70195225af3fa08e022f0362b2d7278fc68aec72a0
-source_files: 145
+source_hash: b661963af66f97b23a47aebf8f205ae9d4adf27813a1d6b41d55fb164dc619de
+source_files: 146
 mapped_at_commit: working-tree
 ---
 
@@ -320,6 +320,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P2.W04.C010.md`: Durable implementation evidence for production input-device
   discovery, atomic record arming and monitoring, bounded exact-timestamp capture, and the real
   monitoring bridge into existing output playback.
+- `docs/checkpoints/P2.W04.C011.md`: Durable implementation evidence for exact clip-gain keyframes,
+  Read, Write, Touch, and Latch automation, immutable callback curves, serialized engine ownership,
+  strict public transactions and events, routed source-to-master proof, verification, delivery, and
+  intentionally deferred persistence, broader targets, and hardware control input.
 - `docs/checkpoints/P1.W07.C025.md`: Durable implementation evidence for bounded timing and process
   resident-memory instrumentation across all eight canonical slice stages. It records the private
   sampler boundary, schema 1.1.0 report contract, dependency decision, red-to-green proof,

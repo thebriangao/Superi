@@ -2,6 +2,19 @@
 
 use superi_core::settings::SemanticVersion;
 
+/// Schema version for authored audio automation replacement snapshots.
+pub const AUDIO_AUTOMATION_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
+
+/// JSON-RPC method for querying authored audio automation.
+pub const GET_AUDIO_AUTOMATION_METHOD: &str = "superi.audio.automation.get";
+
+/// JSON-RPC method for one atomic authored audio automation transaction.
+pub const EXECUTE_AUDIO_AUTOMATION_TRANSACTION_METHOD: &str =
+    "superi.audio.automation.transaction.execute";
+
+/// Ordered event name for authored audio automation changes.
+pub const AUDIO_AUTOMATION_CHANGED_EVENT: &str = "superi.audio.automation.changed";
+
 /// Schema version for project crash recovery state and comparison payloads.
 pub const PROJECT_RECOVERY_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
 

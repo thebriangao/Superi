@@ -2,8 +2,8 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 3a2b0f9051fa81009cfb917db904a552d703cc1843388e9cdbc676e4e506915c
-source_files: 62
+source_hash: c76a60bf2cdc8346166bc8cff35f3bf63567b6aca3a496e3e81c82db11124418
+source_files: 63
 mapped_at_commit: working-tree
 ---
 
@@ -23,14 +23,14 @@ bounded logical export job orchestration, classified cross-subsystem failure pro
 and recovery, shared finite-resource arbitration across decode, GPU, cache, audio, AI, and export
 work, atomic timeline plus clip-mix edits, typed resolution of durable project settings, bounded
 compound project transactions across authored timeline, graph, media, audio, extension, and root
-state, and
+state, revisioned authored audio automation, and
 engine-owned command history over that project surface. An engine-wide typed command dispatcher
 coordinates canonical scenario transactions, lifecycle state changes, failure and recovery control,
 coherent work admission, bounded cross-domain playback control, canonical logical export-job
 control, revision-fenced project mutation plus undo and redo, authoritative project extension and
-settings inspection and transactions, crash recovery discovery, comparison, durable restore, and
-dismissal, read-only whole-engine introspection and integration validation, and ordered replacement
-events. Validation composes the
+settings inspection and transactions, authored audio automation inspection and transactions, crash
+recovery discovery, comparison, durable restore, and dismissal, read-only whole-engine
+introspection and integration validation, and ordered replacement events. Validation composes the
 canonical introspection snapshot with exact lifecycle, recovery, scenario, playback, and export
 evidence without polling a runtime owner or creating a second mutable state model.
 Native GPU presentation, timeline-owned decoded-audio rendering, export muxing and publication,
@@ -78,8 +78,9 @@ through the existing dispatcher.
   read-only introspection and integration validation snapshots without advancing a command or event
   sequence. It optionally owns one authoritative project document, exposes immutable project
   snapshots, routes settings inspection and optimistic transactions with dynamic no-op event
-  reservation, and optionally attaches one exact file-backed recovery coordinator whose discover,
-  restore, and dismiss commands publish correlated complete recovery state.
+  reservation, optionally owns authored audio automation with the same dynamic event reservation,
+  and optionally attaches one exact file-backed recovery coordinator whose discover, restore, and
+  dismiss commands publish correlated complete recovery state.
 - `open/crates/superi-engine/src/error.rs`: Implements EngineControl-owned classified failure
   propagation, immutable actionable records, bounded diagnostic history, exact recovery-intent
   validation, failed-recovery reclassification, and coherent lifecycle routing without copying
@@ -175,6 +176,10 @@ through the existing dispatcher.
 - `open/crates/superi-engine/tests/audio_editorial_mix_contract.rs`: Proves atomic timeline and
   clip-mix publication plus complete audio intent, source, record, identity, grouping, linking, and
   synchronization preservation through a real razor edit.
+- `open/crates/superi-engine/tests/audio_automation_dispatcher_contract.rs`: Proves exclusive
+  lifecycle-owned automation attachment, serialized inspection and mutation, no-op suppression,
+  stale and invalid atomicity, full event-queue preflight, isolated revision correlation, and real
+  clip-processor consumption of a returned replacement snapshot.
 - `open/crates/superi-engine/tests/av_sync_coordination_contract.rs`: Proves the interactive
   policy, playback-domain ownership, bounded hold and correction, protected and eligible-drop
   behavior, distinct live deadlines and intervals with immutable media timing, discontinuity
@@ -342,6 +347,10 @@ same exclusive owner with default history capacity for the public settings path,
 `project_snapshot` returns its selected immutable project without exposing mutable ownership.
 `InspectProjectSettings` and `ExecuteProjectSettings` return resolved settings state, record semantic
 changes in the shared history, and publish correlated `ProjectSettingsChanged` replacement events.
+`attach_audio_automation` installs one exclusive automation owner on the full dispatcher.
+`InspectAudioAutomation` and `ExecuteAudioAutomation` return complete audio-owned snapshots;
+semantic changes publish one `AudioAutomationStateChanged` event whose envelope sets only the audio
+automation revision, while no-ops advance command order without reserving or emitting an event.
 `attach_project_recovery` consumes one file-backed `ProjectDatabase` only when it exactly matches the
 attached history snapshot. `ExecuteProjectRecovery` accepts typed discover, compare, restore, and
 dismiss commands. It returns one `ProjectRecoveryOutcome`; discover, restore, and dismiss publish a
@@ -669,6 +678,15 @@ complete `ProjectSettingsChanged` replacement correlated to the caller transacti
 revision. A no-op succeeds even when the event queue is full, advances no project revision, and
 publishes nothing. Missing projects, off-domain calls, stale revisions, invalid values, and full
 queues before a real mutation leave the authoritative project unchanged.
+
+Authored automation follows the same serialized publication law without entering project history.
+The full dispatcher consumes one `AudioAutomationState` owner and rejects duplicate or scenario-only
+attachment. Inspection returns a complete replacement snapshot with no event. A transaction first
+executes the audio owner's exact candidate validation to determine semantic change, then reserves
+event capacity only when needed. Successful mutation advances one audio revision and emits one
+correlated replacement event; no-op, stale, invalid, missing-owner, off-domain, and full-queue paths
+leave authoritative automation and the event stream unchanged. The dispatcher never performs this
+work on the audio callback domain.
 
 Settings resolution is read-only and preserves subsystem ownership. Timeline values become exact
 `FrameRate` and `TimecodeFormat`; color remains built-in or pinned identity; audio becomes one
@@ -1075,9 +1093,10 @@ audio mutation, so their user intent remains attached without synthesis.
   nor a parallel project model.
 - `superi-api` consumes dispatcher transactions and events plus command, media capability, and
   complete engine introspection and integration validation snapshots, preserving public adaptation,
-  validation, scenario, project settings, and project recovery seams without exposing engine-private
-  owners. The API depends only on engine for project settings and recovery and therefore does not
-  reverse the reviewed runtime graph. Playback and logical export mutation remain outside the public
+  validation, scenario, project settings, project recovery, and authored audio automation seams
+  without exposing engine-private owners. The API depends only on engine for project settings,
+  recovery, and audio automation and therefore does not reverse the reviewed runtime graph.
+  Playback and logical export mutation remain outside the public
   protocol, while their latest
   replacement state is visible through the read-only validation query. The broader typed project
   history commands and replacement events remain Rust-only engine contracts, while recovery is
@@ -1151,6 +1170,10 @@ audio mutation, so their user intent remains attached without synthesis.
   replacement event. Invalid, stale, off-domain, missing-project, or saturated-queue mutation
   attempts publish nothing. A no-op requires no event capacity and advances neither project nor
   event sequence.
+- Authored automation requires one full-dispatcher attachment and EngineControl ownership.
+  Inspection emits no event. A semantic transaction reserves event capacity before authoritative
+  mutation and emits one complete snapshot with only `audio_automation_revision` correlated;
+  no-op, stale, invalid, missing-owner, off-domain, and saturated-queue failures publish nothing.
 - Runtime resolution is deterministic and read-only. Audio sample timing and ordered channel
   meaning, color identity, cache bounds, proxy quality, render rate, extent, pixel, alpha, and color
   target remain explicit typed values; inspection does not reconfigure any subsystem.
@@ -1339,7 +1362,7 @@ two redo recovery at revision 8, rejected-action atomicity, payload digest failu
 bound. They also prove the shared four-entry snapshot store evicts the oldest action and clears redo
 only after a successful post-undo branch.
 
-Eight dispatcher contracts prove atomic multi-action rollback and commit, one revision and one undo
+Eight general dispatcher contracts prove atomic multi-action rollback and commit, one revision and one undo
 unit, optimistic conflict rejection, matching complete replacement state events, sequence ordering,
 full-queue rejection before mutation, off-domain rejection before mutation, coherent playback,
 rendering, and export admission through healthy and degraded states, recovery, stale permit
@@ -1352,6 +1375,11 @@ preservation when event backpressure rejects a command. The same dispatcher proo
 extension record through the real project history, observes its typed result and replacement event,
 suppresses an equal no-op, rejects a stale command, and preserves exact bytes through undo, redo,
 and project reload.
+
+Two audio automation dispatcher contracts prove exclusive lifecycle-owned state attachment,
+inspection command ordering, one event per semantic transaction, stale and invalid atomicity,
+no-op success with no event, a complete 64-event capacity boundary before mutation, isolated audio
+revision correlation, and real `ClipMixProcessor` consumption of the returned snapshot.
 
 Three project-history contracts execute the real project media command owner through apply, undo,
 and redo. They prove full aggregate reversal, typed outcomes, monotonic revision fences, failed and
@@ -1552,7 +1580,8 @@ The typed dispatcher is the substantive engine-wide control seam for current sce
 classified failure and recovery, sleep, wake, shutdown, restart, work admission, capability and
 health observation, interactive transport, logical export, typed project media, extension, and
 compound mutation, project undo and redo, authoritative project settings inspection and mutation,
-and read-only integration validation operations. It also owns crash recovery discovery, complete
+authored audio automation inspection and mutation, and read-only integration validation operations.
+It also owns crash recovery discovery, complete
 semantic comparison, durable restoration, and exact dismissal through one optional file-backed
 coordinator. The optional project attachment owns one real `ProjectDocument`, returns complete
 typed history state, records settings, media, extension, and compound
@@ -1662,6 +1691,10 @@ resolve validated snapshots into existing subsystem types and dispatch transacti
 same `ProjectCommandHistory` document owner. Preserve dynamic no-op event reservation, complete
 replacement events, exact project revision correlation, and the API-to-engine-to-project dependency
 direction.
+Keep authored automation state audio-owned and lifecycle-attached only once. Preserve exact
+candidate preflight, dynamic no-op event reservation, full replacement results and events, isolated
+automation revision correlation, and the API-to-engine-to-audio dependency direction. Never route
+control transactions through the callback domain or place prepared curves in dispatcher events.
 Keep derived
 request canonicalization synchronized with every media format field that can change encoder output,
 and keep codec selection, cancellation, complete publication, proxy admission, scheduler-owned

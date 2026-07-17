@@ -3,12 +3,14 @@
 use serde::{Deserialize, Serialize};
 
 use crate::api::{EngineIntrospectionSnapshot, MediaCapabilitiesSnapshot};
+use crate::audio_automation::AudioAutomationSnapshot;
 use crate::project::ProjectSettingsSnapshot;
 use crate::recovery::ProjectRecoverySnapshot;
 use crate::scenario::ScenarioStateSnapshot;
 use crate::version::{
-    ENGINE_INTROSPECTION_CHANGED_EVENT, MEDIA_CAPABILITIES_CHANGED_EVENT,
-    PROJECT_RECOVERY_CHANGED_EVENT, PROJECT_SETTINGS_CHANGED_EVENT, SCENARIO_STATE_CHANGED_EVENT,
+    AUDIO_AUTOMATION_CHANGED_EVENT, ENGINE_INTROSPECTION_CHANGED_EVENT,
+    MEDIA_CAPABILITIES_CHANGED_EVENT, PROJECT_RECOVERY_CHANGED_EVENT,
+    PROJECT_SETTINGS_CHANGED_EVENT, SCENARIO_STATE_CHANGED_EVENT,
 };
 
 /// One typed event carried by the ordered public API event channel.
@@ -81,6 +83,69 @@ impl ProjectRecoveryChanged {
 
 impl ApiEvent for ProjectRecoveryChanged {
     const NAME: &'static str = PROJECT_RECOVERY_CHANGED_EVENT;
+}
+
+/// Full replacement authored automation state emitted after one committed transaction.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AudioAutomationChanged {
+    sequence: u64,
+    command_sequence: u64,
+    transaction_id: String,
+    audio_automation_revision: u64,
+    snapshot: AudioAutomationSnapshot,
+}
+
+impl AudioAutomationChanged {
+    pub(crate) const fn new(
+        sequence: u64,
+        command_sequence: u64,
+        transaction_id: String,
+        audio_automation_revision: u64,
+        snapshot: AudioAutomationSnapshot,
+    ) -> Self {
+        Self {
+            sequence,
+            command_sequence,
+            transaction_id,
+            audio_automation_revision,
+            snapshot,
+        }
+    }
+
+    /// Returns the monotonic engine event sequence.
+    #[must_use]
+    pub const fn sequence(&self) -> u64 {
+        self.sequence
+    }
+
+    /// Returns the successful engine command sequence.
+    #[must_use]
+    pub const fn command_sequence(&self) -> u64 {
+        self.command_sequence
+    }
+
+    /// Returns the caller-owned transaction identity.
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    /// Returns the resulting authored automation revision.
+    #[must_use]
+    pub const fn audio_automation_revision(&self) -> u64 {
+        self.audio_automation_revision
+    }
+
+    /// Returns complete replacement authored automation state.
+    #[must_use]
+    pub const fn snapshot(&self) -> &AudioAutomationSnapshot {
+        &self.snapshot
+    }
+}
+
+impl ApiEvent for AudioAutomationChanged {
+    const NAME: &'static str = AUDIO_AUTOMATION_CHANGED_EVENT;
 }
 
 /// Full replacement project settings state emitted after one committed transaction.

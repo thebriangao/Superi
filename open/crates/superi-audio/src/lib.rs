@@ -3,8 +3,9 @@
 //! The foundational editable and prepared processing graph is implemented in [`graph`]. Exact
 //! timeline callback scheduling and audio-master publication are implemented in [`sync`]. Device
 //! discovery and bounded realtime playback are implemented in [`playback`]. Sample-accurate clip
-//! controls and transactional mix intent are implemented in [`mixing`]. Typed buses and unity
-//! routing are implemented in [`routing`]. Explicit prepared layout conversion is implemented in
+//! controls and transactional mix intent are implemented in [`mixing`]. Revisioned clip-gain
+//! keyframes and professional automation modes are implemented in [`automation`]. Typed buses and
+//! unity routing are implemented in [`routing`]. Explicit prepared layout conversion is implemented in
 //! [`channels`]. Prepared band-limited conversion between independent source and device sample
 //! clocks is implemented in [`resample`]. Prepared equalization, dynamics, limiting, delay, and
 //! saturation are implemented in [`effects`]. Transparent graph-native level,
@@ -12,6 +13,7 @@
 //! arming, input monitoring, and operating-system capture are implemented in [`capture`]. Plugin
 //! hosting remains a separate staged owner.
 
+pub mod automation;
 pub mod capture;
 pub mod channels;
 pub mod effects;
