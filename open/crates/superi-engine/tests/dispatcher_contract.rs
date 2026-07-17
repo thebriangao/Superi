@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 use superi_concurrency::lifecycle::LifecyclePhase;
 use superi_concurrency::threads::ExecutionDomain;
 use superi_core::error::{ErrorCategory, ErrorContext, Recoverability};
+use superi_core::ids::{MediaId, ProjectId, TimelineId};
 use superi_core::time::FrameRate;
 use superi_engine::command::{
     GraphEffect, ScenarioAction, ScenarioPhase, CANONICAL_FIXTURE_ID, CANONICAL_FIXTURE_VERSION,
@@ -15,10 +16,17 @@ use superi_engine::dispatcher::{
     EngineCommand, EngineCommandDispatcher, EngineCommandRequest, EngineCommandResult, EngineEvent,
     EngineReportedFailure, EngineTransactionId, ScenarioTransaction, MAX_PENDING_ENGINE_EVENTS,
 };
+use superi_engine::history::{ProjectHistoryCommand, ProjectHistoryOutcome, ProjectMutation};
 use superi_engine::lifecycle::{
     EngineHealth, EngineLifecycleActionKind, EngineSubsystem, EngineWorkAdmission, EngineWorkKind,
     EngineWorkPermit,
 };
+use superi_project::document::ProjectDocument;
+use superi_project::media::{PortableRelativePath, ProjectMediaCommand, ReferencedMediaPath};
+use superi_timeline::model::{EditorialProject, LinkedMediaReference, Timeline};
+
+const HISTORY_MEDIA: MediaId = MediaId::from_raw(0x801);
+const HISTORY_ROOT: TimelineId = TimelineId::from_raw(0x802);
 
 #[test]
 fn scenario_transactions_publish_once_rollback_completely_and_undo_as_one_unit() {
@@ -193,6 +201,177 @@ fn scenario_transactions_publish_once_rollback_completely_and_undo_as_one_unit()
     assert_eq!(events.last().unwrap().sequence(), 65);
     assert_eq!(events.last().unwrap().command_sequence(), 65);
     fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn project_commands_require_one_owner_and_publish_correlated_replacement_events() {
+    let mut dispatcher = EngineCommandDispatcher::scenario_only();
+    let missing = dispatch(
+        &mut dispatcher,
+        "project-missing-owner",
+        EngineCommand::ExecuteProjectHistory(ProjectHistoryCommand::apply(
+            0,
+            ProjectMutation::media(ProjectMediaCommand::mark_missing(HISTORY_MEDIA)),
+        )),
+    )
+    .unwrap_err();
+    assert_eq!(missing.category(), ErrorCategory::Unavailable);
+    assert!(dispatcher.drain_events().unwrap().is_empty());
+
+    dispatcher
+        .attach_project_history(project_document(), 2)
+        .unwrap();
+    assert_eq!(
+        dispatcher
+            .attach_project_history(project_document(), 2)
+            .unwrap_err()
+            .category(),
+        ErrorCategory::Conflict
+    );
+
+    let inspected = dispatch(
+        &mut dispatcher,
+        "project-inspect",
+        EngineCommand::InspectProjectHistory,
+    )
+    .unwrap();
+    assert_eq!(inspected.command_sequence(), 1);
+    let inspected = project_history_result(inspected.result());
+    assert_eq!(inspected.state().snapshot().revision(), 0);
+    assert_eq!(inspected.state().capacity(), 2);
+    assert!(inspected.action_result().is_none());
+    assert!(dispatcher.drain_events().unwrap().is_empty());
+
+    let applied = dispatch(
+        &mut dispatcher,
+        "project-apply",
+        EngineCommand::ExecuteProjectHistory(ProjectHistoryCommand::apply(
+            0,
+            ProjectMutation::media(ProjectMediaCommand::set_path(
+                HISTORY_MEDIA,
+                history_path("Media/relinked.webm"),
+            )),
+        )),
+    )
+    .unwrap();
+    assert_eq!(applied.command_sequence(), 2);
+    let applied_state = project_history_result(applied.result()).state().clone();
+    assert_eq!(applied_state.snapshot().revision(), 1);
+    assert_eq!(applied_state.undo_depth(), 1);
+
+    let events = dispatcher.drain_events().unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].sequence(), 1);
+    assert_eq!(events[0].command_sequence(), 2);
+    assert_eq!(events[0].transaction_id().as_str(), "project-apply");
+    assert_eq!(events[0].project_revision(), Some(1));
+    match events[0].event() {
+        EngineEvent::ProjectStateChanged(state) => assert_eq!(state.as_ref(), &applied_state),
+        _ => panic!("expected project state event"),
+    }
+
+    let before_stale = dispatcher.project_history_state().unwrap();
+    let stale = dispatch(
+        &mut dispatcher,
+        "project-stale",
+        EngineCommand::ExecuteProjectHistory(ProjectHistoryCommand::undo(0)),
+    )
+    .unwrap_err();
+    assert_eq!(stale.category(), ErrorCategory::Conflict);
+    assert_eq!(dispatcher.project_history_state().unwrap(), before_stale);
+    assert!(dispatcher.drain_events().unwrap().is_empty());
+
+    let undone = dispatch(
+        &mut dispatcher,
+        "project-undo",
+        EngineCommand::ExecuteProjectHistory(ProjectHistoryCommand::undo(1)),
+    )
+    .unwrap();
+    assert_eq!(undone.command_sequence(), 3);
+    assert_eq!(
+        project_history_result(undone.result())
+            .state()
+            .snapshot()
+            .revision(),
+        2
+    );
+    let events = dispatcher.drain_events().unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].sequence(), 2);
+    assert_eq!(events[0].command_sequence(), 3);
+    assert_eq!(events[0].transaction_id().as_str(), "project-undo");
+    assert_eq!(events[0].project_revision(), Some(2));
+}
+
+#[test]
+fn project_no_ops_emit_nothing_and_event_backpressure_precedes_history_mutation() {
+    let mut dispatcher = EngineCommandDispatcher::scenario_only();
+    dispatcher
+        .attach_project_history(project_document(), 1)
+        .unwrap();
+
+    dispatch(
+        &mut dispatcher,
+        "project-mark-missing",
+        EngineCommand::ExecuteProjectHistory(ProjectHistoryCommand::apply(
+            0,
+            ProjectMutation::media(ProjectMediaCommand::mark_missing(HISTORY_MEDIA)),
+        )),
+    )
+    .unwrap();
+    let first_event = dispatcher.drain_events().unwrap();
+    assert_eq!(first_event.len(), 1);
+    assert_eq!(first_event[0].sequence(), 1);
+
+    let no_op = dispatch(
+        &mut dispatcher,
+        "project-no-op",
+        EngineCommand::ExecuteProjectHistory(ProjectHistoryCommand::apply(
+            1,
+            ProjectMutation::media(ProjectMediaCommand::mark_missing(HISTORY_MEDIA)),
+        )),
+    )
+    .unwrap();
+    assert!(!project_history_result(no_op.result()).authored_state_changed());
+    assert_eq!(
+        project_history_result(no_op.result())
+            .state()
+            .snapshot()
+            .revision(),
+        1
+    );
+    assert!(dispatcher.drain_events().unwrap().is_empty());
+
+    for offset in 0..MAX_PENDING_ENGINE_EVENTS {
+        let expected_revision = 1 + u64::try_from(offset).unwrap();
+        let command = if offset % 2 == 0 {
+            ProjectHistoryCommand::undo(expected_revision)
+        } else {
+            ProjectHistoryCommand::redo(expected_revision)
+        };
+        dispatch(
+            &mut dispatcher,
+            &format!("project-fill-event-queue-{offset}"),
+            EngineCommand::ExecuteProjectHistory(command),
+        )
+        .unwrap();
+    }
+    let before_blocked = dispatcher.project_history_state().unwrap();
+    assert_eq!(before_blocked.snapshot().revision(), 65);
+    let blocked = dispatch(
+        &mut dispatcher,
+        "project-event-queue-capacity",
+        EngineCommand::ExecuteProjectHistory(ProjectHistoryCommand::undo(65)),
+    )
+    .unwrap_err();
+    assert_eq!(blocked.category(), ErrorCategory::ResourceExhausted);
+    assert_eq!(dispatcher.project_history_state().unwrap(), before_blocked);
+
+    let events = dispatcher.drain_events().unwrap();
+    assert_eq!(events.len(), MAX_PENDING_ENGINE_EVENTS);
+    assert_eq!(events.first().unwrap().sequence(), 2);
+    assert_eq!(events.last().unwrap().sequence(), 65);
+    assert_eq!(events.last().unwrap().project_revision(), Some(65));
 }
 
 #[test]
@@ -745,6 +924,37 @@ fn lifecycle_result(
         EngineCommandResult::Lifecycle(snapshot) => snapshot,
         _ => panic!("expected lifecycle result"),
     }
+}
+
+fn project_history_result(result: &EngineCommandResult) -> &ProjectHistoryOutcome {
+    match result {
+        EngineCommandResult::ProjectHistory(outcome) => outcome,
+        _ => panic!("expected project history result"),
+    }
+}
+
+fn project_document() -> ProjectDocument {
+    let path = history_path("Media/source.webm");
+    let media = LinkedMediaReference::new(HISTORY_MEDIA, "source", path.to_target(), None);
+    let timeline = Timeline::new(
+        HISTORY_ROOT,
+        "history root",
+        FrameRate::FPS_24.timebase(),
+        superi_core::time::RationalTime::zero(FrameRate::FPS_24.timebase()),
+        Vec::new(),
+    );
+    let project = EditorialProject::new(
+        ProjectId::from_raw(0x800),
+        "dispatcher history",
+        [media],
+        [timeline],
+    )
+    .unwrap();
+    ProjectDocument::new(project, HISTORY_ROOT).unwrap()
+}
+
+fn history_path(path: &str) -> ReferencedMediaPath {
+    ReferencedMediaPath::project_relative(PortableRelativePath::new(path).unwrap())
 }
 
 fn admit(

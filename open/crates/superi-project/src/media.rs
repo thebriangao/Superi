@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_core::ids::MediaId;
 use superi_timeline::media::RelinkDecision;
-use superi_timeline::model::EditorialProject;
+use superi_timeline::model::{EditorialProject, LinkedMediaReference};
 
 use crate::document::{ProjectDocument, ProjectGraph, ProjectSnapshot};
 
@@ -429,6 +429,19 @@ impl ProjectDocument {
         command: ProjectMediaCommand,
     ) -> Result<ProjectMediaCommandOutcome> {
         let media_id = command.media_id();
+        self.check_revision("execute_media_command", expected_revision)?;
+        let current_media = self
+            .editorial_project()
+            .media_reference(media_id)
+            .ok_or_else(|| missing_media_reference(media_id))?;
+        let mut preview = current_media.clone();
+        let preview_result = apply_media_command(&mut preview, &command)?;
+        if preview == *current_media {
+            return Ok(ProjectMediaCommandOutcome {
+                snapshot: self.snapshot(),
+                result: preview_result,
+            });
+        }
         let mut command_result = None;
         let snapshot = self.edit(expected_revision, |draft| {
             let retained_timeline_graphs = draft
@@ -444,24 +457,7 @@ impl ProjectDocument {
                 .editorial_project_mut()
                 .edit(editorial_revision, |editorial| {
                     let media = editorial.media_reference_mut(media_id)?;
-                    command_result = Some(match &command {
-                        ProjectMediaCommand::SetPath { path, .. } => {
-                            media.set_target(path.to_target());
-                            ProjectMediaCommandResult::PathUpdated
-                        }
-                        ProjectMediaCommand::MarkMissing { .. } => {
-                            media.mark_missing();
-                            ProjectMediaCommandResult::MarkedMissing
-                        }
-                        ProjectMediaCommand::ConsiderRelink {
-                            path,
-                            observed_fingerprint,
-                            ..
-                        } => ProjectMediaCommandResult::Relink(
-                            media
-                                .consider_relink(path.to_target(), observed_fingerprint.clone())?,
-                        ),
-                    });
+                    command_result = Some(apply_media_command(media, &command)?);
                     Ok(())
                 })?;
 
@@ -486,6 +482,29 @@ impl ProjectDocument {
         })?;
         Ok(ProjectMediaCommandOutcome { snapshot, result })
     }
+}
+
+fn apply_media_command(
+    media: &mut LinkedMediaReference,
+    command: &ProjectMediaCommand,
+) -> Result<ProjectMediaCommandResult> {
+    Ok(match command {
+        ProjectMediaCommand::SetPath { path, .. } => {
+            media.set_target(path.to_target());
+            ProjectMediaCommandResult::PathUpdated
+        }
+        ProjectMediaCommand::MarkMissing { .. } => {
+            media.mark_missing();
+            ProjectMediaCommandResult::MarkedMissing
+        }
+        ProjectMediaCommand::ConsiderRelink {
+            path,
+            observed_fingerprint,
+            ..
+        } => ProjectMediaCommandResult::Relink(
+            media.consider_relink(path.to_target(), observed_fingerprint.clone())?,
+        ),
+    })
 }
 
 impl ProjectSnapshot {
@@ -524,6 +543,19 @@ fn project_media_path(
                 .with_field("target", media.target().to_owned()),
         )
     })
+}
+
+fn missing_media_reference(media_id: MediaId) -> Error {
+    media_error(
+        ErrorCategory::NotFound,
+        Recoverability::UserCorrectable,
+        "execute_media_command",
+        "linked media identity was not found in the project",
+    )
+    .with_context(
+        ErrorContext::new(COMPONENT, "execute_media_command")
+            .with_field("media_id", media_id.to_string()),
+    )
 }
 
 fn decode_current_target(encoded: &str) -> Result<ReferencedMediaPath> {

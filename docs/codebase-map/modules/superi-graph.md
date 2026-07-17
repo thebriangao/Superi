@@ -784,8 +784,9 @@ mask, propagation, tracking, typography, shaping, or paragraph meaning to graph.
 directional-wipe schemas, parameters, port bindings, immutable compilation, and reference evaluation
 likewise use neutral graph contracts without adding transition meaning or timeline edit policy to
 graph. Concrete runtime factories, rasterization, propagation solving, cache value integration and
-invalidation invocation, project persistence, undo history, and engine transaction coordination
-remain separate later owners.
+invalidation invocation, project persistence, and direct graph-command adaptation into the engine
+transaction owner remain separate later work. Engine now owns project-level history above this
+crate, while graph intentionally owns no undo stack.
 
 The disclosed canonical reference graph in `superi-engine` uses core `NodeId` but is not a consumer
 of this store and retains string ports and edges. It remains reference behavior, not production
@@ -795,6 +796,10 @@ reference model. `superi-project` now owns those compilations as ordinary whole-
 also admits named standalone `EditableGraph<CompiledTimelineGraphValue>` documents. Its immutable
 snapshots preserve graph revisions and prior graph state without moving graph validation or
 mutation policy into the project crate.
+Engine project history may select those complete immutable project snapshots through the
+project-owned restoration seam. This reverses retained timeline and standalone graph state
+atomically with the rest of the project, but no `ProjectMutation` variant directly wraps
+`GraphTransaction`, and graph remains unaware of session history.
 
 ## Dependencies and consumers
 
@@ -928,7 +933,9 @@ mutation policy into the project crate.
   and optional inputs accept at most one stored edge; variadic inputs retain stable edge identity
   order through the DAG adjacency set.
 - Connected nodes cannot be removed implicitly. A transaction must disconnect incident edges before
-  remove, which keeps the full ordered edit explicit without claiming undo ownership.
+  remove, which keeps the full ordered edit explicit without claiming local undo ownership. A
+  higher project history owner may restore a complete retained snapshot without changing this
+  transaction law.
 - Every transaction compares one expected graph revision. Empty current-revision batches are
   idempotent, successful nonempty batches advance once, stale or exhausted revisions publish
   nothing, and any mutation failure discards all earlier candidate edits.
@@ -1044,7 +1051,7 @@ mutation policy into the project crate.
   snapshots, domains, requests, and deterministic custom mapping.
 - The crate has no project container, atomic file replacement, locking owner, autosave, recovery
   journal, outer scheduler connection, production runtime node catalog, GPU resource ownership,
-  plugin loading, undo history, cache generation owner, or engine transaction coordinator yet.
+  plugin loading, local undo history, cache generation owner, or direct engine command adapter.
 
 ## Tests and verification
 
@@ -1211,6 +1218,9 @@ Project is the first whole-project owner to retain timeline's editable compilati
 standalone graphs. Engine resource preparation consumes one immutable project snapshot and keeps
 its exact editable compilation beside source and decoder lifetimes, but it does not compile runtime
 nodes or evaluate output.
+Engine project history now also reverses complete retained graph state by restoring whole project
+snapshots at fresh document revisions. Graph transactions are not yet directly exposed as typed
+project mutations, and this crate does not observe or store history metadata.
 The versioned graph document codec now preserves and validates that complete editable state,
 migrates the supported legacy envelope, returns canonical upgraded bytes, and retains typed links
 and editable expression source through save and load. Missing-node resolution now derives exact
@@ -1367,7 +1377,7 @@ derived availability, never another graph document, identity system, or persiste
 Update this map when mutation, invalidation, ROI, serialization, expressions, diagnostics, and
 evaluation integrate further, concrete retention or eviction behavior changes, or cache revision
 and resource policies change the adapter contract,
-ROI-to-evaluator binding, project storage, undo ownership, engine coordination,
+ROI-to-evaluator binding, project storage, direct graph command adaptation, project-history coordination,
 plugin implementation lookup, the effects catalog gains production executable nodes, or another
 downstream catalog becomes real. Recheck direct consumer maps whenever they begin importing any
 public graph contract, and recheck value consumers whenever the neutral payload or scalar expression

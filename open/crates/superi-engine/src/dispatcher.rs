@@ -13,6 +13,7 @@ use std::time::Instant;
 use superi_concurrency::threads::ExecutionDomain;
 use superi_core::diagnostics::DiagnosticEvent;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
+use superi_project::document::ProjectDocument;
 
 use crate::command::{
     ScenarioAction, ScenarioEngine, ScenarioSnapshot, MAX_SCENARIO_TRANSACTION_ACTIONS,
@@ -26,6 +27,9 @@ use crate::export_dispatch::{
     ErasedExportJobController,
 };
 use crate::export_jobs::ExportJobQueueConfig;
+use crate::history::{
+    ProjectCommandHistory, ProjectHistoryCommand, ProjectHistoryOutcome, ProjectHistoryState,
+};
 use crate::introspection::{EngineIntrospectionSnapshot, MediaCapabilities};
 use crate::lifecycle::{
     EngineLifecycle, EngineLifecycleAction, EngineLifecycleActionKind, EngineLifecycleSnapshot,
@@ -341,6 +345,10 @@ pub enum EngineCommand {
     ExecuteScenario(ScenarioTransaction),
     /// Inspect current scenario state without mutation.
     InspectScenario,
+    /// Execute one typed authored-project mutation, undo, or redo command.
+    ExecuteProjectHistory(ProjectHistoryCommand),
+    /// Inspect current authored-project state and history without mutation.
+    InspectProjectHistory,
     /// Inspect current lifecycle state without mutation.
     InspectLifecycle,
     /// Inspect complete classified failure and recovery state without mutation.
@@ -415,6 +423,7 @@ impl EngineCommand {
             _ => matches!(
                 self,
                 Self::ExecuteScenario(_)
+                    | Self::ExecuteProjectHistory(_)
                     | Self::CompleteLifecycleAction(_)
                     | Self::FailLifecycleAction { .. }
                     | Self::ReportRuntimeFailure { .. }
@@ -457,6 +466,8 @@ impl EngineCommandRequest {
 pub enum EngineCommandResult {
     /// Complete scenario state.
     Scenario(Box<ScenarioSnapshot>),
+    /// Complete authored-project state, history metadata, and semantic command evidence.
+    ProjectHistory(Box<ProjectHistoryOutcome>),
     /// Complete lifecycle state.
     Lifecycle(Box<EngineLifecycleSnapshot>),
     /// Complete classified failure, recovery, and coherent lifecycle state.
@@ -508,6 +519,8 @@ impl EngineCommandOutcome {
 pub enum EngineEvent {
     /// Scenario state changed atomically.
     ScenarioStateChanged(Box<ScenarioSnapshot>),
+    /// Authored project state changed atomically.
+    ProjectStateChanged(Box<ProjectHistoryState>),
     /// Lifecycle state changed atomically.
     LifecycleStateChanged(Box<EngineLifecycleSnapshot>),
     /// Classified failure, recovery, and lifecycle state changed atomically.
@@ -718,6 +731,7 @@ struct PendingPlaybackCommand {
 /// Single serialized command and transaction owner.
 pub struct EngineCommandDispatcher {
     scenario: ScenarioEngine,
+    project_history: Option<ProjectCommandHistory>,
     lifecycle: Option<EngineLifecycle>,
     errors: Option<EngineErrorCoordinator>,
     recovery_state_revision: u64,
@@ -746,6 +760,7 @@ impl EngineCommandDispatcher {
         let errors = EngineErrorCoordinator::new()?;
         Ok(Self {
             scenario: ScenarioEngine::new(),
+            project_history: None,
             lifecycle: Some(lifecycle),
             errors: Some(errors),
             recovery_state_revision: 0,
@@ -791,6 +806,7 @@ impl EngineCommandDispatcher {
     pub fn scenario_only() -> Self {
         Self {
             scenario: ScenarioEngine::new(),
+            project_history: None,
             lifecycle: None,
             errors: None,
             recovery_state_revision: 0,
@@ -831,6 +847,30 @@ impl EngineCommandDispatcher {
         Ok(runtime)
     }
 
+    /// Attaches the exclusive project document owner with one bounded history capacity.
+    ///
+    /// The document is consumed so authored mutations cannot bypass serialized engine commands.
+    ///
+    /// # Errors
+    ///
+    /// Returns a conflict when a project owner is already attached, or a classified capacity or
+    /// ownership error when the requested owner cannot be created here.
+    pub fn attach_project_history(
+        &mut self,
+        document: ProjectDocument,
+        capacity: usize,
+    ) -> Result<()> {
+        self.require_owner()?;
+        if self.project_history.is_some() {
+            return Err(conflict(
+                "attach_project_history",
+                "project command history is already attached to this dispatcher",
+            ));
+        }
+        self.project_history = Some(ProjectCommandHistory::with_capacity(document, capacity)?);
+        Ok(())
+    }
+
     /// Returns current scenario state after enforcing full-dispatcher ownership when applicable.
     ///
     /// # Errors
@@ -839,6 +879,16 @@ impl EngineCommandDispatcher {
     pub fn scenario_snapshot(&self) -> Result<ScenarioSnapshot> {
         self.require_owner()?;
         Ok(self.scenario.snapshot())
+    }
+
+    /// Returns immutable authored-project state after enforcing dispatcher ownership.
+    ///
+    /// # Errors
+    ///
+    /// Returns an ownership error or unavailable when no project command owner is attached.
+    pub fn project_history_state(&self) -> Result<ProjectHistoryState> {
+        self.require_owner()?;
+        Ok(self.project_history_ref()?.state())
     }
 
     /// Returns one read-only capability and health snapshot from existing engine owners.
@@ -967,6 +1017,9 @@ impl EngineCommandDispatcher {
             ) = match &event {
                 EngineEvent::ScenarioStateChanged(snapshot) => {
                     (Some(snapshot.revision()), None, None, None, None)
+                }
+                EngineEvent::ProjectStateChanged(state) => {
+                    (Some(state.snapshot().revision()), None, None, None, None)
                 }
                 EngineEvent::LifecycleStateChanged(snapshot) => {
                     (None, Some(snapshot.state_revision()), None, None, None)
@@ -1172,6 +1225,22 @@ impl EngineCommandDispatcher {
             }
             EngineCommand::InspectScenario => Ok(CommandExecution {
                 result: EngineCommandResult::Scenario(Box::new(self.scenario.snapshot())),
+                event: None,
+            }),
+            EngineCommand::ExecuteProjectHistory(command) => {
+                let outcome = self.project_history_mut()?.execute(command)?;
+                let event = outcome
+                    .authored_state_changed()
+                    .then(|| EngineEvent::ProjectStateChanged(Box::new(outcome.state().clone())));
+                Ok(CommandExecution {
+                    result: EngineCommandResult::ProjectHistory(Box::new(outcome)),
+                    event,
+                })
+            }
+            EngineCommand::InspectProjectHistory => Ok(CommandExecution {
+                result: EngineCommandResult::ProjectHistory(Box::new(
+                    self.project_history_ref()?.inspect(),
+                )),
                 event: None,
             }),
             EngineCommand::InspectLifecycle => {
@@ -1465,6 +1534,18 @@ impl EngineCommandDispatcher {
         self.lifecycle.as_ref().ok_or_else(missing_lifecycle)
     }
 
+    fn project_history_ref(&self) -> Result<&ProjectCommandHistory> {
+        self.project_history
+            .as_ref()
+            .ok_or_else(missing_project_history)
+    }
+
+    fn project_history_mut(&mut self) -> Result<&mut ProjectCommandHistory> {
+        self.project_history
+            .as_mut()
+            .ok_or_else(missing_project_history)
+    }
+
     fn lifecycle_mut(&mut self) -> Result<&mut EngineLifecycle> {
         self.lifecycle.as_mut().ok_or_else(missing_lifecycle)
     }
@@ -1576,6 +1657,15 @@ fn missing_export_jobs() -> Error {
         "logical export commands require an attached export queue",
     )
     .with_context(ErrorContext::new(COMPONENT, "require_export_jobs"))
+}
+
+fn missing_project_history() -> Error {
+    Error::new(
+        ErrorCategory::Unavailable,
+        Recoverability::Degraded,
+        "project commands require an attached project command history",
+    )
+    .with_context(ErrorContext::new(COMPONENT, "require_project_history"))
 }
 
 fn bounded_utf8_prefix(value: &str, maximum_bytes: usize) -> String {

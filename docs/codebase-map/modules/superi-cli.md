@@ -23,6 +23,10 @@ standalone validation helper for one fresh starting-engine observation and print
 deterministic JSON snapshot containing canonical introspection, scenario reversal, lifecycle and
 recovery actions, workflow admission, playback, and export state.
 
+The engine's production Rust project command-history surface is not available through `superi-api`,
+so this binary cannot yet apply, inspect, undo, or redo a real project document. Its current
+reversal proof remains the fixed canonical scenario contract.
+
 The current runner satisfies contract conformance only. It does not open or decode media, evaluate
 pixels, apply production color, encode AV1, mux WebM, or claim a working editor export. Every absent
 production owner is explicit in stage diagnostics and the artifact name.
@@ -118,6 +122,8 @@ IntegrationValidationApi from_fresh_engine
 The CLI imports only `superi-api` for this path. The engine owns its legal execution domain and
 canonical temporary dispatcher behind that public facade, so the CLI does not project engine state,
 poll playback or export workers, or create another lifecycle, recovery, or endpoint owner.
+It also cannot reach the engine's attached `ProjectCommandHistory` directly; adding a project CLI
+must first consume a stable API-owned command, result, state, and event schema.
 
 The API receives exact import, placement, trim, and mirror actions. Each helper call snapshots the
 current revision, creates one caller-identified single-action transaction, dispatches it, drains
@@ -161,6 +167,8 @@ success.
 
 - `superi-api` supplies both public control boundaries used by the binary: revisioned scenario
   transactions and immutable coherent integration validation.
+- Engine project-history types are deliberately not a dependency. The CLI continues to depend only
+  on `superi-api`, and project apply, undo, redo, scripting, and automation commands remain absent.
 - `serde` and `serde_json` parse strict manifests and serialize state, stages, reports, artifacts,
   summaries, and failures.
 - `sha2` computes manifest, payload, semantic state, timeline, graph, operation log, and artifact
@@ -254,6 +262,10 @@ integration validation client. Its strongest slice limitation is intentional: si
 typed boundaries without production execution. The fixture payload is digest-validated but its
 decoded traits are reported as expected contract values because the current media stage does not
 open it.
+
+Engine now has a bounded real-project command owner below the API, but the CLI exposes no project
+history command. Public API adaptation must land before this binary can consume that owner without
+violating its dependency tier.
 
 `engine validate` currently constructs a fresh starting engine, so it proves the shared public
 query and strict state projection rather than attaching to an already running application process.

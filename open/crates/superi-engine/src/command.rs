@@ -13,8 +13,10 @@ use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Res
 use superi_core::ids::{ClipId, MediaId, NodeId, ProjectId, TrackId};
 use superi_core::time::FrameRate;
 
+use crate::history::SnapshotHistory;
+
 const COMPONENT: &str = "superi-engine.command";
-const MAX_HISTORY_ENTRIES: usize = 4;
+const SCENARIO_HISTORY_CAPACITY: usize = 4;
 
 /// Maximum ordered mutations accepted in one atomic scenario transaction.
 pub const MAX_SCENARIO_TRANSACTION_ACTIONS: usize = 64;
@@ -629,19 +631,22 @@ impl ScenarioSnapshot {
     }
 }
 
-#[derive(Clone, Debug)]
-struct HistoryEntry {
-    before: ScenarioContent,
-    after: ScenarioContent,
-}
-
 /// Authoritative transaction owner for canonical editorial state.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ScenarioEngine {
     revision: u64,
     content: ScenarioContent,
-    undo: Vec<HistoryEntry>,
-    redo: Vec<HistoryEntry>,
+    history: SnapshotHistory<ScenarioContent, ()>,
+}
+
+impl Default for ScenarioEngine {
+    fn default() -> Self {
+        Self {
+            revision: 0,
+            content: ScenarioContent::default(),
+            history: SnapshotHistory::new(SCENARIO_HISTORY_CAPACITY),
+        }
+    }
 }
 
 impl ScenarioEngine {
@@ -657,8 +662,8 @@ impl ScenarioEngine {
         ScenarioSnapshot {
             revision: self.revision,
             content: self.content.clone(),
-            undo_depth: self.undo.len(),
-            redo_depth: self.redo.len(),
+            undo_depth: self.history.undo_depth(),
+            redo_depth: self.history.redo_depth(),
         }
     }
 
@@ -723,12 +728,6 @@ impl ScenarioEngine {
     }
 
     fn commit_transaction(&mut self, actions: Vec<ScenarioAction>) -> Result<ScenarioSnapshot> {
-        if self.undo.len() >= MAX_HISTORY_ENTRIES {
-            return Err(resource_exhausted(
-                "commit_transaction",
-                "canonical history reached its four-transaction capacity",
-            ));
-        }
         let next_revision = next_revision(self.revision)?;
         let before = self.content.clone();
         let mut after = before.clone();
@@ -737,32 +736,31 @@ impl ScenarioEngine {
         }
         self.content = after.clone();
         self.revision = next_revision;
-        self.undo.push(HistoryEntry { before, after });
-        self.redo.clear();
+        self.history.record(before, after, ());
         Ok(self.snapshot())
     }
 
     fn undo(&mut self) -> Result<ScenarioSnapshot> {
         let next_revision = next_revision(self.revision)?;
-        let entry = self
-            .undo
-            .pop()
-            .ok_or_else(|| conflict("undo", "no committed scenario action is available to undo"))?;
-        self.content = entry.before.clone();
+        let before =
+            self.history.undo_target().cloned().ok_or_else(|| {
+                conflict("undo", "no committed scenario action is available to undo")
+            })?;
+        self.content = before;
         self.revision = next_revision;
-        self.redo.push(entry);
+        self.history.commit_undo();
         Ok(self.snapshot())
     }
 
     fn redo(&mut self) -> Result<ScenarioSnapshot> {
         let next_revision = next_revision(self.revision)?;
-        let entry = self
-            .redo
-            .pop()
-            .ok_or_else(|| conflict("redo", "no reversed scenario action is available to redo"))?;
-        self.content = entry.after.clone();
+        let after =
+            self.history.redo_target().cloned().ok_or_else(|| {
+                conflict("redo", "no reversed scenario action is available to redo")
+            })?;
+        self.content = after;
         self.revision = next_revision;
-        self.undo.push(entry);
+        self.history.commit_redo();
         Ok(self.snapshot())
     }
 }

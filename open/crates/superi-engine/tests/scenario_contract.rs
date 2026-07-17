@@ -127,6 +127,22 @@ fn canonical_actions_create_the_exact_timeline_graph_and_operation_log() {
     assert_eq!(replayed.timeline(), final_state.timeline());
     assert_eq!(replayed.graph(), final_state.graph());
     assert_eq!(replayed.operation_log(), final_state.operation_log());
+
+    engine.execute(ScenarioAction::Undo).unwrap();
+    let branched = engine
+        .execute(ScenarioAction::ApplyGraphEffect {
+            effect: GraphEffect::HorizontalMirror,
+        })
+        .unwrap();
+    assert_eq!(branched.revision(), 10);
+    assert_eq!(branched.undo_depth(), 4);
+    assert_eq!(branched.redo_depth(), 0);
+    let before_empty_redo = engine.snapshot();
+    assert_eq!(
+        engine.execute(ScenarioAction::Redo).unwrap_err().category(),
+        ErrorCategory::Conflict
+    );
+    assert_eq!(engine.snapshot(), before_empty_redo);
 }
 
 #[test]

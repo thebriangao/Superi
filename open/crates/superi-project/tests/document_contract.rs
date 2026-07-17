@@ -26,6 +26,10 @@ fn range(start: i64, duration: u64, timebase: Timebase) -> TimeRange {
 }
 
 fn editorial_project() -> EditorialProject {
+    editorial_project_with_id(PROJECT)
+}
+
+fn editorial_project_with_id(project_id: ProjectId) -> EditorialProject {
     let edit_rate = Timebase::integer(24).unwrap();
     let generator = Generator::new(
         GENERATOR,
@@ -50,12 +54,96 @@ fn editorial_project() -> EditorialProject {
         )],
     );
     EditorialProject::new(
-        PROJECT,
+        project_id,
         "whole project",
         std::iter::empty::<LinkedMediaReference>(),
         [timeline],
     )
     .unwrap()
+}
+
+#[test]
+fn snapshot_restoration_is_revision_fenced_monotonic_and_atomic() {
+    let mut document = ProjectDocument::new(editorial_project(), ROOT).unwrap();
+    let original = document.snapshot();
+    let (node_id, parameter_id, value_type) = generator_name_address(&document);
+    document
+        .edit(0, |draft| {
+            let compilation = draft.timeline_graph_mut(ROOT)?;
+            let graph_revision = compilation.graph().revision();
+            compilation
+                .graph_mut()
+                .apply(GraphTransaction::with_mutations(
+                    graph_revision,
+                    [GraphMutation::SetParameter {
+                        node_id,
+                        parameter_id,
+                        value: TypedParameterValue::new(
+                            value_type,
+                            GraphValue::domain(TimelineGraphValue::Text(
+                                "later editable state".to_owned(),
+                            )),
+                        ),
+                    }],
+                ))?;
+            Ok(())
+        })
+        .unwrap();
+    let later = document.snapshot();
+
+    let stale = document.restore_snapshot(0, &original).unwrap_err();
+    assert_eq!(stale.category(), ErrorCategory::Conflict);
+    assert_eq!(document.snapshot(), later);
+
+    let other_project =
+        ProjectDocument::new(editorial_project_with_id(ProjectId::from_raw(999)), ROOT).unwrap();
+    let cross_project = document
+        .restore_snapshot(1, &other_project.snapshot())
+        .unwrap_err();
+    assert_eq!(cross_project.category(), ErrorCategory::Conflict);
+    assert_eq!(document.snapshot(), later);
+
+    let restored = document.restore_snapshot(1, &original).unwrap();
+    assert_eq!(restored.revision(), 2);
+    assert_eq!(restored.project_id(), original.project_id());
+    assert_eq!(restored.root_timeline_id(), original.root_timeline_id());
+    assert_eq!(restored.editorial_project(), original.editorial_project());
+    assert_eq!(
+        restored.graphs().cloned().collect::<Vec<_>>(),
+        original.graphs().cloned().collect::<Vec<_>>()
+    );
+    assert_eq!(generator_name(&document), "generated title");
+    assert_eq!(
+        later
+            .timeline_graph(ROOT)
+            .unwrap()
+            .snapshot()
+            .node(node_id)
+            .unwrap()
+            .parameters()
+            .get(&parameter_id)
+            .unwrap()
+            .value()
+            .payload()
+            .as_domain(),
+        Some(&TimelineGraphValue::Text("later editable state".to_owned()))
+    );
+
+    let unchanged = document.restore_snapshot(2, &original).unwrap();
+    assert_eq!(unchanged, restored);
+    assert_eq!(document.revision(), 2);
+
+    let mut exhausted = ProjectDocument::from_parts(
+        u64::MAX,
+        original.editorial_project().clone(),
+        original.root_timeline_id(),
+        original.graphs().cloned(),
+    )
+    .unwrap();
+    let exhausted_before = exhausted.snapshot();
+    let error = exhausted.restore_snapshot(u64::MAX, &later).unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::ResourceExhausted);
+    assert_eq!(exhausted.snapshot(), exhausted_before);
 }
 
 fn generator_name_address(

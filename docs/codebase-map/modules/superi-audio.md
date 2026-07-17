@@ -297,6 +297,10 @@ and spectrum values, and performs the two-stage integrated loudness gate without
   `process_into_buffer` path.
 - `superi-engine::audio_mix` owns production timeline edit and clip-mix identity reconciliation.
   No production adapter yet binds decoded media into the schedule or prepared graph.
+- Engine project command history is a separate owner over `ProjectDocument` snapshots and currently
+  wraps only project media commands. Audio device, callback, meter, resampler, prepared graph, and
+  clip-mix state are not project-document history; the existing timeline plus clip-mix edit helper
+  is not yet wrapped by the compound project transaction or history surface.
 - `superi-engine::playback` wraps the existing `OutputProducer`, accepts only whole borrowed sample
   submissions, and passes the paired `AudioMasterClock` into its engine-owned A/V coordinator as
   the authoritative video pacing source. That coordinator returns bounded wait, correction, drop,
@@ -394,6 +398,10 @@ and spectrum values, and performs the two-stage integrated loudness gate without
   behind CPAL.
 - Clip mix publication is revision checked and atomic. Complete controls follow a right fragment,
   transfer to a replacement, and disappear with a removed clip through engine-owned reconciliation.
+- Project undo and redo must not snapshot callback queues, physical clocks, device handles,
+  telemetry, prepared DSP state, or other operational audio state. Later compound authored edits
+  may include durable clip-mix intent only through an engine transaction that preserves both
+  timeline and audio revision fences.
 - Nonzero pan requires canonical stereo output. Gain and route coefficients are finite and bounded;
   fades use exact integer sample lengths and must fit the prepared clip interval.
 - Meter processing requires one exact-layout input, copies it before analysis, and never changes
@@ -484,6 +492,11 @@ scheduled-slice `PreparedAudioGraph` binding, plugin host, platform channel-layo
 end-to-end source-playback-final-mix path. Microphone permission, physical input latency, semantic
 input layout, and hot-plug recovery remain platform-owned boundaries.
 
+Engine now owns bounded project-level history, but no current project mutation includes audio
+intent and no undo or redo action changes this crate. The existing atomic timeline plus clip-mix
+helper remains a direct Rust orchestration seam until the later compound transaction owner adapts
+its authored state without capturing operational audio resources.
+
 Multi-input routing is deliberately unity-only to avoid claiming later control semantics. Prepared
 input views retain immutable routes and earlier buffers without self-referential storage or callback
 allocation. The schedule iterator is deterministic and allocation-free but scans placements linearly;
@@ -520,6 +533,11 @@ timeline and decoded audio owners into the existing schedule and graph types ins
 upward dependencies. Keep channel layout and routing intent attached through that adapter, publish
 only completed audible windows, and replace the export stage seam with a real prepared-graph adapter
 before claiming timeline-owned source playback, mixing, or final delivery through this crate.
+
+When authored clip-mix changes enter project command history, integrate them through the engine's
+compound transaction owner and retain complete failure atomicity across timeline, project, and
+audio revisions. Never serialize callback-owned or prepared runtime state into project snapshots or
+add an audio-local undo stack.
 
 After source changes, refresh this map's inventory, architecture, invariants, tests, hash, and file
 count from resulting behavior, then update consumer maps and validate the global map closure.

@@ -296,9 +296,7 @@ impl ProjectDocument {
     where
         F: FnOnce(&mut ProjectDraft<'_>) -> Result<()>,
     {
-        if expected_revision != self.revision {
-            return Err(stale_revision(expected_revision, self.revision));
-        }
+        self.check_revision("edit_document", expected_revision)?;
 
         let mut candidate = self.state.as_ref().clone();
         edit(&mut ProjectDraft {
@@ -324,6 +322,60 @@ impl ProjectDocument {
         self.revision = next_revision;
         self.state = Arc::new(candidate);
         Ok(self.snapshot())
+    }
+
+    /// Restores one validated historical state under a fresh document revision.
+    ///
+    /// The target's captured revision is evidence only and is never republished. Stale fences,
+    /// cross-project targets, invalid state, semantic no-ops, and revision exhaustion preserve the
+    /// current document and every previously captured snapshot.
+    pub fn restore_snapshot(
+        &mut self,
+        expected_revision: u64,
+        target: &ProjectSnapshot,
+    ) -> Result<ProjectSnapshot> {
+        self.check_revision("restore_snapshot", expected_revision)?;
+        if target.project_id() != self.project_id() {
+            return Err(conflict(
+                "restore_snapshot",
+                "historical snapshot belongs to another project",
+            )
+            .with_context(
+                ErrorContext::new(COMPONENT, "restore_snapshot")
+                    .with_field("project_id", self.project_id().to_string())
+                    .with_field("target_project_id", target.project_id().to_string()),
+            ));
+        }
+        target.state.validate("restore_snapshot")?;
+        if target.state == self.state {
+            return Ok(self.snapshot());
+        }
+
+        let next_revision = self.revision.checked_add(1).ok_or_else(|| {
+            Error::new(
+                ErrorCategory::ResourceExhausted,
+                Recoverability::Terminal,
+                "project document revision is exhausted",
+            )
+            .with_context(
+                ErrorContext::new(COMPONENT, "restore_snapshot")
+                    .with_field("revision", self.revision.to_string()),
+            )
+        })?;
+        self.revision = next_revision;
+        self.state = Arc::clone(&target.state);
+        Ok(self.snapshot())
+    }
+
+    pub(crate) fn check_revision(
+        &self,
+        operation: &'static str,
+        expected_revision: u64,
+    ) -> Result<()> {
+        if expected_revision != self.revision {
+            return Err(stale_revision(operation, expected_revision, self.revision));
+        }
+        Ok(())
     }
 }
 
@@ -724,13 +776,13 @@ fn conflict(operation: &'static str, message: &'static str) -> Error {
     .with_context(ErrorContext::new(COMPONENT, operation))
 }
 
-fn stale_revision(expected_revision: u64, actual_revision: u64) -> Error {
+fn stale_revision(operation: &'static str, expected_revision: u64, actual_revision: u64) -> Error {
     conflict(
-        "edit_document",
+        operation,
         "project document revision does not match the expected revision",
     )
     .with_context(
-        ErrorContext::new(COMPONENT, "edit_document")
+        ErrorContext::new(COMPONENT, operation)
             .with_field("expected_revision", expected_revision.to_string())
             .with_field("actual_revision", actual_revision.to_string()),
     )

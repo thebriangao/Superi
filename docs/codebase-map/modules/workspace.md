@@ -814,8 +814,12 @@ selection for permissive, platform, or vendor codecs, validated image and audio 
 GPU upload and resident graph evaluation, color processing, cache participation, and explicit
 readback only at delivery boundaries. The timeline deterministically compiles edits into graph
 state. The engine now dispatches canonical scenario transactions and lifecycle commands and emits
-ordered replacement state events. The API projects that first scenario transaction seam and the CLI
-consumes it. The documented broader target coordinates project, timeline, graph, caches,
+ordered replacement state events. It also owns a bounded typed command history around the real
+project document and every currently authored project media command. Apply, undo, and redo share one
+revision-fenced dispatcher path, restore complete immutable snapshots at fresh monotonic revisions,
+and preserve failure and no-op branches. The API projects the earlier scenario transaction seam and
+the CLI consumes it; project-history wire, API, CLI, and scripting projection remain later work. The
+documented broader target coordinates project, timeline, graph, caches,
 persistence, undo, events, playback, and export and presents the same command surface to UI, CLI,
 scripts, extensions, and Superi Max, with no privileged closed-tier route.
 
@@ -905,8 +909,9 @@ The documents deliberately point into other modules:
   acquisition classes behind media interfaces.
 - `superi-graph`, `superi-cache`, `superi-color`, `superi-effects`, `superi-timeline`, `superi-audio`,
   and `superi-ai` own evaluation and capability layers.
-- `superi-project` owns persistence, `superi-engine` owns integration, `superi-api` owns the stable
-  seam, and `superi-cli` is the headless consumer.
+- `superi-project` owns aggregate validation, checked snapshot restoration, and persistence;
+  `superi-engine` owns bounded session command history and integration; `superi-api` owns the stable
+  public seam; and `superi-cli` is the headless consumer.
 - `superi-fixture-tool` validates repository fixture policy but does not enter runtime engine flow.
 - `superi-dependency-check` validates the runtime Cargo graph but does not enter runtime engine flow.
 - `superi-boundary-tool` validates source boundaries but does not enter runtime engine flow.
@@ -924,6 +929,9 @@ of open runtime behavior.
   and Superi Max depends on open Superi rather than the reverse.
 - The public API is transport-neutral, versioned, typed, and shared by every client. Bulk media does
   not cross JSON-RPC or webview IPC.
+- Authored project changes use one typed engine command-history surface. Retained before and after
+  snapshots are bounded session state, the selected project snapshot is the only durable state, and
+  domain crates do not own competing undo stacks.
 - The graph is the render primitive, and timeline compilation is deterministic. UI state is not a
   hidden render input. Local AI and automation produce normal editable, undoable artifacts.
 - The canonical slice keeps one typed editable graph state across timeline inspection, preview, CLI,
@@ -1175,6 +1183,12 @@ inside one immediate transaction. The lockfile records exact rusqlite 0.32.1 and
 0.30.1 with bundled SQLite, plus project JSON and engine rusqlite test edges. Additional project
 schema revisions, synchronized temporary publication, atomic destination replacement, autosave, and
 recovery remain incomplete.
+The engine now owns a production Rust project command-history boundary around that aggregate. It
+records successful authored media changes as bounded immutable before-and-after units, restores
+undo and redo targets through project validation with fresh monotonic revisions, persists only the
+selected snapshot through the existing database, and exposes typed dispatcher results plus complete
+replacement events. Compound cross-subsystem transactions and all public project-history wire, API,
+CLI, scripting, logging, and automation adapters remain incomplete.
 The synchronized remote revision before this checkpoint is
 `755398c118357ede40275e4086e3580353d7e1b8`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the

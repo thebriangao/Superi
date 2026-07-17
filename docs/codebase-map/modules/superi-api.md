@@ -14,7 +14,9 @@ automation clients. Four public slices are implemented: media capability introsp
 engine capability and health introspection for adaptive clients, canonical editorial scenario
 control through revision-fenced typed transactions and ordered full-state events, and coherent
 read-only integration validation. Wire transport, subscriptions, scripting, cancellation,
-persistence, and broad editor operations remain absent.
+persistence, and broad editor operations remain absent. The engine now exposes typed project
+command-history results and replacement events below this crate, but this API does not yet project
+that surface.
 
 ## Source inventory
 
@@ -135,6 +137,20 @@ SliceAction list plus expected revision
   -> or ScenarioFailure with complete last valid state and no event
 ```
 
+The production Rust project-history path is deliberately outside the current public schema:
+
+```text
+ProjectHistoryCommand
+  -> superi-engine EngineCommandDispatcher
+  -> ProjectHistoryOutcome plus optional ProjectStateChanged event
+  -> no superi-api projection yet
+```
+
+The engine state contains a real `ProjectDocument`, bounded session history, and typed current media
+mutations, unlike the fixed scenario model. Later API work must define permanent project command,
+result, state, and event schemas around that engine owner instead of adapting `ProjectDocument`
+directly or treating `ScenarioApi` as the production project facade.
+
 Projection preserves stable core identifiers as strings, exact rational rates, named timeline and
 track identity, half-open ranges, full image-port graph topology, row-major binary64 mirror matrix,
 sampling and edge behavior, and original mutation revisions. Unknown future engine enum variants
@@ -161,7 +177,8 @@ and deterministic coherence findings from the engine result.
 - `superi-core` supplies semantic versions, exact frame rates, and the classified error model.
 - `superi-engine` supplies capability declarations, complete immutable health and readiness state,
   canonical transactional state, typed dispatch, ordered replacement events, and integration
-  validation observations.
+  validation observations. Its project-history vocabulary is an intentionally unprojected
+  downstream addition, so no public client can invoke or inspect that state through this crate yet.
 - `serde_json`, `sha2`, `superi-media-io`, and `superi-concurrency` are test dependencies for wire,
   digest, registry, and EngineControl ownership contracts.
 - `superi-cli` is the first production Rust consumer of both `ScenarioApi` and
@@ -174,6 +191,8 @@ No transport, UI, shell, scripting runtime, extension host, or closed-tier clien
 - Public types own their wire schema and do not expose media-I/O or GPU implementation types.
 - Strict objects reject unknown fields. Non-exhaustive Rust enums require downstream fallback.
 - Inspect never changes revision or history.
+- The current inspect invariant applies to scenario and read-only public surfaces. Engine project
+  inspection remains inaccessible until a versioned API-owned schema is added.
 - Rejected actions and transactions return the complete last valid state and do not mutate engine
   state, command sequencing, history, or the event stream.
 - Public scenario mutations use an exact expected revision. A successful transaction is one engine
@@ -242,6 +261,10 @@ editor API. Engine introspection gives clients a coherent adaptation view withou
 authority, and integration validation extends that same state with precise action and endpoint
 evidence. Scenario schema 1 is deliberately narrow and fixed to one canonical edit. Its reference
 state proves transactional control semantics, not production timeline, graph, or media ownership.
+The engine's new project command-history owner provides production Rust apply, undo, redo, state,
+and replacement-event behavior for current project media commands, but this crate exposes none of
+those types or methods. Project API, wire, subscription, scripting, and automation adaptation remain
+later checkpoints.
 
 Integration validation schema 1 provides one coherent read-only state for CLI, UI, and tests, but
 it remains an in-process snapshot facade. The standalone helper creates a fresh starting engine for

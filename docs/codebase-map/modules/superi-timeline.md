@@ -621,6 +621,10 @@ Timeline document flow preserves those owners without becoming a project contain
   traverses reachable media and nested timeline relationships, and clones the exact project-retained
   compilation with prepared source and decoder owners. Engine transport separately consumes the
   retime-owned reduced signed `PlaybackRate` without importing editorial mutation policy.
+- Engine command history now reverses complete project snapshots that contain this editorial and
+  compiled graph state. Timeline remains unaware of history and owns no stack; no engine
+  `ProjectMutation` variant wraps timeline edit commands yet, and compound timeline plus audio or
+  graph transactions remain later integration work.
 - Public integration tests and the `otio_roundtrip` example are real consumers. No application API
   or editor surface exposes the general editorial model yet.
 
@@ -752,8 +756,10 @@ Timeline document flow preserves those owners without becoming a project contain
 - The `TimelineGraphValue` wire is internally tagged and denies unknown fields and tags. Decode
   reuses checked timeline constructors for time maps, multicam state, track semantics, and other
   structured variants before a graph can be published.
-- Fit-to-fill, arbitrary vendor-effect interpretation, graph evaluation, undo-history ownership,
+- Fit-to-fill, arbitrary vendor-effect interpretation, graph evaluation, direct history ownership,
   multicam playback and mixing, and higher-level editorial commands remain outside this state.
+  Engine may restore this state as part of a full project snapshot, but timeline edits are not yet
+  adapted to the project-history mutation vocabulary.
 - The timeline color seam preserves exact graph metadata and performs no transform, inference,
   normalization, or reordering.
 
@@ -876,12 +882,18 @@ after load, and strict compiled graph-value round trips are test-backed. `superi
 canonical timeline and compiled graph components in stable SQLite schema 1. Effects has compatible
 graph-native transition authoring and a bounded oracle, but the production binder from this
 timeline-owned state to those visual schemas is absent. Graph evaluation, fit-to-fill,
-grouped-source compound synthesis, undo ownership, multicam mixing and runtime playback, atomic save
-publication, autosave, recovery orchestration, and API integration remain absent. Engine
+grouped-source compound synthesis, timeline command adaptation into engine history, multicam mixing
+and runtime playback, atomic save publication, autosave, recovery orchestration, and API integration
+remain absent. Engine
 preparation integration now consumes and retains the compiled graph, and engine transport consumes
 the standalone signed rate value, but no
 owner yet binds that prepared native timeline graph to decoded playback, multicam mixing, or render
 output.
+
+Engine now owns bounded project-level undo and redo and can reverse this complete retained timeline
+state through project snapshot restoration. That does not provide a typed timeline command adapter,
+compound transaction integration, or a timeline-local undo owner; those remain later orchestration
+work.
 
 The model retains equal physical source and record duration for nominal clip ranges, while separate
 time maps may sample beyond that selection and report known unavailable points. Exact seam and slice
@@ -927,6 +939,9 @@ higher-level and grouped-source compound operations must consume `tracks_affecte
 selection state, and clip-owned time maps instead of recreating those policies. Add higher-level
 edit commands and graph evaluation only through their owning modules, and update project, engine,
 API, CLI, persistence, and fixture maps when those paths begin consuming native timeline state.
+When timeline edits enter project command history, wrap their existing checked outcomes through the
+engine command owner and preserve full project snapshot restoration. Do not add a timeline-local
+history stack or bypass the future compound transaction boundary.
 Keep every compiled editorial value wrapped in `GraphValue::Domain`, preserve
 `CompiledTimelineGraphValue` as the shared public payload, and let higher-tier catalogs add only
 their own processing nodes and schemas. Timeline must not import effects or translate catalog
