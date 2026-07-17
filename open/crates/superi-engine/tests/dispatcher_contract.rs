@@ -7,6 +7,7 @@ use superi_concurrency::lifecycle::LifecyclePhase;
 use superi_concurrency::threads::ExecutionDomain;
 use superi_core::error::{ErrorCategory, ErrorContext, Recoverability};
 use superi_core::ids::{MediaId, ProjectId, TimelineId};
+use superi_core::settings::{ComponentId, SemanticVersion, VersionIdentifier};
 use superi_core::time::FrameRate;
 use superi_engine::command::{
     GraphEffect, ScenarioAction, ScenarioPhase, CANONICAL_FIXTURE_ID, CANONICAL_FIXTURE_VERSION,
@@ -16,14 +17,22 @@ use superi_engine::dispatcher::{
     EngineCommand, EngineCommandDispatcher, EngineCommandRequest, EngineCommandResult, EngineEvent,
     EngineReportedFailure, EngineTransactionId, ScenarioTransaction, MAX_PENDING_ENGINE_EVENTS,
 };
-use superi_engine::history::{ProjectHistoryCommand, ProjectHistoryOutcome, ProjectMutation};
+use superi_engine::history::{
+    ProjectHistoryActionResult, ProjectHistoryCommand, ProjectHistoryOutcome, ProjectMutation,
+    ProjectMutationKind,
+};
 use superi_engine::lifecycle::{
     EngineHealth, EngineLifecycleActionKind, EngineSubsystem, EngineWorkAdmission, EngineWorkKind,
     EngineWorkPermit,
 };
 use superi_engine::project_transaction::{CompoundProjectAction, CompoundProjectTransaction};
 use superi_project::document::ProjectDocument;
+use superi_project::extensions::{
+    ProjectExtensionCommand, ProjectExtensionCommandResult, ProjectExtensionKind,
+    ProjectExtensionLifecycle, ProjectExtensionRecord, ProjectExtensionRecordId,
+};
 use superi_project::media::{PortableRelativePath, ProjectMediaCommand, ReferencedMediaPath};
+use superi_project::ProjectDatabase;
 use superi_timeline::model::{EditorialProject, LinkedMediaReference, Timeline};
 
 const HISTORY_MEDIA: MediaId = MediaId::from_raw(0x801);
@@ -302,6 +311,124 @@ fn project_commands_require_one_owner_and_publish_correlated_replacement_events(
     assert_eq!(events[0].command_sequence(), 3);
     assert_eq!(events[0].transaction_id().as_str(), "project-undo");
     assert_eq!(events[0].project_revision(), Some(2));
+}
+
+#[test]
+fn unknown_extension_state_uses_dispatch_history_events_undo_and_persistence() {
+    let record = ProjectExtensionRecord::new(
+        ComponentId::new("example.dispatch-extension").unwrap(),
+        ProjectExtensionRecordId::new("future-state").unwrap(),
+        SemanticVersion::new(7, 0, 0),
+        ProjectExtensionKind::new(ComponentId::new("example.future-kind").unwrap()),
+        VersionIdentifier::new(
+            ComponentId::new("example.future-state").unwrap(),
+            SemanticVersion::new(8, 0, 0),
+        ),
+        Default::default(),
+        Default::default(),
+        ProjectExtensionLifecycle::Enabled,
+        None,
+        vec![0, 0xfe, 0xff],
+    )
+    .unwrap();
+    let key = record.key().clone();
+    let mut dispatcher = EngineCommandDispatcher::scenario_only();
+    dispatcher
+        .attach_project_history(project_document(), 2)
+        .unwrap();
+
+    let applied = dispatch(
+        &mut dispatcher,
+        "extension-apply",
+        EngineCommand::ExecuteProjectHistory(ProjectHistoryCommand::apply(
+            0,
+            ProjectMutation::extension(ProjectExtensionCommand::upsert(record.clone())),
+        )),
+    )
+    .unwrap();
+    let applied = project_history_result(applied.result());
+    assert!(applied.authored_state_changed());
+    assert_eq!(applied.state().snapshot().revision(), 1);
+    assert_eq!(
+        applied.state().snapshot().extension_record(&key),
+        Some(&record)
+    );
+    assert_eq!(
+        applied.action_result(),
+        Some(&ProjectHistoryActionResult::AppliedExtension {
+            mutation: ProjectMutationKind::UpsertExtension,
+            extension_result: ProjectExtensionCommandResult::Upserted {
+                key: key.clone(),
+                replaced: false,
+            },
+        })
+    );
+    let events = dispatcher.drain_events().unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].transaction_id().as_str(), "extension-apply");
+    assert_eq!(events[0].project_revision(), Some(1));
+
+    let no_op = dispatch(
+        &mut dispatcher,
+        "extension-no-op",
+        EngineCommand::ExecuteProjectHistory(ProjectHistoryCommand::apply(
+            1,
+            ProjectMutation::extension(ProjectExtensionCommand::upsert(record.clone())),
+        )),
+    )
+    .unwrap();
+    assert!(!project_history_result(no_op.result()).authored_state_changed());
+    assert_eq!(
+        project_history_result(no_op.result())
+            .state()
+            .snapshot()
+            .revision(),
+        1
+    );
+    assert!(dispatcher.drain_events().unwrap().is_empty());
+
+    let stale = dispatch(
+        &mut dispatcher,
+        "extension-stale",
+        EngineCommand::ExecuteProjectHistory(ProjectHistoryCommand::apply(
+            0,
+            ProjectMutation::extension(ProjectExtensionCommand::remove(key.clone())),
+        )),
+    )
+    .unwrap_err();
+    assert_eq!(stale.category(), ErrorCategory::Conflict);
+    assert!(dispatcher.drain_events().unwrap().is_empty());
+
+    let undone = dispatch(
+        &mut dispatcher,
+        "extension-undo",
+        EngineCommand::ExecuteProjectHistory(ProjectHistoryCommand::undo(1)),
+    )
+    .unwrap();
+    assert!(project_history_result(undone.result())
+        .state()
+        .snapshot()
+        .extension_record(&key)
+        .is_none());
+    dispatcher.drain_events().unwrap();
+
+    let redone = dispatch(
+        &mut dispatcher,
+        "extension-redo",
+        EngineCommand::ExecuteProjectHistory(ProjectHistoryCommand::redo(2)),
+    )
+    .unwrap();
+    let redone = project_history_result(redone.result());
+    assert_eq!(
+        redone.state().snapshot().extension_record(&key),
+        Some(&record)
+    );
+    let mut database = ProjectDatabase::memory().unwrap();
+    database.replace(redone.state().snapshot()).unwrap();
+    assert_eq!(
+        database.load().unwrap().snapshot(),
+        *redone.state().snapshot()
+    );
 }
 
 #[test]

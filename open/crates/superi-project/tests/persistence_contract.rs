@@ -4,15 +4,22 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use rusqlite::{Connection, OpenFlags};
 use superi_audio::mixing::{ChannelMap, ClipMixControls, ClipMixMutation};
 use superi_audio::serialize::CLIP_MIX_FORMAT_REVISION;
-use superi_core::error::ErrorCategory;
+use superi_core::error::{ErrorCategory, ErrorContext, Recoverability};
 use superi_core::ids::{ClipId, GraphId, MediaId, ProjectId, TimelineId, TrackId};
 use superi_core::pixel::{ChannelLayout, ChannelPosition};
 use superi_core::serialization::STABLE_PRIMITIVE_SCHEMA_REVISION;
+use superi_core::settings::{
+    CapabilityId, CapabilitySet, ComponentId, SemanticVersion, VersionIdentifier,
+};
 use superi_core::time::{Duration, FrameRate, RationalTime, TimeRange, Timebase};
 use superi_graph::mutate::{EditableGraph, GraphMutation, GraphTransaction, TypedParameterValue};
 use superi_graph::serialize::GRAPH_DOCUMENT_FORMAT_REVISION;
 use superi_graph::value::GraphValue;
 use superi_project::document::{ProjectDocument, ProjectGraph, StandaloneProjectGraph};
+use superi_project::extensions::{
+    ProjectExtensionCommand, ProjectExtensionFailure, ProjectExtensionKind,
+    ProjectExtensionLifecycle, ProjectExtensionRecord, ProjectExtensionRecordId,
+};
 use superi_project::settings::PROJECT_SETTINGS_FORMAT_REVISION;
 use superi_project::{
     ProjectDatabase, PROJECT_APPLICATION_ID, PROJECT_FORMAT, PROJECT_FORMAT_VERSION,
@@ -289,6 +296,43 @@ fn project_document() -> ProjectDocument {
             draft.insert_graph(ProjectGraph::Standalone(standalone))
         })
         .unwrap();
+    let requested = CapabilitySet::new([
+        CapabilityId::new("superi.capability.project-read").unwrap(),
+        CapabilityId::new("superi.capability.project-mutate").unwrap(),
+    ]);
+    let failure =
+        ProjectExtensionFailure::new(
+            ErrorCategory::Unavailable,
+            Recoverability::Retryable,
+            "future extension runtime is unavailable",
+            [ErrorContext::new("example.future-extension", "restore")
+                .with_field("opaque", "retained")],
+            5,
+            2,
+        )
+        .unwrap();
+    let extension = ProjectExtensionRecord::new(
+        ComponentId::new("example.future-extension").unwrap(),
+        ProjectExtensionRecordId::new("opaque-record").unwrap(),
+        SemanticVersion::new(9, 8, 7),
+        ProjectExtensionKind::new(ComponentId::new("example.future-kind").unwrap()),
+        VersionIdentifier::new(
+            ComponentId::new("example.future-schema").unwrap(),
+            SemanticVersion::new(6, 5, 4),
+        ),
+        requested.clone(),
+        CapabilitySet::new([CapabilityId::new("superi.capability.project-read").unwrap()]),
+        ProjectExtensionLifecycle::Quarantined,
+        Some(failure),
+        vec![0, 1, 2, 0xfe, 0xff],
+    )
+    .unwrap();
+    document
+        .execute_extension_command(
+            document.revision(),
+            ProjectExtensionCommand::upsert(extension),
+        )
+        .unwrap();
     document
 }
 
@@ -332,6 +376,19 @@ struct GraphEvidence {
 }
 
 #[derive(Debug, Eq, PartialEq)]
+struct ExtensionEvidence {
+    extension_id: String,
+    record_id: String,
+    metadata_format_revision: i64,
+    metadata_byte_length: i64,
+    metadata_digest: Vec<u8>,
+    metadata: Vec<u8>,
+    payload_byte_length: i64,
+    payload_digest: Vec<u8>,
+    payload: Vec<u8>,
+}
+
+#[derive(Debug, Eq, PartialEq)]
 struct DatabaseEvidence {
     application_id: i64,
     schema_revision: i64,
@@ -340,6 +397,7 @@ struct DatabaseEvidence {
     timeline: (i64, i64, Vec<u8>, Vec<u8>),
     settings: (i64, i64, Vec<u8>, Vec<u8>),
     audio: (i64, i64, Vec<u8>, Vec<u8>),
+    extensions: Vec<ExtensionEvidence>,
     graphs: Vec<GraphEvidence>,
 }
 
@@ -404,6 +462,32 @@ fn database_evidence(path: &Path) -> DatabaseEvidence {
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )
         .unwrap();
+    let extensions = {
+        let mut statement = connection
+            .prepare(
+                "SELECT extension_id, record_id, metadata_format_revision, metadata_byte_length, \
+                 metadata_sha256, metadata, payload_byte_length, payload_sha256, payload \
+                 FROM extension_records ORDER BY extension_id, record_id",
+            )
+            .unwrap();
+        statement
+            .query_map([], |row| {
+                Ok(ExtensionEvidence {
+                    extension_id: row.get(0)?,
+                    record_id: row.get(1)?,
+                    metadata_format_revision: row.get(2)?,
+                    metadata_byte_length: row.get(3)?,
+                    metadata_digest: row.get(4)?,
+                    metadata: row.get(5)?,
+                    payload_byte_length: row.get(6)?,
+                    payload_digest: row.get(7)?,
+                    payload: row.get(8)?,
+                })
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+    };
     let graphs = {
         let mut statement = connection
             .prepare(
@@ -438,6 +522,7 @@ fn database_evidence(path: &Path) -> DatabaseEvidence {
         timeline,
         settings,
         audio,
+        extensions,
         graphs,
     }
 }
@@ -478,6 +563,7 @@ fn schema_identity_and_semantic_rows_are_explicit_and_deterministic() {
         first.schema,
         vec![
             ("table".to_owned(), "audio_component".to_owned()),
+            ("table".to_owned(), "extension_records".to_owned()),
             ("table".to_owned(), "graph_components".to_owned()),
             ("table".to_owned(), "project_metadata".to_owned()),
             ("table".to_owned(), "settings_component".to_owned()),
@@ -506,6 +592,21 @@ fn schema_identity_and_semantic_rows_are_explicit_and_deterministic() {
     assert_eq!(first.audio.0, i64::from(CLIP_MIX_FORMAT_REVISION));
     assert_eq!(first.audio.1 as usize, first.audio.3.len());
     assert_eq!(first.audio.2.len(), 32);
+    assert_eq!(first.extensions.len(), 1);
+    assert_eq!(first.extensions[0].extension_id, "example.future-extension");
+    assert_eq!(first.extensions[0].record_id, "opaque-record");
+    assert_eq!(first.extensions[0].metadata_format_revision, 1);
+    assert_eq!(
+        first.extensions[0].metadata_byte_length as usize,
+        first.extensions[0].metadata.len()
+    );
+    assert_eq!(first.extensions[0].metadata_digest.len(), 32);
+    assert_eq!(
+        first.extensions[0].payload_byte_length as usize,
+        first.extensions[0].payload.len()
+    );
+    assert_eq!(first.extensions[0].payload_digest.len(), 32);
+    assert_eq!(first.extensions[0].payload, vec![0, 1, 2, 0xfe, 0xff]);
     assert_eq!(first.graphs.len(), 2);
     for graph in &first.graphs {
         assert_eq!(
@@ -624,7 +725,7 @@ fn unsupported_corrupt_and_extra_database_state_is_rejected() {
         ),
         (
             "future-schema",
-            "PRAGMA user_version = 4",
+            "PRAGMA user_version = 5",
             ErrorCategory::Unsupported,
             true,
         ),
@@ -655,6 +756,18 @@ fn unsupported_corrupt_and_extra_database_state_is_rejected() {
         (
             "audio-bytes",
             "UPDATE audio_component SET document = zeroblob(byte_length)",
+            ErrorCategory::CorruptData,
+            false,
+        ),
+        (
+            "extension-metadata-bytes",
+            "UPDATE extension_records SET metadata = zeroblob(metadata_byte_length)",
+            ErrorCategory::CorruptData,
+            false,
+        ),
+        (
+            "extension-payload-bytes",
+            "UPDATE extension_records SET payload = zeroblob(payload_byte_length)",
             ErrorCategory::CorruptData,
             false,
         ),

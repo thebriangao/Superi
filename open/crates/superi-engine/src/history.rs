@@ -7,6 +7,9 @@ use std::collections::VecDeque;
 
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_project::document::{ProjectDocument, ProjectSnapshot};
+use superi_project::extensions::{
+    ProjectExtensionCommand, ProjectExtensionCommandResult, ProjectExtensionOperation,
+};
 use superi_project::media::{ProjectMediaCommand, ProjectMediaCommandResult};
 use superi_project::settings::ProjectSettingsTransaction;
 
@@ -117,6 +120,20 @@ pub enum ProjectMutationKind {
     MarkMediaMissing,
     /// Consider a fingerprint-checked relink candidate.
     ConsiderMediaRelink,
+    /// Create or replace one durable extension record.
+    UpsertExtension,
+    /// Remove one durable extension record.
+    RemoveExtension,
+    /// Change durable extension lifecycle state.
+    SetExtensionLifecycle,
+    /// Change durable extension capability grants.
+    SetExtensionCapabilities,
+    /// Retain structured extension failure evidence.
+    RecordExtensionFailure,
+    /// Clear retained extension failure evidence.
+    ClearExtensionFailure,
+    /// Execute an extension operation introduced by a newer project crate.
+    ExtensionState,
 }
 
 impl ProjectMutationKind {
@@ -129,6 +146,13 @@ impl ProjectMutationKind {
             Self::SetMediaPath => "set_media_path",
             Self::MarkMediaMissing => "mark_media_missing",
             Self::ConsiderMediaRelink => "consider_media_relink",
+            Self::UpsertExtension => "upsert_extension",
+            Self::RemoveExtension => "remove_extension",
+            Self::SetExtensionLifecycle => "set_extension_lifecycle",
+            Self::SetExtensionCapabilities => "set_extension_capabilities",
+            Self::RecordExtensionFailure => "record_extension_failure",
+            Self::ClearExtensionFailure => "clear_extension_failure",
+            Self::ExtensionState => "extension_state",
         }
     }
 }
@@ -141,6 +165,8 @@ pub enum ProjectMutation {
     Compound(CompoundProjectTransaction),
     /// Execute a project media command through its checked document boundary.
     Media(ProjectMediaCommand),
+    /// Execute a project extension-state command through its checked document boundary.
+    Extension(ProjectExtensionCommand),
 }
 
 impl ProjectMutation {
@@ -156,6 +182,12 @@ impl ProjectMutation {
         Self::Media(command)
     }
 
+    /// Creates an authored extension-state mutation.
+    #[must_use]
+    pub const fn extension(command: ProjectExtensionCommand) -> Self {
+        Self::Extension(command)
+    }
+
     /// Returns the stable mutation classification.
     #[must_use]
     pub const fn kind(&self) -> ProjectMutationKind {
@@ -168,6 +200,23 @@ impl ProjectMutation {
             Self::Media(ProjectMediaCommand::ConsiderRelink { .. }) => {
                 ProjectMutationKind::ConsiderMediaRelink
             }
+            Self::Extension(command) => match command.operation() {
+                ProjectExtensionOperation::Upsert => ProjectMutationKind::UpsertExtension,
+                ProjectExtensionOperation::Remove => ProjectMutationKind::RemoveExtension,
+                ProjectExtensionOperation::SetLifecycle => {
+                    ProjectMutationKind::SetExtensionLifecycle
+                }
+                ProjectExtensionOperation::SetGrantedCapabilities => {
+                    ProjectMutationKind::SetExtensionCapabilities
+                }
+                ProjectExtensionOperation::RecordFailure => {
+                    ProjectMutationKind::RecordExtensionFailure
+                }
+                ProjectExtensionOperation::ClearFailure => {
+                    ProjectMutationKind::ClearExtensionFailure
+                }
+                _ => ProjectMutationKind::ExtensionState,
+            },
         }
     }
 }
@@ -247,6 +296,13 @@ pub enum ProjectHistoryActionResult {
         mutation: ProjectMutationKind,
         /// Result returned by the project media command.
         media_result: ProjectMediaCommandResult,
+    },
+    /// A typed extension mutation was accepted by the project owner.
+    AppliedExtension {
+        /// Stable mutation classification.
+        mutation: ProjectMutationKind,
+        /// Result returned by the project extension command.
+        extension_result: ProjectExtensionCommandResult,
     },
     /// A retained mutation was reversed.
     Undone(ProjectMutationKind),
@@ -469,6 +525,17 @@ impl ProjectCommandHistory {
                 ProjectHistoryActionResult::Applied {
                     mutation: kind,
                     media_result,
+                }
+            }
+            ProjectMutation::Extension(command) => {
+                let extension_result = self
+                    .document
+                    .execute_extension_command(expected_revision, command)?
+                    .result()
+                    .clone();
+                ProjectHistoryActionResult::AppliedExtension {
+                    mutation: kind,
+                    extension_result,
                 }
             }
         };

@@ -8,10 +8,12 @@
 use std::fmt;
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::time::Duration;
 
 use rusqlite::config::DbConfig;
 use rusqlite::{params, Connection, ErrorCode, OpenFlags, TransactionBehavior};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use superi_audio::mixing::ClipMixState;
 use superi_audio::serialize::{
@@ -20,6 +22,9 @@ use superi_audio::serialize::{
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_core::ids::{GraphId, ProjectId, TimelineId};
 use superi_core::serialization::STABLE_PRIMITIVE_SCHEMA_REVISION;
+use superi_core::settings::{
+    CapabilityId, CapabilitySet, ComponentId, SemanticVersion, VersionIdentifier,
+};
 use superi_graph::serialize::{deserialize_graph, serialize_graph, GRAPH_DOCUMENT_FORMAT_REVISION};
 use superi_timeline::compile::CompiledTimelineGraphValue;
 use superi_timeline::serialize::{
@@ -27,6 +32,11 @@ use superi_timeline::serialize::{
 };
 
 use crate::document::{ProjectDocument, ProjectGraph, ProjectSnapshot, StandaloneProjectGraph};
+use crate::extensions::{
+    ProjectExtensionFailure, ProjectExtensionKind, ProjectExtensionLifecycle,
+    ProjectExtensionRecord, ProjectExtensionRecordId, MAX_PROJECT_EXTENSION_PAYLOAD_BYTES,
+    MAX_PROJECT_EXTENSION_RECORDS,
+};
 use crate::migrate::migrate_connection;
 use crate::save::ProjectSaveCommand;
 use crate::settings::{ProjectSettings, PROJECT_SETTINGS_FORMAT_REVISION};
@@ -35,8 +45,10 @@ const COMPONENT: &str = "superi-project.persistence";
 const MANIFEST_DOMAIN_V1: &[u8] = b"superi.project.manifest.v1";
 const MANIFEST_DOMAIN_V2: &[u8] = b"superi.project.manifest.v2";
 const MANIFEST_DOMAIN_V3: &[u8] = b"superi.project.manifest.v3";
+const MANIFEST_DOMAIN_V4: &[u8] = b"superi.project.manifest.v4";
 pub(crate) const MAX_COMPONENT_BYTES: usize = 64 * 1024 * 1024;
 pub(crate) const MAX_SETTINGS_COMPONENT_BYTES: usize = 1024 * 1024;
+pub(crate) const MAX_EXTENSION_METADATA_BYTES: usize = 8 * 1024 * 1024;
 pub(crate) const MAX_GRAPH_COUNT: usize = 4096;
 pub(crate) const MAX_STANDALONE_NAME_BYTES: usize = 16 * 1024;
 
@@ -45,11 +57,12 @@ pub const PROJECT_APPLICATION_ID: u32 = 0x5355_5052;
 /// Oldest project database schema with a registered lossless forward migration.
 pub const PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION: u32 = 0;
 /// Current monotonic project database schema revision.
-pub const PROJECT_SCHEMA_REVISION: u32 = 3;
+pub const PROJECT_SCHEMA_REVISION: u32 = 4;
 /// Stable semantic identity of the whole-project format.
 pub const PROJECT_FORMAT: &str = "superi.project";
 /// Current semantic project format version.
-pub const PROJECT_FORMAT_VERSION: &str = "1.2.0";
+pub const PROJECT_FORMAT_VERSION: &str = "1.3.0";
+pub(crate) const PROJECT_FORMAT_VERSION_SCHEMA_THREE: &str = "1.2.0";
 pub(crate) const PROJECT_FORMAT_VERSION_SCHEMA_TWO: &str = "1.1.0";
 pub(crate) const PROJECT_FORMAT_VERSION_SCHEMA_ONE: &str = "1.0.0";
 
@@ -58,6 +71,10 @@ pub(crate) const TIMELINE_COMPONENT_SCHEMA: &str = "CREATE TABLE timeline_compon
 pub(crate) const GRAPH_COMPONENTS_SCHEMA: &str = "CREATE TABLE graph_components (graph_id BLOB PRIMARY KEY CHECK (length(graph_id) = 16), graph_kind TEXT NOT NULL CHECK (graph_kind IN ('timeline', 'standalone')), root_timeline_id BLOB CHECK (root_timeline_id IS NULL OR length(root_timeline_id) = 16), name TEXT, graph_revision TEXT NOT NULL, format_revision INTEGER NOT NULL CHECK (format_revision > 0), byte_length INTEGER NOT NULL CHECK (byte_length >= 0 AND byte_length <= 67108864), sha256 BLOB NOT NULL CHECK (length(sha256) = 32), document BLOB NOT NULL CHECK (length(document) = byte_length), CHECK ((graph_kind = 'timeline' AND root_timeline_id IS NOT NULL AND name IS NULL) OR (graph_kind = 'standalone' AND root_timeline_id IS NULL AND name IS NOT NULL AND length(name) > 0))) STRICT, WITHOUT ROWID";
 pub(crate) const SETTINGS_COMPONENT_SCHEMA: &str = "CREATE TABLE settings_component (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format_revision INTEGER NOT NULL CHECK (format_revision >= 1), byte_length INTEGER NOT NULL CHECK (byte_length >= 0 AND byte_length <= 1048576), sha256 BLOB NOT NULL CHECK (length(sha256) = 32), document BLOB NOT NULL CHECK (length(document) = byte_length)) STRICT";
 pub(crate) const AUDIO_COMPONENT_SCHEMA: &str = "CREATE TABLE audio_component (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format_revision INTEGER NOT NULL CHECK (format_revision > 0), byte_length INTEGER NOT NULL CHECK (byte_length >= 0 AND byte_length <= 67108864), sha256 BLOB NOT NULL CHECK (length(sha256) = 32), document BLOB NOT NULL CHECK (length(document) = byte_length)) STRICT";
+pub(crate) const EXTENSION_RECORDS_SCHEMA: &str = "CREATE TABLE extension_records (extension_id TEXT NOT NULL CHECK (length(extension_id) > 0), record_id TEXT NOT NULL CHECK (length(record_id) > 0 AND length(record_id) <= 128), metadata_format_revision INTEGER NOT NULL CHECK (metadata_format_revision = 1), metadata_byte_length INTEGER NOT NULL CHECK (metadata_byte_length >= 0 AND metadata_byte_length <= 8388608), metadata_sha256 BLOB NOT NULL CHECK (length(metadata_sha256) = 32), metadata BLOB NOT NULL CHECK (length(metadata) = metadata_byte_length), payload_byte_length INTEGER NOT NULL CHECK (payload_byte_length >= 0 AND payload_byte_length <= 67108864), payload_sha256 BLOB NOT NULL CHECK (length(payload_sha256) = 32), payload BLOB NOT NULL CHECK (length(payload) = payload_byte_length), PRIMARY KEY (extension_id, record_id)) STRICT, WITHOUT ROWID";
+
+/// Current canonical metadata representation for one opaque extension record.
+pub const PROJECT_EXTENSION_METADATA_FORMAT_REVISION: u32 = 1;
 
 enum ProjectDatabaseStorage {
     File { active_path: PathBuf },
@@ -294,6 +311,7 @@ pub(crate) struct PreparedProject {
     settings_digest: [u8; 32],
     audio_document: Vec<u8>,
     audio_digest: [u8; 32],
+    extensions: Vec<PreparedExtension>,
     graphs: Vec<PreparedGraph>,
     manifest_digest: [u8; 32],
 }
@@ -308,6 +326,48 @@ struct PreparedGraph {
     digest: [u8; 32],
 }
 
+struct PreparedExtension {
+    extension_id: String,
+    record_id: String,
+    metadata_document: Vec<u8>,
+    metadata_digest: [u8; 32],
+    payload: Vec<u8>,
+    payload_digest: [u8; 32],
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ExtensionMetadataV1 {
+    extension_id: String,
+    record_id: String,
+    extension_version: String,
+    kind: String,
+    payload_schema: String,
+    requested_capabilities: Vec<String>,
+    granted_capabilities: Vec<String>,
+    lifecycle: String,
+    failure: Option<ExtensionFailureV1>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ExtensionFailureV1 {
+    category: String,
+    recoverability: String,
+    message: String,
+    contexts: Vec<ExtensionFailureContextV1>,
+    total_failures: u64,
+    consecutive_failures: u32,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ExtensionFailureContextV1 {
+    component: String,
+    operation: String,
+    fields: std::collections::BTreeMap<String, String>,
+}
+
 impl PreparedProject {
     pub(crate) fn from_snapshot(snapshot: &ProjectSnapshot) -> Result<Self> {
         let timeline_document = serialize_timeline_state(snapshot.editorial_project())?;
@@ -320,6 +380,18 @@ impl PreparedProject {
         let audio_document = serialize_clip_mix_state(snapshot.clip_mix_state())?;
         check_component_size(audio_document.len(), "encode_audio_component")?;
         let audio_digest = sha256(&audio_document);
+
+        if snapshot.extension_records().len() > MAX_PROJECT_EXTENSION_RECORDS {
+            return Err(resource_exhausted(
+                "encode_extension_records",
+                "project extension record count exceeds the stable schema limit",
+            ));
+        }
+        let extensions = snapshot
+            .extension_records()
+            .values()
+            .map(prepare_extension_record)
+            .collect::<Result<Vec<_>>>()?;
 
         if snapshot.graphs().len() > MAX_GRAPH_COUNT {
             return Err(resource_exhausted(
@@ -375,12 +447,213 @@ impl PreparedProject {
             settings_digest,
             audio_document,
             audio_digest,
+            extensions,
             graphs,
             manifest_digest: [0; 32],
         };
         prepared.manifest_digest = manifest_digest(&prepared);
         Ok(prepared)
     }
+}
+
+fn prepare_extension_record(record: &ProjectExtensionRecord) -> Result<PreparedExtension> {
+    let metadata_document = encode_extension_metadata(record)?;
+    if record.payload().len() > MAX_PROJECT_EXTENSION_PAYLOAD_BYTES {
+        return Err(resource_exhausted(
+            "encode_extension_payload",
+            "project extension payload exceeds the stable schema limit",
+        ));
+    }
+    Ok(PreparedExtension {
+        extension_id: record.key().extension_id().to_string(),
+        record_id: record.key().record_id().to_string(),
+        metadata_digest: sha256(&metadata_document),
+        metadata_document,
+        payload: record.payload().to_vec(),
+        payload_digest: sha256(record.payload()),
+    })
+}
+
+fn encode_extension_metadata(record: &ProjectExtensionRecord) -> Result<Vec<u8>> {
+    let failure = record.failure().map(|failure| ExtensionFailureV1 {
+        category: failure.category().code().to_owned(),
+        recoverability: failure.recoverability().code().to_owned(),
+        message: failure.message().to_owned(),
+        contexts: failure
+            .contexts()
+            .iter()
+            .map(|context| ExtensionFailureContextV1 {
+                component: context.component().to_owned(),
+                operation: context.operation().to_owned(),
+                fields: context.fields().clone(),
+            })
+            .collect(),
+        total_failures: failure.total_failures(),
+        consecutive_failures: failure.consecutive_failures(),
+    });
+    let metadata = ExtensionMetadataV1 {
+        extension_id: record.key().extension_id().to_string(),
+        record_id: record.key().record_id().to_string(),
+        extension_version: record.extension_version().to_string(),
+        kind: record.kind().as_str().to_owned(),
+        payload_schema: record.payload_schema().to_string(),
+        requested_capabilities: record
+            .requested_capabilities()
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+        granted_capabilities: record
+            .granted_capabilities()
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+        lifecycle: record.lifecycle().code().to_owned(),
+        failure,
+    };
+    let document = serde_json::to_vec(&metadata).map_err(|source| {
+        Error::with_source(
+            ErrorCategory::Internal,
+            Recoverability::Terminal,
+            "extension metadata JSON encoding failed",
+            source,
+        )
+        .with_context(ErrorContext::new(COMPONENT, "encode_extension_metadata"))
+    })?;
+    check_extension_metadata_size(document.len(), "encode_extension_metadata")?;
+    Ok(document)
+}
+
+fn decode_extension_record(prepared: &PreparedExtension) -> Result<ProjectExtensionRecord> {
+    let metadata: ExtensionMetadataV1 = serde_json::from_slice(&prepared.metadata_document)
+        .map_err(|source| {
+            Error::with_source(
+                ErrorCategory::CorruptData,
+                Recoverability::UserCorrectable,
+                "extension metadata JSON is invalid",
+                source,
+            )
+            .with_context(ErrorContext::new(COMPONENT, "decode_extension_metadata"))
+        })?;
+    if metadata.extension_id != prepared.extension_id || metadata.record_id != prepared.record_id {
+        return Err(corrupt(
+            "decode_extension_metadata",
+            "extension metadata identity does not match its database key",
+        ));
+    }
+
+    let requested_capabilities = decode_capabilities(
+        metadata.requested_capabilities,
+        "decode_requested_capabilities",
+    )?;
+    let granted_capabilities =
+        decode_capabilities(metadata.granted_capabilities, "decode_granted_capabilities")?;
+    let failure = metadata
+        .failure
+        .map(|failure| {
+            let category = ErrorCategory::from_code(&failure.category).ok_or_else(|| {
+                corrupt(
+                    "decode_extension_failure",
+                    "extension failure uses an unknown category",
+                )
+            })?;
+            let recoverability =
+                Recoverability::from_code(&failure.recoverability).ok_or_else(|| {
+                    corrupt(
+                        "decode_extension_failure",
+                        "extension failure uses an unknown recoverability code",
+                    )
+                })?;
+            let contexts = failure.contexts.into_iter().map(|context| {
+                let mut decoded = ErrorContext::new(context.component, context.operation);
+                for (key, value) in context.fields {
+                    decoded.insert_field(key, value);
+                }
+                decoded
+            });
+            ProjectExtensionFailure::new(
+                category,
+                recoverability,
+                failure.message,
+                contexts,
+                failure.total_failures,
+                failure.consecutive_failures,
+            )
+            .map_err(|source| stored_state_error(source, "decode_extension_failure"))
+        })
+        .transpose()?;
+
+    let extension_id = ComponentId::new(&metadata.extension_id).map_err(|_| {
+        corrupt(
+            "decode_extension_metadata",
+            "extension identity is not canonical",
+        )
+    })?;
+    let record_id = ProjectExtensionRecordId::new(metadata.record_id)
+        .map_err(|source| stored_state_error(source, "decode_extension_record_id"))?;
+    let extension_version =
+        SemanticVersion::from_str(&metadata.extension_version).map_err(|_| {
+            corrupt(
+                "decode_extension_metadata",
+                "extension version is not canonical semantic version text",
+            )
+        })?;
+    let kind = ProjectExtensionKind::new(ComponentId::new(&metadata.kind).map_err(|_| {
+        corrupt(
+            "decode_extension_metadata",
+            "extension kind is not canonical",
+        )
+    })?);
+    let payload_schema = VersionIdentifier::from_str(&metadata.payload_schema).map_err(|_| {
+        corrupt(
+            "decode_extension_metadata",
+            "extension payload schema is not canonical",
+        )
+    })?;
+    let lifecycle = ProjectExtensionLifecycle::from_code(&metadata.lifecycle).ok_or_else(|| {
+        corrupt(
+            "decode_extension_metadata",
+            "extension lifecycle uses an unknown code",
+        )
+    })?;
+    let record = ProjectExtensionRecord::new(
+        extension_id,
+        record_id,
+        extension_version,
+        kind,
+        payload_schema,
+        requested_capabilities,
+        granted_capabilities,
+        lifecycle,
+        failure,
+        prepared.payload.clone(),
+    )
+    .map_err(|source| stored_state_error(source, "validate_extension_record"))?;
+    if encode_extension_metadata(&record)? != prepared.metadata_document {
+        return Err(corrupt(
+            "decode_extension_metadata",
+            "extension metadata is not canonical for the project schema",
+        ));
+    }
+    Ok(record)
+}
+
+fn decode_capabilities(values: Vec<String>, operation: &'static str) -> Result<CapabilitySet> {
+    let decoded = values
+        .iter()
+        .map(|value| {
+            CapabilityId::new(value)
+                .map_err(|_| corrupt(operation, "extension capability is not canonical"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let set = CapabilitySet::new(decoded);
+    let canonical = set.iter().map(ToString::to_string).collect::<Vec<_>>();
+    if canonical != values {
+        return Err(corrupt(
+            operation,
+            "extension capabilities are duplicated or not in canonical order",
+        ));
+    }
+    Ok(set)
 }
 
 pub(crate) fn open_file_connection(path: &Path, writable: bool) -> Result<Connection> {
@@ -487,7 +760,7 @@ pub(crate) fn initialize_connection(connection: &Connection, writable: bool) -> 
 
 pub(crate) fn initialize_schema(connection: &Connection) -> Result<()> {
     let schema = format!(
-        "{PROJECT_METADATA_SCHEMA};{TIMELINE_COMPONENT_SCHEMA};{GRAPH_COMPONENTS_SCHEMA};{SETTINGS_COMPONENT_SCHEMA};{AUDIO_COMPONENT_SCHEMA};"
+        "{PROJECT_METADATA_SCHEMA};{TIMELINE_COMPONENT_SCHEMA};{GRAPH_COMPONENTS_SCHEMA};{SETTINGS_COMPONENT_SCHEMA};{AUDIO_COMPONENT_SCHEMA};{EXTENSION_RECORDS_SCHEMA};"
     );
     connection
         .execute_batch(&schema)
@@ -532,16 +805,36 @@ pub(crate) fn initialize_schema_two(connection: &Connection) -> Result<()> {
     validate_schema_two_identity_and_schema(connection)
 }
 
+pub(crate) fn initialize_schema_three(connection: &Connection) -> Result<()> {
+    let schema = format!(
+        "{PROJECT_METADATA_SCHEMA};{TIMELINE_COMPONENT_SCHEMA};{GRAPH_COMPONENTS_SCHEMA};{SETTINGS_COMPONENT_SCHEMA};{AUDIO_COMPONENT_SCHEMA};"
+    );
+    connection
+        .execute_batch(&schema)
+        .map_err(|source| database_error(source, "create_schema_three_project_schema"))?;
+    connection
+        .pragma_update(None, "application_id", i64::from(PROJECT_APPLICATION_ID))
+        .map_err(|source| database_error(source, "set_schema_three_application_id"))?;
+    connection
+        .pragma_update(None, "user_version", 3_i64)
+        .map_err(|source| database_error(source, "set_schema_three_revision"))?;
+    validate_schema_three_identity_and_schema(connection)
+}
+
 pub(crate) fn validate_identity_and_schema(connection: &Connection) -> Result<()> {
-    validate_schema(connection, PROJECT_SCHEMA_REVISION, true, true, true)
+    validate_schema(connection, PROJECT_SCHEMA_REVISION, true, true, true, true)
 }
 
 pub(crate) fn validate_schema_one_identity_and_schema(connection: &Connection) -> Result<()> {
-    validate_schema(connection, 1, false, false, false)
+    validate_schema(connection, 1, false, false, false, false)
 }
 
 pub(crate) fn validate_schema_two_identity_and_schema(connection: &Connection) -> Result<()> {
-    validate_schema(connection, 2, true, false, false)
+    validate_schema(connection, 2, true, false, false, false)
+}
+
+pub(crate) fn validate_schema_three_identity_and_schema(connection: &Connection) -> Result<()> {
+    validate_schema(connection, 3, true, true, false, false)
 }
 
 fn validate_schema(
@@ -549,6 +842,7 @@ fn validate_schema(
     expected_revision: u32,
     include_settings: bool,
     include_audio: bool,
+    include_extensions: bool,
     require_current: bool,
 ) -> Result<()> {
     let quick_check: String = connection
@@ -633,6 +927,16 @@ fn validate_schema(
             ),
         );
     }
+    if include_extensions {
+        expected.insert(
+            usize::from(include_audio),
+            (
+                "table".to_owned(),
+                "extension_records".to_owned(),
+                EXTENSION_RECORDS_SCHEMA.to_owned(),
+            ),
+        );
+    }
     if include_settings {
         expected.push((
             "table".to_owned(),
@@ -695,6 +999,22 @@ pub(crate) fn write_prepared_project(
         prepared.manifest_digest,
         true,
         true,
+        true,
+    )
+}
+
+pub(crate) fn write_schema_three_project(
+    connection: &Connection,
+    prepared: &PreparedProject,
+) -> Result<()> {
+    write_prepared_project_versioned(
+        connection,
+        prepared,
+        PROJECT_FORMAT_VERSION_SCHEMA_THREE,
+        manifest_digest_v3(prepared),
+        true,
+        true,
+        false,
     )
 }
 
@@ -709,6 +1029,7 @@ pub(crate) fn write_schema_two_project(
         manifest_digest_v2(prepared),
         true,
         false,
+        false,
     )
 }
 
@@ -719,27 +1040,36 @@ fn write_prepared_project_versioned(
     manifest_digest: [u8; 32],
     include_settings: bool,
     include_audio: bool,
+    include_extensions: bool,
 ) -> Result<()> {
-    let clear = match (include_settings, include_audio) {
-        (true, true) => {
+    let clear = match (include_settings, include_audio, include_extensions) {
+        (true, true, true) => {
+            "DELETE FROM extension_records;\
+             DELETE FROM audio_component;\
+             DELETE FROM graph_components;\
+             DELETE FROM settings_component;\
+             DELETE FROM timeline_component;\
+             DELETE FROM project_metadata;"
+        }
+        (true, true, false) => {
             "DELETE FROM audio_component;\
              DELETE FROM graph_components;\
              DELETE FROM settings_component;\
              DELETE FROM timeline_component;\
              DELETE FROM project_metadata;"
         }
-        (true, false) => {
+        (true, false, false) => {
             "DELETE FROM graph_components;\
              DELETE FROM settings_component;\
              DELETE FROM timeline_component;\
              DELETE FROM project_metadata;"
         }
-        (false, false) => {
+        (false, false, false) => {
             "DELETE FROM graph_components;\
              DELETE FROM timeline_component;\
              DELETE FROM project_metadata;"
         }
-        (false, true) => unreachable!("audio project schemas also retain settings"),
+        _ => unreachable!("audio and extension project schemas also retain earlier components"),
     };
     connection
         .execute_batch(clear)
@@ -803,6 +1133,31 @@ fn write_prepared_project_versioned(
                 ],
             )
             .map_err(|source| database_error(source, "write_audio_component"))?;
+    }
+    if include_extensions {
+        let mut statement = connection
+            .prepare(
+                "INSERT INTO extension_records \
+                 (extension_id, record_id, metadata_format_revision, metadata_byte_length, \
+                  metadata_sha256, metadata, payload_byte_length, payload_sha256, payload) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            )
+            .map_err(|source| database_error(source, "prepare_extension_records"))?;
+        for extension in &prepared.extensions {
+            statement
+                .execute(params![
+                    extension.extension_id,
+                    extension.record_id,
+                    i64::from(PROJECT_EXTENSION_METADATA_FORMAT_REVISION),
+                    extension.metadata_document.len() as i64,
+                    extension.metadata_digest.as_slice(),
+                    extension.metadata_document.as_slice(),
+                    extension.payload.len() as i64,
+                    extension.payload_digest.as_slice(),
+                    extension.payload.as_slice(),
+                ])
+                .map_err(|source| database_error(source, "write_extension_record"))?;
+        }
     }
 
     let mut statement = connection
@@ -914,17 +1269,22 @@ fn write_graph_rows(
 
 pub(crate) fn load_connection(connection: &Connection) -> Result<ProjectDocument> {
     validate_identity_and_schema(connection)?;
-    load_checked_connection(connection, PROJECT_SCHEMA_REVISION, true, true)
+    load_checked_connection(connection, PROJECT_SCHEMA_REVISION, true, true, true)
+}
+
+pub(crate) fn load_schema_three_connection(connection: &Connection) -> Result<ProjectDocument> {
+    validate_schema_three_identity_and_schema(connection)?;
+    load_checked_connection(connection, 3, true, true, false)
 }
 
 pub(crate) fn load_schema_two_connection(connection: &Connection) -> Result<ProjectDocument> {
     validate_schema_two_identity_and_schema(connection)?;
-    load_checked_connection(connection, 2, true, false)
+    load_checked_connection(connection, 2, true, false, false)
 }
 
 pub(crate) fn load_schema_one_connection(connection: &Connection) -> Result<ProjectDocument> {
     validate_schema_one_identity_and_schema(connection)?;
-    load_checked_connection(connection, 1, false, false)
+    load_checked_connection(connection, 1, false, false, false)
 }
 
 fn load_checked_connection(
@@ -932,6 +1292,7 @@ fn load_checked_connection(
     schema_revision: u32,
     includes_settings: bool,
     include_audio: bool,
+    include_extensions: bool,
 ) -> Result<ProjectDocument> {
     require_row_count(connection, "project_metadata", 1)?;
     require_row_count(connection, "timeline_component", 1)?;
@@ -941,6 +1302,29 @@ fn load_checked_connection(
     if include_audio {
         require_row_count(connection, "audio_component", 1)?;
     }
+
+    let extension_count = if include_extensions {
+        let count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM extension_records", [], |row| {
+                row.get(0)
+            })
+            .map_err(|source| database_error(source, "count_extension_records"))?;
+        let count = usize::try_from(count).map_err(|_| {
+            corrupt(
+                "count_extension_records",
+                "project extension record count is not representable",
+            )
+        })?;
+        if count > MAX_PROJECT_EXTENSION_RECORDS {
+            return Err(corrupt(
+                "count_extension_records",
+                "project extension record count exceeds the stable schema limit",
+            ));
+        }
+        count
+    } else {
+        0
+    };
 
     let metadata = connection
         .query_row(
@@ -964,6 +1348,7 @@ fn load_checked_connection(
     let expected_format_version = match schema_revision {
         1 => PROJECT_FORMAT_VERSION_SCHEMA_ONE,
         2 => PROJECT_FORMAT_VERSION_SCHEMA_TWO,
+        3 => PROJECT_FORMAT_VERSION_SCHEMA_THREE,
         PROJECT_SCHEMA_REVISION => PROJECT_FORMAT_VERSION,
         _ => {
             return Err(corrupt(
@@ -1093,6 +1478,64 @@ fn load_checked_connection(
         (document, digest)
     };
 
+    let mut extensions = Vec::with_capacity(extension_count);
+    if include_extensions {
+        let mut statement = connection
+            .prepare(
+                "SELECT extension_id, record_id, metadata_format_revision, metadata_byte_length, \
+                 metadata_sha256, metadata, payload_byte_length, payload_sha256, payload \
+                 FROM extension_records ORDER BY extension_id, record_id",
+            )
+            .map_err(|source| database_error(source, "read_extension_records"))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, Vec<u8>>(4)?,
+                    row.get::<_, Vec<u8>>(5)?,
+                    row.get::<_, i64>(6)?,
+                    row.get::<_, Vec<u8>>(7)?,
+                    row.get::<_, Vec<u8>>(8)?,
+                ))
+            })
+            .map_err(|source| database_error(source, "read_extension_records"))?;
+        for row in rows {
+            let row = row.map_err(|source| database_error(source, "read_extension_record"))?;
+            supported_revision(
+                row.2,
+                PROJECT_EXTENSION_METADATA_FORMAT_REVISION,
+                "read_extension_record",
+            )?;
+            validate_extension_metadata(row.3, &row.4, &row.5)?;
+            validate_component(row.6, &row.7, &row.8, "read_extension_payload")?;
+            extensions.push(PreparedExtension {
+                extension_id: row.0,
+                record_id: row.1,
+                metadata_document: row.5,
+                metadata_digest: fixed_bytes::<32>(
+                    row.4,
+                    "read_extension_record",
+                    "extension metadata digest",
+                )?,
+                payload: row.8,
+                payload_digest: fixed_bytes::<32>(
+                    row.7,
+                    "read_extension_record",
+                    "extension payload digest",
+                )?,
+            });
+        }
+        if extensions.len() != extension_count {
+            return Err(corrupt(
+                "read_extension_records",
+                "project extension record count changed during interpretation",
+            ));
+        }
+    }
+
     let graph_count: i64 = connection
         .query_row("SELECT COUNT(*) FROM graph_components", [], |row| {
             row.get(0)
@@ -1207,12 +1650,14 @@ fn load_checked_connection(
             .unwrap_or([0; 32]),
         audio_document,
         audio_digest,
+        extensions,
         graphs,
         manifest_digest: stored_manifest,
     };
     let expected_manifest = match schema_revision {
         1 => manifest_digest_v1(&prepared),
         2 => manifest_digest_v2(&prepared),
+        3 => manifest_digest_v3(&prepared),
         PROJECT_SCHEMA_REVISION => manifest_digest(&prepared),
         _ => unreachable!("validated loader schema revision"),
     };
@@ -1321,13 +1766,19 @@ fn load_checked_connection(
     } else {
         ClipMixState::new()
     };
-    ProjectDocument::from_complete_parts_with_settings(
+    let restored_extensions = prepared
+        .extensions
+        .iter()
+        .map(decode_extension_record)
+        .collect::<Result<Vec<_>>>()?;
+    ProjectDocument::from_complete_parts_with_settings_and_extensions(
         prepared.revision,
         editorial_project,
         prepared.root_timeline_id,
         project_settings,
         restored_graphs,
         clip_mix_state,
+        restored_extensions,
     )
     .map_err(|source| stored_state_error(source, "restore_project_document"))
 }
@@ -1400,6 +1851,35 @@ fn validate_settings_component(
     Ok(())
 }
 
+fn validate_extension_metadata(
+    stored_length: i64,
+    stored_digest: &[u8],
+    document: &[u8],
+) -> Result<()> {
+    let operation = "read_extension_metadata";
+    let stored_length = usize::try_from(stored_length)
+        .map_err(|_| corrupt(operation, "extension metadata length is not representable"))?;
+    check_extension_metadata_size(stored_length, operation)?;
+    if stored_length != document.len() {
+        return Err(corrupt(
+            operation,
+            "extension metadata length does not match its stored evidence",
+        ));
+    }
+    let stored_digest = fixed_bytes::<32>(
+        stored_digest.to_vec(),
+        operation,
+        "extension metadata digest",
+    )?;
+    if sha256(document) != stored_digest {
+        return Err(corrupt(
+            operation,
+            "extension metadata digest does not match its stored bytes",
+        ));
+    }
+    Ok(())
+}
+
 fn supported_revision(value: i64, current: u32, operation: &'static str) -> Result<u32> {
     if value > i64::from(current) {
         return Err(unsupported(
@@ -1436,6 +1916,16 @@ pub(crate) fn check_settings_component_size(bytes: usize, operation: &'static st
     Ok(())
 }
 
+fn check_extension_metadata_size(bytes: usize, operation: &'static str) -> Result<()> {
+    if bytes > MAX_EXTENSION_METADATA_BYTES {
+        return Err(resource_exhausted(
+            operation,
+            "project extension metadata exceeds the stable schema size limit",
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn parse_revision(value: &str, operation: &'static str) -> Result<u64> {
     let revision = value
         .parse::<u64>()
@@ -1467,11 +1957,24 @@ fn sha256(bytes: &[u8]) -> [u8; 32] {
 fn manifest_digest(project: &PreparedProject) -> [u8; 32] {
     manifest_digest_for(
         project,
-        MANIFEST_DOMAIN_V3,
+        MANIFEST_DOMAIN_V4,
         PROJECT_FORMAT_VERSION,
         PROJECT_SCHEMA_REVISION,
         true,
         true,
+        true,
+    )
+}
+
+fn manifest_digest_v3(project: &PreparedProject) -> [u8; 32] {
+    manifest_digest_for(
+        project,
+        MANIFEST_DOMAIN_V3,
+        PROJECT_FORMAT_VERSION_SCHEMA_THREE,
+        3,
+        true,
+        true,
+        false,
     )
 }
 
@@ -1482,6 +1985,7 @@ fn manifest_digest_v2(project: &PreparedProject) -> [u8; 32] {
         PROJECT_FORMAT_VERSION_SCHEMA_TWO,
         2,
         true,
+        false,
         false,
     )
 }
@@ -1494,6 +1998,7 @@ fn manifest_digest_v1(project: &PreparedProject) -> [u8; 32] {
         1,
         false,
         false,
+        false,
     )
 }
 
@@ -1504,6 +2009,7 @@ fn manifest_digest_for(
     schema_revision: u32,
     include_settings: bool,
     include_audio: bool,
+    include_extensions: bool,
 ) -> [u8; 32] {
     let mut hasher = Sha256::new();
     manifest_field(&mut hasher, domain);
@@ -1535,6 +2041,27 @@ fn manifest_digest_for(
             &(project.audio_document.len() as u64).to_be_bytes(),
         );
         manifest_field(&mut hasher, &project.audio_digest);
+    }
+    if include_extensions {
+        manifest_field(
+            &mut hasher,
+            &(project.extensions.len() as u64).to_be_bytes(),
+        );
+        for extension in &project.extensions {
+            manifest_field(&mut hasher, extension.extension_id.as_bytes());
+            manifest_field(&mut hasher, extension.record_id.as_bytes());
+            manifest_field(
+                &mut hasher,
+                &PROJECT_EXTENSION_METADATA_FORMAT_REVISION.to_be_bytes(),
+            );
+            manifest_field(
+                &mut hasher,
+                &(extension.metadata_document.len() as u64).to_be_bytes(),
+            );
+            manifest_field(&mut hasher, &extension.metadata_digest);
+            manifest_field(&mut hasher, &(extension.payload.len() as u64).to_be_bytes());
+            manifest_field(&mut hasher, &extension.payload_digest);
+        }
     }
     manifest_field(&mut hasher, &(project.graphs.len() as u64).to_be_bytes());
     for graph in &project.graphs {

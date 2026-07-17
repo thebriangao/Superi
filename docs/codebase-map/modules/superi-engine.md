@@ -2,7 +2,7 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: d8102f3c8873d9d183cf65d9f21e58fd27d2abc590ba00dee508049811137cc4
+source_hash: 3a2b0f9051fa81009cfb917db904a552d703cc1843388e9cdbc676e4e506915c
 source_files: 62
 mapped_at_commit: working-tree
 ---
@@ -22,22 +22,24 @@ and export, deterministic project, device, sleep, wake, shutdown, and restart li
 bounded logical export job orchestration, classified cross-subsystem failure propagation
 and recovery, shared finite-resource arbitration across decode, GPU, cache, audio, AI, and export
 work, atomic timeline plus clip-mix edits, typed resolution of durable project settings, bounded
-compound project transactions across authored timeline, graph, media, audio, and root state, and
+compound project transactions across authored timeline, graph, media, audio, extension, and root
+state, and
 engine-owned command history over that project surface. An engine-wide typed command dispatcher
 coordinates canonical scenario transactions, lifecycle state changes, failure and recovery control,
 coherent work admission, bounded cross-domain playback control, canonical logical export-job
-control, revision-fenced project mutation plus undo and redo, authoritative project settings
-inspection and transactions, crash recovery discovery, comparison, durable restore, and dismissal,
-read-only whole-engine introspection and integration validation, and ordered replacement events.
-Validation composes the
+control, revision-fenced project mutation plus undo and redo, authoritative project extension and
+settings inspection and transactions, crash recovery discovery, comparison, durable restore, and
+dismissal, read-only whole-engine introspection and integration validation, and ordered replacement
+events. Validation composes the
 canonical introspection snapshot with exact lifecycle, recovery, scenario, playback, and export
 evidence without polling a runtime owner or creating a second mutable state model.
 Native GPU presentation, timeline-owned decoded-audio rendering, export muxing and publication,
 wire adaptation, and general project nodes remain incomplete.
 
 The scenario command path remains a bounded reference owner for contract conformance. The project
-history path instead wraps the real `superi-project` document, media command, and settings owners,
-without replacing timeline, graph, media, color, render, persistence, or muxing policy.
+history path instead wraps the real `superi-project` document, media command, extension command,
+and settings owners, without replacing timeline, graph, media, color, render, persistence, or
+muxing policy.
 The selected immutable snapshot from that history path is also the real consumer input for the
 project-owned autosave contract. Engine production source does not own autosave policy, publication,
 retention, or scheduling. Its focused recovery coordinator instead owns the active file-backed
@@ -98,7 +100,8 @@ through the existing dispatcher.
 - `open/crates/superi-engine/src/frame_upload.rs`: Implements the media-I/O-to-GPU upload boundary
   for CPU-addressable decoded video and retains the frame's complete color pipeline beside the GPU owner.
 - `open/crates/superi-engine/src/history.rs`: Implements one shared bounded immutable before-and-after
-  snapshot store, stable typed media, settings, and compound project mutations and history actions,
+  snapshot store, stable typed media, extension, settings, and compound project mutations and
+  history actions,
   revision-fenced apply, undo, and redo, oldest-entry eviction, failure and no-op branch
   preservation, the exclusive `ProjectCommandHistory` owner over one real `ProjectDocument`, and an
   internal prepare-then-commit recovery replacement that resets session history only after durable
@@ -138,8 +141,8 @@ through the existing dispatcher.
   infallible postpublication history replacement.
 - `open/crates/superi-engine/src/project_transaction.rs`: Implements the bounded whole-project
   transaction vocabulary, one outer project publication, ordered action results, timeline and
-  clip-mix reconciliation, three-way retained graph preservation, per-action aggregate validation,
-  and complete rollback on any late failure.
+  clip-mix reconciliation, extension commands, three-way retained graph preservation, per-action
+  aggregate validation, and complete rollback on any late failure.
 - `open/crates/superi-engine/src/proxy_substitution.rs`: Validates exact proxy purpose, source
   fingerprint, source revision, packet integrity, and stream metadata; translates cache quality to
   scheduler quality; consumes deterministic derived selection; lazily opens verified original
@@ -203,7 +206,8 @@ through the existing dispatcher.
   enforcement, coherent normal and degraded work admission, recovery, stale permits, retained
   failure context, acknowledged sleep and wake event publication, restart, shutdown, inspection,
   exclusive project-history attachment, project command and event correlation, stale atomicity,
-  no-op event suppression, one correlated event for a compound project command, and
+  no-op event suppression, unknown extension command dispatch and typed results, exact extension
+  undo and redo, one correlated event for a compound project command, and
   event-backpressure preflight before project mutation.
 - `open/crates/superi-engine/tests/engine_introspection_contract.rs`: Proves EngineControl-owned
   read-only observation, unchanged scenario and event state, deterministic capability and resource
@@ -264,7 +268,7 @@ through the existing dispatcher.
   and failure state after ordered events are drained.
 - `open/crates/superi-engine/tests/project_history_contract.rs`: Proves real project media mutation,
   full-project undo and redo, branch clearing only after a successful authored change, failure and
-  no-op preservation, bounded oldest-entry eviction, monotonic revision exhaustion, schema-3 SQLite
+  no-op preservation, bounded oldest-entry eviction, monotonic revision exhaustion, schema-4 SQLite
   durability of the selected snapshot, and the real media resource consumer after reversal.
 - `open/crates/superi-engine/tests/project_autosave_contract.rs`: Proves that immutable selected
   history state after authored apply, undo, and redo reaches the project-owned autosave command
@@ -281,10 +285,11 @@ through the existing dispatcher.
   no-op event suppression under a full queue, invalid and stale rollback, ordered replacement
   events, missing-project failures, EngineControl ownership, and settings undo plus redo through the
   shared project history owner without authored-audio drift.
-- `open/crates/superi-engine/tests/project_transaction_contract.rs`: Proves one five-subsystem
-  transaction, one project revision and history entry, retained graph edits, exact save and reopen
-  of authored audio, adjacent-block audible continuity, undo and redo, late failure rollback, and
-  action bounds.
+- `open/crates/superi-engine/tests/project_transaction_contract.rs`: Proves one compound transaction
+  across root, timeline, graph, media, authored audio, and plugin, effect, and AI extension state,
+  one project revision and history entry, retained graph edits, exact save and reopen of authored
+  audio and extensions, adjacent-block audible continuity, undo and redo, late failure rollback,
+  and action bounds.
 - `open/crates/superi-engine/tests/scenario_contract.rs`: Exact canonical state, atomicity, bounds,
   operation log, reversal proof, bounded oldest-entry eviction, and redo clearing after a successful
   post-undo branch.
@@ -302,13 +307,14 @@ intentionally absent from engine mutations.
 
 `history` exposes the production Rust project command-history surface:
 
-- `ProjectMutation` wraps every authored `ProjectMediaCommand` plus one bounded
-  `CompoundProjectTransaction`, while `ProjectMutationKind` provides permanent typed classification
-  for project settings, compound, path replacement, missing-state, and fingerprint-checked relink
+- `ProjectMutation` wraps every authored `ProjectMediaCommand`, one
+  `ProjectExtensionCommand`, and one bounded `CompoundProjectTransaction`, while
+  `ProjectMutationKind` provides permanent typed classification for project settings, compound,
+  every extension operation, path replacement, missing-state, and fingerprint-checked relink
   actions.
 - `ProjectHistoryCommand` carries one exact expected document revision and a typed apply, undo, or
   redo action. `ProjectHistoryActionResult` preserves the project owner's semantic media or ordered
-  compound action results and the mutation kind reversed or reapplied.
+  extension command results, compound action results, and the mutation kind reversed or reapplied.
 - `ProjectHistoryState` contains the selected immutable `ProjectSnapshot`, configured capacity,
   undo and redo depths, and the next available typed action on each branch.
 - `ProjectHistoryOutcome` pairs that state with optional action evidence and an explicit authored
@@ -485,8 +491,8 @@ cloned states validate and publish.
 `CompoundProjectActionResult`, `CompoundProjectTransactionOutcome`,
 `MAX_COMPOUND_PROJECT_ACTIONS`, and `execute_compound_project_transaction`. One nonempty sequence of
 at most 64 actions can select the root, edit the timeline, mutate a retained graph, execute a media
-command, or mutate authored clip-mix state. Every action validates the unpublished aggregate, and
-the complete sequence publishes exactly once or leaves the document unchanged.
+or extension command, or mutate authored clip-mix state. Every action validates the unpublished
+aggregate, and the complete sequence publishes exactly once or leaves the document unchanged.
 
 `lifecycle` exposes `EngineLifecycle` as the single EngineControl owner. Canonical
 `EngineSubsystem` values describe shared state, projects, devices, playback, rendering, and export.
@@ -554,11 +560,11 @@ successful new authored change. History is process-local operational state: proj
 persistence stores the selected snapshot through its existing schema and never serializes stacks,
 capacity, or command metadata.
 
-The authored project mutation vocabulary contains all three real project media commands and the
-compound transaction. The same history owner also records project settings transactions as
-`ProjectSettings` changes through the project-owned validation path. Timeline, graph, media, root
-selection, authored clip-mix, and settings changes all enter this history surface and gain no
-implicit undo stack in their domain crates.
+The authored project mutation vocabulary contains all three real project media commands, every
+project extension command, and the compound transaction. The same history owner also records
+project settings transactions as `ProjectSettings` changes through the project-owned validation
+path. Timeline, graph, media, extension, root selection, authored clip-mix, and settings changes all
+enter this history surface and gain no implicit undo stack in their domain crates.
 
 ### Compound whole-project transactions
 
@@ -569,9 +575,9 @@ atomic with editorial changes. Every retained timeline graph is then reconciled 
 canonical compilation through the old canonical graph as a three-way merge base, preserving
 nonconflicting parameters and custom topology while rejecting overlaps.
 
-Graph batches use the ordinary checked `GraphTransaction`, media actions reuse the project draft
-command seam, clip-mix batches use the audio-owned revisioned state, and root selection uses the
-project owner. Complete aggregate validation follows every action. A late failure discards all
+Graph batches use the ordinary checked `GraphTransaction`, media and extension actions reuse their
+project draft command seams, clip-mix batches use the audio-owned revisioned state, and root
+selection uses the project owner. Complete aggregate validation follows every action. A late failure discards all
 earlier draft work and action results; success publishes one outer document revision, returns one
 ordered result vector, and records one `Compound` history unit whose snapshot supports exact undo
 and redo. Operational audio resources never enter that snapshot.
@@ -579,8 +585,9 @@ and redo. Operational audio resources never enter that snapshot.
 The autosave consumer contract takes the exact immutable snapshot selected after apply, undo, and
 redo and sends it to `superi-project::ProjectAutosaveController::execute` with explicit elapsed
 time. The project owner publishes and reopens each current-schema artifact, and equality proves that
-history-selected revision, settings, referenced media, editorial meaning, and retained graphs all
-survive. This is a real cross-crate consumer proof, not an engine dispatcher integration: a future
+history-selected revision, settings, referenced media, editorial meaning, retained graphs, and
+opaque extension records all survive. This is a real cross-crate consumer proof, not an engine
+dispatcher integration: a future
 background I/O host must own the controller and route typed commands without blocking EngineControl,
 Playback, Render, or Audio.
 
@@ -1097,6 +1104,10 @@ audio mutation, so their user intent remains attached without synthesis.
   action, publish one project revision and one history entry, and retain no partial action evidence
   on failure. Timeline reconciliation preserves nonconflicting direct graph edits and rejects
   overlapping canonical and retained changes.
+- Extension mutations always delegate to the project-owned revisioned command surface. History,
+  compound transactions, dispatch, undo, redo, persistence, and autosave preserve the complete
+  opaque record; engine does not reinterpret payload bytes, expand capability grants, infer runtime
+  readiness, or duplicate plugin supervisor state.
 - Project apply, undo, and redo require the exact current document revision. Undo and redo restore
   complete project semantics through the project owner, publish a fresh monotonic revision, and move
   a history entry only after restoration succeeds. Revision exhaustion, project validation failure,
@@ -1335,20 +1346,25 @@ rendering, and export admission through healthy and degraded states, recovery, s
 rejection, retained failure context, sleep and wake command events, permit invalidation across power
 transitions, restart, shutdown, both scenario and lifecycle inspection, exclusive project-history
 attachment, typed project inspection and execution, stale project command atomicity, exact project,
-command, event, and transaction correlation, one compound-command replacement event, no-op event suppression, and project plus history
-preservation when event backpressure rejects a command.
+command, event, and transaction correlation, one compound-command replacement event, no-op event
+suppression, and project plus history
+preservation when event backpressure rejects a command. The same dispatcher proof sends an unknown
+extension record through the real project history, observes its typed result and replacement event,
+suppresses an equal no-op, rejects a stale command, and preserves exact bytes through undo, redo,
+and project reload.
 
 Three project-history contracts execute the real project media command owner through apply, undo,
 and redo. They prove full aggregate reversal, typed outcomes, monotonic revision fences, failed and
 idempotent branch preservation, redo clearing after a new authored change, capacity validation,
 oldest-entry eviction, and revision-exhaustion atomicity. The durability proof writes the selected
-snapshot to schema-3 SQLite, reloads with empty session history, and passes the canonical AV1 fixture
+snapshot to schema-4 SQLite, reloads with empty session history, and passes the canonical AV1 fixture
 through `acquire_project_resources` after reversal.
 
 One project-autosave consumer contract applies a real media-path mutation through that history,
 autosaves the selected snapshot, then repeats after undo and redo. It opens all three recovery-point
 databases through the public project owner and requires exact snapshot equality, including durable
-settings and referenced-media state, while generation evidence advances from one through three.
+settings, referenced-media state, and unknown extension records, while generation evidence advances
+from one through three.
 This proves consumer compatibility only; it does not add engine scheduling, worker, dispatcher,
 wire, or recovery-selection behavior.
 
@@ -1369,10 +1385,11 @@ also prove settings changes enter the shared project history, undo and redo rest
 settings without authored-audio drift, and scenario-only history attachment cannot invoke the
 full-dispatcher settings surface.
 
-Three project-transaction contracts execute timeline, graph, media, clip-mix, and root actions
-through the real aggregate. They prove one outer revision and history unit, retained direct graph
-parameters, exact authored-audio save and reopen, prepared adjacent-block audible continuity, exact
-undo and redo, late invalid-action rollback with unchanged history, and action bounds.
+Three project-transaction contracts execute timeline, graph, media, clip-mix, plugin, effect, AI
+artifact metadata, and root actions through the real aggregate. They prove one outer revision and
+history unit, retained direct graph parameters, exact authored-audio and extension save and reopen,
+prepared adjacent-block audible continuity, exact undo and redo, late invalid-action rollback with
+unchanged history, and action bounds.
 
 Two engine-introspection contracts use the real registry, dispatcher, lifecycle, error coordinator,
 and resource arbiter. They prove read-only ownership, exact optional accounting, canonical ordering,
@@ -1533,12 +1550,12 @@ with production project history, but its scenario model remains separate referen
 
 The typed dispatcher is the substantive engine-wide control seam for current scenario, lifecycle,
 classified failure and recovery, sleep, wake, shutdown, restart, work admission, capability and
-health observation, interactive transport, logical export, typed project media and compound
-mutation, project undo and redo, authoritative project settings inspection and mutation, and
-read-only integration validation operations. It also owns crash recovery discovery, complete
+health observation, interactive transport, logical export, typed project media, extension, and
+compound mutation, project undo and redo, authoritative project settings inspection and mutation,
+and read-only integration validation operations. It also owns crash recovery discovery, complete
 semantic comparison, durable restoration, and exact dismissal through one optional file-backed
-coordinator. The optional project attachment owns one real `ProjectDocument`, returns complete typed
-history state, records settings, media, and compound
+coordinator. The optional project attachment owns one real `ProjectDocument`, returns complete
+typed history state, records settings, media, extension, and compound
 mutations in that shared history, and publishes correlated full replacement events for authored
 changes. Its introspection and validation snapshots expose coherent adaptation and action evidence
 without adding mutation authority.
@@ -1556,6 +1573,12 @@ automatically reconfigure live timeline, color, audio, cache, proxy, or render o
 database open and save commands and autosave scheduling remain outside engine and API. Recovery
 commands are implemented and test-backed through the existing dispatcher, but no background
 autosave worker, open-project shell, CLI adapter, or cross-process lock owner is claimed.
+
+Project extension integration is substantive and test-backed. History, compound transactions,
+dispatch, ordered replacement events, persistence, save, autosave, undo, and redo preserve plugin,
+auxiliary effect, AI artifact provenance, and unknown future records through the project-owned
+command surface. Engine does not interpret opaque payloads or convert durable lifecycle into live
+plugin readiness; `PluginSupervisor` remains the separate runtime availability owner.
 
 One orchestration file remains a documentation-only placeholder. Source registration, timeline
 media preparation, deterministic lifecycle, classified failure propagation and recovery,
@@ -1585,7 +1608,8 @@ cooperative checkpoints, and requires an explicit blocking-safe shutdown; it is 
 crash-recoverable scheduler. Its generic executor preparation and typed results remain process-local
 runtime bindings, and no application or wire API path invokes them yet. The derived-media driver
 and resolver are synchronous and caller-owned, and no application or API path invokes them yet.
-Clip-mix reconciliation and compound project mutation are substantive but currently entered by Rust
+Clip-mix reconciliation, extension mutation, and compound project mutation are substantive but
+currently entered by Rust
 callers rather than the public API or playback controller. Lifecycle is a production control-plane contract that now names project
 and device boundaries across sleep and wake, but later platform callbacks, additional typed project
 mutation adapters, native device owners, render submission, export
@@ -1621,7 +1645,9 @@ Keep all authored project actions behind `ProjectCommandHistory`, retain immutab
 snapshots only after successful semantic changes, preflight dispatcher event capacity before
 mutation, preserve both branches on failure and no-op, and restore only through the project-owned
 revision-fenced monotonic seam. Keep compound actions bounded, ordered, validated after each step,
-and published by one outer project edit. Add later command adapters without placing history stacks
+and published by one outer project edit. Keep extension payloads opaque, preserve project-owned
+capability, lifecycle, and failure meaning exactly, and never persist derived supervisor readiness
+into authored extension state. Add later command adapters without placing history stacks
 in project, timeline, graph, audio, API, or CLI owners.
 Keep the selected immutable snapshot directly consumable by the project-owned autosave command. A
 future background I/O integration may route that public surface, but must not duplicate policy,

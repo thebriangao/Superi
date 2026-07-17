@@ -3,8 +3,10 @@ use superi_audio::mixing::{ChannelMap, ClipMixControls, ClipMixMutation};
 use superi_core::error::ErrorCategory;
 use superi_core::ids::{ClipId, GraphId, MediaId, ProjectId, TimelineId, TrackId};
 use superi_core::pixel::{ChannelLayout, ChannelPosition};
+use superi_core::settings::{ComponentId, SemanticVersion, VersionIdentifier};
 use superi_core::time::FrameRate;
 use superi_core::time::{Duration, RationalTime, SampleTime, TimeRange, Timebase};
+use superi_effects::ofx::OfxPluginIdentity;
 use superi_engine::history::{
     ProjectCommandHistory, ProjectHistoryActionResult, ProjectHistoryCommand, ProjectMutation,
     ProjectMutationKind,
@@ -16,6 +18,10 @@ use superi_engine::project_transaction::{
 use superi_graph::mutate::{GraphMutation, TypedParameterValue};
 use superi_graph::value::GraphValue;
 use superi_project::document::{ProjectDocument, ProjectSnapshot};
+use superi_project::extensions::{
+    ProjectExtensionCommand, ProjectExtensionKey, ProjectExtensionKind, ProjectExtensionLifecycle,
+    ProjectExtensionRecord, ProjectExtensionRecordId,
+};
 use superi_project::media::ProjectMediaCommand;
 use superi_project::ProjectDatabase;
 use superi_timeline::compile::{TimelineGraphOrigin, TimelineGraphValue};
@@ -125,6 +131,53 @@ fn graph_name(snapshot: &ProjectSnapshot) -> String {
         .unwrap()
 }
 
+fn extension_record(
+    extension_id: &str,
+    record_id: &str,
+    kind: ProjectExtensionKind,
+) -> ProjectExtensionRecord {
+    ProjectExtensionRecord::new(
+        ComponentId::new(extension_id).unwrap(),
+        ProjectExtensionRecordId::new(record_id).unwrap(),
+        SemanticVersion::new(1, 0, 0),
+        kind,
+        VersionIdentifier::new(
+            ComponentId::new("example.compound-state").unwrap(),
+            SemanticVersion::new(1, 0, 0),
+        ),
+        Default::default(),
+        Default::default(),
+        ProjectExtensionLifecycle::Enabled,
+        None,
+        format!("{extension_id}:{record_id}").into_bytes(),
+    )
+    .unwrap()
+}
+
+fn ofx_identity() -> OfxPluginIdentity {
+    OfxPluginIdentity::new("com.example.superi-gain", SemanticVersion::new(1, 2, 0)).unwrap()
+}
+
+fn ofx_extension_record() -> ProjectExtensionRecord {
+    let identity = ofx_identity();
+    ProjectExtensionRecord::new(
+        identity.identifier().clone(),
+        ProjectExtensionRecordId::new("plugin-state").unwrap(),
+        identity.version().clone(),
+        ProjectExtensionKind::plugin(),
+        VersionIdentifier::new(
+            ComponentId::new("superi.ofx.project-state").unwrap(),
+            SemanticVersion::new(1, 0, 0),
+        ),
+        Default::default(),
+        Default::default(),
+        ProjectExtensionLifecycle::Enabled,
+        None,
+        b"isolated-worker-state".to_vec(),
+    )
+    .unwrap()
+}
+
 fn compound(snapshot: &ProjectSnapshot) -> CompoundProjectTransaction {
     let compilation = snapshot.timeline_graph(ROOT).unwrap();
     let graph = compilation.snapshot();
@@ -160,6 +213,19 @@ fn compound(snapshot: &ProjectSnapshot) -> CompoundProjectTransaction {
         )]),
         CompoundProjectAction::MutateMedia(ProjectMediaCommand::mark_missing(MEDIA)),
         CompoundProjectAction::mutate_clip_mix([ClipMixMutation::set(CLIP, controls())]),
+        CompoundProjectAction::mutate_extension(ProjectExtensionCommand::upsert(
+            ofx_extension_record(),
+        )),
+        CompoundProjectAction::mutate_extension(ProjectExtensionCommand::upsert(extension_record(
+            "example.compound-effect",
+            "effect-host-state",
+            ProjectExtensionKind::effect(),
+        ))),
+        CompoundProjectAction::mutate_extension(ProjectExtensionCommand::upsert(extension_record(
+            "example.compound-ai",
+            "artifact-provenance",
+            ProjectExtensionKind::ai_artifact(),
+        ))),
         CompoundProjectAction::SelectRootTimeline(ROOT),
     ])
     .unwrap()
@@ -189,7 +255,7 @@ fn one_history_command_publishes_and_restores_every_authored_subsystem() {
     else {
         panic!("compound command must retain compound action evidence");
     };
-    assert_eq!(actions.len(), 5);
+    assert_eq!(actions.len(), 8);
     assert!(matches!(
         actions[0],
         CompoundProjectActionResult::GraphMutated { .. }
@@ -208,11 +274,32 @@ fn one_history_command_publishes_and_restores_every_authored_subsystem() {
     ));
     assert!(matches!(
         actions[4],
+        CompoundProjectActionResult::ExtensionMutated(_)
+    ));
+    assert!(matches!(
+        actions[5],
+        CompoundProjectActionResult::ExtensionMutated(_)
+    ));
+    assert!(matches!(
+        actions[6],
+        CompoundProjectActionResult::ExtensionMutated(_)
+    ));
+    assert!(matches!(
+        actions[7],
         CompoundProjectActionResult::RootTimelineSelected(ROOT)
     ));
 
     let published = applied.state().snapshot();
     assert_eq!(graph_name(published), "direct compound name");
+    assert_eq!(published.extension_records().len(), 3);
+    let ofx = ofx_identity();
+    let ofx_key = ProjectExtensionKey::new(
+        ofx.identifier().clone(),
+        ProjectExtensionRecordId::new("plugin-state").unwrap(),
+    );
+    let stored_ofx = published.extension_record(&ofx_key).unwrap();
+    assert_eq!(stored_ofx.extension_version(), ofx.version());
+    assert_eq!(stored_ofx.payload(), b"isolated-worker-state");
     let clip = published
         .editorial_project()
         .timeline(ROOT)
@@ -252,6 +339,7 @@ fn one_history_command_publishes_and_restores_every_authored_subsystem() {
         .clip_mix_state()
         .controls(CLIP)
         .is_none());
+    assert!(undone.state().snapshot().extension_records().is_empty());
 
     let redone = history.execute(ProjectHistoryCommand::redo(2)).unwrap();
     assert_eq!(redone.state().snapshot().revision(), 3);
@@ -263,6 +351,7 @@ fn one_history_command_publishes_and_restores_every_authored_subsystem() {
         redone.state().snapshot().clip_mix_state().controls(CLIP),
         Some(&controls())
     );
+    assert_eq!(redone.state().snapshot().extension_records().len(), 3);
 }
 
 #[test]

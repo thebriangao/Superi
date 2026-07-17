@@ -5,10 +5,15 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use rusqlite::{Connection, OpenFlags};
 use superi_core::error::ErrorCategory;
 use superi_core::ids::{GraphId, MediaId, ProjectId, TimelineId};
+use superi_core::settings::{ComponentId, SemanticVersion, VersionIdentifier};
 use superi_core::time::{RationalTime, Timebase};
 use superi_graph::mutate::EditableGraph;
 use superi_project::document::{
     ProjectDocument, ProjectGraph, ProjectSnapshot, StandaloneProjectGraph,
+};
+use superi_project::extensions::{
+    ProjectExtensionCommand, ProjectExtensionKind, ProjectExtensionLifecycle,
+    ProjectExtensionRecord, ProjectExtensionRecordId,
 };
 use superi_project::media::{PortableRelativePath, ReferencedMediaPath};
 use superi_project::{
@@ -68,7 +73,27 @@ fn snapshot(label: &str, identity: u128) -> ProjectSnapshot {
         [timeline],
     )
     .unwrap();
-    ProjectDocument::new(project, root).unwrap().snapshot()
+    let mut document = ProjectDocument::new(project, root).unwrap();
+    let extension = ProjectExtensionRecord::new(
+        ComponentId::new("example.save-extension").unwrap(),
+        ProjectExtensionRecordId::new(format!("state-{identity:x}")).unwrap(),
+        SemanticVersion::new(1, 0, 0),
+        ProjectExtensionKind::new(ComponentId::new("example.unknown-kind").unwrap()),
+        VersionIdentifier::new(
+            ComponentId::new("example.opaque-state").unwrap(),
+            SemanticVersion::new(2, 0, 0),
+        ),
+        Default::default(),
+        Default::default(),
+        ProjectExtensionLifecycle::Enabled,
+        None,
+        vec![0, 0xff, identity as u8],
+    )
+    .unwrap();
+    document
+        .execute_extension_command(0, ProjectExtensionCommand::upsert(extension))
+        .unwrap();
+    document.snapshot()
 }
 
 fn relative_media_snapshot() -> ProjectSnapshot {

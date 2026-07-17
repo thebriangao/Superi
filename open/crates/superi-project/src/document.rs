@@ -12,6 +12,9 @@ use superi_timeline::compile::{
 };
 use superi_timeline::model::EditorialProject;
 
+use crate::extensions::{
+    ProjectExtensionKey, ProjectExtensionRecord, MAX_PROJECT_EXTENSION_RECORDS,
+};
 use crate::settings::{ProjectSettings, ProjectSettingsTransaction};
 
 const COMPONENT: &str = "superi-project.document";
@@ -309,6 +312,32 @@ impl ProjectDocument {
     where
         G: IntoIterator<Item = ProjectGraph>,
     {
+        Self::from_complete_parts_with_settings_and_extensions(
+            revision,
+            editorial_project,
+            root_timeline_id,
+            settings,
+            graphs,
+            clip_mix_state,
+            [],
+        )
+    }
+
+    /// Restores the complete aggregate with settings, authored audio, and opaque extension state.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_complete_parts_with_settings_and_extensions<G, E>(
+        revision: u64,
+        editorial_project: EditorialProject,
+        root_timeline_id: TimelineId,
+        settings: ProjectSettings,
+        graphs: G,
+        clip_mix_state: ClipMixState,
+        extension_records: E,
+    ) -> Result<Self>
+    where
+        G: IntoIterator<Item = ProjectGraph>,
+        E: IntoIterator<Item = ProjectExtensionRecord>,
+    {
         let mut graphs_by_id = BTreeMap::new();
         for graph in graphs {
             let graph_id = graph.graph_id();
@@ -324,12 +353,37 @@ impl ProjectDocument {
             }
         }
 
+        let mut extensions_by_key = BTreeMap::new();
+        for record in extension_records {
+            let key = record.key().clone();
+            if extensions_by_key.insert(key.clone(), record).is_some() {
+                return Err(conflict(
+                    "restore_document",
+                    "duplicate extension record identity in project document",
+                )
+                .with_context(
+                    ErrorContext::new(COMPONENT, "restore_document")
+                        .with_field("extension_id", key.extension_id().to_string())
+                        .with_field("record_id", key.record_id().to_string()),
+                ));
+            }
+        }
+        if extensions_by_key.len() > MAX_PROJECT_EXTENSION_RECORDS {
+            return Err(Error::new(
+                ErrorCategory::ResourceExhausted,
+                Recoverability::UserCorrectable,
+                "project extension record count exceeds the supported bound",
+            )
+            .with_context(ErrorContext::new(COMPONENT, "restore_document")));
+        }
+
         let state = ProjectState {
             editorial_project,
             root_timeline_id,
             settings,
             graphs: graphs_by_id,
             clip_mix_state,
+            extension_records: extensions_by_key,
         };
         state.validate("restore_document")?;
         Ok(Self {
@@ -372,6 +426,17 @@ impl ProjectDocument {
     #[must_use]
     pub fn clip_mix_state(&self) -> &ClipMixState {
         &self.state.clip_mix_state
+    }
+
+    /// Iterates durable extension records in stable compound-identity order.
+    pub fn extension_records(&self) -> impl ExactSizeIterator<Item = &ProjectExtensionRecord> {
+        self.state.extension_records.values()
+    }
+
+    /// Looks up one durable extension record by compound identity.
+    #[must_use]
+    pub fn extension_record(&self, key: &ProjectExtensionKey) -> Option<&ProjectExtensionRecord> {
+        self.state.extension_records.get(key)
     }
 
     /// Iterates retained graphs in stable identity order.
@@ -552,6 +617,18 @@ impl ProjectSnapshot {
         &self.state.clip_mix_state
     }
 
+    /// Returns durable extension records in stable compound-identity order.
+    #[must_use]
+    pub fn extension_records(&self) -> &BTreeMap<ProjectExtensionKey, ProjectExtensionRecord> {
+        &self.state.extension_records
+    }
+
+    /// Looks up one captured extension record by compound identity.
+    #[must_use]
+    pub fn extension_record(&self, key: &ProjectExtensionKey) -> Option<&ProjectExtensionRecord> {
+        self.state.extension_records.get(key)
+    }
+
     /// Iterates captured graphs in stable identity order.
     pub fn graphs(&self) -> impl ExactSizeIterator<Item = &ProjectGraph> {
         self.state.graphs.values()
@@ -627,6 +704,19 @@ impl ProjectDraft<'_> {
     /// Returns mutable authored clip-owned audio intent inside the unpublished draft.
     pub fn clip_mix_state_mut(&mut self) -> &mut ClipMixState {
         &mut self.state.clip_mix_state
+    }
+
+    /// Returns durable extension records in stable compound-identity order.
+    #[must_use]
+    pub fn extension_records(&self) -> &BTreeMap<ProjectExtensionKey, ProjectExtensionRecord> {
+        &self.state.extension_records
+    }
+
+    /// Returns mutable durable extension state inside this unpublished transaction.
+    pub(crate) fn extension_records_mut(
+        &mut self,
+    ) -> &mut BTreeMap<ProjectExtensionKey, ProjectExtensionRecord> {
+        &mut self.state.extension_records
     }
 
     /// Borrows editorial and authored audio state together for one coordinated edit.
@@ -805,6 +895,7 @@ struct ProjectState {
     settings: ProjectSettings,
     graphs: BTreeMap<GraphId, ProjectGraph>,
     clip_mix_state: ClipMixState,
+    extension_records: BTreeMap<ProjectExtensionKey, ProjectExtensionRecord>,
 }
 
 impl ProjectState {
@@ -820,6 +911,24 @@ impl ProjectState {
     }
 
     fn validate(&self, operation: &'static str) -> Result<()> {
+        if self.extension_records.len() > MAX_PROJECT_EXTENSION_RECORDS {
+            return Err(Error::new(
+                ErrorCategory::ResourceExhausted,
+                Recoverability::UserCorrectable,
+                "project extension record count exceeds the supported bound",
+            )
+            .with_context(ErrorContext::new(COMPONENT, operation)));
+        }
+        for (key, record) in &self.extension_records {
+            if key != record.key() {
+                return Err(Error::new(
+                    ErrorCategory::CorruptData,
+                    Recoverability::UserCorrectable,
+                    "extension record map key does not match the record identity",
+                )
+                .with_context(ErrorContext::new(COMPONENT, operation)));
+            }
+        }
         if self
             .editorial_project
             .timeline(self.root_timeline_id)

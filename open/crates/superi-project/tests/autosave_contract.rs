@@ -6,12 +6,17 @@ use std::time::{Duration, SystemTime};
 use superi_core::error::ErrorCategory;
 use superi_core::ids::{MediaId, ProjectId, TimelineId};
 use superi_core::settings::SettingValue;
+use superi_core::settings::{ComponentId, SemanticVersion, VersionIdentifier};
 use superi_core::time::{RationalTime, Timebase};
 use superi_project::autosave::{
     ProjectAutosaveCommand, ProjectAutosaveController, ProjectAutosaveDisposition,
     ProjectAutosaveOperation, ProjectAutosavePolicy,
 };
 use superi_project::document::{ProjectDocument, ProjectSnapshot};
+use superi_project::extensions::{
+    ProjectExtensionCommand, ProjectExtensionKind, ProjectExtensionLifecycle,
+    ProjectExtensionRecord, ProjectExtensionRecordId,
+};
 use superi_project::media::{PortableRelativePath, ReferencedMediaPath};
 use superi_project::settings::{
     ProjectSettingMutation, ProjectSettingsTransaction, AUDIO_SAMPLE_RATE_KEY,
@@ -89,6 +94,28 @@ fn document() -> ProjectDocument {
                 .unwrap()],
             )
             .unwrap(),
+        )
+        .unwrap();
+    let extension = ProjectExtensionRecord::new(
+        ComponentId::new("example.autosave-extension").unwrap(),
+        ProjectExtensionRecordId::new("opaque-recovery-state").unwrap(),
+        SemanticVersion::new(1, 2, 3),
+        ProjectExtensionKind::new(ComponentId::new("example.future-kind").unwrap()),
+        VersionIdentifier::new(
+            ComponentId::new("example.future-state").unwrap(),
+            SemanticVersion::new(4, 5, 6),
+        ),
+        Default::default(),
+        Default::default(),
+        ProjectExtensionLifecycle::Enabled,
+        None,
+        vec![0, 1, 0xfe, 0xff],
+    )
+    .unwrap();
+    document
+        .execute_extension_command(
+            document.revision(),
+            ProjectExtensionCommand::upsert(extension),
         )
         .unwrap();
     document

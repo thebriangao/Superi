@@ -12,6 +12,7 @@ workspace = true
 [dependencies]
 rusqlite.workspace = true
 serde_json.workspace = true
+serde.workspace = true
 sha2.workspace = true
 superi-audio = { path = "../superi-audio" }
 superi-core = { path = "../superi-core" }

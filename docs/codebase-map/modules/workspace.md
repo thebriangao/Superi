@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: fbf35ab7327583cf69d8ae169265b4408af36718989f040e1975ba154c47d4d6
+source_hash: e3ca6e2bcf024d3c5a998b70195225af3fa08e022f0362b2d7278fc68aec72a0
 source_files: 145
 mapped_at_commit: working-tree
 ---
@@ -410,8 +410,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   directly consumes the already-resolved `serde`, `serde_json`, and `sha2` packages, while
   `superi-audio` now directly consumes the already resolved serde, serde_json, and SHA-256 packages
   for its strict authored clip-mix component codec. `superi-project` directly consumes
-  `superi-audio`, exact `rusqlite` 0.32.1, and the existing SHA-256 package, plus test-only JSON for
-  exact legacy component fixtures. `superi-engine` records a test-only
+  `superi-audio`, exact `rusqlite` 0.32.1, and the existing Serde, JSON, and SHA-256 packages for
+  canonical extension metadata, opaque-payload evidence, and legacy component fixtures.
+  `superi-engine` records a test-only
   direct rusqlite edge for its real migrated-project resource consumer.
   The bundled SQLite edge resolves `libsqlite3-sys` 0.30.1, `ahash` 0.8.12, `hashbrown` 0.14.5,
   `hashlink` 0.9.1, fallible iterator adapters, and native build discovery packages. This exact
@@ -719,7 +720,8 @@ present for core and graph contracts. This changes the direct package edges reco
 SQLite and autosave ownership away from `superi-project`.
 
 The project schema owner consumes exact rusqlite 0.32.1 with default features disabled and bundled
-SQLite enabled. It also consumes the existing exact SHA-256 pin. Rusqlite and libsqlite3-sys are
+SQLite enabled. It also consumes the existing exact Serde, JSON, and SHA-256 pins for strict
+extension metadata and opaque-payload integrity. Rusqlite and libsqlite3-sys are
 MIT-licensed, SQLite is public domain, and the bundled path performs no runtime discovery or
 network operation. The dependency remains below project and does not change any internal Superi
 crate edge. Fresh `cargo +1.80.0 check -p superi-project --locked --offline` proves the selected resolution on
@@ -730,7 +732,7 @@ enters a runtime dependency tier.
 
 The authored clip-mix document reuses the workspace serde, serde_json, and SHA-256 pins already used
 by other strict component codecs. `superi-project` now depends directly on `superi-audio` so authored
-clip-mix state can enter the aggregate and schema-3 database while prepared processors, devices, and
+clip-mix state can enter the aggregate and schema-4 database while prepared processors, devices, and
 callback state remain below the persistence boundary. This is a downward runtime edge and preserves
 the declared crate tiers and offline dependency policy.
 
@@ -829,15 +831,19 @@ GPU upload and resident graph evaluation, color processing, cache participation,
 readback only at delivery boundaries. The timeline deterministically compiles edits into graph
 state. The engine now dispatches canonical scenario transactions and lifecycle commands and emits
 ordered replacement state events. It also owns a bounded typed command history around the real
-project document and every currently authored project media command. Apply, undo, and redo share one
-revision-fenced dispatcher path, restore complete immutable snapshots at fresh monotonic revisions,
-and preserve failure and no-op branches. The project layer can now consume any selected immutable
+project document and every currently authored project media and extension command. Apply, undo, and
+redo share one revision-fenced dispatcher path, restore complete immutable snapshots at fresh
+monotonic revisions, and preserve failure and no-op branches. Compound transactions include
+extension actions beside timeline, graph, media, audio, and root state. The project layer can now
+consume any selected immutable
 snapshot through one clockless typed autosave controller, publish a complete current-schema recovery
 point through the existing atomic Backup path, and deterministically retain only the newest
 user-selected generation count. The engine consumer proves apply, undo, and redo state reach those
 artifacts exactly, but engine scheduling, recovery choice, API, CLI, and scripting adapters remain
 later work. The API projects the earlier scenario transaction seam and the CLI consumes it;
-project-history wire, API, CLI, and scripting projection remain later work. The documented broader
+project-history wire, API, CLI, and scripting projection remain later work. Durable extension
+lifecycle remains user-controlled project state, while live plugin readiness stays derived from the
+engine supervisor and graph registry. The documented broader
 target coordinates project, timeline, graph, caches,
 persistence, undo, events, playback, and export and presents the same command surface to UI, CLI,
 scripts, extensions, and Superi Max, with no privileged closed-tier route.
@@ -928,10 +934,11 @@ The documents deliberately point into other modules:
   acquisition classes behind media interfaces.
 - `superi-graph`, `superi-cache`, `superi-color`, `superi-effects`, `superi-timeline`, `superi-audio`,
   and `superi-ai` own evaluation and capability layers.
-- `superi-project` owns aggregate validation, authored clip-mix durability, checked snapshot
-  restoration, database persistence, atomic file publication, deterministic autosave scheduling,
-  managed recovery-point retention, and pruning; `superi-engine` owns bounded compound project
-  commands, session command history, and integration;
+- `superi-project` owns aggregate validation, authored clip-mix and opaque extension durability,
+  checked snapshot restoration, schema-4 database persistence, atomic file publication,
+  deterministic autosave scheduling, managed recovery-point retention, and pruning;
+  `superi-engine` owns bounded compound project commands, session command history, extension
+  dispatch, and integration;
   `superi-api` owns the stable public seam; and `superi-cli` is the headless consumer.
 - `superi-fixture-tool` validates repository fixture policy but does not enter runtime engine flow.
 - `superi-dependency-check` validates the runtime Cargo graph but does not enter runtime engine flow.
@@ -953,6 +960,10 @@ of open runtime behavior.
 - Authored project changes use one typed engine command-history surface. Retained before and after
   snapshots are bounded session state, the selected project snapshot is the only durable state, and
   domain crates do not own competing undo stacks.
+- Project extension records use open namespaced kinds, bounded strict metadata, and exact opaque
+  payload bytes. Capability grants remain a user-controlled subset, lifecycle and structured
+  failure state remain durable and scriptable, unknown kinds survive unchanged, and engine runtime
+  readiness remains derived rather than persisted.
 - Autosave policy and monotonic elapsed state remain session-local and project-owned. Completed
   recovery points are complete current-schema `.superi` databases, count retention is ordered only
   by strict numeric generation, unknown and candidate files are preserved, and recovery discovery,
@@ -1023,9 +1034,17 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   forced manual recovery points, exact current-schema snapshot reopen, unchanged active-project
   bytes, strict generation ownership, timestamp-independent retention, foreign and candidate
   preservation, safe tamper rejection, generation exhaustion without schedule success, and retry.
-  Its real engine consumer autosaves the selected history snapshot after apply, undo, and redo.
+  Its real engine consumer autosaves the selected history snapshot, including unknown extension
+  state, after apply, undo, and redo.
   This headless proof does not claim an engine worker, wire adapter, UI, recovery choice, network
   filesystem semantics, or physical power-loss testing.
+
+- The project extension contracts prove bounded plugin, auxiliary effect, AI artifact provenance,
+  and unknown-kind envelopes, capability narrowing, user lifecycle and failure control, exact
+  non-UTF-8 payload preservation, semantic no-ops, stale fencing, schema-4 persistence, lossless
+  schema-3 migration, atomic save and autosave, engine history, compound transactions, dispatcher
+  events, and undo plus redo. They do not claim plugin process availability, graph factory
+  registration, AI execution, UI, or public wire adaptation.
 
 - `docs/checkpoints/P2.W05.C002.md` records the shared typed graph payload, concrete built-in effect
   schemas, caller-owned graph authoring, bounded CPU reference behavior, exact ROI and pixel
@@ -1209,10 +1228,12 @@ canonical integrity-protected documents, while effects-to-project integration an
 plugin execution remain incomplete. The effects-side isolated OpenFX contract and engine-side
 bundle discovery, launch coordination, containment, and graph availability are implemented, while
 concrete platform transport, native OFX ABI adapters, and GPU-handle IPC remain absent.
-The project crate now owns a stable schema-3 SQLite application database with deterministic
-timeline, graph, settings, and authored audio component rows, SHA-256 evidence, checked in-memory
-replacement, checked reload, durable nonoverwriting create, read-only reopen, and an ordered exact
-schema-0-to-schema-1-to-schema-2-to-schema-3 migration inside one immediate transaction. It also
+The project crate now owns a stable schema-4 SQLite application database with deterministic
+timeline, graph, settings, authored audio, and extension component rows, separate metadata and
+opaque-payload SHA-256 evidence, checked in-memory replacement, checked reload, durable
+nonoverwriting create, read-only reopen, and an ordered exact
+schema-0-to-schema-1-to-schema-2-to-schema-3-to-schema-4 migration inside one immediate transaction.
+It also
 owns authoritative versioned settings plus one typed save, save-as, copy, and backup surface that
 builds, validates, closes, synchronizes, and atomically publishes complete same-parent current-schema
 candidates under explicit collision policy, with active-path rebinding and honest postpublication
@@ -1220,18 +1241,21 @@ state. Its clockless autosave controller adds host-driven monotonic scheduling, 
 generations, complete Backup recovery points, bounded count retention, explicit pruning, and typed
 user control without another persistence model. The lockfile records exact rusqlite 0.32.1 and
 libsqlite3-sys 0.30.1 with bundled SQLite, plus
-project JSON and engine rusqlite test edges. Additional project schema revisions beyond 3,
+project Serde and JSON plus engine rusqlite test edges. Additional project schema revisions beyond 4,
 persisted command logs, recovery discovery and restoration, modified-since-open conflict policy,
 database file API adaptation, and CLI exposure remain incomplete.
 The engine now owns a production Rust compound project command and history boundary around that
-aggregate. It applies bounded ordered timeline, graph, media, authored audio, and root actions inside
+aggregate. It applies bounded ordered timeline, graph, media, authored audio, extension, and root
+actions inside
 one outer project edit, preserves nonconflicting retained graph work through a three-way recompile,
 records one immutable before-and-after unit, restores undo and redo targets with fresh monotonic
 revisions, persists only the selected snapshot through the existing database, and exposes one
-correlated dispatcher event. Public project-history wire, API, CLI, scripting, logging, and
+correlated dispatcher event. Plugin, effect, AI artifact provenance, and unknown future extension
+records preserve exact payloads and user-controlled lifecycle without duplicating runtime plugin
+readiness. Public project-history wire, API, CLI, scripting, logging, and
 automation adapters remain incomplete.
 The synchronized remote revision before this checkpoint is
-`5f3a3035961d014fd02c43a46d419fa8b24328d1`.
+`317d2464dce5c33fa26d6e5b363961246582d188`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
 root README, deny policy, and structure guide with license-audit CI. Commit
 `e0b3af9f099f527a8544d1b0317896640969903b` added the executable dependency-policy contract and its
@@ -1390,7 +1414,7 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`7401db7dc35d59663878cdf5f6c240fa87bef0ca` when the map was refreshed. Its hash describes the exact
+`317d2464dce5c33fa26d6e5b363961246582d188` when the map was refreshed. Its hash describes the exact
 145 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes

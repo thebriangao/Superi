@@ -5,6 +5,7 @@ use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Res
 use superi_core::ids::{GraphId, TimelineId};
 use superi_graph::mutate::{GraphMutation, GraphTransaction};
 use superi_project::document::{ProjectDocument, ProjectSnapshot};
+use superi_project::extensions::{ProjectExtensionCommand, ProjectExtensionCommandResult};
 use superi_project::media::{ProjectMediaCommand, ProjectMediaCommandResult};
 use superi_timeline::compile::{recompile_timeline_preserving_edits, CompiledTimelineGraphValue};
 use superi_timeline::edit_ops::{EditBatchResult, EditOperation};
@@ -35,6 +36,8 @@ pub enum CompoundProjectAction {
     MutateMedia(ProjectMediaCommand),
     /// Apply a nonempty authored clip-mix mutation batch.
     MutateClipMix(Vec<ClipMixMutation>),
+    /// Apply one durable extension-state command.
+    MutateExtension(ProjectExtensionCommand),
 }
 
 impl CompoundProjectAction {
@@ -62,6 +65,12 @@ impl CompoundProjectAction {
         Self::MutateClipMix(mutations.into_iter().collect())
     }
 
+    /// Creates an extension-state mutation action.
+    #[must_use]
+    pub const fn mutate_extension(command: ProjectExtensionCommand) -> Self {
+        Self::MutateExtension(command)
+    }
+
     const fn code(&self) -> &'static str {
         match self {
             Self::SelectRootTimeline(_) => "select_root_timeline",
@@ -69,6 +78,7 @@ impl CompoundProjectAction {
             Self::MutateGraph { .. } => "mutate_graph",
             Self::MutateMedia(_) => "mutate_media",
             Self::MutateClipMix(_) => "mutate_clip_mix",
+            Self::MutateExtension(_) => "mutate_extension",
         }
     }
 }
@@ -145,6 +155,8 @@ pub enum CompoundProjectActionResult {
     MediaMutated(ProjectMediaCommandResult),
     /// Authored clip-mix state published one new mix revision.
     ClipMixMutated(u64),
+    /// Durable extension state was accepted.
+    ExtensionMutated(ProjectExtensionCommandResult),
 }
 
 /// One compound result paired with the exact published project snapshot.
@@ -227,6 +239,11 @@ pub fn execute_compound_project_transaction(
                     let mix_state = draft.clip_mix_state_mut();
                     let revision = mix_state.apply(mix_state.revision(), mutations)?;
                     CompoundProjectActionResult::ClipMixMutated(revision)
+                }
+                CompoundProjectAction::MutateExtension(command) => {
+                    CompoundProjectActionResult::ExtensionMutated(
+                        draft.execute_extension_command(command)?,
+                    )
                 }
             };
             draft.validate().with_error_context(
