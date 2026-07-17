@@ -41,7 +41,11 @@ pub use superi_project::extensions::{
 pub use superi_project::media::{
     ProjectMediaCommand, ProjectMediaCommandResult, ReferencedMediaPath,
 };
-pub use superi_project::ProjectDatabase;
+pub use superi_project::{
+    negotiate_project_format, project_format_support, ProjectDatabase, ProjectFormatIdentity,
+    ProjectFormatRelease, ProjectFormatSupport, ProjectVersionDisposition,
+    ProjectVersionNegotiation, ProjectVersionReason,
+};
 pub use superi_timeline::compile::{
     CompiledTimelineGraphValue, TimelineGraphOrigin, TimelineGraphValue,
 };

@@ -2,8 +2,8 @@
 module_id: superi-project
 source_paths:
   - open/crates/superi-project
-source_hash: bab229b018f3b71a31ffd32a4189fb69f9b2648c84f4a851279833696ac6f585
-source_files: 24
+source_hash: fdca77df701538f474d92f9a8052da612718ac63faac4f622e2490cfa3c44d51
+source_files: 26
 mapped_at_commit: working-tree
 ---
 
@@ -13,7 +13,10 @@ mapped_at_commit: working-tree
 settings, authored clip-mix state, durable opaque extension records, stable schema-4 SQLite
 serialization, ordered forward migration from supported older project schemas, and read-only
 project integrity validation with deterministic repair reporting. It also owns versioned semantic
-project hashing and ordered component diagnostics over the same canonical prepared evidence. One
+project hashing and ordered component diagnostics over the same canonical prepared evidence. Its
+single released-format table binds application identity, format identity, stable primitive revision,
+and every schema 0 through 4 semantic version pair to deterministic compatibility outcomes and
+forward migration paths. One
 `ProjectDocument` combines
 the validated
 editorial project, selected root timeline, retained compiled timeline graphs, optional named
@@ -89,6 +92,9 @@ Those remain assigned to their engine, API, or later project checkpoints.
   project and artifact naming, atomic Backup publication, bounded collision retry, strict managed
   namespace inspection, count-based retention, safe regular-file pruning, and classified failure
   or postpublication cleanup evidence.
+- `open/crates/superi-project/src/compatibility.rs`: Owns the authoritative schema 0 through 4
+  project format release table, complete observed format identity, current support descriptor,
+  typed compatibility dispositions and reasons, and deterministic forward migration paths.
 - `open/crates/superi-project/src/document.rs`: Implements `ProjectDocument`, immutable snapshots,
   private edit candidates, authoritative settings, retained timeline compilations, named standalone
   graphs, authored clip-mix state, ordered extension records, revision fencing, checked
@@ -192,13 +198,21 @@ Those remain assigned to their engine, API, or later project checkpoints.
   construction, capability narrowing, lifecycle and quarantine control, structured failure clear,
   stale fencing, semantic no-op behavior, removal, and immutable snapshot access through one
   command surface.
+- `open/crates/superi-project/tests/version_negotiation_contract.rs`: Proves the exact authoritative
+  release table and typed current, migration-required, future-application, unsupported, and invalid
+  outcomes, including the complete registered schema successor path.
 
 ## Public surface
 
-The crate root exports `autosave`, `diagnostics`, `document`, `extensions`, `integrity`, `media`, `persist`,
+The crate root exports `autosave`, `compatibility`, `diagnostics`, `document`, `extensions`, `integrity`, `media`, `persist`,
 `recovery`, and `settings`, keeps save mechanics private, and re-exports the stable persistence,
 save, autosave, integrity, diagnostics, and recovery authorities, project format and semantic hash
 constants, and the media path target format identifier.
+
+- `project_format_support` returns the one authoritative application, text format, primitive
+  revision, and released schema-version table. `ProjectFormatIdentity` carries one complete
+  observation, and `negotiate_project_format` returns a typed `ProjectVersionDisposition`, ordered
+  reasons, current target, and exact successor migration path without opening or mutating a file.
 
 - `ProjectDocument::new` accepts one `EditorialProject` and selected `TimelineId`, compiles that
   root through `superi_timeline::compile_timeline`, derives deterministic settings from its edit
@@ -526,7 +540,9 @@ Integrity inspection composes the same checked owners without a write path:
 
 Writable open applies one contiguous compatibility path:
 
-1. Connection-level application identity and `user_version` dispatch before mutation. Current
+1. Connection-level application identity and `user_version` dispatch before mutation. Persistence,
+   migration registry validation, and integrity interpretation share the authoritative released
+   format table instead of maintaining independent schema-to-semantic-version matches. Current
    schema 4 runs the existing exact validator only; a future schema, wrong application, or
    unrepresentable revision fails without a write transaction.
 2. Exact schema 0 is the supported `superi.project` version `0.9.0` predecessor. Its three strict
@@ -842,6 +858,11 @@ real database, reloads exact equality, validates full integrity, discovers and c
 candidate, restores it through the existing recovery owner, and proves stable media ID, target, and
 fingerprint meaning. This adds no interpreter or file authority to the project crate.
 
+`version_negotiation_contract.rs` contains two public tests. They prove the exact five released
+schema and semantic format pairs, stable application, text, and primitive identities, current and
+registered migration outcomes, the exact schema 1 to 4 successor path, future schema, semantic, and
+primitive reasons, inconsistent schema-format rejection, and foreign identity classification.
+
 Timeline's serialization contract independently round trips a real compiled multicam graph through
 the public graph codec and rejects unknown `TimelineGraphValue` fields and tags. The engine resource
 contract opens an exact schema-0 fixture through the public database owner and proves that the
@@ -860,7 +881,9 @@ and read-only reopen, writable current or legacy open, atomic save, save-as, cop
 publication, explicit collision policy, active path identity, validated modified-since-open
 generation fencing, cooperative writer serialization, versioned referenced-media paths,
 stable identity commands, and the real engine and public API consumers are substantive and
-test-backed. Its checked whole-snapshot restore seam supports the engine-owned session command
+test-backed. The same authoritative compatibility table now drives persistence checks, migration
+registry alignment, integrity interpretation, and the public API projection. Its checked
+whole-snapshot restore seam supports the engine-owned session command
 history without moving branching policy or retained entries into the project crate. The same
 history, compound transaction, dispatcher, save, and autosave consumers preserve plugin, effect,
 AI artifact metadata, and unknown extension state through one typed command surface without
@@ -914,8 +937,10 @@ Preserve timeline, graph, and audio component ownership and project ownership of
 extension envelopes, opaque payload bytes, lifecycle, capabilities, and structured failure evidence.
 Incompatible project layout changes require a new monotonic schema revision, semantic version
 decision, and one exact successor step appended to the contiguous migration registry. Do not change
-schema 0, schema 1, schema 2, schema 3, or schema 4 in place after release. Keep every file-backed save
-operation on `ProjectSaveCommand` and the existing complete-candidate publication path. Preserve
+schema 0, schema 1, schema 2, schema 3, or schema 4 in place after release. Keep every compatibility
+consumer synchronized with the one released-format table; never add a second schema-to-format match
+in persistence, integrity, engine, or API code. Keep every file-backed save operation on
+`ProjectSaveCommand` and the existing complete-candidate publication path. Preserve
 active-path rebinding at the publication commit point, explicit collision policy, precommit cleanup
 ownership, the persistent sibling lock, active and destination generation fencing, and honest
 published-error context together. Keep autosave clockless, host-driven,

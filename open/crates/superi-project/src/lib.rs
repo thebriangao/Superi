@@ -11,6 +11,7 @@
 //! restoration, and durable dismissal are implemented against that same authoritative store.
 
 pub mod autosave;
+pub mod compatibility;
 pub mod diagnostics;
 pub mod document;
 pub mod extensions;
@@ -27,6 +28,12 @@ pub use autosave::{
     ProjectAutosaveDisposition, ProjectAutosaveOperation, ProjectAutosaveOutcome,
     ProjectAutosavePolicy, ProjectAutosaveState, MAX_PROJECT_AUTOSAVE_RETENTION,
 };
+pub use compatibility::{
+    negotiate_project_format, project_format_support, ProjectFormatIdentity, ProjectFormatRelease,
+    ProjectFormatSupport, ProjectVersionDisposition, ProjectVersionNegotiation,
+    ProjectVersionReason, PROJECT_APPLICATION_ID, PROJECT_FORMAT, PROJECT_FORMAT_VERSION,
+    PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION, PROJECT_SCHEMA_REVISION,
+};
 pub use diagnostics::{
     ProjectComponentEvidence, ProjectDiagnosticComponent, ProjectDiagnostics, ProjectDigest,
     ProjectGraphScope, PROJECT_HASH_ALGORITHM, PROJECT_HASH_FORMAT_REVISION,
@@ -38,10 +45,7 @@ pub use integrity::{
     MAX_PROJECT_INTEGRITY_EVIDENCE_VALUE_BYTES, MAX_PROJECT_INTEGRITY_FINDINGS,
 };
 pub use media::MEDIA_PATH_TARGET_FORMAT;
-pub use persist::{
-    ProjectDatabase, PROJECT_APPLICATION_ID, PROJECT_FORMAT, PROJECT_FORMAT_VERSION,
-    PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION, PROJECT_SCHEMA_REVISION,
-};
+pub use persist::ProjectDatabase;
 pub use recovery::{
     ProjectRecoveryCandidate, ProjectRecoveryCandidateId, ProjectRecoveryCatalog,
     ProjectRecoveryComparison, ProjectRecoveryController, ProjectRecoveryFinding,

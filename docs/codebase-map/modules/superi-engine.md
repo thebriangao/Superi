@@ -2,7 +2,7 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 12734cb8d31086bc7dd1535f9c013f40506f2150f272a3bb47631d442894a53f
+source_hash: 52cabdb9c97213445aba53af41640cad22a79425aed1b27eeb632aa75aafbbba
 source_files: 68
 mapped_at_commit: working-tree
 ---
@@ -91,7 +91,8 @@ through the existing dispatcher.
   and optionally attaches one exact file-backed recovery coordinator whose discover, restore, and
   dismiss commands publish correlated complete recovery state.
 - `open/crates/superi-engine/src/editor.rs`: Exposes the curated checked construction vocabulary
-  needed by the upper-tier generic project API while adding no wire model, mutation algorithm,
+  needed by upper-tier generic project and version negotiation APIs, including the project-owned
+  compatibility table and typed negotiation result, while adding no wire model, mutation algorithm,
   dispatcher, history, persistence owner, or lower dependency edge.
 - `open/crates/superi-engine/src/editor_state.rs`: Captures one immutable project-history revision,
   deterministic diagnostics and settings, canonical timeline, graph, and clip-mix resources,
@@ -344,7 +345,8 @@ intentionally absent from engine mutations.
 `editor` is a narrow upper-tier construction seam. It reexports the existing exact identifiers,
 time values, editorial material, timeline edit operations, compiled graph mutation vocabulary,
 media paths, clip-mix controls, extension state, compound project transactions, history commands,
-dispatcher commands, snapshots, and database consumer needed by `superi-api::ProjectEditorApi`.
+dispatcher commands, snapshots, database consumer, and project compatibility vocabulary needed by
+`superi-api::ProjectEditorApi` and `superi-api::VersionNegotiationApi`.
 It owns no behavior and deliberately does not derive or define wire serialization for lower-domain
 types. This keeps API conversion dependent only on `superi-engine` and `superi-core` while every
 semantic check remains with its existing lower owner.
@@ -1794,6 +1796,9 @@ projects complete current authored-operation control and minimum typed history s
 curated engine seam. The strict validation projection remains read-only coherent state.
 The public asynchronous job facade now projects queue control and full replacement events without
 moving scheduler, poll, executor, or typed-result ownership out of engine.
+The editor seam also exposes project-owned version support and compatibility negotiation to the API
+without adding engine state, execution, mutation, persistence, or a competing compatibility
+decision.
 
 Typed project settings resolution and dispatcher control are substantive and test-backed. They
 preserve durable authored scalar meaning and expose one real API path, but resolution does not
@@ -1896,6 +1901,8 @@ API has a strict DTO, complete conversion, parity proof, and real dispatcher con
 Keep scripting interpretation, exact-source identity, method vocabulary, and traces in the API.
 Script steps must continue through the same sealed editor request, dispatcher, revision fences,
 history, events, and lower-domain owners rather than creating an engine script dispatcher.
+Project compatibility remains implemented and tested in `superi-project`; this seam may only
+reexport that vocabulary for an API-owned wire projection and must not copy its release table.
 Keep `InspectProjectDiagnostics` bound to the selected immutable history snapshot and delegate all
 hash framing, component evidence, versioning, and exclusions to `superi-project`. Preserve its typed
 complete result, successful command sequencing, missing-owner failure, eventless behavior, and zero

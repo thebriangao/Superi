@@ -1,4 +1,8 @@
-import { inspectProjectCommand, unavailableAiState } from "./api-contract";
+import {
+  inspectProjectCommand,
+  unavailableAiState,
+  versionNegotiationRequest,
+} from "./api-contract";
 
 type FrontendGate = "strict-types" | "production-bundle";
 
@@ -23,6 +27,6 @@ const heading = document.createElement("h1");
 heading.textContent = `${contract.product} frontend contract`;
 
 const summary = document.createElement("p");
-summary.textContent = `${contract.status}: ${contract.gates.join(", ")}; ${inspectProjectCommand.command.command}; ai ${unavailableAiState.runtime_availability}`;
+summary.textContent = `${contract.status}: ${contract.gates.join(", ")}; ${inspectProjectCommand.command.command}; api ${versionNegotiationRequest.api_schema_versions.at(-1)}; ai ${unavailableAiState.runtime_availability}`;
 
 root.replaceChildren(heading, summary);

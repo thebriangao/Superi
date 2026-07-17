@@ -6,6 +6,8 @@ production bundle. It is not the deferred React application or Tauri desktop she
 no authoritative project or editing behavior. It does consume the committed generated bindings at
 `open/bindings/typescript/superi-api.ts`, including the canonical project command, replacement
 event, editor resource, AI state, and transport-neutral client types.
+The smoke consumer also constructs the typed API version negotiation request and consumes its
+registered response type through the same method map used by every transport.
 
 Run the same gates as CI:
 

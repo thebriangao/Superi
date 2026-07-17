@@ -3,7 +3,21 @@
 use superi_core::settings::SemanticVersion;
 
 /// Schema version for the complete public API catalog.
-pub const PUBLIC_API_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 2, 0);
+pub const PUBLIC_API_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 3, 0);
+
+/// Every released public API catalog schema in ascending SemVer precedence order.
+pub const PUBLIC_API_SCHEMA_RELEASES: &[SemanticVersion] = &[
+    SemanticVersion::new(1, 0, 0),
+    SemanticVersion::new(1, 1, 0),
+    SemanticVersion::new(1, 2, 0),
+    SemanticVersion::new(1, 3, 0),
+];
+
+/// Independent request and response schema for version negotiation.
+pub const VERSION_NEGOTIATION_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
+
+/// Stateless JSON-RPC query for API and optional project version negotiation.
+pub const NEGOTIATE_API_VERSION_METHOD: &str = "superi.api.version.negotiate";
 
 /// Schema version for structured public API failures.
 pub const PUBLIC_ERROR_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);

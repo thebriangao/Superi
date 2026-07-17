@@ -32,6 +32,14 @@ use superi_timeline::serialize::{
     deserialize_timeline_state, serialize_timeline_state, TIMELINE_STATE_FORMAT_REVISION,
 };
 
+use crate::compatibility::{
+    project_format_release, PROJECT_FORMAT_VERSION_SCHEMA_ONE, PROJECT_FORMAT_VERSION_SCHEMA_THREE,
+    PROJECT_FORMAT_VERSION_SCHEMA_TWO,
+};
+pub use crate::compatibility::{
+    PROJECT_APPLICATION_ID, PROJECT_FORMAT, PROJECT_FORMAT_VERSION,
+    PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION, PROJECT_SCHEMA_REVISION,
+};
 use crate::document::{ProjectDocument, ProjectGraph, ProjectSnapshot, StandaloneProjectGraph};
 use crate::extensions::{
     ProjectExtensionFailure, ProjectExtensionKind, ProjectExtensionLifecycle,
@@ -52,20 +60,6 @@ pub(crate) const MAX_SETTINGS_COMPONENT_BYTES: usize = 1024 * 1024;
 pub(crate) const MAX_EXTENSION_METADATA_BYTES: usize = 8 * 1024 * 1024;
 pub(crate) const MAX_GRAPH_COUNT: usize = 4096;
 pub(crate) const MAX_STANDALONE_NAME_BYTES: usize = 16 * 1024;
-
-/// SQLite application identity stored in every `.superi` database (`SUPR`).
-pub const PROJECT_APPLICATION_ID: u32 = 0x5355_5052;
-/// Oldest project database schema with a registered lossless forward migration.
-pub const PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION: u32 = 0;
-/// Current monotonic project database schema revision.
-pub const PROJECT_SCHEMA_REVISION: u32 = 4;
-/// Stable semantic identity of the whole-project format.
-pub const PROJECT_FORMAT: &str = "superi.project";
-/// Current semantic project format version.
-pub const PROJECT_FORMAT_VERSION: &str = "1.3.0";
-pub(crate) const PROJECT_FORMAT_VERSION_SCHEMA_THREE: &str = "1.2.0";
-pub(crate) const PROJECT_FORMAT_VERSION_SCHEMA_TWO: &str = "1.1.0";
-pub(crate) const PROJECT_FORMAT_VERSION_SCHEMA_ONE: &str = "1.0.0";
 
 pub(crate) const PROJECT_METADATA_SCHEMA: &str = "CREATE TABLE project_metadata (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format TEXT NOT NULL CHECK (format = 'superi.project'), format_version TEXT NOT NULL, primitive_schema_revision INTEGER NOT NULL CHECK (primitive_schema_revision > 0), project_id BLOB NOT NULL CHECK (length(project_id) = 16), document_revision TEXT NOT NULL, root_timeline_id BLOB NOT NULL CHECK (length(root_timeline_id) = 16), manifest_sha256 BLOB NOT NULL CHECK (length(manifest_sha256) = 32)) STRICT";
 pub(crate) const TIMELINE_COMPONENT_SCHEMA: &str = "CREATE TABLE timeline_component (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format_revision INTEGER NOT NULL CHECK (format_revision > 0), byte_length INTEGER NOT NULL CHECK (byte_length >= 0 AND byte_length <= 67108864), sha256 BLOB NOT NULL CHECK (length(sha256) = 32), document BLOB NOT NULL CHECK (length(document) = byte_length)) STRICT";
@@ -1841,18 +1835,14 @@ fn load_checked_connection(
             },
         )
         .map_err(|source| database_error(source, "read_project_metadata"))?;
-    let expected_format_version = match schema_revision {
-        1 => PROJECT_FORMAT_VERSION_SCHEMA_ONE,
-        2 => PROJECT_FORMAT_VERSION_SCHEMA_TWO,
-        3 => PROJECT_FORMAT_VERSION_SCHEMA_THREE,
-        PROJECT_SCHEMA_REVISION => PROJECT_FORMAT_VERSION,
-        _ => {
-            return Err(corrupt(
+    let expected_format_version = project_format_release(schema_revision)
+        .map(|release| release.format_version())
+        .ok_or_else(|| {
+            corrupt(
                 "read_project_metadata",
                 "project loader received an unsupported schema revision",
-            ));
-        }
-    };
+            )
+        })?;
     if metadata.0 != PROJECT_FORMAT || metadata.1 != expected_format_version {
         return Err(unsupported(
             "read_project_metadata",

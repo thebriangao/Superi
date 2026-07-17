@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 3209781550ff165e1a08dfe726ab47f91448ea8b3aa76875929763721a56ea7b
+source_hash: 893b3c04aa7460c164da11723f76ad935daf359b24acb0c1cad7c5f44438d5e8
 source_files: 153
 mapped_at_commit: working-tree
 ---
@@ -392,7 +392,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 
 - `ci/frontend-smoke/.node-version`: Pins Node.js 24.13.0 for local and hosted frontend gates.
 - `ci/frontend-smoke/README.md`: Defines the CI-only boundary, exact local commands, build-before-test
-  ordering, and migration requirement when the real Phase 3 application enters the repository.
+  ordering, typed version negotiation consumption, and migration requirement when the real Phase 3
+  application enters the repository.
 - `ci/frontend-smoke/index.html`: Supplies the minimal browser document and module entry consumed by
   the Vite production build.
 - `ci/frontend-smoke/package-lock.json`: Lockfile version 3 resolution for exact TypeScript 5.9.3,
@@ -400,15 +401,16 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `ci/frontend-smoke/package.json`: Declares a private CI package, Node.js 24.13.0, independent
   typecheck, build, and test commands, and exact TypeScript and Vite development dependencies.
 - `ci/frontend-smoke/src/api-contract.ts`: Imports the committed generated API artifact, constructs
-  an exact typed project command and unavailable AI state, consumes method, event, and resource maps,
-  and exposes the transport-neutral client constructor to the browser build.
+  an exact typed project command, unavailable AI state, and API version negotiation request,
+  consumes negotiation response, method, event, and resource maps, and exposes the transport-neutral
+  client constructor to the browser build.
 - `ci/frontend-smoke/src/main.ts`: Implements a strict typed browser entry that verifies the contract
-  root, consumes the generated command and AI state examples, and renders the declared product,
-  readiness, and independent frontend gates.
+  root, consumes generated command, negotiation, and AI state examples, and renders the declared
+  product, readiness, and independent frontend gates.
 - `ci/frontend-smoke/tests/contract.test.mjs`: Verifies exact scripts and versions, strict compiler
   settings, immutable and least-privilege workflow wiring, locked installation, mandatory gates,
-  generated API import and typed maps, client surface, and the hashed JavaScript entry in the
-  production bundle.
+  generated API import, negotiation contract, typed maps, client surface, and the hashed JavaScript
+  entry in the production bundle.
 - `ci/frontend-smoke/tsconfig.json`: Defines strict no-emit TypeScript checking for the browser entry
   with ES2022, DOM, bundler-resolution, isolated-module, and forced-module semantics.
 
@@ -433,9 +435,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 ### Cargo workspace and repository configuration
 
 - `open/bindings/typescript/superi-api.ts`: Deterministic committed TypeScript representation of the
-  public API. It contains all named DTOs, exact method, event, and resource maps, recursive wire
-  primitives, the bounded local scripting request, program, trace, and response types, and a
-  transport-neutral typed client without owning runtime IPC.
+  public API. It contains all named DTOs including version negotiation, exact method, event, and
+  resource maps, recursive wire primitives, the bounded local scripting request, program, trace,
+  and response types, and a transport-neutral typed client without owning runtime IPC.
 - `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 25 local
   workspace packages, registry dependencies, target-support dependency trees, scenario digest
   and process-instrumentation dependency edges, the API introspection and validation contracts'
@@ -1267,8 +1269,8 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
 - `.github/workflows/frontend.yml` performs `npm ci`, `npm run typecheck`, `npm run build`, and
   `npm test` under exact Node.js, TypeScript, and Vite versions. The contract tests require strict
   no-emit checking, immutable actions, read-only credentials, every independent gate, the committed
-  generated API import and typed maps, the transport-neutral client surface, and a hashed JavaScript
-  entry in the generated production bundle.
+  generated API import, typed negotiation request and response, typed maps, the transport-neutral
+  client surface, and a hashed JavaScript entry in the generated production bundle.
 - `cargo test -p superi-api --features typescript-bindings --test typescript_bindings_contract`
   proves deterministic API rendering, complete canonical registry coverage, required typed maps,
   and absence of timestamps or checkout paths. `cargo test -p superi-api-bindings` proves
@@ -1371,7 +1373,7 @@ Its `superi-api` package record now includes one test-only concurrency edge for 
 introspection ownership contract without changing the production runtime graph.
 The API now owns a nonserializable host permission context, typed lexical filesystem and plugin
 scopes, explicit destructive operations, deny precedence, payload-derived requirements, and schema
-`1.2.0` discovery metadata. Its bounded `superi-json` runtime uses already resolved JSON and
+`1.3.0` discovery metadata. Its bounded `superi-json` runtime uses already resolved JSON and
 SHA-256 packages and preserves the same nested authorization and project command owner. The CLI exercises that boundary with one
 exact canonical fixture-read grant; authentication, symlink confinement, and operating-system
 sandboxing remain host and I/O-owner responsibilities.
@@ -1589,7 +1591,7 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`8b5ef91657fd7bac7e6299f89833470484649711` when this checkpoint began. Its hash describes the exact
+`c99ea17d7b83dd42b09cd56592e60e899f39b81a` when this checkpoint began. Its hash describes the exact
 152 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes

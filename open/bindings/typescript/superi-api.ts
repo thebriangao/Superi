@@ -38,6 +38,21 @@ export type ApiPermissionRequirementMode = "none" | "static" | "payload_dependen
 export type ApiPluginOperation = "manage_state" | "manage_lifecycle" | "delegate_capabilities";
 
 /**
+ * One compatibility dimension with no common client and server release.
+ */
+export type ApiVersionIncompatibility = "no_common_api_schema_version" | "no_common_primitive_schema_revision";
+
+/**
+ * Canonical common API schema and primitive revision selected for a client.
+ */
+export type ApiVersionSelection = { api_schema_version: SemanticVersion; primitive_schema_revision: number };
+
+/**
+ * Server releases available for public API negotiation.
+ */
+export type ApiVersionSupport = { api_schema_versions: SemanticVersion[]; primitive_schema_revisions: number[]; project_format: ProjectFormatSupportDescriptor };
+
+/**
  * One unsuccessful prerequisite retained on a blocked job.
  */
 export type AsyncJobDependencyFailureSnapshot = { handle: AsyncJobHandle; status: AsyncJobDependencyStatus };
@@ -1058,6 +1073,16 @@ export type MediaOperation = { kind: "source" } | { kind: "decode"; codec: strin
 export type MediaOperationSupport = { operation: MediaOperation; primary_backends: string[]; fallback_backends: string[] };
 
 /**
+ * Strict client offers for public API and optional project format negotiation.
+ */
+export type NegotiateApiVersion = { api_schema_versions: SemanticVersion[]; primitive_schema_revisions: number[]; project: ProjectFormatDescriptor | null };
+
+/**
+ * Complete deterministic API and optional project negotiation response.
+ */
+export type NegotiateApiVersionResult = { support: ApiVersionSupport; selection: ApiVersionSelection | null; incompatibilities: ApiVersionIncompatibility[]; project: ProjectCompatibilityResult | null };
+
+/**
  * Strict command for registering one independent subscriber identity.
  */
 export type OpenEventSubscription = { subscription_id: SubscriptionId; start: SubscriptionStart };
@@ -1126,6 +1151,36 @@ export type ProjectCommandEvidence = { result: "applied"; actions: ProjectAction
  * Stable command classification returned after public project execution.
  */
 export type ProjectCommandKind = "apply" | "undo" | "redo" | "inspect";
+
+/**
+ * Public project compatibility outcome.
+ */
+export type ProjectCompatibilityDisposition = "current" | "migration_required" | "requires_newer_application" | "unsupported" | "invalid";
+
+/**
+ * Public typed reason for one project compatibility outcome.
+ */
+export type ProjectCompatibilityReason = "registered_migration" | "foreign_application_identity" | "foreign_format_identity" | "future_schema_revision" | "future_semantic_format" | "future_primitive_revision" | "unregistered_schema_revision" | "inconsistent_schema_format" | "inconsistent_primitive_revision" | "unknown";
+
+/**
+ * Complete public compatibility projection for one project descriptor.
+ */
+export type ProjectCompatibilityResult = { disposition: ProjectCompatibilityDisposition; reasons: ProjectCompatibilityReason[]; target: ProjectFormatReleaseDescriptor; migration_path: ProjectFormatReleaseDescriptor[] };
+
+/**
+ * Complete observed durable project format supplied for compatibility evaluation.
+ */
+export type ProjectFormatDescriptor = { application_id: number; format: string; format_version: SemanticVersion; primitive_schema_revision: number; schema_revision: number };
+
+/**
+ * One project schema and semantic format pair on the public wire.
+ */
+export type ProjectFormatReleaseDescriptor = { schema_revision: number; format_version: SemanticVersion };
+
+/**
+ * Public projection of the server's project format support.
+ */
+export type ProjectFormatSupportDescriptor = { application_id: number; format: string; primitive_schema_revision: number; releases: ProjectFormatReleaseDescriptor[] };
 
 /**
  * Minimum complete replacement state owned by the generic history command surface.
@@ -1474,6 +1529,7 @@ export type WorkflowValidationState = { workflow: EngineWorkflow; permit: Workfl
 
 export interface SuperiMethodMap {
   "superi.api.schema.get": { request: GetPublicApiSchema; response: GetPublicApiSchemaResult };
+  "superi.api.version.negotiate": { request: NegotiateApiVersion; response: NegotiateApiVersionResult };
   "superi.audio.automation.get": { request: GetAudioAutomation; response: GetAudioAutomationResult };
   "superi.audio.automation.transaction.execute": { request: ExecuteAudioAutomationTransaction; response: ExecuteAudioAutomationTransactionResult };
   "superi.editor.state.get": { request: GetEditorState; response: GetEditorStateResult };

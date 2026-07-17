@@ -2,15 +2,16 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: bc682d4d5c8ef5b89bbe67b1ae5a071da5f6ed81089c0adb65c0796c6b5242be
-source_files: 35
+source_hash: a127af8011afcc0f05a70a2fd68a9f1f551536253301960c3ab3ba2f1de4aa30
+source_files: 37
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
 `superi-api` owns the transport-neutral public boundary for UI, scripting, extension, CLI, and
-automation clients. Twelve public slices are implemented: media capability introspection, complete
+automation clients. Thirteen public slices are implemented: stateless API and optional project
+version negotiation, media capability introspection, complete
 engine capability and health introspection for adaptive clients, canonical editorial scenario
 control through revision-fenced typed transactions and ordered full-state events, coherent
 read-only integration validation, durable project settings inspection and optimistic mutation,
@@ -19,8 +20,8 @@ authored audio automation inspection and transaction execution through the full 
 complete authored project control, deterministic local scripting, and complete editor replacement
 state through one generic revision-fenced facade, and asynchronous job inspection, progress, cooperative control, and ordered
 completion events over the engine-owned export queue, plus bounded ordered delivery for the complete
-public event vocabulary. The additive schema `1.2.0` catalog classifies all 27 current methods into
-16 commands and 11 queries, describes all eight events and 11 replacement resources, publishes the
+public event vocabulary. The additive schema `1.3.0` catalog classifies all 28 current methods into
+16 commands and 12 queries, describes all eight events and 11 replacement resources, publishes the
 complete error, capability, and permission vocabularies, and defines strict data-only JSON-RPC 2.0
 envelopes. A host-injected nonserializable permission context denies protected filesystem, plugin,
 and destructive operations by default, derives exact requirements from complete typed payloads,
@@ -75,9 +76,13 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   and ordered engine event projection. It exposes result availability only as a Boolean and retains
   runtime executors and typed artifacts below the API boundary.
 - `open/crates/superi-api/src/lib.rs`: Exposes API, audio automation, command, event stream, event,
-  project editor, complete editor state, asynchronous jobs, permissions, settings, project recovery,
-  scenario, public schema, local scripting, validation, and version modules, plus the feature-gated
-  TypeScript renderer.
+  project editor, complete editor state, asynchronous jobs, version negotiation, permissions,
+  settings, project recovery, scenario, public schema, local scripting, validation, and version
+  modules, plus the feature-gated TypeScript renderer.
+- `open/crates/superi-api/src/negotiation.rs`: Implements the permission-free stateless
+  `superi.api.version.negotiate` query, strict bounded ascending client offers, highest common
+  canonical SemVer and primitive selection, typed incompatibility dimensions, complete server
+  support disclosure, and an independent API-owned projection of project compatibility.
 - `open/crates/superi-api/src/permissions.rs`: Owns validated serializable rules and requirements,
   component-aware project-relative, Unix, Windows drive, and Windows UNC scopes, exact and recursive
   matching, plugin identity and capability delegation ceilings, destructive-operation scopes,
@@ -119,9 +124,10 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   accessors. It also provides the standalone starting-engine query owner used by the CLI and derives
   standalone construction failures from the shared user-safe projection.
 - `open/crates/superi-api/src/version.rs`: Owns all domain, catalog, and error schema revisions plus
-  permanent method and event names, including catalog revision `1.2.0`, scripting schema `1.0.0`,
-  `superi.project.script.run`, the complete `superi.jobs` vocabulary, the editor-state query, and
-  event subscription open, close, and poll methods.
+  permanent method and event names, including catalog revision `1.3.0`, its `1.0.0` through `1.3.0`
+  release table, scripting schema `1.0.0`, `superi.project.script.run`, the version negotiation
+  method, the complete `superi.jobs` vocabulary, the editor-state query, and event subscription
+  open, close, and poll methods.
 - `open/crates/superi-api/tests/async_jobs_contract.rs`: Proves strict handles, stable kind and
   weighted priority vocabulary, nonblocking progress and completion, every cooperative transition,
   cancel-all finality, deterministic ordering, dependency state, safe failure filtering, typed
@@ -184,12 +190,16 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
 - `open/crates/superi-api/tests/typescript_bindings_contract.rs`: Proves two-run deterministic
   rendering, exact coverage of every canonical method, event, and resource, required project,
   event, AI, error, map, and client declarations, and absence of checkout paths and timestamps.
+- `open/crates/superi-api/tests/version_negotiation_contract.rs`: Proves the permanent query and
+  schema, permission-free classification, strict offer ordering and bounds, SemVer build and
+  pre-release behavior, canonical highest-common selection, both incompatibility dimensions,
+  independent project outcomes, and strict JSON-RPC 2.0 framing.
 
 ## Public surface
 
-The public schema catalog is schema `1.2.0` at query method `superi.api.schema.get`.
+The public schema catalog is schema `1.3.0` at query method `superi.api.schema.get`.
 `PublicApiSchemaSnapshot` records stable primitive revision 1 and JSON-RPC `2.0`, then separates 16
-mutating commands from 11 read-only queries and lists all eight current replacement events, 11
+mutating commands from 12 read-only queries and lists all eight current replacement events, 11
 current replacement resources, one complete error vocabulary, one capability vocabulary, and one
 permission vocabulary in canonical name order. `ApiCommand` declares method kind, schema version,
 permission requirement mode, every possible permission kind, and exact requirement derivation with
@@ -223,6 +233,16 @@ they start no process, open no socket, own no engine or project state, and do no
 Core semantic versions remain strings, structured error and availability values remain exact string
 unions, diagnostic signed and unsigned integers remain decimal strings, recursive canonical JSON
 remains JSON, and ordinary API integer fields retain their current JSON number representation.
+
+The version negotiation surface is independent schema `1.0.0` at query
+`superi.api.version.negotiate`. `NegotiateApiVersion` requires nonempty bounded client API offers in
+strictly ascending SemVer precedence and nonzero primitive revisions in strictly ascending numeric
+order. Equal-precedence build variants, duplicates, descending offers, empty lists, and unknown
+fields fail before execution. `VersionNegotiationApi` selects the highest canonical server API
+release with equal precedence and the highest exact primitive revision, reports both missing
+dimensions when needed, and evaluates an optional complete project descriptor independently through
+the engine's curated reexport of the project-owned compatibility table. It performs no I/O,
+runtime downgrade, project open, state change, event, resource publication, or permission check.
 
 The media capability surface remains schema `2.0.0`, method
 `superi.media.capabilities.get`, and event `superi.media.capabilities.changed`. It exposes strict
@@ -368,7 +388,16 @@ The catalog does not inspect private engine enums or create runtime ownership. E
 facades still dispatch to the canonical engine owners after permission authorization, while
 read-only facades retain their current projection paths. JSON-RPC envelope types can carry those
 typed values later without implementing method routing, network transport, push delivery,
-authentication, or version negotiation.
+or authentication.
+
+Version negotiation is one stateless composition over immutable support contracts:
+
+```text
+NegotiateApiVersion strict client offers
+  -> VersionNegotiationApi highest common API and primitive selection
+  -> optional superi-project compatibility negotiation through the engine editor seam
+  -> typed selection, all missing dimensions, server support, and optional project result
+```
 
 Ordered public delivery remains downstream of every existing typed producer:
 
@@ -773,14 +802,21 @@ three-node graph with image ports, exact mirror parameters, four stable operatio
 plus two redo actions, final revision 8, structured engine context, last-valid-state retention, and
 serialized exclusion of a private missing-source path and raw context values.
 
-Four public schema contracts prove the exact 16-command, 11-query, eight-event, and 11-resource
-surface, current domain versions, catalog schema `1.2.0`, error schema `1.0.0`, media schema `2.0.0`,
+Four public schema contracts prove the exact 16-command, 12-query, eight-event, and 11-resource
+surface, current domain versions, catalog schema `1.3.0`, error schema `1.0.0`, media schema `2.0.0`,
 stable primitive revision 1, strict deterministic catalog round trips, invalid identity and
 duplicate rejection, typed JSON-RPC exclusivity, all four recovery classes, user-safe diagnostic
 filtering, last-valid resource identity and revision, the complete permission vocabulary, and exact
-permission metadata for all 27 methods. They include local scripting, every public asynchronous job and event
+permission metadata for all 28 methods. They include local scripting, version negotiation, every
+public asynchronous job and event
 subscription method and resource, but do not claim a network transport server, dynamic method
-routing, push delivery, authentication, or negotiation.
+routing, push delivery, or authentication.
+
+Four version negotiation contracts prove request schema `1.0.0`, permanent method identity,
+permission-free query classification, strict offer validation, canonical SemVer precedence despite
+client build metadata, pre-release ordering, highest common API and primitive selection, both typed
+missing dimensions, complete server support, independent project migration and future-format
+results, strict unknown-field rejection, and JSON-RPC 2.0 request and response round trips.
 
 Six event stream contracts plus one sequence-exhaustion unit test prove strict identities and wire
 values, finite configuration, duplicate and capacity rejection, exact eight-event union parity,
@@ -807,7 +843,8 @@ the generic project request and result, project replacement event, editable AI s
 error, method, event, and resource maps, and the typed client. The repository tool adds current,
 missing, stale, nonmutating-check, deterministic-generation, and idempotent-publication proof. The
 strict frontend smoke package imports the committed artifact, typechecks project command, event,
-resource, AI, transport, and client use, and includes that consumer in the production Vite bundle.
+resource, AI, negotiation request and response, transport, and client use, and includes that
+consumer in the production Vite bundle.
 
 dispatcher-owned export queue. They prove canonical handle rejection, strict wire round trips,
 stable kind and weighted priority vocabulary, nonblocking progress and ordered completion events,
@@ -877,9 +914,10 @@ bulk runtime payloads or hidden polling.
 
 ## Current status and risks
 
-The API now has eleven substantive domain surfaces plus bounded ordered event delivery, one complete
+The API now has twelve substantive domain surfaces plus bounded ordered event delivery, one complete
 discovery catalog, and strict wire grammar, including one unified generic authored project command
-and editor-state facade plus one asynchronous job control surface. Engine introspection gives
+and editor-state facade, one asynchronous job control surface, and stateless version negotiation.
+Engine introspection gives
 clients a coherent adaptation view without adding mutation
 authority, and integration validation extends that same state with precise action and endpoint
 evidence. Project settings retain exact durable scalar meaning, and project recovery now exposes one
@@ -914,11 +952,12 @@ it remains an in-process snapshot facade. The standalone helper creates a fresh 
 the CLI; a production UI must supply fresh observations from its live dispatcher. Validation does
 not supply transport, endpoint mutation, or background polling.
 
-The separate media, engine introspection, integration validation, scenario, event stream, catalog, and error
-schema versions are correct for independent surfaces. The catalog is `1.2.0` because local
-scripting is additive while individual method and resource schemas retain their own versions.
+The separate negotiation, media, engine introspection, integration validation, scenario, event
+stream, catalog, and error schema versions are correct for independent surfaces. The catalog is
+`1.3.0` because local scripting and negotiation are additive while individual method and resource
+schemas retain their own versions.
 Data-only JSON-RPC framing, bounded retryable polling, and host-injected authorization now exist,
-while network hosting, dynamic routing, version negotiation, authentication, persisted replay, and
+while network hosting, dynamic routing, authentication, persisted replay, and
 push delivery remain required before remote clients exist. Public scenario failure state
 is boxed to keep result errors bounded while preserving the same serialized shape and now removes
 raw context values.
@@ -932,6 +971,10 @@ CLI discovery assertion, and generated TypeScript map. Regenerate the committed 
 the nonmutating check after every public DTO or registry change. Preserve the safe error conversion
 boundary and require negative leak
 proof before adding context fields. Do not treat JSON-RPC data values as a transport implementation.
+Keep API release offers strictly ordered by SemVer precedence, return canonical server versions,
+retain all missing dimensions, and keep project compatibility delegated to `superi-project` through
+the behavior-free engine seam. Negotiation must remain stateless and cannot imply a runtime protocol
+downgrade that has not been implemented.
 Keep the public event union in exact parity with the catalog and preserve separate source and public
 sequence domains. Never advance subscriber state on poll, return events across a gap, reuse a stream
 identity after owner restart, omit an authoritative state resource from reconnect metadata, or add

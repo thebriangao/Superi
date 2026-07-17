@@ -34,6 +34,7 @@ use crate::events::{
     ScenarioStateChanged,
 };
 use crate::jobs::AsyncJobsSnapshot;
+use crate::negotiation::NegotiateApiVersion;
 use crate::permissions::{
     ApiDestructiveOperation, ApiFilesystemAccess, ApiFilesystemPlatform, ApiPermissionEffect,
     ApiPermissionKind, ApiPermissionRequirementMode, ApiPermissionRequirements, ApiPluginOperation,
@@ -1498,6 +1499,7 @@ macro_rules! for_each_public_method {
         $callback::<OpenEventSubscription>($($argument),+)?;
         $callback::<CloseEventSubscription>($($argument),+)?;
         $callback::<PollEvents>($($argument),+)?;
+        $callback::<NegotiateApiVersion>($($argument),+)?;
         $callback::<GetPublicApiSchema>($($argument),+)?;
     };
 }

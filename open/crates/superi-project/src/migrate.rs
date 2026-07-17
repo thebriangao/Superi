@@ -8,6 +8,7 @@ use superi_graph::serialize::{deserialize_graph, GRAPH_DOCUMENT_FORMAT_REVISION}
 use superi_timeline::compile::CompiledTimelineGraphValue;
 use superi_timeline::serialize::{deserialize_timeline_state, TIMELINE_STATE_FORMAT_REVISION};
 
+use crate::compatibility::{project_format_support, PROJECT_FORMAT_VERSION_SCHEMA_ZERO};
 use crate::document::{ProjectDocument, ProjectGraph, StandaloneProjectGraph};
 use crate::persist::{
     check_component_size, corrupt, database_error, fixed_bytes, initialize_schema,
@@ -21,7 +22,6 @@ use crate::persist::{
     PROJECT_SCHEMA_REVISION,
 };
 
-const LEGACY_FORMAT_VERSION: &str = "0.9.0";
 const LEGACY_PROJECT_METADATA_SCHEMA: &str = "CREATE TABLE project_metadata (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format TEXT NOT NULL CHECK (format = 'superi.project'), format_version TEXT NOT NULL, primitive_schema_revision INTEGER NOT NULL CHECK (primitive_schema_revision > 0), project_id BLOB NOT NULL CHECK (length(project_id) = 16), document_revision TEXT NOT NULL, root_timeline_id BLOB NOT NULL CHECK (length(root_timeline_id) = 16)) STRICT";
 const LEGACY_TIMELINE_COMPONENT_SCHEMA: &str = "CREATE TABLE timeline_component (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format_revision INTEGER NOT NULL CHECK (format_revision >= 0), document BLOB NOT NULL CHECK (length(document) <= 67108864)) STRICT";
 const LEGACY_GRAPH_COMPONENTS_SCHEMA: &str = "CREATE TABLE graph_components (graph_id BLOB PRIMARY KEY CHECK (length(graph_id) = 16), graph_kind TEXT NOT NULL CHECK (graph_kind IN ('timeline', 'standalone')), root_timeline_id BLOB CHECK (root_timeline_id IS NULL OR length(root_timeline_id) = 16), name TEXT, graph_revision TEXT NOT NULL, format_revision INTEGER NOT NULL CHECK (format_revision >= 0), document BLOB NOT NULL CHECK (length(document) <= 67108864), CHECK ((graph_kind = 'timeline' AND root_timeline_id IS NOT NULL AND name IS NULL) OR (graph_kind = 'standalone' AND root_timeline_id IS NULL AND name IS NOT NULL AND length(name) > 0))) STRICT, WITHOUT ROWID";
@@ -121,9 +121,26 @@ where
 }
 
 fn validate_registry() -> Result<()> {
+    let releases = project_format_support().releases();
+    if releases.len() != MIGRATIONS.len() + 1
+        || releases.first().map(|release| release.schema_revision())
+            != Some(PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION)
+        || releases.last().map(|release| release.schema_revision()) != Some(PROJECT_SCHEMA_REVISION)
+    {
+        return Err(project_error(
+            ErrorCategory::Internal,
+            Recoverability::Terminal,
+            "validate_project_migration_registry",
+            "project migration registry does not match the authoritative format table",
+        ));
+    }
     let mut expected = PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION;
-    for step in MIGRATIONS {
-        if step.source != expected || step.target != expected + 1 {
+    for (index, step) in MIGRATIONS.iter().enumerate() {
+        if step.source != expected
+            || step.target != expected + 1
+            || releases[index].schema_revision() != step.source
+            || releases[index + 1].schema_revision() != step.target
+        {
             return Err(project_error(
                 ErrorCategory::Internal,
                 Recoverability::Terminal,
@@ -383,7 +400,7 @@ fn load_legacy_project(connection: &Connection) -> Result<ProjectDocument> {
             },
         )
         .map_err(|source| database_error(source, "read_legacy_project_metadata"))?;
-    if metadata.0 != PROJECT_FORMAT || metadata.1 != LEGACY_FORMAT_VERSION {
+    if metadata.0 != PROJECT_FORMAT || metadata.1 != PROJECT_FORMAT_VERSION_SCHEMA_ZERO {
         return Err(unsupported(
             "read_legacy_project_metadata",
             "project uses an unsupported legacy semantic format version",
@@ -670,7 +687,7 @@ mod tests {
                 "INSERT INTO project_metadata (singleton, format, format_version, primitive_schema_revision, project_id, document_revision, root_timeline_id) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6)",
                 params![
                     PROJECT_FORMAT,
-                    LEGACY_FORMAT_VERSION,
+                    PROJECT_FORMAT_VERSION_SCHEMA_ZERO,
                     i64::from(STABLE_PRIMITIVE_SCHEMA_REVISION),
                     snapshot.project_id().to_bytes().as_slice(),
                     snapshot.revision().to_string(),

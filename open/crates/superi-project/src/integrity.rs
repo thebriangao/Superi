@@ -8,11 +8,15 @@ use std::path::{Path, PathBuf};
 use rusqlite::Connection;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_core::ids::{ProjectId, TimelineId};
+use superi_core::settings::SemanticVersion;
 
+use crate::compatibility::{
+    negotiate_project_format, ProjectFormatIdentity, ProjectVersionDisposition,
+};
 use crate::migrate::inspect_project_revision;
 use crate::persist::{
     close_connection, collect_sqlite_integrity, database_error, open_file_connection,
-    SqliteForeignKeyViolation, PROJECT_APPLICATION_ID, PROJECT_SCHEMA_REVISION,
+    project_error, SqliteForeignKeyViolation, PROJECT_APPLICATION_ID, PROJECT_SCHEMA_REVISION,
 };
 
 const SQLITE_HEADER: &[u8; 16] = b"SQLite format 3\0";
@@ -627,21 +631,11 @@ fn inspect_snapshot(connection: &Connection, path: PathBuf) -> Result<ProjectInt
             ),
         ));
     }
-    let document = match inspect_project_revision(connection, schema_revision) {
-        Ok(document) => document,
-        Err(error) => {
-            return checked_error_report(
-                path,
-                Some(schema_revision),
-                ProjectIntegrityStage::SemanticReconstruction,
-                error,
-            );
-        }
-    };
-    let project_format_version: String = match connection.query_row(
-        "SELECT format_version FROM project_metadata WHERE singleton = 1",
+    let (project_format, project_format_version, raw_primitive_revision): (String, String, i64) =
+        match connection.query_row(
+        "SELECT format, format_version, primitive_schema_revision FROM project_metadata WHERE singleton = 1",
         [],
-        |row| row.get(0),
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
     ) {
         Ok(value) => value,
         Err(source) => {
@@ -650,6 +644,86 @@ fn inspect_snapshot(connection: &Connection, path: PathBuf) -> Result<ProjectInt
                 Some(schema_revision),
                 ProjectIntegrityStage::ComponentEvidence,
                 database_error(source, "read_integrity_project_format"),
+            );
+        }
+    };
+    let primitive_revision = match u32::try_from(raw_primitive_revision) {
+        Ok(value) => value,
+        Err(_) => {
+            return checked_error_report(
+                path,
+                Some(schema_revision),
+                ProjectIntegrityStage::Schema,
+                project_error(
+                    ErrorCategory::CorruptData,
+                    Recoverability::UserCorrectable,
+                    "negotiate_project_format",
+                    "project primitive revision is outside the supported integer range",
+                ),
+            );
+        }
+    };
+    let semantic_version = match project_format_version.parse::<SemanticVersion>() {
+        Ok(value) => value,
+        Err(_) => {
+            return checked_error_report(
+                path,
+                Some(schema_revision),
+                ProjectIntegrityStage::Schema,
+                project_error(
+                    ErrorCategory::CorruptData,
+                    Recoverability::UserCorrectable,
+                    "negotiate_project_format",
+                    "project semantic format version is malformed",
+                ),
+            );
+        }
+    };
+    let compatibility = negotiate_project_format(ProjectFormatIdentity::new(
+        PROJECT_APPLICATION_ID,
+        project_format,
+        semantic_version,
+        primitive_revision,
+        schema_revision,
+    ));
+    match compatibility.disposition() {
+        ProjectVersionDisposition::Current | ProjectVersionDisposition::MigrationRequired => {}
+        ProjectVersionDisposition::RequiresNewerApplication
+        | ProjectVersionDisposition::Unsupported => {
+            return checked_error_report(
+                path,
+                Some(schema_revision),
+                ProjectIntegrityStage::Schema,
+                project_error(
+                    ErrorCategory::Unsupported,
+                    Recoverability::UserCorrectable,
+                    "negotiate_project_format",
+                    "project format is not supported by this application version",
+                ),
+            );
+        }
+        ProjectVersionDisposition::Invalid => {
+            return checked_error_report(
+                path,
+                Some(schema_revision),
+                ProjectIntegrityStage::Schema,
+                project_error(
+                    ErrorCategory::CorruptData,
+                    Recoverability::UserCorrectable,
+                    "negotiate_project_format",
+                    "project format fields do not identify a registered release",
+                ),
+            );
+        }
+    }
+    let document = match inspect_project_revision(connection, schema_revision) {
+        Ok(document) => document,
+        Err(error) => {
+            return checked_error_report(
+                path,
+                Some(schema_revision),
+                ProjectIntegrityStage::SemanticReconstruction,
+                error,
             );
         }
     };

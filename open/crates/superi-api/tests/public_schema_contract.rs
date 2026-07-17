@@ -35,6 +35,7 @@ const COMMANDS: &[&str] = &[
 
 const QUERIES: &[&str] = &[
     "superi.api.schema.get",
+    "superi.api.version.negotiate",
     "superi.audio.automation.get",
     "superi.editor.state.get",
     "superi.engine.integration.validation.get",
@@ -102,7 +103,7 @@ fn current_catalog_is_complete_versioned_sorted_and_deterministic() {
     assert_eq!(snapshot.capability().availability().len(), 4);
     assert_eq!(
         snapshot.permission().schema().version().to_string(),
-        "1.2.0"
+        "1.3.0"
     );
     assert_eq!(snapshot.permission().requirement_modes().len(), 3);
     assert_eq!(snapshot.permission().kinds().len(), 3);
@@ -352,6 +353,8 @@ fn names<T>(values: &[T], name: impl Fn(&T) -> &str) -> Vec<&str> {
 fn expected_domain_version(name: &str) -> SemanticVersion {
     if name == "superi.api.schema.get" {
         PUBLIC_API_SCHEMA_VERSION
+    } else if name == "superi.api.version.negotiate" {
+        SemanticVersion::new(1, 0, 0)
     } else if name.starts_with("superi.media.capabilities") {
         SemanticVersion::new(2, 0, 0)
     } else if name == GET_PUBLIC_API_SCHEMA_METHOD {
