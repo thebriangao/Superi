@@ -9,6 +9,7 @@ pub mod events;
 pub mod project;
 pub mod recovery;
 pub mod scenario;
+pub mod schema;
 pub mod scripting;
 pub mod validation;
 pub mod version;

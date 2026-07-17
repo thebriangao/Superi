@@ -1,6 +1,7 @@
 //! Stable public event vocabulary.
 
 use serde::{Deserialize, Serialize};
+use superi_core::settings::SemanticVersion;
 
 use crate::api::{EngineIntrospectionSnapshot, MediaCapabilitiesSnapshot};
 use crate::audio_automation::AudioAutomationSnapshot;
@@ -8,15 +9,21 @@ use crate::project::ProjectSettingsSnapshot;
 use crate::recovery::ProjectRecoverySnapshot;
 use crate::scenario::ScenarioStateSnapshot;
 use crate::version::{
-    AUDIO_AUTOMATION_CHANGED_EVENT, ENGINE_INTROSPECTION_CHANGED_EVENT,
-    MEDIA_CAPABILITIES_CHANGED_EVENT, PROJECT_RECOVERY_CHANGED_EVENT,
-    PROJECT_SETTINGS_CHANGED_EVENT, SCENARIO_STATE_CHANGED_EVENT,
+    AUDIO_AUTOMATION_CHANGED_EVENT, AUDIO_AUTOMATION_SCHEMA_VERSION,
+    ENGINE_INTROSPECTION_CHANGED_EVENT, ENGINE_INTROSPECTION_SCHEMA_VERSION,
+    MEDIA_CAPABILITIES_CHANGED_EVENT, MEDIA_CAPABILITIES_SCHEMA_VERSION,
+    PROJECT_RECOVERY_CHANGED_EVENT, PROJECT_RECOVERY_SCHEMA_VERSION,
+    PROJECT_SETTINGS_CHANGED_EVENT, PROJECT_SETTINGS_SCHEMA_VERSION, SCENARIO_STATE_CHANGED_EVENT,
+    SLICE_SCENARIO_SCHEMA_VERSION,
 };
 
 /// One typed event carried by the ordered public API event channel.
 pub trait ApiEvent {
     /// Permanent namespaced event name.
     const NAME: &'static str;
+
+    /// Version of the event payload contract.
+    const SCHEMA_VERSION: SemanticVersion;
 }
 
 /// Full replacement project recovery state after discovery, restore, or dismissal.
@@ -83,6 +90,7 @@ impl ProjectRecoveryChanged {
 
 impl ApiEvent for ProjectRecoveryChanged {
     const NAME: &'static str = PROJECT_RECOVERY_CHANGED_EVENT;
+    const SCHEMA_VERSION: SemanticVersion = PROJECT_RECOVERY_SCHEMA_VERSION;
 }
 
 /// Full replacement authored automation state emitted after one committed transaction.
@@ -146,6 +154,7 @@ impl AudioAutomationChanged {
 
 impl ApiEvent for AudioAutomationChanged {
     const NAME: &'static str = AUDIO_AUTOMATION_CHANGED_EVENT;
+    const SCHEMA_VERSION: SemanticVersion = AUDIO_AUTOMATION_SCHEMA_VERSION;
 }
 
 /// Full replacement project settings state emitted after one committed transaction.
@@ -204,6 +213,7 @@ impl ProjectSettingsChanged {
 
 impl ApiEvent for ProjectSettingsChanged {
     const NAME: &'static str = PROJECT_SETTINGS_CHANGED_EVENT;
+    const SCHEMA_VERSION: SemanticVersion = PROJECT_SETTINGS_SCHEMA_VERSION;
 }
 
 /// Full replacement state emitted when media capabilities change.
@@ -227,6 +237,7 @@ impl MediaCapabilitiesChanged {
 
 impl ApiEvent for MediaCapabilitiesChanged {
     const NAME: &'static str = MEDIA_CAPABILITIES_CHANGED_EVENT;
+    const SCHEMA_VERSION: SemanticVersion = MEDIA_CAPABILITIES_SCHEMA_VERSION;
 }
 
 /// Full replacement state emitted when engine capability or health state changes.
@@ -250,6 +261,7 @@ impl EngineIntrospectionChanged {
 
 impl ApiEvent for EngineIntrospectionChanged {
     const NAME: &'static str = ENGINE_INTROSPECTION_CHANGED_EVENT;
+    const SCHEMA_VERSION: SemanticVersion = ENGINE_INTROSPECTION_SCHEMA_VERSION;
 }
 
 /// Full replacement scenario state emitted after one committed transaction.
@@ -313,4 +325,5 @@ impl ScenarioStateChanged {
 
 impl ApiEvent for ScenarioStateChanged {
     const NAME: &'static str = SCENARIO_STATE_CHANGED_EVENT;
+    const SCHEMA_VERSION: SemanticVersion = SLICE_SCENARIO_SCHEMA_VERSION;
 }

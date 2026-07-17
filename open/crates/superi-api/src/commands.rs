@@ -1,20 +1,26 @@
 //! Stable public command vocabulary.
 
 use serde::{Deserialize, Serialize};
+use superi_core::settings::SemanticVersion;
 
 use crate::api::{EngineIntrospectionSnapshot, MediaCapabilitiesSnapshot};
 use crate::audio_automation::{AudioAutomationMutation, AudioAutomationSnapshot};
 use crate::project::{ProjectSettingMutation, ProjectSettingsSnapshot};
 use crate::recovery::{ProjectRecoveryComparisonSnapshot, ProjectRecoverySnapshot};
 use crate::scenario::{ScenarioActionResult, ScenarioTransactionResult, SliceAction};
+use crate::schema::PublicMethodKind;
 use crate::validation::IntegrationValidationSnapshot;
 use crate::version::{
-    COMPARE_PROJECT_RECOVERY_METHOD, DISMISS_PROJECT_RECOVERY_METHOD,
-    EXECUTE_AUDIO_AUTOMATION_TRANSACTION_METHOD, EXECUTE_PROJECT_SETTINGS_TRANSACTION_METHOD,
-    EXECUTE_SCENARIO_ACTION_METHOD, EXECUTE_SCENARIO_TRANSACTION_METHOD,
-    GET_AUDIO_AUTOMATION_METHOD, GET_ENGINE_INTEGRATION_VALIDATION_METHOD,
-    GET_ENGINE_INTROSPECTION_METHOD, GET_MEDIA_CAPABILITIES_METHOD, GET_PROJECT_RECOVERY_METHOD,
-    GET_PROJECT_SETTINGS_METHOD, RESTORE_PROJECT_RECOVERY_METHOD,
+    AUDIO_AUTOMATION_SCHEMA_VERSION, COMPARE_PROJECT_RECOVERY_METHOD,
+    DISMISS_PROJECT_RECOVERY_METHOD, ENGINE_INTEGRATION_VALIDATION_SCHEMA_VERSION,
+    ENGINE_INTROSPECTION_SCHEMA_VERSION, EXECUTE_AUDIO_AUTOMATION_TRANSACTION_METHOD,
+    EXECUTE_PROJECT_SETTINGS_TRANSACTION_METHOD, EXECUTE_SCENARIO_ACTION_METHOD,
+    EXECUTE_SCENARIO_TRANSACTION_METHOD, GET_AUDIO_AUTOMATION_METHOD,
+    GET_ENGINE_INTEGRATION_VALIDATION_METHOD, GET_ENGINE_INTROSPECTION_METHOD,
+    GET_MEDIA_CAPABILITIES_METHOD, GET_PROJECT_RECOVERY_METHOD, GET_PROJECT_SETTINGS_METHOD,
+    MEDIA_CAPABILITIES_SCHEMA_VERSION, PROJECT_RECOVERY_SCHEMA_VERSION,
+    PROJECT_SETTINGS_SCHEMA_VERSION, RESTORE_PROJECT_RECOVERY_METHOD,
+    SLICE_SCENARIO_SCHEMA_VERSION,
 };
 
 /// One typed public API command and its response contract.
@@ -24,6 +30,12 @@ pub trait ApiCommand {
 
     /// Permanent namespaced JSON-RPC method name.
     const METHOD: &'static str;
+
+    /// Whether the method observes state or mutates it.
+    const KIND: PublicMethodKind;
+
+    /// Version of the method request and response contract.
+    const SCHEMA_VERSION: SemanticVersion;
 }
 
 /// Structured command for refreshing project crash recovery state.
@@ -55,6 +67,8 @@ impl ApiCommand for GetProjectRecovery {
     type Response = GetProjectRecoveryResult;
 
     const METHOD: &'static str = GET_PROJECT_RECOVERY_METHOD;
+    const KIND: PublicMethodKind = PublicMethodKind::Query;
+    const SCHEMA_VERSION: SemanticVersion = PROJECT_RECOVERY_SCHEMA_VERSION;
 }
 
 /// Successful complete recovery-state query.
@@ -146,6 +160,8 @@ impl ApiCommand for CompareProjectRecovery {
     type Response = CompareProjectRecoveryResult;
 
     const METHOD: &'static str = COMPARE_PROJECT_RECOVERY_METHOD;
+    const KIND: PublicMethodKind = PublicMethodKind::Query;
+    const SCHEMA_VERSION: SemanticVersion = PROJECT_RECOVERY_SCHEMA_VERSION;
 }
 
 /// Successful semantic recovery comparison.
@@ -254,6 +270,8 @@ impl ApiCommand for RestoreProjectRecovery {
     type Response = RestoreProjectRecoveryResult;
 
     const METHOD: &'static str = RESTORE_PROJECT_RECOVERY_METHOD;
+    const KIND: PublicMethodKind = PublicMethodKind::Command;
+    const SCHEMA_VERSION: SemanticVersion = PROJECT_RECOVERY_SCHEMA_VERSION;
 }
 
 /// Successful durable recovery restore result.
@@ -353,6 +371,8 @@ impl ApiCommand for DismissProjectRecovery {
     type Response = DismissProjectRecoveryResult;
 
     const METHOD: &'static str = DISMISS_PROJECT_RECOVERY_METHOD;
+    const KIND: PublicMethodKind = PublicMethodKind::Command;
+    const SCHEMA_VERSION: SemanticVersion = PROJECT_RECOVERY_SCHEMA_VERSION;
 }
 
 /// Successful durable recovery dismissal result.
@@ -418,6 +438,8 @@ impl ApiCommand for GetAudioAutomation {
     type Response = GetAudioAutomationResult;
 
     const METHOD: &'static str = GET_AUDIO_AUTOMATION_METHOD;
+    const KIND: PublicMethodKind = PublicMethodKind::Query;
+    const SCHEMA_VERSION: SemanticVersion = AUDIO_AUTOMATION_SCHEMA_VERSION;
 }
 
 /// Successful response to [`GetAudioAutomation`].
@@ -492,6 +514,8 @@ impl ApiCommand for ExecuteAudioAutomationTransaction {
     type Response = ExecuteAudioAutomationTransactionResult;
 
     const METHOD: &'static str = EXECUTE_AUDIO_AUTOMATION_TRANSACTION_METHOD;
+    const KIND: PublicMethodKind = PublicMethodKind::Command;
+    const SCHEMA_VERSION: SemanticVersion = AUDIO_AUTOMATION_SCHEMA_VERSION;
 }
 
 /// Successful response to one authored audio automation transaction.
@@ -551,6 +575,8 @@ impl ApiCommand for GetProjectSettings {
     type Response = GetProjectSettingsResult;
 
     const METHOD: &'static str = GET_PROJECT_SETTINGS_METHOD;
+    const KIND: PublicMethodKind = PublicMethodKind::Query;
+    const SCHEMA_VERSION: SemanticVersion = PROJECT_SETTINGS_SCHEMA_VERSION;
 }
 
 /// Successful response to [`GetProjectSettings`].
@@ -618,6 +644,8 @@ impl ApiCommand for ExecuteProjectSettingsTransaction {
     type Response = ExecuteProjectSettingsTransactionResult;
 
     const METHOD: &'static str = EXECUTE_PROJECT_SETTINGS_TRANSACTION_METHOD;
+    const KIND: PublicMethodKind = PublicMethodKind::Command;
+    const SCHEMA_VERSION: SemanticVersion = PROJECT_SETTINGS_SCHEMA_VERSION;
 }
 
 /// Successful response to one project settings transaction.
@@ -675,6 +703,8 @@ impl ApiCommand for GetMediaCapabilities {
     type Response = GetMediaCapabilitiesResult;
 
     const METHOD: &'static str = GET_MEDIA_CAPABILITIES_METHOD;
+    const KIND: PublicMethodKind = PublicMethodKind::Query;
+    const SCHEMA_VERSION: SemanticVersion = MEDIA_CAPABILITIES_SCHEMA_VERSION;
 }
 
 /// Typed request for one coherent engine integration validation snapshot.
@@ -694,6 +724,8 @@ impl ApiCommand for GetEngineIntegrationValidation {
     type Response = GetEngineIntegrationValidationResult;
 
     const METHOD: &'static str = GET_ENGINE_INTEGRATION_VALIDATION_METHOD;
+    const KIND: PublicMethodKind = PublicMethodKind::Query;
+    const SCHEMA_VERSION: SemanticVersion = ENGINE_INTEGRATION_VALIDATION_SCHEMA_VERSION;
 }
 
 /// Successful coherent engine integration validation query.
@@ -751,6 +783,8 @@ impl ApiCommand for GetEngineIntrospection {
     type Response = GetEngineIntrospectionResult;
 
     const METHOD: &'static str = GET_ENGINE_INTROSPECTION_METHOD;
+    const KIND: PublicMethodKind = PublicMethodKind::Query;
+    const SCHEMA_VERSION: SemanticVersion = ENGINE_INTROSPECTION_SCHEMA_VERSION;
 }
 
 /// Successful response to [`GetEngineIntrospection`].
@@ -801,6 +835,8 @@ impl ApiCommand for ExecuteScenarioAction {
     type Response = ScenarioActionResult;
 
     const METHOD: &'static str = EXECUTE_SCENARIO_ACTION_METHOD;
+    const KIND: PublicMethodKind = PublicMethodKind::Command;
+    const SCHEMA_VERSION: SemanticVersion = SLICE_SCENARIO_SCHEMA_VERSION;
 }
 
 /// Typed request to commit one optimistic ordered scenario transaction.
@@ -854,4 +890,6 @@ impl ApiCommand for ExecuteScenarioTransaction {
     type Response = ScenarioTransactionResult;
 
     const METHOD: &'static str = EXECUTE_SCENARIO_TRANSACTION_METHOD;
+    const KIND: PublicMethodKind = PublicMethodKind::Command;
+    const SCHEMA_VERSION: SemanticVersion = SLICE_SCENARIO_SCHEMA_VERSION;
 }

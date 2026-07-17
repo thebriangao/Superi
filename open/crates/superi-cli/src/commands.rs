@@ -15,6 +15,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use superi_api::commands::{ExecuteScenarioTransaction, GetEngineIntegrationValidation};
 use superi_api::scenario::{ExactFrameRate, ScenarioApi, SliceAction, SliceGraphEffect};
+use superi_api::schema::{GetPublicApiSchema, PublicApiSchemaApi, PublicApiSchemaSnapshot};
 use superi_api::validation::IntegrationValidationApi;
 
 use crate::expectations::{resolve_expectations, ContractObservations, ExpectationFailureKind};
@@ -29,11 +30,12 @@ const MAX_PAYLOAD_BYTES: u64 = 64 * 1024 * 1024;
 const EXIT_INVALID_INPUT: i32 = 2;
 const EXIT_UNAVAILABLE: i32 = 3;
 const EXIT_STAGE_FAILURE: i32 = 4;
-const USAGE: &str = "Usage:\n  superi-cli slice run --scenario superi.slice.canonical.v1 --artifact-dir <EMPTY_DIRECTORY> --report <REPORT_JSON>\n  superi-cli engine validate\n  superi-cli --help\n  superi-cli --version\n";
+const USAGE: &str = "Usage:\n  superi-cli api schema\n  superi-cli slice run --scenario superi.slice.canonical.v1 --artifact-dir <EMPTY_DIRECTORY> --report <REPORT_JSON>\n  superi-cli engine validate\n  superi-cli --help\n  superi-cli --version\n";
 const STUB_ARTIFACT_NAME: &str = "canonical.webm.contract-stub";
 static TEMPORARY_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 enum Command {
+    ApiSchema,
     RunSlice {
         artifact_dir: PathBuf,
         report: PathBuf,
@@ -172,6 +174,16 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
     };
 
     match command {
+        Command::ApiSchema => match run_public_api_schema() {
+            Ok(snapshot) => {
+                println!(
+                    "{}",
+                    serde_json::to_string(&snapshot).expect("public API schema is serializable")
+                );
+                0
+            }
+            Err(failure) => emit_failure(failure),
+        },
         Command::Help => {
             print!("{USAGE}");
             0
@@ -211,6 +223,7 @@ fn parse_command(arguments: &[OsString]) -> Result<Command, CliFailure> {
         [] => Ok(Command::Help),
         [argument] if argument == "--help" || argument == "help" => Ok(Command::Help),
         [argument] if argument == "--version" => Ok(Command::Version),
+        [api, schema] if api == "api" && schema == "schema" => Ok(Command::ApiSchema),
         [engine, validate] if engine == "engine" && validate == "validate" => {
             Ok(Command::ValidateEngine)
         }
@@ -233,9 +246,21 @@ fn parse_command(arguments: &[OsString]) -> Result<Command, CliFailure> {
             })
         }
         _ => Err(CliFailure::invalid(
-            "expected `engine validate`, the normalized `slice run` invocation, `--help`, or `--version`",
+            "expected `api schema`, `engine validate`, the normalized `slice run` invocation, `--help`, or `--version`",
         )),
     }
+}
+
+fn run_public_api_schema() -> Result<PublicApiSchemaSnapshot, CliFailure> {
+    let api = PublicApiSchemaApi::new().map_err(|_| {
+        CliFailure::stage(
+            "api.schema",
+            "internal",
+            "terminal",
+            "public API catalog failed validation",
+        )
+    })?;
+    Ok(api.execute(GetPublicApiSchema::new()).into_snapshot())
 }
 
 fn run_engine_validation(

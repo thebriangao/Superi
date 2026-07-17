@@ -2,6 +2,15 @@
 
 use superi_core::settings::SemanticVersion;
 
+/// Schema version for the complete public API catalog.
+pub const PUBLIC_API_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
+
+/// Schema version for structured public API failures.
+pub const PUBLIC_ERROR_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
+
+/// JSON-RPC method for retrieving the complete public API catalog.
+pub const GET_PUBLIC_API_SCHEMA_METHOD: &str = "superi.api.schema.get";
+
 /// Schema version for authored audio automation replacement snapshots.
 pub const AUDIO_AUTOMATION_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
 

@@ -156,6 +156,42 @@ fn api_failures_are_structured_and_retain_the_last_valid_state() {
 }
 
 #[test]
+fn api_failures_do_not_publish_private_paths_or_raw_engine_context() {
+    let private_path = "/private/superi-secret-token/input.webm";
+    let scenario: ScenarioDocument = serde_json::from_value(json!({
+        "schema_version": "1.0.0",
+        "actions": [{
+            "action": "import_clip",
+            "path": private_path,
+            "fixture_id": "slice/video-cfr",
+            "fixture_version": 1,
+            "manifest_sha256": "1d2b28b5f44c7f86dce50d67b718b0fad967d267d9016961e3d71bb9dab94419",
+            "payload_sha256": "174a5a86f09771f6718856b3eaab65fef616fe483334d65276da5180e90a0606",
+            "frame_rate": {"numerator": 24, "denominator": 1},
+            "frame_count": 96,
+            "width": 96,
+            "height": 54
+        }]
+    }))
+    .unwrap();
+    let mut api = ScenarioApi::new();
+
+    let error = api
+        .execute(ExecuteScenarioAction::new(scenario.actions()[0].clone()))
+        .unwrap_err();
+    assert_eq!(error.message(), "The requested item could not be found.");
+    assert!(error
+        .contexts()
+        .iter()
+        .all(|context| context.fields().is_empty()));
+    let encoded = serde_json::to_string(&error).unwrap();
+    assert!(!encoded.contains("superi-secret-token"));
+    assert!(!encoded.contains("input.webm"));
+    assert_eq!(error.state().phase(), ScenarioPhase::Empty);
+    assert_eq!(error.state().revision(), 0);
+}
+
+#[test]
 fn scenario_validation_bounds_actions_and_requires_the_current_schema() {
     let actions = (0..=MAX_SCENARIO_ACTIONS)
         .map(|_| json!({"action": "inspect"}))

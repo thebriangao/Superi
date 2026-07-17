@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
+use superi_core::diagnostics::UserSafeError;
 use superi_core::error::Error;
 use superi_core::settings::SemanticVersion;
 use superi_core::time::FrameRate;
@@ -823,17 +824,18 @@ impl ScenarioFailure {
     }
 
     fn from_error(error: &Error, state: ScenarioStateSnapshot) -> Self {
+        let safe = UserSafeError::from_error(error);
         Self {
             category: error.category().code().to_owned(),
             recoverability: error.recoverability().code().to_owned(),
-            message: error.message().to_owned(),
+            message: safe.title().to_owned(),
             contexts: error
                 .contexts()
                 .iter()
                 .map(|context| ScenarioFailureContext {
                     component: context.component().to_owned(),
                     operation: context.operation().to_owned(),
-                    fields: context.fields().clone(),
+                    fields: BTreeMap::new(),
                 })
                 .collect(),
             state: Box::new(state),

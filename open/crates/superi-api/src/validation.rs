@@ -6,6 +6,7 @@
 //! deterministic coherence findings without creating a second state owner.
 
 use serde::{Deserialize, Serialize};
+use superi_core::diagnostics::UserSafeError;
 use superi_core::error::Error;
 use superi_core::settings::SemanticVersion;
 use superi_engine::dispatcher::{EngineCommandDispatcher, EngineReportedFailure};
@@ -682,10 +683,11 @@ pub struct IntegrationValidationFailure {
 
 impl IntegrationValidationFailure {
     fn from_error(error: &Error) -> Self {
+        let safe = UserSafeError::from_error(error);
         Self {
             category: error.category().code().to_owned(),
             recoverability: error.recoverability().code().to_owned(),
-            message: error.message().to_owned(),
+            message: safe.title().to_owned(),
         }
     }
 

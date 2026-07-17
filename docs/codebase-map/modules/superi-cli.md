@@ -2,8 +2,8 @@
 module_id: superi-cli
 source_paths:
   - open/crates/superi-cli
-source_hash: 4ce9235f4165e00407d294b9d01449b5d128c7b2b1d46f195415f4e4673a98f1
-source_files: 7
+source_hash: 92be93efb5ec2818ccbff6e247fa7454b1ae09cbe5caeb7a69d09c2519b03442
+source_files: 8
 mapped_at_commit: working-tree
 ---
 
@@ -22,6 +22,9 @@ The exact `engine validate` command is a second public API consumer. It asks the
 standalone validation helper for one fresh starting-engine observation and prints a strict
 deterministic JSON snapshot containing canonical introspection, scenario reversal, lifecycle and
 recovery actions, workflow admission, playback, and export state.
+The exact `api schema` command is a third public API consumer. It asks `PublicApiSchemaApi` for the
+same deterministic catalog used by typed clients and prints all current command, query, event,
+resource, error, and capability schemas without reconstructing registry data in the CLI.
 
 The engine's production Rust project command-history surface is not available through `superi-api`,
 so this binary cannot yet apply, inspect, undo, or redo a real project document. Its current
@@ -40,8 +43,8 @@ production owner is explicit in stage diagnostics and the artifact name.
   digest reporting, instrumentation integration, undo plus redo proof, expectation observation
   wiring, active-feature reporting, checkout-independent project-state normalization,
   revision-fenced transaction and event agreement, collision-safe publication, structured exit
-  errors, exact `engine validate` dispatch and strict JSON output, and focused portable-digest and
-  dispatcher-consumer contracts.
+  errors, exact `api schema` and `engine validate` dispatch with strict JSON output, and focused
+  portable-digest and dispatcher-consumer contracts.
 - `open/crates/superi-cli/src/expectations.rs`: Strictly resolves the derived slice expectation
   fixture, validates both parent identities, reference frames, synchronized PCM samples,
   timestamps, project states, and export metadata, then returns stable contract evidence. Focused
@@ -50,6 +53,9 @@ production owner is explicit in stage diagnostics and the artifact name.
   monotonic stage probes, resident-set boundary records, and the report instrumentation summary.
 - `open/crates/superi-cli/src/main.rs`: Passes process arguments to the private command owner and
   exits with its exact status.
+- `open/crates/superi-cli/tests/api_schema_cli_contract.rs`: Proves deterministic exact schema
+  discovery output, catalog and primitive identity, all six schema categories, exact current counts
+  and method names, help coverage, and invalid usage status.
 - `open/crates/superi-cli/tests/scenario_runner.rs`: Provides process contracts for two-run
   reproducibility, exact state and schema 1.1.0 report contents, all-stage timing and nonzero
   resident-memory evidence, exact expectation evidence, honest stub evidence, collision
@@ -73,6 +79,17 @@ Its normalized engine integration validation invocation is:
 ```text
 superi-cli engine validate
 ```
+
+Its public schema discovery invocation is:
+
+```text
+superi-cli api schema
+```
+
+Schema discovery success prints exactly one strict `PublicApiSchemaSnapshot` JSON value containing
+catalog schema `1.0.0`, stable primitive revision 1, JSON-RPC `2.0`, six commands, eight queries,
+six events, seven resources, one error schema, and one capability schema in canonical order. It
+starts no engine, routes no operation, and owns no transport or registry state.
 
 Validation success prints exactly one strict `GetEngineIntegrationValidationResult` JSON value to
 stdout. Incoherent validation or query failure is one structured `engine.validate` stage error and
@@ -118,6 +135,18 @@ IntegrationValidationApi from_fresh_engine
   -> GetEngineIntegrationValidationResult
   -> strict JSON stdout
 ```
+
+The independent catalog process path uses the public schema facade:
+
+```text
+PublicApiSchemaApi
+  -> GetPublicApiSchema
+  -> validated PublicApiSchemaSnapshot
+  -> strict JSON stdout
+```
+
+The CLI neither duplicates the explicit API registration list nor imports engine types for schema
+discovery.
 
 The CLI imports only `superi-api` for this path. The engine owns its legal execution domain and
 canonical temporary dispatcher behind that public facade, so the CLI does not project engine state,
@@ -165,8 +194,8 @@ success.
 
 ## Dependencies and consumers
 
-- `superi-api` supplies both public control boundaries used by the binary: revisioned scenario
-  transactions and immutable coherent integration validation.
+- `superi-api` supplies all three public boundaries used by the binary: deterministic schema
+  discovery, revisioned scenario transactions, and immutable coherent integration validation.
 - Engine project-history types are deliberately not a dependency. The CLI continues to depend only
   on `superi-api`, and project apply, undo, redo, scripting, and automation commands remain absent.
 - `serde` and `serde_json` parse strict manifests and serialize state, stages, reports, artifacts,
@@ -220,6 +249,8 @@ harness are its current consumers.
 - `engine validate` accepts no options, initializes no subsystem action, polls no endpoint, and
   changes no scenario, lifecycle, recovery, playback, or export state. It succeeds only when the
   strict public snapshot reports coherent state.
+- `api schema` accepts no options, is deterministic across processes, consumes only the API-owned
+  catalog, and changes no engine or project state.
 
 ## Tests and verification
 
@@ -255,13 +286,18 @@ shared-state initialization action, three explicit workflow denials, endpoint at
 empty coherence findings, help coverage, and precise invalid usage. They do not prove a running
 application session, UI rendering, endpoint polling, or long-session recovery.
 
+Two API schema process contracts prove deterministic semantics across separate invocations, exact
+catalog, primitive, and JSON-RPC identity, all six schema sections, exact current counts and method
+names, help coverage, and precise invalid usage. They do not prove method routing, wire transport,
+event delivery, scripting, or broad CLI parity.
+
 ## Current status and risks
 
-The CLI is now a substantive API consumer, canonical contract runner, and deterministic engine
-integration validation client. Its strongest slice limitation is intentional: six stages model
-typed boundaries without production execution. The fixture payload is digest-validated but its
-decoded traits are reported as expected contract values because the current media stage does not
-open it.
+The CLI is now a substantive API consumer, canonical contract runner, deterministic engine
+integration validation client, and exact public schema discovery client. Its strongest slice
+limitation is intentional: six stages model typed boundaries without production execution. The
+fixture payload is digest-validated but its decoded traits are reported as expected contract values
+because the current media stage does not open it.
 
 Engine now has a bounded real-project command owner below the API, but the CLI exposes no project
 history command. Public API adaptation must land before this binary can consume that owner without
@@ -287,9 +323,11 @@ inside each destination directory.
 
 Keep argument order, scenario identity, exit statuses, artifact name, report fields, stage IDs, and
 stub disclosure synchronized with `docs/vertical-slice.md`, process contracts, isolated CI, and
-public guidance. Keep both hosted build jobs synchronized with the locked fixture and normalized
-slice commands. Keep every mutation behind the typed transaction helper and preserve exact result
-and event agreement. Keep stage probes around each stage when its stub is replaced so the fixed
+public guidance. Keep `api schema` delegated to `PublicApiSchemaApi`; never reconstruct method,
+event, resource, error, or capability declarations in CLI code. Keep both hosted build jobs
+synchronized with the locked fixture and normalized slice commands. Keep every mutation behind the
+typed transaction helper and preserve exact result and event agreement. Keep stage probes around
+each stage when its stub is replaced so the fixed
 instrumentation contract is inherited by the production owner. When a production owner replaces a
 stub, route through that real subsystem, add consumer proof, update implementation identity and
 diagnostics, and raise conformance only after all runtime gates pass. Never rename a contract stub

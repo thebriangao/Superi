@@ -2,8 +2,8 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: 250e6a08db7f67296066ae1913df287322b5b5da9537986bde54231e21c2751d
-source_files: 20
+source_hash: c2f4994e022ac7f6eb20853f0718e58f11478f039ee3c0c4c4552c49b0a55818
+source_files: 22
 mapped_at_commit: working-tree
 ---
 
@@ -16,7 +16,10 @@ control through revision-fenced typed transactions and ordered full-state events
 read-only integration validation, durable project settings inspection and optimistic mutation, and
 project crash recovery discovery, semantic comparison, durable restoration, exact dismissal, and
 authored audio automation inspection and transaction execution through the full engine dispatcher.
-Wire transport, subscriptions, scripting, cancellation, broad
+One additive schema `1.0.0` catalog now classifies all 14 current methods into six commands and
+eight queries, describes all six events and seven replacement resources, publishes the complete
+error and capability vocabularies, and defines strict data-only JSON-RPC 2.0 envelopes. Wire
+transport, routing, subscriptions, scripting, cancellation, broad
 editor operations, and project database file commands remain absent. The engine also exposes typed
 project command-history results and replacement events below this crate, but this API does not yet
 project that surface.
@@ -34,15 +37,16 @@ project that surface.
   sample times and keyframes, Read, Write, Touch, and Latch modes, every ordered mutation, complete
   replacement snapshots, canonical typed clip IDs, engine conversion, and the dispatcher-backed
   public facade.
-- `open/crates/superi-api/src/commands.rs`: Defines `ApiCommand`, media, engine introspection,
+- `open/crates/superi-api/src/commands.rs`: Defines versioned command and query classification on
+  `ApiCommand`, media, engine introspection,
   integration validation, project settings, project recovery, and audio automation query types,
   plus typed one-action scenario and ordered scenario, project settings, automation, compare,
   restore, and dismiss commands.
-- `open/crates/superi-api/src/events.rs`: Defines `ApiEvent`, media and engine introspection change
+- `open/crates/superi-api/src/events.rs`: Defines versioned `ApiEvent`, media and engine introspection change
   events, and ordered full-replacement scenario, project settings, project recovery, and audio
   automation state events.
 - `open/crates/superi-api/src/lib.rs`: Exposes API, audio automation, command, event, project
-  settings, project recovery, scenario, scripting, validation, and version modules.
+  settings, project recovery, scenario, public schema, scripting, validation, and version modules.
 - `open/crates/superi-api/src/project.rs`: Implements strict project setting values and mutations,
   complete replacement snapshots, and the caller-owned dispatcher facade for settings inspection,
   optimistic transactions, and ordered event draining.
@@ -53,13 +57,20 @@ project that surface.
 - `open/crates/superi-api/src/scenario.rs`: Implements strict canonical action documents, public
   editorial state and graph projections, reversible operation evidence, structured failures, and
   the mutable dispatcher-backed `ScenarioApi` facade with optimistic transactions and event drain.
+  Engine-backed failures retain stable component and operation labels plus last-valid state while
+  deriving user-safe messages and dropping all raw context values.
+- `open/crates/superi-api/src/schema.rs`: Owns the deterministic complete public catalog, schema
+  descriptors, method and resource traits, typed schema discovery query, strict JSON-RPC 2.0
+  request and response envelopes, safe structured errors, reviewed contexts, last-valid resource
+  references, and capability vocabulary without routing or runtime state ownership.
 - `open/crates/superi-api/src/scripting.rs`: Placeholder for a scripting runtime.
 - `open/crates/superi-api/src/validation.rs`: Strictly projects canonical engine integration state,
   nested introspection, exact lifecycle and recovery actions, workflow permits or denials, scenario
   reversal capacity, endpoint replacement state, and coherence findings through typed read-only
-  accessors. It also provides the standalone starting-engine query owner used by the CLI.
-- `open/crates/superi-api/src/version.rs`: Owns all seven schema revisions and permanent method and
-  event names.
+  accessors. It also provides the standalone starting-engine query owner used by the CLI and derives
+  standalone construction failures from the shared user-safe projection.
+- `open/crates/superi-api/src/version.rs`: Owns all domain, catalog, and error schema revisions plus
+  permanent method and event names.
 - `open/crates/superi-api/tests/audio_automation_contract.rs`: Covers strict canonical JSON, every
   public mutation, permanent names, typed facade behavior, complete correlated events, Touch mode,
   no-op suppression, and conversion failure atomicity through the real engine owner.
@@ -83,10 +94,32 @@ project that surface.
   names, path-shaped identity rejection, complete authored clip-mix comparison and restoration,
   active database publication, opaque candidates, and serialized exclusion of paths, SQLite
   details, and raw source text.
+- `open/crates/superi-api/tests/public_schema_contract.rs`: Covers exact catalog category counts and
+  names, domain versions, primitive revision, canonical ordering, deterministic strict round trips,
+  invalid catalog rejection, typed JSON-RPC success and failure exclusivity, all recovery classes,
+  diagnostic visibility filtering, and last-valid resource references.
 - `open/crates/superi-api/tests/scenario_contract.rs`: Covers the strict canonical schema, complete
-  state projection, exact undo plus redo evidence, and structured last-valid-state failures.
+  state projection, exact undo plus redo evidence, structured last-valid-state failures, and
+  negative proof that private paths and raw engine context values never serialize.
 
 ## Public surface
+
+The public schema catalog is schema `1.0.0` at query method `superi.api.schema.get`.
+`PublicApiSchemaSnapshot` records stable primitive revision 1 and JSON-RPC `2.0`, then separates six
+mutating commands from eight read-only queries and lists all six current replacement events, seven
+current replacement resources, one complete error vocabulary, and one capability vocabulary in
+canonical name order. `ApiCommand` now declares method kind and schema version, `ApiEvent` declares
+payload version, and `ApiResource` centrally registers the current replacement resources. The
+explicit registration list is the supported public surface and is validated for duplicate names,
+command and query overlap, incompatible identity, malformed names, and primitive drift.
+
+`JsonRpcRequest`, `JsonRpcSuccessResponse`, `JsonRpcFailureResponse`, and `JsonRpcResponse` provide
+strict serializable JSON-RPC 2.0 shapes with string IDs and typed payloads. They are data contracts,
+not a parser, dispatcher, server, subscription channel, or retry owner. `PublicApiError` carries one
+stable application code and versioned structured data with core-owned category and recoverability,
+safe title and action, reviewed actionable contexts, and an optional last-valid resource reference.
+Diagnostic conversion copies only `UserSafeError` and fields explicitly marked user-safe. Direct
+`Error` conversion requires caller-supplied reviewed contexts and never copies raw error contexts.
 
 The media capability surface remains schema `2.0.0`, method
 `superi.media.capabilities.get`, and event `superi.media.capabilities.changed`. It exposes strict
@@ -154,6 +187,21 @@ events include exact engine command, event, caller transaction, and audio automa
 correlation.
 
 ## Architecture and data flow
+
+Public schema discovery is entirely API-owned metadata over existing contracts:
+
+```text
+GetPublicApiSchema
+  -> PublicApiSchemaApi
+  -> explicit ApiCommand, ApiEvent, and ApiResource registrations
+  -> validated canonical PublicApiSchemaSnapshot
+  -> typed Rust client or superi-cli api schema
+```
+
+The catalog does not inspect private engine enums or create runtime ownership. Existing mutating
+facades still dispatch to the canonical engine owners, while read-only facades retain their current
+projection paths. JSON-RPC envelope types can carry those typed values later without implementing
+method routing, network transport, event delivery, jobs, permissions, or version negotiation.
 
 Media capability conversion remains declaration-only. Engine registry records are projected into
 API-owned stable types, equal states do not advance API revision, and a semantic change emits one
@@ -279,7 +327,9 @@ and capacity failures leave the engine owner and public event stream unchanged.
 ## Dependencies and consumers
 
 - `serde` supplies strict snake-case and tagged serialized shapes with unknown-field rejection.
-- `superi-core` supplies semantic versions, exact frame rates, and the classified error model.
+- `superi-core` supplies semantic versions, canonical names, stable primitive revision 1, feature
+  availability, typed diagnostic fields, user-safe presentation, exact frame rates, and the
+  classified error model.
 - `superi-engine` supplies capability declarations, complete immutable health and readiness state,
   canonical transactional state, typed dispatch, ordered replacement events, and integration
   validation observations. It also re-exports project recovery candidate and comparison contracts,
@@ -290,8 +340,8 @@ and capacity failures leave the engine owner and public event stream unchanged.
 - `serde_json`, `sha2`, `superi-media-io`, and `superi-concurrency` are test dependencies for wire,
   digest, registry, and EngineControl contracts. The feature-gated engine test-support seam creates
   real file-backed recovery artifacts without adding API-to-project or API-to-timeline edges.
-- `superi-cli` is the first production Rust consumer of both `ScenarioApi` and
-  `IntegrationValidationApi`. It never projects engine state directly.
+- `superi-cli` is the first production Rust consumer of `PublicApiSchemaApi`, `ScenarioApi`, and
+  `IntegrationValidationApi`. It never reconstructs the catalog or projects engine state directly.
 
 No transport, UI, shell, scripting runtime, extension host, or closed-tier client is present.
 
@@ -299,6 +349,14 @@ No transport, UI, shell, scripting runtime, extension host, or closed-tier clien
 
 - Public types own their wire schema and do not expose media-I/O or GPU implementation types.
 - Strict objects reject unknown fields. Non-exhaustive Rust enums require downstream fallback.
+- The schema catalog is deterministic, complete for the current explicit registration list, sorted
+  by permanent names, and rejects duplicates, command-query overlap, or incompatible schema and
+  primitive identity.
+- JSON-RPC request and response values require version `2.0`, string IDs, typed methods, and exactly
+  one result or error branch. They do not imply transport, ordering, cancellation, or retry.
+- Public error projection preserves all four recovery classes and actionable safe presentation.
+  Raw summaries, source chains, internal and sensitive diagnostic fields, and raw context values
+  never cross the schema boundary.
 - Inspect never changes revision or history.
 - The current inspect invariant applies to scenario and read-only public surfaces. Project settings
   inspection is public, while broader engine project-history inspection remains inaccessible until
@@ -367,7 +425,15 @@ and the absence of private path, message, operation, and context data from publi
 The scenario contracts prove exact schema round trips, rejection of guessed fields and effects, the
 permanent typed method name, full canonical import metadata, named timeline and ranges, complete
 three-node graph with image ports, exact mirror parameters, four stable operation records, two undo
-plus two redo actions, final revision 8, structured engine context, and last-valid-state retention.
+plus two redo actions, final revision 8, structured engine context, last-valid-state retention, and
+serialized exclusion of a private missing-source path and raw context values.
+
+Four public schema contracts prove the exact six-command, eight-query, six-event, and seven-resource
+surface, current domain versions, catalog and error schema `1.0.0`, media schema `2.0.0`, stable
+primitive revision 1, strict deterministic catalog round trips, invalid identity and duplicate
+rejection, typed JSON-RPC exclusivity, all four recovery classes, user-safe diagnostic filtering,
+and last-valid resource identity and revision. They do not claim a transport server, dynamic method
+routing, subscriptions, asynchronous jobs, permissions, generated bindings, or negotiation.
 
 Three dispatcher contracts prove strict transaction and event JSON, permanent namespaced method and
 event identity, failed trailing-action rollback, one-revision commit, one-unit undo, optimistic
@@ -408,8 +474,9 @@ wire delivery, physical audio output, or additional automation targets.
 
 ## Current status and risks
 
-The API now has seven substantive surfaces, but it is still far from the promised unified
-editor API. Engine introspection gives clients a coherent adaptation view without adding mutation
+The API now has seven substantive domain surfaces plus one complete discovery catalog and strict
+wire grammar, but it is still far from the promised unified editor API. Engine introspection gives
+clients a coherent adaptation view without adding mutation
 authority, and integration validation extends that same state with precise action and endpoint
 evidence. Project settings retain exact durable scalar meaning, and project recovery now exposes one
 complete strict discover, compare, restore, and dismiss surface without leaking file identity. The
@@ -422,24 +489,29 @@ The engine's project command-history owner provides production Rust apply, undo,
 replacement-event behavior for project media and settings changes. This crate reaches that owner
 through the settings, recovery, and automation facades but exposes none of its generic history
 types or methods.
-Project file open and save API, wire, subscription, scripting, and broader automation adaptation
-remain later checkpoints.
+Project file open and save API, live wire routing, subscription delivery, scripting, and broader
+automation adaptation remain later checkpoints.
 
 Integration validation schema 1 provides one coherent read-only state for CLI, UI, and tests, but
 it remains an in-process snapshot facade. The standalone helper creates a fresh starting engine for
 the CLI; a production UI must supply fresh observations from its live dispatcher. Validation does
 not supply transport, subscription delivery, endpoint mutation, or background polling.
 
-The separate media, engine introspection, integration validation, and scenario schema versions are
-correct for independent surfaces. Wire framing, version negotiation, authentication, subscription
-delivery, retry and idempotency policy, and cancellation remain required before remote clients
-exist. Public scenario failure state is boxed to keep result errors bounded while preserving the
-same serialized shape.
+The separate media, engine introspection, integration validation, scenario, catalog, and error
+schema versions are correct for independent surfaces. Data-only JSON-RPC framing now exists, while
+dynamic routing, version negotiation, authentication, subscription delivery, retry and idempotency
+policy, and cancellation remain required before remote clients exist. Public scenario failure state
+is boxed to keep result errors bounded while preserving the same serialized shape and now removes
+raw context values.
 
 ## Maintenance notes
 
 Preserve strict serialization, deterministic ordering, stable permanent names, last-valid-state
 errors, revision fences, transaction and event agreement, and unknown-variant handling. Keep
+the explicit catalog synchronized with every new command, query, event, resource, schema version,
+and CLI discovery assertion. Preserve the safe error conversion boundary and require negative leak
+proof before adding context fields. Do not treat JSON-RPC data values as a transport implementation.
+Keep
 project setting keys and validation project-owned, resolve them only in engine, and retain the API's
 dependency on engine rather than adding a direct project edge. Engine command changes require
 synchronized public projection, schema review, CLI consumer updates when applicable, and focused
