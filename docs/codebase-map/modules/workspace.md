@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 299fa25bd97640a086fa314d54d02c330585a04a7aee56d09596669d4da2998e
+source_hash: fbf35ab7327583cf69d8ae169265b4408af36718989f040e1975ba154c47d4d6
 source_files: 145
 mapped_at_commit: working-tree
 ---
@@ -408,8 +408,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   test edge to `superi-concurrency`, graph and timeline document serialization and integrity edges,
   cache-key hashing, and the exact `oxideav-mp3` Git revision. Timeline state
   directly consumes the already-resolved `serde`, `serde_json`, and `sha2` packages, while
-  `superi-project` now directly consumes exact `rusqlite` 0.32.1 and the existing SHA-256 package,
-  plus test-only JSON for exact legacy component fixtures. `superi-engine` records a test-only
+  `superi-audio` now directly consumes the already resolved serde, serde_json, and SHA-256 packages
+  for its strict authored clip-mix component codec. `superi-project` directly consumes
+  `superi-audio`, exact `rusqlite` 0.32.1, and the existing SHA-256 package, plus test-only JSON for
+  exact legacy component fixtures. `superi-engine` records a test-only
   direct rusqlite edge for its real migrated-project resource consumer.
   The bundled SQLite edge resolves `libsqlite3-sys` 0.30.1, `ahash` 0.8.12, `hashbrown` 0.14.5,
   `hashlink` 0.9.1, fallible iterator adapters, and native build discovery packages. This exact
@@ -451,7 +453,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `open/docs/STRUCTURE.md`: Compact dependency-tier map, codec placement, suggested human ownership,
   crate-boundary working rules, repository-tool placement, fixture-tool responsibility including
   OTIO baseline generation, structured test-report responsibility, and deferred production work.
-  Its cache tier now records the reviewed downward dependency on concurrency used by render jobs.
+  Its cache tier records the reviewed downward dependency on concurrency used by render jobs, and
+  its project tier records the downward authored-audio dependency used by aggregate persistence.
 - `open/rust-toolchain.toml`: Selects the floating stable Rust channel with `rustfmt` and Clippy.
   Package metadata separately declares Rust 1.80 as the minimum supported version.
 - `open/rustfmt.toml`: Sets Rust 2021 formatting and a 100-column maximum width.
@@ -725,6 +728,12 @@ fixtures, while engine's test-only direct rusqlite edge builds an exact legacy d
 existing real resource-acquisition consumer. Both packages were already locked and neither edge
 enters a runtime dependency tier.
 
+The authored clip-mix document reuses the workspace serde, serde_json, and SHA-256 pins already used
+by other strict component codecs. `superi-project` now depends directly on `superi-audio` so authored
+clip-mix state can enter the aggregate and schema-3 database while prepared processors, devices, and
+callback state remain below the persistence boundary. This is a downward runtime edge and preserves
+the declared crate tiers and offline dependency policy.
+
 The effects animation, mask, rotoscope, text, and preset wires reuse the same workspace Serde pin.
 Effect presets additionally reuse the workspace JSON and SHA-256 pins at runtime for strict
 canonical documents, legacy upgrade, and corruption detection, while the built-in visual catalog
@@ -750,6 +759,11 @@ reads locked offline Cargo metadata, classifies all 19 runtime crates, and check
 build, and dev-only edges against explicit reviewed policies. Its live-workspace contract runs in
 ordinary workspace tests, while the direct command gives contributors a deterministic failure
 before review.
+
+The structure guide and executable policy review `superi-project` to `superi-audio` as a downward
+runtime edge for authored clip-mix state and its canonical codec. A focused synthetic contract
+accepts that edge and rejects the reverse direction, so audio processing ownership cannot acquire
+project or persistence policy.
 
 The structure guide and executable policy now review the API's test-only concurrency edge alongside
 its existing media-I/O test edge. The former enters EngineControl to exercise the real dispatcher
@@ -914,10 +928,11 @@ The documents deliberately point into other modules:
   acquisition classes behind media interfaces.
 - `superi-graph`, `superi-cache`, `superi-color`, `superi-effects`, `superi-timeline`, `superi-audio`,
   and `superi-ai` own evaluation and capability layers.
-- `superi-project` owns aggregate validation, checked snapshot restoration, database persistence,
-  atomic file publication, deterministic autosave scheduling, managed recovery-point retention, and
-  pruning; `superi-engine` owns bounded session command history and integration; `superi-api` owns
-  the stable public seam; and `superi-cli` is the headless consumer.
+- `superi-project` owns aggregate validation, authored clip-mix durability, checked snapshot
+  restoration, database persistence, atomic file publication, deterministic autosave scheduling,
+  managed recovery-point retention, and pruning; `superi-engine` owns bounded compound project
+  commands, session command history, and integration;
+  `superi-api` owns the stable public seam; and `superi-cli` is the headless consumer.
 - `superi-fixture-tool` validates repository fixture policy but does not enter runtime engine flow.
 - `superi-dependency-check` validates the runtime Cargo graph but does not enter runtime engine flow.
 - `superi-boundary-tool` validates source boundaries but does not enter runtime engine flow.
@@ -1194,28 +1209,29 @@ canonical integrity-protected documents, while effects-to-project integration an
 plugin execution remain incomplete. The effects-side isolated OpenFX contract and engine-side
 bundle discovery, launch coordination, containment, and graph availability are implemented, while
 concrete platform transport, native OFX ABI adapters, and GPU-handle IPC remain absent.
-The project crate now owns a stable schema-2 SQLite application database with deterministic
-timeline, settings, and graph component rows, SHA-256 evidence, checked in-memory replacement,
-checked reload, durable nonoverwriting create, read-only reopen, and contiguous exact schema-0 and
-schema-1 migration inside one immediate transaction. It owns authoritative versioned timeline,
-color, audio, cache, proxy, and render settings plus one typed save, save-as, copy, and backup surface
-that builds, validates, closes, synchronizes, and atomically publishes complete same-parent
-current-schema candidates under explicit collision policy, with active-path rebinding and honest
-postpublication state. Its clockless autosave controller now adds host-driven monotonic scheduling,
-strict managed generations, complete Backup recovery points, bounded count retention, explicit
-pruning, and typed user control without another persistence model. The lockfile records exact
-rusqlite 0.32.1 and libsqlite3-sys 0.30.1 with bundled SQLite, plus project JSON and engine rusqlite
-test edges. Additional project schema revisions, persisted command logs, recovery discovery and
-restoration, modified-since-open conflict policy, API adaptation, and CLI exposure remain
-incomplete.
-The engine now owns a production Rust project command-history boundary around that aggregate. It
-records successful authored media changes as bounded immutable before-and-after units, restores
-undo and redo targets through project validation with fresh monotonic revisions, persists only the
-selected snapshot through the existing database, and exposes typed dispatcher results plus complete
-replacement events. Compound cross-subsystem transactions and all public project-history wire, API,
-CLI, scripting, logging, and automation adapters remain incomplete.
+The project crate now owns a stable schema-3 SQLite application database with deterministic
+timeline, graph, settings, and authored audio component rows, SHA-256 evidence, checked in-memory
+replacement, checked reload, durable nonoverwriting create, read-only reopen, and an ordered exact
+schema-0-to-schema-1-to-schema-2-to-schema-3 migration inside one immediate transaction. It also
+owns authoritative versioned settings plus one typed save, save-as, copy, and backup surface that
+builds, validates, closes, synchronizes, and atomically publishes complete same-parent current-schema
+candidates under explicit collision policy, with active-path rebinding and honest postpublication
+state. Its clockless autosave controller adds host-driven monotonic scheduling, strict managed
+generations, complete Backup recovery points, bounded count retention, explicit pruning, and typed
+user control without another persistence model. The lockfile records exact rusqlite 0.32.1 and
+libsqlite3-sys 0.30.1 with bundled SQLite, plus
+project JSON and engine rusqlite test edges. Additional project schema revisions beyond 3,
+persisted command logs, recovery discovery and restoration, modified-since-open conflict policy,
+database file API adaptation, and CLI exposure remain incomplete.
+The engine now owns a production Rust compound project command and history boundary around that
+aggregate. It applies bounded ordered timeline, graph, media, authored audio, and root actions inside
+one outer project edit, preserves nonconflicting retained graph work through a three-way recompile,
+records one immutable before-and-after unit, restores undo and redo targets with fresh monotonic
+revisions, persists only the selected snapshot through the existing database, and exposes one
+correlated dispatcher event. Public project-history wire, API, CLI, scripting, logging, and
+automation adapters remain incomplete.
 The synchronized remote revision before this checkpoint is
-`7401db7dc35d59663878cdf5f6c240fa87bef0ca`.
+`5f3a3035961d014fd02c43a46d419fa8b24328d1`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
 root README, deny policy, and structure guide with license-audit CI. Commit
 `e0b3af9f099f527a8544d1b0317896640969903b` added the executable dependency-policy contract and its
@@ -1300,8 +1316,8 @@ The largest current risk is cross-document drift:
   Boundary samples are not continuous intra-stage peaks, constrained-device thresholds, or
   long-session soak proof.
 
-- `open/docs/STRUCTURE.md` also says 18 crates and still labels offline CI and the vertical slice as
-  deferred. The four workflows now cover dependency policy, locked hosted compilation with the
+- `open/docs/STRUCTURE.md` still labels offline CI and the vertical slice as deferred. The four
+  workflows now cover dependency policy, locked hosted compilation with the
   open-tree boundary scan, the frontend toolchain contract, and one network-isolated core path, but
   that path prepares dependencies online and must not be mistaken for product behavior, a complete
   offline build, full feature or malformed-input coverage, UI, shell, slice, or physical-platform

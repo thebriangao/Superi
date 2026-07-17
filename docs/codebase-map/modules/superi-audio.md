@@ -2,8 +2,8 @@
 module_id: superi-audio
 source_paths:
   - open/crates/superi-audio
-source_hash: 56318bac9273de2e89987b051c32282d72a84a9d0b3d2ead17bb205076903b3f
-source_files: 23
+source_hash: bfe61f3ab3ed84d1fc6487441d864fc8318b51adde81cbccec6ba8ab16300da7
+source_files: 25
 mapped_at_commit: working-tree
 ---
 
@@ -19,7 +19,9 @@ immutable editorial placements into exact callback source slices and publishes c
 presentation to the shared audio master clock. Its playback slice discovers operating-system output
 devices and moves normalized interleaved samples through a fixed-capacity lock-free queue into typed
 platform callbacks. Audio-owned clip mix state adds transactional gain,
-fades, pan, mute, solo, phase, and semantic channel mapping with immutable prepared snapshots. Its
+fades, pan, mute, solo, phase, and semantic channel mapping with immutable prepared snapshots. A
+strict canonical codec preserves that authored state with exact f32 bit patterns, an explicit
+format revision, and a SHA-256 payload digest while rejecting unknown or noncanonical input. Its
 prepared sinc converter maps fixed device-output blocks to exact variable source consumption while
 retaining each independent sample clock and smoothly correcting bounded device-rate error.
 Common mono, stereo, quad, 5.1, and 7.1 layouts compose the core semantic order, and explicit
@@ -51,7 +53,8 @@ encoding, but it does not yet adapt decoded blocks into `PreparedAudioGraph`.
 ## Source inventory
 
 - `open/crates/superi-audio/Cargo.toml`: Declares dependencies on `superi-core`,
-  `superi-concurrency`, exact CPAL 0.17.3, ringbuf 0.4.8, and default-feature-free rubato 0.16.2.
+  `superi-concurrency`, exact CPAL 0.17.3, ringbuf 0.4.8, default-feature-free rubato 0.16.2,
+  serde, serde_json, and sha2.
 - `open/crates/superi-audio/src/channels.rs`: Defines the common-layout catalog, explicit speaker
   and discrete interpretations, control-side conversion-matrix preparation, and allocation-free
   exact-layout processing with fail-closed validation.
@@ -70,7 +73,7 @@ encoding, but it does not yet adapt decoded blocks into `PreparedAudioGraph`.
 - `open/crates/superi-audio/src/hosting.rs`: Placeholder for additive VST3 and Audio Unit hosting.
 - `open/crates/superi-audio/src/lib.rs`: Documents the implemented graph, channel, routing,
   scheduling, capture, playback, conversion, effects, and metering boundaries and exports the
-  eleven audio concern modules.
+  twelve audio concern modules.
 - `open/crates/superi-audio/src/metering.rs`: Implements transparent prepared graph metering,
   per-channel sample peak, RMS and true peak, stereo phase correlation, bounded spectrum analysis,
   K-weighted EBU windows, ITU programme gating, coherent lock-free snapshots, and explicit history
@@ -85,6 +88,9 @@ encoding, but it does not yet adapt decoded blocks into `PreparedAudioGraph`.
 - `open/crates/superi-audio/src/resample.rs`: Implements prepared fixed-output band-limited
   conversion, ordered interleaved and planar transfer, exact dual-clock accounting, sinc delay
   reporting, and bounded ramped device-clock correction.
+- `open/crates/superi-audio/src/serialize.rs`: Implements the canonical revisioned clip-mix codec,
+  exact float-bit representation, payload digest verification, strict structural bounds, and
+  byte-canonical decoding.
 - `open/crates/superi-audio/src/routing.rs`: Implements allocation-free unity summing for prepared
   submix, auxiliary, and master buses in stable route-identity order with non-finite rejection.
 - `open/crates/superi-audio/src/sync.rs`: Implements exact timeline placements, immutable schedule
@@ -109,6 +115,9 @@ encoding, but it does not yet adapt decoded blocks into `PreparedAudioGraph`.
 - `open/crates/superi-audio/tests/clip_mixing_contract.rs`: Public consumer proof for every clip
   control, exact multi-block envelopes, snapshot solo behavior, atomic identity mutations, invalid
   layouts and values, clip bounds, and failure atomicity.
+- `open/crates/superi-audio/tests/clip_mix_serialization_contract.rs`: Proves exact authored-state
+  round trips, deterministic re-encoding, exact route order, corruption and unknown-field
+  rejection, and noncanonical input rejection.
 - `open/crates/superi-audio/tests/routing_contract.rs`: Proves dry submix, auxiliary send and return,
   single-master delivery, stable route order independent of edit history, exact consecutive blocks,
   and atomic role, layout, master, and cycle rejection.
@@ -125,8 +134,8 @@ encoding, but it does not yet adapt decoded blocks into `PreparedAudioGraph`.
 ## Public surface
 
 The crate root exports `capture`, `channels`, `effects`, `graph`, `hosting`, `metering`, `mixing`,
-`playback`, `resample`, `routing`, and `sync`. Every module except the hosting placeholder contains substantive
-behavior.
+`playback`, `resample`, `routing`, `serialize`, and `sync`. Every module except the hosting
+placeholder contains substantive behavior.
 
 `capture` exposes validated opaque `InputDeviceId` values, exact capability ranges and stream
 configurations, partial discovery failures, atomic `CaptureControl`, bounded `CaptureReader` and
@@ -194,6 +203,12 @@ identity-preserving `ClipMixMutation` values, immutable `ClipMixSnapshot`, and p
 `ClipMixProcessor`. State mutations set, inherit, transfer, or remove complete intent atomically.
 Preparation binds one clip identity to an exact `SampleTime` interval and fixed layouts.
 
+`serialize` exposes `serialize_clip_mix_state` and `deserialize_clip_mix_state`. The codec emits one
+canonical `superi.clip-mix` revision 1 JSON envelope, stores every f32 as its exact bit pattern,
+binds the ordered payload to a lowercase SHA-256 digest, reconstructs state through checked public
+invariants, applies matching bounds to encoding and decoding, and rejects duplicate identities,
+unknown fields, over-limit payloads, and alternate encodings of otherwise equivalent content.
+
 `resample` exposes validated `DeviceClockErrorPpm` and `SampleRateConverterConfig` values,
 `PreparedSampleRateConverter`, and exact `ResampleBlockReport` accounting. The prepared converter
 reports fixed device output, maximum source lookahead, exact next source demand, sinc filter delay,
@@ -259,6 +274,13 @@ channels, applies the W3C equal-power stereo equations, multiplies bounded linea
 endpoint-inclusive sample fades, applies per-destination phase, and honors one snapshot-wide solo
 decision. Its successful callback path allocates nothing and takes no lock.
 
+Clip-mix serialization is a control-path operation over authored state only. Encoding walks stable
+clip identity order, represents all float values as exact bits, hashes the canonical payload, and
+then emits the strict envelope. Decoding validates byte and entry ceilings, the envelope and
+payload revisions, digest, uniqueness, semantic controls, and exact canonical re-encoding before
+publishing a reconstructed `ClipMixState`; prepared processors and callback state never cross this
+boundary.
+
 Sample-rate conversion is prepared on a control path with a fixed output block, ordered layout,
 source and device anchors, and bounded device error. The callback validates ownership, exact
 positions, fixed lookahead and output storage, finite samples, correction bounds, and coordinate
@@ -295,12 +317,16 @@ and spectrum values, and performs the two-stage integrated loudness gate without
 - rubato 0.16.2 supplies the MIT-licensed adjustable asynchronous sinc implementation with a Rust
   1.61 declaration. Audio uses no default FFT feature and calls only its prepared
   `process_into_buffer` path.
+- serde and serde_json provide the strict bounded wire shape, and sha2 provides the payload digest.
+  Exact-float and canonical-byte policy remains owned by `superi-audio::serialize`.
 - `superi-engine::audio_mix` owns production timeline edit and clip-mix identity reconciliation.
   No production adapter yet binds decoded media into the schedule or prepared graph.
-- Engine project command history is a separate owner over `ProjectDocument` snapshots and currently
-  wraps only project media commands. Audio device, callback, meter, resampler, prepared graph, and
-  clip-mix state are not project-document history; the existing timeline plus clip-mix edit helper
-  is not yet wrapped by the compound project transaction or history surface.
+- `superi-project` owns clip-mix state inside the durable project aggregate and stores the canonical
+  codec bytes as the singleton schema-3 audio component. Engine project command history restores
+  authored clip-mix snapshots, while audio device, callback, meter, resampler, and prepared graph
+  state remain operational and absent from persistence and history.
+- `superi-engine::project_transaction` composes timeline edits, graph mutations, media commands,
+  root selection, and clip-mix mutations into one bounded project transaction and one history entry.
 - `superi-engine::playback` wraps the existing `OutputProducer`, accepts only whole borrowed sample
   submissions, and passes the paired `AudioMasterClock` into its engine-owned A/V coordinator as
   the authoritative video pacing source. That coordinator returns bounded wait, correction, drop,
@@ -461,6 +487,11 @@ hard-pan endpoint exactness, mute, snapshot-wide solo, transactional set/inherit
 stale revision and partial-batch rejection, invalid semantic routes and numeric controls, fade
 duration bounds, and out-of-clip processing rejection through the actual prepared graph processor.
 
+`clip_mix_serialization_contract` has two public integration tests. It proves exact float and
+revision round trips, deterministic re-encoding, exact route order, digest and strict-schema
+rejection, and byte-canonical enforcement. Project migration contracts separately exercise the
+canonical empty state used by schema upgrades.
+
 Four resampling contracts prove distinct stereo channel order and settled continuity at 44.1 to 48
 kHz, stop-band attenuation at 96 to 48 kHz, exact source and device reports across blocks, rejected
 domain, position, and drift inputs without position advance, and positive and negative clock-error
@@ -479,7 +510,7 @@ and rejection of unbounded or nonsensical preparation.
 ## Current status and risks
 
 The independent audio graph, channel conversion, bus routing, sample-accurate schedule, production
-device-input and device-output substrates, clip mix processor, prepared sample-rate converter,
+device-input and device-output substrates, durable clip-mix codec, clip mix processor, prepared sample-rate converter,
 core effects, and graph-native meter are
 substantive and publicly test-backed. Plugin hosting remains a documentation-only placeholder.
 Engine consumes timeline edit outcomes for atomic clip identity reconciliation and foreground
@@ -492,10 +523,9 @@ scheduled-slice `PreparedAudioGraph` binding, plugin host, platform channel-layo
 end-to-end source-playback-final-mix path. Microphone permission, physical input latency, semantic
 input layout, and hot-plug recovery remain platform-owned boundaries.
 
-Engine now owns bounded project-level history, but no current project mutation includes audio
-intent and no undo or redo action changes this crate. The existing atomic timeline plus clip-mix
-helper remains a direct Rust orchestration seam until the later compound transaction owner adapts
-its authored state without capturing operational audio resources.
+Engine now owns bounded project-level history and a compound transaction that includes authored
+audio intent. Undo and redo restore the exact clip-mix state through project snapshots, and save and
+reopen preserve it through the canonical codec without capturing operational audio resources.
 
 Multi-input routing is deliberately unity-only to avoid claiming later control semantics. Prepared
 input views retain immutable routes and earlier buffers without self-referential storage or callback
@@ -534,10 +564,9 @@ upward dependencies. Keep channel layout and routing intent attached through tha
 only completed audible windows, and replace the export stage seam with a real prepared-graph adapter
 before claiming timeline-owned source playback, mixing, or final delivery through this crate.
 
-When authored clip-mix changes enter project command history, integrate them through the engine's
-compound transaction owner and retain complete failure atomicity across timeline, project, and
-audio revisions. Never serialize callback-owned or prepared runtime state into project snapshots or
-add an audio-local undo stack.
+Keep authored clip-mix changes inside the engine compound transaction and retain complete failure
+atomicity across timeline, project, and audio revisions. Never serialize callback-owned or prepared
+runtime state into project snapshots or add an audio-local undo stack.
 
 After source changes, refresh this map's inventory, architecture, invariants, tests, hash, and file
 count from resulting behavior, then update consumer maps and validate the global map closure.

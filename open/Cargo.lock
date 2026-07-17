@@ -2883,6 +2883,9 @@ dependencies = [
  "cpal",
  "ringbuf",
  "rubato",
+ "serde",
+ "serde_json",
+ "sha2",
  "superi-concurrency",
  "superi-core",
 ]
@@ -3129,6 +3132,7 @@ dependencies = [
  "rusqlite",
  "serde_json",
  "sha2",
+ "superi-audio",
  "superi-core",
  "superi-graph",
  "superi-timeline",

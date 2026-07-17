@@ -26,6 +26,8 @@ pub struct ChannelMap {
     gain: f32,
 }
 
+impl Eq for ChannelMap {}
+
 impl ChannelMap {
     /// Creates one finite, nonnegative routing coefficient.
     pub fn new(source: ChannelPosition, destination: ChannelPosition, gain: f32) -> Result<Self> {
@@ -75,6 +77,8 @@ pub struct ClipMixControls {
     solo: bool,
     phase_inverted: BTreeSet<ChannelPosition>,
 }
+
+impl Eq for ClipMixControls {}
 
 impl ClipMixControls {
     /// Creates validated controls with unity gain and no fades, pan, mute, solo, or phase changes.
@@ -299,6 +303,8 @@ pub enum ClipMixMutation {
     },
 }
 
+impl Eq for ClipMixMutation {}
+
 impl ClipMixMutation {
     /// Creates a complete set mutation.
     #[must_use]
@@ -332,6 +338,8 @@ pub struct ClipMixState {
     controls: BTreeMap<ClipId, ClipMixControls>,
 }
 
+impl Eq for ClipMixState {}
+
 impl ClipMixState {
     /// Creates empty state at revision zero.
     #[must_use]
@@ -340,6 +348,26 @@ impl ClipMixState {
             revision: 0,
             controls: BTreeMap::new(),
         }
+    }
+
+    /// Reconstructs checked state at one persisted revision.
+    pub fn from_parts<I>(revision: u64, controls: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = (ClipId, ClipMixControls)>,
+    {
+        let mut by_clip = BTreeMap::new();
+        for (clip_id, controls) in controls {
+            if by_clip.insert(clip_id, controls).is_some() {
+                return Err(conflict(
+                    "restore_mix_state",
+                    "persisted clip-mix state contains a duplicate clip identity",
+                ));
+            }
+        }
+        Ok(Self {
+            revision,
+            controls: by_clip,
+        })
     }
 
     /// Returns the published revision.
@@ -352,6 +380,13 @@ impl ClipMixState {
     #[must_use]
     pub fn controls(&self, clip_id: ClipId) -> Option<&ClipMixControls> {
         self.controls.get(&clip_id)
+    }
+
+    /// Iterates clip controls in stable identity order.
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = (ClipId, &ClipMixControls)> {
+        self.controls
+            .iter()
+            .map(|(clip_id, controls)| (*clip_id, controls))
     }
 
     /// Validates an expected revision without publishing a mutation.
@@ -450,6 +485,8 @@ pub struct ClipMixSnapshot {
     controls: BTreeMap<ClipId, ClipMixControls>,
     any_solo: bool,
 }
+
+impl Eq for ClipMixSnapshot {}
 
 impl ClipMixSnapshot {
     /// Returns the source editable revision.

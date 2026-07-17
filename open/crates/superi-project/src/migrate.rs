@@ -11,10 +11,11 @@ use superi_timeline::serialize::{deserialize_timeline_state, TIMELINE_STATE_FORM
 use crate::document::{ProjectDocument, ProjectGraph, StandaloneProjectGraph};
 use crate::persist::{
     check_component_size, corrupt, database_error, fixed_bytes, initialize_schema,
-    initialize_schema_one, load_connection, load_schema_one_connection, parse_revision,
-    project_error, stored_state_error, unsupported, validate_identity_and_schema,
-    write_prepared_project, write_schema_one_project, PreparedProject, StoredGraphKind,
-    MAX_GRAPH_COUNT, MAX_STANDALONE_NAME_BYTES, PROJECT_APPLICATION_ID, PROJECT_FORMAT,
+    initialize_schema_one, initialize_schema_two, load_connection, load_schema_one_connection,
+    load_schema_two_connection, parse_revision, project_error, stored_state_error, unsupported,
+    validate_identity_and_schema, write_prepared_project, write_schema_one_project,
+    write_schema_two_project, PreparedProject, StoredGraphKind, MAX_GRAPH_COUNT,
+    MAX_STANDALONE_NAME_BYTES, PROJECT_APPLICATION_ID, PROJECT_FORMAT,
     PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION, PROJECT_SCHEMA_REVISION,
 };
 
@@ -42,6 +43,11 @@ const MIGRATIONS: &[MigrationStep] = &[
         source: 1,
         target: 2,
         apply: migrate_schema_one_to_two,
+    },
+    MigrationStep {
+        source: 2,
+        target: 3,
+        apply: migrate_schema_two_to_three,
     },
 ];
 
@@ -198,6 +204,33 @@ fn migrate_schema_one_to_two(connection: &Connection) -> Result<()> {
              DROP TABLE project_metadata;",
         )
         .map_err(|source| database_error(source, "replace_schema_one_project_schema"))?;
+    initialize_schema_two(connection)?;
+    write_schema_two_project(connection, &prepared)?;
+    let migrated = load_schema_two_connection(connection)?;
+    if migrated.snapshot() != expected {
+        return Err(project_error(
+            ErrorCategory::Internal,
+            Recoverability::Terminal,
+            "verify_schema_two_project_migration",
+            "schema-2 project did not reproduce the complete schema-1 snapshot",
+        ));
+    }
+    Ok(())
+}
+
+fn migrate_schema_two_to_three(connection: &Connection) -> Result<()> {
+    let schema_two = load_schema_two_connection(connection)?;
+    let expected = schema_two.snapshot();
+    let prepared = PreparedProject::from_snapshot(&expected)?;
+
+    connection
+        .execute_batch(
+            "DROP TABLE graph_components;\
+             DROP TABLE settings_component;\
+             DROP TABLE timeline_component;\
+             DROP TABLE project_metadata;",
+        )
+        .map_err(|source| database_error(source, "replace_schema_two_project_schema"))?;
     initialize_schema(connection)?;
     write_prepared_project(connection, &prepared)?;
     let migrated = load_connection(connection)?;
@@ -205,8 +238,8 @@ fn migrate_schema_one_to_two(connection: &Connection) -> Result<()> {
         return Err(project_error(
             ErrorCategory::Internal,
             Recoverability::Terminal,
-            "verify_schema_two_project_migration",
-            "schema-2 project did not reproduce the complete schema-1 snapshot",
+            "verify_schema_three_project_migration",
+            "schema-3 project did not reproduce the complete schema-2 snapshot",
         ));
     }
     Ok(())
@@ -554,6 +587,7 @@ mod tests {
     use rusqlite::{params, Connection};
     use superi_core::error::{ErrorCategory, Recoverability};
     use superi_core::ids::{ProjectId, TimelineId};
+    use superi_core::settings::SettingValue;
     use superi_core::time::{RationalTime, Timebase};
     use superi_graph::serialize::serialize_graph;
     use superi_timeline::model::{EditorialProject, Timeline};
@@ -650,11 +684,13 @@ mod tests {
     #[test]
     fn registry_is_contiguous_and_precommit_interruption_rolls_back_schema_rewrite() {
         validate_registry().unwrap();
-        assert_eq!(MIGRATIONS.len(), 2);
+        assert_eq!(MIGRATIONS.len(), 3);
         assert_eq!(MIGRATIONS[0].source, 0);
         assert_eq!(MIGRATIONS[0].target, 1);
         assert_eq!(MIGRATIONS[1].source, 1);
-        assert_eq!(MIGRATIONS[1].target, PROJECT_SCHEMA_REVISION);
+        assert_eq!(MIGRATIONS[1].target, 2);
+        assert_eq!(MIGRATIONS[2].source, 2);
+        assert_eq!(MIGRATIONS[2].target, PROJECT_SCHEMA_REVISION);
 
         let (mut connection, expected) = legacy_connection();
         let error = migrate_connection_with_guard(&mut connection, |_| {
@@ -711,5 +747,46 @@ mod tests {
                 .integer(crate::settings::AUDIO_SAMPLE_RATE_KEY),
             Some(48_000)
         );
+    }
+
+    #[test]
+    fn schema_two_projects_preserve_settings_and_gain_canonical_empty_audio() {
+        let (_, base) = legacy_connection();
+        let mut connection = Connection::open_in_memory().unwrap();
+        initialize_schema_two(&connection).unwrap();
+        write_schema_two_project(&connection, &PreparedProject::from_snapshot(&base).unwrap())
+            .unwrap();
+
+        let mut schema_two = load_schema_two_connection(&connection).unwrap();
+        schema_two
+            .execute_settings_transaction(
+                crate::settings::ProjectSettingsTransaction::new(
+                    schema_two.revision(),
+                    vec![crate::settings::ProjectSettingMutation::set(
+                        crate::settings::AUDIO_SAMPLE_RATE_KEY,
+                        SettingValue::Integer(96_000),
+                    )
+                    .unwrap()],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        let expected = schema_two.snapshot();
+        write_schema_two_project(
+            &connection,
+            &PreparedProject::from_snapshot(&expected).unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(migrate_connection(&mut connection).unwrap(), 2);
+        let migrated = load_connection(&connection).unwrap();
+        assert_eq!(migrated.snapshot(), expected);
+        assert_eq!(
+            migrated
+                .settings()
+                .integer(crate::settings::AUDIO_SAMPLE_RATE_KEY),
+            Some(96_000)
+        );
+        assert_eq!(migrated.clip_mix_state().iter().len(), 0);
     }
 }

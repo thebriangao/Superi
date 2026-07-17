@@ -21,6 +21,7 @@ use superi_engine::lifecycle::{
     EngineHealth, EngineLifecycleActionKind, EngineSubsystem, EngineWorkAdmission, EngineWorkKind,
     EngineWorkPermit,
 };
+use superi_engine::project_transaction::{CompoundProjectAction, CompoundProjectTransaction};
 use superi_project::document::ProjectDocument;
 use superi_project::media::{PortableRelativePath, ProjectMediaCommand, ReferencedMediaPath};
 use superi_timeline::model::{EditorialProject, LinkedMediaReference, Timeline};
@@ -301,6 +302,43 @@ fn project_commands_require_one_owner_and_publish_correlated_replacement_events(
     assert_eq!(events[0].command_sequence(), 3);
     assert_eq!(events[0].transaction_id().as_str(), "project-undo");
     assert_eq!(events[0].project_revision(), Some(2));
+}
+
+#[test]
+fn compound_project_command_emits_one_correlated_replacement_event() {
+    let mut dispatcher = EngineCommandDispatcher::scenario_only();
+    dispatcher
+        .attach_project_history(project_document(), 2)
+        .unwrap();
+    let transaction = CompoundProjectTransaction::new([
+        CompoundProjectAction::MutateMedia(ProjectMediaCommand::mark_missing(HISTORY_MEDIA)),
+        CompoundProjectAction::SelectRootTimeline(HISTORY_ROOT),
+    ])
+    .unwrap();
+    let outcome = dispatch(
+        &mut dispatcher,
+        "project-compound",
+        EngineCommand::ExecuteProjectHistory(ProjectHistoryCommand::apply(
+            0,
+            ProjectMutation::compound(transaction),
+        )),
+    )
+    .unwrap();
+    let state = project_history_result(outcome.result()).state().clone();
+    assert_eq!(state.snapshot().revision(), 1);
+    assert_eq!(state.undo_depth(), 1);
+
+    let events = dispatcher.drain_events().unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].command_sequence(), 1);
+    assert_eq!(events[0].transaction_id().as_str(), "project-compound");
+    assert_eq!(events[0].project_revision(), Some(1));
+    match events[0].event() {
+        EngineEvent::ProjectStateChanged(event_state) => {
+            assert_eq!(event_state.as_ref(), &state);
+        }
+        _ => panic!("expected project state event"),
+    }
 }
 
 #[test]

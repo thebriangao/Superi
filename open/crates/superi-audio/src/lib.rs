@@ -22,4 +22,5 @@ pub mod mixing;
 pub mod playback;
 pub mod resample;
 pub mod routing;
+pub mod serialize;
 pub mod sync;

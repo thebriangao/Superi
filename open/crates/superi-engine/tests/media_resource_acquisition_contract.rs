@@ -484,6 +484,7 @@ fn downgrade_project_fixture_to_schema_zero(path: &Path) {
              DROP TABLE current_graph_components;
              DROP TABLE current_timeline_component;
              DROP TABLE current_project_metadata;
+             DROP TABLE audio_component;
              PRAGMA user_version = 0;
              COMMIT;",
         )

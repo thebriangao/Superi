@@ -193,7 +193,15 @@ fn policy_for(package: &str) -> Option<Policy> {
         "superi-timeline" => Policy::new(&["superi-core", "superi-graph"], &[]),
         "superi-audio" => Policy::new(&["superi-core", "superi-concurrency"], &[]),
         "superi-ai" => Policy::new(&["superi-core", "superi-image", "superi-graph"], &[]),
-        "superi-project" => Policy::new(&["superi-core", "superi-graph", "superi-timeline"], &[]),
+        "superi-project" => Policy::new(
+            &[
+                "superi-core",
+                "superi-graph",
+                "superi-timeline",
+                "superi-audio",
+            ],
+            &[],
+        ),
         "superi-engine" => Policy::new(
             &[
                 "superi-core",

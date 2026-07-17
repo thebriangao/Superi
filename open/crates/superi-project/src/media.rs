@@ -12,7 +12,7 @@ use superi_core::ids::MediaId;
 use superi_timeline::media::RelinkDecision;
 use superi_timeline::model::{EditorialProject, LinkedMediaReference};
 
-use crate::document::{ProjectDocument, ProjectGraph, ProjectSnapshot};
+use crate::document::{ProjectDocument, ProjectDraft, ProjectGraph, ProjectSnapshot};
 
 const COMPONENT: &str = "superi-project.media";
 const MEDIA_PATH_TARGET_PREFIX: &str = "superi.media-path.v1:";
@@ -444,31 +444,7 @@ impl ProjectDocument {
         }
         let mut command_result = None;
         let snapshot = self.edit(expected_revision, |draft| {
-            let retained_timeline_graphs = draft
-                .graphs()
-                .filter_map(|graph| {
-                    graph
-                        .root_timeline_id()
-                        .map(|root| (root, graph.graph().clone()))
-                })
-                .collect::<Vec<_>>();
-            let editorial_revision = draft.editorial_project().revision();
-            draft
-                .editorial_project_mut()
-                .edit(editorial_revision, |editorial| {
-                    let media = editorial.media_reference_mut(media_id)?;
-                    command_result = Some(apply_media_command(media, &command)?);
-                    Ok(())
-                })?;
-
-            for (root_timeline_id, graph) in retained_timeline_graphs {
-                let refreshed = ProjectGraph::restore_timeline(
-                    draft.editorial_project(),
-                    root_timeline_id,
-                    graph,
-                )?;
-                draft.replace_graph(refreshed);
-            }
+            command_result = Some(draft.execute_media_command(&command)?);
             Ok(())
         })?;
 
@@ -481,6 +457,47 @@ impl ProjectDocument {
             )
         })?;
         Ok(ProjectMediaCommandOutcome { snapshot, result })
+    }
+}
+
+impl ProjectDraft<'_> {
+    /// Applies one media command inside an existing whole-project transaction.
+    pub fn execute_media_command(
+        &mut self,
+        command: &ProjectMediaCommand,
+    ) -> Result<ProjectMediaCommandResult> {
+        let media_id = command.media_id();
+        let current_media = self
+            .editorial_project()
+            .media_reference(media_id)
+            .ok_or_else(|| missing_media_reference(media_id))?;
+        let mut preview = current_media.clone();
+        let result = apply_media_command(&mut preview, command)?;
+        if preview == *current_media {
+            return Ok(result);
+        }
+
+        let retained_timeline_graphs = self
+            .graphs()
+            .filter_map(|graph| {
+                graph
+                    .root_timeline_id()
+                    .map(|root| (root, graph.graph().clone()))
+            })
+            .collect::<Vec<_>>();
+        let editorial_revision = self.editorial_project().revision();
+        self.editorial_project_mut()
+            .edit(editorial_revision, |editorial| {
+                let media = editorial.media_reference_mut(media_id)?;
+                apply_media_command(media, command).map(|_| ())
+            })?;
+
+        for (root_timeline_id, graph) in retained_timeline_graphs {
+            let refreshed =
+                ProjectGraph::restore_timeline(self.editorial_project(), root_timeline_id, graph)?;
+            self.replace_graph(refreshed);
+        }
+        Ok(result)
     }
 }
 

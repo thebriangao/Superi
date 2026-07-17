@@ -13,6 +13,7 @@ workspace = true
 rusqlite.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+superi-audio = { path = "../superi-audio" }
 superi-core = { path = "../superi-core" }
 superi-graph = { path = "../superi-graph" }
 superi-timeline = { path = "../superi-timeline" }

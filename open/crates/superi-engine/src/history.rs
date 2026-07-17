@@ -10,6 +10,10 @@ use superi_project::document::{ProjectDocument, ProjectSnapshot};
 use superi_project::media::{ProjectMediaCommand, ProjectMediaCommandResult};
 use superi_project::settings::ProjectSettingsTransaction;
 
+use crate::project_transaction::{
+    execute_compound_project_transaction, CompoundProjectActionResult, CompoundProjectTransaction,
+};
+
 const COMPONENT: &str = "superi-engine.history";
 
 /// Default number of authored project mutations retained for undo and redo.
@@ -105,6 +109,8 @@ impl<S, M> SnapshotHistory<S, M> {
 pub enum ProjectMutationKind {
     /// Change one or more durable project settings atomically.
     ProjectSettings,
+    /// Execute one ordered whole-project compound transaction.
+    Compound,
     /// Replace the active referenced-media path.
     SetMediaPath,
     /// Mark one referenced-media path unavailable.
@@ -119,6 +125,7 @@ impl ProjectMutationKind {
     pub const fn code(self) -> &'static str {
         match self {
             Self::ProjectSettings => "project_settings",
+            Self::Compound => "compound",
             Self::SetMediaPath => "set_media_path",
             Self::MarkMediaMissing => "mark_media_missing",
             Self::ConsiderMediaRelink => "consider_media_relink",
@@ -130,11 +137,19 @@ impl ProjectMutationKind {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum ProjectMutation {
+    /// Execute one ordered transaction across authored project subsystems.
+    Compound(CompoundProjectTransaction),
     /// Execute a project media command through its checked document boundary.
     Media(ProjectMediaCommand),
 }
 
 impl ProjectMutation {
+    /// Creates an authored compound mutation.
+    #[must_use]
+    pub const fn compound(transaction: CompoundProjectTransaction) -> Self {
+        Self::Compound(transaction)
+    }
+
     /// Creates an authored media mutation.
     #[must_use]
     pub const fn media(command: ProjectMediaCommand) -> Self {
@@ -145,6 +160,7 @@ impl ProjectMutation {
     #[must_use]
     pub const fn kind(&self) -> ProjectMutationKind {
         match self {
+            Self::Compound(_) => ProjectMutationKind::Compound,
             Self::Media(ProjectMediaCommand::SetPath { .. }) => ProjectMutationKind::SetMediaPath,
             Self::Media(ProjectMediaCommand::MarkMissing { .. }) => {
                 ProjectMutationKind::MarkMediaMissing
@@ -220,6 +236,11 @@ impl ProjectHistoryCommand {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum ProjectHistoryActionResult {
+    /// One compound mutation was accepted as a single history entry.
+    AppliedCompound {
+        /// Semantic subsystem results in command order.
+        actions: Vec<CompoundProjectActionResult>,
+    },
     /// A typed mutation was accepted by its project owner.
     Applied {
         /// Stable mutation classification.
@@ -409,11 +430,27 @@ impl ProjectCommandHistory {
     ) -> Result<ProjectHistoryOutcome> {
         let kind = mutation.kind();
         let before = self.document.snapshot();
-        let media_result = match mutation {
-            ProjectMutation::Media(command) => self
-                .document
-                .execute_media_command(expected_revision, command)?
-                .result(),
+        let action_result = match mutation {
+            ProjectMutation::Compound(transaction) => {
+                let outcome = execute_compound_project_transaction(
+                    &mut self.document,
+                    expected_revision,
+                    &transaction,
+                )?;
+                ProjectHistoryActionResult::AppliedCompound {
+                    actions: outcome.actions().to_vec(),
+                }
+            }
+            ProjectMutation::Media(command) => {
+                let media_result = self
+                    .document
+                    .execute_media_command(expected_revision, command)?
+                    .result();
+                ProjectHistoryActionResult::Applied {
+                    mutation: kind,
+                    media_result,
+                }
+            }
         };
         let after = self.document.snapshot();
         let authored_state_changed = after.revision() != before.revision();
@@ -422,10 +459,7 @@ impl ProjectCommandHistory {
         }
         Ok(ProjectHistoryOutcome {
             state: self.state(),
-            action_result: Some(ProjectHistoryActionResult::Applied {
-                mutation: kind,
-                media_result,
-            }),
+            action_result: Some(action_result),
             authored_state_changed,
         })
     }

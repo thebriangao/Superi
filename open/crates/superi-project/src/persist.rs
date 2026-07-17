@@ -13,6 +13,10 @@ use std::time::Duration;
 use rusqlite::config::DbConfig;
 use rusqlite::{params, Connection, ErrorCode, OpenFlags, TransactionBehavior};
 use sha2::{Digest, Sha256};
+use superi_audio::mixing::ClipMixState;
+use superi_audio::serialize::{
+    deserialize_clip_mix_state, serialize_clip_mix_state, CLIP_MIX_FORMAT_REVISION,
+};
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_core::ids::{GraphId, ProjectId, TimelineId};
 use superi_core::serialization::STABLE_PRIMITIVE_SCHEMA_REVISION;
@@ -30,6 +34,7 @@ use crate::settings::{ProjectSettings, PROJECT_SETTINGS_FORMAT_REVISION};
 const COMPONENT: &str = "superi-project.persistence";
 const MANIFEST_DOMAIN_V1: &[u8] = b"superi.project.manifest.v1";
 const MANIFEST_DOMAIN_V2: &[u8] = b"superi.project.manifest.v2";
+const MANIFEST_DOMAIN_V3: &[u8] = b"superi.project.manifest.v3";
 pub(crate) const MAX_COMPONENT_BYTES: usize = 64 * 1024 * 1024;
 pub(crate) const MAX_SETTINGS_COMPONENT_BYTES: usize = 1024 * 1024;
 pub(crate) const MAX_GRAPH_COUNT: usize = 4096;
@@ -40,17 +45,19 @@ pub const PROJECT_APPLICATION_ID: u32 = 0x5355_5052;
 /// Oldest project database schema with a registered lossless forward migration.
 pub const PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION: u32 = 0;
 /// Current monotonic project database schema revision.
-pub const PROJECT_SCHEMA_REVISION: u32 = 2;
+pub const PROJECT_SCHEMA_REVISION: u32 = 3;
 /// Stable semantic identity of the whole-project format.
 pub const PROJECT_FORMAT: &str = "superi.project";
 /// Current semantic project format version.
-pub const PROJECT_FORMAT_VERSION: &str = "1.1.0";
+pub const PROJECT_FORMAT_VERSION: &str = "1.2.0";
+pub(crate) const PROJECT_FORMAT_VERSION_SCHEMA_TWO: &str = "1.1.0";
 pub(crate) const PROJECT_FORMAT_VERSION_SCHEMA_ONE: &str = "1.0.0";
 
 pub(crate) const PROJECT_METADATA_SCHEMA: &str = "CREATE TABLE project_metadata (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format TEXT NOT NULL CHECK (format = 'superi.project'), format_version TEXT NOT NULL, primitive_schema_revision INTEGER NOT NULL CHECK (primitive_schema_revision > 0), project_id BLOB NOT NULL CHECK (length(project_id) = 16), document_revision TEXT NOT NULL, root_timeline_id BLOB NOT NULL CHECK (length(root_timeline_id) = 16), manifest_sha256 BLOB NOT NULL CHECK (length(manifest_sha256) = 32)) STRICT";
 pub(crate) const TIMELINE_COMPONENT_SCHEMA: &str = "CREATE TABLE timeline_component (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format_revision INTEGER NOT NULL CHECK (format_revision > 0), byte_length INTEGER NOT NULL CHECK (byte_length >= 0 AND byte_length <= 67108864), sha256 BLOB NOT NULL CHECK (length(sha256) = 32), document BLOB NOT NULL CHECK (length(document) = byte_length)) STRICT";
 pub(crate) const GRAPH_COMPONENTS_SCHEMA: &str = "CREATE TABLE graph_components (graph_id BLOB PRIMARY KEY CHECK (length(graph_id) = 16), graph_kind TEXT NOT NULL CHECK (graph_kind IN ('timeline', 'standalone')), root_timeline_id BLOB CHECK (root_timeline_id IS NULL OR length(root_timeline_id) = 16), name TEXT, graph_revision TEXT NOT NULL, format_revision INTEGER NOT NULL CHECK (format_revision > 0), byte_length INTEGER NOT NULL CHECK (byte_length >= 0 AND byte_length <= 67108864), sha256 BLOB NOT NULL CHECK (length(sha256) = 32), document BLOB NOT NULL CHECK (length(document) = byte_length), CHECK ((graph_kind = 'timeline' AND root_timeline_id IS NOT NULL AND name IS NULL) OR (graph_kind = 'standalone' AND root_timeline_id IS NULL AND name IS NOT NULL AND length(name) > 0))) STRICT, WITHOUT ROWID";
 pub(crate) const SETTINGS_COMPONENT_SCHEMA: &str = "CREATE TABLE settings_component (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format_revision INTEGER NOT NULL CHECK (format_revision >= 1), byte_length INTEGER NOT NULL CHECK (byte_length >= 0 AND byte_length <= 1048576), sha256 BLOB NOT NULL CHECK (length(sha256) = 32), document BLOB NOT NULL CHECK (length(document) = byte_length)) STRICT";
+pub(crate) const AUDIO_COMPONENT_SCHEMA: &str = "CREATE TABLE audio_component (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format_revision INTEGER NOT NULL CHECK (format_revision > 0), byte_length INTEGER NOT NULL CHECK (byte_length >= 0 AND byte_length <= 67108864), sha256 BLOB NOT NULL CHECK (length(sha256) = 32), document BLOB NOT NULL CHECK (length(document) = byte_length)) STRICT";
 
 enum ProjectDatabaseStorage {
     File { active_path: PathBuf },
@@ -285,6 +292,8 @@ pub(crate) struct PreparedProject {
     timeline_digest: [u8; 32],
     settings_document: Vec<u8>,
     settings_digest: [u8; 32],
+    audio_document: Vec<u8>,
+    audio_digest: [u8; 32],
     graphs: Vec<PreparedGraph>,
     manifest_digest: [u8; 32],
 }
@@ -308,6 +317,9 @@ impl PreparedProject {
             .map_err(|source| settings_json_error(source, "encode_settings_component", false))?;
         check_settings_component_size(settings_document.len(), "encode_settings_component")?;
         let settings_digest = sha256(&settings_document);
+        let audio_document = serialize_clip_mix_state(snapshot.clip_mix_state())?;
+        check_component_size(audio_document.len(), "encode_audio_component")?;
+        let audio_digest = sha256(&audio_document);
 
         if snapshot.graphs().len() > MAX_GRAPH_COUNT {
             return Err(resource_exhausted(
@@ -361,6 +373,8 @@ impl PreparedProject {
             timeline_digest,
             settings_document,
             settings_digest,
+            audio_document,
+            audio_digest,
             graphs,
             manifest_digest: [0; 32],
         };
@@ -473,7 +487,7 @@ pub(crate) fn initialize_connection(connection: &Connection, writable: bool) -> 
 
 pub(crate) fn initialize_schema(connection: &Connection) -> Result<()> {
     let schema = format!(
-        "{PROJECT_METADATA_SCHEMA};{TIMELINE_COMPONENT_SCHEMA};{GRAPH_COMPONENTS_SCHEMA};{SETTINGS_COMPONENT_SCHEMA};"
+        "{PROJECT_METADATA_SCHEMA};{TIMELINE_COMPONENT_SCHEMA};{GRAPH_COMPONENTS_SCHEMA};{SETTINGS_COMPONENT_SCHEMA};{AUDIO_COMPONENT_SCHEMA};"
     );
     connection
         .execute_batch(&schema)
@@ -502,18 +516,39 @@ pub(crate) fn initialize_schema_one(connection: &Connection) -> Result<()> {
     validate_schema_one_identity_and_schema(connection)
 }
 
+pub(crate) fn initialize_schema_two(connection: &Connection) -> Result<()> {
+    let schema = format!(
+        "{PROJECT_METADATA_SCHEMA};{TIMELINE_COMPONENT_SCHEMA};{GRAPH_COMPONENTS_SCHEMA};{SETTINGS_COMPONENT_SCHEMA};"
+    );
+    connection
+        .execute_batch(&schema)
+        .map_err(|source| database_error(source, "create_schema_two_project_schema"))?;
+    connection
+        .pragma_update(None, "application_id", i64::from(PROJECT_APPLICATION_ID))
+        .map_err(|source| database_error(source, "set_schema_two_application_id"))?;
+    connection
+        .pragma_update(None, "user_version", 2_i64)
+        .map_err(|source| database_error(source, "set_schema_two_revision"))?;
+    validate_schema_two_identity_and_schema(connection)
+}
+
 pub(crate) fn validate_identity_and_schema(connection: &Connection) -> Result<()> {
-    validate_schema(connection, PROJECT_SCHEMA_REVISION, true, true)
+    validate_schema(connection, PROJECT_SCHEMA_REVISION, true, true, true)
 }
 
 pub(crate) fn validate_schema_one_identity_and_schema(connection: &Connection) -> Result<()> {
-    validate_schema(connection, 1, false, false)
+    validate_schema(connection, 1, false, false, false)
+}
+
+pub(crate) fn validate_schema_two_identity_and_schema(connection: &Connection) -> Result<()> {
+    validate_schema(connection, 2, true, false, false)
 }
 
 fn validate_schema(
     connection: &Connection,
     expected_revision: u32,
     include_settings: bool,
+    include_audio: bool,
     require_current: bool,
 ) -> Result<()> {
     let quick_check: String = connection
@@ -588,6 +623,16 @@ fn validate_schema(
             PROJECT_METADATA_SCHEMA.to_owned(),
         ),
     ];
+    if include_audio {
+        expected.insert(
+            0,
+            (
+                "table".to_owned(),
+                "audio_component".to_owned(),
+                AUDIO_COMPONENT_SCHEMA.to_owned(),
+            ),
+        );
+    }
     if include_settings {
         expected.push((
             "table".to_owned(),
@@ -643,13 +688,61 @@ pub(crate) fn write_prepared_project(
     connection: &Connection,
     prepared: &PreparedProject,
 ) -> Result<()> {
-    connection
-        .execute_batch(
+    write_prepared_project_versioned(
+        connection,
+        prepared,
+        PROJECT_FORMAT_VERSION,
+        prepared.manifest_digest,
+        true,
+        true,
+    )
+}
+
+pub(crate) fn write_schema_two_project(
+    connection: &Connection,
+    prepared: &PreparedProject,
+) -> Result<()> {
+    write_prepared_project_versioned(
+        connection,
+        prepared,
+        PROJECT_FORMAT_VERSION_SCHEMA_TWO,
+        manifest_digest_v2(prepared),
+        true,
+        false,
+    )
+}
+
+fn write_prepared_project_versioned(
+    connection: &Connection,
+    prepared: &PreparedProject,
+    format_version: &str,
+    manifest_digest: [u8; 32],
+    include_settings: bool,
+    include_audio: bool,
+) -> Result<()> {
+    let clear = match (include_settings, include_audio) {
+        (true, true) => {
+            "DELETE FROM audio_component;\
+             DELETE FROM graph_components;\
+             DELETE FROM settings_component;\
+             DELETE FROM timeline_component;\
+             DELETE FROM project_metadata;"
+        }
+        (true, false) => {
             "DELETE FROM graph_components;\
              DELETE FROM settings_component;\
              DELETE FROM timeline_component;\
-             DELETE FROM project_metadata;",
-        )
+             DELETE FROM project_metadata;"
+        }
+        (false, false) => {
+            "DELETE FROM graph_components;\
+             DELETE FROM timeline_component;\
+             DELETE FROM project_metadata;"
+        }
+        (false, true) => unreachable!("audio project schemas also retain settings"),
+    };
+    connection
+        .execute_batch(clear)
         .map_err(|source| database_error(source, "clear_project_rows"))?;
     connection
         .execute(
@@ -659,12 +752,12 @@ pub(crate) fn write_prepared_project(
              VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 PROJECT_FORMAT,
-                PROJECT_FORMAT_VERSION,
+                format_version,
                 i64::from(STABLE_PRIMITIVE_SCHEMA_REVISION),
                 prepared.project_id.to_bytes().as_slice(),
                 prepared.revision.to_string(),
                 prepared.root_timeline_id.to_bytes().as_slice(),
-                prepared.manifest_digest.as_slice(),
+                manifest_digest.as_slice(),
             ],
         )
         .map_err(|source| database_error(source, "write_project_metadata"))?;
@@ -681,19 +774,36 @@ pub(crate) fn write_prepared_project(
             ],
         )
         .map_err(|source| database_error(source, "write_timeline_component"))?;
-    connection
-        .execute(
-            "INSERT INTO settings_component \
-             (singleton, format_revision, byte_length, sha256, document) \
-             VALUES (1, ?1, ?2, ?3, ?4)",
-            params![
-                i64::from(PROJECT_SETTINGS_FORMAT_REVISION),
-                prepared.settings_document.len() as i64,
-                prepared.settings_digest.as_slice(),
-                prepared.settings_document.as_slice(),
-            ],
-        )
-        .map_err(|source| database_error(source, "write_settings_component"))?;
+    if include_settings {
+        connection
+            .execute(
+                "INSERT INTO settings_component \
+                 (singleton, format_revision, byte_length, sha256, document) \
+                 VALUES (1, ?1, ?2, ?3, ?4)",
+                params![
+                    i64::from(PROJECT_SETTINGS_FORMAT_REVISION),
+                    prepared.settings_document.len() as i64,
+                    prepared.settings_digest.as_slice(),
+                    prepared.settings_document.as_slice(),
+                ],
+            )
+            .map_err(|source| database_error(source, "write_settings_component"))?;
+    }
+    if include_audio {
+        connection
+            .execute(
+                "INSERT INTO audio_component \
+                 (singleton, format_revision, byte_length, sha256, document) \
+                 VALUES (1, ?1, ?2, ?3, ?4)",
+                params![
+                    i64::from(CLIP_MIX_FORMAT_REVISION),
+                    prepared.audio_document.len() as i64,
+                    prepared.audio_digest.as_slice(),
+                    prepared.audio_document.as_slice(),
+                ],
+            )
+            .map_err(|source| database_error(source, "write_audio_component"))?;
+    }
 
     let mut statement = connection
         .prepare(
@@ -804,22 +914,32 @@ fn write_graph_rows(
 
 pub(crate) fn load_connection(connection: &Connection) -> Result<ProjectDocument> {
     validate_identity_and_schema(connection)?;
-    load_checked_connection(connection, true)
+    load_checked_connection(connection, PROJECT_SCHEMA_REVISION, true, true)
+}
+
+pub(crate) fn load_schema_two_connection(connection: &Connection) -> Result<ProjectDocument> {
+    validate_schema_two_identity_and_schema(connection)?;
+    load_checked_connection(connection, 2, true, false)
 }
 
 pub(crate) fn load_schema_one_connection(connection: &Connection) -> Result<ProjectDocument> {
     validate_schema_one_identity_and_schema(connection)?;
-    load_checked_connection(connection, false)
+    load_checked_connection(connection, 1, false, false)
 }
 
 fn load_checked_connection(
     connection: &Connection,
+    schema_revision: u32,
     includes_settings: bool,
+    include_audio: bool,
 ) -> Result<ProjectDocument> {
     require_row_count(connection, "project_metadata", 1)?;
     require_row_count(connection, "timeline_component", 1)?;
     if includes_settings {
         require_row_count(connection, "settings_component", 1)?;
+    }
+    if include_audio {
+        require_row_count(connection, "audio_component", 1)?;
     }
 
     let metadata = connection
@@ -841,10 +961,16 @@ fn load_checked_connection(
             },
         )
         .map_err(|source| database_error(source, "read_project_metadata"))?;
-    let expected_format_version = if includes_settings {
-        PROJECT_FORMAT_VERSION
-    } else {
-        PROJECT_FORMAT_VERSION_SCHEMA_ONE
+    let expected_format_version = match schema_revision {
+        1 => PROJECT_FORMAT_VERSION_SCHEMA_ONE,
+        2 => PROJECT_FORMAT_VERSION_SCHEMA_TWO,
+        PROJECT_SCHEMA_REVISION => PROJECT_FORMAT_VERSION,
+        _ => {
+            return Err(corrupt(
+                "read_project_metadata",
+                "project loader received an unsupported schema revision",
+            ));
+        }
     };
     if metadata.0 != PROJECT_FORMAT || metadata.1 != expected_format_version {
         return Err(unsupported(
@@ -939,6 +1065,32 @@ fn load_checked_connection(
         ))
     } else {
         None
+    };
+
+    let (audio_document, audio_digest) = if include_audio {
+        let audio = connection
+            .query_row(
+                "SELECT format_revision, byte_length, sha256, document \
+                 FROM audio_component WHERE singleton = 1",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, Vec<u8>>(2)?,
+                        row.get::<_, Vec<u8>>(3)?,
+                    ))
+                },
+            )
+            .map_err(|source| database_error(source, "read_audio_component"))?;
+        supported_revision(audio.0, CLIP_MIX_FORMAT_REVISION, "read_audio_component")?;
+        validate_component(audio.1, &audio.2, &audio.3, "read_audio_component")?;
+        let digest = fixed_bytes::<32>(audio.2, "read_audio_component", "audio digest")?;
+        (audio.3, digest)
+    } else {
+        let document = serialize_clip_mix_state(&ClipMixState::new())?;
+        let digest = sha256(&document);
+        (document, digest)
     };
 
     let graph_count: i64 = connection
@@ -1053,13 +1205,16 @@ fn load_checked_connection(
             .as_ref()
             .map(|(_, _, digest)| *digest)
             .unwrap_or([0; 32]),
+        audio_document,
+        audio_digest,
         graphs,
         manifest_digest: stored_manifest,
     };
-    let expected_manifest = if includes_settings {
-        manifest_digest(&prepared)
-    } else {
-        manifest_digest_v1(&prepared)
+    let expected_manifest = match schema_revision {
+        1 => manifest_digest_v1(&prepared),
+        2 => manifest_digest_v2(&prepared),
+        PROJECT_SCHEMA_REVISION => manifest_digest(&prepared),
+        _ => unreachable!("validated loader schema revision"),
     };
     if expected_manifest != stored_manifest {
         return Err(corrupt(
@@ -1160,12 +1315,19 @@ fn load_checked_connection(
         };
         restored_graphs.push(restored);
     }
-    ProjectDocument::from_parts_with_settings(
+    let clip_mix_state = if include_audio {
+        deserialize_clip_mix_state(&prepared.audio_document)
+            .map_err(|source| stored_state_error(source, "decode_audio_component"))?
+    } else {
+        ClipMixState::new()
+    };
+    ProjectDocument::from_complete_parts_with_settings(
         prepared.revision,
         editorial_project,
         prepared.root_timeline_id,
         project_settings,
         restored_graphs,
+        clip_mix_state,
     )
     .map_err(|source| stored_state_error(source, "restore_project_document"))
 }
@@ -1305,10 +1467,22 @@ fn sha256(bytes: &[u8]) -> [u8; 32] {
 fn manifest_digest(project: &PreparedProject) -> [u8; 32] {
     manifest_digest_for(
         project,
-        MANIFEST_DOMAIN_V2,
+        MANIFEST_DOMAIN_V3,
         PROJECT_FORMAT_VERSION,
         PROJECT_SCHEMA_REVISION,
         true,
+        true,
+    )
+}
+
+fn manifest_digest_v2(project: &PreparedProject) -> [u8; 32] {
+    manifest_digest_for(
+        project,
+        MANIFEST_DOMAIN_V2,
+        PROJECT_FORMAT_VERSION_SCHEMA_TWO,
+        2,
+        true,
+        false,
     )
 }
 
@@ -1319,6 +1493,7 @@ fn manifest_digest_v1(project: &PreparedProject) -> [u8; 32] {
         PROJECT_FORMAT_VERSION_SCHEMA_ONE,
         1,
         false,
+        false,
     )
 }
 
@@ -1328,6 +1503,7 @@ fn manifest_digest_for(
     format_version: &str,
     schema_revision: u32,
     include_settings: bool,
+    include_audio: bool,
 ) -> [u8; 32] {
     let mut hasher = Sha256::new();
     manifest_field(&mut hasher, domain);
@@ -1351,6 +1527,14 @@ fn manifest_digest_for(
             &(project.settings_document.len() as u64).to_be_bytes(),
         );
         manifest_field(&mut hasher, &project.settings_digest);
+    }
+    if include_audio {
+        manifest_field(&mut hasher, &CLIP_MIX_FORMAT_REVISION.to_be_bytes());
+        manifest_field(
+            &mut hasher,
+            &(project.audio_document.len() as u64).to_be_bytes(),
+        );
+        manifest_field(&mut hasher, &project.audio_digest);
     }
     manifest_field(&mut hasher, &(project.graphs.len() as u64).to_be_bytes());
     for graph in &project.graphs {

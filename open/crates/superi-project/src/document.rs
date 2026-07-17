@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+use superi_audio::mixing::ClipMixState;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_core::ids::{GraphId, ProjectId, TimelineId};
 use superi_graph::mutate::{EditableGraph, GraphSnapshot};
@@ -230,12 +231,13 @@ impl ProjectDocument {
                 )
             })?
             .edit_rate();
-        Self::from_parts_with_settings(
+        Self::from_complete_parts_with_settings(
             revision,
             editorial_project,
             root_timeline_id,
             ProjectSettings::defaults(root_edit_rate)?,
             graphs,
+            ClipMixState::new(),
         )
     }
 
@@ -246,6 +248,63 @@ impl ProjectDocument {
         root_timeline_id: TimelineId,
         settings: ProjectSettings,
         graphs: G,
+    ) -> Result<Self>
+    where
+        G: IntoIterator<Item = ProjectGraph>,
+    {
+        Self::from_complete_parts_with_settings(
+            revision,
+            editorial_project,
+            root_timeline_id,
+            settings,
+            graphs,
+            ClipMixState::new(),
+        )
+    }
+
+    /// Restores the complete aggregate including authored audio intent and default settings.
+    pub fn from_complete_parts<G>(
+        revision: u64,
+        editorial_project: EditorialProject,
+        root_timeline_id: TimelineId,
+        graphs: G,
+        clip_mix_state: ClipMixState,
+    ) -> Result<Self>
+    where
+        G: IntoIterator<Item = ProjectGraph>,
+    {
+        let root_edit_rate = editorial_project
+            .timeline(root_timeline_id)
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorCategory::NotFound,
+                    Recoverability::UserCorrectable,
+                    "selected root timeline was not found in the editorial project",
+                )
+                .with_context(
+                    ErrorContext::new(COMPONENT, "restore_document")
+                        .with_field("timeline_id", root_timeline_id.to_string()),
+                )
+            })?
+            .edit_rate();
+        Self::from_complete_parts_with_settings(
+            revision,
+            editorial_project,
+            root_timeline_id,
+            ProjectSettings::defaults(root_edit_rate)?,
+            graphs,
+            clip_mix_state,
+        )
+    }
+
+    /// Restores the complete aggregate with explicit settings and authored audio intent.
+    pub fn from_complete_parts_with_settings<G>(
+        revision: u64,
+        editorial_project: EditorialProject,
+        root_timeline_id: TimelineId,
+        settings: ProjectSettings,
+        graphs: G,
+        clip_mix_state: ClipMixState,
     ) -> Result<Self>
     where
         G: IntoIterator<Item = ProjectGraph>,
@@ -270,6 +329,7 @@ impl ProjectDocument {
             root_timeline_id,
             settings,
             graphs: graphs_by_id,
+            clip_mix_state,
         };
         state.validate("restore_document")?;
         Ok(Self {
@@ -306,6 +366,12 @@ impl ProjectDocument {
     #[must_use]
     pub fn settings(&self) -> &ProjectSettings {
         &self.state.settings
+    }
+
+    /// Returns authored clip-owned audio intent at this project revision.
+    #[must_use]
+    pub fn clip_mix_state(&self) -> &ClipMixState {
+        &self.state.clip_mix_state
     }
 
     /// Iterates retained graphs in stable identity order.
@@ -480,6 +546,12 @@ impl ProjectSnapshot {
         &self.state.settings
     }
 
+    /// Returns captured authored clip-owned audio intent.
+    #[must_use]
+    pub fn clip_mix_state(&self) -> &ClipMixState {
+        &self.state.clip_mix_state
+    }
+
     /// Iterates captured graphs in stable identity order.
     pub fn graphs(&self) -> impl ExactSizeIterator<Item = &ProjectGraph> {
         self.state.graphs.values()
@@ -544,6 +616,30 @@ impl ProjectDraft<'_> {
     /// Replaces the candidate with another fully validated settings snapshot.
     pub fn replace_settings(&mut self, settings: ProjectSettings) {
         self.state.settings = settings;
+    }
+
+    /// Returns authored clip-owned audio intent inside the unpublished draft.
+    #[must_use]
+    pub const fn clip_mix_state(&self) -> &ClipMixState {
+        &self.state.clip_mix_state
+    }
+
+    /// Returns mutable authored clip-owned audio intent inside the unpublished draft.
+    pub fn clip_mix_state_mut(&mut self) -> &mut ClipMixState {
+        &mut self.state.clip_mix_state
+    }
+
+    /// Borrows editorial and authored audio state together for one coordinated edit.
+    pub fn editorial_and_clip_mix_mut(&mut self) -> (&mut EditorialProject, &mut ClipMixState) {
+        (
+            &mut self.state.editorial_project,
+            &mut self.state.clip_mix_state,
+        )
+    }
+
+    /// Validates the complete unpublished project candidate.
+    pub fn validate(&self) -> Result<()> {
+        self.state.validate("validate_draft")
     }
 
     /// Iterates candidate graphs in stable identity order.
@@ -708,6 +804,7 @@ struct ProjectState {
     root_timeline_id: TimelineId,
     settings: ProjectSettings,
     graphs: BTreeMap<GraphId, ProjectGraph>,
+    clip_mix_state: ClipMixState,
 }
 
 impl ProjectState {
@@ -785,6 +882,28 @@ impl ProjectState {
             .with_context(
                 ErrorContext::new(COMPONENT, operation)
                     .with_field("timeline_id", self.root_timeline_id.to_string()),
+            ));
+        }
+        let clip_ids: BTreeSet<_> = self
+            .editorial_project
+            .timelines()
+            .flat_map(|timeline| timeline.tracks())
+            .flat_map(|track| track.items())
+            .filter_map(|item| item.as_clip())
+            .map(|clip| clip.id())
+            .collect();
+        if let Some((clip_id, _)) = self
+            .clip_mix_state
+            .iter()
+            .find(|(clip_id, _)| !clip_ids.contains(clip_id))
+        {
+            return Err(Error::new(
+                ErrorCategory::NotFound,
+                Recoverability::UserCorrectable,
+                "clip-mix state references a missing editorial clip",
+            )
+            .with_context(
+                ErrorContext::new(COMPONENT, operation).with_field("clip_id", clip_id.to_string()),
             ));
         }
         Ok(())

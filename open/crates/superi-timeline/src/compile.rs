@@ -336,6 +336,305 @@ pub fn compile_timeline(
     compiler.finish()
 }
 
+/// Recompiles one timeline while preserving nonconflicting direct graph edits.
+///
+/// The old canonical compilation is the merge base, the retained compilation
+/// is the user-edited branch, and the new canonical compilation is the
+/// editorial branch. Overlapping changes fail without publishing a candidate.
+pub fn recompile_timeline_preserving_edits(
+    old_project: &EditorialProject,
+    retained: &TimelineGraphCompilation,
+    new_project: &EditorialProject,
+) -> Result<TimelineGraphCompilation> {
+    let root = retained.root_timeline_id();
+    let old = compile_timeline(old_project, root)?;
+    let next = compile_timeline(new_project, root)?;
+    let old_snapshot = old.snapshot();
+    let retained_snapshot = retained.snapshot();
+    let next_snapshot = next.snapshot();
+    if retained.project_id() != old_project.id()
+        || new_project.id() != old_project.id()
+        || retained.project_revision() != old_project.revision()
+        || old_snapshot.graph_id() != retained_snapshot.graph_id()
+        || retained_snapshot.graph_id() != next_snapshot.graph_id()
+    {
+        return Err(reconciliation_conflict(
+            root,
+            "retained compilation does not share the canonical project identity, revision, and graph identity",
+        ));
+    }
+
+    let old_nodes = old_snapshot.dag().nodes();
+    let retained_nodes = retained_snapshot.dag().nodes();
+    let next_nodes = next_snapshot.dag().nodes();
+    let old_edges = old_snapshot.dag().edges();
+    let retained_edges = retained_snapshot.dag().edges();
+    let next_edges = next_snapshot.dag().edges();
+    let mut mutations = Vec::new();
+    let mut disconnected = BTreeSet::new();
+    let mut removed_nodes = 0_usize;
+
+    for (node_id, old_node) in old_nodes {
+        if next_nodes.contains_key(node_id) {
+            continue;
+        }
+        let Some(retained_node) = retained_nodes.get(node_id) else {
+            continue;
+        };
+        if retained_node != old_node {
+            return Err(reconciliation_conflict(
+                root,
+                "an editorial node removal overlaps a direct node edit",
+            )
+            .with_context(
+                ErrorContext::new(COMPONENT, "reconcile_timeline_graph")
+                    .with_field("node_id", node_id.to_string()),
+            ));
+        }
+        let canonical_incident: BTreeSet<_> = old_edges
+            .values()
+            .filter(|edge| {
+                edge.source().node_id() == *node_id || edge.destination().node_id() == *node_id
+            })
+            .map(|edge| edge.id())
+            .collect();
+        if retained_edges.values().any(|edge| {
+            (edge.source().node_id() == *node_id || edge.destination().node_id() == *node_id)
+                && !canonical_incident.contains(&edge.id())
+        }) {
+            return Err(reconciliation_conflict(
+                root,
+                "an editorial node removal would discard a direct graph connection",
+            )
+            .with_context(
+                ErrorContext::new(COMPONENT, "reconcile_timeline_graph")
+                    .with_field("node_id", node_id.to_string()),
+            ));
+        }
+        for edge_id in canonical_incident {
+            if retained_edges
+                .get(&edge_id)
+                .is_some_and(|edge| old_edges.get(&edge_id) == Some(edge))
+                && disconnected.insert(edge_id)
+            {
+                mutations.push(GraphMutation::Disconnect { edge_id });
+            }
+        }
+        mutations.push(GraphMutation::Remove { node_id: *node_id });
+        removed_nodes += 1;
+    }
+
+    for (edge_id, old_edge) in old_edges {
+        match next_edges.get(edge_id) {
+            None => match retained_edges.get(edge_id) {
+                Some(retained_edge) if retained_edge == old_edge => {
+                    if disconnected.insert(*edge_id) {
+                        mutations.push(GraphMutation::Disconnect { edge_id: *edge_id });
+                    }
+                }
+                None => {}
+                Some(_) => {
+                    return Err(reconciliation_conflict(
+                        root,
+                        "an editorial connection removal overlaps a direct connection edit",
+                    )
+                    .with_context(
+                        ErrorContext::new(COMPONENT, "reconcile_timeline_graph")
+                            .with_field("edge_id", edge_id.to_string()),
+                    ));
+                }
+            },
+            Some(next_edge) if next_edge != old_edge => match retained_edges.get(edge_id) {
+                Some(retained_edge) if retained_edge == old_edge => {
+                    if disconnected.insert(*edge_id) {
+                        mutations.push(GraphMutation::Disconnect { edge_id: *edge_id });
+                    }
+                    mutations.push(GraphMutation::Connect { edge: *next_edge });
+                }
+                Some(retained_edge) if retained_edge == next_edge => {}
+                _ => {
+                    return Err(reconciliation_conflict(
+                        root,
+                        "an editorial connection change overlaps a direct connection edit",
+                    )
+                    .with_context(
+                        ErrorContext::new(COMPONENT, "reconcile_timeline_graph")
+                            .with_field("edge_id", edge_id.to_string()),
+                    ));
+                }
+            },
+            Some(_) => {}
+        }
+    }
+
+    let mut append_position = retained_snapshot
+        .node_order()
+        .len()
+        .checked_sub(removed_nodes)
+        .ok_or_else(|| internal_error("reconcile_timeline_graph", "removed node count overflow"))?;
+    for node_id in next_snapshot.node_order() {
+        if old_nodes.contains_key(node_id) {
+            continue;
+        }
+        let next_node = next_nodes
+            .get(node_id)
+            .expect("new presentation node exists in the new canonical graph");
+        match retained_nodes.get(node_id) {
+            None => {
+                mutations.push(GraphMutation::Add {
+                    node_id: *node_id,
+                    node: next_node.clone(),
+                    position: append_position,
+                });
+                append_position += 1;
+            }
+            Some(retained_node) if retained_node == next_node => {}
+            Some(_) => {
+                return Err(reconciliation_conflict(
+                    root,
+                    "a new editorial node identity collides with direct graph state",
+                )
+                .with_context(
+                    ErrorContext::new(COMPONENT, "reconcile_timeline_graph")
+                        .with_field("node_id", node_id.to_string()),
+                ));
+            }
+        }
+    }
+
+    for (node_id, old_node) in old_nodes {
+        let Some(next_node) = next_nodes.get(node_id) else {
+            continue;
+        };
+        let Some(retained_node) = retained_nodes.get(node_id) else {
+            if old_node != next_node {
+                return Err(reconciliation_conflict(
+                    root,
+                    "an editorial node edit overlaps a direct node removal",
+                )
+                .with_context(
+                    ErrorContext::new(COMPONENT, "reconcile_timeline_graph")
+                        .with_field("node_id", node_id.to_string()),
+                ));
+            }
+            continue;
+        };
+        if old_node.schema() != next_node.schema()
+            || old_node.inputs() != next_node.inputs()
+            || old_node.outputs() != next_node.outputs()
+            || old_node
+                .parameters()
+                .keys()
+                .ne(next_node.parameters().keys())
+        {
+            return Err(reconciliation_conflict(
+                root,
+                "canonical node structure changed across a retained graph edit",
+            )
+            .with_context(
+                ErrorContext::new(COMPONENT, "reconcile_timeline_graph")
+                    .with_field("node_id", node_id.to_string()),
+            ));
+        }
+        for (parameter_id, old_parameter) in old_node.parameters() {
+            let next_parameter = next_node
+                .parameter(*parameter_id)
+                .expect("canonical parameter identities were compared");
+            if old_parameter.name() != next_parameter.name()
+                || old_parameter.value().value_type() != next_parameter.value().value_type()
+            {
+                return Err(reconciliation_conflict(
+                    root,
+                    "canonical parameter structure changed across a retained graph edit",
+                ));
+            }
+            if old_parameter.value() == next_parameter.value() {
+                continue;
+            }
+            let retained_parameter = retained_node.parameter(*parameter_id).ok_or_else(|| {
+                reconciliation_conflict(
+                    root,
+                    "an editorial parameter change overlaps a removed direct parameter",
+                )
+            })?;
+            if retained_parameter.value() == old_parameter.value() {
+                mutations.push(GraphMutation::SetParameter {
+                    node_id: *node_id,
+                    parameter_id: *parameter_id,
+                    value: next_parameter.value().clone(),
+                });
+            } else if retained_parameter.value() != next_parameter.value() {
+                return Err(reconciliation_conflict(
+                    root,
+                    "an editorial parameter change overlaps a direct parameter edit",
+                )
+                .with_context(
+                    ErrorContext::new(COMPONENT, "reconcile_timeline_graph")
+                        .with_field("node_id", node_id.to_string())
+                        .with_field("parameter_id", parameter_id.to_string()),
+                ));
+            }
+        }
+    }
+
+    for (edge_id, edge) in next_edges {
+        if old_edges.contains_key(edge_id) {
+            continue;
+        }
+        match retained_edges.get(edge_id) {
+            None => {
+                let endpoint_survives = |node_id| {
+                    retained_nodes.contains_key(&node_id)
+                        || (!old_nodes.contains_key(&node_id) && next_nodes.contains_key(&node_id))
+                };
+                if !endpoint_survives(edge.source().node_id())
+                    || !endpoint_survives(edge.destination().node_id())
+                {
+                    return Err(reconciliation_conflict(
+                        root,
+                        "a new editorial connection overlaps a direct node removal",
+                    )
+                    .with_context(
+                        ErrorContext::new(COMPONENT, "reconcile_timeline_graph")
+                            .with_field("edge_id", edge_id.to_string()),
+                    ));
+                }
+                mutations.push(GraphMutation::Connect { edge: *edge });
+            }
+            Some(retained_edge) if retained_edge == edge => {}
+            Some(_) => {
+                return Err(reconciliation_conflict(
+                    root,
+                    "a new editorial connection identity collides with direct graph state",
+                )
+                .with_context(
+                    ErrorContext::new(COMPONENT, "reconcile_timeline_graph")
+                        .with_field("edge_id", edge_id.to_string()),
+                ));
+            }
+        }
+    }
+
+    let mut graph = retained.graph().clone();
+    graph.apply(GraphTransaction::with_mutations(
+        graph.revision(),
+        mutations,
+    ))?;
+    next.with_graph(graph)
+}
+
+fn reconciliation_conflict(root: TimelineId, message: &'static str) -> Error {
+    Error::new(
+        ErrorCategory::Conflict,
+        Recoverability::UserCorrectable,
+        message,
+    )
+    .with_context(
+        ErrorContext::new(COMPONENT, "reconcile_timeline_graph")
+            .with_field("timeline_id", root.to_string()),
+    )
+}
+
 fn collect_reachable_timelines(
     project: &EditorialProject,
     timeline_id: TimelineId,

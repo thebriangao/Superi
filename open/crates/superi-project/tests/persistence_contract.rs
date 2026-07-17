@@ -2,8 +2,11 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use rusqlite::{Connection, OpenFlags};
+use superi_audio::mixing::{ChannelMap, ClipMixControls, ClipMixMutation};
+use superi_audio::serialize::CLIP_MIX_FORMAT_REVISION;
 use superi_core::error::ErrorCategory;
 use superi_core::ids::{ClipId, GraphId, MediaId, ProjectId, TimelineId, TrackId};
+use superi_core::pixel::{ChannelLayout, ChannelPosition};
 use superi_core::serialization::STABLE_PRIMITIVE_SCHEMA_REVISION;
 use superi_core::time::{Duration, FrameRate, RationalTime, TimeRange, Timebase};
 use superi_graph::mutate::{EditableGraph, GraphMutation, GraphTransaction, TypedParameterValue};
@@ -244,6 +247,26 @@ fn project_document() -> ProjectDocument {
 
     document
         .edit(0, |draft| {
+            let stereo = ChannelLayout::stereo();
+            let controls = ClipMixControls::new(
+                stereo.clone(),
+                stereo,
+                [
+                    ChannelMap::new(ChannelPosition::FrontLeft, ChannelPosition::FrontRight, 0.5)?,
+                    ChannelMap::new(
+                        ChannelPosition::FrontRight,
+                        ChannelPosition::FrontLeft,
+                        0.75,
+                    )?,
+                ],
+            )?
+            .with_gain(f32::from_bits(0x3f40_0001))?
+            .with_fades(4_801, 9_601)?
+            .with_pan(f32::from_bits(0xbe80_0001))?
+            .with_phase_inverted([ChannelPosition::FrontRight])?;
+            draft
+                .clip_mix_state_mut()
+                .apply(0, &[ClipMixMutation::set(ROOT_CLIP, controls)])?;
             {
                 let compilation = draft.timeline_graph_mut(ROOT)?;
                 let revision = compilation.graph().revision();
@@ -316,6 +339,7 @@ struct DatabaseEvidence {
     metadata: (String, String, i64, Vec<u8>, String, Vec<u8>, Vec<u8>),
     timeline: (i64, i64, Vec<u8>, Vec<u8>),
     settings: (i64, i64, Vec<u8>, Vec<u8>),
+    audio: (i64, i64, Vec<u8>, Vec<u8>),
     graphs: Vec<GraphEvidence>,
 }
 
@@ -373,6 +397,13 @@ fn database_evidence(path: &Path) -> DatabaseEvidence {
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )
         .unwrap();
+    let audio = connection
+        .query_row(
+            "SELECT format_revision, byte_length, sha256, document FROM audio_component",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .unwrap();
     let graphs = {
         let mut statement = connection
             .prepare(
@@ -406,6 +437,7 @@ fn database_evidence(path: &Path) -> DatabaseEvidence {
         metadata,
         timeline,
         settings,
+        audio,
         graphs,
     }
 }
@@ -445,6 +477,7 @@ fn schema_identity_and_semantic_rows_are_explicit_and_deterministic() {
     assert_eq!(
         first.schema,
         vec![
+            ("table".to_owned(), "audio_component".to_owned()),
             ("table".to_owned(), "graph_components".to_owned()),
             ("table".to_owned(), "project_metadata".to_owned()),
             ("table".to_owned(), "settings_component".to_owned()),
@@ -470,6 +503,9 @@ fn schema_identity_and_semantic_rows_are_explicit_and_deterministic() {
     );
     assert_eq!(first.settings.1 as usize, first.settings.3.len());
     assert_eq!(first.settings.2.len(), 32);
+    assert_eq!(first.audio.0, i64::from(CLIP_MIX_FORMAT_REVISION));
+    assert_eq!(first.audio.1 as usize, first.audio.3.len());
+    assert_eq!(first.audio.2.len(), 32);
     assert_eq!(first.graphs.len(), 2);
     for graph in &first.graphs {
         assert_eq!(
@@ -498,6 +534,15 @@ fn reload_preserves_media_evidence_graph_edits_and_revision_conflicts() {
     let mut loaded = database.load().unwrap();
 
     assert_eq!(loaded.snapshot(), expected);
+    let controls = loaded.clip_mix_state().controls(ROOT_CLIP).unwrap();
+    assert_eq!(controls.gain().to_bits(), 0x3f40_0001);
+    assert_eq!(controls.pan().to_bits(), 0xbe80_0001);
+    assert_eq!(controls.fade_in_frames(), 4_801);
+    assert_eq!(controls.fade_out_frames(), 9_601);
+    assert_eq!(
+        controls.channel_map()[0].destination(),
+        ChannelPosition::FrontRight
+    );
     assert_eq!(clip_name(&loaded), "durable direct graph edit");
     let media = loaded
         .editorial_project()
@@ -579,7 +624,7 @@ fn unsupported_corrupt_and_extra_database_state_is_rejected() {
         ),
         (
             "future-schema",
-            "PRAGMA user_version = 3",
+            "PRAGMA user_version = 4",
             ErrorCategory::Unsupported,
             true,
         ),
@@ -608,6 +653,12 @@ fn unsupported_corrupt_and_extra_database_state_is_rejected() {
             false,
         ),
         (
+            "audio-bytes",
+            "UPDATE audio_component SET document = zeroblob(byte_length)",
+            ErrorCategory::CorruptData,
+            false,
+        ),
+        (
             "manifest",
             "UPDATE project_metadata SET manifest_sha256 = zeroblob(32)",
             ErrorCategory::CorruptData,
@@ -622,6 +673,12 @@ fn unsupported_corrupt_and_extra_database_state_is_rejected() {
         (
             "missing-settings",
             "DELETE FROM settings_component",
+            ErrorCategory::CorruptData,
+            false,
+        ),
+        (
+            "missing-audio",
+            "DELETE FROM audio_component",
             ErrorCategory::CorruptData,
             false,
         ),

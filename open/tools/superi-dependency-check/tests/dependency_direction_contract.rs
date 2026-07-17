@@ -97,6 +97,22 @@ fn reviewed_dev_edges_do_not_authorize_production_edges() {
 }
 
 #[test]
+fn reviewed_project_audio_edge_preserves_downward_direction() {
+    let project_to_audio = metadata(vec![
+        package("superi-project", vec![dependency("superi-audio", None)]),
+        package("superi-audio", vec![]),
+    ]);
+    let audio_to_project = metadata(vec![
+        package("superi-audio", vec![dependency("superi-project", None)]),
+        package("superi-project", vec![]),
+    ]);
+
+    validate_metadata(&project_to_audio).expect("project may persist authored audio state");
+    let error = validate_metadata(&audio_to_project).expect_err("audio must not depend on project");
+    assert!(error.to_string().contains("superi-audio -> superi-project"));
+}
+
+#[test]
 fn unknown_runtime_crates_require_an_explicit_policy_decision() {
     let input = metadata(vec![package("superi-surprise", vec![])]);
 

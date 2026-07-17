@@ -2,7 +2,7 @@
 module_id: superi-project
 source_paths:
   - open/crates/superi-project
-source_hash: 0b9529dda3c6f2ad7ea65c389a1a8d0cbe7a581f9ecef7125a07f01231c3b2ba
+source_hash: 2e09957b9595daaba07de9783e5e49dbabff9b5259564451bc619a47dd5e2db2
 source_files: 17
 mapped_at_commit: working-tree
 ---
@@ -10,12 +10,12 @@ mapped_at_commit: working-tree
 ## Purpose and ownership
 
 `superi-project` owns the coherent whole-project aggregate, authoritative versioned project
-settings, stable schema-2 SQLite serialization, and ordered forward migration from supported older
-project schemas. One `ProjectDocument` combines the validated editorial project, selected root
-timeline, retained compiled timeline graphs, optional named standalone editable graphs, complete
-timeline, color, audio, cache, proxy, and render settings, and one optimistic document revision.
-Immutable `ProjectSnapshot` values give editor, script, headless, persistence, API, and engine
-consumers one equal published state.
+settings, authored clip-mix state, stable schema-3 SQLite serialization, and ordered forward
+migration from supported older project schemas. One `ProjectDocument` combines the validated
+editorial project, selected root timeline, retained compiled timeline graphs, optional named
+standalone editable graphs, complete timeline, color, audio, cache, proxy, and render settings,
+authored clip-mix state, and one optimistic document revision. Immutable `ProjectSnapshot` values
+give editor, script, headless, persistence, API, and engine consumers one equal published state.
 
 `ProjectDatabase` is the only public whole-project database and file-publication authority. It
 creates a new nonoverwriting `.superi` database or secured in-memory database, opens exact current
@@ -24,10 +24,10 @@ complete `ProjectDocument`. One typed command surface atomically saves the activ
 save-as and copy destinations under explicit collision policy, and creates no-clobber backups. A
 file-backed database retains only its absolute active path between operations, while an in-memory
 database retains its secured connection until save-as establishes active file identity. Writable
-open reports its source schema and migrates exact schema 0 or 1 to schema 2 through contiguous
-immediate transactions. The schema
-persists canonical timeline and graph component documents instead of copying their domain models
-into competing SQL fields. Schema 2 adds one canonical settings component covered by the same
+open reports its source schema and migrates exact schema 0, 1, or 2 to schema 3 through contiguous
+immediate transactions. The schema persists canonical timeline, graph, settings, and audio
+component documents instead of copying their domain models into competing SQL fields. Frozen schema
+2 adds canonical settings, and current schema 3 adds canonical authored audio under the same
 manifest and transactional replacement boundary.
 
 The project media boundary interprets timeline-owned opaque targets as versioned filesystem
@@ -53,7 +53,7 @@ file commands in the public API and CLI. Those remain assigned to later project 
 
 ## Source inventory
 
-- `open/crates/superi-project/Cargo.toml`: Declares core, graph, timeline, exact workspace
+- `open/crates/superi-project/Cargo.toml`: Declares audio, core, graph, timeline, exact workspace
   `rusqlite`, workspace SHA-256, and JSON settings component dependencies.
 - `open/crates/superi-project/src/autosave.rs`: Implements validated runtime policy, host-driven
   monotonic scheduling, typed configure, tick, save-now, prune, and inspect commands, deterministic
@@ -62,24 +62,26 @@ file commands in the public API and CLI. Those remain assigned to later project 
   or postpublication cleanup evidence.
 - `open/crates/superi-project/src/document.rs`: Implements `ProjectDocument`, immutable snapshots,
   private edit candidates, authoritative settings, retained timeline compilations, named standalone
-  graphs, revision fencing, checked reconstruction and restoration, fresh monotonic restore
-  publication, and complete relationship validation.
-- `open/crates/superi-project/src/lib.rs`: Documents the implemented aggregate, schema-2
+  graphs, authored clip-mix state, revision fencing, checked reconstruction and restoration, fresh
+  monotonic restore publication, and complete relationship validation.
+- `open/crates/superi-project/src/lib.rs`: Documents the implemented aggregate, schema-3
   persistence, migration, settings, atomic save, and referenced-media boundaries, exports public
   project modules, keeps migration and save mechanics private, and re-exports the database, save
   and autosave command surfaces, and stable format constants.
-- `open/crates/superi-project/src/migrate.rs`: Owns exact schema-0 and schema-1 contracts, the
-  contiguous 0-to-1-to-2 migration registry, secured compatibility decoding, root-rate-derived
-  settings defaults, checked aggregate reconstruction, transactional canonical rewrites, full
-  integrity checks, and precommit rollback proof.
+- `open/crates/superi-project/src/migrate.rs`: Owns exact schema-0, schema-1, and frozen schema-2
+  contracts, the contiguous 0-to-1-to-2-to-3 migration registry, secured compatibility decoding,
+  root-rate-derived settings defaults, canonical empty-audio migration, checked aggregate
+  reconstruction, transactional canonical rewrites, full integrity checks, and precommit rollback
+  proof.
 - `open/crates/superi-project/src/media.rs`: Implements versioned referenced-media target encoding,
   portable relative path normalization, deterministic project-file resolution, host-platform
-  evidence, stable media lookup, and revision-fenced path and relink commands that retain editable
-  timeline graphs and suppress false document revisions for semantic no-ops.
-- `open/crates/superi-project/src/persist.rs`: Implements secured SQLite connections, schema 2,
-  deterministic timeline, graph, and settings component records and manifest evidence,
-  transactional in-memory replacement, active file identity, retained schema-1 compatibility
-  helpers, strict interpretation, bounded decoding, and checked aggregate reconstruction.
+  evidence, stable media lookup, and reusable draft plus revision-fenced document commands that
+  retain editable timeline graphs and suppress false document revisions for semantic no-ops.
+- `open/crates/superi-project/src/persist.rs`: Implements secured short-lived file connections and
+  retained in-memory storage, active path identity, schema 3 plus frozen schema-1 and schema-2
+  migration helpers, deterministic timeline, graph, settings, and audio component records and
+  manifest evidence, checked in-memory replacement, strict interpretation, bounded decoding, and
+  checked aggregate reconstruction.
 - `open/crates/superi-project/src/recovery.rs`: Placeholder for crash recovery.
 - `open/crates/superi-project/src/save.rs`: Implements the typed save, save-as, copy, and backup
   commands, explicit collision policy, complete same-parent SQLite candidates, semantic and
@@ -103,14 +105,15 @@ file commands in the public API and CLI. Those remain assigned to later project 
   retained direct graph edits, relink conflicts, database round trips, and unknown target handling.
 - `open/crates/superi-project/tests/persistence_contract.rs`: Proves durable create and read-only
   reopen, exact schema identity, deterministic semantic rows, complete timeline, media, relink,
-  graph, and revision preservation, rollback, read-only enforcement, and corruption rejection.
+  graph, authored audio, and revision preservation, rollback, read-only enforcement, and corruption
+  rejection.
 - `open/crates/superi-project/tests/save_contract.rs`: Proves the public save surface through real
   file-backed and in-memory projects, exact active-path changes, collision policy, read-only
   publications, alias and invalid-destination rejection, bounds before mutation, current-schema
   integrity, non-UTF-8 destinations, permissions, and later save behavior after copy or save-as.
 - `open/crates/superi-project/tests/project_settings_contract.rs`: Proves default and configured
   settings, strict atomic revision-fenced transactions, no-op behavior, complete domain validation,
-  schema-2 durability, manifest coverage, and migration defaults.
+  schema-3 durability, manifest coverage, and migration defaults.
 - `open/crates/superi-project/tests/autosave_contract.rs`: Proves deterministic scheduling, enable
   and disable control, manual publication, unchanged suppression, missing-artifact republication,
   large forward jumps, monotonic-time rejection, exact current-schema snapshot recovery points,
@@ -129,12 +132,14 @@ project format constants, and media path target format identifier.
   root through `superi_timeline::compile_timeline`, derives deterministic settings from its edit
   rate, validates the aggregate, and starts document revision zero.
 - `ProjectDocument::from_parts` restores an explicit document revision and complete graph
-  collection with deterministic compatibility defaults after an outer decoder has validated its
-  format. `from_parts_with_settings` restores explicit validated settings. Both reject duplicate
-  identities and validate every relationship.
+  collection with deterministic settings and empty clip-mix compatibility defaults after an outer
+  decoder has validated its format. `from_parts_with_settings` restores explicit settings with
+  empty audio, `from_complete_parts` restores explicit audio with deterministic settings, and
+  `from_complete_parts_with_settings` restores both. All reject duplicate identities and validate
+  every relationship.
 - `ProjectDocument::snapshot` returns a cloneable immutable `ProjectSnapshot`. Document and
-  snapshot accessors expose project identity, revision, selected root, editorial state, stable graph
-  iteration, graph lookup, and timeline compilation lookup.
+  snapshot accessors expose project identity, revision, selected root, editorial state, settings,
+  authored clip-mix state, stable graph iteration, graph lookup, and timeline compilation lookup.
 - `ProjectDocument::edit` requires the exact current revision, changes one private candidate,
   validates the complete result, and publishes once only when semantic state changed.
 - `ProjectDocument::restore_snapshot` requires the exact current revision and matching project
@@ -143,8 +148,9 @@ project format constants, and media path target format identifier.
 - `ProjectDocument::execute_settings_transaction` applies one bounded ordered settings transaction
   through that same whole-project edit boundary. Document, snapshot, and draft accessors expose the
   authoritative immutable settings; a semantic no-op preserves the revision.
-- `ProjectDraft` exposes candidate editorial, settings, and graph mutation, root selection, graph
-  membership, and explicit timeline recompilation or replacement.
+- `ProjectDraft` exposes candidate editorial, settings, clip-mix, and graph mutation, paired mutable
+  editorial and audio access for atomic identity reconciliation, root selection, graph membership,
+  and explicit timeline recompilation or replacement.
 - `ProjectGraph::restore_timeline` deterministically regenerates trusted compilation provenance
   around a decoded editable graph only when the graph identity matches the same project and root.
 - `StandaloneProjectGraph` owns one nonblank name and one ordinary
@@ -155,16 +161,17 @@ project format constants, and media path target format identifier.
   paths, leaves URI-style locators opaque, and resolves relative paths only from an absolute owning
   project file path.
 - `ProjectDocument::media_path` and `ProjectSnapshot::media_path` resolve one typed target by stable
-  `MediaId`. `ProjectDocument::execute_media_command` applies `SetPath`, `MarkMissing`, or
-  `ConsiderRelink` behind the document revision fence and returns the semantic result with the exact
-  published snapshot. It preflights the media mutation before document publication, so accepted
-  commands that do not change semantic state keep the existing editorial and document revisions.
+  `MediaId`. `ProjectDraft::execute_media_command` applies `SetPath`, `MarkMissing`, or
+  `ConsiderRelink` inside a caller-owned aggregate edit. `ProjectDocument::execute_media_command`
+  wraps the same operation behind the document revision fence. Both return the semantic result, and
+  the document wrapper also returns the exact published snapshot. Accepted commands that do not
+  change semantic state keep the existing editorial and document revisions.
 - `ProjectDatabase::create` reserves a new path without overwriting an existing file, secures the
-  connection, creates exact schema 2, and records the Superi application and schema identities.
+  connection, creates exact schema 3, and records the Superi application and schema identities.
 - `ProjectDatabase::memory` creates the same secured schema without filesystem state.
-- `ProjectDatabase::open` opens an existing database with write authority. Current schema 2 is
-  validated without mutation. Exact supported schema 0 is upgraded through 1 to 2, and exact
-  schema 1 is upgraded directly to 2 before the database is returned.
+- `ProjectDatabase::open` opens an existing database with write authority. Current schema 3 is
+  validated without mutation, while exact supported schema 0, schema 1, or schema 2 is upgraded
+  transactionally through the contiguous chain before the database is returned.
 - `ProjectDatabase::open_read_only` opens existing state without write authority and validates
   database integrity, application identity, current schema revision, and exact schema objects.
   Supported legacy state is refused with a classified requirement for writable migration.
@@ -200,14 +207,14 @@ project format constants, and media path target format identifier.
   `project-<32 lowercase raw ProjectId hex>`.
 - `ProjectDatabase::replace` delegates file-backed state to `Save` and keeps the existing checked
   immediate transaction for in-memory state. Both paths pre-encode one immutable snapshot, bound
-  all content, write every row including settings, reload through public component decoders, and
-  require exact snapshot equality before commit or publication.
+  all content, write every row including settings and audio, reload through public component
+  decoders, and require exact snapshot equality before commit or publication.
 - `ProjectDatabase::load` verifies the database, metadata, component lengths and SHA-256 values,
-  project manifest, canonical timeline, settings, and graph component bytes, graph ownership, and
-  revisions inside one read transaction before returning one checked document.
+  project manifest, canonical timeline, settings, audio, and graph component bytes, graph ownership,
+  and revisions inside one read transaction before returning one checked document.
 - `PROJECT_APPLICATION_ID`, `PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION`,
   `PROJECT_SCHEMA_REVISION`, `PROJECT_FORMAT`, and `PROJECT_FORMAT_VERSION` identify application
-  `SUPR`, supported source schema `0`, current schema `2`, `superi.project`, and `1.1.0`.
+  `SUPR`, supported source schema `0`, current schema `3`, `superi.project`, and `1.2.0`.
 - `ProjectSettings`, `ProjectSettingsTransaction`, and `ProjectSettingMutation` expose exact schema
   `1.0.0`, canonical key iteration and lookup, strict checked construction, and bounded set or
   remove operations. Permanent keys cover timeline edit rate and timecode, color identity, audio
@@ -220,10 +227,11 @@ In-memory publication remains one aggregate transaction:
 
 1. A caller captures the current document revision or immutable snapshot.
 2. `ProjectDocument::edit` rejects stale input before cloning one unpublished candidate.
-3. The closure changes editorial state, settings, retained graph state, root selection, or graph
-   membership through `ProjectDraft`.
+3. The closure changes editorial state, settings, authored clip-mix state, retained graph state,
+   root selection, or graph membership through `ProjectDraft`.
 4. Validation checks the selected root, current compilation revision and project identity, map and
-   graph identities, unique compiled roots, and standalone names.
+   graph identities, unique compiled roots, standalone names, clip-mix controls, and that every
+   mixed clip still exists in the editorial project.
 5. Failure discards the candidate, a no-op returns the existing snapshot, and a real change advances
    once and replaces the shared state.
 
@@ -239,7 +247,7 @@ Whole-snapshot restoration is the narrow command-history integration seam:
 4. History capacity, branching, command metadata, and undo or redo selection remain entirely in
    `superi-engine`; the project layer owns only checked aggregate restoration.
 
-Schema-2 replacement preserves that exact published state:
+Prepared schema-3 serialization preserves that exact published state:
 
 1. Timeline serializes the complete editorial project into canonical `superi.timeline` bytes.
 2. Graph serializes every retained graph snapshot in stable `GraphId` order into canonical
@@ -247,16 +255,18 @@ Schema-2 replacement preserves that exact published state:
    length, and SHA-256 remain explicit row evidence.
 3. Project serializes its validated shared settings snapshot into canonical JSON, bounded to one
    MiB, with an explicit settings format revision, byte length, and SHA-256 evidence.
-4. A domain-separated manifest covers project and component format revisions, primitive revision,
-   project identity, document revision, selected root, timeline evidence, settings evidence, and
-   ordered graph evidence.
-5. One immediate SQLite transaction replaces metadata, the singleton timeline and settings
-   components, and graph rows. A preflight or transaction failure preserves the prior complete
-   database.
-6. Before commit or file publication, the candidate database passes `quick_check`, exact application
-   and schema checks,
-   exact schema-object inspection, row and size bounds, component and manifest integrity, canonical
-   component decoding, checked graph reconstruction, and exact `ProjectSnapshot` equality.
+4. Audio serializes authored `ClipMixState` into canonical `superi.clip-mix` bytes with exact float
+   meaning. The singleton audio row records its format revision, length, and SHA-256 digest.
+5. A domain-separated manifest covers project and component format revisions, primitive revision,
+   project identity, document revision, selected root, timeline evidence, settings evidence, ordered
+   graph evidence, and audio evidence.
+6. In-memory replacement writes metadata, singleton timeline, settings, and audio components, and
+   graph rows in one immediate transaction. A preflight or transaction failure preserves the prior
+   complete database.
+7. Before an in-memory commit or file candidate publication, the candidate passes exact application
+   and schema checks, exact schema-object inspection, row and size bounds, component and manifest
+   integrity, canonical component decoding, checked graph reconstruction, and exact
+   `ProjectSnapshot` equality. File candidates also pass a full SQLite integrity check after commit.
 
 File publication adds one explicit commit boundary:
 
@@ -265,8 +275,8 @@ File publication adds one explicit commit boundary:
    collision rule. Replace-existing accepts only a regular file that opens and loads as a valid
    Superi project.
 2. The complete prepared snapshot enters a uniquely and exclusively reserved same-parent candidate.
-   SQLite uses single-file rollback-journal mode and extra synchronization, writes schema 2 in one
-   immediate transaction, and proves exact semantic equality before and after candidate commit.
+   SQLite uses single-file rollback-journal mode and extra synchronization, then writes schema 3 in
+   one immediate transaction and proves exact semantic equality before and after candidate commit.
 3. The SQLite connection closes before the candidate file is synchronized through a handle with the
    access required by its platform, including write access on Windows. Sidecar absence is required,
    Unix parent directories are synchronized, and a destination expectation is rechecked immediately
@@ -308,14 +318,15 @@ coherent SQLite snapshot across every identity, schema, metadata, component, and
 Timeline bytes reconstruct the validated `EditorialProject`, and settings bytes reconstruct the
 strict project schema without coercion. Each timeline graph uses
 `ProjectGraph::restore_timeline`, each standalone graph uses `StandaloneProjectGraph::new`, and
-`ProjectDocument::from_parts_with_settings` joins the complete state at the stored revision. Direct
-graph edits are never replaced by recompilation; compilation supplies only trusted provenance
-around the decoded graph.
+`ProjectDocument::from_complete_parts_with_settings` joins the complete settings and decoded audio
+intent at the stored revision. Direct graph edits
+are never replaced by recompilation; compilation supplies only trusted provenance around the
+decoded graph.
 
 Writable open applies one contiguous compatibility path:
 
 1. Connection-level application identity and `user_version` dispatch before mutation. Current
-   schema 2 runs the existing exact validator only; a future schema, wrong application, or
+   schema 3 runs the existing exact validator only; a future schema, wrong application, or
    unrepresentable revision fails without a write transaction.
 2. Exact schema 0 is the supported `superi.project` version `0.9.0` predecessor. Its three strict
    tables retain project, document, graph ownership, graph revision, and component-document meaning
@@ -327,11 +338,13 @@ Writable open applies one contiguous compatibility path:
    dropping any legacy table, writes the immutable schema-1 representation, reloads it, and requires
    exact snapshot equality.
 5. The 1-to-2 step loads schema-1 meaning, derives deterministic project settings from the selected
-   root timeline rate, and rewrites the complete snapshot through schema 2. Direct schema-1 open
-   uses this step, while schema 0 runs both steps in order.
-6. The migration registry contains exactly the contiguous 0-to-1 and 1-to-2 steps and ends at the
-   current schema constant. A failure at any point drops the borrowed transaction and restores the
-   complete source schema.
+   root timeline rate, and rewrites the complete snapshot through frozen schema 2.
+6. The 2-to-3 step loads frozen schema-2 meaning, adds canonical empty clip-mix state, and writes
+   schema 3 through the current serializer. Direct legacy open enters at its matching step, while
+   schema 0 runs all three steps in order.
+7. The migration registry contains exactly the contiguous 0-to-1, 1-to-2, and 2-to-3 steps and ends
+   at the current schema constant. A failure at any point drops the borrowed transaction and
+   restores the complete source schema.
 
 Settings transactions reuse whole-project publication. The complete candidate key map is rebuilt
 in canonical order, then exact key membership, value types, ranges, modes, drop-frame compatibility,
@@ -351,9 +364,10 @@ interpretation.
 
 Connections enable SQLite defensive mode, foreign keys, cell-size checks, and a finite busy
 timeout. They disable triggers, views, trusted schema, double-quoted string literals, and memory
-mapping. Read-only connections also enable query-only mode. Schema 2 contains no trigger, view,
-extension, network, process, device, or GPU behavior. Migration never opens a second connection and
-never owns commit authority outside the one outer transaction.
+mapping. Read-only connections also enable query-only mode. Schema 3 contains no trigger, view,
+extension, network, process, device, or GPU behavior and adds only one strict singleton audio table
+to the frozen schema-2 layout. Migration never opens a second connection and never owns commit
+authority outside the one outer transaction.
 
 `superi-engine::resources::MediaResourceRequest::from_project_media` is the real target consumer.
 It resolves one stored project filesystem path, retains `MediaId` and expected fingerprint, rejects
@@ -366,6 +380,8 @@ and acquires the exact reachable source and decoder set before one resources pub
 - `superi-core` supplies typed identities, stable primitive revision, classified errors,
   recoverability, diagnostic context, exact time and timecode validation, and the shared versioned
   setting key, value, and snapshot contracts.
+- `superi-audio` supplies the authored `ClipMixState` aggregate and its strict canonical component
+  codec. Prepared processors, devices, queues, and callback state do not enter the project layer.
 - `superi-graph` supplies editable graph snapshots and canonical graph encoding and checked
   decoding.
 - `superi-timeline` supplies the editorial model, compiler, canonical timeline component codec, and
@@ -379,8 +395,9 @@ and acquires the exact reachable source and decoder set before one resources pub
 - `superi-engine` consumes immutable snapshots for transactional resource acquisition, adapts
   project-owned referenced-media paths into media-I/O source requests, resolves settings into
   existing subsystem types, dispatches authoritative settings transactions, exclusively owns
-  bounded command history over the checked whole-snapshot restore seam, and supplies the real
-  selected history snapshot used by the autosave consumer contract after apply, undo, and redo.
+  bounded command history and compound transactions over the checked whole-snapshot restore seam,
+  and supplies the real selected history snapshot used by the autosave consumer contract after
+  apply, undo, and redo.
 - `superi-api` consumes project settings only through engine-owned re-exports and dispatcher
   commands. API and CLI do not yet expose database file commands. Later file commands must wrap
   this owner instead of creating another project or database authority.
@@ -402,17 +419,22 @@ and acquires the exact reachable source and decoder set before one resources pub
   returns equal state without a revision, and gives changed state one fresh monotonic revision.
 - Schema identity is explicit at three levels: SQLite application ID, monotonic schema revision,
   and semantic format plus version. The stable primitive and component revisions are recorded too.
-- Schema 2 has exactly four strict tables, one metadata singleton, one timeline singleton, one
-  settings singleton, and bounded graph rows. Extra user tables, indexes, views, or triggers are
-  corruption. Schema 1 remains an immutable three-table migration source.
+- Schema 3 has exactly five strict tables, one metadata singleton, one timeline singleton, one
+  settings singleton, one audio singleton, and bounded graph rows. Extra user tables, indexes,
+  views, or triggers are corruption.
+- Frozen schema 2 has exactly four strict tables with settings but no audio, and remains readable
+  only through migration. Its manifest and component semantics are not silently reinterpreted as
+  schema 3.
+- Frozen schema 1 has exactly three strict tables and remains readable only through migration. Its
+  manifest and component semantics are not silently reinterpreted as schema 2.
 - Supported schema 0 also has exactly three strict tables and retains every semantic field needed
   for lossless reconstruction. It may carry declared timeline or graph component revision 0 or 1,
   both of which are checked and canonicalized by their owning codec during migration.
 - Project and graph revisions use canonical decimal text so every `u64` revision is preserved.
   Typed IDs use fixed 16-byte big-endian blobs.
-- Canonical timeline and graph component bytes remain owned by those crates. Project owns canonical
-  settings bytes and stores every component with exact length and SHA-256 evidence without
-  duplicating timeline or graph semantic fields.
+- Canonical timeline, graph, and audio component bytes remain owned by those crates. Project owns
+  canonical settings bytes and stores every component with exact length and SHA-256 evidence without
+  duplicating timeline, graph, or audio semantic fields.
 - Timeline remains the owner of media identity, opaque target text, and relink evidence. Project
   interprets only recognized filesystem target syntax, preserves unknown locators, and never derives
   identity from a path. Relative resolution is lexical and requires an absolute project file path;
@@ -457,23 +479,23 @@ identity rejection, and exhaustion atomicity.
 
 `persistence_contract.rs` contains five real database tests. They prove nonoverwriting creation and
 read-only reopen, exact schema objects and version identities, equal semantic rows across independent
-databases, complete editorial, media fingerprint mismatch, multicam, direct graph edit, standalone,
-and revision preservation, post-load conflict fencing and editing, preflight rollback, read-only
-denial, and rejection of wrong application identity, future revisions, corrupt components, altered
-manifest evidence, missing rows, and extra views.
+  databases, complete editorial, media fingerprint mismatch, multicam, direct graph edit, standalone,
+  exact authored audio, and revision preservation, post-load conflict fencing and editing, preflight
+  rollback, read-only denial, and rejection of wrong application identity, future revisions,
+  corrupt components, altered manifest evidence, missing rows, and extra views.
 
-`migration_contract.rs` contains three public database tests. They prove exact schema-0 and legacy
-component compatibility, contiguous schema-2 rewrite, source-revision reporting, deterministic
-settings defaults, complete snapshot equality, post-migration edit and resave, current-schema save,
-save-as, copy, and backup without changing the reported source revision, read-only legacy refusal,
-byte-stable current open, future schema nonmutation, and malformed legacy logical rollback.
-The private migration unit contract forces a classified failure after the schema rewrite and before
-commit, verifies exact source reconstruction after rollback, then runs the production migration
-successfully on the same state.
+`migration_contract.rs` contains three public database tests. They prove exact schema-0 and frozen
+schema-1 component compatibility, the contiguous 0-to-1-to-2-to-3 chain, deterministic settings
+defaults, canonical audio initialization, current canonical rewrite, source-revision reporting,
+complete snapshot equality, post-migration edit and resave, current-schema save, save-as, copy, and
+backup without changing the reported source revision, read-only legacy refusal, byte-stable current
+open, future schema nonmutation, and malformed legacy logical rollback. Private migration contracts
+prove that frozen schema-2 projects preserve settings while gaining canonical empty audio and that
+a classified failure after rewrite restores the exact source before the production path succeeds.
 
 `project_settings_contract.rs` contains three public tests. They prove exact defaults, atomic
 invalid-candidate rollback, stale fencing, semantic no-op stability, complete timeline, color,
-audio, cache, proxy, and render validation, bounded transaction construction, schema-2 persistence,
+audio, cache, proxy, and render validation, bounded transaction construction, schema-3 persistence,
 manifest coverage, and migration defaults.
 
 `media_reference_contract.rs` contains five public tests. They prove canonical portable relative
@@ -511,11 +533,12 @@ repository verifier remain required delivery gates.
 
 ## Current status and risks
 
-The coherent in-memory document owner, authoritative versioned settings, schema-2 SQLite application
-format, deterministic component records, integrity manifest, transactional in-memory replacement,
-atomic save, save-as, copy, and backup publication, explicit collision policy, active path identity,
-exact schema-0 and schema-1 compatibility, ordered forward migration, checked reconstruction, durable
-create and read-only reopen, writable current or legacy open, versioned referenced-media paths,
+The coherent in-memory document owner, authoritative versioned settings, authored clip-mix state,
+schema-3 SQLite application format, deterministic timeline, graph, settings, and audio component
+records, integrity manifest, transactional in-memory replacement, exact schema-0, schema-1, and
+frozen schema-2 compatibility, ordered forward migration, checked reconstruction, durable create
+and read-only reopen, writable current or legacy open, atomic save, save-as, copy, and backup
+publication, explicit collision policy, active path identity, versioned referenced-media paths,
 stable identity commands, and the real engine and public API consumers are substantive and
 test-backed. Its checked whole-snapshot restore seam supports the engine-owned session command
 history without moving branching policy or retained entries into the project crate. Its typed
@@ -523,18 +546,18 @@ autosave controller adds deterministic host-driven scheduling, complete current-
 points, bounded count retention, strict managed naming, safe pruning, and user control while reusing
 the same atomic Backup authority and leaving active project identity unchanged.
 
-Additional schema revisions, persisted history or command logs, recovery discovery and restoration,
-unknown extension preservation, modified-since-open policy, dirty-state hashing, public database
-adaptation, CLI, and scripting remain absent. Autosave policy is process-local and recovery roots are
-caller selected; no background timer, persistent scheduler, wire adapter, or recovery choice is
-claimed. Exact schemas 0 and 1 are the supported predecessors. Future, older unknown, or extended
-layouts remain rejected until an explicit migration or preservation contract exists. Current
-atomicity proofs cover ordinary local filesystem semantics and do not claim strict cross-process
-compare-and-swap after the final destination recheck, network filesystem behavior, or physical
-power-loss proof on every platform. Rust 1.80 exposes no stable portable Windows file identity, so a
-pre-existing Windows hard-link alias is not recognized as the active path; explicit collision
-policy still prevents unintended no-clobber publication, and replace-existing changes only the
-named destination entry without mutating the original active link.
+Additional schema revisions beyond 3, persisted history or command logs, recovery discovery and
+restoration, unknown extension preservation, modified-since-open conflict policy, dirty-state
+hashing, public database adaptation, CLI, and scripting remain absent. Autosave policy is
+process-local and recovery roots are caller selected; no background timer, persistent scheduler,
+wire adapter, or recovery choice is claimed. Exact schemas 0, 1, and 2 are the supported
+predecessors. Future, older unknown, or extended layouts remain rejected until an explicit migration
+or preservation contract exists. Current atomicity proofs cover ordinary local filesystem semantics
+and do not claim strict cross-process compare-and-swap after the final destination recheck, network
+filesystem behavior, or physical power-loss proof on every platform. Rust 1.80 exposes no stable
+portable Windows file identity, so a pre-existing Windows hard-link alias is not recognized as the
+active path; explicit collision policy still prevents unintended no-clobber publication, and
+replace-existing changes only the named destination entry without mutating the original active link.
 
 Bundled SQLite increases the locked build graph and must remain pinned to the Rust 1.80-compatible
 rusqlite 0.32.1 path unless a separately verified upgrade changes that decision. Integrity digests
@@ -550,16 +573,16 @@ together. Do not add
 hidden intelligent-result storage, a second editorial or settings owner, unchecked graph mutation,
 or a second persistence model.
 
-Preserve timeline and graph component ownership and project ownership of settings. Incompatible
-project layout changes require a new monotonic schema revision, semantic version decision, and one
-exact successor step appended to the contiguous migration registry. Do not change schema 0,
-schema 1, or schema 2 in place after release. Keep every file-backed save operation on
-`ProjectSaveCommand` and the existing complete-candidate
-publication path. Preserve active-path rebinding at the publication commit point, explicit collision
-policy, precommit cleanup ownership, and honest published-error context together. Keep autosave
-clockless, host-driven, count-bounded, and routed through `ProjectSaveCommand::Backup`. Preserve its
-strict filenames, foreign-entry exclusion, regular-file-only pruning, and postpublication evidence
-when C010 adds recovery discovery and choice without creating another project or file authority.
+Preserve timeline, graph, and audio component ownership and project ownership of settings.
+Incompatible project layout changes require a new monotonic schema revision, semantic version
+decision, and one exact successor step appended to the contiguous migration registry. Do not change
+schema 0, schema 1, schema 2, or schema 3 in place after release. Keep every file-backed save
+operation on `ProjectSaveCommand` and the existing complete-candidate publication path. Preserve
+active-path rebinding at the publication commit point, explicit collision policy, precommit cleanup
+ownership, and honest published-error context together. Keep autosave clockless, host-driven,
+count-bounded, and routed through `ProjectSaveCommand::Backup`. Preserve its strict filenames,
+foreign-entry exclusion, regular-file-only pruning, and postpublication evidence when recovery
+discovery and choice are added without creating another project or file authority.
 
 Refresh this map after any project source, manifest, public consumer, schema, or test change. Reread
 every changed file and relevant component interface through EOF, reconcile prose before recomputing

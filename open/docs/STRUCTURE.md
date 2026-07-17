@@ -27,7 +27,7 @@ rule, and the codec boundary are enforced by the Rust compiler, not by conventio
 | T3 | `superi-timeline` | core, graph |
 | T3 | `superi-audio` | core, concurrency |
 | T3 | `superi-ai` | core, image, graph |
-| T4 | `superi-project` | core, graph, timeline |
+| T4 | `superi-project` | core, graph, timeline, audio |
 | T4 | `superi-engine` (orchestration) | all T0-T4 (+ codecs-platform via `os-codecs`, codecs-vendor via `vendor-codecs`) |
 | T5 | `superi-api` (the public seam) | core, engine |
 | T6 | `superi-cli` (first consumer) | core, api |
@@ -90,6 +90,9 @@ values from `superi-media-io`, and let API contracts use `superi-media-io` regis
 `superi-concurrency` EngineControl domain needed to exercise the real engine introspection seam.
 None of those test edges authorizes a production dependency. Because the checker is a wildcard
 workspace member, its live-workspace contract also runs under the ordinary workspace test gate.
+Project's reviewed runtime edge to audio carries authored clip-mix state and its canonical codec into
+the durable aggregate. It does not carry prepared processors, devices, callbacks, or project policy
+down into `superi-audio`, so the T4-to-T3 dependency direction stays one way.
 
 `superi-bench` provides the stable Cargo benchmark boundary for decode, graph evaluation, upload,
 playback, cache, render, and project save/load. Run it with `cargo bench -p superi-bench`; use

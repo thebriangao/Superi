@@ -8,17 +8,20 @@ use superi_core::ids::{
 };
 use superi_core::settings::{CapabilitySet, SemanticVersion};
 use superi_core::time::{Duration, FrameRate, RationalTime, TimeRange, Timebase};
-use superi_graph::ids::{NodeId, ParameterId};
+use superi_graph::dag::{GraphEdge, GraphEndpoint};
+use superi_graph::ids::{NodeId, ParameterId, PortId};
 use superi_graph::mutate::{
-    EditableGraph, EditableNode, EditableParameter, GraphMutation, GraphTransaction,
+    EditableGraph, EditableNode, EditableParameter, GraphMutation, GraphTransaction, InstancePort,
     TypedParameterValue,
 };
 use superi_graph::node::{
     CachePolicy, ColorRequirements, Determinism, NodeBehavior, NodeSchema, NodeSchemaId,
-    NodeTypeId, ParameterName, ParameterSchema, RoiBehavior, TimeBehavior, ValueTypeId,
+    NodeTypeId, ParameterName, ParameterSchema, PortSchema, RoiBehavior, TimeBehavior, ValueTypeId,
 };
 use superi_graph::value::GraphValue;
-use superi_timeline::compile::{compile_timeline, TimelineGraphOrigin, TimelineGraphValue};
+use superi_timeline::compile::{
+    compile_timeline, recompile_timeline_preserving_edits, TimelineGraphOrigin, TimelineGraphValue,
+};
 use superi_timeline::edit_state::{SelectionExpansion, SelectionUpdate};
 use superi_timeline::model::{
     Caption, CaptionPurpose, CaptionTrackSemantics, Clip, ClipSource, EditorialObjectId,
@@ -454,6 +457,280 @@ fn compiled_parameters_remain_directly_editable_graph_state() {
             .payload(),
         &GraphValue::domain(TimelineGraphValue::Text("direct graph edit".to_owned()))
     );
+}
+
+#[test]
+fn three_way_recompile_preserves_nonconflicting_parameters_and_custom_nodes() {
+    let mut project = project_fixture();
+    let old_project = project.clone();
+    let mut retained = compile_timeline(&old_project, ROOT).unwrap();
+    let clip_node = retained
+        .index()
+        .object_node(EditorialObjectId::Clip(CLIP))
+        .unwrap();
+    let snapshot = retained.snapshot();
+    let name = snapshot
+        .node(clip_node)
+        .unwrap()
+        .parameters()
+        .values()
+        .find(|parameter| parameter.name().as_str() == "name")
+        .unwrap();
+    let custom_node_id = NodeId::from_raw(0xc001);
+    let custom_parameter_id = ParameterId::from_raw(0xc002);
+    let custom_name = ParameterName::new("amount").unwrap();
+    let custom_type = ValueTypeId::new("superi.value.effect.scalar").unwrap();
+    let custom_schema = Arc::new(
+        NodeSchema::new(
+            NodeSchemaId::new(
+                NodeTypeId::new("superi.effect.retained").unwrap(),
+                SemanticVersion::new(1, 0, 0),
+            ),
+            [],
+            [],
+            [ParameterSchema::new(
+                custom_name.clone(),
+                custom_type.clone(),
+                true,
+            )],
+            NodeBehavior::new(
+                TimeBehavior::CurrentFrame,
+                RoiBehavior::InputBounds,
+                ColorRequirements::Tagged,
+                Determinism::Deterministic,
+                CachePolicy::PerRegion,
+            ),
+            CapabilitySet::default(),
+        )
+        .unwrap(),
+    );
+    let custom_node = EditableNode::new(
+        custom_schema,
+        [],
+        [],
+        [EditableParameter::new(
+            custom_parameter_id,
+            custom_name,
+            TypedParameterValue::new(custom_type, GraphValue::scalar(0.5).unwrap()),
+        )],
+    )
+    .unwrap();
+    let retained_revision = retained.graph().revision();
+    retained
+        .graph_mut()
+        .apply(GraphTransaction::with_mutations(
+            retained_revision,
+            [
+                GraphMutation::SetParameter {
+                    node_id: clip_node,
+                    parameter_id: name.id(),
+                    value: TypedParameterValue::new(
+                        name.value().value_type().clone(),
+                        GraphValue::domain(TimelineGraphValue::Text(
+                            "retained direct name".to_owned(),
+                        )),
+                    ),
+                },
+                GraphMutation::Add {
+                    node_id: custom_node_id,
+                    node: custom_node,
+                    position: snapshot.node_order().len(),
+                },
+            ],
+        ))
+        .unwrap();
+
+    project
+        .edit(0, |draft| {
+            draft
+                .timeline_mut(CHILD)?
+                .track_mut(VIDEO_TRACK)?
+                .item_mut(EditorialObjectId::Clip(CLIP))?
+                .as_clip_mut()
+                .unwrap()
+                .set_source_range(range(96, 96, Timebase::integer(48).unwrap()))
+        })
+        .unwrap();
+    let reconciled =
+        recompile_timeline_preserving_edits(&old_project, &retained, &project).unwrap();
+
+    assert_eq!(
+        parameter_value(
+            &reconciled,
+            TimelineGraphOrigin::Object(EditorialObjectId::Clip(CLIP)),
+            "name",
+        ),
+        TimelineGraphValue::Text("retained direct name".to_owned())
+    );
+    assert_eq!(
+        parameter_value(
+            &reconciled,
+            TimelineGraphOrigin::Object(EditorialObjectId::Clip(CLIP)),
+            "source-range",
+        ),
+        TimelineGraphValue::TimeRange(range(96, 96, Timebase::integer(48).unwrap()))
+    );
+    assert!(reconciled.snapshot().node(custom_node_id).is_some());
+}
+
+#[test]
+fn three_way_recompile_rejects_overlapping_editorial_and_direct_parameter_edits() {
+    let mut project = project_fixture();
+    let old_project = project.clone();
+    let mut retained = compile_timeline(&old_project, ROOT).unwrap();
+    let clip_node = retained
+        .index()
+        .object_node(EditorialObjectId::Clip(CLIP))
+        .unwrap();
+    let snapshot = retained.snapshot();
+    let name = snapshot
+        .node(clip_node)
+        .unwrap()
+        .parameters()
+        .values()
+        .find(|parameter| parameter.name().as_str() == "name")
+        .unwrap();
+    let retained_revision = retained.graph().revision();
+    retained
+        .graph_mut()
+        .apply(GraphTransaction::with_mutations(
+            retained_revision,
+            [GraphMutation::SetParameter {
+                node_id: clip_node,
+                parameter_id: name.id(),
+                value: TypedParameterValue::new(
+                    name.value().value_type().clone(),
+                    GraphValue::domain(TimelineGraphValue::Text("direct name".to_owned())),
+                ),
+            }],
+        ))
+        .unwrap();
+    project
+        .edit(0, |draft| {
+            draft
+                .timeline_mut(CHILD)?
+                .track_mut(VIDEO_TRACK)?
+                .item_mut(EditorialObjectId::Clip(CLIP))?
+                .as_clip_mut()
+                .unwrap()
+                .set_name("editorial name");
+            Ok(())
+        })
+        .unwrap();
+
+    let error = recompile_timeline_preserving_edits(&old_project, &retained, &project).unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::Conflict);
+}
+
+#[test]
+fn three_way_recompile_rejects_direct_edge_edit_overlapping_editorial_removal() {
+    let mut project = project_fixture();
+    let old_project = project.clone();
+    let mut retained = compile_timeline(&old_project, ROOT).unwrap();
+    let clip_node = retained
+        .index()
+        .object_node(EditorialObjectId::Clip(CLIP))
+        .unwrap();
+    let snapshot = retained.snapshot();
+    let edge_id = *snapshot
+        .dag()
+        .outgoing_edge_ids(clip_node)
+        .unwrap()
+        .iter()
+        .next()
+        .unwrap();
+    let old_edge = snapshot.dag().edge(edge_id).copied().unwrap();
+    let clip = snapshot.node(clip_node).unwrap();
+    let output_name = clip
+        .output_name(old_edge.source().port_id())
+        .unwrap()
+        .clone();
+    let output_schema = clip.schema().output(&output_name).unwrap();
+    let custom_node_id = NodeId::from_raw(0xc101);
+    let custom_port_id = PortId::from_raw(0xc102);
+    let custom_schema = Arc::new(
+        NodeSchema::new(
+            NodeSchemaId::new(
+                NodeTypeId::new("superi.effect.retained-sink").unwrap(),
+                SemanticVersion::new(1, 0, 0),
+            ),
+            [],
+            [PortSchema::new(
+                output_name.clone(),
+                output_schema.value_type().clone(),
+                output_schema.cardinality(),
+            )],
+            [],
+            NodeBehavior::new(
+                TimeBehavior::CurrentFrame,
+                RoiBehavior::InputBounds,
+                ColorRequirements::Tagged,
+                Determinism::Deterministic,
+                CachePolicy::PerRegion,
+            ),
+            CapabilitySet::default(),
+        )
+        .unwrap(),
+    );
+    let custom_node = EditableNode::new(
+        custom_schema,
+        [],
+        [InstancePort::new(custom_port_id, output_name)],
+        [],
+    )
+    .unwrap();
+    let retained_revision = retained.graph().revision();
+    retained
+        .graph_mut()
+        .apply(GraphTransaction::with_mutations(
+            retained_revision,
+            [
+                GraphMutation::Add {
+                    node_id: custom_node_id,
+                    node: custom_node,
+                    position: snapshot.node_order().len(),
+                },
+                GraphMutation::Disconnect { edge_id },
+                GraphMutation::Connect {
+                    edge: GraphEdge::new(
+                        edge_id,
+                        GraphEndpoint::new(custom_node_id, custom_port_id),
+                        old_edge.destination(),
+                    ),
+                },
+            ],
+        ))
+        .unwrap();
+
+    project
+        .edit(0, |draft| {
+            let track = draft.timeline_mut(CHILD)?.track_mut(VIDEO_TRACK)?;
+            let mut items = track
+                .items()
+                .iter()
+                .filter(|item| {
+                    !matches!(
+                        item.id(),
+                        EditorialObjectId::Clip(CLIP) | EditorialObjectId::Transition(TRANSITION)
+                    )
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            items.insert(
+                0,
+                TrackItem::Gap(Gap::new(
+                    GapId::from_raw(0xc103),
+                    "removed clip",
+                    range(0, 48, Timebase::integer(24).unwrap()),
+                )),
+            );
+            track.replace_items(items);
+            Ok(())
+        })
+        .unwrap();
+
+    let error = recompile_timeline_preserving_edits(&old_project, &retained, &project).unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::Conflict);
 }
 
 #[test]
