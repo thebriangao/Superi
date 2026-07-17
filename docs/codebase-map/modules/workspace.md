@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 303525c1bb04aa3fb9d4b7124a518ff49905446c9c0da4a9059077fdcd0be556
-source_files: 152
+source_hash: 146556ee12ac67a701abe0949ecfa65c83eacf4cabadda7a3453d11f9d3610ae
+source_files: 153
 mapped_at_commit: working-tree
 ---
 
@@ -28,7 +28,7 @@ cannot resolve a material question. Multiple checkpoints still use separate
 Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers but obeys an
 explicit positive user concurrency value. The file is ignored by Git and copied into managed
 worktrees through `.worktreeinclude`, so the mapping script does not include it in this module's
-153-file inventory or source hash. It must still be reread independently before repository work.
+154-file inventory or source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
 ratified architecture, while `open/Cargo.toml` and `open/Cargo.lock` expose the dependency graph
@@ -319,6 +319,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   digest contract, strict bounds, closed method vocabulary, deterministic interpretation,
   conflict and committed-prefix behavior, permission preflight, event preservation, durable project
   meaning, recovery compatibility, and versioning policy.
+- `docs/checkpoints/P2.W07.C025.md`: Defines atomic durable generic project command recording,
+  bounded retention, schema-5 persistence, cursor-safe public inspection, permission-checked replay,
+  event correlation, CLI and scripting access, and recovery-lineage preservation.
 - `docs/checkpoints/P2.W04.C010.md`: Durable implementation evidence for production input-device
   discovery, atomic record arming and monitoring, bounded exact-timestamp capture, and the real
   monitoring bridge into existing output playback.
@@ -396,17 +399,17 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `ci/frontend-smoke/package.json`: Declares a private CI package, Node.js 24.13.0, independent
   typecheck, build, and test commands, and exact TypeScript and Vite development dependencies.
 - `ci/frontend-smoke/src/api-contract.ts`: Imports the committed generated API artifact, constructs
-  an exact typed project command, unavailable AI state, and API version negotiation request,
-  consumes negotiation response plus the extension query, lifecycle, event, resource, and stable
-  public control reference, consumes the typed maps, and exposes the transport-neutral client
-  constructor to the browser build.
+  an exact typed project command, command-log query, unavailable AI state, and API version
+  negotiation request, consumes command-log and negotiation responses plus the extension query,
+  lifecycle, event, resource, stable public control reference, typed maps, and transport-neutral
+  client constructor used by the browser build.
 - `ci/frontend-smoke/src/main.ts`: Implements a strict typed browser entry that verifies the contract
-  root, consumes generated command, negotiation, and AI state examples, and renders the declared
+  root, consumes generated command, command-log, negotiation, and AI state examples, and renders the declared
   product, readiness, and independent frontend gates.
 - `ci/frontend-smoke/tests/contract.test.mjs`: Verifies exact scripts and versions, strict compiler
   settings, immutable and least-privilege workflow wiring, locked installation, mandatory gates,
-  generated API import, negotiation and extension discovery contracts, typed maps, client surface,
-  and the hashed JavaScript entry in the production bundle.
+  generated API import, command-log, negotiation, and extension discovery contracts, typed maps,
+  client surface, and the hashed JavaScript entry in the production bundle.
 - `ci/frontend-smoke/tsconfig.json`: Defines strict no-emit TypeScript checking for the browser entry
   with ES2022, DOM, bundler-resolution, isolated-module, and forced-module semantics.
 
@@ -914,21 +917,24 @@ selection for permissive, platform, or vendor codecs, validated image and audio 
 GPU upload and resident graph evaluation, color processing, cache participation, and explicit
 readback only at delivery boundaries. The timeline deterministically compiles edits into graph
 state. The engine now dispatches canonical scenario transactions and lifecycle commands and emits
-ordered replacement state events. It also owns a bounded typed command history around the real
+ordered replacement state events. It also owns a bounded typed command history and atomic recorded
+command path around the real
 project document and every currently authored project media and extension command. Apply, undo, and
 redo share one revision-fenced dispatcher path, restore complete immutable snapshots at fresh
-monotonic revisions, and preserve failure and no-op branches. Compound transactions include
+monotonic revisions, append one durable record and event for every successful generic command, and
+preserve failure and no-op branches. Compound transactions include
 extension actions beside timeline, graph, media, audio, and root state. The project layer can now
 consume any selected immutable
 snapshot through one clockless typed autosave controller, publish a complete current-schema recovery
 point through the existing atomic Backup path, and deterministically retain only the newest
 user-selected generation count. The engine consumer proves apply, undo, and redo state reach those
 artifacts exactly. The API now projects every current authored project action through one strict
-generic command, typed evidence, minimum history replacement state, and correlated event. Its
-bounded digest-bound `superi-json` runtime interprets a closed command and editor-state step
+generic command, typed evidence, minimum history replacement state, durable cursor-safe command-log
+query, and correlated event. Its bounded digest-bound `superi-json` runtime interprets a closed
+command, command-log, and editor-state step
 vocabulary through that same facade, preserves nested permission checks and ordinary events, and
 returns deterministic revision, semantic hash, conflict, and committed-prefix evidence. The CLI now
-composes durable project, media, timeline, render settings, recovery, validation, and bounded
+composes durable project, command-log, media, timeline, render settings, recovery, validation, and bounded
 JSON-RPC automation through the API-owned local host, including exact-source script execution.
 Subscription hosting, dedicated script path loading, and autosave scheduling remain later work.
 Durable extension lifecycle remains user-controlled project state, while one bounded engine-owned
@@ -1395,7 +1401,8 @@ scopes, explicit destructive operations, deny precedence, payload-derived requir
 `1.4.0` discovery metadata. It also projects one bounded engine-owned extension registry through
 strict exact identity, lifecycle, capability, feature, safe failure, stable control, query, event,
 and replacement resource contracts. Its bounded `superi-json` runtime uses already resolved JSON and
-SHA-256 packages and preserves the same nested authorization and project command owner. The CLI exercises that boundary with one
+packages, adds the typed command-log query step, and preserves the same nested authorization and
+project command owner. The CLI exercises that boundary with one
 exact canonical fixture-read grant for the scenario path and a separate deny-by-default local
 policy context for durable project workflows; authentication, final symlink confinement, and
 operating-system sandboxing remain host and I/O-owner responsibilities.
@@ -1406,11 +1413,11 @@ canonical integrity-protected documents, while effects-to-project integration an
 plugin execution remain incomplete. The effects-side isolated OpenFX contract and engine-side
 bundle discovery, launch coordination, containment, and graph availability are implemented, while
 concrete platform transport, native OFX ABI adapters, and GPU-handle IPC remain absent.
-The project crate now owns a stable schema-4 SQLite application database with deterministic
+The project crate now owns a stable schema-5 SQLite application database with deterministic
 timeline, graph, settings, authored audio, and extension component rows, separate metadata and
 opaque-payload SHA-256 evidence, checked in-memory replacement, checked reload, durable
 nonoverwriting create, read-only reopen, and an ordered exact
-schema-0-to-schema-1-to-schema-2-to-schema-3-to-schema-4 migration inside one immediate transaction.
+schema-0-to-schema-1-to-schema-2-to-schema-3-to-schema-4-to-schema-5 migration inside one immediate transaction.
 It also
 owns authoritative versioned settings plus one typed save, save-as, copy, and backup surface that
 builds, validates, closes, synchronizes, and atomically publishes complete same-parent current-schema
@@ -1422,8 +1429,10 @@ user control without another persistence model. Recovery discovery, comparison, 
 and engine-coordinated restoration are implemented, and a changed active generation now blocks
 recovery before history mutation. The lockfile records exact rusqlite 0.32.1 and libsqlite3-sys
 0.30.1 with bundled SQLite, exact `fs4` 1.1.0, project Serde and JSON, plus engine rusqlite test
-edges. Additional project schema revisions beyond 4, persisted command logs, public dirty-state
-hashing, and transport-catalog database adaptation remain incomplete. The API-owned local host and
+edges. Bounded typed generic command records now persist outside authored semantic state, with exact
+request digests, bounded replay bytes, cursor-safe queries, and active recovery lineage. Additional
+project schema revisions beyond 5, persisted undo and redo branches, public dirty-state hashing,
+and transport-catalog database adaptation remain incomplete. The API-owned local host and
 CLI now compose existing database open, publication, recovery, and validation authorities without a
 direct CLI dependency on the project crate.
 The engine now owns a production Rust compound project command and history boundary around that
@@ -1599,7 +1608,8 @@ The largest current risk is cross-document drift:
   not record a completed hosted run across the six configured lanes. The current workflow and local
   proof are implementation evidence, not proof that every hosted runner completed at this revision.
 - The frontend workflow validates a deliberately minimal TypeScript and Vite contract. It now has a
-  real compile-time consumer of the generated public API, but no live transport, React dependency,
+  real compile-time consumer of the generated public API including command-log method and resource
+  maps, but no live transport, React dependency,
   Tauri host, native viewport, or editorial behavior, so a passing frontend lane must not be
   reported as product UI or desktop-shell proof.
 - The frontend lockfile includes many platform-optional esbuild and Rollup packages. Their presence

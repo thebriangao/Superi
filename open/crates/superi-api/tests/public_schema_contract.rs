@@ -44,6 +44,7 @@ const QUERIES: &[&str] = &[
     "superi.extensions.get",
     "superi.jobs.get",
     "superi.media.capabilities.get",
+    "superi.project.command_log.get",
     "superi.project.recovery.compare",
     "superi.project.recovery.get",
     "superi.project.settings.get",
@@ -70,6 +71,7 @@ const RESOURCES: &[&str] = &[
     "superi.extensions",
     "superi.jobs",
     "superi.media.capabilities",
+    "superi.project.command_log",
     "superi.project.history",
     "superi.project.recovery",
     "superi.project.settings",
@@ -360,6 +362,13 @@ fn expected_domain_version(name: &str) -> SemanticVersion {
         SemanticVersion::new(1, 0, 0)
     } else if name.starts_with("superi.media.capabilities") {
         SemanticVersion::new(2, 0, 0)
+    } else if matches!(
+        name,
+        "superi.project.command.execute"
+            | "superi.project.state.changed"
+            | "superi.project.history"
+    ) {
+        SemanticVersion::new(1, 1, 0)
     } else if name == GET_PUBLIC_API_SCHEMA_METHOD {
         PUBLIC_API_SCHEMA_VERSION.clone()
     } else {

@@ -36,6 +36,9 @@ fn generated_typescript_covers_the_canonical_public_catalog_deterministically() 
     for declaration in [
         "export type ExecuteProjectCommand",
         "export type ExecuteProjectCommandResult",
+        "export type GetProjectCommandLog",
+        "export type GetProjectCommandLogResult",
+        "export type ProjectCommandLogRecord",
         "export type ProjectScriptProgram",
         "export type RunProjectScript",
         "export type RunProjectScriptResult",

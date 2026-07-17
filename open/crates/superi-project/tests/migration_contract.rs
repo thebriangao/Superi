@@ -148,7 +148,7 @@ fn downgrade_to_schema_zero(path: &Path, legacy_components: bool) {
 
     transaction
         .execute_batch(&format!(
-            "DROP TABLE extension_records;DROP TABLE audio_component;DROP TABLE graph_components;DROP TABLE settings_component;DROP TABLE timeline_component;DROP TABLE project_metadata;{LEGACY_PROJECT_METADATA_SCHEMA};{LEGACY_TIMELINE_COMPONENT_SCHEMA};{LEGACY_GRAPH_COMPONENTS_SCHEMA};PRAGMA user_version = 0;"
+            "DROP TABLE command_log_records;DROP TABLE command_log_metadata;DROP TABLE extension_records;DROP TABLE audio_component;DROP TABLE graph_components;DROP TABLE settings_component;DROP TABLE timeline_component;DROP TABLE project_metadata;{LEGACY_PROJECT_METADATA_SCHEMA};{LEGACY_TIMELINE_COMPONENT_SCHEMA};{LEGACY_GRAPH_COMPONENTS_SCHEMA};PRAGMA user_version = 0;"
         ))
         .unwrap();
     transaction

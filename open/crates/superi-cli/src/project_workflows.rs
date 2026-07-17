@@ -14,7 +14,7 @@ use superi_api::commands::{
     CompareProjectRecovery, DismissProjectRecovery, ExecuteProjectSettingsTransaction,
     GetEditorState, GetProjectRecovery, RestoreProjectRecovery,
 };
-use superi_api::editor::ExecuteProjectCommand;
+use superi_api::editor::{ExecuteProjectCommand, GetProjectCommandLog, ProjectCommandLogDetail};
 use superi_api::local::{LocalAutomationRequest, LocalProjectCollision, LocalProjectHost};
 use superi_api::permissions::{ApiPermissionContext, ApiPermissionRule};
 use superi_core::error::Result as CoreResult;
@@ -36,6 +36,13 @@ pub(crate) enum WorkflowCommand {
     },
     ProjectInspect {
         project: PathBuf,
+    },
+    ProjectCommandLog {
+        project: PathBuf,
+        after_sequence: u64,
+        limit: u32,
+        detail: ProjectCommandLogDetail,
+        permissions: Option<PathBuf>,
     },
     ProjectSaveCopy {
         project: PathBuf,
@@ -144,6 +151,20 @@ pub(crate) fn run_workflow(command: WorkflowCommand) -> Result<Vec<Value>, CliFa
         WorkflowCommand::ProjectInspect { project } => one_core(
             "project.inspect",
             LocalProjectHost::inspect_editor(project, GetEditorState::new("cli-project-inspect")),
+        ),
+        WorkflowCommand::ProjectCommandLog {
+            project,
+            after_sequence,
+            limit,
+            detail,
+            permissions,
+        } => one_core(
+            "project.command-log",
+            LocalProjectHost::inspect_command_log(
+                project,
+                GetProjectCommandLog::new(after_sequence, limit, detail),
+                read_permissions(permissions)?,
+            ),
         ),
         WorkflowCommand::ProjectSaveCopy {
             project,
@@ -292,6 +313,27 @@ fn parse_project(arguments: &[OsString]) -> Result<WorkflowCommand, CliFailure> 
             let mut options = Options::parse(&arguments[1..])?;
             let command = WorkflowCommand::ProjectInspect {
                 project: options.required_path("--project")?,
+            };
+            options.finish()?;
+            Ok(command)
+        }
+        "command-log" => {
+            let mut options = Options::parse(&arguments[1..])?;
+            let detail = match options.required_utf8("--detail")?.as_str() {
+                "metadata" => ProjectCommandLogDetail::Metadata,
+                "replayable" => ProjectCommandLogDetail::Replayable,
+                _ => {
+                    return Err(CliFailure::invalid(
+                        "--detail must be metadata or replayable",
+                    ));
+                }
+            };
+            let command = WorkflowCommand::ProjectCommandLog {
+                project: options.required_path("--project")?,
+                after_sequence: options.required_u64("--after-sequence")?,
+                limit: options.required_u32("--limit")?,
+                detail,
+                permissions: options.optional_regular_path("--permissions")?,
             };
             options.finish()?;
             Ok(command)
@@ -673,6 +715,18 @@ impl Options {
         self.required(key)?
             .into_string()
             .map_err(|_| CliFailure::invalid(format!("{key} must be valid UTF-8")))
+    }
+
+    fn required_u64(&mut self, key: &'static str) -> Result<u64, CliFailure> {
+        self.required_utf8(key)?
+            .parse()
+            .map_err(|_| CliFailure::invalid(format!("{key} must be an unsigned 64-bit integer")))
+    }
+
+    fn required_u32(&mut self, key: &'static str) -> Result<u32, CliFailure> {
+        self.required_utf8(key)?
+            .parse()
+            .map_err(|_| CliFailure::invalid(format!("{key} must be an unsigned 32-bit integer")))
     }
 
     fn optional_regular_path(&mut self, key: &'static str) -> Result<Option<PathBuf>, CliFailure> {

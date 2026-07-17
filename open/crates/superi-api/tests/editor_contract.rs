@@ -6,7 +6,8 @@ use superi_api::commands::ApiCommand;
 use superi_api::editor::{
     EditorChannelMap, EditorChannelPosition, EditorClipMixControls, EditorClipMixMutation,
     EditorExtensionMutation, EditorGraphMutation, EditorMediaMutation, ExecuteProjectCommand,
-    ProjectAction, ProjectCommand, ProjectCommandEvidence, TimelineEditOperation,
+    GetProjectCommandLog, GetProjectCommandLogResult, ProjectAction, ProjectCommand,
+    ProjectCommandEvidence, ProjectCommandLogDetail, TimelineEditOperation,
 };
 use superi_api::events::{ApiEvent, ProjectStateChanged};
 use superi_api::permissions::{
@@ -15,8 +16,8 @@ use superi_api::permissions::{
 };
 use superi_api::schema::ApiResource;
 use superi_api::version::{
-    EXECUTE_PROJECT_COMMAND_METHOD, PROJECT_EDITOR_SCHEMA_VERSION, PROJECT_HISTORY_RESOURCE,
-    PROJECT_STATE_CHANGED_EVENT,
+    EXECUTE_PROJECT_COMMAND_METHOD, GET_PROJECT_COMMAND_LOG_METHOD, PROJECT_COMMAND_LOG_RESOURCE,
+    PROJECT_EDITOR_SCHEMA_VERSION, PROJECT_HISTORY_RESOURCE, PROJECT_STATE_CHANGED_EVENT,
 };
 use superi_concurrency::threads::ExecutionDomain;
 use superi_engine::editor as engine;
@@ -617,7 +618,13 @@ fn one_public_command_is_atomic_durable_correlated_and_undoable() {
     assert!(!no_op.authored_state_changed());
     assert_eq!(no_op.state().project_revision(), 3);
     assert_eq!(no_op.state().undo_depth(), 1);
-    assert!(api.drain_events().unwrap().is_empty());
+    let events = api.drain_events().unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(
+        events[0].command_log_sequence(),
+        no_op.command_log_sequence()
+    );
+    assert_eq!(events[0].project_revision(), 3);
 }
 
 #[test]
@@ -773,7 +780,9 @@ fn malformed_public_values_fail_before_dispatch_without_partial_state() {
         .unwrap();
     assert_eq!(inspected.command_sequence(), 1);
     assert!(!inspected.authored_state_changed());
-    assert!(api.drain_events().unwrap().is_empty());
+    let events = api.drain_events().unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].command_log_sequence(), 1);
 }
 
 #[test]
@@ -786,4 +795,87 @@ fn project_history_resource_is_registered_as_a_typed_resource() {
         superi_api::editor::ProjectHistorySnapshot::SCHEMA_VERSION,
         PROJECT_EDITOR_SCHEMA_VERSION
     );
+}
+
+#[test]
+fn command_log_query_is_bounded_cursor_safe_and_returns_typed_replay() {
+    let _domain = ExecutionDomain::EngineControl
+        .enter_current()
+        .expect("test owns engine control");
+    let mut api = project_api();
+    let first = api
+        .execute(ExecuteProjectCommand::new(
+            "query-inspect",
+            0,
+            ProjectCommand::Inspect {},
+        ))
+        .unwrap();
+    let second = api
+        .execute(ExecuteProjectCommand::new(
+            "query-no-op",
+            0,
+            ProjectCommand::Apply {
+                actions: vec![ProjectAction::SelectRootTimeline {
+                    timeline_id: ROOT.to_string(),
+                }],
+            },
+        ))
+        .unwrap();
+    assert_eq!(first.command_log_sequence(), 1);
+    assert_eq!(second.command_log_sequence(), 2);
+    assert_eq!(api.drain_events().unwrap().len(), 2);
+
+    let metadata = api
+        .execute(GetProjectCommandLog::new(
+            0,
+            1,
+            ProjectCommandLogDetail::Metadata,
+        ))
+        .unwrap();
+    let GetProjectCommandLogResult::Records(metadata) = metadata else {
+        panic!("initial command log must be replayable from sequence zero");
+    };
+    assert_eq!(metadata.records().len(), 1);
+    assert_eq!(metadata.records()[0].sequence(), 1);
+    assert!(metadata.records()[0].replay_request().is_none());
+    assert_eq!(metadata.through_sequence(), 1);
+    assert_eq!(metadata.latest_sequence(), 2);
+
+    let replay = api
+        .execute(GetProjectCommandLog::new(
+            1,
+            256,
+            ProjectCommandLogDetail::Replayable,
+        ))
+        .unwrap();
+    let GetProjectCommandLogResult::Records(replay) = replay else {
+        panic!("retained suffix must not require resynchronization");
+    };
+    assert_eq!(replay.records().len(), 1);
+    assert_eq!(replay.records()[0].transaction_id(), "query-no-op");
+    assert_eq!(
+        replay.records()[0]
+            .replay_request()
+            .unwrap()
+            .transaction_id(),
+        "query-no-op"
+    );
+    assert_eq!(GetProjectCommandLog::METHOD, GET_PROJECT_COMMAND_LOG_METHOD);
+    assert_eq!(
+        superi_api::editor::ProjectCommandLogBatch::RESOURCE,
+        PROJECT_COMMAND_LOG_RESOURCE
+    );
+
+    let before = api.project_snapshot().unwrap();
+    assert_eq!(
+        api.execute(GetProjectCommandLog::new(
+            0,
+            0,
+            ProjectCommandLogDetail::Metadata,
+        ))
+        .unwrap_err()
+        .category(),
+        engine::ErrorCategory::InvalidInput
+    );
+    assert_eq!(api.project_snapshot().unwrap(), before);
 }

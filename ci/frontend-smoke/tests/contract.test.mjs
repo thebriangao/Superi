@@ -37,6 +37,7 @@ test("frontend consumes the committed generated public API bindings", () => {
     /open\/bindings\/typescript\/superi-api/,
   );
   assert.match(consumer, /superi\.project\.command\.execute/);
+  assert.match(consumer, /superi\.project\.command_log\.get/);
   assert.match(consumer, /superi\.api\.version\.negotiate/);
   assert.match(consumer, /versionNegotiationRequest/);
   assert.match(consumer, /superi\.project\.state\.changed/);
@@ -50,6 +51,8 @@ test("frontend consumes the committed generated public API bindings", () => {
   assert.match(bindings, /export class SuperiClient/);
   assert.match(bindings, /export type NegotiateApiVersion/);
   assert.match(bindings, /export type ExtensionRegistrySnapshot/);
+  assert.match(bindings, /export type GetProjectCommandLog/);
+  assert.match(bindings, /export type ProjectCommandLogRecord/);
 });
 
 test("workflow installs the lockfile and runs independent frontend gates", () => {

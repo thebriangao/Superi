@@ -41,6 +41,7 @@ use crate::export_dispatch::{
 use crate::export_jobs::ExportJobQueueConfig;
 use crate::history::{
     ProjectCommandHistory, ProjectHistoryCommand, ProjectHistoryOutcome, ProjectHistoryState,
+    RecordedProjectCommand,
 };
 use crate::introspection::{EngineIntrospectionSnapshot, MediaCapabilities};
 use crate::lifecycle::{
@@ -364,6 +365,8 @@ pub enum EngineCommand {
     InspectScenario,
     /// Execute one typed authored-project mutation, undo, or redo command.
     ExecuteProjectHistory(ProjectHistoryCommand),
+    /// Execute and durably record one stable public project command.
+    ExecuteRecordedProjectCommand(Box<RecordedProjectCommand>),
     /// Inspect current authored-project state and history without mutation.
     InspectProjectHistory,
     /// Inspect deterministic semantic project identity and component evidence without mutation.
@@ -457,6 +460,7 @@ impl EngineCommand {
                 self,
                 Self::ExecuteScenario(_)
                     | Self::ExecuteProjectHistory(_)
+                    | Self::ExecuteRecordedProjectCommand(_)
                     | Self::ExecuteProjectRecovery(_)
                     | Self::CompleteLifecycleAction(_)
                     | Self::FailLifecycleAction { .. }
@@ -1169,7 +1173,7 @@ impl EngineCommandDispatcher {
             );
         }
 
-        let execution = self.execute_command(command)?;
+        let execution = self.execute_command(command, next_command_sequence)?;
         self.command_sequence = next_command_sequence;
         if let Some(event) = execution.event {
             let sequence = next_event_sequence.expect("state-changing command reserved an event");
@@ -1384,7 +1388,11 @@ impl EngineCommandDispatcher {
         Ok(())
     }
 
-    fn execute_command(&mut self, command: EngineCommand) -> Result<CommandExecution> {
+    fn execute_command(
+        &mut self,
+        command: EngineCommand,
+        command_sequence: u64,
+    ) -> Result<CommandExecution> {
         match command {
             EngineCommand::ExecuteScenario(transaction) => {
                 let actual_revision = self.scenario.snapshot().revision();
@@ -1423,6 +1431,16 @@ impl EngineCommandDispatcher {
                 Ok(CommandExecution {
                     result: EngineCommandResult::ProjectHistory(Box::new(outcome)),
                     event,
+                })
+            }
+            EngineCommand::ExecuteRecordedProjectCommand(command) => {
+                let outcome = self
+                    .project_history_mut()?
+                    .execute_recorded(*command, command_sequence)?;
+                let event = EngineEvent::ProjectStateChanged(Box::new(outcome.state().clone()));
+                Ok(CommandExecution {
+                    result: EngineCommandResult::ProjectHistory(Box::new(outcome)),
+                    event: Some(event),
                 })
             }
             EngineCommand::InspectProjectHistory => Ok(CommandExecution {

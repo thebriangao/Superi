@@ -93,7 +93,8 @@ fn stable_workflow_families_publish_before_return_and_reopen_cleanly() {
     ]);
     assert_eq!(generic["result"]["transaction_id"], "cli-project-command");
     assert_eq!(generic["result"]["authored_state_changed"], false);
-    assert!(generic["events"].as_array().unwrap().is_empty());
+    assert_eq!(generic["result"]["command_log_sequence"], 1);
+    assert_eq!(generic["events"].as_array().unwrap().len(), 1);
 
     let timeline_request = directory.join("timeline.json");
     write_json(
@@ -119,7 +120,31 @@ fn stable_workflow_families_publish_before_return_and_reopen_cleanly() {
         os(&timeline_request),
     ]);
     assert_eq!(timeline["result"]["authored_state_changed"], false);
-    assert!(timeline["events"].as_array().unwrap().is_empty());
+    assert_eq!(timeline["result"]["command_log_sequence"], 2);
+    assert_eq!(timeline["events"].as_array().unwrap().len(), 1);
+
+    let command_log = one_success(&[
+        os("project"),
+        os("command-log"),
+        os("--project"),
+        os(&project),
+        os("--after-sequence"),
+        os("0"),
+        os("--limit"),
+        os("16"),
+        os("--detail"),
+        os("replayable"),
+    ]);
+    assert_eq!(command_log["status"], "records");
+    assert_eq!(command_log["result"]["latest_sequence"], 2);
+    assert_eq!(
+        command_log["result"]["records"].as_array().unwrap().len(),
+        2
+    );
+    assert_eq!(
+        command_log["result"]["records"][0]["replay_request"]["transaction_id"],
+        "cli-project-command"
+    );
 
     let media = run(&[
         os("media"),
@@ -188,7 +213,7 @@ fn stable_workflow_families_publish_before_return_and_reopen_cleanly() {
     fs::write(
         &automation,
         format!(
-            "{}\n{}\n{}\n",
+            "{}\n{}\n{}\n{}\n",
             json!({
                 "jsonrpc": "2.0",
                 "id": "automation-render-id",
@@ -217,6 +242,16 @@ fn stable_workflow_families_publish_before_return_and_reopen_cleanly() {
                     "source": script_source,
                     "expected_source_sha256": script_digest
                 }
+            }),
+            json!({
+                "jsonrpc": "2.0",
+                "id": "automation-command-log-id",
+                "method": "superi.project.command_log.get",
+                "params": {
+                    "after_sequence": 0,
+                    "requested_limit": 16,
+                    "detail": "metadata"
+                }
             })
         ),
     )
@@ -229,7 +264,7 @@ fn stable_workflow_families_publish_before_return_and_reopen_cleanly() {
         os("--input"),
         os(&automation),
     ]);
-    assert_eq!(automation.len(), 3);
+    assert_eq!(automation.len(), 4);
     assert_eq!(automation[0]["jsonrpc"], "2.0");
     assert_eq!(automation[0]["id"], "automation-render-id");
     assert_eq!(
@@ -253,6 +288,9 @@ fn stable_workflow_families_publish_before_return_and_reopen_cleanly() {
         .as_array()
         .unwrap()
         .is_empty());
+    assert_eq!(automation[3]["id"], "automation-command-log-id");
+    assert_eq!(automation[3]["result"]["status"], "records");
+    assert_eq!(automation[3]["result"]["result"]["latest_sequence"], 2);
 
     let failing_automation = directory.join("failing-automation.jsonl");
     fs::write(

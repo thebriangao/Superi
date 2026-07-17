@@ -72,7 +72,7 @@ fn negotiation_selects_highest_common_canonical_versions_and_projects_migrations
             .iter()
             .map(|release| release.schema_revision())
             .collect::<Vec<_>>(),
-        vec![2, 3, 4]
+        vec![2, 3, 4, 5]
     );
 }
 
@@ -86,7 +86,7 @@ fn negotiation_reports_each_missing_dimension_and_evaluates_project_independentl
             "superi.project",
             version("2.0.0"),
             2,
-            5,
+            6,
         )),
     )
     .unwrap();

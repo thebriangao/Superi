@@ -11,7 +11,10 @@ use superi_core::settings::SemanticVersion;
 use superi_engine::editor::EngineTransactionId;
 
 use crate::commands::{ApiCommand, GetEditorState, GetEditorStateResult};
-use crate::editor::{ExecuteProjectCommand, ExecuteProjectCommandResult, ProjectEditorApi};
+use crate::editor::{
+    ExecuteProjectCommand, ExecuteProjectCommandResult, GetProjectCommandLog,
+    GetProjectCommandLogResult, ProjectEditorApi,
+};
 use crate::permissions::{
     ApiPermissionKind, ApiPermissionRequirementMode, ApiPermissionRequirements,
 };
@@ -78,6 +81,9 @@ pub enum ProjectScriptStep {
     /// Reads one complete existing editor replacement snapshot.
     #[serde(rename = "superi.editor.state.get")]
     GetEditorState { params: GetEditorState },
+    /// Reads one bounded cursor-safe batch from the durable project command log.
+    #[serde(rename = "superi.project.command_log.get")]
+    GetProjectCommandLog { params: GetProjectCommandLog },
 }
 
 impl ProjectScriptStep {
@@ -87,6 +93,7 @@ impl ProjectScriptStep {
             Self::GetEditorState { params } => {
                 EngineTransactionId::new(params.transaction_id().to_owned()).map(|_| ())
             }
+            Self::GetProjectCommandLog { params } => params.validate_for_script(),
         }
     }
 
@@ -190,7 +197,7 @@ impl ProjectScriptProgram {
 
 /// Request to validate and run exact local script source.
 #[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunProjectScript {
     source: String,
@@ -239,7 +246,7 @@ impl ApiCommand for RunProjectScript {
 
 /// Typed successful response from one supported script step.
 #[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "method", content = "response")]
 pub enum ProjectScriptStepResponse {
     /// Result from the existing generic project command surface.
@@ -248,11 +255,14 @@ pub enum ProjectScriptStepResponse {
     /// Result from the existing complete editor-state query.
     #[serde(rename = "superi.editor.state.get")]
     GetEditorState(Box<GetEditorStateResult>),
+    /// Result from the durable project command-log query.
+    #[serde(rename = "superi.project.command_log.get")]
+    GetProjectCommandLog(Box<GetProjectCommandLogResult>),
 }
 
 /// One ordered completed step and its typed public response.
 #[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectScriptStepRecord {
     index: u32,
@@ -288,7 +298,7 @@ pub enum ProjectScriptRunStatus {
 
 /// Complete deterministic trace from one local script execution.
 #[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunProjectScriptResult {
     #[cfg_attr(
@@ -513,6 +523,11 @@ pub(crate) fn execute_project_script(
             ProjectScriptStep::GetEditorState { params } => api
                 .execute(params)
                 .map(|response| ProjectScriptStepResponse::GetEditorState(Box::new(response))),
+            ProjectScriptStep::GetProjectCommandLog { params } => {
+                api.execute(params).map(|response| {
+                    ProjectScriptStepResponse::GetProjectCommandLog(Box::new(response))
+                })
+            }
         };
         match response {
             Ok(response) => completed_steps.push(ProjectScriptStepRecord {

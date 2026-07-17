@@ -2,7 +2,7 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 7b2c84c834a65c870aadae4a591768ae0c844c42e988c9b5f98803e67561eeed
+source_hash: 68cc5cb8e658875e5980096e73037faf6633925a3e50d7514cf0df299831f113
 source_files: 70
 mapped_at_commit: working-tree
 ---
@@ -131,8 +131,10 @@ through the existing dispatcher.
   history actions,
   revision-fenced apply, undo, and redo, oldest-entry eviction, failure and no-op branch
   preservation, the exclusive `ProjectCommandHistory` owner over one real `ProjectDocument`, and an
-  internal prepare-then-commit recovery replacement that resets session history only after durable
-  active-project publication.
+  atomic candidate-history recorded-command path that appends project-owned request evidence for
+  apply, undo, redo, inspect, and no-op success. It also owns an internal prepare-then-commit
+  recovery replacement that resets session history only after durable active-project publication
+  while preserving active command-log lineage.
 - `open/crates/superi-engine/src/introspection.rs`: Implements deterministic API-neutral backend and
   codec capability records plus complete immutable engine snapshots containing optional exact
   resource accounting, lifecycle and recovery revisions, health, canonical subsystem state,
@@ -276,7 +278,8 @@ through the existing dispatcher.
   teardown retry, direct and stopped restart, and EngineControl ownership.
 - `open/crates/superi-engine/tests/media_resource_acquisition_contract.rs`: Proves complete source
   registration, real WebM and AV1 preparation, exact published project graph retention after a
-  direct graph edit, exact schema-0 project migration into that same retained graph, legacy timeline
+  direct graph edit, exact schema-0 project migration from a fixture that removes every newer
+  schema-5 table into that same retained graph, legacy timeline
   compilation, exact timing, precision, metadata, color and alpha semantics, strict request
   validation, explicit fallback evidence, cancellation, no exception retry, and fresh-context
   recovery.
@@ -317,8 +320,9 @@ through the existing dispatcher.
   and failure state after ordered events are drained.
 - `open/crates/superi-engine/tests/project_history_contract.rs`: Proves real project media mutation,
   full-project undo and redo, branch clearing only after a successful authored change, failure and
-  no-op preservation, bounded oldest-entry eviction, monotonic revision exhaustion, schema-4 SQLite
-  durability of the selected snapshot, and the real media resource consumer after reversal.
+  no-op preservation, bounded oldest-entry eviction, monotonic revision exhaustion, recorded
+  command atomicity, schema-5 SQLite durability of selected state and command records, and the real
+  media resource consumer after reversal.
 - `open/crates/superi-engine/tests/project_autosave_contract.rs`: Proves that immutable selected
   history state after authored apply, undo, and redo reaches the project-owned autosave command
   surface as complete current-schema recovery points, including exact revisions, settings, media
@@ -378,11 +382,17 @@ script language, parser, source loader, trace, permission policy, or competing m
   extension command results, compound action results, and the mutation kind reversed or reapplied.
 - `ProjectHistoryState` contains the selected immutable `ProjectSnapshot`, configured capacity,
   undo and redo depths, and the next available typed action on each branch.
-- `ProjectHistoryOutcome` pairs that state with optional action evidence and an explicit authored
-  state-change flag. Inspection therefore shares the same complete result shape without mutation.
+- `ProjectHistoryOutcome` pairs that state with optional action evidence, an explicit authored
+  state-change flag, and the optional durable command record created by recorded public execution.
+  Inspection therefore shares the same complete result shape without authored mutation.
+- `RecordedProjectCommand` pairs one validated project-owned record draft with apply, undo, redo, or
+  inspect intent. `execute_recorded` clones the complete history candidate, calculates before and
+  after semantic hashes, runs the command, appends exactly one record, and swaps only after every
+  fallible step succeeds.
 - `ProjectCommandHistory` exclusively owns one `ProjectDocument`. The default capacity is 64,
   explicit capacity is bounded from 1 through 4096, and retained entries are session-local immutable
-  before and after snapshots while only the selected project snapshot remains durable. Dispatcher
+  before and after snapshots while only the selected project snapshot and its bounded command log
+  remain durable. Dispatcher
   settings transactions publish through this same document and enter the same history. Recovery
   prepares a cloned restored document behind the exact current revision and commits it with empty
   undo and redo branches only after the active project database publishes the same snapshot.
@@ -396,9 +406,11 @@ executor for the real playback owner, `attach_export_jobs` installs the canonica
 queue behind a type-erased controller, and `scenario_only` is the explicit compatibility owner used
 by the narrow public reference API. `attach_project_history` installs exactly one exclusive
 project command owner, and `project_history_state` reads its immutable typed state. The
-`ExecuteProjectHistory` and `InspectProjectHistory` commands return `ProjectHistory` results;
-authored changes publish a complete `ProjectStateChanged` replacement event with project revision,
-command sequence, event sequence, and caller transaction correlation. `attach_project` installs the
+`ExecuteProjectHistory`, `ExecuteRecordedProjectCommand`, and `InspectProjectHistory` commands
+return `ProjectHistory` results. Recorded public execution preflights event capacity and every
+successful apply, undo, redo, inspect, or no-op publishes a complete `ProjectStateChanged`
+replacement event with project revision, command-log sequence, command sequence, event sequence,
+and caller transaction correlation. `attach_project` installs the
 same exclusive owner with default history capacity for the public settings path, and
 `project_snapshot` returns its selected immutable project without exposing mutable ownership.
 `InspectProjectDiagnostics` computes `superi-project::ProjectDiagnostics` from that exact selected
@@ -655,9 +667,9 @@ to publish that complete semantic state behind the exact current revision fence,
 between branches only after restoration succeeds. Restored contents receive a fresh monotonic
 document revision, so stale callers cannot regain authority when an old snapshot becomes selected.
 The oldest undo entry is evicted when capacity is full, and the redo branch clears only after a
-successful new authored change. History is process-local operational state: project SQLite
-persistence stores the selected snapshot through its existing schema and never serializes stacks,
-capacity, or command metadata.
+successful new authored change. History branches are process-local operational state: project
+SQLite persistence stores the selected snapshot and bounded command records through its existing
+schema, but never serializes undo or redo stacks or capacity.
 
 The authored project mutation vocabulary contains all three real project media commands, every
 project extension command, and the compound transaction. The same history owner also records
@@ -705,7 +717,8 @@ the current document, and applies `restore_snapshot` behind both catalog and pro
 A changed prepared snapshot is published through `ProjectDatabase::replace` before the in-memory
 history is swapped and reset. Persistent failure therefore leaves disk, history, candidate, command
 sequence, and event stream unchanged. Dismiss delegates the exact synchronized tombstone transition
-to the project owner and retains the active project unchanged.
+to the project owner and retains the active project unchanged. Restore imports only candidate
+authored state, preserving the active document's command log and next sequence.
 
 Discover, restore, and dismiss reserve command and event sequence space plus bounded queue capacity
 before filesystem mutation, then emit one complete replacement recovery state correlated to the
@@ -1611,11 +1624,13 @@ inspection command ordering, one event per semantic transaction, stale and inval
 no-op success with no event, a complete 64-event capacity boundary before mutation, isolated audio
 revision correlation, and real `ClipMixProcessor` consumption of the returned snapshot.
 
-Three project-history contracts execute the real project media command owner through apply, undo,
+Four project-history contracts execute the real project media command owner through apply, undo,
 and redo. They prove full aggregate reversal, typed outcomes, monotonic revision fences, failed and
 idempotent branch preservation, redo clearing after a new authored change, capacity validation,
-oldest-entry eviction, and revision-exhaustion atomicity. The durability proof writes the selected
-snapshot to schema-4 SQLite, reloads with empty session history, and passes the canonical AV1 fixture
+oldest-entry eviction, and revision-exhaustion atomicity. The recorded-command proof covers inspect,
+stale rejection, authored mutation, semantic no-op, exact record and event correlation, and
+independent authored and log revisions. The durability proof writes the selected snapshot to
+schema-5 SQLite, reloads with empty session history and preserved command records, and passes the canonical AV1 fixture
 through `acquire_project_resources` after reversal.
 
 The downstream `superi-api` generic editor contract consumes only the curated `editor` seam. It
@@ -1649,7 +1664,8 @@ wire, or recovery-selection behavior.
 Four project recovery dispatcher contracts attach a real file-backed active database and the exact
 project autosave namespace. They prove discovery, read-only semantic comparison, monotonic durable
 restore including authored clip-mix state with empty new-session history, source-candidate retention,
-exact later dismissal, complete replacement event correlation, and exact database reopen equality.
+exact later dismissal, complete replacement event correlation, exact database reopen equality, and
+preservation of active command-log lineage without importing candidate records.
 Read-only persistence failure, an external active-file replacement after coordinator attachment,
 stale fences, terminal revision exhaustion, and a full 64-event queue all preserve disk, history,
 candidate, sequences, and events before authority changes. The external replacement is reported as
@@ -1858,9 +1874,10 @@ operations.
 It also owns crash recovery discovery, complete
 semantic comparison, durable restoration, and exact dismissal through one optional file-backed
 coordinator. The optional project attachment owns one real `ProjectDocument`, returns complete
-typed history state, records settings, media, extension, and compound
-mutations in that shared history, and publishes correlated full replacement events for authored
-changes. Its introspection and validation snapshots expose coherent adaptation and action evidence
+typed history state, records settings, media, extension, and compound mutations in that shared
+history, atomically appends project-owned evidence for every successful generic public command,
+and publishes correlated full replacement events for every recorded command. Its introspection and
+validation snapshots expose coherent adaptation and action evidence
 without adding mutation authority. Its project diagnostics command exposes project-owned canonical
 hash and component evidence without an event, history entry, or second semantic model.
 Its editor-state command captures the same selected project plus cached optional runtime
@@ -1969,8 +1986,10 @@ explicit decoder streams, one-shot selection, operation checks, and all-or-nothi
 Keep project request construction dependent on the project path codec, reject explicit missing
 state before media I/O, and never infer `MediaId` or fingerprint identity from a filesystem path.
 Keep all authored project actions behind `ProjectCommandHistory`, retain immutable before and after
-snapshots only after successful semantic changes, preflight dispatcher event capacity before
-mutation, preserve both branches on failure and no-op, and restore only through the project-owned
+snapshots only after successful semantic changes, and route public generic commands through the
+single candidate-history recorded path. Preflight dispatcher event capacity before mutation,
+append exactly one durable record and event for every successful public apply, undo, redo, inspect,
+or no-op, preserve both branches and the log on failure, and restore only through the project-owned
 revision-fenced monotonic seam. Keep compound actions bounded, ordered, validated after each step,
 and published by one outer project edit. Keep extension payloads opaque, preserve project-owned
 capability, lifecycle, and failure meaning exactly, and never persist derived supervisor readiness

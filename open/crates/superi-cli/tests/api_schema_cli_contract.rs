@@ -18,9 +18,9 @@ fn api_schema_is_a_deterministic_complete_public_api_consumer() {
     assert_eq!(first["primitive_schema_revision"], 1);
     assert_eq!(first["json_rpc_version"], "2.0");
     assert_eq!(first["commands"].as_array().unwrap().len(), 16);
-    assert_eq!(first["queries"].as_array().unwrap().len(), 13);
+    assert_eq!(first["queries"].as_array().unwrap().len(), 14);
     assert_eq!(first["events"].as_array().unwrap().len(), 9);
-    assert_eq!(first["resources"].as_array().unwrap().len(), 12);
+    assert_eq!(first["resources"].as_array().unwrap().len(), 13);
     assert_eq!(first["error"]["schema"]["version"], "1.0.0");
     assert_eq!(first["permission"]["schema"]["version"], "1.4.0");
     assert_eq!(first["permission"]["kinds"].as_array().unwrap().len(), 3);
@@ -73,6 +73,7 @@ fn api_schema_is_a_deterministic_complete_public_api_consumer() {
             "superi.extensions.get",
             "superi.jobs.get",
             "superi.media.capabilities.get",
+            "superi.project.command_log.get",
             "superi.project.recovery.compare",
             "superi.project.recovery.get",
             "superi.project.settings.get",

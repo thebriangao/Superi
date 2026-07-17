@@ -22,8 +22,8 @@ use superi_project::extensions::{
 };
 use superi_project::settings::PROJECT_SETTINGS_FORMAT_REVISION;
 use superi_project::{
-    ProjectDatabase, PROJECT_APPLICATION_ID, PROJECT_FORMAT, PROJECT_FORMAT_VERSION,
-    PROJECT_SCHEMA_REVISION,
+    ProjectCommandRecordDraft, ProjectCommandRecordKind, ProjectDatabase, PROJECT_APPLICATION_ID,
+    PROJECT_FORMAT, PROJECT_FORMAT_VERSION, PROJECT_SCHEMA_REVISION,
 };
 use superi_timeline::compile::{
     CompiledTimelineGraphValue, TimelineGraphOrigin, TimelineGraphValue,
@@ -563,6 +563,8 @@ fn schema_identity_and_semantic_rows_are_explicit_and_deterministic() {
         first.schema,
         vec![
             ("table".to_owned(), "audio_component".to_owned()),
+            ("table".to_owned(), "command_log_metadata".to_owned()),
+            ("table".to_owned(), "command_log_records".to_owned()),
             ("table".to_owned(), "extension_records".to_owned()),
             ("table".to_owned(), "graph_components".to_owned()),
             ("table".to_owned(), "project_metadata".to_owned()),
@@ -624,6 +626,44 @@ fn schema_identity_and_semantic_rows_are_explicit_and_deterministic() {
         .unwrap();
     assert_eq!(standalone.kind, "standalone");
     assert_eq!(standalone.name.as_deref(), Some("reusable analysis"));
+}
+
+#[test]
+fn command_log_survives_exact_save_and_reload_outside_authored_revision() {
+    let artifact = TempProject::new("command-log");
+    let mut document = project_document();
+    let revision = document.revision();
+    let request = br#"{"transaction_id":"persisted-inspect","expected_project_revision":2,"command":{"command":"inspect"}}"#;
+    document
+        .append_command_record(
+            ProjectCommandRecordDraft::from_serialized_request(
+                "persisted-inspect",
+                "superi.project.command.execute",
+                SemanticVersion::new(1, 1, 0),
+                ProjectCommandRecordKind::Inspect,
+                revision,
+                request,
+            )
+            .unwrap(),
+            19,
+            revision,
+            revision,
+            [0x44; 32],
+            [0x44; 32],
+            false,
+        )
+        .unwrap();
+    assert_eq!(document.revision(), revision);
+
+    create_persisted(artifact.path(), &document);
+    let reopened = ProjectDatabase::open_read_only(artifact.path())
+        .unwrap()
+        .load()
+        .unwrap();
+    assert_eq!(reopened.snapshot(), document.snapshot());
+    let record = reopened.command_log().records().front().unwrap();
+    assert_eq!(record.transaction_id(), "persisted-inspect");
+    assert_eq!(record.replay_request(), Some(request.as_slice()));
 }
 
 #[test]
@@ -725,7 +765,7 @@ fn unsupported_corrupt_and_extra_database_state_is_rejected() {
         ),
         (
             "future-schema",
-            "PRAGMA user_version = 5",
+            "PRAGMA user_version = 6",
             ErrorCategory::Unsupported,
             true,
         ),

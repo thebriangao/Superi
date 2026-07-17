@@ -32,6 +32,10 @@ pub use superi_graph::node::{
     TimeBehavior, ValueTypeId,
 };
 pub use superi_graph::value::{FiniteF64, GraphValue};
+pub use superi_project::command_log::{
+    ProjectCommandLog, ProjectCommandPayloadDisposition, ProjectCommandRecord,
+    ProjectCommandRecordDraft, ProjectCommandRecordKind,
+};
 pub use superi_project::document::{ProjectDocument, ProjectSnapshot};
 pub use superi_project::extensions::{
     ProjectExtensionCommand, ProjectExtensionCommandResult, ProjectExtensionFailure,
@@ -75,7 +79,7 @@ pub use crate::dispatcher::{
 };
 pub use crate::history::{
     ProjectHistoryActionResult, ProjectHistoryCommand, ProjectHistoryOutcome, ProjectHistoryState,
-    ProjectMutation, ProjectMutationKind,
+    ProjectMutation, ProjectMutationKind, RecordedProjectCommand,
 };
 pub use crate::project_transaction::{
     CompoundProjectAction, CompoundProjectActionResult, CompoundProjectTransaction,

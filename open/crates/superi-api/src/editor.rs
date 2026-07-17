@@ -19,10 +19,12 @@ use crate::permissions::{
 use crate::schema::{ApiResource, PublicMethodKind};
 use crate::scripting::RunProjectScript;
 use crate::version::{
-    EXECUTE_PROJECT_COMMAND_METHOD, PROJECT_EDITOR_SCHEMA_VERSION, PROJECT_HISTORY_RESOURCE,
+    EXECUTE_PROJECT_COMMAND_METHOD, GET_PROJECT_COMMAND_LOG_METHOD, PROJECT_COMMAND_LOG_RESOURCE,
+    PROJECT_COMMAND_LOG_SCHEMA_VERSION, PROJECT_EDITOR_SCHEMA_VERSION, PROJECT_HISTORY_RESOURCE,
 };
 
 const COMPONENT: &str = "superi-api.editor";
+const MAX_PROJECT_COMMAND_LOG_QUERY_RECORDS: u32 = 256;
 
 /// Maximum number of public project actions in one atomic apply command.
 pub const MAX_PROJECT_ACTIONS: usize = engine::MAX_COMPOUND_PROJECT_ACTIONS;
@@ -185,6 +187,9 @@ pub struct ProjectHistorySnapshot {
     redo_depth: usize,
     next_undo: Option<ProjectMutationKind>,
     next_redo: Option<ProjectMutationKind>,
+    command_log_oldest_sequence: Option<u64>,
+    command_log_latest_sequence: u64,
+    command_log_retained_records: usize,
 }
 
 impl ProjectHistorySnapshot {
@@ -231,6 +236,21 @@ impl ProjectHistorySnapshot {
     #[must_use]
     pub const fn next_redo(&self) -> Option<ProjectMutationKind> {
         self.next_redo
+    }
+
+    #[must_use]
+    pub const fn command_log_oldest_sequence(&self) -> Option<u64> {
+        self.command_log_oldest_sequence
+    }
+
+    #[must_use]
+    pub const fn command_log_latest_sequence(&self) -> u64 {
+        self.command_log_latest_sequence
+    }
+
+    #[must_use]
+    pub const fn command_log_retained_records(&self) -> usize {
+        self.command_log_retained_records
     }
 }
 
@@ -320,6 +340,7 @@ pub struct ExecuteProjectCommandResult {
     command_sequence: u64,
     command_kind: ProjectCommandKind,
     authored_state_changed: bool,
+    command_log_sequence: u64,
     state: ProjectHistorySnapshot,
     evidence: ProjectCommandEvidence,
 }
@@ -351,6 +372,11 @@ impl ExecuteProjectCommandResult {
     }
 
     #[must_use]
+    pub const fn command_log_sequence(&self) -> u64 {
+        self.command_log_sequence
+    }
+
+    #[must_use]
     pub const fn state(&self) -> &ProjectHistorySnapshot {
         &self.state
     }
@@ -359,6 +385,196 @@ impl ExecuteProjectCommandResult {
     pub const fn evidence(&self) -> &ProjectCommandEvidence {
         &self.evidence
     }
+}
+
+/// Requested detail level for bounded command-log inspection.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ProjectCommandLogDetail {
+    /// Return public-safe metadata only.
+    Metadata,
+    /// Return retained typed requests after reauthorizing each command.
+    Replayable,
+}
+
+/// Whether exact replay request bytes remain retained for one command.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ProjectCommandPayloadDisposition {
+    Retained,
+    DigestOnly,
+}
+
+/// Strict cursor query for durable project command records.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GetProjectCommandLog {
+    after_sequence: u64,
+    requested_limit: u32,
+    detail: ProjectCommandLogDetail,
+}
+
+impl GetProjectCommandLog {
+    #[must_use]
+    pub const fn new(
+        after_sequence: u64,
+        requested_limit: u32,
+        detail: ProjectCommandLogDetail,
+    ) -> Self {
+        Self {
+            after_sequence,
+            requested_limit,
+            detail,
+        }
+    }
+
+    #[must_use]
+    pub const fn after_sequence(&self) -> u64 {
+        self.after_sequence
+    }
+
+    #[must_use]
+    pub const fn requested_limit(&self) -> u32 {
+        self.requested_limit
+    }
+
+    #[must_use]
+    pub const fn detail(&self) -> ProjectCommandLogDetail {
+        self.detail
+    }
+
+    pub(crate) fn validate_for_script(&self) -> Result<()> {
+        validate_command_log_query(self)
+    }
+}
+
+impl ApiCommand for GetProjectCommandLog {
+    type Response = GetProjectCommandLogResult;
+    const METHOD: &'static str = GET_PROJECT_COMMAND_LOG_METHOD;
+    const KIND: PublicMethodKind = PublicMethodKind::Query;
+    const SCHEMA_VERSION: SemanticVersion = PROJECT_COMMAND_LOG_SCHEMA_VERSION;
+    const PERMISSION_MODE: ApiPermissionRequirementMode = ApiPermissionRequirementMode::None;
+    const PERMISSION_KINDS: &'static [ApiPermissionKind] = &[];
+
+    fn permission_requirements(&self) -> Result<ApiPermissionRequirements> {
+        Ok(ApiPermissionRequirements::none())
+    }
+}
+
+/// One public-safe durable command record with optional reauthorized typed request.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectCommandLogRecord {
+    sequence: u64,
+    command_sequence: u64,
+    transaction_id: String,
+    method: String,
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
+    request_schema_version: SemanticVersion,
+    command_kind: ProjectCommandKind,
+    expected_project_revision: u64,
+    request_byte_length: u64,
+    request_sha256: String,
+    payload_disposition: ProjectCommandPayloadDisposition,
+    before_project_revision: u64,
+    after_project_revision: u64,
+    before_semantic_hash: String,
+    after_semantic_hash: String,
+    authored_state_changed: bool,
+    replay_request: Option<Box<ExecuteProjectCommand>>,
+}
+
+impl ProjectCommandLogRecord {
+    #[must_use]
+    pub const fn sequence(&self) -> u64 {
+        self.sequence
+    }
+
+    #[must_use]
+    pub const fn command_sequence(&self) -> u64 {
+        self.command_sequence
+    }
+
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    #[must_use]
+    pub const fn payload_disposition(&self) -> ProjectCommandPayloadDisposition {
+        self.payload_disposition
+    }
+
+    #[must_use]
+    pub fn replay_request(&self) -> Option<&ExecuteProjectCommand> {
+        match &self.replay_request {
+            Some(request) => Some(request.as_ref()),
+            None => None,
+        }
+    }
+}
+
+/// One cursor-safe bounded command-log batch.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectCommandLogBatch {
+    #[cfg_attr(feature = "typescript-bindings", specta(type = crate::typescript::SemanticVersionBinding))]
+    schema_version: SemanticVersion,
+    project_id: String,
+    after_sequence: u64,
+    through_sequence: u64,
+    oldest_available_sequence: Option<u64>,
+    latest_sequence: u64,
+    records: Vec<ProjectCommandLogRecord>,
+}
+
+impl ProjectCommandLogBatch {
+    #[must_use]
+    pub fn records(&self) -> &[ProjectCommandLogRecord] {
+        &self.records
+    }
+
+    #[must_use]
+    pub const fn through_sequence(&self) -> u64 {
+        self.through_sequence
+    }
+
+    #[must_use]
+    pub const fn latest_sequence(&self) -> u64 {
+        self.latest_sequence
+    }
+}
+
+impl ApiResource for ProjectCommandLogBatch {
+    const RESOURCE: &'static str = PROJECT_COMMAND_LOG_RESOURCE;
+    const SCHEMA_VERSION: SemanticVersion = PROJECT_COMMAND_LOG_SCHEMA_VERSION;
+}
+
+/// Explicit command-log replay barrier after retained metadata was evicted.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectCommandLogGap {
+    project_id: String,
+    requested_after_sequence: u64,
+    oldest_available_sequence: u64,
+    latest_sequence: u64,
+}
+
+/// Cursor query result that never hides an evicted prefix behind partial records.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "status", content = "result", rename_all = "snake_case")]
+pub enum GetProjectCommandLogResult {
+    Records(ProjectCommandLogBatch),
+    ResyncRequired(ProjectCommandLogGap),
 }
 
 /// Exact public timebase.
@@ -2817,6 +3033,14 @@ impl ProjectEditorRequest for ExecuteProjectCommand {
     }
 }
 
+impl request_sealed::Sealed for GetProjectCommandLog {}
+
+impl ProjectEditorRequest for GetProjectCommandLog {
+    fn dispatch(self, api: &mut ProjectEditorApi) -> Result<<Self as ApiCommand>::Response> {
+        api.get_project_command_log(self)
+    }
+}
+
 impl request_sealed::Sealed for GetEditorState {}
 
 impl ProjectEditorRequest for GetEditorState {
@@ -2869,59 +3093,183 @@ impl ProjectEditorApi {
         &mut self,
         command: ExecuteProjectCommand,
     ) -> Result<ExecuteProjectCommandResult> {
+        let serialized_request = serde_json::to_vec(&command).map_err(|source| {
+            Error::new(
+                ErrorCategory::InvalidInput,
+                Recoverability::UserCorrectable,
+                "project command request could not be serialized deterministically",
+            )
+            .with_context(
+                ErrorContext::new(COMPONENT, "serialize_project_command")
+                    .with_field("source", source.to_string()),
+            )
+        })?;
         let (transaction_id, expected_revision, command) = command.into_parts();
         let kind = command.kind();
+        let record = engine::ProjectCommandRecordDraft::from_serialized_request(
+            transaction_id.clone(),
+            EXECUTE_PROJECT_COMMAND_METHOD,
+            PROJECT_EDITOR_SCHEMA_VERSION,
+            engine_record_kind(kind),
+            expected_revision,
+            &serialized_request,
+        )?;
         let transaction_id = engine::EngineTransactionId::new(transaction_id)?;
-        let engine_command = match command {
+        let recorded = match command {
             ProjectCommand::Apply { actions } => {
                 let actions = actions
                     .into_iter()
                     .map(ProjectAction::into_engine)
                     .collect::<Result<Vec<_>>>()?;
                 let transaction = engine::CompoundProjectTransaction::new(actions)?;
-                engine::EngineCommand::ExecuteProjectHistory(engine::ProjectHistoryCommand::apply(
-                    expected_revision,
-                    engine::ProjectMutation::compound(transaction),
-                ))
+                engine::RecordedProjectCommand::history(
+                    engine::ProjectHistoryCommand::apply(
+                        expected_revision,
+                        engine::ProjectMutation::compound(transaction),
+                    ),
+                    record,
+                )?
             }
-            ProjectCommand::Undo {} => engine::EngineCommand::ExecuteProjectHistory(
+            ProjectCommand::Undo {} => engine::RecordedProjectCommand::history(
                 engine::ProjectHistoryCommand::undo(expected_revision),
-            ),
-            ProjectCommand::Redo {} => engine::EngineCommand::ExecuteProjectHistory(
+                record,
+            )?,
+            ProjectCommand::Redo {} => engine::RecordedProjectCommand::history(
                 engine::ProjectHistoryCommand::redo(expected_revision),
-            ),
+                record,
+            )?,
             ProjectCommand::Inspect {} => {
-                let state = self.dispatcher.project_history_state()?;
-                if state.snapshot().revision() != expected_revision {
-                    return Err(invalid(
-                        "inspect_project",
-                        "project revision does not match the inspection fence",
-                    ));
-                }
-                engine::EngineCommand::InspectProjectHistory
+                engine::RecordedProjectCommand::inspect(expected_revision, record)?
             }
         };
         let dispatched = self.dispatcher.dispatch(engine::EngineCommandRequest::new(
             transaction_id,
-            engine_command,
+            engine::EngineCommand::ExecuteRecordedProjectCommand(Box::new(recorded)),
         ))?;
         let engine::EngineCommandResult::ProjectHistory(outcome) = dispatched.result() else {
             return Err(unexpected_result("execute_project_command"));
         };
         let evidence = public_evidence(outcome)?;
-        if outcome.authored_state_changed() {
-            self.pending_event_evidence
-                .insert(dispatched.command_sequence(), evidence.clone());
-        }
+        let command_log_sequence = outcome
+            .command_record()
+            .ok_or_else(|| unexpected_result("execute_recorded_project_command"))?
+            .sequence();
+        self.pending_event_evidence
+            .insert(dispatched.command_sequence(), evidence.clone());
         Ok(ExecuteProjectCommandResult {
             schema_version: PROJECT_EDITOR_SCHEMA_VERSION,
             transaction_id: dispatched.transaction_id().as_str().to_owned(),
             command_sequence: dispatched.command_sequence(),
             command_kind: kind,
             authored_state_changed: outcome.authored_state_changed(),
+            command_log_sequence,
             state: public_history_state(outcome.state()),
             evidence,
         })
+    }
+
+    fn get_project_command_log(
+        &self,
+        request: GetProjectCommandLog,
+    ) -> Result<GetProjectCommandLogResult> {
+        validate_command_log_query(&request)?;
+        let state = self.dispatcher.project_history_state()?;
+        let snapshot = state.snapshot();
+        let log = snapshot.command_log();
+        let latest_sequence = log.latest_sequence();
+        if request.after_sequence > latest_sequence {
+            return Err(invalid(
+                "get_project_command_log",
+                "command-log cursor is newer than the selected project",
+            ));
+        }
+        let oldest_available_sequence = log.oldest_sequence();
+        if oldest_available_sequence.is_some_and(|oldest| {
+            request.after_sequence < latest_sequence
+                && request.after_sequence.saturating_add(1) < oldest
+        }) {
+            return Ok(GetProjectCommandLogResult::ResyncRequired(
+                ProjectCommandLogGap {
+                    project_id: snapshot.project_id().to_string(),
+                    requested_after_sequence: request.after_sequence,
+                    oldest_available_sequence: oldest_available_sequence
+                        .expect("the gap predicate observed an oldest sequence"),
+                    latest_sequence,
+                },
+            ));
+        }
+
+        let mut records = Vec::new();
+        for record in log
+            .records()
+            .iter()
+            .filter(|record| record.sequence() > request.after_sequence)
+            .take(request.requested_limit as usize)
+        {
+            let replay_request = if request.detail == ProjectCommandLogDetail::Replayable {
+                record
+                    .replay_request()
+                    .map(|bytes| {
+                        let request = serde_json::from_slice::<ExecuteProjectCommand>(bytes)
+                            .map_err(|source| {
+                                Error::new(
+                                    ErrorCategory::CorruptData,
+                                    Recoverability::UserCorrectable,
+                                    "retained project command request is not decodable",
+                                )
+                                .with_context(
+                                    ErrorContext::new(COMPONENT, "decode_retained_project_command")
+                                        .with_field("source", source.to_string()),
+                                )
+                            })?;
+                        self.permissions.authorize_command(&request)?;
+                        Ok::<Box<ExecuteProjectCommand>, Error>(Box::new(request))
+                    })
+                    .transpose()?
+            } else {
+                None
+            };
+            records.push(ProjectCommandLogRecord {
+                sequence: record.sequence(),
+                command_sequence: record.command_sequence(),
+                transaction_id: record.transaction_id().to_owned(),
+                method: record.method().to_owned(),
+                request_schema_version: record.request_schema_version().clone(),
+                command_kind: public_record_kind(record.command_kind()),
+                expected_project_revision: record.expected_project_revision(),
+                request_byte_length: record.request_byte_length(),
+                request_sha256: digest_hex(record.request_sha256()),
+                payload_disposition: match record.payload_disposition() {
+                    engine::ProjectCommandPayloadDisposition::Retained => {
+                        ProjectCommandPayloadDisposition::Retained
+                    }
+                    engine::ProjectCommandPayloadDisposition::DigestOnly => {
+                        ProjectCommandPayloadDisposition::DigestOnly
+                    }
+                    _ => ProjectCommandPayloadDisposition::DigestOnly,
+                },
+                before_project_revision: record.before_project_revision(),
+                after_project_revision: record.after_project_revision(),
+                before_semantic_hash: digest_hex(record.before_semantic_hash()),
+                after_semantic_hash: digest_hex(record.after_semantic_hash()),
+                authored_state_changed: record.authored_state_changed(),
+                replay_request,
+            });
+        }
+        let through_sequence = records
+            .last()
+            .map_or(request.after_sequence, ProjectCommandLogRecord::sequence);
+        Ok(GetProjectCommandLogResult::Records(
+            ProjectCommandLogBatch {
+                schema_version: PROJECT_COMMAND_LOG_SCHEMA_VERSION,
+                project_id: snapshot.project_id().to_string(),
+                after_sequence: request.after_sequence,
+                through_sequence,
+                oldest_available_sequence,
+                latest_sequence,
+                records,
+            },
+        ))
     }
 
     /// Drains this facade's ordered generic project replacement events.
@@ -2949,6 +3297,7 @@ impl ProjectEditorApi {
                     envelope.command_sequence(),
                     envelope.transaction_id().as_str().to_owned(),
                     state.snapshot().revision(),
+                    state.snapshot().command_log().latest_sequence(),
                     public_history_state(state),
                     evidence,
                 ))
@@ -2960,6 +3309,18 @@ impl ProjectEditorApi {
     pub fn project_snapshot(&self) -> Result<engine::ProjectSnapshot> {
         self.dispatcher.project_snapshot()
     }
+}
+
+fn validate_command_log_query(request: &GetProjectCommandLog) -> Result<()> {
+    if request.requested_limit == 0
+        || request.requested_limit > MAX_PROJECT_COMMAND_LOG_QUERY_RECORDS
+    {
+        return Err(invalid(
+            "get_project_command_log",
+            "requested command-log limit is outside the supported bound",
+        ));
+    }
+    Ok(())
 }
 
 impl std::fmt::Debug for ProjectEditorApi {
@@ -2982,7 +3343,38 @@ fn public_history_state(state: &engine::ProjectHistoryState) -> ProjectHistorySn
         redo_depth: state.redo_depth(),
         next_undo: state.next_undo().map(public_mutation_kind),
         next_redo: state.next_redo().map(public_mutation_kind),
+        command_log_oldest_sequence: state.snapshot().command_log().oldest_sequence(),
+        command_log_latest_sequence: state.snapshot().command_log().latest_sequence(),
+        command_log_retained_records: state.snapshot().command_log().len(),
     }
+}
+
+const fn engine_record_kind(kind: ProjectCommandKind) -> engine::ProjectCommandRecordKind {
+    match kind {
+        ProjectCommandKind::Apply => engine::ProjectCommandRecordKind::Apply,
+        ProjectCommandKind::Undo => engine::ProjectCommandRecordKind::Undo,
+        ProjectCommandKind::Redo => engine::ProjectCommandRecordKind::Redo,
+        ProjectCommandKind::Inspect => engine::ProjectCommandRecordKind::Inspect,
+    }
+}
+
+const fn public_record_kind(kind: engine::ProjectCommandRecordKind) -> ProjectCommandKind {
+    match kind {
+        engine::ProjectCommandRecordKind::Apply => ProjectCommandKind::Apply,
+        engine::ProjectCommandRecordKind::Undo => ProjectCommandKind::Undo,
+        engine::ProjectCommandRecordKind::Redo => ProjectCommandKind::Redo,
+        engine::ProjectCommandRecordKind::Inspect => ProjectCommandKind::Inspect,
+        _ => ProjectCommandKind::Inspect,
+    }
+}
+
+fn digest_hex(digest: &[u8; 32]) -> String {
+    let mut encoded = String::with_capacity(64);
+    for byte in digest {
+        use std::fmt::Write as _;
+        write!(&mut encoded, "{byte:02x}").expect("writing to a string cannot fail");
+    }
+    encoded
 }
 
 fn public_evidence(outcome: &engine::ProjectHistoryOutcome) -> Result<ProjectCommandEvidence> {

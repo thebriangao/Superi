@@ -11,6 +11,7 @@
 //! restoration, and durable dismissal are implemented against that same authoritative store.
 
 pub mod autosave;
+pub mod command_log;
 pub mod compatibility;
 pub mod diagnostics;
 pub mod document;
@@ -27,6 +28,11 @@ pub use autosave::{
     ProjectAutosaveArtifact, ProjectAutosaveCommand, ProjectAutosaveController,
     ProjectAutosaveDisposition, ProjectAutosaveOperation, ProjectAutosaveOutcome,
     ProjectAutosavePolicy, ProjectAutosaveState, MAX_PROJECT_AUTOSAVE_RETENTION,
+};
+pub use command_log::{
+    ProjectCommandLog, ProjectCommandPayloadDisposition, ProjectCommandRecord,
+    ProjectCommandRecordDraft, ProjectCommandRecordKind, MAX_PROJECT_COMMAND_LOG_BYTES,
+    MAX_PROJECT_COMMAND_LOG_RECORDS, MAX_RETAINED_PROJECT_COMMAND_BYTES,
 };
 pub use compatibility::{
     negotiate_project_format, project_format_support, ProjectFormatIdentity, ProjectFormatRelease,

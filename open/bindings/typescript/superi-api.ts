@@ -840,7 +840,7 @@ export type ExecuteProjectCommand = { transaction_id: string; expected_project_r
 /**
  * Successful generic public project command result.
  */
-export type ExecuteProjectCommandResult = { schema_version: SemanticVersion; transaction_id: string; command_sequence: number; command_kind: ProjectCommandKind; authored_state_changed: boolean; state: ProjectHistorySnapshot; evidence: ProjectCommandEvidence };
+export type ExecuteProjectCommandResult = { schema_version: SemanticVersion; transaction_id: string; command_sequence: number; command_kind: ProjectCommandKind; authored_state_changed: boolean; command_log_sequence: number; state: ProjectHistorySnapshot; evidence: ProjectCommandEvidence };
 
 /**
  * One caller-owned optimistic project settings transaction.
@@ -1006,6 +1006,16 @@ export type GetMediaCapabilities<> = null;
  * Successful response to [`GetMediaCapabilities`].
  */
 export type GetMediaCapabilitiesResult = { snapshot: MediaCapabilitiesSnapshot };
+
+/**
+ * Strict cursor query for durable project command records.
+ */
+export type GetProjectCommandLog = { after_sequence: number; requested_limit: number; detail: ProjectCommandLogDetail };
+
+/**
+ * Cursor query result that never hides an evicted prefix behind partial records.
+ */
+export type GetProjectCommandLogResult = { status: "records"; result: ProjectCommandLogBatch } | { status: "resync_required"; result: ProjectCommandLogGap };
 
 /**
  * Structured command for refreshing project crash recovery state.
@@ -1218,6 +1228,31 @@ export type ProjectCommandEvidence = { result: "applied"; actions: ProjectAction
 export type ProjectCommandKind = "apply" | "undo" | "redo" | "inspect";
 
 /**
+ * One cursor-safe bounded command-log batch.
+ */
+export type ProjectCommandLogBatch = { schema_version: SemanticVersion; project_id: string; after_sequence: number; through_sequence: number; oldest_available_sequence: number | null; latest_sequence: number; records: ProjectCommandLogRecord[] };
+
+/**
+ * Requested detail level for bounded command-log inspection.
+ */
+export type ProjectCommandLogDetail = "metadata" | "replayable";
+
+/**
+ * Explicit command-log replay barrier after retained metadata was evicted.
+ */
+export type ProjectCommandLogGap = { project_id: string; requested_after_sequence: number; oldest_available_sequence: number; latest_sequence: number };
+
+/**
+ * One public-safe durable command record with optional reauthorized typed request.
+ */
+export type ProjectCommandLogRecord = { sequence: number; command_sequence: number; transaction_id: string; method: string; request_schema_version: SemanticVersion; command_kind: ProjectCommandKind; expected_project_revision: number; request_byte_length: number; request_sha256: string; payload_disposition: ProjectCommandPayloadDisposition; before_project_revision: number; after_project_revision: number; before_semantic_hash: string; after_semantic_hash: string; authored_state_changed: boolean; replay_request: ExecuteProjectCommand | null };
+
+/**
+ * Whether exact replay request bytes remain retained for one command.
+ */
+export type ProjectCommandPayloadDisposition = "retained" | "digest_only";
+
+/**
  * Public project compatibility outcome.
  */
 export type ProjectCompatibilityDisposition = "current" | "migration_required" | "requires_newer_application" | "unsupported" | "invalid";
@@ -1250,7 +1285,7 @@ export type ProjectFormatSupportDescriptor = { application_id: number; format: s
 /**
  * Minimum complete replacement state owned by the generic history command surface.
  */
-export type ProjectHistorySnapshot = { schema_version: SemanticVersion; project_id: string; project_revision: number; root_timeline_id: string; capacity: number; undo_depth: number; redo_depth: number; next_undo: ProjectMutationKind | null; next_redo: ProjectMutationKind | null };
+export type ProjectHistorySnapshot = { schema_version: SemanticVersion; project_id: string; project_revision: number; root_timeline_id: string; capacity: number; undo_depth: number; redo_depth: number; next_undo: ProjectMutationKind | null; next_redo: ProjectMutationKind | null; command_log_oldest_sequence: number | null; command_log_latest_sequence: number; command_log_retained_records: number };
 
 /**
  * Stable typed mutation category retained by project history.
@@ -1295,7 +1330,7 @@ export type ProjectScriptRunStatus = "completed" | "rejected" | "stopped";
 /**
  * Closed supported step vocabulary for version 1 of `superi-json`.
  */
-export type ProjectScriptStep = { method: "superi.project.command.execute"; params: ExecuteProjectCommand } | { method: "superi.editor.state.get"; params: GetEditorState };
+export type ProjectScriptStep = { method: "superi.project.command.execute"; params: ExecuteProjectCommand } | { method: "superi.editor.state.get"; params: GetEditorState } | { method: "superi.project.command_log.get"; params: GetProjectCommandLog };
 
 /**
  * One ordered completed step and its typed public response.
@@ -1305,7 +1340,7 @@ export type ProjectScriptStepRecord = { index: number; response: ProjectScriptSt
 /**
  * Typed successful response from one supported script step.
  */
-export type ProjectScriptStepResponse = { method: "superi.project.command.execute"; response: ExecuteProjectCommandResult } | { method: "superi.editor.state.get"; response: GetEditorStateResult };
+export type ProjectScriptStepResponse = { method: "superi.project.command.execute"; response: ExecuteProjectCommandResult } | { method: "superi.editor.state.get"; response: GetEditorStateResult } | { method: "superi.project.command_log.get"; response: GetProjectCommandLogResult };
 
 /**
  * One strict ordered mutation carried by a public transaction.
@@ -1328,9 +1363,9 @@ export type ProjectSettingsChanged = { sequence: number; command_sequence: numbe
 export type ProjectSettingsSnapshot = { schema_version: SemanticVersion; project_id: string; project_revision: number; values: { [key: string]: ProjectSettingValue } };
 
 /**
- * Full replacement generic project history state after one authored state change.
+ * Full replacement generic project history state after one recorded command.
  */
-export type ProjectStateChanged = { sequence: number; command_sequence: number; transaction_id: string; project_revision: number; state: ProjectHistorySnapshot; evidence: ProjectCommandEvidence };
+export type ProjectStateChanged = { sequence: number; command_sequence: number; transaction_id: string; project_revision: number; command_log_sequence: number; state: ProjectHistorySnapshot; evidence: ProjectCommandEvidence };
 
 /**
  * One user-safe structured public JSON-RPC application error.
@@ -1613,6 +1648,7 @@ export interface SuperiMethodMap {
   "superi.jobs.retry": { request: RetryAsyncJob; response: AsyncJobsResult };
   "superi.media.capabilities.get": { request: GetMediaCapabilities; response: GetMediaCapabilitiesResult };
   "superi.project.command.execute": { request: ExecuteProjectCommand; response: ExecuteProjectCommandResult };
+  "superi.project.command_log.get": { request: GetProjectCommandLog; response: GetProjectCommandLogResult };
   "superi.project.recovery.compare": { request: CompareProjectRecovery; response: CompareProjectRecoveryResult };
   "superi.project.recovery.dismiss": { request: DismissProjectRecovery; response: DismissProjectRecoveryResult };
   "superi.project.recovery.get": { request: GetProjectRecovery; response: GetProjectRecoveryResult };
@@ -1645,6 +1681,7 @@ export interface SuperiResourceMap {
   "superi.extensions": ExtensionRegistrySnapshot;
   "superi.jobs": AsyncJobsSnapshot;
   "superi.media.capabilities": MediaCapabilitiesSnapshot;
+  "superi.project.command_log": ProjectCommandLogBatch;
   "superi.project.history": ProjectHistorySnapshot;
   "superi.project.recovery": ProjectRecoverySnapshot;
   "superi.project.settings": ProjectSettingsSnapshot;

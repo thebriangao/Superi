@@ -289,8 +289,21 @@ fn durable_workflows_preserve_editorial_intent_and_gate_success_on_publication()
     );
     let result = LocalProjectHost::execute_timeline(&project, timeline_noop, untrusted()).unwrap();
     assert!(!result.result().authored_state_changed());
-    assert!(result.events().is_empty());
-    assert_eq!(load(&project), after_media);
+    assert_eq!(result.events().len(), 1);
+    assert_eq!(result.result().command_log_sequence(), 2);
+    assert_eq!(result.events()[0].command_log_sequence(), 2);
+    let after_noop = load(&project);
+    assert_eq!(after_noop.revision(), after_media.revision());
+    assert_eq!(
+        after_noop.editorial_project(),
+        after_media.editorial_project()
+    );
+    assert_eq!(after_noop.settings(), after_media.settings());
+    assert_eq!(
+        after_noop.graphs().collect::<Vec<_>>(),
+        after_media.graphs().collect::<Vec<_>>()
+    );
+    assert_eq!(after_noop.command_log().latest_sequence(), 2);
 
     let render = ExecuteProjectSettingsTransaction::new(
         "render-delivery",

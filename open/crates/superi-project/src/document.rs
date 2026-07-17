@@ -12,6 +12,7 @@ use superi_timeline::compile::{
 };
 use superi_timeline::model::EditorialProject;
 
+use crate::command_log::{ProjectCommandLog, ProjectCommandRecord, ProjectCommandRecordDraft};
 use crate::extensions::{
     ProjectExtensionKey, ProjectExtensionRecord, MAX_PROJECT_EXTENSION_RECORDS,
 };
@@ -185,6 +186,7 @@ impl StandaloneProjectGraph {
 pub struct ProjectDocument {
     revision: u64,
     state: Arc<ProjectState>,
+    command_log: Arc<ProjectCommandLog>,
 }
 
 impl ProjectDocument {
@@ -338,6 +340,33 @@ impl ProjectDocument {
         G: IntoIterator<Item = ProjectGraph>,
         E: IntoIterator<Item = ProjectExtensionRecord>,
     {
+        Self::from_complete_parts_with_settings_extensions_and_command_log(
+            revision,
+            editorial_project,
+            root_timeline_id,
+            settings,
+            graphs,
+            clip_mix_state,
+            extension_records,
+            ProjectCommandLog::new(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_complete_parts_with_settings_extensions_and_command_log<G, E>(
+        revision: u64,
+        editorial_project: EditorialProject,
+        root_timeline_id: TimelineId,
+        settings: ProjectSettings,
+        graphs: G,
+        clip_mix_state: ClipMixState,
+        extension_records: E,
+        command_log: ProjectCommandLog,
+    ) -> Result<Self>
+    where
+        G: IntoIterator<Item = ProjectGraph>,
+        E: IntoIterator<Item = ProjectExtensionRecord>,
+    {
         let mut graphs_by_id = BTreeMap::new();
         for graph in graphs {
             let graph_id = graph.graph_id();
@@ -389,6 +418,7 @@ impl ProjectDocument {
         Ok(Self {
             revision,
             state: Arc::new(state),
+            command_log: Arc::new(command_log),
         })
     }
 
@@ -439,6 +469,12 @@ impl ProjectDocument {
         self.state.extension_records.get(key)
     }
 
+    /// Returns the durable project command log outside semantic authored state.
+    #[must_use]
+    pub fn command_log(&self) -> &ProjectCommandLog {
+        &self.command_log
+    }
+
     /// Iterates retained graphs in stable identity order.
     pub fn graphs(&self) -> impl ExactSizeIterator<Item = &ProjectGraph> {
         self.state.graphs.values()
@@ -465,7 +501,36 @@ impl ProjectDocument {
         ProjectSnapshot {
             revision: self.revision,
             state: Arc::clone(&self.state),
+            command_log: Arc::clone(&self.command_log),
         }
+    }
+
+    /// Appends one successful stable-surface command without advancing authored revision.
+    #[allow(clippy::too_many_arguments)]
+    pub fn append_command_record(
+        &mut self,
+        draft: ProjectCommandRecordDraft,
+        command_sequence: u64,
+        before_project_revision: u64,
+        after_project_revision: u64,
+        before_semantic_hash: [u8; 32],
+        after_semantic_hash: [u8; 32],
+        authored_state_changed: bool,
+    ) -> Result<ProjectCommandRecord> {
+        let mut command_log = self.command_log.as_ref().clone();
+        let record = command_log
+            .append(
+                draft,
+                command_sequence,
+                before_project_revision,
+                after_project_revision,
+                before_semantic_hash,
+                after_semantic_hash,
+                authored_state_changed,
+            )?
+            .clone();
+        self.command_log = Arc::new(command_log);
+        Ok(record)
     }
 
     /// Applies one whole-project edit or publishes none of it.
@@ -578,6 +643,7 @@ impl ProjectDocument {
 pub struct ProjectSnapshot {
     revision: u64,
     state: Arc<ProjectState>,
+    command_log: Arc<ProjectCommandLog>,
 }
 
 impl ProjectSnapshot {
@@ -627,6 +693,12 @@ impl ProjectSnapshot {
     #[must_use]
     pub fn extension_record(&self, key: &ProjectExtensionKey) -> Option<&ProjectExtensionRecord> {
         self.state.extension_records.get(key)
+    }
+
+    /// Returns the captured durable command log.
+    #[must_use]
+    pub fn command_log(&self) -> &ProjectCommandLog {
+        &self.command_log
     }
 
     /// Iterates captured graphs in stable identity order.

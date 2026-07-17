@@ -20,8 +20,8 @@ use crate::commands::{
     RestoreProjectRecovery, RestoreProjectRecoveryResult,
 };
 use crate::editor::{
-    ExecuteProjectCommand, ExecuteProjectCommandResult, ProjectAction, ProjectCommand,
-    ProjectEditorApi,
+    ExecuteProjectCommand, ExecuteProjectCommandResult, GetProjectCommandLog,
+    GetProjectCommandLogResult, ProjectAction, ProjectCommand, ProjectEditorApi,
 };
 use crate::events::{ProjectRecoveryChanged, ProjectSettingsChanged, ProjectStateChanged};
 use crate::permissions::ApiPermissionContext;
@@ -260,6 +260,12 @@ pub enum LocalAutomationRequest {
         id: LocalAutomationId,
         params: RunProjectScript,
     },
+    #[serde(rename = "superi.project.command_log.get")]
+    ProjectCommandLog {
+        jsonrpc: String,
+        id: LocalAutomationId,
+        params: GetProjectCommandLog,
+    },
 }
 
 enum LocalAutomationCall {
@@ -268,6 +274,7 @@ enum LocalAutomationCall {
     EditorState(GetEditorState),
     ProjectSettings(GetProjectSettings),
     ProjectScript(RunProjectScript),
+    ProjectCommandLog(GetProjectCommandLog),
 }
 
 impl LocalAutomationRequest {
@@ -302,6 +309,11 @@ impl LocalAutomationRequest {
                 id,
                 params,
             } => (jsonrpc, id, LocalAutomationCall::ProjectScript(params)),
+            Self::ProjectCommandLog {
+                jsonrpc,
+                id,
+                params,
+            } => (jsonrpc, id, LocalAutomationCall::ProjectCommandLog(params)),
         };
         if jsonrpc != "2.0" {
             return Err(invalid(
@@ -325,6 +337,7 @@ pub enum LocalAutomationResult {
     EditorState(Box<GetEditorStateResult>),
     ProjectSettings(GetProjectSettingsResult),
     ProjectScript(Box<LocalProjectExecution<RunProjectScriptResult, ProjectStateChanged>>),
+    ProjectCommandLog(GetProjectCommandLogResult),
 }
 
 /// One successful JSON-RPC response with the exact caller identifier.
@@ -396,6 +409,20 @@ impl LocalProjectHost {
         engine::EngineCommandDispatcher::with_standalone_engine_control(|mut dispatcher| {
             dispatcher.attach_project(document)?;
             ProjectEditorApi::new(dispatcher)?.execute(request)
+        })
+    }
+
+    /// Reads one bounded command-log batch through the public project API.
+    pub fn inspect_command_log(
+        project_path: impl AsRef<Path>,
+        request: GetProjectCommandLog,
+        permissions: Arc<ApiPermissionContext>,
+    ) -> Result<GetProjectCommandLogResult> {
+        let database = engine::ProjectDatabase::open_read_only(project_path)?;
+        let document = database.load()?;
+        engine::EngineCommandDispatcher::with_standalone_engine_control(|mut dispatcher| {
+            dispatcher.attach_project(document)?;
+            ProjectEditorApi::new_with_permissions(dispatcher, permissions)?.execute(request)
         })
     }
 
@@ -643,6 +670,13 @@ impl LocalProjectHost {
             LocalAutomationCall::ProjectScript(request) => LocalAutomationResult::ProjectScript(
                 Box::new(Self::execute_script(project_path, request, permissions)?),
             ),
+            LocalAutomationCall::ProjectCommandLog(request) => {
+                LocalAutomationResult::ProjectCommandLog(Self::inspect_command_log(
+                    project_path,
+                    request,
+                    permissions,
+                )?)
+            }
         };
         Ok(LocalAutomationResponse {
             jsonrpc: "2.0".to_owned(),
@@ -668,9 +702,7 @@ fn execute_project_command(
             let snapshot = api.project_snapshot()?;
             Ok((result, events, snapshot))
         })?;
-    if result.authored_state_changed() {
-        database.replace(&snapshot)?;
-    }
+    database.replace(&snapshot)?;
     Ok(LocalProjectExecution::new(result, events))
 }
 
@@ -706,6 +738,7 @@ fn execute_script_command(
     let mut database = engine::ProjectDatabase::open(project_path)?;
     let document = database.load()?;
     let initial_revision = document.revision();
+    let initial_log_sequence = document.command_log().latest_sequence();
     let (result, events, snapshot) =
         engine::EngineCommandDispatcher::with_standalone_engine_control(|mut dispatcher| {
             dispatcher.attach_project(document)?;
@@ -715,7 +748,9 @@ fn execute_script_command(
             let snapshot = api.project_snapshot()?;
             Ok((result, events, snapshot))
         })?;
-    if snapshot.revision() != initial_revision {
+    if snapshot.revision() != initial_revision
+        || snapshot.command_log().latest_sequence() != initial_log_sequence
+    {
         database.replace(&snapshot)?;
     }
     Ok(LocalProjectExecution::new(result, events))

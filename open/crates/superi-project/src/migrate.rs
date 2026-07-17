@@ -12,10 +12,11 @@ use crate::compatibility::{project_format_support, PROJECT_FORMAT_VERSION_SCHEMA
 use crate::document::{ProjectDocument, ProjectGraph, StandaloneProjectGraph};
 use crate::persist::{
     check_component_size, corrupt, database_error, fixed_bytes, initialize_schema,
-    initialize_schema_one, initialize_schema_three, initialize_schema_two, load_connection,
-    load_schema_one_connection, load_schema_three_connection, load_schema_two_connection,
-    parse_revision, project_error, stored_state_error, unsupported,
-    validate_full_integrity_with_operation, validate_identity_and_schema, write_prepared_project,
+    initialize_schema_four, initialize_schema_one, initialize_schema_three, initialize_schema_two,
+    load_connection, load_schema_four_connection, load_schema_one_connection,
+    load_schema_three_connection, load_schema_two_connection, parse_revision, project_error,
+    stored_state_error, unsupported, validate_full_integrity_with_operation,
+    validate_identity_and_schema, write_prepared_project, write_schema_four_project,
     write_schema_one_project, write_schema_three_project, write_schema_two_project,
     PreparedProject, StoredGraphKind, MAX_GRAPH_COUNT, MAX_STANDALONE_NAME_BYTES,
     PROJECT_APPLICATION_ID, PROJECT_FORMAT, PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION,
@@ -55,6 +56,11 @@ const MIGRATIONS: &[MigrationStep] = &[
         source: 3,
         target: 4,
         apply: migrate_schema_three_to_four,
+    },
+    MigrationStep {
+        source: 4,
+        target: 5,
+        apply: migrate_schema_four_to_five,
     },
 ];
 
@@ -174,6 +180,7 @@ pub(crate) fn inspect_project_revision(
         1 => load_schema_one_connection(connection),
         2 => load_schema_two_connection(connection),
         3 => load_schema_three_connection(connection),
+        4 => load_schema_four_connection(connection),
         value if value == PROJECT_SCHEMA_REVISION => load_connection(connection),
         _ => Err(unsupported(
             "inspect_project_revision",
@@ -304,6 +311,35 @@ fn migrate_schema_three_to_four(connection: &Connection) -> Result<()> {
              DROP TABLE project_metadata;",
         )
         .map_err(|source| database_error(source, "replace_schema_three_project_schema"))?;
+    initialize_schema_four(connection)?;
+    write_schema_four_project(connection, &prepared)?;
+    let migrated = load_schema_four_connection(connection)?;
+    if migrated.snapshot() != expected {
+        return Err(project_error(
+            ErrorCategory::Internal,
+            Recoverability::Terminal,
+            "verify_schema_four_project_migration",
+            "schema-4 project did not reproduce the complete schema-3 snapshot",
+        ));
+    }
+    Ok(())
+}
+
+fn migrate_schema_four_to_five(connection: &Connection) -> Result<()> {
+    let schema_four = load_schema_four_connection(connection)?;
+    let expected = schema_four.snapshot();
+    let prepared = PreparedProject::from_snapshot(&expected)?;
+
+    connection
+        .execute_batch(
+            "DROP TABLE extension_records;\
+             DROP TABLE audio_component;\
+             DROP TABLE graph_components;\
+             DROP TABLE settings_component;\
+             DROP TABLE timeline_component;\
+             DROP TABLE project_metadata;",
+        )
+        .map_err(|source| database_error(source, "replace_schema_four_project_schema"))?;
     initialize_schema(connection)?;
     write_prepared_project(connection, &prepared)?;
     let migrated = load_connection(connection)?;
@@ -311,8 +347,8 @@ fn migrate_schema_three_to_four(connection: &Connection) -> Result<()> {
         return Err(project_error(
             ErrorCategory::Internal,
             Recoverability::Terminal,
-            "verify_schema_four_project_migration",
-            "schema-4 project did not reproduce the complete schema-3 snapshot",
+            "verify_schema_five_project_migration",
+            "schema-5 project did not reproduce the complete schema-4 snapshot",
         ));
     }
     Ok(())
@@ -739,7 +775,7 @@ mod tests {
     #[test]
     fn registry_is_contiguous_and_precommit_interruption_rolls_back_schema_rewrite() {
         validate_registry().unwrap();
-        assert_eq!(MIGRATIONS.len(), 4);
+        assert_eq!(MIGRATIONS.len(), 5);
         assert_eq!(MIGRATIONS[0].source, 0);
         assert_eq!(MIGRATIONS[0].target, 1);
         assert_eq!(MIGRATIONS[1].source, 1);
@@ -747,7 +783,9 @@ mod tests {
         assert_eq!(MIGRATIONS[2].source, 2);
         assert_eq!(MIGRATIONS[2].target, 3);
         assert_eq!(MIGRATIONS[3].source, 3);
-        assert_eq!(MIGRATIONS[3].target, PROJECT_SCHEMA_REVISION);
+        assert_eq!(MIGRATIONS[3].target, 4);
+        assert_eq!(MIGRATIONS[4].source, 4);
+        assert_eq!(MIGRATIONS[4].target, PROJECT_SCHEMA_REVISION);
 
         let (mut connection, expected) = legacy_connection();
         let error = migrate_connection_with_guard(&mut connection, |_| {

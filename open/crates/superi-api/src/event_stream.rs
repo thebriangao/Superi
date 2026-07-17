@@ -24,9 +24,11 @@ use crate::version::{
     EXTENSIONS_RESOURCE, EXTENSIONS_SCHEMA_VERSION, GET_ASYNC_JOBS_METHOD,
     GET_AUDIO_AUTOMATION_METHOD, GET_EDITOR_STATE_METHOD, GET_ENGINE_INTEGRATION_VALIDATION_METHOD,
     GET_ENGINE_INTROSPECTION_METHOD, GET_EXTENSIONS_METHOD, GET_MEDIA_CAPABILITIES_METHOD,
-    GET_PROJECT_RECOVERY_METHOD, GET_PROJECT_SETTINGS_METHOD, MEDIA_CAPABILITIES_SCHEMA_VERSION,
-    OPEN_EVENT_SUBSCRIPTION_METHOD, POLL_EVENT_SUBSCRIPTION_METHOD, PROJECT_EDITOR_SCHEMA_VERSION,
-    PROJECT_HISTORY_RESOURCE, PROJECT_RECOVERY_SCHEMA_VERSION, PROJECT_SETTINGS_SCHEMA_VERSION,
+    GET_PROJECT_COMMAND_LOG_METHOD, GET_PROJECT_RECOVERY_METHOD, GET_PROJECT_SETTINGS_METHOD,
+    MEDIA_CAPABILITIES_SCHEMA_VERSION, OPEN_EVENT_SUBSCRIPTION_METHOD,
+    POLL_EVENT_SUBSCRIPTION_METHOD, PROJECT_COMMAND_LOG_RESOURCE,
+    PROJECT_COMMAND_LOG_SCHEMA_VERSION, PROJECT_EDITOR_SCHEMA_VERSION, PROJECT_HISTORY_RESOURCE,
+    PROJECT_RECOVERY_SCHEMA_VERSION, PROJECT_SETTINGS_SCHEMA_VERSION,
     SLICE_SCENARIO_SCHEMA_VERSION,
 };
 
@@ -301,6 +303,12 @@ pub fn replacement_resource_manifest() -> Vec<ResyncResource> {
             MEDIA_CAPABILITIES_SCHEMA_VERSION,
         ),
         ResyncResource::new(
+            PROJECT_COMMAND_LOG_RESOURCE,
+            GET_PROJECT_COMMAND_LOG_METHOD,
+            PublicMethodKind::Query,
+            PROJECT_COMMAND_LOG_SCHEMA_VERSION,
+        ),
+        ResyncResource::new(
             PROJECT_HISTORY_RESOURCE,
             EXECUTE_PROJECT_COMMAND_METHOD,
             PublicMethodKind::Command,
@@ -540,8 +548,8 @@ impl PublicApiEvent {
                     PublicMethodKind::Command,
                     PROJECT_EDITOR_SCHEMA_VERSION,
                 ),
-                value.project_revision(),
-                None,
+                value.command_log_sequence(),
+                Some(value.project_revision()),
             ),
             Self::AsyncJobsChanged(value) => EventReplacementResource::new(
                 ResyncResource::new(
@@ -638,6 +646,11 @@ impl PublicApiEvent {
                     "validate_project_state_event",
                     value.project_revision(),
                     value.state().project_revision(),
+                )?;
+                validate_revision(
+                    "validate_project_state_command_log",
+                    value.command_log_sequence(),
+                    value.state().command_log_latest_sequence(),
                 )?;
                 validate_schema(
                     "validate_project_state_event",

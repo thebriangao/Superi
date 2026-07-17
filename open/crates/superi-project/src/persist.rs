@@ -5,6 +5,7 @@
 //! private sibling module. Destination publication, autosave, and recovery
 //! policy remain separate project concerns.
 
+use std::collections::VecDeque;
 use std::fmt;
 use std::fs::{self, File, Metadata, OpenOptions};
 use std::io::Read;
@@ -32,9 +33,13 @@ use superi_timeline::serialize::{
     deserialize_timeline_state, serialize_timeline_state, TIMELINE_STATE_FORMAT_REVISION,
 };
 
+use crate::command_log::{
+    ProjectCommandLog, ProjectCommandRecord, ProjectCommandRecordKind,
+    MAX_PROJECT_COMMAND_LOG_RECORDS, MAX_RETAINED_PROJECT_COMMAND_BYTES,
+};
 use crate::compatibility::{
-    project_format_release, PROJECT_FORMAT_VERSION_SCHEMA_ONE, PROJECT_FORMAT_VERSION_SCHEMA_THREE,
-    PROJECT_FORMAT_VERSION_SCHEMA_TWO,
+    project_format_release, PROJECT_FORMAT_VERSION_SCHEMA_FOUR, PROJECT_FORMAT_VERSION_SCHEMA_ONE,
+    PROJECT_FORMAT_VERSION_SCHEMA_THREE, PROJECT_FORMAT_VERSION_SCHEMA_TWO,
 };
 pub use crate::compatibility::{
     PROJECT_APPLICATION_ID, PROJECT_FORMAT, PROJECT_FORMAT_VERSION,
@@ -55,6 +60,7 @@ const MANIFEST_DOMAIN_V1: &[u8] = b"superi.project.manifest.v1";
 const MANIFEST_DOMAIN_V2: &[u8] = b"superi.project.manifest.v2";
 const MANIFEST_DOMAIN_V3: &[u8] = b"superi.project.manifest.v3";
 const MANIFEST_DOMAIN_V4: &[u8] = b"superi.project.manifest.v4";
+const MANIFEST_DOMAIN_V5: &[u8] = b"superi.project.manifest.v5";
 pub(crate) const MAX_COMPONENT_BYTES: usize = 64 * 1024 * 1024;
 pub(crate) const MAX_SETTINGS_COMPONENT_BYTES: usize = 1024 * 1024;
 pub(crate) const MAX_EXTENSION_METADATA_BYTES: usize = 8 * 1024 * 1024;
@@ -67,6 +73,8 @@ pub(crate) const GRAPH_COMPONENTS_SCHEMA: &str = "CREATE TABLE graph_components 
 pub(crate) const SETTINGS_COMPONENT_SCHEMA: &str = "CREATE TABLE settings_component (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format_revision INTEGER NOT NULL CHECK (format_revision >= 1), byte_length INTEGER NOT NULL CHECK (byte_length >= 0 AND byte_length <= 1048576), sha256 BLOB NOT NULL CHECK (length(sha256) = 32), document BLOB NOT NULL CHECK (length(document) = byte_length)) STRICT";
 pub(crate) const AUDIO_COMPONENT_SCHEMA: &str = "CREATE TABLE audio_component (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), format_revision INTEGER NOT NULL CHECK (format_revision > 0), byte_length INTEGER NOT NULL CHECK (byte_length >= 0 AND byte_length <= 67108864), sha256 BLOB NOT NULL CHECK (length(sha256) = 32), document BLOB NOT NULL CHECK (length(document) = byte_length)) STRICT";
 pub(crate) const EXTENSION_RECORDS_SCHEMA: &str = "CREATE TABLE extension_records (extension_id TEXT NOT NULL CHECK (length(extension_id) > 0), record_id TEXT NOT NULL CHECK (length(record_id) > 0 AND length(record_id) <= 128), metadata_format_revision INTEGER NOT NULL CHECK (metadata_format_revision = 1), metadata_byte_length INTEGER NOT NULL CHECK (metadata_byte_length >= 0 AND metadata_byte_length <= 8388608), metadata_sha256 BLOB NOT NULL CHECK (length(metadata_sha256) = 32), metadata BLOB NOT NULL CHECK (length(metadata) = metadata_byte_length), payload_byte_length INTEGER NOT NULL CHECK (payload_byte_length >= 0 AND payload_byte_length <= 67108864), payload_sha256 BLOB NOT NULL CHECK (length(payload_sha256) = 32), payload BLOB NOT NULL CHECK (length(payload) = payload_byte_length), PRIMARY KEY (extension_id, record_id)) STRICT, WITHOUT ROWID";
+pub(crate) const COMMAND_LOG_METADATA_SCHEMA: &str = "CREATE TABLE command_log_metadata (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), next_sequence TEXT NOT NULL) STRICT";
+pub(crate) const COMMAND_LOG_RECORDS_SCHEMA: &str = "CREATE TABLE command_log_records (sequence TEXT PRIMARY KEY, command_sequence TEXT NOT NULL, transaction_id TEXT NOT NULL CHECK (length(transaction_id) > 0 AND length(transaction_id) <= 256), method TEXT NOT NULL CHECK (length(method) > 0 AND length(method) <= 256), request_schema_version TEXT NOT NULL, command_kind TEXT NOT NULL CHECK (command_kind IN ('apply', 'undo', 'redo', 'inspect')), expected_project_revision TEXT NOT NULL, request_byte_length INTEGER NOT NULL CHECK (request_byte_length >= 0), request_sha256 BLOB NOT NULL CHECK (length(request_sha256) = 32), replay_request BLOB, before_project_revision TEXT NOT NULL, after_project_revision TEXT NOT NULL, before_semantic_hash BLOB NOT NULL CHECK (length(before_semantic_hash) = 32), after_semantic_hash BLOB NOT NULL CHECK (length(after_semantic_hash) = 32), authored_state_changed INTEGER NOT NULL CHECK (authored_state_changed IN (0, 1)), CHECK ((replay_request IS NULL AND request_byte_length > 1048576) OR (replay_request IS NOT NULL AND length(replay_request) = request_byte_length AND length(replay_request) <= 1048576))) STRICT, WITHOUT ROWID";
 
 /// Current canonical metadata representation for one opaque extension record.
 pub const PROJECT_EXTENSION_METADATA_FORMAT_REVISION: u32 = 1;
@@ -657,6 +665,7 @@ pub(crate) struct PreparedProject {
     audio_digest: [u8; 32],
     extensions: Vec<PreparedExtension>,
     graphs: Vec<PreparedGraph>,
+    command_log: ProjectCommandLog,
     manifest_digest: [u8; 32],
 }
 
@@ -793,6 +802,7 @@ impl PreparedProject {
             audio_digest,
             extensions,
             graphs,
+            command_log: snapshot.command_log().clone(),
             manifest_digest: [0; 32],
         };
         prepared.manifest_digest = manifest_digest(&prepared);
@@ -1192,7 +1202,7 @@ pub(crate) fn initialize_connection(connection: &Connection, writable: bool) -> 
 
 pub(crate) fn initialize_schema(connection: &Connection) -> Result<()> {
     let schema = format!(
-        "{PROJECT_METADATA_SCHEMA};{TIMELINE_COMPONENT_SCHEMA};{GRAPH_COMPONENTS_SCHEMA};{SETTINGS_COMPONENT_SCHEMA};{AUDIO_COMPONENT_SCHEMA};{EXTENSION_RECORDS_SCHEMA};"
+        "{PROJECT_METADATA_SCHEMA};{TIMELINE_COMPONENT_SCHEMA};{GRAPH_COMPONENTS_SCHEMA};{SETTINGS_COMPONENT_SCHEMA};{AUDIO_COMPONENT_SCHEMA};{EXTENSION_RECORDS_SCHEMA};{COMMAND_LOG_METADATA_SCHEMA};{COMMAND_LOG_RECORDS_SCHEMA};"
     );
     connection
         .execute_batch(&schema)
@@ -1204,6 +1214,22 @@ pub(crate) fn initialize_schema(connection: &Connection) -> Result<()> {
         .pragma_update(None, "user_version", i64::from(PROJECT_SCHEMA_REVISION))
         .map_err(|source| database_error(source, "set_schema_revision"))?;
     validate_identity_and_schema(connection)
+}
+
+pub(crate) fn initialize_schema_four(connection: &Connection) -> Result<()> {
+    let schema = format!(
+        "{PROJECT_METADATA_SCHEMA};{TIMELINE_COMPONENT_SCHEMA};{GRAPH_COMPONENTS_SCHEMA};{SETTINGS_COMPONENT_SCHEMA};{AUDIO_COMPONENT_SCHEMA};{EXTENSION_RECORDS_SCHEMA};"
+    );
+    connection
+        .execute_batch(&schema)
+        .map_err(|source| database_error(source, "create_schema_four_project_schema"))?;
+    connection
+        .pragma_update(None, "application_id", i64::from(PROJECT_APPLICATION_ID))
+        .map_err(|source| database_error(source, "set_schema_four_application_id"))?;
+    connection
+        .pragma_update(None, "user_version", 4_i64)
+        .map_err(|source| database_error(source, "set_schema_four_revision"))?;
+    validate_schema_four_identity_and_schema(connection)
 }
 
 pub(crate) fn initialize_schema_one(connection: &Connection) -> Result<()> {
@@ -1254,19 +1280,85 @@ pub(crate) fn initialize_schema_three(connection: &Connection) -> Result<()> {
 }
 
 pub(crate) fn validate_identity_and_schema(connection: &Connection) -> Result<()> {
-    validate_schema(connection, PROJECT_SCHEMA_REVISION, true, true, true, true)
+    validate_schema(
+        connection,
+        PROJECT_SCHEMA_REVISION,
+        true,
+        true,
+        true,
+        true,
+        true,
+    )
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ProjectSchemaComponents {
+    settings: bool,
+    audio: bool,
+    extensions: bool,
+    command_log: bool,
+}
+
+impl ProjectSchemaComponents {
+    const V1: Self = Self {
+        settings: false,
+        audio: false,
+        extensions: false,
+        command_log: false,
+    };
+    const V2: Self = Self {
+        settings: true,
+        audio: false,
+        extensions: false,
+        command_log: false,
+    };
+    const V3: Self = Self {
+        settings: true,
+        audio: true,
+        extensions: false,
+        command_log: false,
+    };
+    const V4: Self = Self {
+        settings: true,
+        audio: true,
+        extensions: true,
+        command_log: false,
+    };
+    const V5: Self = Self {
+        settings: true,
+        audio: true,
+        extensions: true,
+        command_log: true,
+    };
+}
+
+pub(crate) fn write_schema_four_project(
+    connection: &Connection,
+    prepared: &PreparedProject,
+) -> Result<()> {
+    write_prepared_project_versioned(
+        connection,
+        prepared,
+        PROJECT_FORMAT_VERSION_SCHEMA_FOUR,
+        manifest_digest_v4(prepared),
+        ProjectSchemaComponents::V4,
+    )
 }
 
 pub(crate) fn validate_schema_one_identity_and_schema(connection: &Connection) -> Result<()> {
-    validate_schema(connection, 1, false, false, false, false)
+    validate_schema(connection, 1, false, false, false, false, false)
 }
 
 pub(crate) fn validate_schema_two_identity_and_schema(connection: &Connection) -> Result<()> {
-    validate_schema(connection, 2, true, false, false, false)
+    validate_schema(connection, 2, true, false, false, false, false)
 }
 
 pub(crate) fn validate_schema_three_identity_and_schema(connection: &Connection) -> Result<()> {
-    validate_schema(connection, 3, true, true, false, false)
+    validate_schema(connection, 3, true, true, false, false, false)
+}
+
+pub(crate) fn validate_schema_four_identity_and_schema(connection: &Connection) -> Result<()> {
+    validate_schema(connection, 4, true, true, true, false, false)
 }
 
 fn validate_schema(
@@ -1275,6 +1367,7 @@ fn validate_schema(
     include_settings: bool,
     include_audio: bool,
     include_extensions: bool,
+    include_command_log: bool,
     require_current: bool,
 ) -> Result<()> {
     validate_full_integrity(connection)?;
@@ -1361,6 +1454,24 @@ fn validate_schema(
                 "table".to_owned(),
                 "extension_records".to_owned(),
                 EXTENSION_RECORDS_SCHEMA.to_owned(),
+            ),
+        );
+    }
+    if include_command_log {
+        expected.insert(
+            usize::from(include_audio),
+            (
+                "table".to_owned(),
+                "command_log_metadata".to_owned(),
+                COMMAND_LOG_METADATA_SCHEMA.to_owned(),
+            ),
+        );
+        expected.insert(
+            usize::from(include_audio) + 1,
+            (
+                "table".to_owned(),
+                "command_log_records".to_owned(),
+                COMMAND_LOG_RECORDS_SCHEMA.to_owned(),
             ),
         );
     }
@@ -1487,9 +1598,7 @@ pub(crate) fn write_prepared_project(
         prepared,
         PROJECT_FORMAT_VERSION,
         prepared.manifest_digest,
-        true,
-        true,
-        true,
+        ProjectSchemaComponents::V5,
     )
 }
 
@@ -1502,9 +1611,7 @@ pub(crate) fn write_schema_three_project(
         prepared,
         PROJECT_FORMAT_VERSION_SCHEMA_THREE,
         manifest_digest_v3(prepared),
-        true,
-        true,
-        false,
+        ProjectSchemaComponents::V3,
     )
 }
 
@@ -1517,9 +1624,7 @@ pub(crate) fn write_schema_two_project(
         prepared,
         PROJECT_FORMAT_VERSION_SCHEMA_TWO,
         manifest_digest_v2(prepared),
-        true,
-        false,
-        false,
+        ProjectSchemaComponents::V2,
     )
 }
 
@@ -1528,12 +1633,25 @@ fn write_prepared_project_versioned(
     prepared: &PreparedProject,
     format_version: &str,
     manifest_digest: [u8; 32],
-    include_settings: bool,
-    include_audio: bool,
-    include_extensions: bool,
+    components: ProjectSchemaComponents,
 ) -> Result<()> {
-    let clear = match (include_settings, include_audio, include_extensions) {
-        (true, true, true) => {
+    let clear = match (
+        components.settings,
+        components.audio,
+        components.extensions,
+        components.command_log,
+    ) {
+        (true, true, true, true) => {
+            "DELETE FROM command_log_records;\
+             DELETE FROM command_log_metadata;\
+             DELETE FROM extension_records;\
+             DELETE FROM audio_component;\
+             DELETE FROM graph_components;\
+             DELETE FROM settings_component;\
+             DELETE FROM timeline_component;\
+             DELETE FROM project_metadata;"
+        }
+        (true, true, true, false) => {
             "DELETE FROM extension_records;\
              DELETE FROM audio_component;\
              DELETE FROM graph_components;\
@@ -1541,20 +1659,20 @@ fn write_prepared_project_versioned(
              DELETE FROM timeline_component;\
              DELETE FROM project_metadata;"
         }
-        (true, true, false) => {
+        (true, true, false, false) => {
             "DELETE FROM audio_component;\
              DELETE FROM graph_components;\
              DELETE FROM settings_component;\
              DELETE FROM timeline_component;\
              DELETE FROM project_metadata;"
         }
-        (true, false, false) => {
+        (true, false, false, false) => {
             "DELETE FROM graph_components;\
              DELETE FROM settings_component;\
              DELETE FROM timeline_component;\
              DELETE FROM project_metadata;"
         }
-        (false, false, false) => {
+        (false, false, false, false) => {
             "DELETE FROM graph_components;\
              DELETE FROM timeline_component;\
              DELETE FROM project_metadata;"
@@ -1594,7 +1712,7 @@ fn write_prepared_project_versioned(
             ],
         )
         .map_err(|source| database_error(source, "write_timeline_component"))?;
-    if include_settings {
+    if components.settings {
         connection
             .execute(
                 "INSERT INTO settings_component \
@@ -1609,7 +1727,7 @@ fn write_prepared_project_versioned(
             )
             .map_err(|source| database_error(source, "write_settings_component"))?;
     }
-    if include_audio {
+    if components.audio {
         connection
             .execute(
                 "INSERT INTO audio_component \
@@ -1624,7 +1742,7 @@ fn write_prepared_project_versioned(
             )
             .map_err(|source| database_error(source, "write_audio_component"))?;
     }
-    if include_extensions {
+    if components.extensions {
         let mut statement = connection
             .prepare(
                 "INSERT INTO extension_records \
@@ -1647,6 +1765,48 @@ fn write_prepared_project_versioned(
                     extension.payload.as_slice(),
                 ])
                 .map_err(|source| database_error(source, "write_extension_record"))?;
+        }
+    }
+    if components.command_log {
+        connection
+            .execute(
+                "INSERT INTO command_log_metadata (singleton, next_sequence) VALUES (1, ?1)",
+                params![prepared.command_log.next_sequence().to_string()],
+            )
+            .map_err(|source| database_error(source, "write_command_log_metadata"))?;
+        let mut statement = connection
+            .prepare(
+                "INSERT INTO command_log_records \
+                 (sequence, command_sequence, transaction_id, method, request_schema_version, \
+                  command_kind, expected_project_revision, request_byte_length, request_sha256, \
+                  replay_request, before_project_revision, after_project_revision, \
+                  before_semantic_hash, after_semantic_hash, authored_state_changed) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            )
+            .map_err(|source| database_error(source, "prepare_command_log_records"))?;
+        for record in prepared.command_log.records() {
+            statement
+                .execute(params![
+                    record.sequence().to_string(),
+                    record.command_sequence().to_string(),
+                    record.transaction_id(),
+                    record.method(),
+                    record.request_schema_version().to_string(),
+                    record.command_kind().as_str(),
+                    record.expected_project_revision().to_string(),
+                    i64::try_from(record.request_byte_length()).map_err(|_| corrupt(
+                        "write_command_log_record",
+                        "command request length is not representable by SQLite",
+                    ))?,
+                    record.request_sha256().as_slice(),
+                    record.replay_request(),
+                    record.before_project_revision().to_string(),
+                    record.after_project_revision().to_string(),
+                    record.before_semantic_hash().as_slice(),
+                    record.after_semantic_hash().as_slice(),
+                    i64::from(record.authored_state_changed()),
+                ])
+                .map_err(|source| database_error(source, "write_command_log_record"))?;
         }
     }
 
@@ -1759,22 +1919,27 @@ fn write_graph_rows(
 
 pub(crate) fn load_connection(connection: &Connection) -> Result<ProjectDocument> {
     validate_identity_and_schema(connection)?;
-    load_checked_connection(connection, PROJECT_SCHEMA_REVISION, true, true, true)
+    load_checked_connection(connection, PROJECT_SCHEMA_REVISION, true, true, true, true)
+}
+
+pub(crate) fn load_schema_four_connection(connection: &Connection) -> Result<ProjectDocument> {
+    validate_schema_four_identity_and_schema(connection)?;
+    load_checked_connection(connection, 4, true, true, true, false)
 }
 
 pub(crate) fn load_schema_three_connection(connection: &Connection) -> Result<ProjectDocument> {
     validate_schema_three_identity_and_schema(connection)?;
-    load_checked_connection(connection, 3, true, true, false)
+    load_checked_connection(connection, 3, true, true, false, false)
 }
 
 pub(crate) fn load_schema_two_connection(connection: &Connection) -> Result<ProjectDocument> {
     validate_schema_two_identity_and_schema(connection)?;
-    load_checked_connection(connection, 2, true, false, false)
+    load_checked_connection(connection, 2, true, false, false, false)
 }
 
 pub(crate) fn load_schema_one_connection(connection: &Connection) -> Result<ProjectDocument> {
     validate_schema_one_identity_and_schema(connection)?;
-    load_checked_connection(connection, 1, false, false, false)
+    load_checked_connection(connection, 1, false, false, false, false)
 }
 
 fn load_checked_connection(
@@ -1783,6 +1948,7 @@ fn load_checked_connection(
     includes_settings: bool,
     include_audio: bool,
     include_extensions: bool,
+    include_command_log: bool,
 ) -> Result<ProjectDocument> {
     require_row_count(connection, "project_metadata", 1)?;
     require_row_count(connection, "timeline_component", 1)?;
@@ -1791,6 +1957,9 @@ fn load_checked_connection(
     }
     if include_audio {
         require_row_count(connection, "audio_component", 1)?;
+    }
+    if include_command_log {
+        require_row_count(connection, "command_log_metadata", 1)?;
     }
 
     let extension_count = if include_extensions {
@@ -2022,6 +2191,126 @@ fn load_checked_connection(
         }
     }
 
+    let command_log = if include_command_log {
+        let next_sequence = connection
+            .query_row(
+                "SELECT next_sequence FROM command_log_metadata WHERE singleton = 1",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .map_err(|source| database_error(source, "read_command_log_metadata"))?;
+        let next_sequence = parse_revision(&next_sequence, "read_command_log_metadata")?;
+        let command_record_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM command_log_records", [], |row| {
+                row.get(0)
+            })
+            .map_err(|source| database_error(source, "count_command_log_records"))?;
+        let command_record_count = usize::try_from(command_record_count).map_err(|_| {
+            corrupt(
+                "count_command_log_records",
+                "project command record count is not representable",
+            )
+        })?;
+        if command_record_count > MAX_PROJECT_COMMAND_LOG_RECORDS {
+            return Err(corrupt(
+                "count_command_log_records",
+                "project command record count exceeds the stable schema limit",
+            ));
+        }
+        let mut statement = connection
+            .prepare(
+                "SELECT sequence, command_sequence, transaction_id, method, \
+                 request_schema_version, command_kind, expected_project_revision, \
+                 request_byte_length, request_sha256, replay_request, before_project_revision, \
+                 after_project_revision, before_semantic_hash, after_semantic_hash, \
+                 authored_state_changed FROM command_log_records \
+                 ORDER BY length(sequence), sequence",
+            )
+            .map_err(|source| database_error(source, "read_command_log_records"))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, i64>(7)?,
+                    row.get::<_, Vec<u8>>(8)?,
+                    row.get::<_, Option<Vec<u8>>>(9)?,
+                    row.get::<_, String>(10)?,
+                    row.get::<_, String>(11)?,
+                    row.get::<_, Vec<u8>>(12)?,
+                    row.get::<_, Vec<u8>>(13)?,
+                    row.get::<_, i64>(14)?,
+                ))
+            })
+            .map_err(|source| database_error(source, "read_command_log_records"))?;
+        let mut records = VecDeque::with_capacity(command_record_count);
+        for row in rows {
+            let row = row.map_err(|source| database_error(source, "read_command_log_record"))?;
+            let request_schema_version = row.4.parse::<SemanticVersion>().map_err(|_| {
+                corrupt(
+                    "read_command_log_record",
+                    "stored command request schema version is invalid",
+                )
+            })?;
+            let request_byte_length = u64::try_from(row.7).map_err(|_| {
+                corrupt(
+                    "read_command_log_record",
+                    "stored command request length is invalid",
+                )
+            })?;
+            if row.9.as_ref().is_some_and(|request| {
+                request.len() > MAX_RETAINED_PROJECT_COMMAND_BYTES
+                    || request.len() as u64 != request_byte_length
+            }) {
+                return Err(corrupt(
+                    "read_command_log_record",
+                    "stored replay request exceeds its stable bound",
+                ));
+            }
+            let authored_state_changed = match row.14 {
+                0 => false,
+                1 => true,
+                _ => {
+                    return Err(corrupt(
+                        "read_command_log_record",
+                        "stored authored-state flag is invalid",
+                    ))
+                }
+            };
+            records.push_back(ProjectCommandRecord::from_persisted_parts(
+                parse_revision(&row.0, "read_command_log_record")?,
+                parse_revision(&row.1, "read_command_log_record")?,
+                row.2,
+                row.3,
+                request_schema_version,
+                ProjectCommandRecordKind::parse(&row.5)?,
+                parse_revision(&row.6, "read_command_log_record")?,
+                request_byte_length,
+                fixed_bytes::<32>(row.8, "read_command_log_record", "request digest")?,
+                row.9,
+                parse_revision(&row.10, "read_command_log_record")?,
+                parse_revision(&row.11, "read_command_log_record")?,
+                fixed_bytes::<32>(row.12, "read_command_log_record", "before semantic hash")?,
+                fixed_bytes::<32>(row.13, "read_command_log_record", "after semantic hash")?,
+                authored_state_changed,
+            )?);
+        }
+        if records.len() != command_record_count {
+            return Err(corrupt(
+                "read_command_log_records",
+                "project command record count changed during interpretation",
+            ));
+        }
+        ProjectCommandLog::from_persisted_parts(next_sequence, records)?
+    } else {
+        ProjectCommandLog::new()
+    };
+
     let graph_count: i64 = connection
         .query_row("SELECT COUNT(*) FROM graph_components", [], |row| {
             row.get(0)
@@ -2138,12 +2427,14 @@ fn load_checked_connection(
         audio_digest,
         extensions,
         graphs,
+        command_log,
         manifest_digest: stored_manifest,
     };
     let expected_manifest = match schema_revision {
         1 => manifest_digest_v1(&prepared),
         2 => manifest_digest_v2(&prepared),
         3 => manifest_digest_v3(&prepared),
+        4 => manifest_digest_v4(&prepared),
         PROJECT_SCHEMA_REVISION => manifest_digest(&prepared),
         _ => unreachable!("validated loader schema revision"),
     };
@@ -2257,7 +2548,7 @@ fn load_checked_connection(
         .iter()
         .map(decode_extension_record)
         .collect::<Result<Vec<_>>>()?;
-    ProjectDocument::from_complete_parts_with_settings_and_extensions(
+    ProjectDocument::from_complete_parts_with_settings_extensions_and_command_log(
         prepared.revision,
         editorial_project,
         prepared.root_timeline_id,
@@ -2265,6 +2556,7 @@ fn load_checked_connection(
         restored_graphs,
         clip_mix_state,
         restored_extensions,
+        prepared.command_log,
     )
     .map_err(|source| stored_state_error(source, "restore_project_document"))
 }
@@ -2446,12 +2738,20 @@ fn sha256(bytes: &[u8]) -> [u8; 32] {
 fn manifest_digest(project: &PreparedProject) -> [u8; 32] {
     manifest_digest_for(
         project,
-        MANIFEST_DOMAIN_V4,
+        MANIFEST_DOMAIN_V5,
         PROJECT_FORMAT_VERSION,
         PROJECT_SCHEMA_REVISION,
-        true,
-        true,
-        true,
+        ProjectSchemaComponents::V5,
+    )
+}
+
+fn manifest_digest_v4(project: &PreparedProject) -> [u8; 32] {
+    manifest_digest_for(
+        project,
+        MANIFEST_DOMAIN_V4,
+        PROJECT_FORMAT_VERSION_SCHEMA_FOUR,
+        4,
+        ProjectSchemaComponents::V4,
     )
 }
 
@@ -2461,9 +2761,7 @@ fn manifest_digest_v3(project: &PreparedProject) -> [u8; 32] {
         MANIFEST_DOMAIN_V3,
         PROJECT_FORMAT_VERSION_SCHEMA_THREE,
         3,
-        true,
-        true,
-        false,
+        ProjectSchemaComponents::V3,
     )
 }
 
@@ -2473,9 +2771,7 @@ fn manifest_digest_v2(project: &PreparedProject) -> [u8; 32] {
         MANIFEST_DOMAIN_V2,
         PROJECT_FORMAT_VERSION_SCHEMA_TWO,
         2,
-        true,
-        false,
-        false,
+        ProjectSchemaComponents::V2,
     )
 }
 
@@ -2485,9 +2781,7 @@ fn manifest_digest_v1(project: &PreparedProject) -> [u8; 32] {
         MANIFEST_DOMAIN_V1,
         PROJECT_FORMAT_VERSION_SCHEMA_ONE,
         1,
-        false,
-        false,
-        false,
+        ProjectSchemaComponents::V1,
     )
 }
 
@@ -2496,9 +2790,7 @@ fn manifest_digest_for(
     domain: &[u8],
     format_version: &str,
     schema_revision: u32,
-    include_settings: bool,
-    include_audio: bool,
-    include_extensions: bool,
+    components: ProjectSchemaComponents,
 ) -> [u8; 32] {
     let mut hasher = Sha256::new();
     manifest_field(&mut hasher, domain);
@@ -2515,7 +2807,7 @@ fn manifest_digest_for(
         &(project.timeline_document.len() as u64).to_be_bytes(),
     );
     manifest_field(&mut hasher, &project.timeline_digest);
-    if include_settings {
+    if components.settings {
         manifest_field(&mut hasher, &PROJECT_SETTINGS_FORMAT_REVISION.to_be_bytes());
         manifest_field(
             &mut hasher,
@@ -2523,7 +2815,7 @@ fn manifest_digest_for(
         );
         manifest_field(&mut hasher, &project.settings_digest);
     }
-    if include_audio {
+    if components.audio {
         manifest_field(&mut hasher, &CLIP_MIX_FORMAT_REVISION.to_be_bytes());
         manifest_field(
             &mut hasher,
@@ -2531,7 +2823,7 @@ fn manifest_digest_for(
         );
         manifest_field(&mut hasher, &project.audio_digest);
     }
-    if include_extensions {
+    if components.extensions {
         manifest_field(
             &mut hasher,
             &(project.extensions.len() as u64).to_be_bytes(),
@@ -2550,6 +2842,39 @@ fn manifest_digest_for(
             manifest_field(&mut hasher, &extension.metadata_digest);
             manifest_field(&mut hasher, &(extension.payload.len() as u64).to_be_bytes());
             manifest_field(&mut hasher, &extension.payload_digest);
+        }
+    }
+    if components.command_log {
+        manifest_field(
+            &mut hasher,
+            &project.command_log.next_sequence().to_be_bytes(),
+        );
+        manifest_field(
+            &mut hasher,
+            &(project.command_log.records().len() as u64).to_be_bytes(),
+        );
+        for record in project.command_log.records() {
+            manifest_field(&mut hasher, &record.sequence().to_be_bytes());
+            manifest_field(&mut hasher, &record.command_sequence().to_be_bytes());
+            manifest_field(&mut hasher, record.transaction_id().as_bytes());
+            manifest_field(&mut hasher, record.method().as_bytes());
+            manifest_field(
+                &mut hasher,
+                record.request_schema_version().to_string().as_bytes(),
+            );
+            manifest_field(&mut hasher, record.command_kind().as_str().as_bytes());
+            manifest_field(
+                &mut hasher,
+                &record.expected_project_revision().to_be_bytes(),
+            );
+            manifest_field(&mut hasher, &record.request_byte_length().to_be_bytes());
+            manifest_field(&mut hasher, record.request_sha256());
+            manifest_field(&mut hasher, &[u8::from(record.replay_request().is_some())]);
+            manifest_field(&mut hasher, &record.before_project_revision().to_be_bytes());
+            manifest_field(&mut hasher, &record.after_project_revision().to_be_bytes());
+            manifest_field(&mut hasher, record.before_semantic_hash());
+            manifest_field(&mut hasher, record.after_semantic_hash());
+            manifest_field(&mut hasher, &[u8::from(record.authored_state_changed())]);
         }
     }
     manifest_field(&mut hasher, &(project.graphs.len() as u64).to_be_bytes());

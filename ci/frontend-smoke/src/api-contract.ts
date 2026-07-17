@@ -3,6 +3,7 @@ import {
   type EditorAiState,
   type ExecuteProjectCommand,
   type GetExtensions,
+  type GetProjectCommandLog,
   type NegotiateApiVersion,
   type SuperiEventMap,
   type SuperiMethodMap,
@@ -30,10 +31,20 @@ export const versionNegotiationRequest = {
 
 export const extensionDiscoveryRequest = null satisfies GetExtensions;
 
+export const inspectCommandLog = {
+  after_sequence: 0,
+  requested_limit: 64,
+  detail: "metadata",
+} satisfies GetProjectCommandLog;
+
 export type InspectProjectResult =
   SuperiMethodMap["superi.project.command.execute"]["response"];
 export type ProjectStateEvent =
   SuperiEventMap["superi.project.state.changed"];
+export type ProjectCommandLogResult =
+  SuperiMethodMap["superi.project.command_log.get"]["response"];
+export type ProjectCommandLogResource =
+  SuperiResourceMap["superi.project.command_log"];
 export type EditorStateResource = SuperiResourceMap["superi.editor.state"];
 export type VersionNegotiationResult =
   SuperiMethodMap["superi.api.version.negotiate"]["response"];

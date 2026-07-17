@@ -39,10 +39,19 @@ pub const CLOSE_EVENT_SUBSCRIPTION_METHOD: &str = "superi.events.subscription.cl
 pub const POLL_EVENT_SUBSCRIPTION_METHOD: &str = "superi.events.subscription.poll";
 
 /// Schema version for the generic authored project command surface.
-pub const PROJECT_EDITOR_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
+pub const PROJECT_EDITOR_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 1, 0);
 
 /// JSON-RPC method for one generic authored project command.
 pub const EXECUTE_PROJECT_COMMAND_METHOD: &str = "superi.project.command.execute";
+
+/// Schema version for durable project command-log inspection.
+pub const PROJECT_COMMAND_LOG_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
+
+/// JSON-RPC query for bounded project command-log inspection.
+pub const GET_PROJECT_COMMAND_LOG_METHOD: &str = "superi.project.command_log.get";
+
+/// Replacement resource name for durable project command-log state.
+pub const PROJECT_COMMAND_LOG_RESOURCE: &str = "superi.project.command_log";
 
 /// Schema version for the bounded local scripting language and execution trace.
 pub const SCRIPTING_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);

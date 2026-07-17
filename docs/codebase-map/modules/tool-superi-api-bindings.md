@@ -97,9 +97,10 @@ checking, and the committed canonical artifact equals a fresh render. Fresh focu
 and the direct locked `check` command passed in this checkpoint.
 
 The API-owned contract independently proves complete canonical method, event, and resource coverage,
-required project, AI, and extension declarations, deterministic output, and absence of timestamps
-and checkout paths. Frontend proof belongs to the workspace consumer and is not inferred from this
-tool's Rust tests.
+required project, command-log, AI, and extension declarations, deterministic output, and absence of timestamps
+and checkout paths. The generated artifact includes the command-log query and result union, record
+types, script step, event correlation sequence, method map, and resource map. Frontend proof belongs
+to the workspace consumer and is not inferred from this tool's Rust tests.
 
 ## Current status and risks
 

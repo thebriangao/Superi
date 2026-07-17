@@ -6,7 +6,7 @@ use std::time::Duration;
 use superi_concurrency::threads::ExecutionDomain;
 use superi_core::error::{ErrorCategory, Recoverability};
 use superi_core::ids::{ProjectId, TimelineId};
-use superi_core::settings::SettingValue;
+use superi_core::settings::{SemanticVersion, SettingValue};
 use superi_core::time::{RationalTime, Timebase};
 use superi_engine::dispatcher::{
     EngineCommand, EngineCommandDispatcher, EngineCommandRequest, EngineCommandResult, EngineEvent,
@@ -16,12 +16,13 @@ use superi_engine::project_recovery::{ProjectRecoveryCommand, ProjectRecoveryOpe
 use superi_project::autosave::{
     ProjectAutosaveCommand, ProjectAutosaveController, ProjectAutosavePolicy,
 };
+use superi_project::diagnostics::ProjectDiagnostics;
 use superi_project::document::{ProjectDocument, ProjectGraph, ProjectSnapshot};
 use superi_project::recovery::ProjectRecoveryCandidateId;
 use superi_project::settings::{
     ProjectSettingMutation, ProjectSettingsTransaction, AUDIO_SAMPLE_RATE_KEY,
 };
-use superi_project::ProjectDatabase;
+use superi_project::{ProjectCommandRecordDraft, ProjectCommandRecordKind, ProjectDatabase};
 use superi_timeline::model::{EditorialProject, Timeline};
 
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
@@ -149,7 +150,30 @@ fn discover_compare_restore_and_dismiss_are_one_atomic_engine_surface() {
     let active_path = directory.child("active.superi");
     let recovery_snapshot = document().snapshot();
     let candidate_path = publish_recovery(directory.path(), &recovery_snapshot);
-    let current = with_mix_revision(changed_document(96_000), 1);
+    let mut current = with_mix_revision(changed_document(96_000), 1);
+    let current_hash = ProjectDiagnostics::from_snapshot(&current.snapshot())
+        .unwrap()
+        .content_hash()
+        .into_bytes();
+    current
+        .append_command_record(
+            ProjectCommandRecordDraft::from_serialized_request(
+                "active-command-lineage",
+                "superi.project.command.execute",
+                SemanticVersion::new(1, 1, 0),
+                ProjectCommandRecordKind::Inspect,
+                1,
+                br#"{"transaction_id":"active-command-lineage"}"#,
+            )
+            .unwrap(),
+            1,
+            1,
+            1,
+            current_hash,
+            current_hash,
+            false,
+        )
+        .unwrap();
     let mut database = ProjectDatabase::create(&active_path).unwrap();
     database.replace(&current.snapshot()).unwrap();
 
@@ -218,6 +242,14 @@ fn discover_compare_restore_and_dismiss_are_one_atomic_engine_surface() {
     assert_eq!(restored.state().history().undo_depth(), 0);
     assert_eq!(restored.state().history().redo_depth(), 0);
     assert_eq!(restored.state().snapshot().clip_mix_state().revision(), 0);
+    assert_eq!(
+        restored.state().snapshot().command_log().latest_sequence(),
+        1
+    );
+    assert_eq!(
+        restored.state().snapshot().command_log().records()[0].transaction_id(),
+        "active-command-lineage"
+    );
     assert!(
         candidate_path.exists(),
         "restore retains the source candidate"

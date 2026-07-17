@@ -8,9 +8,9 @@ use superi_api::commands::{ApiCommand, GetEditorState};
 use superi_api::editor::ProjectEditorApi;
 use superi_api::permissions::{ApiPermissionKind, ApiPermissionRequirementMode};
 use superi_api::scripting::{
-    ProjectScriptRunStatus, RunProjectScript, ScriptId, MAX_SCRIPT_IDENTIFIER_BYTES,
-    MAX_SCRIPT_JSON_DEPTH, MAX_SCRIPT_SOURCE_BYTES, MAX_SCRIPT_STEPS, RUN_PROJECT_SCRIPT_METHOD,
-    SCRIPTING_SCHEMA_VERSION,
+    ProjectScriptRunStatus, ProjectScriptStepResponse, RunProjectScript, ScriptId,
+    MAX_SCRIPT_IDENTIFIER_BYTES, MAX_SCRIPT_JSON_DEPTH, MAX_SCRIPT_SOURCE_BYTES, MAX_SCRIPT_STEPS,
+    RUN_PROJECT_SCRIPT_METHOD, SCRIPTING_SCHEMA_VERSION,
 };
 use superi_concurrency::threads::ExecutionDomain;
 use superi_core::error::ErrorCategory;
@@ -124,6 +124,17 @@ fn inspect_step(transaction_id: &str) -> Value {
     })
 }
 
+fn command_log_step(after_sequence: u64, detail: &str) -> Value {
+    json!({
+        "method": "superi.project.command_log.get",
+        "params": {
+            "after_sequence": after_sequence,
+            "requested_limit": 16,
+            "detail": detail,
+        },
+    })
+}
+
 fn temporary_project_path() -> PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -176,6 +187,7 @@ fn script_executes_deterministically_and_preserves_durable_integrity_and_recover
         0,
         vec![
             mark_missing_step("script-mark-missing", 0),
+            command_log_step(0, "replayable"),
             inspect_step("script-inspect"),
         ],
     );
@@ -195,10 +207,22 @@ fn script_executes_deterministically_and_preserves_durable_integrity_and_recover
         first.initial_project_semantic_hash(),
         first.final_project_semantic_hash()
     );
-    assert_eq!(first.completed_steps().len(), 2);
+    assert_eq!(first.completed_steps().len(), 3);
     assert_eq!(first.failed_step_index(), None);
     assert!(first.failure().is_none());
     assert!(first.effects_committed());
+    let ProjectScriptStepResponse::GetProjectCommandLog(command_log) =
+        first.completed_steps()[1].response()
+    else {
+        panic!("the second step must expose the typed command-log result");
+    };
+    let superi_api::editor::GetProjectCommandLogResult::Records(command_log) = command_log.as_ref()
+    else {
+        panic!("the first command record must still be retained");
+    };
+    assert_eq!(command_log.latest_sequence(), 1);
+    assert_eq!(command_log.records().len(), 1);
+    assert!(command_log.records()[0].replay_request().is_some());
 
     let events = first_api.drain_events().unwrap();
     assert_eq!(events.len(), 1);
@@ -334,6 +358,13 @@ fn initial_conflict_and_invalid_sources_have_zero_authored_effects() {
 
     assert_invalid_before_dispatch(
         source("empty.steps-01", 0, Vec::new()),
+        ErrorCategory::InvalidInput,
+    );
+    let invalid_log_query = command_log_step(0, "metadata");
+    let mut invalid_log_query = invalid_log_query;
+    invalid_log_query["params"]["requested_limit"] = json!(0);
+    assert_invalid_before_dispatch(
+        source("invalid.log-query-01", 0, vec![invalid_log_query]),
         ErrorCategory::InvalidInput,
     );
     let too_many_steps = (0..=MAX_SCRIPT_STEPS)

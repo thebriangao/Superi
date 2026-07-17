@@ -2,10 +2,12 @@ use std::path::PathBuf;
 
 use superi_core::error::ErrorCategory;
 use superi_core::ids::{ClipId, MediaId, ProjectId, TimelineId, TrackId};
+use superi_core::settings::SemanticVersion;
 use superi_core::time::{Duration, FrameRate, RationalTime, TimeRange, Timebase};
 use superi_engine::history::{
     ProjectCommandHistory, ProjectHistoryActionResult, ProjectHistoryCommand, ProjectMutation,
-    ProjectMutationKind, DEFAULT_PROJECT_HISTORY_CAPACITY, MAX_PROJECT_HISTORY_CAPACITY,
+    ProjectMutationKind, RecordedProjectCommand, DEFAULT_PROJECT_HISTORY_CAPACITY,
+    MAX_PROJECT_HISTORY_CAPACITY,
 };
 use superi_engine::media::media_backend_registry;
 use superi_engine::resources::{
@@ -20,7 +22,7 @@ use superi_project::document::{ProjectDocument, ProjectGraph, ProjectSnapshot};
 use superi_project::media::{
     PortableRelativePath, ProjectMediaCommand, ProjectMediaCommandResult, ReferencedMediaPath,
 };
-use superi_project::ProjectDatabase;
+use superi_project::{ProjectCommandRecordDraft, ProjectCommandRecordKind, ProjectDatabase};
 use superi_timeline::compile::{TimelineGraphOrigin, TimelineGraphValue};
 use superi_timeline::model::{
     Clip, ClipSource, EditorialObjectId, EditorialProject, LinkedMediaReference, Timeline, Track,
@@ -151,6 +153,95 @@ fn compiled_clip_name(snapshot: &ProjectSnapshot) -> String {
             _ => None,
         })
         .unwrap()
+}
+
+fn record_draft(
+    transaction_id: &str,
+    expected_revision: u64,
+    kind: ProjectCommandRecordKind,
+) -> ProjectCommandRecordDraft {
+    ProjectCommandRecordDraft::from_serialized_request(
+        transaction_id,
+        "superi.project.command.execute",
+        SemanticVersion::new(1, 1, 0),
+        kind,
+        expected_revision,
+        b"{}",
+    )
+    .unwrap()
+}
+
+#[test]
+fn recorded_execution_commits_log_and_authored_state_as_one_unit() {
+    let mut history = ProjectCommandHistory::new(document());
+    let inspected = history
+        .execute_recorded(
+            RecordedProjectCommand::inspect(
+                1,
+                record_draft("recorded-inspect", 1, ProjectCommandRecordKind::Inspect),
+            )
+            .unwrap(),
+            7,
+        )
+        .unwrap();
+    assert!(!inspected.authored_state_changed());
+    assert_eq!(inspected.state().snapshot().revision(), 1);
+    assert_eq!(
+        inspected.state().snapshot().command_log().latest_sequence(),
+        1
+    );
+    assert_eq!(inspected.command_record().unwrap().command_sequence(), 7);
+
+    let before_stale = history.state();
+    let stale = history
+        .execute_recorded(
+            RecordedProjectCommand::inspect(
+                0,
+                record_draft("stale", 0, ProjectCommandRecordKind::Inspect),
+            )
+            .unwrap(),
+            8,
+        )
+        .unwrap_err();
+    assert_eq!(stale.category(), ErrorCategory::Conflict);
+    assert_eq!(history.state(), before_stale);
+
+    let applied = history
+        .execute_recorded(
+            RecordedProjectCommand::history(
+                ProjectHistoryCommand::apply(
+                    1,
+                    ProjectMutation::media(ProjectMediaCommand::mark_missing(MEDIA)),
+                ),
+                record_draft("recorded-apply", 1, ProjectCommandRecordKind::Apply),
+            )
+            .unwrap(),
+            8,
+        )
+        .unwrap();
+    assert!(applied.authored_state_changed());
+    assert_eq!(applied.state().snapshot().revision(), 2);
+    assert_eq!(
+        applied.state().snapshot().command_log().latest_sequence(),
+        2
+    );
+
+    let no_op = history
+        .execute_recorded(
+            RecordedProjectCommand::history(
+                ProjectHistoryCommand::apply(
+                    2,
+                    ProjectMutation::media(ProjectMediaCommand::mark_missing(MEDIA)),
+                ),
+                record_draft("recorded-no-op", 2, ProjectCommandRecordKind::Apply),
+            )
+            .unwrap(),
+            9,
+        )
+        .unwrap();
+    assert!(!no_op.authored_state_changed());
+    assert_eq!(no_op.state().snapshot().revision(), 2);
+    assert_eq!(no_op.state().snapshot().command_log().latest_sequence(), 3);
 }
 
 #[test]

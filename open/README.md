@@ -55,6 +55,12 @@ conflict visibility, typed traces, and normal project durability. See
 `../docs/checkpoints/P2.W07.C022.md` for the language, bounds, failure semantics, and complete source
 example.
 
+Successful generic project commands also append one bounded durable command record. Inspect the log
+through `superi.project.command_log.get`, the matching `superi-json` step, local JSON-RPC automation,
+or `superi-cli project command-log`; replayable detail reauthorizes every retained original request.
+See `../docs/checkpoints/P2.W07.C025.md` for atomicity, persistence, retention, cursor, and recovery
+guarantees.
+
 ## The rules that govern this tree
 
 - **Offline law** (`../docs/architecture.md`): no network for core functionality, ever.

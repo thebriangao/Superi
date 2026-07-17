@@ -2,7 +2,7 @@
 module_id: superi-cli
 source_paths:
   - open/crates/superi-cli
-source_hash: 7ca8f9864e08d558c496188cb9ed3893662e4d0d6087e52c940692f917936655
+source_hash: d2726167a826fedbbebaa6fd1d03aa5c8e18aa37a36ce87172c99ca8b19aace4
 source_files: 10
 mapped_at_commit: working-tree
 ---
@@ -10,7 +10,7 @@ mapped_at_commit: working-tree
 ## Purpose and ownership
 
 `superi-cli` is the workspace's headless public API and durable local project consumer. It owns
-strict project, media, timeline, render, inspect, validate, recovery, and JSON-RPC automation
+strict project, command-log, media, timeline, render, inspect, validate, recovery, and JSON-RPC automation
 workflows plus the normalized process contract for `superi.slice.canonical.v1`. The local workflows
 retain filesystem paths as operating-system values, read bounded JSON from a non-symlink file or
 one explicit stdin source, inject a deny-by-default permission context, and emit success only after
@@ -73,11 +73,12 @@ production owner is explicit in stage diagnostics and the artifact name.
   exits with its exact status.
 - `open/crates/superi-cli/src/project_workflows.rs`: Implements repeated-option rejection,
   operating-system path retention, bounded strict JSON and JSONL input, non-symlink policy loading,
-  deny-all default authority, the complete durable local command grammar, domain filtering through
-  the API host, compact one-value output, and per-request flushed JSON-RPC automation.
+  deny-all default authority, the complete durable local command grammar, typed command-log cursor
+  and detail parsing, domain filtering through the API host, compact one-value output, and
+  per-request flushed JSON-RPC automation.
 - `open/crates/superi-cli/tests/api_schema_cli_contract.rs`: Proves deterministic exact schema
   discovery output, catalog and primitive identity, all seven schema categories, exact current counts
-  and method names including the generic project and local script commands, asynchronous job query
+  and method names including the generic project, command-log query, and local script commands, asynchronous job query
   and controls, complete editor-state discovery, event subscription open, close, and poll, and API
   and project version negotiation, plus extension discovery and its permission-free classification,
   the permission vocabulary and per-method metadata, help coverage, and invalid usage status.
@@ -92,6 +93,7 @@ production owner is explicit in stage diagnostics and the artifact name.
 - `open/crates/superi-cli/tests/project_workflows_cli_contract.rs`: Proves every top-level workflow
   family through the real process, no-clobber create, generic and domain-filtered dispatch, durable
   render configuration, coherent render and editor inspection, validation, copy, backup, recovery,
+  durable inspect and no-op records, command-log metadata and replay through process reopen,
   JSON-RPC ID echo and response flushing before later failure, reopen equality, strict parser
   failures, deny-by-default permissions, and path-redacted error context.
 
@@ -122,6 +124,7 @@ Its durable local project surface is:
 superi-cli project create --project <PROJECT> --request <JSON_OR_->
 superi-cli project execute --project <PROJECT> --request <JSON_OR_-> [--permissions <JSON>]
 superi-cli project inspect --project <PROJECT>
+superi-cli project command-log --project <PROJECT> --after-sequence <U64> --limit <U32> --detail <metadata|replayable> [--permissions <JSON>]
 superi-cli project save-copy --project <PROJECT> --destination <PROJECT> --collision <require-absent|replace-existing>
 superi-cli project backup --project <PROJECT> --destination <PROJECT>
 superi-cli project recovery <get|compare|restore|dismiss> --project <PROJECT> --recovery-root <DIRECTORY> --request <JSON_OR_-> [--permissions <JSON>]
@@ -142,8 +145,8 @@ file containing a canonical principal and typed rules; omitting it denies all pr
 The policy file cannot use stdin, preventing two consumers from racing the same byte stream.
 
 Schema discovery success prints exactly one strict `PublicApiSchemaSnapshot` JSON value containing
-catalog schema `1.4.0`, stable primitive revision 1, JSON-RPC `2.0`, 16 commands, 13 queries,
-nine events, 12 resources, one error schema, one capability schema, and one permission schema in
+catalog schema `1.4.0`, stable primitive revision 1, JSON-RPC `2.0`, 16 commands, 14 queries,
+nine events, 13 resources, one error schema, one capability schema, and one permission schema in
 canonical order. Every method carries its permission mode and possible kinds. Discovery starts no
 engine, routes no operation, and owns no transport, permission authority, or registry state.
 
@@ -171,8 +174,8 @@ strict options plus bounded JSON, JSONL, and permission policy
   -> superi-api LocalProjectHost
   -> complete ProjectDatabase load
   -> scoped EngineControl and existing typed API facade
-  -> canonical result plus correlated replacement event
-  -> durable replace, copy, backup, or recovery publication
+  -> canonical result plus correlated replacement event or typed command-log query result
+  -> durable replace for every recorded command, copy, backup, or recovery publication
   -> compact stdout response
 ```
 
@@ -407,7 +410,7 @@ application session, UI rendering, endpoint polling, or long-session recovery.
 
 Two API schema process contracts prove deterministic semantics across separate invocations, exact
 catalog, primitive, and JSON-RPC identity, all seven schema sections, exact current counts and method
-names including the generic editor, `superi.project.script.run`, and
+names including the generic editor, `superi.project.command_log.get`, `superi.project.script.run`, and
 `superi.api.version.negotiate` registrations, every asynchronous job query and control,
 `superi.editor.state.get`, `superi.extensions.get`, `superi.extensions.changed`, the extension
 replacement resource, event subscription open, close, and poll, the complete permission vocabulary,
@@ -416,7 +419,8 @@ They do not prove method routing, wire transport, event delivery, host policy pe
 execution, scripting, or broad CLI parity.
 
 Two durable workflow process contracts exercise every new top-level family. They prove real
-no-clobber creation, complete inspect, generic project query, timeline no-op, media partition
+no-clobber creation, complete inspect, generic project query, durable inspect and timeline no-op
+records, permission-checked command-log replay, media partition
 rejection, durable render configuration and coherent inspection, editor inspection, JSON-RPC ID
 echo, exact digest-bound `superi-json` routing, in-order response flushing before a later stale
 failure, project validation, copy, backup, recovery discovery, schema and validation aliases,
@@ -435,10 +439,11 @@ limitation is intentional: six stages model typed boundaries without production 
 fixture payload is digest-validated but its decoded traits are reported as expected contract values
 because the current media stage does not open it.
 
-Project, media, timeline, render settings, inspect, validate, recovery, copy, backup, and narrow
+Project, command-log, media, timeline, render settings, inspect, validate, recovery, copy, backup, and narrow
 JSON-RPC automation workflows are real and reopen-tested. Session undo and redo history remains
 process-local by engine design, so separate one-shot invocations durably retain the selected
-snapshot but do not claim a persisted command journal. Render submission remains absent because the
+snapshot and bounded generic command records but do not claim persisted undo or redo branches.
+Render submission remains absent because the
 current public boundary has no prepared executor, container muxer, or publication owner.
 
 Schema discovery now exposes the stable asynchronous job catalog, but the CLI intentionally has no
@@ -502,6 +507,9 @@ before durable publication. Keep media, timeline, and render partitions fail clo
 version and IDs exact, flush each success before advancing, preserve earlier durable work when a
 later line fails, and redact path-shaped diagnostic context. Add a new command family only through
 an existing typed public owner and real reopen proof.
+Keep `project command-log` delegated to `LocalProjectHost` and the public cursor query. Never read
+SQLite directly, decode retained request bytes in the CLI, bypass replay authorization, or treat
+command records as persisted undo and redo state.
 Keep both hosted build jobs
 synchronized with the locked fixture and normalized slice commands. Keep every mutation behind the
 typed transaction helper and preserve exact result and event agreement. Keep stage probes around

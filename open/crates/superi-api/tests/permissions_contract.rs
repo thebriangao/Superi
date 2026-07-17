@@ -7,7 +7,10 @@ use sha2::{Digest, Sha256};
 use superi_api::commands::{
     ApiCommand, CancelAsyncJob, ExecuteAudioAutomationTransaction, ExecuteScenarioAction,
 };
-use superi_api::editor::{ExecuteProjectCommand, ProjectEditorApi};
+use superi_api::editor::{
+    ExecuteProjectCommand, GetProjectCommandLog, GetProjectCommandLogResult,
+    ProjectCommandLogDetail, ProjectEditorApi,
+};
 use superi_api::permissions::{
     ApiDestructiveOperation, ApiFilesystemAccess, ApiFilesystemPath, ApiFilesystemPlatform,
     ApiFilesystemScope, ApiPermissionContext, ApiPermissionEffect, ApiPermissionKind,
@@ -367,6 +370,75 @@ fn denied_plugin_mutation_preserves_project_state_sequence_and_events() {
         1
     );
     assert_eq!(allowed_api.drain_events().unwrap().len(), 1);
+}
+
+#[test]
+fn command_log_metadata_is_safe_and_replay_detail_reauthorizes_the_original_request() {
+    let _domain = ExecutionDomain::EngineControl.enter_current().unwrap();
+    let mut dispatcher = EngineCommandDispatcher::new().unwrap();
+    dispatcher
+        .attach_project(
+            empty_project_document(PROJECT, ROOT, Timebase::integer(24).unwrap()).unwrap(),
+        )
+        .unwrap();
+    let permissions = Arc::new(context([
+        ApiPermissionRule::plugin(
+            ApiPermissionEffect::Allow,
+            ApiPluginOperation::ManageState,
+            ApiPluginScope::exact("example.permissioned").unwrap(),
+        )
+        .unwrap(),
+        ApiPermissionRule::plugin(
+            ApiPermissionEffect::Allow,
+            ApiPluginOperation::ManageLifecycle,
+            ApiPluginScope::exact("example.permissioned").unwrap(),
+        )
+        .unwrap(),
+        ApiPermissionRule::plugin_delegation(
+            ApiPermissionEffect::Allow,
+            ApiPluginScope::exact("example.permissioned").unwrap(),
+            ["project.read"],
+        )
+        .unwrap(),
+    ]));
+    let mut recording_api =
+        ProjectEditorApi::new_with_permissions(dispatcher, permissions).unwrap();
+    recording_api
+        .execute(extension_upsert("recorded-protected-extension"))
+        .unwrap();
+    let recorded = recording_api.project_snapshot().unwrap();
+
+    let mut database = superi_engine::editor::ProjectDatabase::memory().unwrap();
+    database.replace(&recorded).unwrap();
+    let document = database.load().unwrap();
+    let mut dispatcher = EngineCommandDispatcher::new().unwrap();
+    dispatcher.attach_project(document).unwrap();
+    let mut denied_api = ProjectEditorApi::new(dispatcher).unwrap();
+
+    let metadata = denied_api
+        .execute(GetProjectCommandLog::new(
+            0,
+            16,
+            ProjectCommandLogDetail::Metadata,
+        ))
+        .unwrap();
+    let GetProjectCommandLogResult::Records(metadata) = metadata else {
+        panic!("the retained first record must not require a resync");
+    };
+    assert_eq!(metadata.records().len(), 1);
+    assert!(metadata.records()[0].replay_request().is_none());
+
+    let before = denied_api.project_snapshot().unwrap();
+    let denied = denied_api
+        .execute(GetProjectCommandLog::new(
+            0,
+            16,
+            ProjectCommandLogDetail::Replayable,
+        ))
+        .unwrap_err();
+    assert_eq!(denied.category(), ErrorCategory::PermissionDenied);
+    assert_eq!(denied_api.project_snapshot().unwrap(), before);
+    assert!(denied_api.drain_events().unwrap().is_empty());
 }
 
 #[test]

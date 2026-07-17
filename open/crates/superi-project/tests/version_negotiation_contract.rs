@@ -31,6 +31,7 @@ fn project_format_registry_is_complete_and_authoritative() {
             (2, "1.1.0".to_owned()),
             (3, "1.2.0".to_owned()),
             (4, "1.3.0".to_owned()),
+            (5, "1.4.0".to_owned()),
         ]
     );
     assert_eq!(support.current().schema_revision(), PROJECT_SCHEMA_REVISION);
@@ -41,9 +42,9 @@ fn project_negotiation_distinguishes_current_migration_future_and_invalid_inputs
     let current = negotiate_project_format(ProjectFormatIdentity::new(
         PROJECT_APPLICATION_ID,
         PROJECT_FORMAT,
-        SemanticVersion::new(1, 3, 0),
+        SemanticVersion::new(1, 4, 0),
         STABLE_PRIMITIVE_SCHEMA_REVISION,
-        4,
+        5,
     ));
     assert_eq!(current.disposition(), ProjectVersionDisposition::Current);
     assert!(current.reasons().is_empty());
@@ -70,7 +71,7 @@ fn project_negotiation_distinguishes_current_migration_future_and_invalid_inputs
             .iter()
             .map(|release| release.schema_revision())
             .collect::<Vec<_>>(),
-        vec![2, 3, 4]
+        vec![2, 3, 4, 5]
     );
 
     let future = negotiate_project_format(ProjectFormatIdentity::new(
@@ -112,9 +113,9 @@ fn project_negotiation_distinguishes_current_migration_future_and_invalid_inputs
     let foreign = negotiate_project_format(ProjectFormatIdentity::new(
         7,
         "other.project",
-        SemanticVersion::new(1, 3, 0),
+        SemanticVersion::new(1, 4, 0),
         STABLE_PRIMITIVE_SCHEMA_REVISION,
-        4,
+        5,
     ));
     assert_eq!(
         foreign.disposition(),

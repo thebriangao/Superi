@@ -30,7 +30,7 @@ pub trait ApiEvent {
     const SCHEMA_VERSION: SemanticVersion;
 }
 
-/// Full replacement generic project history state after one authored state change.
+/// Full replacement generic project history state after one recorded command.
 #[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -39,6 +39,7 @@ pub struct ProjectStateChanged {
     command_sequence: u64,
     transaction_id: String,
     project_revision: u64,
+    command_log_sequence: u64,
     state: ProjectHistorySnapshot,
     evidence: ProjectCommandEvidence,
 }
@@ -49,6 +50,7 @@ impl ProjectStateChanged {
         command_sequence: u64,
         transaction_id: String,
         project_revision: u64,
+        command_log_sequence: u64,
         state: ProjectHistorySnapshot,
         evidence: ProjectCommandEvidence,
     ) -> Self {
@@ -57,6 +59,7 @@ impl ProjectStateChanged {
             command_sequence,
             transaction_id,
             project_revision,
+            command_log_sequence,
             state,
             evidence,
         }
@@ -80,6 +83,11 @@ impl ProjectStateChanged {
     #[must_use]
     pub const fn project_revision(&self) -> u64 {
         self.project_revision
+    }
+
+    #[must_use]
+    pub const fn command_log_sequence(&self) -> u64 {
+        self.command_log_sequence
     }
 
     #[must_use]

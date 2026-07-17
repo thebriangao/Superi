@@ -6,6 +6,10 @@
 use std::collections::VecDeque;
 
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
+use superi_project::command_log::{
+    ProjectCommandRecord, ProjectCommandRecordDraft, ProjectCommandRecordKind,
+};
+use superi_project::diagnostics::ProjectDiagnostics;
 use superi_project::document::{ProjectDocument, ProjectSnapshot};
 use superi_project::extensions::{
     ProjectExtensionCommand, ProjectExtensionCommandResult, ProjectExtensionOperation,
@@ -32,7 +36,7 @@ struct HistoryEntry<S, M> {
 }
 
 /// Shared bounded storage for immutable before and after states.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct SnapshotHistory<S, M> {
     capacity: usize,
     undo: VecDeque<HistoryEntry<S, M>>,
@@ -240,6 +244,61 @@ pub struct ProjectHistoryCommand {
     action: ProjectHistoryAction,
 }
 
+/// One public-surface history or inspection command paired with durable request evidence.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecordedProjectCommand {
+    command: Option<ProjectHistoryCommand>,
+    record: ProjectCommandRecordDraft,
+}
+
+impl RecordedProjectCommand {
+    /// Pairs one mutation, undo, or redo command with its exact public request evidence.
+    pub fn history(
+        command: ProjectHistoryCommand,
+        record: ProjectCommandRecordDraft,
+    ) -> Result<Self> {
+        if command.expected_revision() != record.expected_project_revision()
+            || !matches!(
+                (command.action(), record.command_kind()),
+                (
+                    ProjectHistoryAction::Apply(_),
+                    ProjectCommandRecordKind::Apply
+                ) | (ProjectHistoryAction::Undo, ProjectCommandRecordKind::Undo)
+                    | (ProjectHistoryAction::Redo, ProjectCommandRecordKind::Redo)
+            )
+        {
+            return Err(history_error(
+                ErrorCategory::InvalidInput,
+                Recoverability::UserCorrectable,
+                "create_recorded_project_command",
+                "recorded project command evidence does not match its history operation",
+            ));
+        }
+        Ok(Self {
+            command: Some(command),
+            record,
+        })
+    }
+
+    /// Pairs a revision-fenced inspection with exact public request evidence.
+    pub fn inspect(expected_revision: u64, record: ProjectCommandRecordDraft) -> Result<Self> {
+        if expected_revision != record.expected_project_revision()
+            || record.command_kind() != ProjectCommandRecordKind::Inspect
+        {
+            return Err(history_error(
+                ErrorCategory::InvalidInput,
+                Recoverability::UserCorrectable,
+                "create_recorded_project_inspection",
+                "recorded project command evidence does not match its inspection fence",
+            ));
+        }
+        Ok(Self {
+            command: None,
+            record,
+        })
+    }
+}
+
 impl ProjectHistoryCommand {
     /// Creates an authored mutation command.
     #[must_use]
@@ -365,6 +424,7 @@ pub struct ProjectHistoryOutcome {
     state: ProjectHistoryState,
     action_result: Option<ProjectHistoryActionResult>,
     authored_state_changed: bool,
+    command_record: Option<ProjectCommandRecord>,
 }
 
 impl ProjectHistoryOutcome {
@@ -385,10 +445,16 @@ impl ProjectHistoryOutcome {
     pub const fn authored_state_changed(&self) -> bool {
         self.authored_state_changed
     }
+
+    /// Returns the durable command record for stable-surface execution.
+    #[must_use]
+    pub const fn command_record(&self) -> Option<&ProjectCommandRecord> {
+        self.command_record.as_ref()
+    }
 }
 
 /// Exclusive mutable owner of one project document and its session history.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ProjectCommandHistory {
     document: ProjectDocument,
     history: SnapshotHistory<ProjectSnapshot, ProjectMutationKind>,
@@ -433,6 +499,7 @@ impl ProjectCommandHistory {
             state: self.state(),
             action_result: None,
             authored_state_changed: false,
+            command_record: None,
         }
     }
 
@@ -499,6 +566,46 @@ impl ProjectCommandHistory {
         }
     }
 
+    /// Atomically executes and records one successful stable-surface command.
+    pub fn execute_recorded(
+        &mut self,
+        recorded: RecordedProjectCommand,
+        command_sequence: u64,
+    ) -> Result<ProjectHistoryOutcome> {
+        let mut candidate = self.clone();
+        let before = candidate.document.snapshot();
+        let before_hash = ProjectDiagnostics::from_snapshot(&before)?
+            .content_hash()
+            .into_bytes();
+        let mut outcome = match recorded.command {
+            Some(command) => candidate.execute(command)?,
+            None => {
+                require_revision(
+                    recorded.record.expected_project_revision(),
+                    candidate.document.revision(),
+                )?;
+                candidate.inspect()
+            }
+        };
+        let after = candidate.document.snapshot();
+        let after_hash = ProjectDiagnostics::from_snapshot(&after)?
+            .content_hash()
+            .into_bytes();
+        let command_record = candidate.document.append_command_record(
+            recorded.record,
+            command_sequence,
+            before.revision(),
+            after.revision(),
+            before_hash,
+            after_hash,
+            outcome.authored_state_changed,
+        )?;
+        outcome.state = candidate.state();
+        outcome.command_record = Some(command_record);
+        *self = candidate;
+        Ok(outcome)
+    }
+
     fn apply(
         &mut self,
         expected_revision: u64,
@@ -548,6 +655,7 @@ impl ProjectCommandHistory {
             state: self.state(),
             action_result: Some(action_result),
             authored_state_changed,
+            command_record: None,
         })
     }
 
@@ -569,6 +677,7 @@ impl ProjectCommandHistory {
             state: self.state(),
             action_result: Some(ProjectHistoryActionResult::Undone(kind)),
             authored_state_changed: true,
+            command_record: None,
         })
     }
 
@@ -590,6 +699,7 @@ impl ProjectCommandHistory {
             state: self.state(),
             action_result: Some(ProjectHistoryActionResult::Redone(kind)),
             authored_state_changed: true,
+            command_record: None,
         })
     }
 }

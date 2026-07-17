@@ -10,16 +10,17 @@ pub const PROJECT_APPLICATION_ID: u32 = 0x5355_5052;
 /// Oldest project schema with a registered reader and forward migration.
 pub const PROJECT_OLDEST_SUPPORTED_SCHEMA_REVISION: u32 = 0;
 /// Current durable project schema revision.
-pub const PROJECT_SCHEMA_REVISION: u32 = 4;
+pub const PROJECT_SCHEMA_REVISION: u32 = 5;
 /// Stable text identity for the durable project format.
 pub const PROJECT_FORMAT: &str = "superi.project";
 /// Current semantic project format version.
-pub const PROJECT_FORMAT_VERSION: &str = "1.3.0";
+pub const PROJECT_FORMAT_VERSION: &str = "1.4.0";
 
 pub(crate) const PROJECT_FORMAT_VERSION_SCHEMA_ZERO: &str = "0.9.0";
 pub(crate) const PROJECT_FORMAT_VERSION_SCHEMA_ONE: &str = "1.0.0";
 pub(crate) const PROJECT_FORMAT_VERSION_SCHEMA_TWO: &str = "1.1.0";
 pub(crate) const PROJECT_FORMAT_VERSION_SCHEMA_THREE: &str = "1.2.0";
+pub(crate) const PROJECT_FORMAT_VERSION_SCHEMA_FOUR: &str = "1.3.0";
 
 /// One released schema and semantic project format pair.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -49,12 +50,13 @@ impl ProjectFormatRelease {
     }
 }
 
-const PROJECT_FORMAT_RELEASES: [ProjectFormatRelease; 5] = [
+const PROJECT_FORMAT_RELEASES: [ProjectFormatRelease; 6] = [
     ProjectFormatRelease::new(0, PROJECT_FORMAT_VERSION_SCHEMA_ZERO),
     ProjectFormatRelease::new(1, PROJECT_FORMAT_VERSION_SCHEMA_ONE),
     ProjectFormatRelease::new(2, PROJECT_FORMAT_VERSION_SCHEMA_TWO),
     ProjectFormatRelease::new(3, PROJECT_FORMAT_VERSION_SCHEMA_THREE),
-    ProjectFormatRelease::new(4, PROJECT_FORMAT_VERSION),
+    ProjectFormatRelease::new(4, PROJECT_FORMAT_VERSION_SCHEMA_FOUR),
+    ProjectFormatRelease::new(5, PROJECT_FORMAT_VERSION),
 ];
 
 /// Complete compatibility support published by this application build.

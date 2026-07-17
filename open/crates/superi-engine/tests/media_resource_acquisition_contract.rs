@@ -471,6 +471,8 @@ fn downgrade_project_fixture_to_schema_zero(path: &Path) {
     connection
         .execute_batch(
             "BEGIN IMMEDIATE;
+             DROP TABLE command_log_records;
+             DROP TABLE command_log_metadata;
              DROP TABLE extension_records;
              DROP TABLE settings_component;
              ALTER TABLE project_metadata RENAME TO current_project_metadata;

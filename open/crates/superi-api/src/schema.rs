@@ -24,7 +24,9 @@ use crate::commands::{
     GetProjectRecovery, GetProjectSettings, PauseAsyncJob, RemoveAsyncJob, RestoreProjectRecovery,
     ResumeAsyncJob, RetryAsyncJob,
 };
-use crate::editor::{ExecuteProjectCommand, ProjectHistorySnapshot};
+use crate::editor::{
+    ExecuteProjectCommand, GetProjectCommandLog, ProjectCommandLogBatch, ProjectHistorySnapshot,
+};
 use crate::event_stream::{
     CloseEventSubscription, EventStreamSnapshot, OpenEventSubscription, PollEvents,
 };
@@ -1483,6 +1485,7 @@ macro_rules! for_each_public_method {
         $callback::<RemoveAsyncJob>($($argument),+)?;
         $callback::<GetProjectRecovery>($($argument),+)?;
         $callback::<ExecuteProjectCommand>($($argument),+)?;
+        $callback::<GetProjectCommandLog>($($argument),+)?;
         $callback::<CompareProjectRecovery>($($argument),+)?;
         $callback::<RestoreProjectRecovery>($($argument),+)?;
         $callback::<DismissProjectRecovery>($($argument),+)?;
@@ -1523,6 +1526,7 @@ macro_rules! for_each_public_event {
 macro_rules! for_each_public_resource {
     ($callback:ident, $argument:expr $(,)?) => {
         $callback::<ProjectHistorySnapshot>($argument)?;
+        $callback::<ProjectCommandLogBatch>($argument)?;
         $callback::<AsyncJobsSnapshot>($argument)?;
         $callback::<ProjectRecoverySnapshot>($argument)?;
         $callback::<AudioAutomationSnapshot>($argument)?;
