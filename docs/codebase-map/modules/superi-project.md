@@ -80,8 +80,9 @@ family order followed by stable extension and graph identity order.
 
 This module does not own command-history storage, branching, or selection policy. It also does not
 own persisted command logs, engine restoration transactions, runtime readiness, plugin process
-state, or direct file commands in the public API and CLI.
-Those remain assigned to their engine, API, or later project checkpoints.
+state, or API and CLI adaptation. Engine retains history and dispatch, while the API-owned local
+host and CLI now compose this crate's existing database and file commands without creating another
+project authority.
 
 ## Source inventory
 
@@ -630,8 +631,10 @@ and acquires the exact reachable source and decoder set before one resources pub
   dispatcher commands. Its local scripting contract uses this crate as a test-only downstream
   proof for SQLite reload, semantic integrity, media identity, autosave discovery, comparison, and
   recovery restoration; production script mutation still reaches project only through engine and
-  `ProjectEditorApi`. API and CLI do not yet expose database file commands. Later file commands must
-  wrap this owner instead of creating another project or database authority.
+  `ProjectEditorApi`. Its local project host reaches the curated engine re-export seam for database
+  open, creation, publication, copy, backup, recovery, and validation, then supplies durable file
+  commands to `superi-cli` without a direct API-to-project dependency. Future adapters must continue
+  to wrap this owner instead of creating another project or database authority.
 - Editor, script, and headless callers can consume the same project-owned integrity report directly.
   No API, CLI, engine, transport, or GUI adapter is added by this checkpoint.
 
@@ -863,6 +866,12 @@ schema and semantic format pairs, stable application, text, and primitive identi
 registered migration outcomes, the exact schema 1 to 4 successor path, future schema, semantic, and
 primitive reasons, inconsistent schema-format rejection, and foreign identity classification.
 
+The downstream local project host and CLI contracts use the same database and save authority for
+no-clobber creation, complete reopen, mutation publication, copy, backup, recovery, validation, and
+bounded automation. They prove successful authored changes reopen exactly, rejected or rolled-back
+commands leave project bytes and meaning unchanged, and media availability changes preserve source,
+record, timing, identity, grouping, linking, targeting, and synchronization intent.
+
 Timeline's serialization contract independently round trips a real compiled multicam graph through
 the public graph codec and rejects unknown `TimelineGraphValue` fields and tags. The engine resource
 contract opens an exact schema-0 fixture through the public database owner and proves that the
@@ -900,9 +909,11 @@ typed component evidence over canonical prepared state, and the engine dispatche
 without events or history mutation.
 
 Additional schema revisions beyond 4, persisted history or command logs, authenticated integrity,
-public database adaptation, and CLI remain absent. This crate has no script interpreter or source
-loader; the supported API-local runtime above it preserves project meaning through the existing
-engine command, snapshot, persistence, integrity, autosave, and recovery owners.
+and transport-catalog database adaptation remain absent. The API-owned local host and CLI now
+provide durable process workflows through this crate's existing authority. This crate has no script
+interpreter or source loader; the supported API-local runtime above it preserves project meaning
+through the existing engine command, snapshot, persistence, integrity, autosave, and recovery
+owners.
 Autosave policy is process-local and recovery roots are caller selected; no background timer,
 persistent scheduler, wire adapter, runtime registry, plugin worker, or automatic recovery choice
 is claimed. Exact schemas 0, 1, 2, and 3 are the supported predecessors. Future, older unknown, or
@@ -965,6 +976,9 @@ engine consumer together.
 Keep scripted project consumers on the same public command, immutable snapshot, canonical codec,
 database, integrity, autosave, and recovery paths. Never add a script-specific project schema,
 media identity, conflict policy, file format, hash, or recovery store.
+Keep local API and CLI consumers on the same database, save, recovery, integrity, and immutable
+snapshot authorities. Do not expose a second database handle, publication algorithm, path identity,
+or collision policy above this crate.
 
 Refresh this map after any project source, manifest, public consumer, schema, or test change. Reread
 every changed file and relevant component interface through EOF, reconcile prose before recomputing

@@ -2,8 +2,8 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: a127af8011afcc0f05a70a2fd68a9f1f551536253301960c3ab3ba2f1de4aa30
-source_files: 37
+source_hash: 7dca3a965039e4caaeaaa0038c23c65f95a11b03aaa2c01f3900498a97bd36cd
+source_files: 39
 mapped_at_commit: working-tree
 ---
 
@@ -30,8 +30,12 @@ The event stream adds API-owned registration, polling, backpressure, replay, and
 without duplicating engine event ownership. The local `superi-json` runtime validates exact
 digest-bound source, aggregates nested permission requirements, and interprets its closed step
 vocabulary only through the same project editor facade. Network transport, dynamic routing, push
-delivery, public job submission and typed job results, and project database file commands remain
-absent. The generic editor, scripting, and job facades project the engine's existing owners without duplicating
+delivery, public job submission, and typed job results remain absent. A new
+API-owned local project host composes production project database open, no-clobber creation, durable
+publication, copy, backup, recovery, editor state, settings, and generic authored commands through
+one scoped EngineControl dispatcher. Its strict JSON-RPC 2.0 automation adapter routes existing
+typed API methods and acknowledges each request only after durable publication. The generic editor,
+scripting, local project, and job facades project existing owners without duplicating authored
 state, history, scheduling, execution, or event ownership.
 The same canonical method, event, and resource registry now drives deterministic generated
 TypeScript declarations, strongly typed maps, JSON-RPC envelopes, and a transport-neutral client.
@@ -76,9 +80,15 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   and ordered engine event projection. It exposes result availability only as a Boolean and retains
   runtime executors and typed artifacts below the API boundary.
 - `open/crates/superi-api/src/lib.rs`: Exposes API, audio automation, command, event stream, event,
-  project editor, complete editor state, asynchronous jobs, version negotiation, permissions,
-  settings, project recovery, scenario, public schema, local scripting, validation, and version
-  modules, plus the feature-gated TypeScript renderer.
+  project editor, complete editor state, asynchronous jobs, local project hosting, version
+  negotiation, permissions, settings, project recovery, scenario, public schema, local scripting,
+  validation, and version modules, plus the feature-gated TypeScript renderer.
+- `open/crates/superi-api/src/local.rs`: Implements strict no-clobber project creation, complete
+  current-schema open and validation, scoped EngineControl dispatch, durable mutation publication,
+  copy, backup, recovery attachment, coherent render inspection, settings configuration, domain
+  filtering for media and timeline commands, and strict caller-correlated JSON-RPC automation over
+  existing public DTOs, including durable publication of committed `superi-json` script prefixes.
+  It owns path and acknowledgement ordering but no authored semantics.
 - `open/crates/superi-api/src/negotiation.rs`: Implements the permission-free stateless
   `superi.api.version.negotiate` query, strict bounded ascending client offers, highest common
   canonical SemVer and primitive selection, typed incompatibility dimensions, complete server
@@ -159,6 +169,11 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
 - `open/crates/superi-api/tests/integration_validation_contract.rs`: Covers strict versioned JSON,
   nested canonical introspection, exact startup, sleep, wake, and recovery action projection,
   coherent degraded workflow admission, and user-safe active failure state.
+- `open/crates/superi-api/tests/local_project_host_contract.rs`: Proves production no-clobber
+  creation, immediate inspectability, permission denial, compound rollback, durable media and
+  render mutation, no-op suppression, source, record, identity, grouping, linking, targeting, and
+  synchronization preservation, current-schema validation, copy, backup, recovery, JSON-RPC ID
+  correlation, and exact database reopen after acknowledged changes.
 - `open/crates/superi-api/tests/project_settings_contract.rs`: Covers the real public-to-engine-to-
   project settings path, strict values and transactions, full replacement events, exact project
   revision correlation, and permanent namespaced contracts.
@@ -371,6 +386,17 @@ manifest because clients reestablish it through open, close, and poll. Project h
 state correctly name their typed `Inspect` command paths; the other eight state resources name
 read-only queries.
 
+`LocalProjectHost` is the process-local persistence adapter consumed by `superi-cli`. Its strict
+creation request uses caller-supplied canonical project and root timeline IDs, names, and exact edit
+rate. It exposes complete editor, settings, render, validation, copy, backup, recovery, generic
+project, media-only, and timeline-only operations. Mutating calls load one complete project, execute
+through the existing facade inside scoped EngineControl, drain correlated events, publish the
+selected snapshot through `ProjectDatabase`, and only then return success. `LocalAutomationRequest`
+accepts JSON-RPC `2.0`, a string or integral numeric ID, one exact registered method name, and that
+method's strict existing params DTO. `LocalAutomationResponse` echoes the ID without coercion and
+contains the typed result. This local adapter is not a network server or a replacement public method
+catalog.
+
 ## Architecture and data flow
 
 Public schema discovery is entirely API-owned metadata over existing contracts:
@@ -386,9 +412,9 @@ GetPublicApiSchema
 
 The catalog does not inspect private engine enums or create runtime ownership. Existing mutating
 facades still dispatch to the canonical engine owners after permission authorization, while
-read-only facades retain their current projection paths. JSON-RPC envelope types can carry those
-typed values later without implementing method routing, network transport, push delivery,
-or authentication.
+read-only facades retain their current projection paths. JSON-RPC envelope types remain transport
+data rather than a server. The local project host routes only its explicit typed subset; network
+transport, push delivery, and authentication remain absent.
 
 Version negotiation is one stateless composition over immutable support contracts:
 
@@ -520,6 +546,28 @@ initial runtime state produces the same interpretation. The runtime does not eva
 load modules, open files, create a hidden transaction, rewrite project schemas, suppress inner
 events, or claim whole-script atomicity.
 
+The durable local process flow composes those facades without changing their contracts:
+
+```text
+strict CLI request or JSON-RPC line
+  -> LocalProjectHost opens and completely loads ProjectDatabase
+  -> scoped standalone EngineControl dispatcher attaches ProjectDocument
+  -> existing ProjectEditorApi, ProjectSettingsApi, or ProjectRecoveryApi
+  -> correlated typed result and replacement event
+  -> ProjectDatabase::replace or existing atomic save command when state changed
+  -> detached serializable response after durable publication
+```
+
+Creation starts from validated production project constructors in an in-memory database and uses
+no-clobber save-as, so failure never exposes a partially initialized destination. Copy and backup
+reuse existing save commands and collision rules. Render inspection obtains editor replacement state
+and settings from clones of the same loaded document revision. Media and timeline entry points
+accept only their existing action partitions, while generic automation retains the canonical public
+command schema and optimistic revisions. Project history remains session-local, and each one-shot
+operation persists only the selected project snapshot. One-shot recovery compare, restore, and
+dismiss calls rebuild the ephemeral recovery catalog first and privately drain that prerequisite
+replacement event, then return only events correlated to the caller's requested operation.
+
 Projection preserves stable core identifiers as strings, exact rational rates, named timeline and
 track identity, half-open ranges, full image-port graph topology, row-major binary64 mirror matrix,
 sampling and edge behavior, and original mutation revisions. Unknown future engine enum variants
@@ -630,21 +678,24 @@ messages, contexts, paths, and source chains never serialize.
   facade becomes another state owner.
 - `superi-media-io` and `superi-concurrency` are test dependencies for registry and EngineControl
   contracts. The feature-gated engine test-support seam exercises real project persistence,
-  integrity, media, autosave, and recovery owners for the scripting contract without adding any
-  direct API-to-project or API-to-timeline edge.
-- `superi-cli` is the first production Rust consumer of `PublicApiSchemaApi`, `ScenarioApi`, and
-  `IntegrationValidationApi`. Its schema process contract consumes the job registrations without
-  reconstructing the catalog or projecting engine state directly. Its scenario consumer binds one
-  exact read grant for the resolved canonical fixture path and no repository-wide authority. It does
-  not yet expose job control commands.
+  integrity, media, autosave, and recovery owners for the scripting and local-host contracts
+  without adding any direct API-to-project or API-to-timeline edge.
+- `superi-cli` consumes `PublicApiSchemaApi`, `ScenarioApi`, `IntegrationValidationApi`, and the
+  local project host. Its project workflows open, inspect, validate, mutate, copy, back up, and
+  recover durable files only through API-owned types and acknowledge JSON-RPC automation in input
+  order after publication. Its schema process contract consumes job registrations without
+  reconstructing the catalog or projecting engine state directly. Its canonical scenario consumer
+  binds one exact read grant for the resolved fixture path and no repository-wide authority. It
+  does not expose public job submission or a live queue host.
 - `superi-api-bindings` is the repository-only generator and drift-check consumer. The committed
   artifact is consumed by `ci/frontend-smoke` through strict TypeScript checking and a production
   Vite bundle.
 
 No network transport, application UI, shell source loader, extension host, or closed-tier client is
 present. The local script interpreter is an in-process public API consumer, not a process sandbox
-or general-purpose language runtime. The event stream is a transport-neutral in-process owner that a later server can
-expose, and the frontend smoke package is a real generated-contract consumer, not an application.
+or general-purpose language runtime. The local CLI host is a real filesystem and JSON-RPC process
+consumer. The event stream is a transport-neutral in-process owner that a later server can expose,
+and the frontend smoke package is a real generated-contract consumer, not an application.
 
 ## Invariants and operational boundaries
 
@@ -664,6 +715,18 @@ expose, and the frontend smoke package is a real generated-contract consumer, no
 - Permission denial advances no command sequence, project or subsystem revision, history, durable
   recovery file, or event stream. Safe errors omit filesystem targets, plugin identities, delegated
   capabilities, and policy rule contents.
+- Local project creation is no-clobber and never exposes an empty destination. Every local mutation
+  loads and validates complete current state, executes through an existing public facade, drains its
+  correlated event when required, and publishes the selected snapshot before returning success.
+- Media and timeline local entry points accept only nonempty apply commands from their exact action
+  partitions. Render configuration accepts only nonempty `superi.project.render.*` settings batches.
+- Local JSON-RPC automation requires version `2.0`, one string or integral numeric ID, a known exact
+  method, and that method's strict params DTO. Responses echo IDs without coercion. The CLI flushes
+  each success after durable publication and stops at the first failed line without rolling back an
+  earlier acknowledged request.
+- Local request and policy inputs are bounded non-symlink regular files or one explicit stdin
+  source. Host permission policy remains nonserializable at runtime, deny-all by default, and cannot
+  be supplied through the same stdin as a request.
 - Filesystem authorization is a logical public API boundary over typed lexical paths. Actual I/O
   owners must still confine handles, resolve symlink behavior, and apply platform sandbox policy.
 - TypeScript collection reuses those exact registration lists and validates method, event, and
@@ -875,8 +938,15 @@ prefix visibility, stopped suffix exclusion, and nested filesystem or plugin den
 first dispatch. They prove an in-process bounded local language, not arbitrary code execution,
 module loading, source-file ownership, an operating-system sandbox, or whole-script atomicity.
 
-These tests do not prove wire delivery ordering, UI integration, media decoding, graph
-pixel evaluation, native presentation, or runtime export publication.
+Two local project host contracts use real current-schema files and production constructors. They
+prove no-clobber creation, complete editor inspection, permission denial without publication,
+late compound rollback, durable media mutation, full linked and grouped timeline preservation,
+timeline no-op suppression, durable render settings, validation, copy, backup, real recovery
+discovery, comparison, restoration, and dismissal, and caller-correlated JSON-RPC automation after
+database reopen, including the exact digest-bound `superi.project.script.run` method.
+
+These tests do not prove network wire delivery, general-purpose language evaluation, UI integration,
+media decoding, graph pixel evaluation, native presentation, or runtime export publication.
 
 Three integration validation contracts prove schema `1.0.0`, the permanent method name, strict
 request and nested result decoding, canonical capability and health reuse, all six subsystem
@@ -922,9 +992,12 @@ clients a coherent adaptation view without adding mutation
 authority, and integration validation extends that same state with precise action and endpoint
 evidence. Project settings retain exact durable scalar meaning, and project recovery now exposes one
 complete strict discover, compare, restore, and dismiss surface without leaking file identity. The
-API still does not expose project file open or save, public job submission or typed results,
-network transport, dynamic routing, push delivery, persisted replay, authentication,
-operating-system sandboxing, script source loading, general-purpose code execution, or CLI editor execution.
+API still does not expose project file open or save through the transport catalog, and it still
+lacks public job submission or typed results, network transport, general dynamic routing, push
+delivery, persisted replay, authentication, operating-system sandboxing, or a scripting language
+runtime beyond the bounded `superi-json` interpreter. The API-owned local host now provides real
+project file and editor execution specifically to the CLI without registering new transport
+methods or exposing database handles.
 Host-injected authorization now covers every current
 caller-selected filesystem target, plugin state and delegation mutation, and destructive job,
 recovery, and automation operation before dispatch.
@@ -939,8 +1012,10 @@ The generic editor facade now reaches the engine's project command-history owner
 redo, inspection, semantic evidence, and correlated replacement events. It intentionally exposes
 minimum history replacement state beside the complete editor snapshot through the same sealed
 request handler. Local scripting now consumes that handler with a strict digest-bound command
-document and complete conflict trace. Project file commands, live wire routing, push delivery, and
-broader automation adaptation remain later checkpoints.
+document and complete conflict trace. The local host composes that facade with durable project
+files, recovery, settings, render inspection, action-domain filtering, and a narrow five-method
+JSON-RPC adapter. Live wire routing, push delivery, general-purpose language evaluation, and
+full-catalog automation routing remain later work.
 
 Asynchronous job control is a substantive strict projection over the canonical engine export queue.
 It keeps user-visible work responsive through nonblocking state replacement and cooperative
@@ -986,6 +1061,12 @@ variant must classify its permission mode and kinds, derive exact requirements b
 publish matching catalog metadata, prove denial leaves all owned state and events unchanged, and
 prove the authorized path retains parity. Keep lexical filesystem scopes honest about symlinks and
 require actual I/O owners to revalidate and contain operating-system access.
+Keep `LocalProjectHost` a narrow process adapter over existing facades and project publication. It
+must load complete state, preserve the API-to-engine-to-project dependency direction, publish before
+acknowledgement, keep action-family filters fail closed, and never invent render success, authored
+semantics, database schemas, history persistence, or broad permission grants. Keep JSON-RPC IDs
+exact, params typed, inputs bounded, policy files non-symlink, error contexts path-redacted, and
+automation acknowledgment flushed before the next independent request.
 Keep
 project setting keys and validation project-owned, resolve them only in engine, and retain the API's
 dependency on engine rather than adding a direct project edge. Engine command changes require

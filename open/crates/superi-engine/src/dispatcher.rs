@@ -807,6 +807,18 @@ pub struct EngineCommandDispatcher {
 }
 
 impl EngineCommandDispatcher {
+    /// Runs one bounded standalone operation with temporary EngineControl ownership.
+    ///
+    /// Headless API consumers use this seam to construct and fully consume one dispatcher without
+    /// importing the concurrency crate or retaining mutable engine state after the ownership guard
+    /// drops. The operation must return only detached results and immutable snapshots.
+    pub fn with_standalone_engine_control<T>(
+        operation: impl FnOnce(Self) -> Result<T>,
+    ) -> Result<T> {
+        let _domain = ExecutionDomain::EngineControl.enter_current()?;
+        operation(Self::new()?)
+    }
+
     /// Creates a coherent lifecycle-attached dispatcher on EngineControl.
     ///
     /// # Errors

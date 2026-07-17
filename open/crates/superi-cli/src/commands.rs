@@ -1,5 +1,6 @@
 //! Precise headless command surface for the canonical editorial slice.
 
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
@@ -11,6 +12,7 @@ use std::sync::Arc;
 use crate::instrumentation::{
     InstrumentationSummary, ProcessMemorySampler, StageInstrumentation, StageProbe,
 };
+use crate::project_workflows::{parse_workflow_command, run_workflow, WorkflowCommand};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -35,7 +37,7 @@ const MAX_PAYLOAD_BYTES: u64 = 64 * 1024 * 1024;
 const EXIT_INVALID_INPUT: i32 = 2;
 const EXIT_UNAVAILABLE: i32 = 3;
 const EXIT_STAGE_FAILURE: i32 = 4;
-const USAGE: &str = "Usage:\n  superi-cli api schema\n  superi-cli slice run --scenario superi.slice.canonical.v1 --artifact-dir <EMPTY_DIRECTORY> --report <REPORT_JSON>\n  superi-cli engine validate\n  superi-cli --help\n  superi-cli --version\n";
+const USAGE: &str = "Usage:\n  superi-cli api schema\n  superi-cli project create --project <PROJECT> --request <JSON_OR_->\n  superi-cli project execute --project <PROJECT> --request <JSON_OR_-> [--permissions <JSON>]\n  superi-cli project inspect --project <PROJECT>\n  superi-cli project save-copy --project <PROJECT> --destination <PROJECT> --collision <require-absent|replace-existing>\n  superi-cli project backup --project <PROJECT> --destination <PROJECT>\n  superi-cli project recovery <get|compare|restore|dismiss> --project <PROJECT> --recovery-root <DIRECTORY> --request <JSON_OR_-> [--permissions <JSON>]\n  superi-cli media execute --project <PROJECT> --request <JSON_OR_-> [--permissions <JSON>]\n  superi-cli timeline execute --project <PROJECT> --request <JSON_OR_-> [--permissions <JSON>]\n  superi-cli render inspect --project <PROJECT>\n  superi-cli render configure --project <PROJECT> --request <JSON_OR_->\n  superi-cli inspect <editor|api-schema> [--project <PROJECT>]\n  superi-cli validate <project|engine> [--project <PROJECT>]\n  superi-cli automation run --project <PROJECT> --input <JSONL_OR_-> [--permissions <JSON>]\n  superi-cli slice run --scenario superi.slice.canonical.v1 --artifact-dir <EMPTY_DIRECTORY> --report <REPORT_JSON>\n  superi-cli engine validate\n  superi-cli --help\n  superi-cli --version\n";
 const STUB_ARTIFACT_NAME: &str = "canonical.webm.contract-stub";
 static TEMPORARY_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -46,40 +48,51 @@ enum Command {
         report: PathBuf,
     },
     ValidateEngine,
+    Workflow(WorkflowCommand),
     Help,
     Version,
 }
 
-struct CliFailure {
+pub(crate) struct CliFailure {
     exit: i32,
     category: &'static str,
     recoverability: &'static str,
     stage_id: Option<&'static str>,
     message: String,
+    contexts: Vec<CliFailureContext>,
+}
+
+#[derive(Serialize)]
+struct CliFailureContext {
+    component: String,
+    operation: String,
+    fields: BTreeMap<String, String>,
 }
 
 impl CliFailure {
-    fn invalid(message: impl Into<String>) -> Self {
+    pub(crate) fn invalid(message: impl Into<String>) -> Self {
         Self {
             exit: EXIT_INVALID_INPUT,
             category: "invalid_input",
             recoverability: "user_correctable",
             stage_id: None,
             message: message.into(),
+            contexts: Vec::new(),
         }
     }
 
-    fn unavailable(stage_id: &'static str, message: impl Into<String>) -> Self {
+    pub(crate) fn unavailable(stage_id: &'static str, message: impl Into<String>) -> Self {
         Self {
             exit: EXIT_UNAVAILABLE,
             category: "unavailable",
             recoverability: "user_correctable",
             stage_id: Some(stage_id),
             message: message.into(),
+            contexts: Vec::new(),
         }
     }
 
-    fn stage(
+    pub(crate) fn stage(
         stage_id: &'static str,
         category: &'static str,
         recoverability: &'static str,
@@ -91,8 +104,72 @@ impl CliFailure {
             recoverability,
             stage_id: Some(stage_id),
             message: message.into(),
+            contexts: Vec::new(),
         }
     }
+
+    pub(crate) fn from_error(stage_id: &'static str, error: superi_core::error::Error) -> Self {
+        let contexts = safe_error_contexts(error.contexts());
+        let mut failure = if error.category() == superi_core::error::ErrorCategory::Unavailable {
+            Self {
+                exit: EXIT_UNAVAILABLE,
+                category: error.category().code(),
+                recoverability: error.recoverability().code(),
+                stage_id: Some(stage_id),
+                message: error.message().to_owned(),
+                contexts: Vec::new(),
+            }
+        } else {
+            Self::stage(
+                stage_id,
+                error.category().code(),
+                error.recoverability().code(),
+                error.message(),
+            )
+        };
+        failure.contexts = contexts;
+        failure
+    }
+
+    pub(crate) fn contextualize(mut self, context: impl AsRef<str>) -> Self {
+        self.message = format!("{}: {}", context.as_ref(), self.message);
+        self
+    }
+}
+
+fn safe_error_contexts(contexts: &[superi_core::error::ErrorContext]) -> Vec<CliFailureContext> {
+    contexts
+        .iter()
+        .rev()
+        .take(8)
+        .map(|context| CliFailureContext {
+            component: bounded_text(context.component(), 128),
+            operation: bounded_text(context.operation(), 128),
+            fields: context
+                .fields()
+                .iter()
+                .take(8)
+                .map(|(key, value)| {
+                    let lowered = key.to_ascii_lowercase();
+                    let sensitive = ["path", "target", "payload", "secret", "token"]
+                        .iter()
+                        .any(|term| lowered.contains(term));
+                    (
+                        bounded_text(key, 128),
+                        if sensitive {
+                            "[redacted]".to_owned()
+                        } else {
+                            bounded_text(value, 256)
+                        },
+                    )
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+fn bounded_text(value: &str, max_chars: usize) -> String {
+    value.chars().take(max_chars).collect()
 }
 
 #[derive(Serialize)]
@@ -220,10 +297,25 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
             }
             Err(failure) => emit_failure(failure),
         },
+        Command::Workflow(command) => match run_workflow(command) {
+            Ok(values) => {
+                for value in values {
+                    println!(
+                        "{}",
+                        serde_json::to_string(&value).expect("workflow result is serializable")
+                    );
+                }
+                0
+            }
+            Err(failure) => emit_failure(failure),
+        },
     }
 }
 
 fn parse_command(arguments: &[OsString]) -> Result<Command, CliFailure> {
+    if let Some(command) = parse_workflow_command(arguments)? {
+        return Ok(Command::Workflow(command));
+    }
     match arguments {
         [] => Ok(Command::Help),
         [argument] if argument == "--help" || argument == "help" => Ok(Command::Help),
@@ -251,12 +343,12 @@ fn parse_command(arguments: &[OsString]) -> Result<Command, CliFailure> {
             })
         }
         _ => Err(CliFailure::invalid(
-            "expected `api schema`, `engine validate`, the normalized `slice run` invocation, `--help`, or `--version`",
+            "unrecognized command; run `superi-cli --help` for the stable command surface",
         )),
     }
 }
 
-fn run_public_api_schema() -> Result<PublicApiSchemaSnapshot, CliFailure> {
+pub(crate) fn run_public_api_schema() -> Result<PublicApiSchemaSnapshot, CliFailure> {
     let api = PublicApiSchemaApi::new().map_err(|_| {
         CliFailure::stage(
             "api.schema",
@@ -268,7 +360,7 @@ fn run_public_api_schema() -> Result<PublicApiSchemaSnapshot, CliFailure> {
     Ok(api.execute(GetPublicApiSchema::new()).into_snapshot())
 }
 
-fn run_engine_validation(
+pub(crate) fn run_engine_validation(
 ) -> Result<superi_api::commands::GetEngineIntegrationValidationResult, CliFailure> {
     let api = IntegrationValidationApi::from_fresh_engine().map_err(|failure| {
         CliFailure::stage(
@@ -1362,6 +1454,10 @@ fn emit_failure(failure: CliFailure) -> i32 {
     });
     if let Some(stage_id) = failure.stage_id {
         value["stage_id"] = Value::String(stage_id.to_owned());
+    }
+    if !failure.contexts.is_empty() {
+        value["contexts"] =
+            serde_json::to_value(failure.contexts).expect("failure contexts are serializable");
     }
     eprintln!(
         "{}",

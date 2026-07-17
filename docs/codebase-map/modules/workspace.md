@@ -931,8 +931,10 @@ artifacts exactly. The API now projects every current authored project action th
 generic command, typed evidence, minimum history replacement state, and correlated event. Its
 bounded digest-bound `superi-json` runtime interprets a closed command and editor-state step
 vocabulary through that same facade, preserves nested permission checks and ordinary events, and
-returns deterministic revision, semantic hash, conflict, and committed-prefix evidence. CLI
-execution, subscription hosting, script source loading, and autosave scheduling remain later work. Durable extension
+returns deterministic revision, semantic hash, conflict, and committed-prefix evidence. The CLI now
+composes durable project, media, timeline, render settings, recovery, validation, and bounded
+JSON-RPC automation through the API-owned local host, including exact-source script execution.
+Subscription hosting, dedicated script path loading, and autosave scheduling remain later work. Durable extension
 lifecycle remains user-controlled project state, while live plugin readiness stays derived from the
 engine supervisor and graph registry. The documented broader
 target coordinates project, timeline, graph, caches,
@@ -1033,8 +1035,9 @@ The documents deliberately point into other modules:
   `superi-engine` owns bounded compound project commands, session command history, extension
   dispatch, canonical asynchronous export-job scheduling, and integration;
   `superi-api` owns the stable public seam, including host-injected filesystem, plugin, and
-  destructive authorization, bounded local scripting, plus strict nonblocking job inspection and cooperative control; and
-  `superi-cli` is the headless schema and exact-fixture scenario consumer.
+  destructive authorization, bounded local scripting, durable local project hosting, plus strict
+  nonblocking job inspection and cooperative control; and `superi-cli` is the headless durable
+  project, JSON-RPC automation, schema, and exact-fixture scenario consumer.
 - `superi-fixture-tool` validates repository fixture policy but does not enter runtime engine flow.
 - `superi-dependency-check` validates the runtime Cargo graph but does not enter runtime engine flow.
 - `superi-boundary-tool` validates source boundaries but does not enter runtime engine flow.
@@ -1375,8 +1378,9 @@ The API now owns a nonserializable host permission context, typed lexical filesy
 scopes, explicit destructive operations, deny precedence, payload-derived requirements, and schema
 `1.3.0` discovery metadata. Its bounded `superi-json` runtime uses already resolved JSON and
 SHA-256 packages and preserves the same nested authorization and project command owner. The CLI exercises that boundary with one
-exact canonical fixture-read grant; authentication, symlink confinement, and operating-system
-sandboxing remain host and I/O-owner responsibilities.
+exact canonical fixture-read grant for the scenario path and a separate deny-by-default local
+policy context for durable project workflows; authentication, final symlink confinement, and
+operating-system sandboxing remain host and I/O-owner responsibilities.
 The effects crate now owns a substantive graph-native authoring SDK, exact animation curves,
 complete reusable presets, explicit checked schema migration, and strict authored wires. Its preset
 lockfile change records direct runtime use of already-resolved JSON and SHA-256 packages for
@@ -1400,9 +1404,10 @@ user control without another persistence model. Recovery discovery, comparison, 
 and engine-coordinated restoration are implemented, and a changed active generation now blocks
 recovery before history mutation. The lockfile records exact rusqlite 0.32.1 and libsqlite3-sys
 0.30.1 with bundled SQLite, exact `fs4` 1.1.0, project Serde and JSON, plus engine rusqlite test
-edges. Additional project schema revisions beyond 4,
-persisted command logs, public dirty-state hashing, database file API adaptation, and CLI exposure
-remain incomplete.
+edges. Additional project schema revisions beyond 4, persisted command logs, public dirty-state
+hashing, and transport-catalog database adaptation remain incomplete. The API-owned local host and
+CLI now compose existing database open, publication, recovery, and validation authorities without a
+direct CLI dependency on the project crate.
 The engine now owns a production Rust compound project command and history boundary around that
 aggregate. It applies bounded ordered timeline, graph, media, authored audio, extension, and root
 actions inside
@@ -1413,7 +1418,8 @@ correlated dispatcher event. Plugin, effect, AI artifact provenance, and unknown
 records preserve exact payloads and user-controlled lifecycle without duplicating runtime plugin
 readiness. The generic public project command, typed evidence, correlated history event, complete
 stable editor snapshot, and local scripting runtime are implemented. CLI project or script
-execution, logging, subscription hosting, and autosave hosting remain incomplete.
+execution now routes through the durable local API host and bounded JSON-RPC automation. Logging,
+subscription hosting, and autosave hosting remain incomplete.
 The synchronized remote revision before this checkpoint is
 `88edc77f54229818550107c90b418198b7511251`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the

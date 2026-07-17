@@ -2,7 +2,7 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 52cabdb9c97213445aba53af41640cad22a79425aed1b27eeb632aa75aafbbba
+source_hash: c4203b8eb59884ba39097533a26089385c5bbfc59c08861cfc4b6c0d3a15634e
 source_files: 68
 mapped_at_commit: working-tree
 ---
@@ -89,10 +89,12 @@ through the existing dispatcher.
   snapshot, routes settings inspection and optimistic transactions with dynamic no-op event
   reservation, optionally owns authored audio automation with the same dynamic event reservation,
   and optionally attaches one exact file-backed recovery coordinator whose discover, restore, and
-  dismiss commands publish correlated complete recovery state.
+  dismiss commands publish correlated complete recovery state. A scoped standalone helper enters
+  EngineControl for one bounded caller closure and drops the temporary dispatcher before returning.
 - `open/crates/superi-engine/src/editor.rs`: Exposes the curated checked construction vocabulary
-  needed by upper-tier generic project and version negotiation APIs, including the project-owned
-  compatibility table and typed negotiation result, while adding no wire model, mutation algorithm,
+  needed by upper-tier generic project, local file hosting, and version negotiation APIs, including
+  the project-owned compatibility table, typed negotiation result, and existing project save
+  command, collision, operation, and outcome vocabulary. It adds no wire model, mutation algorithm,
   dispatcher, history, persistence owner, or lower dependency edge.
 - `open/crates/superi-engine/src/editor_state.rs`: Captures one immutable project-history revision,
   deterministic diagnostics and settings, canonical timeline, graph, and clip-mix resources,
@@ -408,7 +410,10 @@ recovery state without dispatching a command or publishing an event.
 `integration_validation_snapshot` composes that exact introspection state with scenario reversal,
 exact action and admission tokens, endpoint attachment, and retained replacement observations.
 `standalone_integration_validation_snapshot` owns a temporary EngineControl domain and default
-registry for the CLI, while application and test hosts use their existing dispatcher. Successful command and event sequences are independently
+registry for the CLI. `with_standalone_engine_control` similarly scopes one temporary full
+dispatcher to an EngineControl closure for local API hosts, with detached results and snapshots as
+the only intended return values. Application and long-lived test hosts use their existing
+dispatcher. Successful command and event sequences are independently
 monotonic, each event identifies its originating command sequence, and event draining returns
 complete ordered replacement state with scenario, project, lifecycle, playback, or export
 correlation.
@@ -1233,7 +1238,8 @@ audio mutation, so their user intent remains attached without synthesis.
   logical job and publication ownership. The engine arbiter composes a higher shared managed-byte
   envelope without replacing or weakening any of those local owners.
 - `superi-cli` reaches engine validation only through `superi-api`; the engine-owned standalone
-  helper hosts its temporary EngineControl dispatcher without widening the CLI dependency tier.
+  helpers host temporary EngineControl dispatchers for validation and durable local project
+  operations without widening the CLI dependency tier.
 
 ## Invariants and operational boundaries
 
@@ -1325,6 +1331,9 @@ audio mutation, so their user intent remains attached without synthesis.
 - The lifecycle-attached dispatcher requires EngineControl for inspection, command execution, and
   event draining. Scenario-only mode is an explicit narrow compatibility boundary. Playback
   execution crosses only the bounded bridge and requires Playback on the executor side.
+- A standalone local operation enters EngineControl for exactly one closure. The temporary
+  dispatcher must remain inside that scope, while API results and immutable project snapshots may
+  be detached for persistence after the guard and dispatcher drop.
 - An attached project document remains the sole mutable settings owner. Inspection returns one
   resolved immutable replacement state; optimistic mutation delegates validation and publication to
   project and cannot create an engine-private settings model.
@@ -1566,6 +1575,13 @@ later conflict, unchanged state after an initial conflict or permission denial, 
 retention, and exact persistence, integrity, media, autosave, and recovery compatibility without
 adding engine source parsing or scripting state.
 
+The downstream local project host contract exercises the scoped standalone EngineControl helper
+through real no-clobber creation, complete database reopen, permission denial, compound rollback,
+media and timeline dispatch, render settings, copy, backup, recovery, and ordered JSON-RPC
+automation. It proves every reported mutation is durably reopened and that media availability
+changes preserve exact timeline source, record, identity, grouping, linking, targeting, and
+synchronization state.
+
 One project-autosave consumer contract applies a real media-path mutation through that history,
 autosaves the selected snapshot, then repeats after undo and redo. It opens all three recovery-point
 databases through the public project owner and requires exact snapshot equality, including durable
@@ -1803,11 +1819,12 @@ decision.
 Typed project settings resolution and dispatcher control are substantive and test-backed. They
 preserve durable authored scalar meaning and expose one real API path, but resolution does not
 automatically reconfigure live timeline, color, audio, cache, proxy, or render owners. Project
-database open and save commands and autosave scheduling remain outside engine and API. Recovery
-commands are implemented and test-backed through the existing dispatcher. The lower project
+database open and save commands and autosave scheduling remain outside engine. The API now owns a
+narrow local database host and the CLI consumes it without importing engine or project types.
+Recovery commands are implemented and test-backed through the existing dispatcher. The lower project
 database rejects an externally changed active generation before recovery publication; engine does
-not duplicate that writer lock or file authority. No background autosave worker, open-project
-shell, or CLI adapter is claimed.
+not duplicate that writer lock or file authority. No background autosave worker or long-lived
+open-project application shell is claimed.
 
 Project extension integration is substantive and test-backed. History, compound transactions,
 dispatch, ordered replacement events, persistence, save, autosave, undo, and redo preserve plugin,
@@ -1903,6 +1920,9 @@ Script steps must continue through the same sealed editor request, dispatcher, r
 history, events, and lower-domain owners rather than creating an engine script dispatcher.
 Project compatibility remains implemented and tested in `superi-project`; this seam may only
 reexport that vocabulary for an API-owned wire projection and must not copy its release table.
+Keep `with_standalone_engine_control` bounded to local one-operation hosting. Do not use it for a
+long-lived application owner, return a dispatcher from its closure, or move project persistence
+into engine.
 Keep `InspectProjectDiagnostics` bound to the selected immutable history snapshot and delegate all
 hash framing, component evidence, versioning, and exclusions to `superi-project`. Preserve its typed
 complete result, successful command sequencing, missing-owner failure, eventless behavior, and zero

@@ -205,6 +205,11 @@ impl ProjectSettingsApi {
             })
             .collect()
     }
+
+    /// Borrows the selected immutable project snapshot for durable local publication.
+    pub(crate) fn project_snapshot(&self) -> Result<superi_engine::editor::ProjectSnapshot> {
+        self.dispatcher.project_snapshot()
+    }
 }
 
 impl std::fmt::Debug for ProjectSettingsApi {
