@@ -22,9 +22,10 @@ use crate::commands::{
     GetAudioAutomation, GetEngineIntegrationValidation, GetEngineIntrospection,
     GetMediaCapabilities, GetProjectRecovery, GetProjectSettings, RestoreProjectRecovery,
 };
+use crate::editor::{ExecuteProjectCommand, ProjectHistorySnapshot};
 use crate::events::{
     ApiEvent, AudioAutomationChanged, EngineIntrospectionChanged, MediaCapabilitiesChanged,
-    ProjectRecoveryChanged, ProjectSettingsChanged, ScenarioStateChanged,
+    ProjectRecoveryChanged, ProjectSettingsChanged, ProjectStateChanged, ScenarioStateChanged,
 };
 use crate::project::ProjectSettingsSnapshot;
 use crate::recovery::ProjectRecoverySnapshot;
@@ -1189,6 +1190,7 @@ fn current_catalog() -> CoreResult<PublicApiSchemaSnapshot> {
     let mut queries = Vec::new();
 
     register_method::<GetProjectRecovery>(&mut commands, &mut queries)?;
+    register_method::<ExecuteProjectCommand>(&mut commands, &mut queries)?;
     register_method::<CompareProjectRecovery>(&mut commands, &mut queries)?;
     register_method::<RestoreProjectRecovery>(&mut commands, &mut queries)?;
     register_method::<DismissProjectRecovery>(&mut commands, &mut queries)?;
@@ -1210,6 +1212,7 @@ fn current_catalog() -> CoreResult<PublicApiSchemaSnapshot> {
         commands,
         queries,
         vec![
+            event_schema::<ProjectStateChanged>()?,
             event_schema::<ProjectRecoveryChanged>()?,
             event_schema::<AudioAutomationChanged>()?,
             event_schema::<ProjectSettingsChanged>()?,
@@ -1218,6 +1221,7 @@ fn current_catalog() -> CoreResult<PublicApiSchemaSnapshot> {
             event_schema::<ScenarioStateChanged>()?,
         ],
         vec![
+            resource_schema::<ProjectHistorySnapshot>()?,
             resource_schema::<ProjectRecoverySnapshot>()?,
             resource_schema::<AudioAutomationSnapshot>()?,
             resource_schema::<ProjectSettingsSnapshot>()?,

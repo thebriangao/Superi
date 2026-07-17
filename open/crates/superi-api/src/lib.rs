@@ -5,6 +5,7 @@
 pub mod api;
 pub mod audio_automation;
 pub mod commands;
+pub mod editor;
 pub mod events;
 pub mod project;
 pub mod recovery;

@@ -15,6 +15,7 @@ use superi_core::settings::SemanticVersion;
 
 const COMMANDS: &[&str] = &[
     "superi.audio.automation.transaction.execute",
+    "superi.project.command.execute",
     "superi.project.recovery.dismiss",
     "superi.project.recovery.restore",
     "superi.project.settings.transaction.execute",
@@ -39,6 +40,7 @@ const EVENTS: &[&str] = &[
     "superi.media.capabilities.changed",
     "superi.project.recovery.changed",
     "superi.project.settings.changed",
+    "superi.project.state.changed",
     "superi.slice.scenario.state.changed",
 ];
 
@@ -47,6 +49,7 @@ const RESOURCES: &[&str] = &[
     "superi.engine.integration.validation",
     "superi.engine.introspection",
     "superi.media.capabilities",
+    "superi.project.history",
     "superi.project.recovery",
     "superi.project.settings",
     "superi.slice.scenario.state",

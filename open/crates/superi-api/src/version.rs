@@ -11,6 +11,18 @@ pub const PUBLIC_ERROR_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1,
 /// JSON-RPC method for retrieving the complete public API catalog.
 pub const GET_PUBLIC_API_SCHEMA_METHOD: &str = "superi.api.schema.get";
 
+/// Schema version for the generic authored project command surface.
+pub const PROJECT_EDITOR_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
+
+/// JSON-RPC method for one generic authored project command.
+pub const EXECUTE_PROJECT_COMMAND_METHOD: &str = "superi.project.command.execute";
+
+/// Ordered event name for generic authored project state changes.
+pub const PROJECT_STATE_CHANGED_EVENT: &str = "superi.project.state.changed";
+
+/// Replacement resource name for generic project history state.
+pub const PROJECT_HISTORY_RESOURCE: &str = "superi.project.history";
+
 /// Schema version for authored audio automation replacement snapshots.
 pub const AUDIO_AUTOMATION_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
 

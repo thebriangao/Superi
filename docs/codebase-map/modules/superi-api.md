@@ -2,27 +2,27 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: c2f4994e022ac7f6eb20853f0718e58f11478f039ee3c0c4c4552c49b0a55818
-source_files: 22
+source_hash: 11007e682a2f09c22d548a0b40d9012a4626039982030a90f51756244ed4c178
+source_files: 24
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
 `superi-api` owns the transport-neutral public boundary for UI, scripting, extension, CLI, and
-automation clients. Seven public slices are implemented: media capability introspection, complete
+automation clients. Eight public slices are implemented: media capability introspection, complete
 engine capability and health introspection for adaptive clients, canonical editorial scenario
 control through revision-fenced typed transactions and ordered full-state events, coherent
 read-only integration validation, durable project settings inspection and optimistic mutation, and
-project crash recovery discovery, semantic comparison, durable restoration, exact dismissal, and
-authored audio automation inspection and transaction execution through the full engine dispatcher.
-One additive schema `1.0.0` catalog now classifies all 14 current methods into six commands and
-eight queries, describes all six events and seven replacement resources, publishes the complete
+project crash recovery discovery, semantic comparison, durable restoration, exact dismissal,
+authored audio automation inspection and transaction execution through the full engine dispatcher,
+and complete authored project control through one generic revision-fenced command facade.
+One additive schema `1.0.0` catalog now classifies all 15 current methods into seven commands and
+eight queries, describes all seven events and eight replacement resources, publishes the complete
 error and capability vocabularies, and defines strict data-only JSON-RPC 2.0 envelopes. Wire
-transport, routing, subscriptions, scripting, cancellation, broad
-editor operations, and project database file commands remain absent. The engine also exposes typed
-project command-history results and replacement events below this crate, but this API does not yet
-project that surface.
+transport, routing, subscriptions, scripting, cancellation, complete C017 project state snapshots,
+and project database file commands remain absent. The generic editor facade now projects the
+engine's typed project command history and replacement events without duplicating lower ownership.
 
 ## Source inventory
 
@@ -42,11 +42,15 @@ project that surface.
   integration validation, project settings, project recovery, and audio automation query types,
   plus typed one-action scenario and ordered scenario, project settings, automation, compare,
   restore, and dismiss commands.
+- `open/crates/superi-api/src/editor.rs`: Owns the strict generic project command, action, timeline,
+  graph, media, clip-mix, and extension DTOs, checked engine conversion, typed history resource and
+  evidence, and the dispatcher-backed apply, inspect, undo, redo, event, and persistence facade.
 - `open/crates/superi-api/src/events.rs`: Defines versioned `ApiEvent`, media and engine introspection change
-  events, and ordered full-replacement scenario, project settings, project recovery, and audio
-  automation state events.
+  events, and ordered full-replacement scenario, generic project history, project settings,
+  project recovery, and audio automation state events.
 - `open/crates/superi-api/src/lib.rs`: Exposes API, audio automation, command, event, project
-  settings, project recovery, scenario, public schema, scripting, validation, and version modules.
+  editor, settings, project recovery, scenario, public schema, scripting, validation, and version
+  modules.
 - `open/crates/superi-api/src/project.rs`: Implements strict project setting values and mutations,
   complete replacement snapshots, and the caller-owned dispatcher facade for settings inspection,
   optimistic transactions, and ordered event draining.
@@ -79,6 +83,10 @@ project that surface.
 - `open/crates/superi-api/tests/dispatcher_contract.rs`: Covers atomic public transactions,
   revision fences, strict command and event round trips, ordered full-state publication, one-unit
   undo, inspect behavior, permanent names, and legacy action compatibility.
+- `open/crates/superi-api/tests/editor_contract.rs`: Locks all four generic project commands, six
+  action groups, 15 timeline operations, eight graph mutations, three media mutations, four
+  clip-mix mutations, and six extension mutations; proves strict decoding, pre-dispatch failure
+  atomicity, one real mixed transaction, event correlation, database reload, undo, and redo.
 - `open/crates/superi-api/tests/engine_introspection_contract.rs`: Drives the real engine registry,
   dispatcher, lifecycle, error coordinator, and resource arbiter through strict public query and
   replacement-event projection, independent revisions, degradation, recovery, and safe diagnostic
@@ -105,8 +113,8 @@ project that surface.
 ## Public surface
 
 The public schema catalog is schema `1.0.0` at query method `superi.api.schema.get`.
-`PublicApiSchemaSnapshot` records stable primitive revision 1 and JSON-RPC `2.0`, then separates six
-mutating commands from eight read-only queries and lists all six current replacement events, seven
+`PublicApiSchemaSnapshot` records stable primitive revision 1 and JSON-RPC `2.0`, then separates seven
+mutating commands from eight read-only queries and lists all seven current replacement events, eight
 current replacement resources, one complete error vocabulary, and one capability vocabulary in
 canonical name order. `ApiCommand` now declares method kind and schema version, `ApiEvent` declares
 payload version, and `ApiResource` centrally registers the current replacement resources. The
@@ -186,6 +194,16 @@ every ordered automation mutation. Results and events carry complete determinist
 events include exact engine command, event, caller transaction, and audio automation revision
 correlation.
 
+The generic authored project surface is schema `1.0.0`, with command
+`superi.project.command.execute`, event `superi.project.state.changed`, and replacement resource
+`superi.project.history`. `ExecuteProjectCommand` carries one caller transaction identity, an exact
+expected project revision, and apply, undo, redo, or inspect. Apply contains one bounded ordered
+transaction over root selection, all 15 timeline edits, all eight graph mutations, all three
+referenced-media mutations, all four clip-mix mutations, and all six durable extension mutations.
+Results and events preserve engine command sequence, project revision, history depths, next action
+kinds, ordered semantic evidence, and caller correlation. Complete project state snapshots remain
+owned by C017 rather than this minimum history resource.
+
 ## Architecture and data flow
 
 Public schema discovery is entirely API-owned metadata over existing contracts:
@@ -240,19 +258,21 @@ SliceAction list plus expected revision
   -> or ScenarioFailure with complete last valid state and no event
 ```
 
-The production Rust project-history path is deliberately outside the current public schema:
+The production project-history path now has one strict public adapter:
 
 ```text
 ProjectHistoryCommand
   -> superi-engine EngineCommandDispatcher
   -> ProjectHistoryOutcome plus optional ProjectStateChanged event
-  -> no superi-api projection yet
+  -> ProjectEditorApi
+  -> ExecuteProjectCommandResult plus optional public ProjectStateChanged event
 ```
 
-The engine state contains a real `ProjectDocument`, bounded session history, and typed current media
-mutations, unlike the fixed scenario model. Later API work must define permanent project command,
-result, state, and event schemas around that engine owner instead of adapting `ProjectDocument`
-directly or treating `ScenarioApi` as the production project facade.
+The engine state contains a real `ProjectDocument`, bounded session history, and typed authored
+project mutations, unlike the fixed scenario model. API-owned DTOs convert completely before one
+dispatcher call and exactly one compound project transaction, so lower mutation algorithms,
+history, sequencing, persistence, and event ownership remain unchanged. The API's immutable project
+snapshot borrow is only the existing in-process persistence seam, not a public wire snapshot model.
 
 Projection preserves stable core identifiers as strings, exact rational rates, named timeline and
 track identity, half-open ranges, full image-port graph topology, row-major binary64 mirror matrix,
@@ -333,10 +353,11 @@ and capacity failures leave the engine owner and public event stream unchanged.
 - `superi-engine` supplies capability declarations, complete immutable health and readiness state,
   canonical transactional state, typed dispatch, ordered replacement events, and integration
   validation observations. It also re-exports project recovery candidate and comparison contracts,
-  project setting mutations, and audio automation vocabularies, and owns the only production
+  project setting mutations, audio automation vocabularies, and one curated editor construction
+  seam, and owns the only production
   API-to-project settings and recovery paths plus the API-to-audio automation command path, so this
-  public crate has no production project or audio dependency.
-  Its broader project-history vocabulary remains an intentionally unprojected downstream surface.
+  public crate has no production project, timeline, graph, or audio dependency. The generic editor
+  facade projects the existing history vocabulary without becoming another state owner.
 - `serde_json`, `sha2`, `superi-media-io`, and `superi-concurrency` are test dependencies for wire,
   digest, registry, and EngineControl contracts. The feature-gated engine test-support seam creates
   real file-backed recovery artifacts without adding API-to-project or API-to-timeline edges.
@@ -358,9 +379,12 @@ No transport, UI, shell, scripting runtime, extension host, or closed-tier clien
   Raw summaries, source chains, internal and sensitive diagnostic fields, and raw context values
   never cross the schema boundary.
 - Inspect never changes revision or history.
-- The current inspect invariant applies to scenario and read-only public surfaces. Project settings
-  inspection is public, while broader engine project-history inspection remains inaccessible until
-  a versioned API-owned schema is added.
+- Generic project inspect requires the exact current project revision, advances only the successful
+  command sequence, returns typed history state, and emits no event.
+- Every generic apply converts the entire public value before dispatch and becomes one bounded
+  compound transaction, one project revision, one history unit, and at most one correlated event.
+- Invalid identifiers, exact time, finite numeric values, media paths, graph values, clip controls,
+  extension records, empty batches, and bounds publish no partial state or event.
 - Rejected actions and transactions return the complete last valid state and do not mutate engine
   state, command sequencing, history, or the event stream.
 - Public scenario mutations use an exact expected revision. A successful transaction is one engine
@@ -428,7 +452,7 @@ three-node graph with image ports, exact mirror parameters, four stable operatio
 plus two redo actions, final revision 8, structured engine context, last-valid-state retention, and
 serialized exclusion of a private missing-source path and raw context values.
 
-Four public schema contracts prove the exact six-command, eight-query, six-event, and seven-resource
+Four public schema contracts prove the exact seven-command, eight-query, seven-event, and eight-resource
 surface, current domain versions, catalog and error schema `1.0.0`, media schema `2.0.0`, stable
 primitive revision 1, strict deterministic catalog round trips, invalid identity and duplicate
 rejection, typed JSON-RPC exclusivity, all four recovery classes, user-safe diagnostic filtering,
@@ -440,6 +464,12 @@ event identity, failed trailing-action rollback, one-revision commit, one-unit u
 conflict rejection, independent monotonic event order with exact originating-command correlation,
 complete replacement state, inspect without an event, and compatibility action routing through the
 same dispatcher.
+
+Five generic editor contracts lock all 46 command and operation discriminants, reject guessed
+fields and variants, and prove malformed ID, timebase, and non-finite conversion atomicity. A real
+EngineControl fixture executes one six-action project transaction across graph, timeline, media,
+clip mix, extension, and selected root state, then proves one revision, one history unit, one
+correlated event, exact database reload, undo, and redo through the same public facade.
 
 These tests do not prove wire delivery ordering, scripting, UI integration, media decoding, graph
 pixel evaluation, native presentation, or runtime export publication.
@@ -474,23 +504,22 @@ wire delivery, physical audio output, or additional automation targets.
 
 ## Current status and risks
 
-The API now has seven substantive domain surfaces plus one complete discovery catalog and strict
-wire grammar, but it is still far from the promised unified editor API. Engine introspection gives
+The API now has eight substantive domain surfaces plus one complete discovery catalog and strict
+wire grammar, including one unified generic authored project command. Engine introspection gives
 clients a coherent adaptation view without adding mutation
 authority, and integration validation extends that same state with precise action and endpoint
 evidence. Project settings retain exact durable scalar meaning, and project recovery now exposes one
 complete strict discover, compare, restore, and dismiss surface without leaking file identity. The
-API still does not expose project file open, save, or general timeline edits. Scenario schema 1
-remains deliberately narrow and fixed to one canonical edit. Its reference
+API still does not expose project file open or save, complete C017 project snapshots, jobs,
+subscriptions, permissions, generated bindings, a scripting runtime, or CLI editor execution.
+Scenario schema 1 remains deliberately narrow and fixed to one canonical edit. Its reference
 state proves transactional control semantics, not production timeline, graph, or media ownership.
 Authored clip-gain automation is a substantive strict transaction and event surface over the engine
 owner, but schema 1 does not persist lanes or address pan, sends, buses, effects, or plugins.
-The engine's project command-history owner provides production Rust apply, undo, redo, state, and
-replacement-event behavior for project media and settings changes. This crate reaches that owner
-through the settings, recovery, and automation facades but exposes none of its generic history
-types or methods.
-Project file open and save API, live wire routing, subscription delivery, scripting, and broader
-automation adaptation remain later checkpoints.
+The generic editor facade now reaches the engine's project command-history owner for apply, undo,
+redo, inspection, semantic evidence, and correlated replacement events. It intentionally exposes
+only minimum history replacement state until C017 and leaves project file commands, live wire
+routing, subscription delivery, scripting, and broader automation adaptation to later checkpoints.
 
 Integration validation schema 1 provides one coherent read-only state for CLI, UI, and tests, but
 it remains an in-process snapshot facade. The standalone helper creates a fresh starting engine for
@@ -526,3 +555,7 @@ Keep recovery candidate identities opaque, project paths and raw diagnostics pri
 event names permanent, catalog and project revision fences explicit, and replacement events fully
 correlated to their engine command. Any new recovery field requires strict schema review and
 negative serialization proof before it crosses this boundary.
+Keep generic editor DTOs API-owned and strict, conversions complete before dispatch, and all
+authored apply operations inside one engine-owned compound transaction. Add every new lower editor
+operation to the explicit parity contract, public evidence projection, schema catalog, CLI schema
+consumer, and real dispatcher proof without adding direct API dependencies on lower domain crates.

@@ -14,10 +14,10 @@ against raw source before changing code.
 | Module ID | Map | Owned path | Current role | Status |
 | --- | --- | --- | --- | --- |
 | `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
-| `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public schema catalog and facade for media capabilities, complete engine health and readiness, coherent integration validation, canonical editorial state, project settings, project recovery, and audio automation | Partial: deterministic versioned command, query, event, resource, error, and capability discovery, strict JSON-RPC data contracts, media and engine introspection queries, strict read-only integration validation, revision-fenced scenario, project settings, and audio automation transactions, strict recovery discovery, complete comparison, restore, and dismiss commands, and ordered replacement events implemented; live wire routing, general editorial mutation, database file commands, and scripting absent |
+| `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public schema catalog and facade for media capabilities, complete engine health and readiness, coherent integration validation, canonical editorial state, generic authored project control, project settings, project recovery, and audio automation | Partial: deterministic versioned command, query, event, resource, error, and capability discovery, strict JSON-RPC data contracts, media and engine introspection queries, strict read-only integration validation, revision-fenced scenario and generic project commands, complete current timeline, graph, media, clip-mix, and extension operation DTOs, project settings and audio automation transactions, strict recovery discovery, complete comparison, restore, and dismiss commands, and ordered replacement events implemented; live wire routing, complete project snapshots, database file commands, CLI execution, and scripting absent |
 | `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Independent prepared audio graph with explicit channel conversion, typed bus routing, fixed route delay compensation, transactional clip DSP, revisioned clip-gain automation, canonical authored-state serialization, bounded native plugin state, timing-matched isolated bridge fallback, core effects, macOS Audio Unit effects, worker-side VST3 effects, sample-accurate scheduling, bounded device I/O, dual-clock sample-rate conversion, and graph-native metering | Partial: core graph, routing, fixed delay compensation, clip, device, conversion, metering, clip-gain automation, exact Audio Unit and VST3 state persistence, verified Audio Unit isolation, canonical single-main-bus VST3 processing, and isolated bridge fallback are implemented; engine owns lifecycle supervision and per-node project state, while decoded-sample binding, automation persistence, concrete platform worker transport, broader effect automation, variable-rate playback audio, Audio Unit instruments, dynamic latency rebuild, and complete timeline composition remain absent |
 | `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, precise graph edit invalidation, versioned corruption-recovering disk persistence, replaceable derived-media publication, layered render reuse, bounded background population, bounded playback prediction, bounded edit and scrub warming, and deterministic lifecycle management | Complete identity feeds independent memory and disk tiers with exact admission, revision fencing, bounded envelopes, atomic publication, schema isolation, and corruption quarantine; memory, persistent, and derived owners expose inspection and exact clearing, persistent namespaces relocate through rename or synchronized staged copy, render jobs add cancellation-safe layered reuse, prediction supplies finite signed frame plans and an owned host adapter, and warming is deterministic and hard bounded; engine and scheduler own quality substitution and lifecycle policy remains caller-owned |
-| `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless public schema, canonical editorial scenario, and engine validation consumer | Implemented deterministic `api schema`, revision-fenced transaction and event consumer, portable expectation verifier, eight instrumented contract stages, and strict deterministic `engine validate`; broad command parity, rendered media flow, and live application attachment absent |
+| `superi-cli` | [module map](modules/superi-cli.md) | `open/crates/superi-cli` | Headless public schema, canonical editorial scenario, and engine validation consumer | Implemented deterministic `api schema` including generic editor discovery, revision-fenced scenario transaction and event consumer, portable expectation verifier, eight instrumented contract stages, and strict deterministic `engine validate`; generic project command execution, rendered media flow, and live application attachment absent |
 | `superi-codecs-platform` | [module map](modules/superi-codecs-platform.md) | `open/crates/superi-codecs-platform` | Opt-in host codec adapters for Apple, Windows, and Linux | Implemented, host-dependent: native proof depth varies and legal review remains open |
 | `superi-codecs-rs` | [module map](modules/superi-codecs-rs.md) | `open/crates/superi-codecs-rs` | Default permissive software codec implementations | Implemented: AV1, FLAC, MP3, Opus, PCM, Vorbis, VP8, and VP9 decode and encode |
 | `superi-codecs-vendor` | [module map](modules/superi-codecs-vendor.md) | `open/crates/superi-codecs-vendor` | Explicit process adapter for separately installed vendor RAW workers | Implemented first revision: decode-only, CPU-only, JSON and hexadecimal IPC |
@@ -25,7 +25,7 @@ against raw source before changing code.
 | `superi-concurrency` | [module map](modules/superi-concurrency.md) | `open/crates/superi-concurrency` | Execution domains, jobs, clocks, handoffs, shared snapshots, lifecycle, liveness, and derived-media selection | Substantial; audio enforces its domain, engine proxy resolution consumes selection, engine foreground playback and transport consume bounded workers, cancellation, anchor-based clocks, the A/V scheduler, and handoffs, engine lifecycle composes acknowledged startup, sleep, wake, shutdown, and restart phases with EngineControl ownership, immutable publication, and lock-free signals, engine error propagation keeps bounded bookkeeping in a separate EngineControl `DomainOwned`, render-export enforces lifecycle admission, and the engine export queue composes bounded workers, progress, dependency history, typed completion, and recovery attempts; broader liveness and GPU submission composition remain incomplete |
 | `superi-core` | [module map](modules/superi-core.md) | `open/crates/superi-core` | Tier-zero values, validation, exact time, identifiers, errors, diagnostics, and stable serialization | Implemented and broadly consumed; crate-level skeleton wording is stale |
 | `superi-effects` | [module map](modules/superi-effects.md) | `open/crates/superi-effects` | Graph-native visual definitions, editable defaults and instances, reusable presets, animation, controls, composition, spatial, shape, mask, rotoscope, tracking, text, transitions, isolated OpenFX hosting, and bounded CPU reference evaluation | Substantive but partial: graph-native authoring, strict documents and migrations, missing-plugin recovery, visual contracts, isolated OFX adapter validation, boxed dynamic forwarding, permissions, lifecycle, recovery, quarantine, workflow parity, and real pixel proof are implemented; effects-to-project persistence integration, native plugin binding, production GPU execution, concrete worker transport, UI, and complete timeline attachment remain absent |
-| `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: engine-wide typed command dispatch, bounded revision-fenced project history, deterministic semantic project diagnostics inspection, compound timeline, graph, media, authored audio, extension, and root transactions, complete project undo and redo, authoritative project extension, settings, and audio automation dispatch, crash recovery discovery, complete semantic comparison, durable restore, and exact dismissal, coherent project and device lifecycle, integration validation, bounded playback and export dispatch, exact project resource preparation, selected-history autosave consumer proof, render-export orchestration, shared arbitration, OpenFX containment, and native audio plugin discovery, worker validation, checkpoint recovery, quarantine, processor preparation, and per-node project persistence are implemented; production autosave hosting, generic public project-history adaptation, automation persistence and broader targets, live subsystem reconfiguration from settings, platform power callback binding, concrete lifecycle workers, automatic arbiter binding, decoded source and prepared-audio binding, native GPU presentation, muxing and publication, concrete plugin transport, persistent job recovery, and production plugin factories remain absent |
+| `superi-engine` | [module map](modules/superi-engine.md) | `open/crates/superi-engine` | Open subsystem assembly and orchestration | Partial: engine-wide typed command dispatch, bounded revision-fenced project history, curated public editor construction seam, deterministic semantic project diagnostics inspection, compound timeline, graph, media, authored audio, extension, and root transactions, complete project undo and redo, authoritative project extension, settings, and audio automation dispatch, crash recovery discovery, complete semantic comparison, durable restore, and exact dismissal, coherent project and device lifecycle, integration validation, bounded playback and export dispatch, exact project resource preparation, selected-history autosave consumer proof, render-export orchestration, shared arbitration, OpenFX containment, and native audio plugin discovery, worker validation, checkpoint recovery, quarantine, processor preparation, and per-node project persistence are implemented; production autosave hosting, automation persistence and broader targets, live subsystem reconfiguration from settings, platform power callback binding, concrete lifecycle workers, automatic arbiter binding, decoded source and prepared-audio binding, native GPU presentation, muxing and publication, concrete plugin transport, persistent job recovery, and production plugin factories remain absent |
 | `superi-gpu` | [module map](modules/superi-gpu.md) | `open/crates/superi-gpu` | wgpu device, resource, upload, conversion, pass, submission, presentation, and recovery substrate | Implemented substrate with explicit application-level integration gaps |
 | `superi-graph` | [module map](modules/superi-graph.md) | `open/crates/superi-graph` | Node-neutral identifiers and shared typed values, versioned schema discovery, deterministic DAG storage, typed port validation, editable mutation transactions, canonical graph documents, reusable scalar expressions, typed parameter links and expressions, caller-projected literal evaluation, derived missing-node resolution, dependency and semantic edit invalidation, region-of-interest propagation, request-scoped scheduling and evaluation, node introspection, graph and revision cache lineage, timing, and shared interactive and headless evaluation snapshots | Partial: graph-facing IDs, exact neutral domain and processing values, node schemas, immutable discovery, typed DAG state, atomic mutations, deterministic integrity-checked serialization, checked deserialization, legacy migration, shared bounded scalar programs, typed driver state, parameter-cycle protection, literal-only projected evaluation, fail-closed missing-node placeholders, exact region and edit invalidation, snapshot-bound ROI planning, generic demand-only evaluation, deterministic graph cache inspection, final and intermediate retained-work pruning, run-local timing, and role-neutral editable-to-runtime evaluation implemented; effects consumes broad authoring and reference evaluation, timeline compiles editable graphs, project retains and atomically publishes timeline and named standalone graph documents, and engine consumes externally prepared snapshots for playback and render-export, while production engine catalog and plugin binding and complete application rendering remain absent |
 | `superi-image` | [module map](modules/superi-image.md) | `open/crates/superi-image` | Host image values, still interchange, CPU operations, sequences, previews, and reference validation | Implemented host-side subsystem with explicit representation limits |
@@ -218,9 +218,9 @@ engine enums or creating another state owner:
 
 1. Every `ApiCommand` declares its permanent method, command or query kind, and semantic schema
    version. Every `ApiEvent` declares its permanent event and payload version, while `ApiResource`
-   centrally names the seven current replacement resources.
-2. One explicit registration list builds schema references for all six commands, eight queries,
-   six events, and seven resources, including discovery method `superi.api.schema.get` itself.
+   centrally names the eight current replacement resources.
+2. One explicit registration list builds schema references for all seven commands, eight queries,
+   seven events, and eight resources, including discovery method `superi.api.schema.get` itself.
 3. `PublicApiSchemaSnapshot` fixes catalog schema `1.0.0`, stable primitive revision 1, and JSON-RPC
    `2.0`; sorts every category by permanent name; and rejects duplicate names, command-query
    overlap, malformed names, or incompatible identity.
@@ -327,8 +327,28 @@ Engine-wide project command history composes that owner without duplicating it:
    everything.
 7. History stacks, capacity, and command metadata are session-local operational state. Existing
    schema-4 persistence durably stores only the selected project snapshot, including extension
-   records, and generic history API,
-   CLI, scripting, automation, and logging adapters remain later work.
+   records. The generic API adapter is implemented, while CLI execution, scripting, complete state
+   snapshots, subscriptions, automation hosting, and logging remain later work.
+
+Generic public project editing composes that history without introducing another owner:
+
+1. `superi-api::ProjectEditorApi` owns one dispatcher with an attached authoritative project
+   history and exposes permanent schema `1.0.0` command `superi.project.command.execute`.
+2. Strict API-owned DTOs cover apply, inspect, undo, redo, all six compound action groups, all 15
+   timeline edits, all eight graph mutations, all three media mutations, all four clip-mix
+   mutations, and all six extension mutations. Unknown fields and operation tags fail closed.
+3. The API converts every identifier, exact time, material, graph value, media path, clip control,
+   and extension record before dispatch. Engine exposes only a curated checked construction seam,
+   so API retains its exact dependency tier and lower crates do not become wire-schema owners.
+4. One public apply becomes exactly one `CompoundProjectTransaction` and one history command.
+   Successful authored changes remain one project revision, one undo unit, and one correlated
+   `superi.project.state.changed` event; inspect and failures emit no event.
+5. Results and events preserve caller transaction identity, command and event sequences, project
+   revision, minimum replacement history state, and ordered semantic action evidence. The
+   `superi.project.history` resource deliberately stops short of C017 complete project snapshots.
+6. The in-process persistence consumer receives the selected immutable snapshot. A real mixed API
+   contract proves database replacement and exact reload, then public undo and redo at fresh
+   revisions. Existing recovery commands continue to operate on the same durable aggregate.
 
 Stable whole-project serialization is implemented at the same owner boundary:
 
@@ -1128,8 +1148,8 @@ with a bounded effects reference consumer but without a production engine catalo
     integration validation snapshot that nests canonical introspection beside scenario, exact
     action, workflow admission, playback, and export state. Validation never polls an endpoint,
     waits for progress, advances a state revision, or creates a second mutable owner. `superi-api`
-    projects the scenario transaction and event seam, the strict recovery command surface, and the
-    validation schema, but not the generic project-history vocabulary yet. `superi-cli` consumes the scenario
+    projects the scenario transaction and event seam, generic project-history command and event
+    vocabulary, strict recovery command surface, and validation schema. `superi-cli` consumes the scenario
     seam for its canonical runner and the validation facade for exact deterministic `engine
     validate` JSON.
 15. Invalidation-to-render orchestration, ROI-plan-to-evaluator binding, cache invalidation
@@ -1139,19 +1159,19 @@ with a bounded effects reference consumer but without a production engine catalo
 
 The in-process engine request envelope, dispatcher, bounded event channel, playback-domain command
 bridge, logical export controller, engine-owned typed project command history, canonical public
-scenario transaction, and strict read-only integration validation query are implemented. No
-project-history wire or API projection, subscription delivery, broad public editor transaction,
-script runtime, production UI extension control, or closed-tier runtime consumer is implemented.
+scenario transaction, generic public project transaction, and strict read-only integration
+validation query are implemented. Subscription delivery, live wire routing, complete stable project
+snapshots, script runtime, production UI extension control, CLI editor execution, and closed-tier
+runtime consumers are not implemented.
 
 ### Documented target, incomplete
 
 Repository contracts describe one stable public command and event seam shared by UI, CLI, scripts,
-extensions, automation, and closed-tier clients. The canonical scenario transaction and ordered
-replacement event implement the first public narrow slice. The engine now also provides the
-production Rust project-history surface and correlated replacement events for current media,
-extension, and settings changes. The settings facade consumes that owner, while generic public
-history adapters do
-not yet. Broader engine transactions are intended to coordinate
+extensions, automation, and closed-tier clients. The canonical scenario transaction remains the
+fixed public reference slice. The engine production project-history surface and correlated events
+now have a strict generic public adapter for every current authored project operation. Later clients
+must consume that vocabulary rather than define parallel mutations. Broader engine transactions are
+intended to coordinate
 project, timeline, graph, caches, undo, persistence, lifecycle,
 playback, render, export, and event publication. Bulk frames, audio, packets, and GPU resources are
 intended to stay behind that seam.
@@ -1472,9 +1492,8 @@ project settings, authored audio automation, project crash recovery, and integra
 behavior. Project history, settings, and recovery use one attached authoritative `ProjectDocument`;
 audio automation retains a separate audio-owned state attachment. The canonical scenario command
 model remains a reference boundary, while project history delegates to real project media,
-extension, and settings owners. General public timeline, graph, broader audio, extension, and
-compound project adapters remain
-unwired. Prepared resources, foreground playback, interactive
+extension, and settings owners. The generic public project adapter now covers current timeline,
+graph, media, clip-mix, extension, and compound control. Prepared resources, foreground playback, interactive
 transport, and render-export do not yet form one source-backed broad public control flow.
 Variable-rate decoded audio, native GPU presentation and readback, container muxing, file
 publication, and persistent export recovery remain absent.
@@ -1486,17 +1505,18 @@ publishes one deterministic schema `1.0.0` catalog for all current commands, que
 resources, errors, and capabilities, and exposes strict versioned media capability, complete engine
 introspection, integration validation, project
 settings, recovery, and audio automation records plus the fixed canonical scenario action,
-optimistic ordered scenario, settings, and automation transactions, strict recovery get, compare,
-restore, and dismiss commands, complete state projections, and matching full replacement events.
+optimistic ordered scenario, generic authored project, settings, and automation transactions,
+strict recovery get, compare, restore, and dismiss commands, complete state projections, and
+matching replacement events.
 Validation nests
 canonical introspection, which preserves workflow readiness and only reviewed user-safe failure
 data, then adds exact action and endpoint evidence. Project settings retain complete project-owned
 scalar meaning, recovery retains opaque identity plus reviewed safe findings, and automation
 retains audio-owned typed state through engine re-exports without direct production project or
 audio dependencies. It defines strict data-only JSON-RPC 2.0 request, success, and structured safe
-failure shapes, but has no live wire routing, database file command set, or broad editorial command set.
-The engine's broader typed project-history results and replacement events are not yet projected by
-this facade.
+failure shapes, but has no live wire routing, database file command set, C017 complete project
+snapshot, or scripting runtime. The generic facade projects engine project history through minimum
+replacement state and semantic action evidence without exposing engine-owned mutable state.
 
 `superi-cli` is a binary boundary, not a library. It accepts exact `api schema`, the normalized slice
 command, exact `engine validate`, help, and version. Schema discovery consumes the API-owned catalog
@@ -1758,12 +1778,15 @@ coordinator, and resource arbiter. They prove canonical normal admission, playba
 rendering-plus-export, and export-only degradation, visible recovery progress, restored readiness,
 independent public revisions, strict replacement events, unchanged scenario and event state, and
 safe JSON that excludes raw diagnostic details.
-The public schema contracts prove the exact six-command, eight-query, six-event, and seven-resource
+The public schema contracts prove the exact seven-command, eight-query, seven-event, and eight-resource
 catalog, current semantic versions, primitive revision 1, canonical ordering, strict JSON-RPC
 success and failure exclusivity, duplicate and incompatible identity rejection, every recovery
 class, safe diagnostic field filtering, and last-valid resource references. The CLI process
 contract invokes `api schema` twice and requires exact deterministic output, category counts, names,
 help, and invalid usage behavior.
+The generic editor contracts lock all four commands and every current authored operation
+discriminant, prove pre-dispatch conversion atomicity, and execute one real six-action project
+transaction through event correlation, database reload, undo, and redo.
 The project, engine, and API settings contracts compose one real project document, schema-4
 database, typed resolver, full dispatcher, and stable public facade. They prove exact defaults and
 all six settings domains, atomic optimistic updates, no-op stability, migration-derived defaults,
@@ -2017,8 +2040,9 @@ source acquisition flow. Engine project history now wraps authored media, settin
 commands and reverses the complete aggregate, including retained graph and clip-mix state, through
 immutable project snapshots. Timeline edits use a three-way recompile to preserve nonconflicting
 direct graph work. Selected snapshots also reach complete project-owned autosave recovery points
-after apply, undo, and redo. API exposes settings transactions and strict recovery control
-through that owner but does not expose generic history or autosave scheduling commands; CLI,
+after apply, undo, and redo. API exposes generic authored project control, settings transactions,
+and strict recovery control through that owner but does not expose autosave scheduling or database
+file commands; CLI,
 playback, audio-engine, graph evaluation, and rendering do not execute that history.
 
 Native multicam state composes those same timeline and clip owners. One synchronized source
@@ -2155,9 +2179,9 @@ owner invokes warming.
 Partial modules contain these explicit placeholder areas:
 
 - `superi-api`: scripting, live wire routing and transport, subscription delivery, version
-  negotiation, database file commands, and general editorial mutation beyond the fixed canonical
-  scenario. The deterministic catalog, strict JSON-RPC data shapes, and safe structured error
-  projection are implemented. Media and
+  negotiation, database file commands, complete C017 project snapshots, job control, permissions,
+  and generated bindings. Generic authored project control, the deterministic catalog, strict
+  JSON-RPC data shapes, and safe structured error projection are implemented. Media and
   complete engine introspection plus coherent integration validation remain read-only surfaces;
   project settings and clip-gain automation inspection and mutation plus strict project recovery
   control are implemented.
@@ -2180,12 +2204,14 @@ Partial modules contain these explicit placeholder areas:
 - `superi-engine`: one placeholder orchestration module covering nodes.
   Classified cross-subsystem error propagation and recovery is implemented beside the canonical
   lifecycle. Project and device power lifecycle is an explicit action boundary, but platform
-  callbacks, additional project command adapters and native device owners
+  callbacks and native device owners
   are not yet bound to those actions. Typed project media and extension command history, full
   snapshot undo and redo, project settings, compound transactions, and selected-snapshot autosave
-  compatibility use the same authoritative project state. Project recovery discovery, comparison,
+  compatibility use the same authoritative project state. A curated editor seam supports the
+  strict generic public adapter without moving behavior or wire ownership into engine. Project
+  recovery discovery, comparison,
   restore, and dismissal use that same dispatcher and active database, but production background
-  autosave hosting, additional public command adapters, live subsystem reconfiguration, callbacks,
+  autosave hosting, live subsystem reconfiguration, callbacks,
   and native device owners remain
   unbound. Typed dispatch, bounded state events, a capacity-one nonblocking bridge into the real playback
   transport, dispatcher-owned logical export control with full replacement state, and coherent
@@ -2227,8 +2253,8 @@ Partial modules contain these explicit placeholder areas:
   reference solvers, strict styled text, real shaping and paragraph layout, bounded CPU reference
   including spatial real pixels,
   ROI, diagnostics, strict reload, and immutable real-pixel graph contracts.
-- `superi-graph`: invalidation and ROI render orchestration, outer job dispatch, direct
-  project-history command adaptation, engine coordination, cache invalidation invocation and
+- `superi-graph`: invalidation and ROI render orchestration, outer job dispatch, engine
+  coordination, cache invalidation invocation and
   resource policy,
   production engine node catalogs, and runtime consumers beyond its implemented identifier,
   neutral typed value, node-schema, typed DAG storage and validation, schema-bound instances,
@@ -2241,7 +2267,7 @@ Partial modules contain these explicit placeholder areas:
   timing, and shared interactive and headless evaluation surfaces.
 - `superi-timeline`: broader OTIO schema and vendor-effect interpretation beyond its pinned 0.18.1
   native subset, graph evaluation, fit-to-fill, grouped-source compound synthesis and higher-level
-  edit orchestration, typed project-history command adaptation, multicam playback and mixing,
+  edit orchestration, multicam playback and mixing,
   autosave and recovery-journal orchestration, and application consumers beyond its
   native model, authoritative edit state, marker and metadata state, exact snapping, foundational,
   advanced, nested, and multicam edit operations, deterministic graph compilation, versioned state

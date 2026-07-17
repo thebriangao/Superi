@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 7ac8a9d889a864dd4426bcc0b9a46de5ec6f8c5c02ad8a3e768713d727417af2
-source_files: 149
+source_hash: 7b1ea697c5f78233ff065bd5a90ce8e06385bd5cd199b0190c885e7026485a08
+source_files: 150
 mapped_at_commit: working-tree
 ---
 
@@ -28,7 +28,7 @@ Google Docs work, and delivery itself without another agent. Multiple checkpoint
 Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers but obeys an
 explicit positive user concurrency value. The file is ignored by Git and copied into managed
 worktrees through `.worktreeinclude`, so the mapping script does not include it in this module's
-149-file inventory or source hash. It must still be reread independently before repository work.
+150-file inventory or source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
 ratified architecture, while `open/Cargo.toml` and `open/Cargo.lock` expose the dependency graph
@@ -317,6 +317,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   discovery, isolated worker-launch coordination, exact permission narrowing, per-plugin failure
   containment, quarantine and recovery, and one coherent availability path across playback,
   rendering, and export.
+- `docs/checkpoints/P2.W07.C016.md`: Durable implementation evidence for the strict generic project
+  command, every current authored operation family, complete pre-dispatch conversion, one mixed
+  atomic engine transaction, correlated public events, database reload, and public undo plus redo.
 - `docs/checkpoints/P2.W04.C010.md`: Durable implementation evidence for production input-device
   discovery, atomic record arming and monitoring, bounded exact-timestamp capture, and the real
   monitoring bridge into existing output playback.
@@ -892,9 +895,9 @@ consume any selected immutable
 snapshot through one clockless typed autosave controller, publish a complete current-schema recovery
 point through the existing atomic Backup path, and deterministically retain only the newest
 user-selected generation count. The engine consumer proves apply, undo, and redo state reach those
-artifacts exactly, but engine scheduling, recovery choice, API, CLI, and scripting adapters remain
-later work. The API projects the earlier scenario transaction seam and the CLI consumes it;
-project-history wire, API, CLI, and scripting projection remain later work. Durable extension
+artifacts exactly. The API now projects every current authored project action through one strict
+generic command, typed evidence, minimum history replacement state, and correlated event while CLI
+execution, scripting, subscriptions, and autosave scheduling remain later work. Durable extension
 lifecycle remains user-controlled project state, while live plugin readiness stays derived from the
 engine supervisor and graph registry. The documented broader
 target coordinates project, timeline, graph, caches,
@@ -1154,6 +1157,12 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   blocking-safe shutdown over the canonical logical queue. This in-process proof does not imply
   wire transport or a broad production project transaction.
 
+- `docs/checkpoints/P2.W07.C016.md` records the generic project editor adapter over that dispatcher.
+  Its strict parity proof covers apply, inspect, undo, redo, six action groups, and every current
+  timeline, graph, media, clip-mix, and extension mutation. A real mixed fixture proves one revision,
+  one history unit, one correlated event, exact database reload, and fresh undo plus redo revisions
+  without claiming C017 full snapshots, CLI routing, scripting, subscriptions, or wire transport.
+
 - The focused effects preset contract verifies the runtime JSON and SHA-256 edges through canonical
   current documents, legacy migration, integrity rejection, and exact graph reload. Crate-wide
   effects and graph suites prove downstream compatibility; dependency and boundary gates remain the
@@ -1331,10 +1340,11 @@ records one immutable before-and-after unit, restores undo and redo targets with
 revisions, persists only the selected snapshot through the existing database, and exposes one
 correlated dispatcher event. Plugin, effect, AI artifact provenance, and unknown future extension
 records preserve exact payloads and user-controlled lifecycle without duplicating runtime plugin
-readiness. Public project-history wire, API, CLI, scripting, logging, and
-automation adapters remain incomplete.
+readiness. The generic public project command, typed evidence, and correlated history event are
+implemented. CLI execution, scripting, logging, subscriptions, complete stable snapshots, and
+autosave hosting remain incomplete.
 The synchronized remote revision before this checkpoint is
-`317d2464dce5c33fa26d6e5b363961246582d188`.
+`88edc77f54229818550107c90b418198b7511251`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
 root README, deny policy, and structure guide with license-audit CI. Commit
 `e0b3af9f099f527a8544d1b0317896640969903b` added the executable dependency-policy contract and its
@@ -1506,8 +1516,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`88edc77f54229818550107c90b418198b7511251` when this checkpoint was rebased. Its hash describes the exact
-149 discovered source files, including twelve generated binary payloads, layered on that revision.
+`4a2334220a1944c73ce7d7570aa7b3a3ba2647af` when this checkpoint was rebased. Its hash describes the exact
+150 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 

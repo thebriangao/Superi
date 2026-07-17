@@ -2,7 +2,7 @@
 module_id: superi-cli
 source_paths:
   - open/crates/superi-cli
-source_hash: 92be93efb5ec2818ccbff6e247fa7454b1ae09cbe5caeb7a69d09c2519b03442
+source_hash: d6366f73b92f11eb7fb89da9d8e8440cc5e377ce79d969e2ae38aca9fcdbc95e
 source_files: 8
 mapped_at_commit: working-tree
 ---
@@ -26,9 +26,10 @@ The exact `api schema` command is a third public API consumer. It asks `PublicAp
 same deterministic catalog used by typed clients and prints all current command, query, event,
 resource, error, and capability schemas without reconstructing registry data in the CLI.
 
-The engine's production Rust project command-history surface is not available through `superi-api`,
-so this binary cannot yet apply, inspect, undo, or redo a real project document. Its current
-reversal proof remains the fixed canonical scenario contract.
+The production project command-history surface is now available through `superi-api`, but this
+binary does not yet route its apply, inspect, undo, or redo commands. Its current reversal proof
+remains the fixed canonical scenario contract, and its schema command verifies that the generic
+editor method, event, and resource are discoverable without adding a competing CLI vocabulary.
 
 The current runner satisfies contract conformance only. It does not open or decode media, evaluate
 pixels, apply production color, encode AV1, mux WebM, or claim a working editor export. Every absent
@@ -55,7 +56,8 @@ production owner is explicit in stage diagnostics and the artifact name.
   exits with its exact status.
 - `open/crates/superi-cli/tests/api_schema_cli_contract.rs`: Proves deterministic exact schema
   discovery output, catalog and primitive identity, all six schema categories, exact current counts
-  and method names, help coverage, and invalid usage status.
+  including the generic project command, event, and resource, command method names, help coverage,
+  and invalid usage status.
 - `open/crates/superi-cli/tests/scenario_runner.rs`: Provides process contracts for two-run
   reproducibility, exact state and schema 1.1.0 report contents, all-stage timing and nonzero
   resident-memory evidence, exact expectation evidence, honest stub evidence, collision
@@ -87,8 +89,8 @@ superi-cli api schema
 ```
 
 Schema discovery success prints exactly one strict `PublicApiSchemaSnapshot` JSON value containing
-catalog schema `1.0.0`, stable primitive revision 1, JSON-RPC `2.0`, six commands, eight queries,
-six events, seven resources, one error schema, and one capability schema in canonical order. It
+catalog schema `1.0.0`, stable primitive revision 1, JSON-RPC `2.0`, seven commands, eight queries,
+seven events, eight resources, one error schema, and one capability schema in canonical order. It
 starts no engine, routes no operation, and owns no transport or registry state.
 
 Validation success prints exactly one strict `GetEngineIntegrationValidationResult` JSON value to
@@ -197,7 +199,8 @@ success.
 - `superi-api` supplies all three public boundaries used by the binary: deterministic schema
   discovery, revisioned scenario transactions, and immutable coherent integration validation.
 - Engine project-history types are deliberately not a dependency. The CLI continues to depend only
-  on `superi-api`, and project apply, undo, redo, scripting, and automation commands remain absent.
+  on `superi-api`; the generic editor contract is discoverable, while project apply, undo, redo,
+  scripting, and automation command routing remain absent from this binary.
 - `serde` and `serde_json` parse strict manifests and serialize state, stages, reports, artifacts,
   summaries, and failures.
 - `sha2` computes manifest, payload, semantic state, timeline, graph, operation log, and artifact
@@ -287,7 +290,8 @@ empty coherence findings, help coverage, and precise invalid usage. They do not 
 application session, UI rendering, endpoint polling, or long-session recovery.
 
 Two API schema process contracts prove deterministic semantics across separate invocations, exact
-catalog, primitive, and JSON-RPC identity, all six schema sections, exact current counts and method
+catalog, primitive, and JSON-RPC identity, all six schema sections, exact current counts including
+the generic editor registration and command
 names, help coverage, and precise invalid usage. They do not prove method routing, wire transport,
 event delivery, scripting, or broad CLI parity.
 
@@ -299,9 +303,9 @@ limitation is intentional: six stages model typed boundaries without production 
 fixture payload is digest-validated but its decoded traits are reported as expected contract values
 because the current media stage does not open it.
 
-Engine now has a bounded real-project command owner below the API, but the CLI exposes no project
-history command. Public API adaptation must land before this binary can consume that owner without
-violating its dependency tier.
+Engine now has a bounded real-project command owner and the API has a strict generic adapter, but
+the CLI exposes no project history execution command. A later CLI checkpoint can consume the API
+adapter without violating this binary's dependency tier or importing engine types.
 
 `engine validate` currently constructs a fresh starting engine, so it proves the shared public
 query and strict state projection rather than attaching to an already running application process.

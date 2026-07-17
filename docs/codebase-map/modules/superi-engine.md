@@ -2,8 +2,8 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 47ed1cafcb78d733d45aa8b35b684976a2ca9159552143312e4201e86cda6ae7
-source_files: 65
+source_hash: 04b801d236d107cfd4cf0d5cd03da94027e39ab0708da2df5d832790242f0251
+source_files: 66
 mapped_at_commit: working-tree
 ---
 
@@ -89,6 +89,9 @@ through the existing dispatcher.
   reservation, optionally owns authored audio automation with the same dynamic event reservation,
   and optionally attaches one exact file-backed recovery coordinator whose discover, restore, and
   dismiss commands publish correlated complete recovery state.
+- `open/crates/superi-engine/src/editor.rs`: Exposes the curated checked construction vocabulary
+  needed by the upper-tier generic project API while adding no wire model, mutation algorithm,
+  dispatcher, history, persistence owner, or lower dependency edge.
 - `open/crates/superi-engine/src/error.rs`: Implements EngineControl-owned classified failure
   propagation, immutable actionable records, bounded diagnostic history, exact recovery-intent
   validation, failed-recovery reclassification, and coherent lifecycle routing without copying
@@ -120,7 +123,8 @@ through the existing dispatcher.
   resource accounting, lifecycle and recovery revisions, health, canonical subsystem state,
   coherent playback, rendering, and export readiness, and user-safe active failure projections.
 - `open/crates/superi-engine/src/lib.rs`: Documents the implemented orchestration boundaries,
-  exposes the engine modules, and conditionally exposes the hidden test-support fixture.
+  exposes the engine modules including the curated editor seam, and conditionally exposes the
+  hidden test-support fixture.
 - `open/crates/superi-engine/src/lifecycle.rs`: Implements the EngineControl-owned lifecycle state
   machine, canonical subsystem dependency plan, exact action tokens, immutable generated snapshots,
   explicit project and device coordination, reverse sleep preparation, forward wake revalidation,
@@ -327,6 +331,14 @@ through the existing dispatcher.
 implementation identity, typed operation arguments, and operation records. Supported mutations are
 import, insert, trim, and horizontal mirror. Undo and redo are history actions. Export is
 intentionally absent from engine mutations.
+
+`editor` is a narrow upper-tier construction seam. It reexports the existing exact identifiers,
+time values, editorial material, timeline edit operations, compiled graph mutation vocabulary,
+media paths, clip-mix controls, extension state, compound project transactions, history commands,
+dispatcher commands, snapshots, and database consumer needed by `superi-api::ProjectEditorApi`.
+It owns no behavior and deliberately does not derive or define wire serialization for lower-domain
+types. This keeps API conversion dependent only on `superi-engine` and `superi-core` while every
+semantic check remains with its existing lower owner.
 
 `history` exposes the production Rust project command-history surface:
 
@@ -1161,13 +1173,14 @@ audio mutation, so their user intent remains attached without synthesis.
 - `superi-api` consumes dispatcher transactions and events plus command, media capability, and
   complete engine introspection and integration validation snapshots, preserving public adaptation,
   validation, scenario, project settings, project recovery, and authored audio automation seams
-  without exposing engine-private owners. The API depends only on engine for project settings,
-  recovery, and audio automation and therefore does not reverse the reviewed runtime graph.
+  without exposing engine-private owners. The API depends only on engine for generic project
+  control, settings, recovery, and audio automation and therefore does not reverse the reviewed
+  runtime graph.
   Playback and logical export mutation remain outside the public
   protocol, while their latest
-  replacement state is visible through the read-only validation query. The broader typed project
-  history commands and replacement events remain Rust-only engine contracts, while recovery is
-  projected through opaque identities and user-safe findings.
+  replacement state is visible through the read-only validation query. Generic project history is
+  projected through strict API-owned DTOs, typed evidence, and correlated replacement events, while
+  recovery is projected through opaque identities and user-safe findings.
 - Cache and GPU retain their own exact local budget enforcement, audio retains its preallocated
   callback-safe queue, media I/O retains decoded value and lifecycle ownership, and export retains
   logical job and publication ownership. The engine arbiter composes a higher shared managed-byte
@@ -1480,6 +1493,13 @@ oldest-entry eviction, and revision-exhaustion atomicity. The durability proof w
 snapshot to schema-4 SQLite, reloads with empty session history, and passes the canonical AV1 fixture
 through `acquire_project_resources` after reversal.
 
+The downstream `superi-api` generic editor contract consumes only the curated `editor` seam. It
+constructs a real project, drives one six-action compound command through EngineControl, checks
+semantic action evidence and one correlated project event, persists and reloads the selected
+snapshot, then performs public undo and redo. Its parity table covers every currently executable
+timeline, graph, media, clip-mix, and extension operation without widening the engine dependency
+graph or making lower types wire owners.
+
 One project-autosave consumer contract applies a real media-path mutation through that history,
 autosaves the selected snapshot, then repeats after undo and redo. It opens all three recovery-point
 databases through the public project owner and requires exact snapshot equality, including durable
@@ -1696,9 +1716,9 @@ Playback crosses
 one bounded nonblocking bridge to its real domain owner. Logical export state remains in the
 canonical queue behind a type-erased dispatcher controller, while prepared executors receive fresh
 revision-scoped permits and render-export revalidates one before publication. The public JSON
-scenario projection remains intentionally narrower than the full Rust engine vocabulary and does
-not yet expose project history, while the strict validation projection exposes the coherent state
-needed by public clients without opening a mutation path.
+scenario projection remains intentionally narrow, while the separate generic project facade now
+projects complete current authored-operation control and minimum typed history state through the
+curated engine seam. The strict validation projection remains read-only coherent state.
 
 Typed project settings resolution and dispatcher control are substantive and test-backed. They
 preserve durable authored scalar meaning and expose one real API path, but resolution does not
@@ -1724,9 +1744,9 @@ shared finite-resource arbitration, foreground playback, interactive transport, 
 execution, and bounded logical export scheduling are coherent and test-backed, but there is no
 timeline-owned decoded-audio graph
   renderer, persistent cache lifecycle owner, native GPU viewport or export submission, packet muxer,
-  output publisher, project-history wire adapter, concrete
-platform OpenFX or audio plugin worker launchers, native OFX or audio plugin IPC adapters, Audio Unit
-registry enumeration, heartbeat and kill integration, or GPU-handle transport. Project
+  output publisher, concrete platform OpenFX or audio plugin worker launchers, native OFX or audio
+plugin IPC adapters, Audio Unit registry enumeration, heartbeat and kill integration, or GPU-handle
+transport. Project
 persistence exists in `superi-project`, while history stacks deliberately remain session-local. The
 integration validator is substantive but observes only
 canonical cached state and cannot replace a production soak, platform lane, or wire client. The effects-side OpenFX host contract
@@ -1751,9 +1771,9 @@ cooperative checkpoints, and requires an explicit blocking-safe shutdown; it is 
 crash-recoverable scheduler. Its generic executor preparation and typed results remain process-local
 runtime bindings, and no application or wire API path invokes them yet. The derived-media driver
 and resolver are synchronous and caller-owned, and no application or API path invokes them yet.
-Clip-mix reconciliation, extension mutation, and compound project mutation are substantive but
-currently entered by Rust
-callers rather than the public API or playback controller. Lifecycle is a production control-plane contract that now names project
+Clip-mix reconciliation, extension mutation, and compound project mutation are substantive and now
+entered by the generic public API as well as Rust callers, but not by the playback controller.
+Lifecycle is a production control-plane contract that now names project
 and device boundaries across sleep and wake, but later platform callbacks, additional typed project
 mutation adapters, native device owners, render submission, export
 publication, and arbitration consumers still must perform concrete actions before acknowledging it.
@@ -1792,6 +1812,9 @@ and published by one outer project edit. Keep extension payloads opaque, preserv
 capability, lifecycle, and failure meaning exactly, and never persist derived supervisor readiness
 into authored extension state. Add later command adapters without placing history stacks
 in project, timeline, graph, audio, API, or CLI owners.
+Keep `editor` a behavior-free curated reexport seam for the public adapter. New authored operations
+must stay implemented and validated by their lower owners, then be added to this seam only when the
+API has a strict DTO, complete conversion, parity proof, and real dispatcher consumer.
 Keep `InspectProjectDiagnostics` bound to the selected immutable history snapshot and delegate all
 hash framing, component evidence, versioning, and exclusions to `superi-project`. Preserve its typed
 complete result, successful command sequencing, missing-owner failure, eventless behavior, and zero

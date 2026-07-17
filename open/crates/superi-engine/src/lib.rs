@@ -21,6 +21,7 @@ pub mod av_sync;
 pub mod command;
 pub mod derived_media;
 pub mod dispatcher;
+pub mod editor;
 pub mod error;
 pub mod export_dispatch;
 pub mod export_jobs;
