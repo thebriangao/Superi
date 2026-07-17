@@ -680,6 +680,7 @@ pub struct AudioPluginStatusSnapshot {
     lifecycle: AudioPluginLifecycle,
     total_failures: u64,
     consecutive_failures: u32,
+    last_failure: Option<AudioPluginFailure>,
     has_checkpoint: bool,
 }
 
@@ -706,6 +707,12 @@ impl AudioPluginStatusSnapshot {
     #[must_use]
     pub const fn consecutive_failures(&self) -> u32 {
         self.consecutive_failures
+    }
+
+    /// Returns the latest safe-to-project engine failure record.
+    #[must_use]
+    pub const fn last_failure(&self) -> Option<&AudioPluginFailure> {
+        self.last_failure.as_ref()
     }
 
     /// Returns whether exact state is available for recovery and project save.
@@ -871,8 +878,25 @@ impl AudioPluginSupervisor {
             lifecycle: plugin.lifecycle,
             total_failures: plugin.total_failures,
             consecutive_failures: plugin.consecutive_failures,
+            last_failure: plugin.last_failure.clone(),
             has_checkpoint: plugin.checkpoint.is_some(),
         })
+    }
+
+    /// Returns every accepted native plugin status in exact identity order.
+    #[must_use]
+    pub fn statuses(&self) -> Vec<AudioPluginStatusSnapshot> {
+        self.plugins
+            .values()
+            .map(|plugin| AudioPluginStatusSnapshot {
+                descriptor: plugin.descriptor.clone(),
+                lifecycle: plugin.lifecycle,
+                total_failures: plugin.total_failures,
+                consecutive_failures: plugin.consecutive_failures,
+                last_failure: plugin.last_failure.clone(),
+                has_checkpoint: plugin.checkpoint.is_some(),
+            })
+            .collect()
     }
 
     /// Returns discovery failures plus each accepted plugin's latest worker failure.

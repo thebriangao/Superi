@@ -3,7 +3,7 @@
 use superi_core::settings::SemanticVersion;
 
 /// Schema version for the complete public API catalog.
-pub const PUBLIC_API_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 3, 0);
+pub const PUBLIC_API_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 4, 0);
 
 /// Every released public API catalog schema in ascending SemVer precedence order.
 pub const PUBLIC_API_SCHEMA_RELEASES: &[SemanticVersion] = &[
@@ -11,6 +11,7 @@ pub const PUBLIC_API_SCHEMA_RELEASES: &[SemanticVersion] = &[
     SemanticVersion::new(1, 1, 0),
     SemanticVersion::new(1, 2, 0),
     SemanticVersion::new(1, 3, 0),
+    SemanticVersion::new(1, 4, 0),
 ];
 
 /// Independent request and response schema for version negotiation.
@@ -54,6 +55,18 @@ pub const PROJECT_STATE_CHANGED_EVENT: &str = "superi.project.state.changed";
 
 /// Replacement resource name for generic project history state.
 pub const PROJECT_HISTORY_RESOURCE: &str = "superi.project.history";
+
+/// Schema version for extension registration and capability discovery.
+pub const EXTENSIONS_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
+
+/// Read-only JSON-RPC query for the complete process-lifetime extension registry.
+pub const GET_EXTENSIONS_METHOD: &str = "superi.extensions.get";
+
+/// Full replacement event for process-lifetime extension registry changes.
+pub const EXTENSIONS_CHANGED_EVENT: &str = "superi.extensions.changed";
+
+/// Complete process-lifetime extension replacement resource.
+pub const EXTENSIONS_RESOURCE: &str = "superi.extensions";
 
 /// Schema version for public asynchronous job replacement snapshots.
 pub const ASYNC_JOBS_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);

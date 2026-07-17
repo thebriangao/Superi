@@ -17,6 +17,9 @@ use superi_engine::audio_plugins::{
     AudioPluginSupervisor, AudioPluginWorkerAdapter, AudioPluginWorkerContract,
     AudioPluginWorkerIsolation, AudioPluginWorkerLauncher,
 };
+use superi_engine::extensions::{
+    registrations_from_native_audio, ExtensionLifecycle, ExtensionRuntimeIdentity,
+};
 use superi_project::document::ProjectDocument;
 use superi_project::extensions::ProjectExtensionLifecycle;
 use superi_project::ProjectDatabase;
@@ -256,6 +259,28 @@ fn deterministic_scan_supervision_recovery_and_project_reopen_preserve_exact_sta
         supervisor.status(&identity()).unwrap().lifecycle(),
         AudioPluginLifecycle::Faulted
     );
+    let registrations = registrations_from_native_audio(&supervisor).unwrap();
+    assert_eq!(registrations.len(), 1);
+    let registration = &registrations[0];
+    assert_eq!(registration.lifecycle(), ExtensionLifecycle::Faulted);
+    match registration.identity() {
+        ExtensionRuntimeIdentity::NativeAudio {
+            provider,
+            format,
+            vendor,
+            identifier,
+            version,
+        } => {
+            assert_eq!(provider.to_string(), "superi.audio-plugin-host@1.0.0");
+            assert_eq!(*format, AudioPluginFormat::Vst3);
+            assert_eq!(vendor, "Example Vendor");
+            assert_eq!(identifier, "6E33225254224A00AA69301AF318797D");
+            assert_eq!(version, "2.4.1");
+        }
+        ExtensionRuntimeIdentity::Versioned { .. } => panic!("expected native audio identity"),
+    }
+    assert!(registration.failure().is_some());
+    assert!(!format!("{registration:?}").contains(tree.path().to_string_lossy().as_ref()));
     assert_eq!(
         supervisor
             .enable(&identity(), Some(checkpoint.clone()))

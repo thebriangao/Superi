@@ -2,6 +2,7 @@ import {
   SuperiClient,
   type EditorAiState,
   type ExecuteProjectCommand,
+  type GetExtensions,
   type NegotiateApiVersion,
   type SuperiEventMap,
   type SuperiMethodMap,
@@ -22,10 +23,12 @@ export const unavailableAiState = {
 } satisfies EditorAiState;
 
 export const versionNegotiationRequest = {
-  api_schema_versions: ["1.0.0", "1.1.0", "1.2.0", "1.3.0"],
+  api_schema_versions: ["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0"],
   primitive_schema_revisions: [1],
   project: null,
 } satisfies NegotiateApiVersion;
+
+export const extensionDiscoveryRequest = null satisfies GetExtensions;
 
 export type InspectProjectResult =
   SuperiMethodMap["superi.project.command.execute"]["response"];
@@ -34,6 +37,10 @@ export type ProjectStateEvent =
 export type EditorStateResource = SuperiResourceMap["superi.editor.state"];
 export type VersionNegotiationResult =
   SuperiMethodMap["superi.api.version.negotiate"]["response"];
+export type ExtensionDiscoveryResult =
+  SuperiMethodMap["superi.extensions.get"]["response"];
+export type ExtensionChangedEvent = SuperiEventMap["superi.extensions.changed"];
+export type ExtensionRegistryResource = SuperiResourceMap["superi.extensions"];
 
 export function createSuperiClient(transport: SuperiTransport): SuperiClient {
   return new SuperiClient(transport);

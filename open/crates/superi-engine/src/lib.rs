@@ -27,6 +27,7 @@ pub mod error;
 pub mod export_dispatch;
 pub mod export_jobs;
 pub mod export_queue;
+pub mod extensions;
 pub mod frame_upload;
 pub mod history;
 pub mod introspection;

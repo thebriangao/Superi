@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 71c3428e99446abe76f58c7a9ce79f342792fbaee4277a120d7c151b5c95ae19
+source_hash: 303525c1bb04aa3fb9d4b7124a518ff49905446c9c0da4a9059077fdcd0be556
 source_files: 152
 mapped_at_commit: working-tree
 ---
@@ -387,8 +387,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 
 - `ci/frontend-smoke/.node-version`: Pins Node.js 24.13.0 for local and hosted frontend gates.
 - `ci/frontend-smoke/README.md`: Defines the CI-only boundary, exact local commands, build-before-test
-  ordering, typed version negotiation consumption, and migration requirement when the real Phase 3
-  application enters the repository.
+  ordering, typed version negotiation and extension discovery consumption, and migration requirement
+  when the real Phase 3 application enters the repository.
 - `ci/frontend-smoke/index.html`: Supplies the minimal browser document and module entry consumed by
   the Vite production build.
 - `ci/frontend-smoke/package-lock.json`: Lockfile version 3 resolution for exact TypeScript 5.9.3,
@@ -397,15 +397,16 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   typecheck, build, and test commands, and exact TypeScript and Vite development dependencies.
 - `ci/frontend-smoke/src/api-contract.ts`: Imports the committed generated API artifact, constructs
   an exact typed project command, unavailable AI state, and API version negotiation request,
-  consumes negotiation response, method, event, and resource maps, and exposes the transport-neutral
-  client constructor to the browser build.
+  consumes negotiation response plus the extension query, lifecycle, event, resource, and stable
+  public control reference, consumes the typed maps, and exposes the transport-neutral client
+  constructor to the browser build.
 - `ci/frontend-smoke/src/main.ts`: Implements a strict typed browser entry that verifies the contract
   root, consumes generated command, negotiation, and AI state examples, and renders the declared
   product, readiness, and independent frontend gates.
 - `ci/frontend-smoke/tests/contract.test.mjs`: Verifies exact scripts and versions, strict compiler
   settings, immutable and least-privilege workflow wiring, locked installation, mandatory gates,
-  generated API import, negotiation contract, typed maps, client surface, and the hashed JavaScript
-  entry in the production bundle.
+  generated API import, negotiation and extension discovery contracts, typed maps, client surface,
+  and the hashed JavaScript entry in the production bundle.
 - `ci/frontend-smoke/tsconfig.json`: Defines strict no-emit TypeScript checking for the browser entry
   with ES2022, DOM, bundler-resolution, isolated-module, and forced-module semantics.
 
@@ -432,7 +433,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `open/bindings/typescript/superi-api.ts`: Deterministic committed TypeScript representation of the
   public API. It contains all named DTOs including version negotiation, exact method, event, and
   resource maps, recursive wire primitives, the bounded local scripting request, program, trace,
-  and response types, and a transport-neutral typed client without owning runtime IPC.
+  and response types, strict extension identity, lifecycle, capability, safe failure, feature,
+  control, query, event, and resource declarations, and a transport-neutral typed client without
+  owning runtime IPC.
 - `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 25 local
   workspace packages, registry dependencies, target-support dependency trees, scenario digest
   and process-instrumentation dependency edges, the API introspection and validation contracts'
@@ -927,9 +930,14 @@ vocabulary through that same facade, preserves nested permission checks and ordi
 returns deterministic revision, semantic hash, conflict, and committed-prefix evidence. The CLI now
 composes durable project, media, timeline, render settings, recovery, validation, and bounded
 JSON-RPC automation through the API-owned local host, including exact-source script execution.
-Subscription hosting, dedicated script path loading, and autosave scheduling remain later work. Durable extension
-lifecycle remains user-controlled project state, while live plugin readiness stays derived from the
-engine supervisor and graph registry. The documented broader
+Subscription hosting, dedicated script path loading, and autosave scheduling remain later work.
+Durable extension lifecycle remains user-controlled project state, while one bounded engine-owned
+declarative registry now synchronizes exact OpenFX and native audio supervisor status into canonical
+identity, capability, lifecycle, safe failure, and control discovery. The API projects that state
+through a permission-free query and replacement event, generated TypeScript exposes it to the
+frontend consumer, and every mutation still points to the existing permission-checked durable
+project command. Worker handles, callbacks, factories, paths, and privileged engine entry points
+remain private to runtime owners. The documented broader
 target coordinates project, timeline, graph, caches,
 persistence, undo, events, playback, and export and presents the same command surface to UI, CLI,
 scripts, extensions, and Superi Max, with no privileged closed-tier route.
@@ -1062,6 +1070,13 @@ of open runtime behavior.
   payload bytes. Capability grants remain a user-controlled subset, lifecycle and structured
   failure state remain durable and scriptable, unknown kinds survive unchanged, and engine runtime
   readiness remains derived rather than persisted.
+- Runtime extension discovery is one bounded process-lifetime declarative registry. Exact versions
+  may coexist, requested and granted capabilities remain distinct, only Ready features are
+  Available, safe failures exclude raw diagnostics, and canonical snapshots change revision only
+  when semantic state changes.
+- Every discovered extension exposes the existing project command and editor-state resource as its
+  sole user-control route. Discovery grants no authority and exposes no worker, callback, launcher,
+  factory, path, dispatcher, permission token, or closed-tier engine backdoor.
 - Autosave policy and monotonic elapsed state remain session-local and project-owned. Completed
   recovery points are complete current-schema `.superi` databases, count retention is ordered only
   by strict numeric generation, unknown and candidate files are preserved, and recovery discovery,
@@ -1150,8 +1165,16 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   and unknown-kind envelopes, capability narrowing, user lifecycle and failure control, exact
   non-UTF-8 payload preservation, semantic no-ops, stale fencing, schema-4 persistence, lossless
   schema-3 migration, atomic save and autosave, engine history, compound transactions, dispatcher
-  events, and undo plus redo. They do not claim plugin process availability, graph factory
-  registration, AI execution, UI, or public wire adaptation.
+  events, public mutation DTOs, and undo plus redo. They do not claim plugin process availability,
+  graph factory registration, AI execution, or UI.
+
+- The extension registration contracts prove one bounded engine registry, exact version coexistence,
+  canonical change-only snapshots, requested and granted capability separation, ready-only feature
+  availability, safe failure evidence, and read-only adapters over the real OpenFX and native audio
+  supervisors. API contracts prove strict permission-free discovery, rejection of privileged wire
+  fields, full replacement event and reconnect metadata, real permission-checked project control,
+  and database reopen. Generated TypeScript, CLI schema, and frontend contracts prove consumer
+  visibility without claiming a plugin transport, mutable browser registry, or product UI.
 
 - `docs/checkpoints/P2.W05.C002.md` records the shared typed graph payload, concrete built-in effect
   schemas, caller-owned graph authoring, bounded CPU reference behavior, exact ROI and pixel
@@ -1263,10 +1286,12 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
 - `.github/workflows/frontend.yml` performs `npm ci`, `npm run typecheck`, `npm run build`, and
   `npm test` under exact Node.js, TypeScript, and Vite versions. The contract tests require strict
   no-emit checking, immutable actions, read-only credentials, every independent gate, the committed
-  generated API import, typed negotiation request and response, typed maps, the transport-neutral
-  client surface, and a hashed JavaScript entry in the generated production bundle.
+  generated API import, typed negotiation request and response, typed extension discovery snapshot
+  and control reference, typed maps, the transport-neutral client surface, and a hashed JavaScript
+  entry in the generated production bundle.
 - `cargo test -p superi-api --features typescript-bindings --test typescript_bindings_contract`
   proves deterministic API rendering, complete canonical registry coverage, required typed maps,
+  extension query, event, resource, lifecycle, capability, safe failure, and control declarations,
   and absence of timestamps or checkout paths. `cargo test -p superi-api-bindings` proves
   idempotent generation plus nonmutating missing and stale checks, and `cargo run --locked -p
   superi-api-bindings -- check` proves the committed artifact is current.
@@ -1367,7 +1392,9 @@ Its `superi-api` package record now includes one test-only concurrency edge for 
 introspection ownership contract without changing the production runtime graph.
 The API now owns a nonserializable host permission context, typed lexical filesystem and plugin
 scopes, explicit destructive operations, deny precedence, payload-derived requirements, and schema
-`1.3.0` discovery metadata. Its bounded `superi-json` runtime uses already resolved JSON and
+`1.4.0` discovery metadata. It also projects one bounded engine-owned extension registry through
+strict exact identity, lifecycle, capability, feature, safe failure, stable control, query, event,
+and replacement resource contracts. Its bounded `superi-json` runtime uses already resolved JSON and
 SHA-256 packages and preserves the same nested authorization and project command owner. The CLI exercises that boundary with one
 exact canonical fixture-read grant for the scenario path and a separate deny-by-default local
 policy context for durable project workflows; authentication, final symlink confinement, and
@@ -1588,8 +1615,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`c4f049e9676aa48cc1876b66f4823a33d230c074` when this workflow update began. Its hash describes the
-exact 152 discovered source files, including generated binary payloads, layered on that revision.
+`c4f049e9676aa48cc1876b66f4823a33d230c074` when this checkpoint began. Its hash describes the exact
+152 discovered source files, including generated binary payloads, layered on the integrated revision.
 
 ## Maintenance notes
 
@@ -1628,3 +1655,8 @@ and platform matrix overlap intentionally but currently disagree in status. When
 changes, update the most authoritative contract and every public status summary that would otherwise
 mislead a contributor. Keep planned requirements clearly separate from code paths and test evidence
 that exist and have run.
+Keep the committed TypeScript artifact, CLI schema consumer, frontend smoke consumer, API map,
+engine map, and global index synchronized whenever extension identity, lifecycle, capability,
+feature, failure, control, query, event, resource, or reconnect behavior changes. Discovery must
+remain a declarative projection of authoritative runtime owners and must never imply a privileged
+frontend, CLI, closed-tier, or plugin execution route.

@@ -878,9 +878,64 @@ export type ExportQueueValidationState = { revision: number; jobs: ExportJobVali
 export type ExportValidationState = { attached: boolean; latest: ExportQueueValidationState | null };
 
 /**
+ * Explicit stable route for user-controlled durable extension state.
+ */
+export type ExtensionControl = { extension_id: string; command_method: string; state_resource: string; operations: ExtensionControlOperation[] };
+
+/**
+ * Durable operation available through the stable project command surface.
+ */
+export type ExtensionControlOperation = "upsert" | "remove" | "set_lifecycle" | "set_granted_capabilities" | "record_failure" | "clear_failure";
+
+/**
+ * One core-compatible discovery snapshot with capabilities equal to the granted set.
+ */
+export type ExtensionDiscovery = { schema_version: SemanticVersion; producer: string; capabilities: string[]; features: ExtensionFeature[] };
+
+/**
+ * Safe extension failure with no path, raw message, adapter, or private context.
+ */
+export type ExtensionFailure = { category: ErrorCategory; recoverability: Recoverability; stage: string; total_failures: number; consecutive_failures: number; recommended_action: ExtensionUserAction };
+
+/**
+ * One discoverable extension feature.
+ */
+export type ExtensionFeature = { id: string; version: SemanticVersion; availability: FeatureAvailability; required_capabilities: string[] };
+
+/**
+ * Exact public runtime identity.
+ */
+export type ExtensionIdentity = { kind: "versioned"; producer: string } | { kind: "native_audio"; provider: string; format: string; vendor: string; identifier: string; version: string };
+
+/**
+ * Current runtime lifecycle, distinct from durable project record lifecycle.
+ */
+export type ExtensionLifecycle = "registered" | "disabled" | "ready" | "faulted" | "quarantined" | "unavailable";
+
+/**
  * Stable extension result kind.
  */
 export type ExtensionMutationResultKind = "upserted" | "removed" | "lifecycle_set" | "granted_capabilities_set" | "failure_recorded" | "failure_cleared" | "unknown";
+
+/**
+ * One complete public runtime registration.
+ */
+export type ExtensionRegistration = { identity: ExtensionIdentity; display_name: string; requested_capabilities: string[]; granted_capabilities: string[]; discovery: ExtensionDiscovery; lifecycle: ExtensionLifecycle; failure: ExtensionFailure | null; control: ExtensionControl };
+
+/**
+ * Complete deterministic public replacement state.
+ */
+export type ExtensionRegistrySnapshot = { schema_version: SemanticVersion; revision: number; registrations: ExtensionRegistration[] };
+
+/**
+ * Recommended user response to one safe failure summary.
+ */
+export type ExtensionUserAction = "retry" | "continue_degraded" | "correct_configuration" | "stop";
+
+/**
+ * Complete extension registration and capability state after a runtime change.
+ */
+export type ExtensionsChanged = { snapshot: ExtensionRegistrySnapshot };
 
 /**
  * Generator-only shadow for the core feature availability string wire.
@@ -931,6 +986,16 @@ export type GetEngineIntrospection<> = null;
  * Successful response to [`GetEngineIntrospection`].
  */
 export type GetEngineIntrospectionResult = { snapshot: EngineIntrospectionSnapshot };
+
+/**
+ * Strict empty query for complete extension discovery state.
+ */
+export type GetExtensions<> = null;
+
+/**
+ * Successful extension discovery response.
+ */
+export type GetExtensionsResult = { snapshot: ExtensionRegistrySnapshot };
 
 /**
  * Structured parameters for a media capability query.
@@ -1275,7 +1340,7 @@ export type PublicApiError = { code: number; message: string; data: PublicErrorD
 /**
  * Strict closed union of every event in the public schema catalog.
  */
-export type PublicApiEvent = { event: "superi.project.state.changed"; payload: ProjectStateChanged } | { event: "superi.jobs.changed"; payload: AsyncJobsChanged } | { event: "superi.project.recovery.changed"; payload: ProjectRecoveryChanged } | { event: "superi.audio.automation.changed"; payload: AudioAutomationChanged } | { event: "superi.project.settings.changed"; payload: ProjectSettingsChanged } | { event: "superi.media.capabilities.changed"; payload: MediaCapabilitiesChanged } | { event: "superi.engine.introspection.changed"; payload: EngineIntrospectionChanged } | { event: "superi.slice.scenario.state.changed"; payload: ScenarioStateChanged };
+export type PublicApiEvent = { event: "superi.project.state.changed"; payload: ProjectStateChanged } | { event: "superi.jobs.changed"; payload: AsyncJobsChanged } | { event: "superi.project.recovery.changed"; payload: ProjectRecoveryChanged } | { event: "superi.audio.automation.changed"; payload: AudioAutomationChanged } | { event: "superi.project.settings.changed"; payload: ProjectSettingsChanged } | { event: "superi.media.capabilities.changed"; payload: MediaCapabilitiesChanged } | { event: "superi.engine.introspection.changed"; payload: EngineIntrospectionChanged } | { event: "superi.extensions.changed"; payload: ExtensionsChanged } | { event: "superi.slice.scenario.state.changed"; payload: ScenarioStateChanged };
 
 /**
  * The deterministic complete public API catalog.
@@ -1538,6 +1603,7 @@ export interface SuperiMethodMap {
   "superi.events.subscription.close": { request: CloseEventSubscription; response: CloseEventSubscriptionResult };
   "superi.events.subscription.open": { request: OpenEventSubscription; response: OpenEventSubscriptionResult };
   "superi.events.subscription.poll": { request: PollEvents; response: PollEventsResult };
+  "superi.extensions.get": { request: GetExtensions; response: GetExtensionsResult };
   "superi.jobs.cancel": { request: CancelAsyncJob; response: AsyncJobsResult };
   "superi.jobs.cancel_all": { request: CancelAllAsyncJobs; response: AsyncJobsResult };
   "superi.jobs.get": { request: GetAsyncJobs; response: AsyncJobsResult };
@@ -1561,6 +1627,7 @@ export interface SuperiMethodMap {
 export interface SuperiEventMap {
   "superi.audio.automation.changed": AudioAutomationChanged;
   "superi.engine.introspection.changed": EngineIntrospectionChanged;
+  "superi.extensions.changed": ExtensionsChanged;
   "superi.jobs.changed": AsyncJobsChanged;
   "superi.media.capabilities.changed": MediaCapabilitiesChanged;
   "superi.project.recovery.changed": ProjectRecoveryChanged;
@@ -1575,6 +1642,7 @@ export interface SuperiResourceMap {
   "superi.engine.integration.validation": IntegrationValidationSnapshot;
   "superi.engine.introspection": EngineIntrospectionSnapshot;
   "superi.events.subscription": EventStreamSnapshot;
+  "superi.extensions": ExtensionRegistrySnapshot;
   "superi.jobs": AsyncJobsSnapshot;
   "superi.media.capabilities": MediaCapabilitiesSnapshot;
   "superi.project.history": ProjectHistorySnapshot;

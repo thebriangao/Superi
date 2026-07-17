@@ -41,6 +41,7 @@ const QUERIES: &[&str] = &[
     "superi.engine.integration.validation.get",
     "superi.engine.introspection.get",
     "superi.events.subscription.poll",
+    "superi.extensions.get",
     "superi.jobs.get",
     "superi.media.capabilities.get",
     "superi.project.recovery.compare",
@@ -51,6 +52,7 @@ const QUERIES: &[&str] = &[
 const EVENTS: &[&str] = &[
     "superi.audio.automation.changed",
     "superi.engine.introspection.changed",
+    "superi.extensions.changed",
     "superi.jobs.changed",
     "superi.media.capabilities.changed",
     "superi.project.recovery.changed",
@@ -65,6 +67,7 @@ const RESOURCES: &[&str] = &[
     "superi.engine.integration.validation",
     "superi.engine.introspection",
     "superi.events.subscription",
+    "superi.extensions",
     "superi.jobs",
     "superi.media.capabilities",
     "superi.project.history",
@@ -103,7 +106,7 @@ fn current_catalog_is_complete_versioned_sorted_and_deterministic() {
     assert_eq!(snapshot.capability().availability().len(), 4);
     assert_eq!(
         snapshot.permission().schema().version().to_string(),
-        "1.3.0"
+        "1.4.0"
     );
     assert_eq!(snapshot.permission().requirement_modes().len(), 3);
     assert_eq!(snapshot.permission().kinds().len(), 3);

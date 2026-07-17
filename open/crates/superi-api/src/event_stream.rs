@@ -10,8 +10,8 @@ use superi_core::settings::SemanticVersion;
 use crate::commands::ApiCommand;
 use crate::events::{
     ApiEvent, AsyncJobsChanged, AudioAutomationChanged, EngineIntrospectionChanged,
-    MediaCapabilitiesChanged, ProjectRecoveryChanged, ProjectSettingsChanged, ProjectStateChanged,
-    ScenarioStateChanged,
+    ExtensionsChanged, MediaCapabilitiesChanged, ProjectRecoveryChanged, ProjectSettingsChanged,
+    ProjectStateChanged, ScenarioStateChanged,
 };
 use crate::permissions::{
     ApiPermissionKind, ApiPermissionRequirementMode, ApiPermissionRequirements,
@@ -21,12 +21,12 @@ use crate::version::{
     ASYNC_JOBS_SCHEMA_VERSION, AUDIO_AUTOMATION_SCHEMA_VERSION, CLOSE_EVENT_SUBSCRIPTION_METHOD,
     ENGINE_INTEGRATION_VALIDATION_SCHEMA_VERSION, ENGINE_INTROSPECTION_SCHEMA_VERSION,
     EVENT_STREAM_SCHEMA_VERSION, EXECUTE_PROJECT_COMMAND_METHOD, EXECUTE_SCENARIO_ACTION_METHOD,
-    GET_ASYNC_JOBS_METHOD, GET_AUDIO_AUTOMATION_METHOD, GET_EDITOR_STATE_METHOD,
-    GET_ENGINE_INTEGRATION_VALIDATION_METHOD, GET_ENGINE_INTROSPECTION_METHOD,
-    GET_MEDIA_CAPABILITIES_METHOD, GET_PROJECT_RECOVERY_METHOD, GET_PROJECT_SETTINGS_METHOD,
-    MEDIA_CAPABILITIES_SCHEMA_VERSION, OPEN_EVENT_SUBSCRIPTION_METHOD,
-    POLL_EVENT_SUBSCRIPTION_METHOD, PROJECT_EDITOR_SCHEMA_VERSION, PROJECT_HISTORY_RESOURCE,
-    PROJECT_RECOVERY_SCHEMA_VERSION, PROJECT_SETTINGS_SCHEMA_VERSION,
+    EXTENSIONS_RESOURCE, EXTENSIONS_SCHEMA_VERSION, GET_ASYNC_JOBS_METHOD,
+    GET_AUDIO_AUTOMATION_METHOD, GET_EDITOR_STATE_METHOD, GET_ENGINE_INTEGRATION_VALIDATION_METHOD,
+    GET_ENGINE_INTROSPECTION_METHOD, GET_EXTENSIONS_METHOD, GET_MEDIA_CAPABILITIES_METHOD,
+    GET_PROJECT_RECOVERY_METHOD, GET_PROJECT_SETTINGS_METHOD, MEDIA_CAPABILITIES_SCHEMA_VERSION,
+    OPEN_EVENT_SUBSCRIPTION_METHOD, POLL_EVENT_SUBSCRIPTION_METHOD, PROJECT_EDITOR_SCHEMA_VERSION,
+    PROJECT_HISTORY_RESOURCE, PROJECT_RECOVERY_SCHEMA_VERSION, PROJECT_SETTINGS_SCHEMA_VERSION,
     SLICE_SCENARIO_SCHEMA_VERSION,
 };
 
@@ -283,6 +283,12 @@ pub fn replacement_resource_manifest() -> Vec<ResyncResource> {
             ENGINE_INTROSPECTION_SCHEMA_VERSION,
         ),
         ResyncResource::new(
+            EXTENSIONS_RESOURCE,
+            GET_EXTENSIONS_METHOD,
+            PublicMethodKind::Query,
+            EXTENSIONS_SCHEMA_VERSION,
+        ),
+        ResyncResource::new(
             "superi.jobs",
             GET_ASYNC_JOBS_METHOD,
             PublicMethodKind::Query,
@@ -379,6 +385,8 @@ pub enum PublicApiEvent {
     MediaCapabilitiesChanged(Box<MediaCapabilitiesChanged>),
     #[serde(rename = "superi.engine.introspection.changed")]
     EngineIntrospectionChanged(Box<EngineIntrospectionChanged>),
+    #[serde(rename = "superi.extensions.changed")]
+    ExtensionsChanged(Box<ExtensionsChanged>),
     #[serde(rename = "superi.slice.scenario.state.changed")]
     ScenarioStateChanged(Box<ScenarioStateChanged>),
 }
@@ -400,6 +408,8 @@ enum PublicApiEventWire {
     MediaCapabilities(Box<MediaCapabilitiesChanged>),
     #[serde(rename = "superi.engine.introspection.changed")]
     EngineIntrospection(Box<EngineIntrospectionChanged>),
+    #[serde(rename = "superi.extensions.changed")]
+    Extensions(Box<ExtensionsChanged>),
     #[serde(rename = "superi.slice.scenario.state.changed")]
     ScenarioState(Box<ScenarioStateChanged>),
 }
@@ -419,6 +429,7 @@ impl<'de> Deserialize<'de> for PublicApiEvent {
             PublicApiEventWire::EngineIntrospection(value) => {
                 Self::EngineIntrospectionChanged(value)
             }
+            PublicApiEventWire::Extensions(value) => Self::ExtensionsChanged(value),
             PublicApiEventWire::ScenarioState(value) => Self::ScenarioStateChanged(value),
         };
         event.validate().map_err(D::Error::custom)?;
@@ -436,6 +447,7 @@ impl PublicApiEvent {
         ProjectSettingsChanged::NAME,
         MediaCapabilitiesChanged::NAME,
         EngineIntrospectionChanged::NAME,
+        ExtensionsChanged::NAME,
         ScenarioStateChanged::NAME,
     ];
 
@@ -450,6 +462,7 @@ impl PublicApiEvent {
             Self::ProjectSettingsChanged(_) => ProjectSettingsChanged::NAME,
             Self::MediaCapabilitiesChanged(_) => MediaCapabilitiesChanged::NAME,
             Self::EngineIntrospectionChanged(_) => EngineIntrospectionChanged::NAME,
+            Self::ExtensionsChanged(_) => ExtensionsChanged::NAME,
             Self::ScenarioStateChanged(_) => ScenarioStateChanged::NAME,
         }
     }
@@ -465,6 +478,7 @@ impl PublicApiEvent {
             Self::ProjectSettingsChanged(_) => ProjectSettingsChanged::SCHEMA_VERSION,
             Self::MediaCapabilitiesChanged(_) => MediaCapabilitiesChanged::SCHEMA_VERSION,
             Self::EngineIntrospectionChanged(_) => EngineIntrospectionChanged::SCHEMA_VERSION,
+            Self::ExtensionsChanged(_) => ExtensionsChanged::SCHEMA_VERSION,
             Self::ScenarioStateChanged(_) => ScenarioStateChanged::SCHEMA_VERSION,
         }
     }
@@ -502,6 +516,9 @@ impl PublicApiEvent {
                 revision: value.snapshot().revision(),
             },
             Self::EngineIntrospectionChanged(value) => PublicEventCorrelation::Observation {
+                revision: value.snapshot().revision(),
+            },
+            Self::ExtensionsChanged(value) => PublicEventCorrelation::Observation {
                 revision: value.snapshot().revision(),
             },
             Self::ScenarioStateChanged(value) => command_correlation(
@@ -582,6 +599,16 @@ impl PublicApiEvent {
                     GET_ENGINE_INTROSPECTION_METHOD,
                     PublicMethodKind::Query,
                     ENGINE_INTROSPECTION_SCHEMA_VERSION,
+                ),
+                value.snapshot().revision(),
+                None,
+            ),
+            Self::ExtensionsChanged(value) => EventReplacementResource::new(
+                ResyncResource::new(
+                    EXTENSIONS_RESOURCE,
+                    GET_EXTENSIONS_METHOD,
+                    PublicMethodKind::Query,
+                    EXTENSIONS_SCHEMA_VERSION,
                 ),
                 value.snapshot().revision(),
                 None,
@@ -701,6 +728,11 @@ impl PublicApiEvent {
                 value.snapshot().schema_version(),
                 &ENGINE_INTROSPECTION_SCHEMA_VERSION,
             ),
+            Self::ExtensionsChanged(value) => validate_schema(
+                "validate_extensions_event",
+                value.snapshot().schema_version(),
+                &EXTENSIONS_SCHEMA_VERSION,
+            ),
             Self::ScenarioStateChanged(value) => {
                 validate_command_event(
                     value.sequence(),
@@ -743,6 +775,7 @@ impl_public_event_conversion!(AudioAutomationChanged, AudioAutomationChanged);
 impl_public_event_conversion!(ProjectSettingsChanged, ProjectSettingsChanged);
 impl_public_event_conversion!(MediaCapabilitiesChanged, MediaCapabilitiesChanged);
 impl_public_event_conversion!(EngineIntrospectionChanged, EngineIntrospectionChanged);
+impl_public_event_conversion!(ExtensionsChanged, ExtensionsChanged);
 impl_public_event_conversion!(ScenarioStateChanged, ScenarioStateChanged);
 
 /// One immutable retained record with public ordering and exact replacement metadata.

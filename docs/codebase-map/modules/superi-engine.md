@@ -2,8 +2,8 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: c4203b8eb59884ba39097533a26089385c5bbfc59c08861cfc4b6c0d3a15634e
-source_files: 68
+source_hash: 7b2c84c834a65c870aadae4a591768ae0c844c42e988c9b5f98803e67561eeed
+source_files: 70
 mapped_at_commit: working-tree
 ---
 
@@ -25,7 +25,8 @@ bounded logical export job orchestration, classified cross-subsystem failure pro
 and recovery, shared finite-resource arbitration across decode, GPU, cache, audio, AI, and export
 work, atomic timeline plus clip-mix edits, typed resolution of durable project settings, bounded
 compound project transactions across authored timeline, graph, media, audio, extension, and root
-state, revisioned authored audio automation, and
+state, revisioned authored audio automation, bounded process-lifetime extension registration and
+capability discovery, and
 engine-owned command history over that project surface. An engine-wide typed command dispatcher
 coordinates canonical scenario transactions, lifecycle state changes, failure and recovery control,
 coherent work admission, bounded cross-domain playback control, canonical logical export-job
@@ -100,6 +101,12 @@ through the existing dispatcher.
   deterministic diagnostics and settings, canonical timeline, graph, and clip-mix resources,
   bounded extension descriptors, exact audio routing and continuity, and explicit cached recovery,
   automation, playback, and export observations without polling or mutation.
+- `open/crates/superi-engine/src/extensions.rs`: Owns one bounded process-lifetime declarative
+  extension registry with exact versioned and native-audio identities, requested versus granted
+  capabilities, core-owned feature discovery, lifecycle and safe failure state, one stable project
+  command control reference, change-only revisions, canonical snapshots, and read-only adapters for
+  the existing OpenFX and native audio supervisors without retaining worker, launcher, callback,
+  path, factory, or dispatcher handles.
 - `open/crates/superi-engine/src/error.rs`: Implements EngineControl-owned classified failure
   propagation, immutable actionable records, bounded diagnostic history, exact recovery-intent
   validation, failed-recovery reclassification, and coherent lifecycle routing without copying
@@ -249,6 +256,10 @@ through the existing dispatcher.
   projection, coherent normal admission, playback-only, rendering-plus-export, and export-only
   degradation, visible recovery progress, restored readiness, and exclusion of private diagnostic
   details.
+- `open/crates/superi-engine/tests/extension_registration_contract.rs`: Proves canonical ordering,
+  duplicate rejection, coexistence of distinct versions, change-only revision behavior, exact
+  capability-grant validation, ready-only availability, safe user action, and faulted-state failure
+  requirements for the shared extension registry.
 - `open/crates/superi-engine/tests/editor_state_contract.rs`: Proves missing-project classification,
   one coherent eventless revision, explicit optional owner attachment and freshness, multichannel
   routing with mute intent, and sample-exact gap and source-transition continuity evidence.
@@ -484,6 +495,14 @@ failure, restores compatible saved state before launch, captures exact current s
 faulted worker, quarantines repeated activation failure, and prepares the audio-owned isolated
 bridge processor. Per-instance project helpers encode and decode one exact versioned extension
 record keyed by the owning audio node rather than the reusable plugin component.
+
+`extensions` exposes `ExtensionRuntimeIdentity`, `ExtensionLifecycle`, `ExtensionUserAction`,
+`ExtensionFailureSummary`, `ExtensionControlOperation`, `ExtensionControlSurface`,
+`ExtensionRegistration`, `ExtensionRegistrySnapshot`, and `ExtensionRegistry`. A registration
+contains only declarative identity, display, lifecycle, requested and granted capabilities,
+core-owned feature discovery, safe failure, and the fixed durable project control reference.
+`registrations_from_openfx` and `registrations_from_native_audio` convert canonical read-only
+supervisor status lists into registry inputs without granting lifecycle or execution authority.
 
 `resources` exposes explicit `MediaResourceRequest`, `DecoderResourceRequest`, and
 `ResourceAcquisitionPolicy` inputs; stable source and decoder selection evidence; stateful acquired
@@ -1154,6 +1173,30 @@ envelope in a strict `superi.audio-plugin-state` extension, and round-trips thro
 save, schema validation, and database reopen. Two nodes using the same component therefore retain
 separate state and user intent across compatible installed upgrades.
 
+### Extension registration and capability discovery
+
+One host-owned `ExtensionRegistry` retains at most its configured number of declarative
+registrations for the process lifetime. Versioned identities use the core producer identifier;
+native audio identities additionally retain exact provider, format, vendor, component identifier,
+and installed version, so two versions remain independently discoverable. Registration and full
+synchronization validate canonical ordering, unique identity, requested and granted capability
+sets, exact producer agreement, and the core `FeatureDiscovery` contract before publication.
+
+Only a Ready registration may advertise an Available feature. Registered, Disabled, Faulted,
+Quarantined, and Unavailable states retain understandable lifecycle without pretending executable
+availability. Faulted and quarantined registrations require a bounded safe failure summary made
+only from category, recoverability, stage, attempt counters, and a stable recommended user action.
+Raw messages, paths, sources, worker handles, callbacks, factories, launchers, and dispatchers never
+enter the registry. Equal synchronization is a semantic no-op; changed snapshots advance one
+nonzero revision and remain in canonical identity order.
+
+Every registration advertises the same existing durable control route:
+`superi.project.command.execute` over resource `superi.editor.state`, addressed by the controlling
+project extension identity and limited to upsert, remove, lifecycle, grants, failure, and failure
+clear. This reference does not dispatch a command or grant permission. It makes user control,
+scriptability, persistence, undo, recovery, and public command ownership explicit while runtime
+supervisors remain authoritative for live process state.
+
 ### Editorial audio intent
 
 The engine applies a timeline edit batch to a cloned project, reads its typed fragment, inserted,
@@ -1172,7 +1215,8 @@ audio mutation, so their user intent remains attached without synthesis.
   vocabulary while keeping finite-capacity degradation typed and local. Error propagation
   additionally consumes core-owned
   recoverability, ordered contexts, full source-chain diagnostics, typed visibility fields, and the
-  separate user-safe projection.
+  separate user-safe projection. Extension registration additionally consumes the core-owned
+  versioned `FeatureDiscovery` and capability vocabulary instead of defining another feature model.
 - `sha2` supplies bounded fixture payload identity and complete packet-content fingerprinting.
 - `superi-media-io`, `superi-gpu`, and `superi-codecs-rs` support source and codec registry assembly,
   content probing, source and decoder preparation, declaration, upload, codec-neutral derived
@@ -1228,7 +1272,9 @@ audio mutation, so their user intent remains attached without synthesis.
   export replacement observations remain visible through the read-only validation and complete
   editor-state queries. Generic project history is projected through strict API-owned DTOs, typed
   evidence, and correlated replacement events, while recovery is projected through opaque
-  identities and user-safe findings.
+  identities and user-safe findings. The API also projects immutable extension registry snapshots
+  into one permission-free discovery query and full replacement event without receiving mutable
+  registry or runtime authority.
   The API-local `superi-json` runtime interprets only its existing generic project command and
   complete editor-state request through that facade, so scripts retain engine revision fences,
   history, lower-domain validation, event sequencing, and selected snapshot meaning without adding
@@ -1260,6 +1306,16 @@ audio mutation, so their user intent remains attached without synthesis.
   compound transactions, dispatch, undo, redo, persistence, and autosave preserve the complete
   opaque record; engine does not reinterpret payload bytes, expand capability grants, infer runtime
   readiness, or duplicate plugin supervisor state.
+- Extension runtime identity is exact and canonical. Distinct installed versions may coexist,
+  duplicate identities fail closed, and registry revisions advance only for semantic state changes.
+- Requested capabilities never grant themselves. Granted capabilities must be an exact canonical
+  subset accepted by the core discovery record, and only Ready features may be Available.
+- The registry is declarative and bounded. It may retain identity, lifecycle, capability, feature,
+  safe failure, and stable public control references, but never a worker, launcher, callback,
+  factory, path, dispatcher, permission token, or executable backdoor.
+- Every runtime registration points to the existing durable project command and editor-state
+  resource for all six user-controlled extension operations. Discovery itself neither mutates a
+  project nor grants permission or runtime authority.
 - Native audio plugin scanning, enablement, checkpoint capture, recovery, quarantine clearing,
   disablement, and processor preparation require BackgroundJob. Runtime bridge observation requires
   EngineControl. No lifecycle operation may run on Audio or treat a native callback as a control
@@ -1778,6 +1834,12 @@ They capture current state, preserve two instances of one component as distinct 
 records through real database save and reopen, retain the first activation fault, restart from the
 checkpoint, quarantine a repeated activation failure, and deny recovery while quarantined.
 
+Two extension registration contracts prove the bounded shared registry's exact identity order,
+duplicate and version behavior, change-only revisions, capability narrowing, lifecycle and failure
+validation, and fixed durable control surface. The OpenFX and native audio supervision contracts
+also convert their real canonical status lists into registry registrations and prove exact identity,
+safe failure, and absence of path-shaped state in the public declaration.
+
 ## Current status and risks
 
 Canonical command state is substantive and test-backed, but it is a reference boundary whose
@@ -1833,7 +1895,9 @@ command surface. The native audio plugin supervisor deliberately interprets only
 `superi.audio-plugin-state` extension kind, validates the exact audio-owned envelope, and keeps live
 readiness separate from the durable checkpoint. Unknown and other owned extension kinds remain
 opaque. `PluginSupervisor` and `AudioPluginSupervisor` remain separate OpenFX and native audio
-runtime availability owners.
+runtime availability owners. Their canonical read-only status lists now feed one shared declarative
+registry, which gives clients coherent capability, lifecycle, failure, and control discovery without
+moving launcher, worker, processor, or project authority into the registry.
 
 One orchestration file remains a documentation-only placeholder. Source registration, timeline
 media preparation, deterministic lifecycle, classified failure propagation and recovery,
@@ -2001,3 +2065,9 @@ retained checkpoints, one-fault restart, repeated-fault quarantine, and timing-m
 Concrete launchers may add IPC, shared memory, heartbeats, kill, sandbox, and Audio Unit enumeration,
 but may not load vendor code in engine, persist operational readiness, merge two node instances, or
 bypass the existing state and descriptor bounds.
+Keep `extensions.rs` process-lifetime, bounded, declarative, canonically ordered, and free of runtime
+handles. Preserve exact versioned identity, requested-versus-granted capability validation,
+ready-only feature availability, safe failure projection, change-only revisions, and the single
+existing project command and editor-state control reference. Add a new supervisor adapter only from
+its immutable canonical status surface, never by giving an extension a dispatcher, callback,
+factory, path, permission token, or privileged engine entry point.

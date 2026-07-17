@@ -2,7 +2,7 @@
 module_id: superi-cli
 source_paths:
   - open/crates/superi-cli
-source_hash: 17002c145ba5e55b81bc9d10ec2c13abb8022ea2e4fe2cffc1d7be33e5b27e17
+source_hash: 7ca8f9864e08d558c496188cb9ed3893662e4d0d6087e52c940692f917936655
 source_files: 10
 mapped_at_commit: working-tree
 ---
@@ -34,7 +34,9 @@ same deterministic catalog used by typed clients and prints all current command,
 resource, error, capability, and permission schemas, including the complete asynchronous job
 control vocabulary, complete editor-state discovery, the bounded local scripting command, bounded
 event subscription control and polling, and the stateless version negotiation query, without
-reconstructing registry data in the CLI. The canonical scenario consumer binds one
+reconstructing registry data in the CLI. It also reports the permission-free extension discovery
+query, replacement event and resource, lifecycle and capability DTOs, and stable public control
+reference without attaching a runtime registry. The canonical scenario consumer binds one
 exact read permission for its resolved canonical fixture and grants no repository-wide filesystem
 authority.
 
@@ -77,8 +79,8 @@ production owner is explicit in stage diagnostics and the artifact name.
   discovery output, catalog and primitive identity, all seven schema categories, exact current counts
   and method names including the generic project and local script commands, asynchronous job query
   and controls, complete editor-state discovery, event subscription open, close, and poll, and API
-  and project version negotiation, plus the permission vocabulary and per-method metadata, help
-  coverage, and invalid usage status.
+  and project version negotiation, plus extension discovery and its permission-free classification,
+  the permission vocabulary and per-method metadata, help coverage, and invalid usage status.
 - `open/crates/superi-cli/tests/scenario_runner.rs`: Provides process contracts for two-run
   reproducibility, exact state and schema 1.1.0 report contents, all-stage timing and nonzero
   resident-memory evidence, exact expectation evidence, honest stub evidence, collision
@@ -140,8 +142,8 @@ file containing a canonical principal and typed rules; omitting it denies all pr
 The policy file cannot use stdin, preventing two consumers from racing the same byte stream.
 
 Schema discovery success prints exactly one strict `PublicApiSchemaSnapshot` JSON value containing
-catalog schema `1.3.0`, stable primitive revision 1, JSON-RPC `2.0`, 16 commands, 12 queries,
-eight events, 11 resources, one error schema, one capability schema, and one permission schema in
+catalog schema `1.4.0`, stable primitive revision 1, JSON-RPC `2.0`, 16 commands, 13 queries,
+nine events, 12 resources, one error schema, one capability schema, and one permission schema in
 canonical order. Every method carries its permission mode and possible kinds. Discovery starts no
 engine, routes no operation, and owns no transport, permission authority, or registry state.
 
@@ -232,9 +234,10 @@ PublicApiSchemaApi
 
 The CLI neither duplicates the explicit API registration list nor imports engine types for schema
 discovery or local project work. It discovers the public permission, local scripting, asynchronous
-job, event stream, and version negotiation schemas
+job, event stream, extension registry, and version negotiation schemas
 but exposes no job or subscription query, control, submission, polling, waiting, or result command
-of its own and adds no separate negotiation executor. Its local permission policy parser
+of its own, adds no mutable extension registry or privileged plugin route, and adds no separate
+negotiation executor. Its local permission policy parser
 deserializes the API-owned typed rule vocabulary and creates only a process-owned nonserializable
 authority context.
 
@@ -346,7 +349,9 @@ harness are its current consumers.
   strict public snapshot reports coherent state.
 - `api schema` accepts no options, is deterministic across processes, consumes only the API-owned
   catalog, and changes no engine or project state. Discovering permission metadata or job methods
-  does not create host authority, attach, poll, or control an engine queue.
+  does not create host authority, attach, poll, or control an engine queue. Discovering extension
+  lifecycle, capability, failure, and control metadata likewise does not attach a registry, grant a
+  capability, mutate a project, or expose a runtime handle.
 - Workflow options are unordered pairs with exactly one value, duplicate and unknown names are
   rejected, and filesystem paths remain `OsString` or `PathBuf` instead of lossy UTF-8 text.
 - Request and automation input is bounded to eight MiB, each automation line is bounded to one MiB,
@@ -404,8 +409,9 @@ Two API schema process contracts prove deterministic semantics across separate i
 catalog, primitive, and JSON-RPC identity, all seven schema sections, exact current counts and method
 names including the generic editor, `superi.project.script.run`, and
 `superi.api.version.negotiate` registrations, every asynchronous job query and control,
-`superi.editor.state.get`, event subscription open, close, and poll, the complete permission
-vocabulary, and exact method permission metadata, plus help coverage and precise invalid usage.
+`superi.editor.state.get`, `superi.extensions.get`, `superi.extensions.changed`, the extension
+replacement resource, event subscription open, close, and poll, the complete permission vocabulary,
+and exact method permission metadata, plus help coverage and precise invalid usage.
 They do not prove method routing, wire transport, event delivery, host policy persistence, job
 execution, scripting, or broad CLI parity.
 
@@ -450,6 +456,11 @@ Schema discovery also exposes bounded event registration and polling, but the CL
 no live stream owner or subscriber command. A later headless client can consume the same API-owned
 stream identity, cursor, gap, and resynchronization contracts without rebuilding event ordering.
 
+Schema discovery exposes the extension registry's exact lifecycle, capabilities, safe failure, and
+stable project control reference, but the CLI intentionally has no runtime registry owner or
+privileged extension command. Durable extension changes continue through the generic project command
+and explicit permission policy.
+
 Schema discovery exposes API and project version negotiation, but the CLI does not duplicate its
 selection algorithm or add a separate command. A future transport client must call the registered
 typed query through the same public method surface.
@@ -482,6 +493,9 @@ stub disclosure synchronized with `docs/vertical-slice.md`, process contracts, i
 public guidance. Keep `api schema` delegated to `PublicApiSchemaApi`; never reconstruct method,
 event, resource, error, capability, or permission declarations in CLI code. Preserve the exact
 resolved fixture read grant when the scenario path changes and never broaden it for convenience.
+Keep extension discovery as catalog consumption only. A future extension CLI must reuse the public
+query and the existing permission-checked generic project command rather than importing an engine
+supervisor, attaching a mutable registry, or inventing another lifecycle or capability model.
 Keep durable workflows dependent only on `superi-api`, preserve strict option and byte bounds,
 reject symlink inputs, keep authority explicit and deny-by-default, and never print mutation success
 before durable publication. Keep media, timeline, and render partitions fail closed. Keep JSON-RPC

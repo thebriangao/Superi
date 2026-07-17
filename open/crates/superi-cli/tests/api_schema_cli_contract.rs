@@ -14,15 +14,15 @@ fn api_schema_is_a_deterministic_complete_public_api_consumer() {
     let first: Value = serde_json::from_slice(&first.stdout).unwrap();
     let second: Value = serde_json::from_slice(&second.stdout).unwrap();
     assert_eq!(first, second);
-    assert_eq!(first["schema_version"], "1.3.0");
+    assert_eq!(first["schema_version"], "1.4.0");
     assert_eq!(first["primitive_schema_revision"], 1);
     assert_eq!(first["json_rpc_version"], "2.0");
     assert_eq!(first["commands"].as_array().unwrap().len(), 16);
-    assert_eq!(first["queries"].as_array().unwrap().len(), 12);
-    assert_eq!(first["events"].as_array().unwrap().len(), 8);
-    assert_eq!(first["resources"].as_array().unwrap().len(), 11);
+    assert_eq!(first["queries"].as_array().unwrap().len(), 13);
+    assert_eq!(first["events"].as_array().unwrap().len(), 9);
+    assert_eq!(first["resources"].as_array().unwrap().len(), 12);
     assert_eq!(first["error"]["schema"]["version"], "1.0.0");
-    assert_eq!(first["permission"]["schema"]["version"], "1.3.0");
+    assert_eq!(first["permission"]["schema"]["version"], "1.4.0");
     assert_eq!(first["permission"]["kinds"].as_array().unwrap().len(), 3);
     assert_eq!(
         first["permission"]["destructive_operations"]
@@ -70,6 +70,7 @@ fn api_schema_is_a_deterministic_complete_public_api_consumer() {
             "superi.engine.integration.validation.get",
             "superi.engine.introspection.get",
             "superi.events.subscription.poll",
+            "superi.extensions.get",
             "superi.jobs.get",
             "superi.media.capabilities.get",
             "superi.project.recovery.compare",
@@ -104,6 +105,17 @@ fn api_schema_is_a_deterministic_complete_public_api_consumer() {
     assert_eq!(
         script["permission"]["possible_kinds"],
         serde_json::json!(["filesystem", "plugin"])
+    );
+    let extensions = first["queries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|method| method["method"] == "superi.extensions.get")
+        .unwrap();
+    assert_eq!(extensions["permission"]["requirement_mode"], "none");
+    assert_eq!(
+        extensions["permission"]["possible_kinds"],
+        serde_json::json!([])
     );
 }
 

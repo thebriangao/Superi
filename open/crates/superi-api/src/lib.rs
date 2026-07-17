@@ -8,6 +8,7 @@ pub mod commands;
 pub mod editor;
 pub mod event_stream;
 pub mod events;
+pub mod extensions;
 pub mod jobs;
 pub mod local;
 pub mod negotiation;

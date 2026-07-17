@@ -8,6 +8,8 @@ no authoritative project or editing behavior. It does consume the committed gene
 event, editor resource, AI state, and transport-neutral client types.
 The smoke consumer also constructs the typed API version negotiation request and consumes its
 registered response type through the same method map used by every transport.
+It also consumes the extension discovery query, replacement event, and registry resource through
+the generated method, event, and resource maps.
 
 Run the same gates as CI:
 

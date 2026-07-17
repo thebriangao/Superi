@@ -30,9 +30,10 @@ use crate::event_stream::{
 };
 use crate::events::{
     ApiEvent, AsyncJobsChanged, AudioAutomationChanged, EngineIntrospectionChanged,
-    MediaCapabilitiesChanged, ProjectRecoveryChanged, ProjectSettingsChanged, ProjectStateChanged,
-    ScenarioStateChanged,
+    ExtensionsChanged, MediaCapabilitiesChanged, ProjectRecoveryChanged, ProjectSettingsChanged,
+    ProjectStateChanged, ScenarioStateChanged,
 };
+use crate::extensions::{ExtensionRegistrySnapshot, GetExtensions};
 use crate::jobs::AsyncJobsSnapshot;
 use crate::negotiation::NegotiateApiVersion;
 use crate::permissions::{
@@ -1494,6 +1495,7 @@ macro_rules! for_each_public_method {
         $callback::<GetMediaCapabilities>($($argument),+)?;
         $callback::<GetEngineIntegrationValidation>($($argument),+)?;
         $callback::<GetEngineIntrospection>($($argument),+)?;
+        $callback::<GetExtensions>($($argument),+)?;
         $callback::<ExecuteScenarioAction>($($argument),+)?;
         $callback::<ExecuteScenarioTransaction>($($argument),+)?;
         $callback::<OpenEventSubscription>($($argument),+)?;
@@ -1513,6 +1515,7 @@ macro_rules! for_each_public_event {
         $callback::<ProjectSettingsChanged>($argument)?;
         $callback::<MediaCapabilitiesChanged>($argument)?;
         $callback::<EngineIntrospectionChanged>($argument)?;
+        $callback::<ExtensionsChanged>($argument)?;
         $callback::<ScenarioStateChanged>($argument)?;
     };
 }
@@ -1527,6 +1530,7 @@ macro_rules! for_each_public_resource {
         $callback::<ProjectSettingsSnapshot>($argument)?;
         $callback::<MediaCapabilitiesSnapshot>($argument)?;
         $callback::<EngineIntrospectionSnapshot>($argument)?;
+        $callback::<ExtensionRegistrySnapshot>($argument)?;
         $callback::<IntegrationValidationSnapshot>($argument)?;
         $callback::<ScenarioStateSnapshot>($argument)?;
         $callback::<EventStreamSnapshot>($argument)?;

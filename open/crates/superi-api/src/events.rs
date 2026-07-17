@@ -6,6 +6,7 @@ use superi_core::settings::SemanticVersion;
 use crate::api::{EngineIntrospectionSnapshot, MediaCapabilitiesSnapshot};
 use crate::audio_automation::AudioAutomationSnapshot;
 use crate::editor::{ProjectCommandEvidence, ProjectHistorySnapshot};
+use crate::extensions::ExtensionRegistrySnapshot;
 use crate::jobs::AsyncJobsSnapshot;
 use crate::project::ProjectSettingsSnapshot;
 use crate::recovery::ProjectRecoverySnapshot;
@@ -13,9 +14,9 @@ use crate::scenario::ScenarioStateSnapshot;
 use crate::version::{
     ASYNC_JOBS_CHANGED_EVENT, ASYNC_JOBS_SCHEMA_VERSION, AUDIO_AUTOMATION_CHANGED_EVENT,
     AUDIO_AUTOMATION_SCHEMA_VERSION, ENGINE_INTROSPECTION_CHANGED_EVENT,
-    ENGINE_INTROSPECTION_SCHEMA_VERSION, MEDIA_CAPABILITIES_CHANGED_EVENT,
-    MEDIA_CAPABILITIES_SCHEMA_VERSION, PROJECT_EDITOR_SCHEMA_VERSION,
-    PROJECT_RECOVERY_CHANGED_EVENT, PROJECT_RECOVERY_SCHEMA_VERSION,
+    ENGINE_INTROSPECTION_SCHEMA_VERSION, EXTENSIONS_CHANGED_EVENT, EXTENSIONS_SCHEMA_VERSION,
+    MEDIA_CAPABILITIES_CHANGED_EVENT, MEDIA_CAPABILITIES_SCHEMA_VERSION,
+    PROJECT_EDITOR_SCHEMA_VERSION, PROJECT_RECOVERY_CHANGED_EVENT, PROJECT_RECOVERY_SCHEMA_VERSION,
     PROJECT_SETTINGS_CHANGED_EVENT, PROJECT_SETTINGS_SCHEMA_VERSION, PROJECT_STATE_CHANGED_EVENT,
     SCENARIO_STATE_CHANGED_EVENT, SLICE_SCENARIO_SCHEMA_VERSION,
 };
@@ -403,6 +404,31 @@ impl EngineIntrospectionChanged {
 impl ApiEvent for EngineIntrospectionChanged {
     const NAME: &'static str = ENGINE_INTROSPECTION_CHANGED_EVENT;
     const SCHEMA_VERSION: SemanticVersion = ENGINE_INTROSPECTION_SCHEMA_VERSION;
+}
+
+/// Complete extension registration and capability state after a runtime change.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExtensionsChanged {
+    snapshot: ExtensionRegistrySnapshot,
+}
+
+impl ExtensionsChanged {
+    pub(crate) const fn new(snapshot: ExtensionRegistrySnapshot) -> Self {
+        Self { snapshot }
+    }
+
+    /// Returns complete process-lifetime extension replacement state.
+    #[must_use]
+    pub const fn snapshot(&self) -> &ExtensionRegistrySnapshot {
+        &self.snapshot
+    }
+}
+
+impl ApiEvent for ExtensionsChanged {
+    const NAME: &'static str = EXTENSIONS_CHANGED_EVENT;
+    const SCHEMA_VERSION: SemanticVersion = EXTENSIONS_SCHEMA_VERSION;
 }
 
 /// Full replacement scenario state emitted after one committed transaction.

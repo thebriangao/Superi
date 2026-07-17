@@ -2,26 +2,27 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: 7dca3a965039e4caaeaaa0038c23c65f95a11b03aaa2c01f3900498a97bd36cd
-source_files: 39
+source_hash: 97e4d1e30dea233cb070f8f3b99bb30813e66d3b2fea15b65874691228611df7
+source_files: 41
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
 `superi-api` owns the transport-neutral public boundary for UI, scripting, extension, CLI, and
-automation clients. Thirteen public slices are implemented: stateless API and optional project
+automation clients. Fourteen public slices are implemented: stateless API and optional project
 version negotiation, media capability introspection, complete
 engine capability and health introspection for adaptive clients, canonical editorial scenario
 control through revision-fenced typed transactions and ordered full-state events, coherent
 read-only integration validation, durable project settings inspection and optimistic mutation,
 project crash recovery discovery, semantic comparison, durable restoration, exact dismissal,
 authored audio automation inspection and transaction execution through the full engine dispatcher,
-complete authored project control, deterministic local scripting, and complete editor replacement
-state through one generic revision-fenced facade, and asynchronous job inspection, progress, cooperative control, and ordered
+complete authored project control, deterministic local scripting, complete editor replacement
+state through one generic revision-fenced facade, process-lifetime extension registration and
+capability discovery, and asynchronous job inspection, progress, cooperative control, and ordered
 completion events over the engine-owned export queue, plus bounded ordered delivery for the complete
-public event vocabulary. The additive schema `1.3.0` catalog classifies all 28 current methods into
-16 commands and 12 queries, describes all eight events and 11 replacement resources, publishes the
+public event vocabulary. The additive schema `1.4.0` catalog classifies all 29 current methods into
+16 commands and 13 queries, describes all nine events and 12 replacement resources, publishes the
 complete error, capability, and permission vocabularies, and defines strict data-only JSON-RPC 2.0
 envelopes. A host-injected nonserializable permission context denies protected filesystem, plugin,
 and destructive operations by default, derives exact requirements from complete typed payloads,
@@ -65,13 +66,19 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   graph, media, clip-mix, and extension DTOs, checked engine conversion, typed history resource and
   evidence, script prevalidation, and the dispatcher-backed apply, inspect, undo, redo, script,
   event, state-query, and persistence facade.
+- `open/crates/superi-api/src/extensions.rs`: Projects immutable engine registry snapshots into
+  strict exact identity, lifecycle, requested and granted capability, core feature discovery, safe
+  failure, and stable user-control DTOs. It owns the permission-free `superi.extensions.get` query,
+  `superi.extensions` replacement resource, change-only API facade, and full replacement event
+  without exposing runtime handles, paths, dispatchers, callbacks, factories, or permission tokens.
 - `open/crates/superi-api/src/event_stream.rs`: Owns canonical stream and subscriber identities,
-  finite retention and registration bounds, independent public sequencing, the closed eight-event
+  finite retention and registration bounds, independent public sequencing, the closed nine-event
   union, command and observation correlation, immutable replay records, caller-held cursors,
   non-destructive polling, explicit permission-free classification for its three typed control
   methods, eviction and restart gaps, reset barriers, and the complete authoritative
   replacement-resource manifest.
-- `open/crates/superi-api/src/events.rs`: Defines versioned `ApiEvent`, media and engine introspection change
+- `open/crates/superi-api/src/events.rs`: Defines versioned `ApiEvent`, media, engine introspection,
+  and extension registry change
   events, and ordered full-replacement scenario, generic project history, project settings,
   project recovery, audio automation, and asynchronous job state events.
 - `open/crates/superi-api/src/jobs.rs`: Implements canonical opaque job handles, stable work kind,
@@ -134,7 +141,7 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   accessors. It also provides the standalone starting-engine query owner used by the CLI and derives
   standalone construction failures from the shared user-safe projection.
 - `open/crates/superi-api/src/version.rs`: Owns all domain, catalog, and error schema revisions plus
-  permanent method and event names, including catalog revision `1.3.0`, its `1.0.0` through `1.3.0`
+  permanent method and event names, including catalog revision `1.4.0`, its `1.0.0` through `1.4.0`
   release table, scripting schema `1.0.0`, `superi.project.script.run`, the version negotiation
   method, the complete `superi.jobs` vocabulary, the editor-state query, and event subscription
   open, close, and poll methods.
@@ -160,6 +167,11 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   dispatcher, lifecycle, error coordinator, and resource arbiter through strict public query and
   replacement-event projection, independent revisions, degradation, recovery, and safe diagnostic
   serialization.
+- `open/crates/superi-api/tests/extension_registry_contract.rs`: Proves strict permission-free
+  discovery, exact declarative fields, rejection of unknown and privileged backdoor fields,
+  canonical full replacement events and correlation, stable project command control references,
+  real authorized project extension mutation, unchanged state without a runtime registry, and exact
+  database reopen of durable extension state.
 - `open/crates/superi-api/tests/event_stream_contract.rs`: Proves strict bounded configuration and
   identities, duplicate and exhausted registration, closed-union catalog parity, public sequence
   order, command and observation correlation, independent and idempotent replay, batch caps,
@@ -212,9 +224,9 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
 
 ## Public surface
 
-The public schema catalog is schema `1.3.0` at query method `superi.api.schema.get`.
+The public schema catalog is schema `1.4.0` at query method `superi.api.schema.get`.
 `PublicApiSchemaSnapshot` records stable primitive revision 1 and JSON-RPC `2.0`, then separates 16
-mutating commands from 12 read-only queries and lists all eight current replacement events, 11
+mutating commands from 13 read-only queries and lists all nine current replacement events, 12
 current replacement resources, one complete error vocabulary, one capability vocabulary, and one
 permission vocabulary in canonical name order. `ApiCommand` declares method kind, schema version,
 permission requirement mode, every possible permission kind, and exact requirement derivation with
@@ -271,6 +283,18 @@ lifecycle and recovery revisions, health, canonical subsystem state, coherent pl
 and export readiness, and user-safe active failure and recovery state. `EngineIntrospectionApi`
 keeps one API-local full-state revision and a separate nested media revision, suppresses equal
 synchronization, and emits only full replacement state.
+
+The extension discovery surface is schema `1.0.0`, query `superi.extensions.get`, event
+`superi.extensions.changed`, and replacement resource `superi.extensions`. Its strict snapshot
+contains one canonical registration per exact versioned or native-audio runtime identity, including
+display name, requested and granted capabilities, core feature discovery, lifecycle, bounded safe
+failure, and one fixed durable project control reference. Only Ready registrations may expose
+Available features. The query is permission-free and read-only; the control reference points every
+mutation to `superi.project.command.execute` and `superi.editor.state`, where existing plugin
+permission, project revision, persistence, undo, recovery, and scripting rules remain authoritative.
+`ExtensionRegistryApi` advances only for semantic engine snapshot changes and emits one complete
+replacement event. Worker, launcher, callback, factory, path, dispatcher, permission token, opaque
+payload, and mutable registry ownership never cross this surface.
 
 The canonical scenario surface is schema `1.0.0`. The compatibility one-action method remains
 `superi.slice.scenario.action.execute`, while the atomic method is
@@ -369,7 +393,7 @@ The ordered event delivery surface is schema `1.0.0`, with commands
 `superi.events.subscription.poll`, and control resource `superi.events.subscription`.
 `EventStreamApi` owns one process-lifetime stream identity, one bounded deque of complete immutable
 records, one bounded subscriber registry, and one independent nonzero public sequence. The closed
-`PublicApiEvent` union covers exactly the eight cataloged replacement events and validates event to
+`PublicApiEvent` union covers exactly the nine cataloged replacement events and validates event to
 snapshot revision agreement before publication. Command events retain the source event sequence,
 engine command sequence, and caller transaction identity, while observed engine and media changes
 retain their authoritative observation revision. JSON-RPC request identifiers are not event
@@ -380,7 +404,7 @@ same cursor returns the same complete suffix and multiple subscribers progress i
 server caps each result by both the caller request and configured batch bound, evicts only complete
 oldest records at the retention bound, and rejects future cursors. An evicted cursor or changed
 stream identity returns no partial events. Instead it returns `ResyncRequired` with the exact gap
-reason, current stream, reset barrier, and all ten authoritative state resources plus their stable
+reason, current stream, reset barrier, and all eleven authoritative state resources plus their stable
 refresh method and query or command kind. The subscription control resource is excluded from that
 manifest because clients reestablish it through open, close, and poll. Project history and scenario
 state correctly name their typed `Inspect` command paths; the other eight state resources name
@@ -429,7 +453,8 @@ Ordered public delivery remains downstream of every existing typed producer:
 
 ```text
 ProjectEditorApi, AsyncJobsApi, ProjectRecoveryApi, ProjectSettingsApi,
-AudioAutomationApi, ScenarioApi, MediaCapabilitiesApi, or EngineIntrospectionApi
+AudioAutomationApi, ScenarioApi, MediaCapabilitiesApi, EngineIntrospectionApi,
+or ExtensionRegistryApi
   -> one validated PublicApiEvent variant
   -> EventStreamApi independent public sequence and bounded immutable record
   -> PollEvents with caller-held stream identity, subscriber identity, and cursor
@@ -489,6 +514,22 @@ EngineCommandDispatcher introspection snapshot
   -> GetEngineIntrospection full snapshot
   -> or EngineIntrospectionChanged full replacement event
 ```
+
+Extension discovery projects a separate immutable engine-owned registry rather than adding an
+execution path:
+
+```text
+ExtensionRegistrySnapshot from host supervisor synchronization
+  -> ExtensionRegistryApi strict declarative projection
+  -> GetExtensions full snapshot
+  -> or ExtensionsChanged full replacement event on semantic change
+  -> existing ProjectEditorApi command for every user-controlled mutation
+```
+
+Strict deserialization revalidates canonical identity order, capabilities, feature availability,
+failure requirements, and the exact control method, resource, and operation set. This prevents an
+alternate JSON client from introducing a privileged callback or engine route that Rust construction
+would not permit.
 
 `ScenarioApi` owns one scenario-only `superi_engine::dispatcher::EngineCommandDispatcher`. It maps
 each strict public transaction to one engine transaction, preserves the caller revision fence, and
@@ -675,7 +716,9 @@ messages, contexts, paths, and source chains never serialize.
   automation command path, the generic authored project history and immutable editor-state paths,
   and the canonical export queue projected as public asynchronous jobs. This public crate has no
   production project, timeline, graph, audio, or export executor dependency, and neither public
-  facade becomes another state owner.
+  facade becomes another state owner. It also consumes the engine's immutable declarative extension
+  registry snapshot, while registration, supervisor lifecycle, worker ownership, project mutation,
+  and permission authority remain below the public projection.
 - `superi-media-io` and `superi-concurrency` are test dependencies for registry and EngineControl
   contracts. The feature-gated engine test-support seam exercises real project persistence,
   integrity, media, autosave, and recovery owners for the scripting and local-host contracts
@@ -689,7 +732,8 @@ messages, contexts, paths, and source chains never serialize.
   does not expose public job submission or a live queue host.
 - `superi-api-bindings` is the repository-only generator and drift-check consumer. The committed
   artifact is consumed by `ci/frontend-smoke` through strict TypeScript checking and a production
-  Vite bundle.
+  Vite bundle, including the extension query, event, resource, lifecycle, capability, and control
+  declarations.
 
 No network transport, application UI, shell source loader, extension host, or closed-tier client is
 present. The local script interpreter is an in-process public API consumer, not a process sandbox
@@ -749,11 +793,21 @@ and the frontend smoke package is a real generated-contract consumer, not an app
 - Subscriber cursors are caller-held. Polling is non-destructive and idempotent for the same stream,
   subscriber, cursor, and limit. Closing one subscriber cannot advance, close, or consume another.
 - Poll never returns an incomplete suffix. Eviction and stream restart return an explicit resync
-  result with the latest sequence as reset barrier and the complete ten-resource state manifest.
+  result with the latest sequence as reset barrier and the complete eleven-resource state manifest.
   Events published after the barrier remain replayable.
 - The public event union has exactly one typed variant per catalog event and no untyped fallback.
   Command correlation retains source event sequence, command sequence, and transaction identity;
   observation correlation retains the producing snapshot revision.
+- Extension discovery is permission-free observation only. It never grants a capability, dispatches
+  a project command, starts a worker, or exposes a mutable registry, callback, launcher, factory,
+  path, permission token, or privileged engine handle.
+- Extension registrations are canonically ordered by exact identity and retain requested versus
+  granted capabilities separately. Only Ready features may be Available, faulted and quarantined
+  state requires bounded safe failure evidence, and unknown or inconsistent wire fields fail closed.
+- Every extension control reference must equal the existing project command method, editor-state
+  resource, controlling durable extension identity, and exact six-operation set. Actual mutation
+  remains revision fenced, permission checked, persistent, undoable, scriptable, and recoverable
+  through `ProjectEditorApi`.
 - Public error projection preserves all four recovery classes and actionable safe presentation.
   Raw summaries, source chains, internal and sensitive diagnostic fields, and raw context values
   never cross the schema boundary.
@@ -859,19 +913,26 @@ real dispatcher. It proves permanent names, strict round trips, equal-state supp
 outer and nested revisions, dependent rendering and export readiness, complete replacement events,
 and the absence of private path, message, operation, and context data from public JSON.
 
+Three extension registry contracts project real engine registrations and prove permanent names,
+permission-free query classification, canonical identity and snapshot order, change-only revision
+and full replacement event behavior, strict JSON round trips, and rejection of injected callback,
+dispatcher, factory, path, worker, and permission-token fields. They also execute the advertised
+project extension control through the real permission boundary, persist and reopen it through the
+project database, and prove that a missing runtime registration never erases durable project state.
+
 The scenario contracts prove exact schema round trips, rejection of guessed fields and effects, the
 permanent typed method name, full canonical import metadata, named timeline and ranges, complete
 three-node graph with image ports, exact mirror parameters, four stable operation records, two undo
 plus two redo actions, final revision 8, structured engine context, last-valid-state retention, and
 serialized exclusion of a private missing-source path and raw context values.
 
-Four public schema contracts prove the exact 16-command, 12-query, eight-event, and 11-resource
-surface, current domain versions, catalog schema `1.3.0`, error schema `1.0.0`, media schema `2.0.0`,
+Four public schema contracts prove the exact 16-command, 13-query, nine-event, and 12-resource
+surface, current domain versions, catalog schema `1.4.0`, error schema `1.0.0`, media schema `2.0.0`,
 stable primitive revision 1, strict deterministic catalog round trips, invalid identity and
 duplicate rejection, typed JSON-RPC exclusivity, all four recovery classes, user-safe diagnostic
 filtering, last-valid resource identity and revision, the complete permission vocabulary, and exact
-permission metadata for all 28 methods. They include local scripting, version negotiation, every
-public asynchronous job and event
+permission metadata for all 29 methods. They include local scripting, version negotiation, extension
+discovery, every public asynchronous job and event
 subscription method and resource, but do not claim a network transport server, dynamic method
 routing, push delivery, or authentication.
 
@@ -882,10 +943,10 @@ missing dimensions, complete server support, independent project migration and f
 results, strict unknown-field rejection, and JSON-RPC 2.0 request and response round trips.
 
 Six event stream contracts plus one sequence-exhaustion unit test prove strict identities and wire
-values, finite configuration, duplicate and capacity rejection, exact eight-event union parity,
+values, finite configuration, duplicate and capacity rejection, exact nine-event union parity,
 strictly increasing independent public order, real command and observation correlation, immutable
 record round trips, independent subscribers, retry idempotence, request and server batch caps,
-whole-record retention, explicit eviction and restart gaps, complete ten-resource reconnect
+whole-record retention, explicit eviction and restart gaps, complete eleven-resource reconnect
 metadata, reset barriers, post-barrier delivery, future-cursor rejection, and isolated close. The
 integration tests publish events produced by real project editor, engine introspection, and
 asynchronous job lifecycle paths. They do not claim network I/O, push delivery, persisted replay
@@ -984,8 +1045,8 @@ bulk runtime payloads or hidden polling.
 
 ## Current status and risks
 
-The API now has twelve substantive domain surfaces plus bounded ordered event delivery, one complete
-discovery catalog, and strict wire grammar, including one unified generic authored project command
+The API now has fourteen substantive domain surfaces including bounded ordered event delivery, one
+complete discovery catalog, and strict wire grammar, including one unified generic authored project command
 and editor-state facade, one asynchronous job control surface, and stateless version negotiation.
 Engine introspection gives
 clients a coherent adaptation view without adding mutation
@@ -998,6 +1059,10 @@ delivery, persisted replay, authentication, operating-system sandboxing, or a sc
 runtime beyond the bounded `superi-json` interpreter. The API-owned local host now provides real
 project file and editor execution specifically to the CLI without registering new transport
 methods or exposing database handles.
+Extension discovery now exposes exact runtime identity, lifecycle, capabilities, safe failures, and
+user-control references from one immutable engine registry. It remains observation only. Actual
+extension mutation still passes through the existing project command, permission, persistence,
+history, scripting, and recovery owners, while live workers remain private to their supervisors.
 Host-injected authorization now covers every current
 caller-selected filesystem target, plugin state and delegation mutation, and destructive job,
 recovery, and automation operation before dispatch.
@@ -1029,7 +1094,7 @@ not supply transport, endpoint mutation, or background polling.
 
 The separate negotiation, media, engine introspection, integration validation, scenario, event
 stream, catalog, and error schema versions are correct for independent surfaces. The catalog is
-`1.3.0` because local scripting and negotiation are additive while individual method and resource
+`1.4.0` because extension discovery is additive while individual method and resource
 schemas retain their own versions.
 Data-only JSON-RPC framing, bounded retryable polling, and host-injected authorization now exist,
 while network hosting, dynamic routing, authentication, persisted replay, and
@@ -1102,3 +1167,10 @@ Keep complete editor state behind one dispatcher observation and one permanent p
 domain state by extending the authoritative engine aggregate and strict public projection together,
 preserve canonical authored document identity, keep optional owner freshness explicit, and never
 copy bulk runtime payloads or opaque extension bytes into the replacement snapshot.
+Keep extension discovery permission-free, immutable, canonical, and strictly declarative. Preserve
+exact versioned identity, requested and granted capability separation, core feature discovery,
+ready-only availability, bounded safe failure, semantic change-only events, and the exact existing
+project command and editor-state control reference. Any new extension field must prove strict Rust
+and JSON validation, generated binding parity, reconnect-manifest coverage, real consumer use, and
+negative exclusion of runtime handles, paths, callbacks, factories, dispatchers, and permission
+tokens.

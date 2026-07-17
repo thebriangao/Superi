@@ -15,8 +15,8 @@ use superi_core::settings::{CapabilityId, CapabilitySet};
 use superi_effects::authoring::EffectNodeDefinition;
 use superi_effects::ofx::{
     IsolatedOfxAdapter, OfxContext, OfxFailureRecord, OfxImageResource, OfxInstanceKey,
-    OfxParameterSampler, OfxPluginHost, OfxPluginIdentity, OfxPluginLifecycle, OfxPluginStatus,
-    OfxRenderReceipt, OfxRenderWindow, OfxTime,
+    OfxParameterSampler, OfxPluginDescriptor, OfxPluginHost, OfxPluginIdentity, OfxPluginLifecycle,
+    OfxPluginStatus, OfxRenderReceipt, OfxRenderWindow, OfxTime,
 };
 use superi_graph::ids::NodeId;
 use superi_graph::missing::{resolve_graph, GraphResolution};
@@ -465,6 +465,7 @@ struct ManagedPlugin {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PluginStatusSnapshot {
     bundle: OfxPluginBundle,
+    descriptor: OfxPluginDescriptor,
     identity: OfxPluginIdentity,
     status: OfxPluginStatus,
 }
@@ -474,6 +475,12 @@ impl PluginStatusSnapshot {
     #[must_use]
     pub const fn bundle(&self) -> &OfxPluginBundle {
         &self.bundle
+    }
+
+    /// Returns the complete scanned descriptor without exposing the worker adapter.
+    #[must_use]
+    pub const fn descriptor(&self) -> &OfxPluginDescriptor {
+        &self.descriptor
     }
 
     /// Returns the exact scanned plugin identity and version.
@@ -671,9 +678,24 @@ impl PluginSupervisor {
         let plugin = self.plugins.get(&identity.to_string())?;
         Some(PluginStatusSnapshot {
             bundle: plugin.bundle.clone(),
+            descriptor: plugin.host.plugin().clone(),
             identity: plugin.host.plugin().identity().clone(),
             status: plugin.host.status(),
         })
+    }
+
+    /// Returns every accepted plugin status in canonical exact-identity order.
+    #[must_use]
+    pub fn plugin_statuses(&self) -> Vec<PluginStatusSnapshot> {
+        self.plugins
+            .values()
+            .map(|plugin| PluginStatusSnapshot {
+                bundle: plugin.bundle.clone(),
+                descriptor: plugin.host.plugin().clone(),
+                identity: plugin.host.plugin().identity().clone(),
+                status: plugin.host.status(),
+            })
+            .collect()
     }
 
     /// Builds one graph-native definition from a scanned plugin context.

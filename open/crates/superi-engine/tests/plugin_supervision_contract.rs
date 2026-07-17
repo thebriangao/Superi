@@ -13,6 +13,9 @@ use superi_effects::ofx::{
     OfxPluginCapabilities, OfxPluginDescriptor, OfxPluginIdentity, OfxPluginLifecycle,
     OfxRenderReceipt, OfxRenderRequest, OfxRenderThreadSafety, OfxRenderWindow, OfxTime,
 };
+use superi_engine::extensions::{
+    registrations_from_openfx, ExtensionControlOperation, ExtensionLifecycle,
+};
 use superi_engine::lifecycle::EngineWorkKind;
 use superi_engine::plugins::{
     discover_ofx_bundles, OfxPluginBundle, OfxWorkerLauncher, PluginFailureAction, PluginSupervisor,
@@ -515,6 +518,31 @@ fn discovery_supervision_and_workflows_share_one_contained_plugin_state() {
     assert_eq!(status.lifecycle(), OfxPluginLifecycle::Quarantined);
     assert_eq!(status.consecutive_failures(), 2);
     assert!(supervisor.active_registry().is_empty());
+
+    let registrations = registrations_from_openfx(&supervisor).unwrap();
+    assert_eq!(registrations.len(), 1);
+    let registration = &registrations[0];
+    assert_eq!(registration.lifecycle(), ExtensionLifecycle::Quarantined);
+    assert_eq!(registration.requested_capabilities(), &requested);
+    assert_eq!(registration.granted_capabilities(), &requested);
+    assert_eq!(registration.discovery().capabilities(), &requested);
+    assert!(registration.failure().is_some());
+    assert_eq!(
+        registration.control().command_method(),
+        "superi.project.command.execute"
+    );
+    assert_eq!(
+        registration.control().operations(),
+        &[
+            ExtensionControlOperation::Upsert,
+            ExtensionControlOperation::Remove,
+            ExtensionControlOperation::SetLifecycle,
+            ExtensionControlOperation::SetGrantedCapabilities,
+            ExtensionControlOperation::RecordFailure,
+            ExtensionControlOperation::ClearFailure,
+        ]
+    );
+    assert!(!format!("{registration:?}").contains(tree.root().to_string_lossy().as_ref()));
 
     let degraded_revisions = [
         EngineWorkKind::Playback,
