@@ -1,6 +1,6 @@
 ---
 name: superi-execution
-description: Use when an assigned Superi checkpoint has a research-backed internal plan and is ready to be built autonomously.
+description: Use when a Superi checkpoint owner has created the repository-backed planning and execution files inline and is ready to implement, verify, deliver, and document the checkpoint without subagents.
 ---
 
 # Superi Execution
@@ -12,8 +12,8 @@ fresh verification, remote delivery, and checklist evidence define completion.
 
 ## Execute
 
-The one permitted tier 2 research planner has already produced both plans. From this point through
-delivery, the checkpoint owner works alone and must not spawn any agent.
+The checkpoint owner has already produced both plans inline. Continue in the same task through
+delivery and never spawn or delegate to a subagent.
 
 1. **Reconfirm owner state.** Reconfirm the exact timestamped claim suffix, re-read the immutable
    main specification, inspect the worktree, fetch current remote state, and integrate without
@@ -21,9 +21,8 @@ delivery, the checkpoint owner works alone and must not spawn any agent.
    revision, evidence record, architecture, and proof plan. Never delete code another worker wrote.
 2. **Read the implementation yourself.** Use the plans to select scope, then personally read every
    file that may change plus relevant public interfaces, callers, consumers, manifests, schemas,
-   tests, fixtures, and governing documents through EOF. Do not rely on the planner's summary as a
-   substitute for understanding the current code. Initial codebase-map ingestion belongs to the
-   planner and does not need to be repeated.
+   tests, fixtures, and governing documents through EOF. Do not rely on summaries as a substitute
+   for understanding the current code and maps.
 3. **Prove before changing.** Write the smallest real test first and run it to confirm the expected
    failure. For bugs, reproduce the defect. For existing untested behavior, capture it before
    modifying it. Implement the smallest complete slice, rerun the proof, and maintain exact commands,
@@ -42,7 +41,7 @@ delivery, the checkpoint owner works alone and must not spawn any agent.
 6. **Refresh the maps yourself.** Use the Git diff and `superi-mapping` commands to identify affected
    modules. Update each affected map from the changed code and interfaces, update consumers and the
    global index when contracts, ownership, layering, public flow, or status changed, recompute hashes
-   and counts, and run the validator. The planner never edits maps.
+   and counts, and run the validator.
 7. **Review the whole result yourself.** Read every changed file and the complete source, test, and
    map diff line by line against the checkpoint, plans, architectural boundaries, failure modes, and
    neighboring work. Re-read every critical interface and relevant test through EOF. Correct defects,
@@ -79,10 +78,11 @@ Do not return `Done.` unless all of these are true:
 
 ## Autonomy loop
 
-When evidence breaks an assumption, inspect the root cause, perform the missing research yourself,
-update the execution evidence, revise the approach, and continue. Never spawn another agent. Retry
-transient tool, test, rebase, push, and document failures with a bounded corrective change. Do not
-pause for routine choices, progress reports, or approval between slices.
+When evidence breaks an assumption, inspect the root cause, decide whether repository evidence is
+sufficient, perform external research only if a material uncertainty remains, update the execution
+evidence, revise the approach, and continue. Never spawn another agent. Retry transient tool, test,
+rebase, push, and document failures with a bounded corrective change. Do not pause for routine
+choices, progress reports, or approval between slices.
 
 Stop only for a blocking condition defined by root `AGENTS.md`. Otherwise continue until every item
 in its completion gate passes, then return exactly `Done.`

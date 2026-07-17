@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 893b3c04aa7460c164da11723f76ad935daf359b24acb0c1cad7c5f44438d5e8
-source_files: 153
+source_hash: 71c3428e99446abe76f58c7a9ce79f342792fbaee4277a120d7c151b5c95ae19
+source_files: 152
 mapped_at_commit: working-tree
 ---
 
@@ -21,10 +21,10 @@ checkpoint assignments, fixes the paired-tab Google Docs claim, blocked-note, hi
 three-sentence completion protocol, requires safe synchronization with `origin/main`, and makes
 current mandatory maps plus complete selected raw-file reads a prerequisite for implementation.
 Optional maps may be replaced only by the recorded deeper raw-code reading defined there. It routes
-a single checkpoint to a tier 0 or tier 1 owner that creates one plan-only tier 2 research agent for
-live Google Docs inspection, map orientation, current implementation reading, external research, and
-both plan files. The owner then performs all code reading, implementation, testing, mapping, review,
-Google Docs work, and delivery itself without another agent. Multiple checkpoints still use separate
+a single checkpoint to a tier 0 or tier 1 owner that performs live Google Docs inspection, map and
+current implementation reading, planning, implementation, testing, mapping, review, and delivery
+inline without any subagent. External research is optional and begins only when repository evidence
+cannot resolve a material question. Multiple checkpoints still use separate
 Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers but obeys an
 explicit positive user concurrency value. The file is ignored by Git and copied into managed
 worktrees through `.worktreeinclude`, so the mapping script does not include it in this module's
@@ -51,10 +51,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `.agents/skills/superi-execution/agents/openai.yaml`: Supplies the display name, short description,
   and default invocation prompt for the execution skill.
 - `.agents/skills/superi-mapping/SKILL.md`: Defines module discovery, shard reading, synthesis,
-  map frontmatter and required sections, stale-map refresh, and whole-map validation. The one tier 2
-  research planner reads the initial map closure without editing it, while the checkpoint owner is
-  the only map writer after source work. Optional stale maps are replaced with prescribed deeper
-  raw-code evidence during planning.
+  map frontmatter and required sections, stale-map refresh, and whole-map validation. The checkpoint
+  owner reads the initial map closure and performs every required map refresh inline. Optional stale
+  maps are replaced with prescribed deeper raw-code evidence during planning.
 - `.agents/skills/superi-mapping/scripts/codebase_maps.py`: Implements repository discovery, module
   assignment, UTF-8 and binary classification, deterministic source hashing, whole-file sharding,
   changed-module reporting, and strict map validation. It reads tracked plus nonignored untracked
@@ -62,19 +61,15 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   roots to their own modules, and assigns everything else to `workspace`. Validation checks anchored
   frontmatter, exact source ownership, revision syntax, inventory-section entries, resolved index
   links, unexpected module maps, required headings, current hashes, and forbidden Unicode dashes.
-- `.agents/skills/superi-planning/SKILL.md`: Defines evidence-based planning for one checkpoint. It
-  requires the owner to synchronize and claim before creating exactly one tier 2 research planner.
-  That plan-only agent reads live Google Docs, maps, current code, and primary research, then writes
-  both `planning.md` and `execution.md`. No other plan document or checkpoint subagent is permitted.
+- `.agents/skills/superi-planning/SKILL.md`: Defines evidence-based inline planning for one
+  checkpoint. The owner synchronizes and claims, reads live Google Docs, maps, and current code,
+  performs external research only when a material question remains unresolved, and writes both
+  `planning.md` and `execution.md`. No other planning document or checkpoint subagent is permitted.
 - `.agents/skills/superi-planning/agents/openai.yaml`: Supplies the display name, short description,
   and default invocation prompt for the planning skill.
-- `.codex/config.toml`: Pins every Superi project session to `gpt-5.6-sol` with `max` reasoning and
-  sets both agent depth and concurrent agent threads to one. A checkpoint owner may create its sole
-  planner, while that planner has no nested-agent capacity.
-- `.codex/agents/superi-tier2.toml`: Defines the preferred project-scoped tier 2 specialist with the
-  same Sol and max settings. Its fixed behavior is read-only except for the two plan files, requires
-  live Google Docs inspection, map and implementation ingestion, and external research, and forbids
-  implementation, map edits, checkpoint lifecycle, Git mutation, delivery, and nested agents.
+- `.codex/config.toml`: Pins every Superi project session to `gpt-5.6-sol` with `max` reasoning. The
+  repository defines no custom agent profile or project-level agent concurrency settings because
+  each checkpoint owner completes its checkpoint inline.
 - `.github/scripts/check-dependency-policy.sh`: Executable Bash contract check for the dependency
   policy workflow. It requires exact workflow name, permissions, checker invocation, cargo-deny
   action inputs, unknown-Git denial, revision-pinned Git policy, and the approved OxideAV source;
@@ -678,10 +673,9 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
 - The three repository skills expose checkpoint planning, checkpoint execution, and codebase map
   maintenance workflows. Their `agents/openai.yaml` files are presentation metadata, not alternate
   behavior specifications.
-- `.codex/config.toml` and `.codex/agents/superi-tier2.toml` expose the repository's single-planner
-  runtime contract. One generic child inherits Sol with max reasoning when a tool surface cannot name
-  the custom type; surfaces that support custom agents select `superi-tier2` directly. The project
-  agent-thread ceiling is one.
+- `.codex/config.toml` exposes only the repository model contract: GPT-5.6 Sol with max reasoning.
+  Checkpoint law, planning, execution, and mapping skills prohibit checkpoint subagents and keep the
+  complete workflow in the owning task.
 - The execution verifier accepts a required Git base revision and optional `--full` or `--dry-run`
   flags. It turns the final changed-path set into an explicit local command plan, validates changed
   Python and JSON inputs, always validates maps, and executes applicable repository gates without
@@ -724,12 +718,11 @@ Repository work flows through two control planes.
 
 The operational control plane begins with `AGENTS.md`. A single checkpoint owner synchronizes with
 the remote, claims its exact descriptions-tab ID suffix, rereads the immutable main-tab
-specification, and records the base revision. It creates one tier 2 research planner that independently
-reads live Google Docs, the relevant map closure, current implementation, and primary research before
-writing `planning.md` and `execution.md`. That agent writes nothing else. The owner reads both plans,
-builds its own raw-code understanding, then alone implements, tests, updates maps, reviews the final
-diff, runs deterministic proof, controls Git delivery, and completes paired-tab Google Docs. No
-second checkpoint subagent is permitted, including replacements or reviewers. A multi-checkpoint
+specification, and records the base revision. It reads the relevant map closure and current
+implementation, performs external research only if those sources leave a material question
+unresolved, writes `planning.md` and `execution.md`, then implements, tests, updates maps, reviews the
+final diff, runs deterministic proof, controls Git delivery, and completes paired-tab Google Docs.
+The owner performs this complete lifecycle inline and may not create a checkpoint subagent. A multi-checkpoint
 request is dispatched in first-seen order into separate Codex-managed worktrees. The rolling queue
 defaults to three active checkpoint owners unless the user supplies another positive concurrency
 value, and `.worktreeinclude` supplies the otherwise ignored root law.
@@ -992,9 +985,8 @@ workspace, Bash and `grep` for the executable policy contract, cargo-deny plus G
 dependency policy, GitHub-hosted macOS, Windows, and Ubuntu runners for build portability, Node.js
 24.13.0 with npm for the frontend contract, Tauri 2 with native desktop SDKs for the shell contract,
 and the Google Docs plus Codex environment described by repository law for checkpoint coordination.
-Project Codex configuration requires GPT-5.6 Sol with max reasoning, agent depth one, one maximum
-agent thread, custom planner discovery when the surface supports it, and one inherited generic
-planner otherwise. The mapping and verification scripts use only the Python standard library; the
+Project Codex configuration requires GPT-5.6 Sol with max reasoning and defines no custom agent
+profile or project-level agent concurrency settings. The mapping and verification scripts use only the Python standard library; the
 verifier
 conditionally invokes the repository's Git, Python, Bash, Cargo, cargo-deny, and npm commands.
 
@@ -1102,12 +1094,11 @@ of open runtime behavior.
   with `origin/main`, preserves all existing work, and never force pushes or uses destructive
   conflict handling.
 - A tier 0 or tier 1 owner alone claims and completes Google Docs, integrates remote state, approves
-  compatibility, reads source, implements, tests, updates maps, reviews, commits, rebases, pushes, and
-  closes the checkpoint. It may create one tier 2 research planner during the checkpoint's entire
-  lifetime and never another agent.
-- The sole tier 2 planner runs only on GPT-5.6 Sol with max reasoning and may write only
-  `planning.md` and `execution.md`. It reads live Google Docs, maps, code, and research, but never
-  implements, edits maps or Google Docs, performs Git mutations, delivers, or spawns another agent.
+  compatibility, reads source, plans, implements, tests, updates maps, reviews, commits, rebases,
+  pushes, and closes the checkpoint inline. It never creates or delegates to a checkpoint subagent.
+- External research is not a mandatory checkpoint stage. The owner uses it only when the live
+  checklist, repository law, maps, current code, tests, local documents, and tool output cannot
+  resolve a material question confidently.
 - Mandatory map closure cannot be skipped. An optional map may be omitted only when the worker
   records and fully reads its module manifest, public entry points, cross-module interfaces, and
   relevant implementation and tests as the deeper substitute.
@@ -1132,11 +1123,11 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   Hosted CI status is not a general completion gate unless the assigned checkpoint explicitly
   requires hosted CI behavior.
 
-- Fresh local configuration proof parsed `.codex/config.toml` and
-  `.codex/agents/superi-tier2.toml` with Python `tomllib`, confirmed the exact Sol, max, depth-one,
-  and one-thread values, and ran `codex --strict-config doctor --summary --ascii --no-color`. Codex
-  reported the configuration loaded without warnings; the noninteractive terminal capability
-  remains an environment note rather than a configuration failure.
+- Fresh local configuration proof parses `.codex/config.toml` with Python `tomllib`, confirms the
+  exact Sol and max values plus the absence of an agent stanza, verifies that no project agent
+  profile remains, and runs `codex --strict-config doctor --summary --ascii --no-color`. A
+  noninteractive terminal capability error is an environment note rather than a configuration
+  parse failure.
 
 - The project autosave contract proves host-driven due boundaries, enable and disable control,
   forced manual recovery points, exact current-schema snapshot reopen, unchanged active-project
@@ -1589,16 +1580,16 @@ The largest current risk is cross-document drift:
   targets or prove a native frontend build outside the Ubuntu workflow.
 - The governing `AGENTS.md` is ignored and absent from the mapping script's repository inventory.
   Changes to repository law therefore do not change this module's source hash, which makes manual
-  rereading mandatory even when this map validates as current. The tracked `.codex` project and tier
-  2 configuration do contribute to the hash and travel through ordinary Git worktrees.
+  rereading mandatory even when this map validates as current. The tracked `.codex` project
+  configuration contributes to the hash and travels through ordinary Git worktrees.
 - Hosted workflows are not the routine agent completion gate. The local deterministic verifier plus
   checkpoint-specific proof is authoritative for the agent workflow unless a checkpoint explicitly
   owns hosted CI behavior; this does not convert a failing hosted lane into passing product evidence.
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`c99ea17d7b83dd42b09cd56592e60e899f39b81a` when this checkpoint began. Its hash describes the exact
-152 discovered source files, including twelve generated binary payloads, layered on that revision.
+`c4f049e9676aa48cc1876b66f4823a33d230c074` when this workflow update began. Its hash describes the
+exact 152 discovered source files, including generated binary payloads, layered on that revision.
 
 ## Maintenance notes
 
@@ -1608,8 +1599,8 @@ after source changes settle, and run `validate` after map synthesis. The script 
 path, a null separator, its exact bytes, and another null separator in sorted path order, so path
 changes and content changes both invalidate the hash.
 
-Refresh this map whenever a root document, repository skill, project Codex or custom agent
-configuration, workspace manifest, lockfile, toolchain policy, deny policy, shared fixture, or other
+Refresh this map whenever a root document, repository skill, project Codex configuration,
+workspace manifest, lockfile, toolchain policy, deny policy, shared fixture, or other
 non-crate and non-tool source changes. Reconcile prose,
 not only frontmatter: update membership counts, dependency and feature descriptions, proof commands,
 status claims, cross-module relationships, and identified conflicts. Use `working-tree` while mapped

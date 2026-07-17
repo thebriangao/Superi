@@ -1,4 +1,4 @@
 interface:
   display_name: "Superi Planning"
-  short_description: "Plan with one read-only research agent"
-  default_prompt: "Use $superi-planning with exactly one plan-only researcher for the assigned Superi checkpoint."
+  short_description: "Plan one checkpoint inline"
+  default_prompt: "Use $superi-planning to inspect and plan the assigned Superi checkpoint inline without subagents."

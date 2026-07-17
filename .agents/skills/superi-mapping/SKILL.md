@@ -28,12 +28,10 @@ The `workspace` module owns repository files outside `open/crates/*` and `open/t
 output, dependency caches, ignored files, plan files, and the generated map tree are excluded.
 Tracked binary artifacts remain in the inventory, but their bytes are not treated as readable prose.
 
-For ordinary checkpoint work, the one tier 2 research planner performs initial map validation and
-reads the global index plus the complete affected caller, consumer, contract, and runtime-path map
-closure. This work is read-only. The planner records stale or missing maps and replaces their
-authority with deeper raw-code evidence. After implementation, the checkpoint owner alone refreshes
-affected maps and validates them. The owner does not need to repeat the planner's initial map
-ingestion.
+For ordinary checkpoint work, the checkpoint owner performs initial map validation and reads the
+global index plus the complete affected caller, consumer, contract, and runtime-path map closure
+inline. Record stale or missing maps and replace their authority with deeper raw-code evidence. After
+implementation, refresh every affected map and validate the complete map set in the same task.
 
 ## Create all maps
 
@@ -96,12 +94,11 @@ unfinished paths, inferred relationships, and behavior that is defined only by t
 
 Map maintenance is part of implementation, not a later documentation task:
 
-1. During planning, the one tier 2 research planner runs `validate`, reads the required map closure,
-   and records missing or stale maps. It never edits a map and uses deeper raw-code evidence whenever
-   map authority is unavailable.
-2. Before editing source, the checkpoint owner reads both plans and every raw file selected for
+1. During planning, the checkpoint owner runs `validate`, reads the required map closure, and records
+   missing or stale maps. Use deeper raw-code evidence whenever map authority is unavailable.
+2. Before editing source, read both plans and every raw file selected for
    modification, along with its relevant callers, consumers, public interfaces, tests, schemas, and
-   governing documents, in full. It may rely on the planner for initial map orientation.
+   governing documents, in full.
 3. After editing and testing, run `changed --base <revision>` to identify directly affected modules.
 4. For each affected module, read its existing map, every changed file, and every related interface
    or test in full. Update the source inventory and all architectural statements affected by the
@@ -117,6 +114,6 @@ Map maintenance is part of implementation, not a later documentation task:
 No source-changing commit is complete while an affected map is stale. Do not update only the hash;
 the prose and inventory must truthfully describe the resulting code.
 
-The checkpoint owner is the only map writer. It personally reviews the final map diff, reconciles
-cross-module statements, and runs the final validator after integration. Never spawn a map reader,
-writer, synthesizer, or reviewer for checkpoint execution.
+Perform map reading, writing, reconciliation, and validation inline. Review the final map diff,
+reconcile cross-module statements, and run the final validator after integration. Never spawn a map
+reader, writer, synthesizer, or reviewer.
