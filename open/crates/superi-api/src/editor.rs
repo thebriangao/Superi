@@ -9,7 +9,7 @@ use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Res
 use superi_core::settings::SemanticVersion;
 use superi_engine::editor as engine;
 
-use crate::commands::ApiCommand;
+use crate::commands::{ApiCommand, GetEditorState, GetEditorStateResult};
 use crate::events::ProjectStateChanged;
 use crate::schema::{ApiResource, PublicMethodKind};
 use crate::version::{
@@ -2600,6 +2600,39 @@ pub struct ProjectEditorApi {
     pending_event_evidence: BTreeMap<u64, ProjectCommandEvidence>,
 }
 
+mod request_sealed {
+    pub trait Sealed {}
+}
+
+/// One request accepted by the single stable project editor facade.
+pub trait ProjectEditorRequest: request_sealed::Sealed {
+    /// Successful typed response for this request.
+    type Response;
+
+    #[doc(hidden)]
+    fn dispatch(self, api: &mut ProjectEditorApi) -> Result<Self::Response>;
+}
+
+impl request_sealed::Sealed for ExecuteProjectCommand {}
+
+impl ProjectEditorRequest for ExecuteProjectCommand {
+    type Response = ExecuteProjectCommandResult;
+
+    fn dispatch(self, api: &mut ProjectEditorApi) -> Result<Self::Response> {
+        api.execute_project_command(self)
+    }
+}
+
+impl request_sealed::Sealed for GetEditorState {}
+
+impl ProjectEditorRequest for GetEditorState {
+    type Response = GetEditorStateResult;
+
+    fn dispatch(self, api: &mut ProjectEditorApi) -> Result<Self::Response> {
+        crate::state::execute_editor_state(&mut api.dispatcher, self)
+    }
+}
+
 impl ProjectEditorApi {
     /// Takes ownership of one dispatcher with an attached authoritative project.
     pub fn new(dispatcher: engine::EngineCommandDispatcher) -> Result<Self> {
@@ -2610,11 +2643,16 @@ impl ProjectEditorApi {
         })
     }
 
+    /// Executes one stable authored command or complete replacement-state query.
+    pub fn execute<R: ProjectEditorRequest>(&mut self, request: R) -> Result<R::Response> {
+        request.dispatch(self)
+    }
+
     /// Executes one stable public project command through the engine dispatcher.
     ///
     /// Every public value is converted and checked before dispatch. A conversion or dispatch
     /// failure leaves project state, history, command sequencing, and events unchanged.
-    pub fn execute(
+    fn execute_project_command(
         &mut self,
         command: ExecuteProjectCommand,
     ) -> Result<ExecuteProjectCommandResult> {

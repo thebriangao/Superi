@@ -195,7 +195,7 @@ impl std::fmt::Debug for ProjectSettingsApi {
     }
 }
 
-fn public_snapshot(state: &EngineProjectSettingsState) -> ProjectSettingsSnapshot {
+pub(crate) fn public_snapshot(state: &EngineProjectSettingsState) -> ProjectSettingsSnapshot {
     ProjectSettingsSnapshot {
         schema_version: PROJECT_SETTINGS_SCHEMA_VERSION.clone(),
         project_id: state.project_id().to_string(),

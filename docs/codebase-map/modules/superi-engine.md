@@ -2,8 +2,8 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 04b801d236d107cfd4cf0d5cd03da94027e39ab0708da2df5d832790242f0251
-source_files: 66
+source_hash: b78ec364b53a8b7f7731454d46b8aaf2851d8f1b583a3fab0e095ac6364bcba0
+source_files: 68
 mapped_at_commit: working-tree
 ---
 
@@ -33,7 +33,8 @@ control, revision-fenced project mutation plus undo and redo, authoritative proj
 settings inspection and transactions, authored audio automation inspection and transactions, crash
 recovery discovery, comparison, durable restore, and dismissal, read-only whole-engine
 introspection and integration validation, deterministic semantic project diagnostics inspection,
-and ordered replacement events. Validation composes the
+one coherent complete editor-state inspection across authored and cached runtime owners, and
+ordered replacement events. Validation composes the
 canonical introspection snapshot with exact lifecycle, recovery, scenario, playback, and export
 evidence without polling a runtime owner or creating a second mutable state model.
 Native GPU presentation, timeline-owned decoded-audio rendering, export muxing and publication,
@@ -92,6 +93,10 @@ through the existing dispatcher.
 - `open/crates/superi-engine/src/editor.rs`: Exposes the curated checked construction vocabulary
   needed by the upper-tier generic project API while adding no wire model, mutation algorithm,
   dispatcher, history, persistence owner, or lower dependency edge.
+- `open/crates/superi-engine/src/editor_state.rs`: Captures one immutable project-history revision,
+  deterministic diagnostics and settings, canonical timeline, graph, and clip-mix resources,
+  bounded extension descriptors, exact audio routing and continuity, and explicit cached recovery,
+  automation, playback, and export observations without polling or mutation.
 - `open/crates/superi-engine/src/error.rs`: Implements EngineControl-owned classified failure
   propagation, immutable actionable records, bounded diagnostic history, exact recovery-intent
   validation, failed-recovery reclassification, and coherent lifecycle routing without copying
@@ -240,6 +245,9 @@ through the existing dispatcher.
   projection, coherent normal admission, playback-only, rendering-plus-export, and export-only
   degradation, visible recovery progress, restored readiness, and exclusion of private diagnostic
   details.
+- `open/crates/superi-engine/tests/editor_state_contract.rs`: Proves missing-project classification,
+  one coherent eventless revision, explicit optional owner attachment and freshness, multichannel
+  routing with mute intent, and sample-exact gap and source-transition continuity evidence.
 - `open/crates/superi-engine/tests/frame_upload_contract.rs`: Upload, ownership, storage, and budget
   proof.
 - `open/crates/superi-engine/tests/integration_validation_contract.rs`: Proves coherent normal,
@@ -399,6 +407,16 @@ registry for the CLI, while application and test hosts use their existing dispat
 monotonic, each event identifies its originating command sequence, and event draining returns
 complete ordered replacement state with scenario, project, lifecycle, playback, or export
 correlation.
+
+`editor_state` exposes the immutable `EditorStateSnapshot` aggregate and typed subrecords for
+canonical authored documents, graph ownership, bounded extension identity, exact audio routing and
+continuity, and optional runtime owner availability. `InspectEditorState` captures the selected
+history state, project diagnostics and settings, cached recovery state, optional automation,
+playback attachment and pending status, latest playback result and failure, export attachment, and
+latest export replacement in one EngineControl command. It never discovers recovery files, executes
+playback, polls export, mutates authored state, or emits an event. Canonical authored bytes remain
+project, timeline, graph, and audio owned; this module stores their exact serialized identity for
+one coherent public projection.
 
 `project_settings` exposes `ProjectSettingsState`, `ResolvedProjectSettings`, typed timeline,
 color, audio, cache, proxy, and render policy values, and the project-owned mutation and transaction
@@ -664,6 +682,23 @@ Discover, restore, and dismiss reserve command and event sequence space plus bou
 before filesystem mutation, then emit one complete replacement recovery state correlated to the
 caller transaction. Compare advances only the successful command sequence and emits no event.
 Candidates remain after restore until a separate revision-fenced dismissal succeeds.
+
+### Complete editor state capture
+
+`InspectEditorState` borrows the exact selected `ProjectHistoryState` once and derives project
+diagnostics, resolved settings, canonical timeline, graph, and clip-mix documents, bounded extension
+descriptors, and exact audio track evidence from that same immutable snapshot. Audio projection
+retains integral sample clocks, ordered semantic source and destination channels, explicit route or
+mute targets, and exact structural seam reports. Identity-mapped clips are audited without
+rounding; a retimed clip that cannot be reduced to exact linear sample spans remains explicit
+unsupported continuity while its canonical authored state stays available.
+
+Optional owners remain data rather than aggregate failure. Automation and cached recovery are
+attached or detached, while playback and export separately retain attachment, pending or
+unobserved state, and their latest dispatcher-observed complete replacement. The inspector does not
+poll a worker, execute a playback command, scan the filesystem, advance a project or subsystem
+revision, reserve event capacity, or publish an event. The successful command sequence is the one
+public resynchronization fence for every projected domain.
 
 ### Engine command dispatch and event publication
 
@@ -1174,15 +1209,16 @@ audio mutation, so their user intent remains attached without synthesis.
   complete engine introspection and integration validation snapshots, preserving public adaptation,
   validation, scenario, project settings, project recovery, and authored audio automation seams
   without exposing engine-private owners. The API depends only on engine for generic project
-  control, settings, recovery, audio automation, and asynchronous job control and therefore does
+  control, complete editor-state capture, settings, recovery, audio automation, and asynchronous job
+  control and therefore does
   not reverse the reviewed runtime graph. Logical export inspection, pause, resume, retry, cancel,
-  cancel-all, and
-  finalized removal now project through API-owned strict job contracts over the same dispatcher and
-  canonical queue. Submission, host polling, waiting, executor bindings, and typed artifact access
-  remain outside the public protocol, while the latest playback and export replacement state also
-  remains visible through the read-only validation query. Generic project history is projected
-  through strict API-owned DTOs, typed evidence, and correlated replacement events, while recovery
-  is projected through opaque identities and user-safe findings.
+  cancel-all, and finalized removal now project through API-owned strict job contracts over the same
+  dispatcher and canonical queue. Submission, host polling, waiting, executor bindings, typed
+  artifact access, and playback mutation remain outside the public protocol. The latest playback and
+  export replacement observations remain visible through the read-only validation and complete
+  editor-state queries. Generic project history is projected through strict API-owned DTOs, typed
+  evidence, and correlated replacement events, while recovery is projected through opaque
+  identities and user-safe findings.
 - Cache and GPU retain their own exact local budget enforcement, audio retains its preallocated
   callback-safe queue, media I/O retains decoded value and lifecycle ownership, and export retains
   logical job and publication ownership. The engine arbiter composes a higher shared managed-byte
@@ -1238,6 +1274,19 @@ audio mutation, so their user intent remains attached without synthesis.
   the prior hash under a newer optimistic revision. Engine must not add session history, command
   sequence, transaction ID, lifecycle state, runtime readiness, or event state to project-owned
   diagnostics.
+- Complete editor-state inspection requires one attached project history and EngineControl. It
+  borrows one selected snapshot, advances only the successful command sequence, emits no event, and
+  performs no recovery discovery, playback execution, export polling, filesystem work, or authored
+  mutation.
+- Canonical timeline, graph, and clip-mix resources preserve exact bytes, lengths, revisions, and
+  SHA-256 identity. Extension records expose bounded identity and payload evidence without copying
+  opaque payload bytes into the aggregate.
+- Audio state preserves exact sample clocks, ordered semantic channel layouts, explicit track and
+  per-channel routing, mute intent, and exact seam classifications. Retimed material that cannot be
+  reduced without rounding remains explicit unsupported continuity.
+- Optional recovery, automation, playback, and export owners remain explicit. Attachment,
+  unobserved state, pending playback, latest observed state, and bounded failure evidence cannot be
+  inferred or collapsed by the aggregate.
 - Autosave policy, elapsed time, retention, filesystem publication, and recovery-point ownership
   remain in `superi-project`. Engine supplies only an immutable selected snapshot in its consumer
   proof. No engine dispatcher, lifecycle action, worker, or execution domain may perform blocking
@@ -1535,6 +1584,12 @@ history unit, retained direct graph parameters, exact authored-audio and extensi
 prepared adjacent-block audible continuity, exact undo and redo, late invalid-action rollback with
 unchanged history, and action bounds.
 
+Three editor-state contracts use the full dispatcher to prove missing-project classification, one
+coherent eventless selected revision, unchanged history and event state, explicit recovery,
+automation, playback, and export availability, pending and latest runtime observations, canonical
+resource identity, three-channel source meaning, stereo destination meaning, one explicit muted
+route, and a sample-exact 100-sample record gap between different clip sources.
+
 Two engine-introspection contracts use the real registry, dispatcher, lifecycle, error coordinator,
 and resource arbiter. They prove read-only ownership, exact optional accounting, canonical ordering,
 healthy admission, playback-only, rendering-plus-export, and export-only degradation, active
@@ -1705,7 +1760,8 @@ classified failure and recovery, sleep, wake, shutdown, restart, work admission,
 health observation, interactive transport, logical export, typed project media, extension, and
 compound mutation, project undo and redo, authoritative project settings inspection and mutation,
 authored audio automation inspection and mutation, deterministic semantic project diagnostics
-inspection, and read-only integration validation operations.
+inspection, coherent complete editor-state inspection, and read-only integration validation
+operations.
 It also owns crash recovery discovery, complete
 semantic comparison, durable restoration, and exact dismissal through one optional file-backed
 coordinator. The optional project attachment owns one real `ProjectDocument`, returns complete
@@ -1714,6 +1770,8 @@ mutations in that shared history, and publishes correlated full replacement even
 changes. Its introspection and validation snapshots expose coherent adaptation and action evidence
 without adding mutation authority. Its project diagnostics command exposes project-owned canonical
 hash and component evidence without an event, history entry, or second semantic model.
+Its editor-state command captures the same selected project plus cached optional runtime
+observations in one eventless replacement aggregate without polling or bulk runtime payloads.
 Playback crosses
 one bounded nonblocking bridge to its real domain owner. Logical export state remains in the
 canonical queue behind a type-erased dispatcher controller, while prepared executors receive fresh
@@ -1826,6 +1884,11 @@ hash framing, component evidence, versioning, and exclusions to `superi-project`
 complete result, successful command sequencing, missing-owner failure, eventless behavior, and zero
 history or project mutation. Do not copy the project hash algorithm or build an engine-private
 diagnostics digest.
+Keep `InspectEditorState` bound to that same selected history snapshot and the dispatcher's already
+retained optional observations. Preserve canonical authored resource bytes, exact audio clocks and
+routing, explicit freshness, eventless behavior, and zero hidden polling or filesystem work. Add a
+domain only through its authoritative owner and keep opaque payloads and typed runtime artifacts out
+of the aggregate.
 Keep the selected immutable snapshot directly consumable by the project-owned autosave command. A
 future background I/O integration may route that public surface, but must not duplicate policy,
 publication, naming, or retention in engine and must not block EngineControl, Playback, Render, or

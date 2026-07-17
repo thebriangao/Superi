@@ -15,11 +15,11 @@ os-codecs = ["superi-engine/os-codecs"]
 
 [dependencies]
 serde = { workspace = true }
+serde_json = { workspace = true, features = ["raw_value"] }
 superi-core = { path = "../superi-core" }
 superi-engine = { path = "../superi-engine", features = ["test-support"] }
 
 [dev-dependencies]
-serde_json = { workspace = true }
 sha2 = { workspace = true }
 superi-media-io = { path = "../superi-media-io" }
 superi-concurrency = { path = "../superi-concurrency" }

@@ -13,5 +13,6 @@ pub mod recovery;
 pub mod scenario;
 pub mod schema;
 pub mod scripting;
+pub mod state;
 pub mod validation;
 pub mod version;

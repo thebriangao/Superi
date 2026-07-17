@@ -19,9 +19,10 @@ use crate::audio_automation::AudioAutomationSnapshot;
 use crate::commands::{
     ApiCommand, CancelAllAsyncJobs, CancelAsyncJob, CompareProjectRecovery, DismissProjectRecovery,
     ExecuteAudioAutomationTransaction, ExecuteProjectSettingsTransaction, ExecuteScenarioAction,
-    ExecuteScenarioTransaction, GetAsyncJobs, GetAudioAutomation, GetEngineIntegrationValidation,
-    GetEngineIntrospection, GetMediaCapabilities, GetProjectRecovery, GetProjectSettings,
-    PauseAsyncJob, RemoveAsyncJob, RestoreProjectRecovery, ResumeAsyncJob, RetryAsyncJob,
+    ExecuteScenarioTransaction, GetAsyncJobs, GetAudioAutomation, GetEditorState,
+    GetEngineIntegrationValidation, GetEngineIntrospection, GetMediaCapabilities,
+    GetProjectRecovery, GetProjectSettings, PauseAsyncJob, RemoveAsyncJob, RestoreProjectRecovery,
+    ResumeAsyncJob, RetryAsyncJob,
 };
 use crate::editor::{ExecuteProjectCommand, ProjectHistorySnapshot};
 use crate::events::{
@@ -33,9 +34,10 @@ use crate::jobs::AsyncJobsSnapshot;
 use crate::project::ProjectSettingsSnapshot;
 use crate::recovery::ProjectRecoverySnapshot;
 use crate::scenario::ScenarioStateSnapshot;
+use crate::state::EditorStateSnapshot;
 use crate::validation::IntegrationValidationSnapshot;
 use crate::version::{
-    ASYNC_JOBS_SCHEMA_VERSION, AUDIO_AUTOMATION_SCHEMA_VERSION,
+    ASYNC_JOBS_SCHEMA_VERSION, AUDIO_AUTOMATION_SCHEMA_VERSION, EDITOR_STATE_SCHEMA_VERSION,
     ENGINE_INTEGRATION_VALIDATION_SCHEMA_VERSION, ENGINE_INTROSPECTION_SCHEMA_VERSION,
     GET_PUBLIC_API_SCHEMA_METHOD, MEDIA_CAPABILITIES_SCHEMA_VERSION,
     PROJECT_RECOVERY_SCHEMA_VERSION, PROJECT_SETTINGS_SCHEMA_VERSION, PUBLIC_API_SCHEMA_VERSION,
@@ -561,6 +563,11 @@ impl ApiResource for AsyncJobsSnapshot {
 impl ApiResource for ProjectRecoverySnapshot {
     const RESOURCE: &'static str = "superi.project.recovery";
     const SCHEMA_VERSION: SemanticVersion = PROJECT_RECOVERY_SCHEMA_VERSION;
+}
+
+impl ApiResource for EditorStateSnapshot {
+    const RESOURCE: &'static str = "superi.editor.state";
+    const SCHEMA_VERSION: SemanticVersion = EDITOR_STATE_SCHEMA_VERSION;
 }
 
 impl ApiResource for AudioAutomationSnapshot {
@@ -1210,6 +1217,7 @@ fn current_catalog() -> CoreResult<PublicApiSchemaSnapshot> {
     register_method::<RestoreProjectRecovery>(&mut commands, &mut queries)?;
     register_method::<DismissProjectRecovery>(&mut commands, &mut queries)?;
     register_method::<GetAudioAutomation>(&mut commands, &mut queries)?;
+    register_method::<GetEditorState>(&mut commands, &mut queries)?;
     register_method::<ExecuteAudioAutomationTransaction>(&mut commands, &mut queries)?;
     register_method::<GetProjectSettings>(&mut commands, &mut queries)?;
     register_method::<ExecuteProjectSettingsTransaction>(&mut commands, &mut queries)?;
@@ -1241,6 +1249,7 @@ fn current_catalog() -> CoreResult<PublicApiSchemaSnapshot> {
             resource_schema::<AsyncJobsSnapshot>()?,
             resource_schema::<ProjectRecoverySnapshot>()?,
             resource_schema::<AudioAutomationSnapshot>()?,
+            resource_schema::<EditorStateSnapshot>()?,
             resource_schema::<ProjectSettingsSnapshot>()?,
             resource_schema::<MediaCapabilitiesSnapshot>()?,
             resource_schema::<EngineIntrospectionSnapshot>()?,

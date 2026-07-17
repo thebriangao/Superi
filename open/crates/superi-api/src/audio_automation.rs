@@ -506,7 +506,7 @@ impl std::fmt::Debug for AudioAutomationApi {
     }
 }
 
-fn public_snapshot(snapshot: &EngineSnapshot) -> Result<AudioAutomationSnapshot> {
+pub(crate) fn public_snapshot(snapshot: &EngineSnapshot) -> Result<AudioAutomationSnapshot> {
     let lanes = snapshot
         .lanes()
         .map(|lane| {

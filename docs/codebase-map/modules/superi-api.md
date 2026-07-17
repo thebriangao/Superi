@@ -2,30 +2,29 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: 7af5b8a69db0a7548cf606bdd4497680b5466b8c570ab4358efca20afa61c53f
-source_files: 26
+source_hash: 1d19095aba3993f645061bed89ef303870cd84fb22ffeb925cb6f68e42cc8896
+source_files: 28
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
 `superi-api` owns the transport-neutral public boundary for UI, scripting, extension, CLI, and
-automation clients. Nine public slices are implemented: media capability introspection, complete
+automation clients. Ten public slices are implemented: media capability introspection, complete
 engine capability and health introspection for adaptive clients, canonical editorial scenario
 control through revision-fenced typed transactions and ordered full-state events, coherent
 read-only integration validation, durable project settings inspection and optimistic mutation,
 project crash recovery discovery, semantic comparison, durable restoration, exact dismissal,
 authored audio automation inspection and transaction execution through the full engine dispatcher,
-complete authored project control through one generic revision-fenced command facade, and
-asynchronous job inspection, progress, cooperative control, and ordered completion events over the
-engine-owned export queue. One additive schema `1.0.0` catalog now classifies all 22 current
-methods into 13 commands and nine queries, describes all eight events and nine replacement
-resources, publishes the complete
-error and capability vocabularies, and defines strict data-only JSON-RPC 2.0 envelopes. Wire
-transport, routing, subscriptions, scripting, public job submission and typed job results, complete
-C017 project state snapshots, and project database file commands remain absent. The
-generic editor and job facades project the engine's existing owners without duplicating state,
-history, scheduling, execution, or event ownership.
+complete authored project control and complete editor replacement state through one generic
+revision-fenced facade, and asynchronous job inspection, progress, cooperative control, and ordered
+completion events over the engine-owned export queue. One additive schema `1.0.0` catalog now
+classifies all 23 current methods into 13 commands and ten queries, describes all eight events and
+ten replacement resources, publishes the complete error and capability vocabularies, and defines
+strict data-only JSON-RPC 2.0 envelopes. Wire transport, routing, subscriptions, scripting, public
+job submission and typed job results, and project database file commands remain absent. The generic
+editor and job facades project the engine's existing owners without duplicating state, history,
+scheduling, execution, or event ownership.
 
 ## Source inventory
 
@@ -42,13 +41,14 @@ history, scheduling, execution, or event ownership.
   public facade.
 - `open/crates/superi-api/src/commands.rs`: Defines versioned command and query classification on
   `ApiCommand`, media, engine introspection,
-  integration validation, asynchronous jobs, project settings, project recovery, and audio
+  integration validation, asynchronous jobs, complete editor state, project settings, project recovery, and audio
   automation query types,
   plus typed one-action scenario and ordered scenario, project settings, automation, compare,
   restore, dismiss, pause, resume, retry, cancel, cancel-all, and remove commands.
 - `open/crates/superi-api/src/editor.rs`: Owns the strict generic project command, action, timeline,
   graph, media, clip-mix, and extension DTOs, checked engine conversion, typed history resource and
-  evidence, and the dispatcher-backed apply, inspect, undo, redo, event, and persistence facade.
+  evidence, and the dispatcher-backed apply, inspect, undo, redo, event, state-query, and persistence
+  facade.
 - `open/crates/superi-api/src/events.rs`: Defines versioned `ApiEvent`, media and engine introspection change
   events, and ordered full-replacement scenario, generic project history, project settings,
   project recovery, audio automation, and asynchronous job state events.
@@ -58,8 +58,8 @@ history, scheduling, execution, or event ownership.
   and ordered engine event projection. It exposes result availability only as a Boolean and retains
   runtime executors and typed artifacts below the API boundary.
 - `open/crates/superi-api/src/lib.rs`: Exposes API, audio automation, command, event, project
-  editor, asynchronous jobs, settings, project recovery, scenario, public schema, scripting,
-  validation, and version modules.
+  editor, complete editor state, asynchronous jobs, settings, project recovery, scenario, public
+  schema, scripting, validation, and version modules.
 - `open/crates/superi-api/src/project.rs`: Implements strict project setting values and mutations,
   complete replacement snapshots, and the caller-owned dispatcher facade for settings inspection,
   optimistic transactions, and ordered event draining.
@@ -75,16 +75,20 @@ history, scheduling, execution, or event ownership.
 - `open/crates/superi-api/src/schema.rs`: Owns the deterministic complete public catalog, schema
   descriptors, method and resource traits, typed schema discovery query, strict JSON-RPC 2.0
   request and response envelopes, safe structured errors, reviewed contexts, last-valid resource
-  references, capability vocabulary, and asynchronous jobs resource registration without routing or
-  runtime state ownership.
+  references, capability vocabulary, and asynchronous jobs plus complete editor-state resource
+  registration without routing or runtime state ownership.
 - `open/crates/superi-api/src/scripting.rs`: Placeholder for a scripting runtime.
+- `open/crates/superi-api/src/state.rs`: Owns the strict ten-domain complete editor replacement
+  snapshot, canonical authored JSON resource envelopes, bounded extension descriptors, exact audio
+  routing and continuity projection, and dispatcher-backed read-only query facade.
 - `open/crates/superi-api/src/validation.rs`: Strictly projects canonical engine integration state,
   nested introspection, exact lifecycle and recovery actions, workflow permits or denials, scenario
   reversal capacity, endpoint replacement state, and coherence findings through typed read-only
   accessors. It also provides the standalone starting-engine query owner used by the CLI and derives
   standalone construction failures from the shared user-safe projection.
 - `open/crates/superi-api/src/version.rs`: Owns all domain, catalog, and error schema revisions plus
-  permanent method and event names, including the complete `superi.jobs` vocabulary.
+  permanent method and event names, including the complete `superi.jobs` vocabulary and editor-state
+  query.
 - `open/crates/superi-api/tests/async_jobs_contract.rs`: Proves strict handles, stable kind and
   weighted priority vocabulary, nonblocking progress and completion, every cooperative transition,
   cancel-all finality, deterministic ordering, dependency state, safe failure filtering, typed
@@ -123,12 +127,15 @@ history, scheduling, execution, or event ownership.
 - `open/crates/superi-api/tests/scenario_contract.rs`: Covers the strict canonical schema, complete
   state projection, exact undo plus redo evidence, structured last-valid-state failures, and
   negative proof that private paths and raw engine context values never serialize.
+- `open/crates/superi-api/tests/editor_state_contract.rs`: Covers the permanent query and resource,
+  strict deterministic ten-domain state, exact canonical payload identity, explicit optional
+  runtime owners, project color intent, and no-poll playback and export observations.
 
 ## Public surface
 
 The public schema catalog is schema `1.0.0` at query method `superi.api.schema.get`.
 `PublicApiSchemaSnapshot` records stable primitive revision 1 and JSON-RPC `2.0`, then separates 13
-mutating commands from nine read-only queries and lists all eight current replacement events, nine
+mutating commands from ten read-only queries and lists all eight current replacement events, ten
 current replacement resources, one complete error vocabulary, and one capability vocabulary in
 canonical name order. `ApiCommand` now declares method kind and schema version, `ApiEvent` declares
 payload version, and `ApiResource` centrally registers the current replacement resources. The
@@ -216,7 +223,16 @@ transaction over root selection, all 15 timeline edits, all eight graph mutation
 referenced-media mutations, all four clip-mix mutations, and all six durable extension mutations.
 Results and events preserve engine command sequence, project revision, history depths, next action
 kinds, ordered semantic evidence, and caller correlation. Complete project state snapshots remain
-owned by C017 rather than this minimum history resource.
+available through the complete editor state resource rather than this minimum history resource.
+
+The complete editor state surface is schema `1.0.0`, method `superi.editor.state.get`, and
+replacement resource `superi.editor.state`. `EditorStateSnapshot` exposes explicit project,
+timeline, graph, media, audio, color, effect, AI, playback, and export roots from one engine command
+sequence. Canonical timeline, graph, and clip-mix documents retain exact canonical JSON bytes,
+lengths, and SHA-256 identities. Audio state retains integral sample clocks, ordered semantic
+channels, explicit routing or mute targets, and exact continuity seams. Detached, attached without
+an observation, pending, and observed runtime owners remain distinct, while packets, frames,
+samples, textures, extension payload bytes, and export result bytes remain private.
 
 The asynchronous job surface is schema `1.0.0`, with query `superi.jobs.get`, commands
 `superi.jobs.pause`, `superi.jobs.resume`, `superi.jobs.retry`, `superi.jobs.cancel`,
@@ -283,21 +299,24 @@ SliceAction list plus expected revision
   -> or ScenarioFailure with complete last valid state and no event
 ```
 
-The production project-history path now has one strict public adapter:
+The production project owner now has one strict facade for authored commands and complete state:
 
 ```text
-ProjectHistoryCommand
+ExecuteProjectCommand or GetEditorState
+  -> ProjectEditorApi::execute through sealed ProjectEditorRequest
   -> superi-engine EngineCommandDispatcher
   -> ProjectHistoryOutcome plus optional ProjectStateChanged event
-  -> ProjectEditorApi
-  -> ExecuteProjectCommandResult plus optional public ProjectStateChanged event
+     or one eventless immutable EditorStateSnapshot
 ```
 
 The engine state contains a real `ProjectDocument`, bounded session history, and typed authored
-project mutations, unlike the fixed scenario model. API-owned DTOs convert completely before one
-dispatcher call and exactly one compound project transaction, so lower mutation algorithms,
-history, sequencing, persistence, and event ownership remain unchanged. The API's immutable project
-snapshot borrow is only the existing in-process persistence seam, not a public wire snapshot model.
+project mutations, unlike the fixed scenario model. API-owned mutation DTOs convert completely
+before one dispatcher call and exactly one compound project transaction, so lower mutation
+algorithms, history, sequencing, persistence, and event ownership remain unchanged. The read-only
+request preserves the authoritative selected revision and projects only immutable authored data
+plus observations already cached by the dispatcher. It does not poll workers, discover recovery
+files, or create another mutable state owner. The facade's immutable project snapshot borrow remains
+only the existing in-process persistence seam.
 
 Projection preserves stable core identifiers as strings, exact rational rates, named timeline and
 track identity, half-open ranges, full image-port graph topology, row-major binary64 mirror matrix,
@@ -397,11 +416,11 @@ messages, contexts, paths, and source chains never serialize.
   canonical transactional state, typed dispatch, ordered replacement events, and integration
   validation observations. It also re-exports project recovery candidate and comparison contracts,
   project setting mutations, audio automation vocabularies, and one curated editor construction
-  seam, and owns the only production API-to-project settings and recovery paths, the API-to-audio
-  automation command path, the generic authored project history path, and the canonical export
-  queue projected as public asynchronous jobs. This public crate has no production project,
-  timeline, graph, audio, or export executor dependency, and neither public facade becomes another
-  state owner.
+  seam. It owns the production API-to-project settings and recovery paths, the API-to-audio
+  automation command path, the generic authored project history and immutable editor-state paths,
+  and the canonical export queue projected as public asynchronous jobs. This public crate has no
+  production project, timeline, graph, audio, or export executor dependency, and neither public
+  facade becomes another state owner.
 - `serde_json`, `sha2`, `superi-media-io`, and `superi-concurrency` are test dependencies for wire,
   digest, registry, and EngineControl contracts. The feature-gated engine test-support seam creates
   real file-backed recovery artifacts without adding API-to-project or API-to-timeline edges.
@@ -442,6 +461,17 @@ No transport, UI, shell, scripting runtime, extension host, or closed-tier clien
   compound transaction, one project revision, one history unit, and at most one correlated event.
 - Invalid identifiers, exact time, finite numeric values, media paths, graph values, clip controls,
   extension records, empty batches, and bounds publish no partial state or event.
+- Complete editor state is captured by one dispatcher command against one selected project
+  revision. The query emits no event and performs no recovery discovery, playback execution, export
+  polling, or authored mutation.
+- Canonical authored documents preserve exact bytes, lengths, and digests. The public result never
+  includes bulk packets, frames, samples, textures, extension payloads, or typed export artifacts.
+- Audio projection preserves integral sample clocks, ordered source and destination channel meaning,
+  explicit routing and mute intent, and sample-exact continuity evidence. Retimed material that
+  cannot be audited without rounding is explicit unsupported state rather than guessed continuity.
+- Optional recovery, automation, playback, and export owners use explicit availability states.
+  Missing attachment, attached without observation, pending work, and latest observed state cannot
+  collapse into one ambiguous null value.
 - Rejected actions and transactions return the complete last valid state and do not mutate engine
   state, command sequencing, history, or the event stream.
 - Public scenario mutations use an exact expected revision. A successful transaction is one engine
@@ -509,7 +539,7 @@ three-node graph with image ports, exact mirror parameters, four stable operatio
 plus two redo actions, final revision 8, structured engine context, last-valid-state retention, and
 serialized exclusion of a private missing-source path and raw context values.
 
-Four public schema contracts prove the exact 13-command, nine-query, eight-event, and nine-resource
+Four public schema contracts prove the exact 13-command, ten-query, eight-event, and ten-resource
 surface, current domain versions, catalog and error schema `1.0.0`, media schema `2.0.0`, stable
 primitive revision 1, strict deterministic catalog round trips, invalid identity and duplicate
 rejection, typed JSON-RPC exclusivity, all four recovery classes, user-safe diagnostic filtering,
@@ -568,26 +598,32 @@ projection, Touch behavior through the facade, no-op suppression, exact revision
 conversion failure atomicity. They do not claim durable project storage, hardware control input,
 wire delivery, physical audio output, or additional automation targets.
 
+Three editor-state API contracts drive the full dispatcher and prove the permanent query and resource
+names, strict schema `1.0.0`, deterministic exact canonical resource identity, all ten named roots,
+one coherent project revision, explicit color policy, optional automation attachment, pending
+playback, observed export state, strict unknown-field rejection, and exact JSON round trips without
+bulk runtime payloads or hidden polling.
+
 ## Current status and risks
 
-The API now has nine substantive domain surfaces plus one complete discovery catalog and strict
-wire grammar, including one unified generic authored project command and one asynchronous job
-control surface. Engine introspection gives
+The API now has ten substantive domain surfaces plus one complete discovery catalog and strict wire
+grammar, including one unified generic authored project command and editor-state facade plus one
+asynchronous job control surface. Engine introspection gives
 clients a coherent adaptation view without adding mutation
 authority, and integration validation extends that same state with precise action and endpoint
 evidence. Project settings retain exact durable scalar meaning, and project recovery now exposes one
 complete strict discover, compare, restore, and dismiss surface without leaking file identity. The
-API still does not expose project file open or save, complete C017 project snapshots, public job
-submission or typed results, subscriptions, permissions, generated bindings, a scripting runtime,
-or CLI editor execution.
+API still does not expose project file open or save, public job submission or typed results,
+subscriptions, permissions, generated bindings, a scripting runtime, or CLI editor execution.
 Scenario schema 1 remains deliberately narrow and fixed to one canonical edit. Its reference
 state proves transactional control semantics, not production timeline, graph, or media ownership.
 Authored clip-gain automation is a substantive strict transaction and event surface over the engine
 owner, but schema 1 does not persist lanes or address pan, sends, buses, effects, or plugins.
 The generic editor facade now reaches the engine's project command-history owner for apply, undo,
 redo, inspection, semantic evidence, and correlated replacement events. It intentionally exposes
-only minimum history replacement state until C017 and leaves project file commands, live wire
-routing, subscription delivery, scripting, and broader automation adaptation to later checkpoints.
+minimum history replacement state beside the complete editor snapshot through the same sealed
+request handler. Project file commands, live wire routing, subscription delivery, scripting, and
+broader automation adaptation remain later checkpoints.
 
 Asynchronous job control is a substantive strict projection over the canonical engine export queue.
 It keeps user-visible work responsive through nonblocking state replacement and cooperative
@@ -632,9 +668,13 @@ Keep generic editor DTOs API-owned and strict, conversions complete before dispa
 authored apply operations inside one engine-owned compound transaction. Add every new lower editor
 operation to the explicit parity contract, public evidence projection, schema catalog, CLI schema
 consumer, and real dispatcher proof without adding direct API dependencies on lower domain crates.
-
 Keep asynchronous job handles canonical, all query and control paths routed through the attached
 engine export queue, and every event a verified full replacement from the ordered engine envelope.
 Do not catalog host polling, executor submission, waiting, or typed result access. Preserve exact
 status mapping, deterministic handle and dependency ordering, unit progress, cooperative control,
 and negative failure-leak proof whenever the engine queue evolves.
+
+Keep complete editor state behind one dispatcher observation and one permanent public query. Add
+domain state by extending the authoritative engine aggregate and strict public projection together,
+preserve canonical authored document identity, keep optional owner freshness explicit, and never
+copy bulk runtime payloads or opaque extension bytes into the replacement snapshot.

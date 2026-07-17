@@ -32,6 +32,7 @@ const COMMANDS: &[&str] = &[
 const QUERIES: &[&str] = &[
     "superi.api.schema.get",
     "superi.audio.automation.get",
+    "superi.editor.state.get",
     "superi.engine.integration.validation.get",
     "superi.engine.introspection.get",
     "superi.jobs.get",
@@ -54,6 +55,7 @@ const EVENTS: &[&str] = &[
 
 const RESOURCES: &[&str] = &[
     "superi.audio.automation",
+    "superi.editor.state",
     "superi.engine.integration.validation",
     "superi.engine.introspection",
     "superi.jobs",

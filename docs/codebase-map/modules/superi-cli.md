@@ -2,7 +2,7 @@
 module_id: superi-cli
 source_paths:
   - open/crates/superi-cli
-source_hash: 9fda656e12744bf2dce3484cd4662df974b5c9240d18e2694040d8496a7e4742
+source_hash: b15420808aceaafcb0807b5b1538e3766a32de878ea57b91561d608744c378f8
 source_files: 8
 mapped_at_commit: working-tree
 ---
@@ -25,7 +25,7 @@ recovery actions, workflow admission, playback, and export state.
 The exact `api schema` command is a third public API consumer. It asks `PublicApiSchemaApi` for the
 same deterministic catalog used by typed clients and prints all current command, query, event,
 resource, error, and capability schemas, including the complete asynchronous job control
-vocabulary, without reconstructing registry data in the CLI.
+vocabulary and complete editor-state discovery, without reconstructing registry data in the CLI.
 
 The production project command-history surface is now available through `superi-api`, but this
 binary does not yet route its apply, inspect, undo, or redo commands. Its current reversal proof
@@ -57,8 +57,8 @@ production owner is explicit in stage diagnostics and the artifact name.
   exits with its exact status.
 - `open/crates/superi-cli/tests/api_schema_cli_contract.rs`: Proves deterministic exact schema
   discovery output, catalog and primitive identity, all six schema categories, exact current counts
-  and method names including the generic project command and asynchronous job query and controls,
-  help coverage, and invalid usage status.
+  and method names including the generic project command, asynchronous job query and controls, and
+  complete editor-state discovery, plus help coverage and invalid usage status.
 - `open/crates/superi-cli/tests/scenario_runner.rs`: Provides process contracts for two-run
   reproducibility, exact state and schema 1.1.0 report contents, all-stage timing and nonzero
   resident-memory evidence, exact expectation evidence, honest stub evidence, collision
@@ -90,8 +90,8 @@ superi-cli api schema
 ```
 
 Schema discovery success prints exactly one strict `PublicApiSchemaSnapshot` JSON value containing
-catalog schema `1.0.0`, stable primitive revision 1, JSON-RPC `2.0`, 13 commands, nine queries,
-eight events, nine resources, one error schema, and one capability schema in canonical order. It
+catalog schema `1.0.0`, stable primitive revision 1, JSON-RPC `2.0`, 13 commands, ten queries,
+eight events, ten resources, one error schema, and one capability schema in canonical order. It
 starts no engine, routes no operation, and owns no transport or registry state.
 
 Validation success prints exactly one strict `GetEngineIntegrationValidationResult` JSON value to
@@ -295,9 +295,9 @@ application session, UI rendering, endpoint polling, or long-session recovery.
 
 Two API schema process contracts prove deterministic semantics across separate invocations, exact
 catalog, primitive, and JSON-RPC identity, all six schema sections, exact current counts and method
-names including the generic editor registration and every asynchronous job query and control, help
-coverage, and precise invalid usage. They do not prove method routing, wire transport, event
-delivery, job execution, scripting, or broad CLI parity.
+names including the generic editor registration, every asynchronous job query and control, and
+`superi.editor.state.get`, plus help coverage and precise invalid usage. They do not prove method
+routing, wire transport, event delivery, job execution, scripting, or broad CLI parity.
 
 ## Current status and risks
 

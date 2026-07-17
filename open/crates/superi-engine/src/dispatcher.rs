@@ -26,6 +26,10 @@ use superi_project::{ProjectDatabase, ProjectDiagnostics};
 use crate::command::{
     ScenarioAction, ScenarioEngine, ScenarioSnapshot, MAX_SCENARIO_TRANSACTION_ACTIONS,
 };
+use crate::editor_state::{
+    EditorExportState, EditorPlaybackObservation, EditorPlaybackState, EditorStateAvailability,
+    EditorStateSnapshot,
+};
 use crate::error::{
     EngineErrorCoordinator, EngineFailureRecord, EngineFailureSequence, EngineRecoveryAction,
     EngineRecoveryRequest, MAX_FAILURE_OPERATION_BYTES,
@@ -364,6 +368,8 @@ pub enum EngineCommand {
     InspectProjectHistory,
     /// Inspect deterministic semantic project identity and component evidence without mutation.
     InspectProjectDiagnostics,
+    /// Capture every authored and attached runtime editor-state owner without mutation.
+    InspectEditorState,
     /// Inspect the attached project's durable and resolved settings.
     InspectProjectSettings,
     /// Commit one optimistic project settings transaction.
@@ -498,6 +504,8 @@ pub enum EngineCommandResult {
     ProjectHistory(Box<ProjectHistoryOutcome>),
     /// Deterministic semantic project identity and ordered component evidence.
     ProjectDiagnostics(Box<ProjectDiagnostics>),
+    /// Complete immutable editor state captured at one authoritative project revision.
+    EditorState(Box<EditorStateSnapshot>),
     /// Complete durable and resolved project settings state.
     ProjectSettings(Box<ProjectSettingsState>),
     /// Complete replacement state for every authored audio automation lane.
@@ -1420,6 +1428,10 @@ impl EngineCommandDispatcher {
                     event: None,
                 })
             }
+            EngineCommand::InspectEditorState => Ok(CommandExecution {
+                result: EngineCommandResult::EditorState(Box::new(self.editor_state_snapshot()?)),
+                event: None,
+            }),
             EngineCommand::InspectProjectSettings => {
                 let state = ProjectSettingsState::from_snapshot(&self.project_snapshot()?)?;
                 Ok(CommandExecution {
@@ -1733,6 +1745,48 @@ impl EngineCommandDispatcher {
             diagnostic_history: errors.diagnostic_history()?,
             pending_recovery: self.pending_recovery,
         })
+    }
+
+    fn editor_state_snapshot(&self) -> Result<EditorStateSnapshot> {
+        let project = self.project_history_ref()?.state();
+        let diagnostics = ProjectDiagnostics::from_snapshot(project.snapshot())?;
+        let settings = ProjectSettingsState::from_snapshot(project.snapshot())?;
+        let authored_documents =
+            crate::editor_state::EditorAuthoredDocuments::from_snapshot(project.snapshot())?;
+        let audio_tracks =
+            crate::editor_state::EditorAudioTrackState::from_snapshot(project.snapshot())?;
+        let extensions =
+            crate::editor_state::EditorExtensionRecord::from_snapshot(project.snapshot());
+        let audio_automation = match self.audio_automation.as_ref() {
+            Some(state) => EditorStateAvailability::Attached(state.snapshot()),
+            None => EditorStateAvailability::Detached,
+        };
+        let project_recovery = match self.project_recovery.as_ref() {
+            Some(recovery) => {
+                EditorStateAvailability::Attached(recovery.state(self.project_history_ref()?))
+            }
+            None => EditorStateAvailability::Detached,
+        };
+        let playback = EditorPlaybackState::new(
+            self.playback_bridge.is_some(),
+            self.pending_playback.is_some(),
+            self.latest_playback.as_ref().map(|(snapshot, failure)| {
+                EditorPlaybackObservation::new(*snapshot, failure.clone())
+            }),
+        );
+        let export = EditorExportState::new(self.export_jobs.is_some(), self.latest_export.clone());
+        Ok(EditorStateSnapshot::new(
+            project,
+            diagnostics,
+            settings,
+            authored_documents,
+            audio_tracks,
+            extensions,
+            audio_automation,
+            project_recovery,
+            playback,
+            export,
+        ))
     }
 
     fn lifecycle_snapshot(&self) -> Result<EngineLifecycleSnapshot> {

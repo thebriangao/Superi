@@ -295,7 +295,7 @@ impl ProjectRecoveryCoordinator {
         }
     }
 
-    fn state(&self, history: &ProjectCommandHistory) -> ProjectRecoveryState {
+    pub(crate) fn state(&self, history: &ProjectCommandHistory) -> ProjectRecoveryState {
         let history = history.state();
         ProjectRecoveryState {
             project_id: history.snapshot().project_id(),

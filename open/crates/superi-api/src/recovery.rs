@@ -360,7 +360,7 @@ impl std::fmt::Debug for ProjectRecoveryApi {
     }
 }
 
-fn public_snapshot(state: &EngineRecoveryState) -> ProjectRecoverySnapshot {
+pub(crate) fn public_snapshot(state: &EngineRecoveryState) -> ProjectRecoverySnapshot {
     ProjectRecoverySnapshot {
         schema_version: PROJECT_RECOVERY_SCHEMA_VERSION.clone(),
         project_id: state.project_id().to_string(),

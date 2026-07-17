@@ -10,14 +10,16 @@ use crate::project::{ProjectSettingMutation, ProjectSettingsSnapshot};
 use crate::recovery::{ProjectRecoveryComparisonSnapshot, ProjectRecoverySnapshot};
 use crate::scenario::{ScenarioActionResult, ScenarioTransactionResult, SliceAction};
 use crate::schema::PublicMethodKind;
+use crate::state::EditorStateSnapshot;
 use crate::validation::IntegrationValidationSnapshot;
 use crate::version::{
     ASYNC_JOBS_SCHEMA_VERSION, AUDIO_AUTOMATION_SCHEMA_VERSION, CANCEL_ALL_ASYNC_JOBS_METHOD,
     CANCEL_ASYNC_JOB_METHOD, COMPARE_PROJECT_RECOVERY_METHOD, DISMISS_PROJECT_RECOVERY_METHOD,
-    ENGINE_INTEGRATION_VALIDATION_SCHEMA_VERSION, ENGINE_INTROSPECTION_SCHEMA_VERSION,
-    EXECUTE_AUDIO_AUTOMATION_TRANSACTION_METHOD, EXECUTE_PROJECT_SETTINGS_TRANSACTION_METHOD,
-    EXECUTE_SCENARIO_ACTION_METHOD, EXECUTE_SCENARIO_TRANSACTION_METHOD, GET_ASYNC_JOBS_METHOD,
-    GET_AUDIO_AUTOMATION_METHOD, GET_ENGINE_INTEGRATION_VALIDATION_METHOD,
+    EDITOR_STATE_SCHEMA_VERSION, ENGINE_INTEGRATION_VALIDATION_SCHEMA_VERSION,
+    ENGINE_INTROSPECTION_SCHEMA_VERSION, EXECUTE_AUDIO_AUTOMATION_TRANSACTION_METHOD,
+    EXECUTE_PROJECT_SETTINGS_TRANSACTION_METHOD, EXECUTE_SCENARIO_ACTION_METHOD,
+    EXECUTE_SCENARIO_TRANSACTION_METHOD, GET_ASYNC_JOBS_METHOD, GET_AUDIO_AUTOMATION_METHOD,
+    GET_EDITOR_STATE_METHOD, GET_ENGINE_INTEGRATION_VALIDATION_METHOD,
     GET_ENGINE_INTROSPECTION_METHOD, GET_MEDIA_CAPABILITIES_METHOD, GET_PROJECT_RECOVERY_METHOD,
     GET_PROJECT_SETTINGS_METHOD, MEDIA_CAPABILITIES_SCHEMA_VERSION, PAUSE_ASYNC_JOB_METHOD,
     PROJECT_RECOVERY_SCHEMA_VERSION, PROJECT_SETTINGS_SCHEMA_VERSION, REMOVE_ASYNC_JOB_METHOD,
@@ -181,6 +183,82 @@ impl ApiCommand for CancelAllAsyncJobs {
     const METHOD: &'static str = CANCEL_ALL_ASYNC_JOBS_METHOD;
     const KIND: PublicMethodKind = PublicMethodKind::Command;
     const SCHEMA_VERSION: SemanticVersion = ASYNC_JOBS_SCHEMA_VERSION;
+}
+
+/// Strict query for one complete editor replacement snapshot.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GetEditorState {
+    transaction_id: String,
+}
+
+impl GetEditorState {
+    /// Creates one caller-correlated complete state query.
+    #[must_use]
+    pub fn new(transaction_id: impl Into<String>) -> Self {
+        Self {
+            transaction_id: transaction_id.into(),
+        }
+    }
+
+    /// Returns the caller transaction identity.
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    pub(crate) fn into_transaction_id(self) -> String {
+        self.transaction_id
+    }
+}
+
+impl ApiCommand for GetEditorState {
+    type Response = GetEditorStateResult;
+
+    const METHOD: &'static str = GET_EDITOR_STATE_METHOD;
+    const KIND: PublicMethodKind = PublicMethodKind::Query;
+    const SCHEMA_VERSION: SemanticVersion = EDITOR_STATE_SCHEMA_VERSION;
+}
+
+/// Successful complete editor-state query.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GetEditorStateResult {
+    transaction_id: String,
+    command_sequence: u64,
+    snapshot: EditorStateSnapshot,
+}
+
+impl GetEditorStateResult {
+    pub(crate) const fn new(
+        transaction_id: String,
+        command_sequence: u64,
+        snapshot: EditorStateSnapshot,
+    ) -> Self {
+        Self {
+            transaction_id,
+            command_sequence,
+            snapshot,
+        }
+    }
+
+    /// Returns the normalized caller transaction identity.
+    #[must_use]
+    pub fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
+
+    /// Returns the engine command sequence that captured this snapshot.
+    #[must_use]
+    pub const fn command_sequence(&self) -> u64 {
+        self.command_sequence
+    }
+
+    /// Returns the complete editor replacement snapshot.
+    #[must_use]
+    pub const fn snapshot(&self) -> &EditorStateSnapshot {
+        &self.snapshot
+    }
 }
 
 /// Structured command for refreshing project crash recovery state.
