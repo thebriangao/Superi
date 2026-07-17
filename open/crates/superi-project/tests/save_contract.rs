@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use rusqlite::{Connection, OpenFlags};
-use superi_core::error::ErrorCategory;
+use superi_core::error::{ErrorCategory, Recoverability};
 use superi_core::ids::{GraphId, MediaId, ProjectId, TimelineId};
 use superi_core::settings::{ComponentId, SemanticVersion, VersionIdentifier};
 use superi_core::time::{RationalTime, Timebase};
@@ -232,6 +232,105 @@ fn save_replaces_the_active_project_with_exact_current_schema_state() {
     assert_eq!(same_path_outcome.operation(), ProjectSaveOperation::SaveAs);
     assert_eq!(database.active_path(), Some(canonical_active.as_path()));
     assert_project(&active, &save_as_same_path);
+    assert_no_candidates(directory.path());
+}
+
+#[test]
+fn stale_project_authority_detects_conflict_and_preserves_explicit_escape_paths() {
+    let directory = TempDirectory::new("stale-authority");
+    let active = directory.project("active.superi");
+    let copy = directory.project("stale-copy.superi");
+    let rebound = directory.project("stale-rebound.superi");
+    let initial = snapshot("initial", 0x4330);
+    let winner = snapshot("winner", 0x4340);
+    let stale = snapshot("stale", 0x4350);
+    drop(create_project(&active, &initial));
+    let mut first = ProjectDatabase::open(&active).unwrap();
+    let mut second = ProjectDatabase::open(&active).unwrap();
+
+    first.replace(&winner).unwrap();
+    let conflict = second.replace(&stale).unwrap_err();
+
+    assert_eq!(conflict.category(), ErrorCategory::Conflict);
+    assert_eq!(conflict.recoverability(), Recoverability::UserCorrectable);
+    assert_project(&active, &winner);
+    let load_conflict = second.load().unwrap_err();
+    assert_eq!(load_conflict.category(), ErrorCategory::Conflict);
+    assert_eq!(
+        load_conflict.recoverability(),
+        Recoverability::UserCorrectable
+    );
+
+    second
+        .execute_save_command(
+            ProjectSaveCommand::SaveCopy {
+                destination: copy.clone(),
+                collision: ProjectDestinationCollision::RequireAbsent,
+            },
+            &stale,
+        )
+        .unwrap();
+    assert_project(&copy, &stale);
+    assert_project(&active, &winner);
+
+    second
+        .execute_save_command(
+            ProjectSaveCommand::SaveAs {
+                destination: rebound.clone(),
+                collision: ProjectDestinationCollision::RequireAbsent,
+            },
+            &stale,
+        )
+        .unwrap();
+    assert_project(&rebound, &stale);
+    assert_eq!(second.load().unwrap().snapshot(), stale);
+    assert_project(&active, &winner);
+    assert_no_candidates(directory.path());
+}
+
+#[test]
+fn missing_or_corrupted_active_project_is_a_visible_non_destructive_conflict() {
+    let directory = TempDirectory::new("changed-active");
+    let missing = directory.project("missing.superi");
+    let corrupted = directory.project("corrupted.superi");
+    let ceased_regular = directory.project("ceased-regular.superi");
+    let initial = snapshot("initial active", 0x4360);
+    let live = snapshot("live edits", 0x4370);
+
+    let mut missing_authority = create_project(&missing, &initial);
+    fs::remove_file(&missing).unwrap();
+    let missing_error = missing_authority.replace(&live).unwrap_err();
+    assert_eq!(missing_error.category(), ErrorCategory::Conflict);
+    assert_eq!(
+        missing_error.recoverability(),
+        Recoverability::UserCorrectable
+    );
+    assert!(!missing.exists());
+
+    let mut ceased_regular_authority = create_project(&ceased_regular, &initial);
+    fs::remove_file(&ceased_regular).unwrap();
+    fs::create_dir(&ceased_regular).unwrap();
+    let ceased_regular_error = ceased_regular_authority.replace(&live).unwrap_err();
+    assert_eq!(ceased_regular_error.category(), ErrorCategory::Conflict);
+    assert_eq!(
+        ceased_regular_error.recoverability(),
+        Recoverability::UserCorrectable
+    );
+    assert!(ceased_regular.is_dir());
+
+    let mut corrupted_authority = create_project(&corrupted, &initial);
+    fs::write(&corrupted, b"externally corrupted project").unwrap();
+    let corrupt_bytes = fs::read(&corrupted).unwrap();
+    let corrupted_error = corrupted_authority.replace(&live).unwrap_err();
+    assert_eq!(corrupted_error.category(), ErrorCategory::Conflict);
+    assert_eq!(
+        corrupted_error.recoverability(),
+        Recoverability::UserCorrectable
+    );
+    assert_eq!(fs::read(&corrupted).unwrap(), corrupt_bytes);
+    let load_error = corrupted_authority.load().unwrap_err();
+    assert_eq!(load_error.category(), ErrorCategory::Conflict);
+    assert_eq!(load_error.recoverability(), Recoverability::UserCorrectable);
     assert_no_candidates(directory.path());
 }
 

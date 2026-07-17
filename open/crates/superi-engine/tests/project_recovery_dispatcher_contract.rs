@@ -316,6 +316,56 @@ fn persistence_failure_and_event_backpressure_precede_all_authority_changes() {
 }
 
 #[test]
+fn externally_replaced_active_project_blocks_recovery_without_engine_mutation() {
+    let _domain = ExecutionDomain::EngineControl.enter_current().unwrap();
+    let directory = TempDirectory::new("external-conflict");
+    let active_path = directory.child("active.superi");
+    let recovery_snapshot = document().snapshot();
+    let candidate_path = publish_recovery(directory.path(), &recovery_snapshot);
+    let current = changed_document(96_000);
+    let collaborator = changed_document(44_100);
+    let mut database = ProjectDatabase::create(&active_path).unwrap();
+    database.replace(&current.snapshot()).unwrap();
+
+    let mut dispatcher = EngineCommandDispatcher::new().unwrap();
+    dispatcher.attach_project(current.clone()).unwrap();
+    dispatcher
+        .attach_project_recovery(database, directory.path())
+        .unwrap();
+    let discovered = dispatch(
+        &mut dispatcher,
+        "discover-external-conflict",
+        ProjectRecoveryCommand::discover(),
+    )
+    .unwrap();
+    let EngineCommandResult::ProjectRecovery(discovered) = discovered.result() else {
+        panic!("expected project recovery result");
+    };
+    let catalog_revision = discovered.state().catalog().revision();
+    let candidate_id = discovered.state().catalog().candidates()[0].id();
+    dispatcher.drain_events().unwrap();
+
+    let mut collaborator_authority = ProjectDatabase::open(&active_path).unwrap();
+    collaborator_authority
+        .replace(&collaborator.snapshot())
+        .unwrap();
+    let collaborator_bytes = fs::read(&active_path).unwrap();
+
+    let error = dispatch(
+        &mut dispatcher,
+        "restore-external-conflict",
+        ProjectRecoveryCommand::restore(catalog_revision, 1, candidate_id),
+    )
+    .unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::Conflict);
+    assert_eq!(error.recoverability(), Recoverability::UserCorrectable);
+    assert_eq!(dispatcher.project_snapshot().unwrap(), current.snapshot());
+    assert_eq!(fs::read(&active_path).unwrap(), collaborator_bytes);
+    assert!(candidate_path.exists());
+    assert!(dispatcher.drain_events().unwrap().is_empty());
+}
+
+#[test]
 fn stale_and_terminal_restore_failures_publish_nothing() {
     let _domain = ExecutionDomain::EngineControl.enter_current().unwrap();
     let directory = TempDirectory::new("classified");

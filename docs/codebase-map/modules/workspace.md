@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: c92900a27fc05978be43372f7abbdf9888cb4cfe776572e5a9d7967c2200033b
+source_hash: d4fca2990fe2afafd281be7309037371186da4e1189b08602e799c6fd80b0b83
 source_files: 148
 mapped_at_commit: working-tree
 ---
@@ -28,7 +28,7 @@ Google Docs work, and delivery itself without another agent. Multiple checkpoint
 Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers but obeys an
 explicit positive user concurrency value. The file is ignored by Git and copied into managed
 worktrees through `.worktreeinclude`, so the mapping script does not include it in this module's
-145-file inventory or source hash. It must still be reread independently before repository work.
+148-file inventory or source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
 ratified architecture, while `open/Cargo.toml` and `open/Cargo.lock` expose the dependency graph
@@ -425,8 +425,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   for its strict authored clip-mix component codec. Its macOS target also directly consumes the
   already resolved `block2`, `objc2-audio-toolbox`, and `objc2-core-audio-types` packages for the
   private Audio Unit host. `superi-project` directly consumes
-  `superi-audio`, exact `rusqlite` 0.32.1, and the existing Serde, JSON, and SHA-256 packages for
-  canonical extension metadata, opaque-payload evidence, and legacy component fixtures.
+  `superi-audio`, exact `rusqlite` 0.32.1, exact synchronization-only `fs4` 1.1.0, and the existing
+  Serde, JSON, and SHA-256 packages for canonical extension metadata, opaque-payload evidence,
+  validated active-file generations, and legacy component fixtures.
   `superi-engine` records a test-only
   direct rusqlite edge for its real migrated-project resource consumer.
   The bundled SQLite edge resolves `libsqlite3-sys` 0.30.1, `ahash` 0.8.12, `hashbrown` 0.14.5,
@@ -455,7 +456,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   images, GPU, codecs, hashes, process instrumentation, platform APIs, native build support,
   reviewed audio device and ring-buffer primitives, a pinned block binding for macOS native
   completion handlers, exact bundled SQLite through rusqlite 0.32.1, exact low-level VST3 bindings,
-  and offline font shaping plus Unicode layout.
+  exact synchronization-only filesystem locking through `fs4` 1.1.0, and offline font shaping plus
+  Unicode layout.
 - `open/README.md`: Compact open-tree orientation and build commands. It records the 19 runtime
   crates plus repository tools, the exact canonical runner command, contract-only status, and
   the remaining production integration boundary.
@@ -744,11 +746,18 @@ SQLite enabled. It also consumes the existing exact Serde, JSON, and SHA-256 pin
 extension metadata and opaque-payload integrity. Rusqlite and libsqlite3-sys are
 MIT-licensed, SQLite is public domain, and the bundled path performs no runtime discovery or
 network operation. The dependency remains below project and does not change any internal Superi
-crate edge. Fresh `cargo +1.80.0 check -p superi-project --locked --offline` proves the selected resolution on
+crate edge. Fresh `cargo +1.80.0 check -p superi-project --locked` proves the selected resolution on
 the declared compiler floor. Project's test-only JSON edge builds supported schema-0 component
 fixtures, while engine's test-only direct rusqlite edge builds an exact legacy database around the
 existing real resource-acquisition consumer. Both packages were already locked and neither edge
 enters a runtime dependency tier.
+
+Collaborative replacement publication additionally consumes exact `fs4` 1.1.0 with default
+features disabled and only its synchronous lock API enabled. The crate is MIT OR Apache-2.0,
+declares Rust 1.75, performs no networking, and resolves only through already present rustix 1.1.4
+and Windows Sys 0.61.2 target support. `superi-project` uses it privately for nonblocking exclusive
+operating-system locks on one persistent sibling entry; no public type, internal Superi dependency
+edge, process discovery, or persistence-format meaning changes.
 
 The authored clip-mix document reuses the workspace serde, serde_json, and SHA-256 pins already used
 by other strict component codecs. `superi-project` now depends directly on `superi-audio` so authored
@@ -969,7 +978,8 @@ The documents deliberately point into other modules:
   and `superi-ai` own evaluation and capability layers.
 - `superi-project` owns aggregate validation, authored clip-mix and opaque extension durability,
   checked snapshot restoration, schema-4 database persistence, atomic file publication,
-  deterministic autosave scheduling, managed recovery-point retention, and pruning;
+  active-generation conflict detection, cooperative replacement locking, deterministic autosave
+  scheduling, managed recovery-point retention, and pruning;
   `superi-engine` owns bounded compound project commands, session command history, extension
   dispatch, and integration;
   `superi-api` owns the stable public seam; and `superi-cli` is the headless consumer.
@@ -1000,7 +1010,9 @@ of open runtime behavior.
 - Autosave policy and monotonic elapsed state remain session-local and project-owned. Completed
   recovery points are complete current-schema `.superi` databases, count retention is ordered only
   by strict numeric generation, unknown and candidate files are preserved, and recovery discovery,
-  restore, dismissal, and conflict policy remain separate owners.
+  restore, and dismissal remain separate owners. The project database owns active-file generation
+  conflicts and cooperative replacement locks so autosave and engine recovery cannot overwrite a
+  collaborator through a competing file authority.
 - The graph is the render primitive, and timeline compilation is deterministic. UI state is not a
   hidden render input. Local AI and automation produce normal editable, undoable artifacts.
 - The canonical slice keeps one typed editable graph state across timeline inspection, preview, CLI,
@@ -1071,6 +1083,14 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   state, after apply, undo, and redo.
   This headless proof does not claim an engine worker, wire adapter, UI, recovery choice, network
   filesystem semantics, or physical power-loss testing.
+
+- The project save contracts prove stable active generations, stale-authority and stale-load
+  conflicts, missing and malformed active-file preservation, explicit SaveAs and SaveCopy escape
+  paths, and a real two-process same-generation race with exactly one winner and one visible
+  conflict. A separate held-lock contract proves retryable classification. The engine recovery
+  consumer proves a collaborator replacement after coordinator
+  attachment preserves exact disk bytes, selected history, the recovery candidate, sequences, and
+  events under a user-correctable conflict.
 
 - The project extension contracts prove bounded plugin, auxiliary effect, AI artifact provenance,
   and unknown-kind envelopes, capability narrowing, user lifecycle and failure control, exact
@@ -1277,14 +1297,17 @@ schema-0-to-schema-1-to-schema-2-to-schema-3-to-schema-4 migration inside one im
 It also
 owns authoritative versioned settings plus one typed save, save-as, copy, and backup surface that
 builds, validates, closes, synchronizes, and atomically publishes complete same-parent current-schema
-candidates under explicit collision policy, with active-path rebinding and honest postpublication
+candidates under explicit collision policy, with active-path rebinding, validated active-file
+generation fencing, a persistent sibling operating-system writer lock, and honest postpublication
 state. Its clockless autosave controller adds host-driven monotonic scheduling, strict managed
 generations, complete Backup recovery points, bounded count retention, explicit pruning, and typed
-user control without another persistence model. The lockfile records exact rusqlite 0.32.1 and
-libsqlite3-sys 0.30.1 with bundled SQLite, plus
-project Serde and JSON plus engine rusqlite test edges. Additional project schema revisions beyond 4,
-persisted command logs, recovery discovery and restoration, modified-since-open conflict policy,
-database file API adaptation, and CLI exposure remain incomplete.
+user control without another persistence model. Recovery discovery, comparison, exact dismissal,
+and engine-coordinated restoration are implemented, and a changed active generation now blocks
+recovery before history mutation. The lockfile records exact rusqlite 0.32.1 and libsqlite3-sys
+0.30.1 with bundled SQLite, exact `fs4` 1.1.0, project Serde and JSON, plus engine rusqlite test
+edges. Additional project schema revisions beyond 4,
+persisted command logs, public dirty-state hashing, database file API adaptation, and CLI exposure
+remain incomplete.
 The engine now owns a production Rust compound project command and history boundary around that
 aggregate. It applies bounded ordered timeline, graph, media, authored audio, extension, and root
 actions inside
@@ -1337,9 +1360,9 @@ layouts using documented speaker rules or caller-selected discrete order without
 time. macOS effect Audio Units now enter the same graph processor boundary through exact component
 identity, bounded background preparation, process-location verification, semantic channel
 negotiation, preallocated pull callbacks, and poison-on-native-failure ownership. A real Apple Peak
-Limiter consumer proves adjacent partition continuity through the terminal master. VST3, Audio Unit
-instruments, MIDI, parameters, presets, UI, crash restart, engine host adaptation, and decoded-sample
-binding remain absent. Production device output and
+Limiter consumer proves adjacent partition continuity through the terminal master. Audio Unit
+instruments, MIDI, presets, UI, crash restart, engine host adaptation, and decoded-sample binding
+remain absent. Worker-side VST3 effect processing, production device output, and
 sample-accurate scheduling are implemented in the same audio crate, and engine foreground playback
 now feeds its bounded producer and coordinates video from its actual presentation clock with
 explicit hold, correction, drop, rebase, and recovery evidence. Engine transport requests
@@ -1460,7 +1483,7 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`99253f1300e7a7f65e8de6090236533ee711405d` when the map was refreshed. Its hash describes the exact
+`2e802430f19a5640420b05690183183982a79844` when the map was refreshed. Its hash describes the exact
 148 discovered source files, including twelve generated binary payloads, layered on that revision.
 
 ## Maintenance notes

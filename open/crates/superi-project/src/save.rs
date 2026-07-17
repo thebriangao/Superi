@@ -5,7 +5,9 @@ use std::fs::{self, File, Metadata, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::SystemTime;
+
+#[cfg(any(unix, windows))]
+use fs4::TryLockError;
 
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
@@ -15,13 +17,14 @@ use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Res
 
 use crate::document::ProjectSnapshot;
 use crate::persist::{
-    close_connection, database_error, initialize_schema, load_connection, open_file_connection,
-    project_error, validate_full_integrity, write_prepared_project, PreparedProject,
-    ProjectDatabase,
+    close_connection, database_error, initialize_schema, load_connection,
+    observe_project_file_generation, open_file_connection, project_error, validate_full_integrity,
+    write_prepared_project, PreparedProject, ProjectDatabase, ProjectFileGeneration,
 };
 
 const COMPONENT: &str = "superi-project.save";
 const CANDIDATE_MARKER: &str = ".superi-save-candidate-";
+const WRITE_LOCK_MARKER: &str = ".superi-write-lock";
 const MAX_CANDIDATE_ATTEMPTS: u64 = 128;
 static NEXT_CANDIDATE: AtomicU64 = AtomicU64::new(0);
 
@@ -144,34 +147,8 @@ enum PublicationMode {
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum DestinationExpectation {
     Absent,
-    Existing(DestinationIdentity),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct DestinationIdentity {
-    length: u64,
-    modified: Option<SystemTime>,
-    #[cfg(unix)]
-    device: u64,
-    #[cfg(unix)]
-    inode: u64,
-    #[cfg(unix)]
-    mode: u32,
-}
-
-impl DestinationIdentity {
-    fn from_metadata(metadata: &Metadata) -> Self {
-        Self {
-            length: metadata.len(),
-            modified: metadata.modified().ok(),
-            #[cfg(unix)]
-            device: metadata.dev(),
-            #[cfg(unix)]
-            inode: metadata.ino(),
-            #[cfg(unix)]
-            mode: metadata.permissions().mode(),
-        }
-    }
+    Existing(ProjectFileGeneration),
+    Unobservable,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -188,6 +165,7 @@ enum SaveStage {
     CandidateSyncing,
     CandidateSynced,
     Publishing,
+    WriterLocked,
     Published,
     PublishedSynced,
     ParentSynced,
@@ -210,6 +188,7 @@ impl SaveStage {
             Self::CandidateSyncing => "candidate_syncing",
             Self::CandidateSynced => "candidate_synced",
             Self::Publishing => "publishing",
+            Self::WriterLocked => "writer_locked",
             Self::Published => "published",
             Self::PublishedSynced => "published_synced",
             Self::ParentSynced => "parent_synced",
@@ -224,8 +203,10 @@ struct SavePlan {
     destination: PathBuf,
     publication_mode: PublicationMode,
     rebind: bool,
+    aliases_active: bool,
     replaced_existing: bool,
     destination_expectation: DestinationExpectation,
+    active_generation: Option<ProjectFileGeneration>,
 }
 
 impl ProjectDatabase {
@@ -277,15 +258,18 @@ impl ProjectDatabase {
             return Err(cleanup_precommit(error, &candidate));
         }
 
+        let candidate_generation =
+            match observe_project_file_generation(&candidate, "observe_save_candidate") {
+                Ok(generation) => generation,
+                Err(error) => return Err(cleanup_precommit(error, &candidate)),
+            };
+
         if let Err(error) = invoke_hook(hook, SaveStage::Publishing) {
             return Err(cleanup_precommit(error, &candidate));
         }
-        if let Err(error) = publish_candidate(&candidate, &plan) {
+        if let Err(error) = publish_candidate(self, &candidate, &candidate_generation, &plan, hook)
+        {
             return Err(cleanup_precommit(error, &candidate));
-        }
-
-        if plan.rebind {
-            self.rebind_after_save_as(plan.destination.clone());
         }
         if let Err(error) = invoke_hook(hook, SaveStage::Published) {
             return Err(mark_published(error, &candidate, &plan, "publication_hook"));
@@ -373,6 +357,16 @@ fn plan_command(database: &ProjectDatabase, command: &ProjectSaveCommand) -> Res
             "save-as to the read-only active project is not permitted",
         ));
     }
+    if operation == ProjectSaveOperation::SaveAs
+        && aliases_active
+        && active != Some(destination.as_path())
+    {
+        return Err(conflict(
+            "validate_save_as_active_alias",
+            &destination,
+            "save-as destination aliases the active project through another directory entry",
+        ));
+    }
     let collision = if operation == ProjectSaveOperation::SaveAs && aliases_active {
         ProjectDestinationCollision::ReplaceExisting
     } else {
@@ -387,18 +381,46 @@ fn plan_command(database: &ProjectDatabase, command: &ProjectSaveCommand) -> Res
             "project destination already exists",
         ));
     }
-    if let Some(metadata) = metadata.as_ref() {
-        validate_replaceable_entry(metadata, &destination)?;
-        let existing = ProjectDatabase::open_read_only(&destination)?;
-        if !aliases_active {
+    let destination_expectation = if let Some(metadata) = metadata.as_ref() {
+        if aliases_active {
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
+                DestinationExpectation::Unobservable
+            } else {
+                observe_project_file_generation(&destination, "observe_active_destination")
+                    .map(DestinationExpectation::Existing)
+                    .unwrap_or(DestinationExpectation::Unobservable)
+            }
+        } else {
+            validate_replaceable_entry(metadata, &destination)?;
+            let existing = ProjectDatabase::open_read_only(&destination)?;
             existing.load()?;
+            DestinationExpectation::Existing(existing.active_generation().cloned().ok_or_else(
+                || {
+                    project_error(
+                        ErrorCategory::Internal,
+                        Recoverability::Terminal,
+                        "plan_save_destination",
+                        "file-backed destination did not retain a file generation",
+                    )
+                },
+            )?)
         }
-    }
-    let destination_expectation = metadata
-        .as_ref()
-        .map(DestinationIdentity::from_metadata)
-        .map(DestinationExpectation::Existing)
-        .unwrap_or(DestinationExpectation::Absent);
+    } else {
+        DestinationExpectation::Absent
+    };
+
+    let active_generation = if aliases_active {
+        Some(database.active_generation().cloned().ok_or_else(|| {
+            project_error(
+                ErrorCategory::Internal,
+                Recoverability::Terminal,
+                "plan_active_generation",
+                "active file-backed project did not retain a file generation",
+            )
+        })?)
+    } else {
+        None
+    };
 
     let publication_mode = match collision {
         ProjectDestinationCollision::RequireAbsent => PublicationMode::RequireAbsent,
@@ -409,8 +431,10 @@ fn plan_command(database: &ProjectDatabase, command: &ProjectSaveCommand) -> Res
         destination,
         publication_mode,
         rebind: operation == ProjectSaveOperation::SaveAs && !aliases_active,
+        aliases_active,
         replaced_existing: metadata.is_some(),
         destination_expectation,
+        active_generation,
     })
 }
 
@@ -638,20 +662,194 @@ fn preserve_destination_permissions(candidate: &Path, plan: &SavePlan) -> Result
     }
     #[cfg(unix)]
     {
-        let DestinationExpectation::Existing(identity) = &plan.destination_expectation else {
+        let DestinationExpectation::Existing(generation) = &plan.destination_expectation else {
             return Ok(());
         };
-        let mode = identity.mode;
+        let mode = generation.mode();
         fs::set_permissions(candidate, fs::Permissions::from_mode(mode))
             .map_err(|source| io_error(source, "preserve_destination_permissions", candidate))?;
     }
     Ok(())
 }
 
-fn publish_candidate(candidate: &Path, plan: &SavePlan) -> Result<()> {
-    if plan.publication_mode == PublicationMode::ReplaceExisting {
-        validate_destination_expectation(plan)?;
+struct DestinationWriterLock {
+    _file: File,
+}
+
+impl DestinationWriterLock {
+    fn try_acquire(destination: &Path) -> Result<Self> {
+        let lock_path = writer_lock_path(destination)?;
+        let file = open_writer_lock_file(&lock_path)?;
+        #[cfg(any(unix, windows))]
+        match fs4::FileExt::try_lock(&file) {
+            Ok(()) => Ok(Self { _file: file }),
+            Err(TryLockError::WouldBlock) => Err(Error::new(
+                ErrorCategory::Conflict,
+                Recoverability::Retryable,
+                "another project writer currently owns the destination lock",
+            )
+            .with_context(
+                ErrorContext::new(COMPONENT, "acquire_destination_writer_lock")
+                    .with_field("destination", destination.display().to_string())
+                    .with_field("lock_path", lock_path.display().to_string()),
+            )),
+            Err(TryLockError::Error(source)) => {
+                Err(writer_lock_io_error(source, destination, &lock_path))
+            }
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            let _ = file;
+            Err(Error::new(
+                ErrorCategory::Unsupported,
+                Recoverability::UserCorrectable,
+                "filesystem writer locking is unavailable on this platform",
+            )
+            .with_context(
+                ErrorContext::new(COMPONENT, "acquire_destination_writer_lock")
+                    .with_field("destination", destination.display().to_string())
+                    .with_field("lock_path", lock_path.display().to_string()),
+            ))
+        }
     }
+}
+
+fn writer_lock_path(destination: &Path) -> Result<PathBuf> {
+    let parent = destination.parent().ok_or_else(|| {
+        invalid_destination(
+            "resolve_writer_lock_path",
+            destination,
+            "project destination must have a parent directory",
+        )
+    })?;
+    let file_name = destination.file_name().ok_or_else(|| {
+        invalid_destination(
+            "resolve_writer_lock_path",
+            destination,
+            "project destination must name a file",
+        )
+    })?;
+    let mut lock_name = OsString::from(".");
+    lock_name.push(file_name);
+    lock_name.push(WRITE_LOCK_MARKER);
+    Ok(parent.join(lock_name))
+}
+
+fn open_writer_lock_file(lock_path: &Path) -> Result<File> {
+    let mut create_options = OpenOptions::new();
+    create_options.read(true).write(true).create_new(true);
+    #[cfg(unix)]
+    create_options.mode(0o600);
+    let file = match create_options.open(lock_path) {
+        Ok(file) => file,
+        Err(source) if source.kind() == io::ErrorKind::AlreadyExists => {
+            let before = fs::symlink_metadata(lock_path)
+                .map_err(|source| writer_lock_path_error(source, lock_path))?;
+            validate_writer_lock_metadata(&before, lock_path)?;
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(lock_path)
+                .map_err(|source| writer_lock_path_error(source, lock_path))?
+        }
+        Err(source) => return Err(writer_lock_path_error(source, lock_path)),
+    };
+
+    let opened = file
+        .metadata()
+        .map_err(|source| writer_lock_path_error(source, lock_path))?;
+    let path_metadata = fs::symlink_metadata(lock_path)
+        .map_err(|source| writer_lock_path_error(source, lock_path))?;
+    validate_writer_lock_metadata(&opened, lock_path)?;
+    validate_writer_lock_metadata(&path_metadata, lock_path)?;
+    #[cfg(unix)]
+    if opened.dev() != path_metadata.dev() || opened.ino() != path_metadata.ino() {
+        return Err(writer_lock_type_error(
+            lock_path,
+            "project writer lock identity changed while it was opened",
+        ));
+    }
+    Ok(file)
+}
+
+fn validate_writer_lock_metadata(metadata: &Metadata, lock_path: &Path) -> Result<()> {
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        Err(writer_lock_type_error(
+            lock_path,
+            "project writer lock path must remain a real regular file",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn writer_lock_type_error(lock_path: &Path, message: &'static str) -> Error {
+    Error::new(
+        ErrorCategory::Unsupported,
+        Recoverability::UserCorrectable,
+        message,
+    )
+    .with_context(
+        ErrorContext::new(COMPONENT, "validate_destination_writer_lock")
+            .with_field("lock_path", lock_path.display().to_string()),
+    )
+}
+
+fn writer_lock_path_error(source: io::Error, lock_path: &Path) -> Error {
+    let mut error = io_error(source, "open_destination_writer_lock", lock_path);
+    error.push_context(
+        ErrorContext::new(COMPONENT, "open_destination_writer_lock")
+            .with_field("lock_path", lock_path.display().to_string()),
+    );
+    error
+}
+
+fn writer_lock_io_error(source: io::Error, destination: &Path, lock_path: &Path) -> Error {
+    let (category, recoverability, message) = match source.kind() {
+        io::ErrorKind::Unsupported => (
+            ErrorCategory::Unsupported,
+            Recoverability::UserCorrectable,
+            "filesystem does not support the required project writer lock",
+        ),
+        io::ErrorKind::PermissionDenied => (
+            ErrorCategory::PermissionDenied,
+            Recoverability::UserCorrectable,
+            "project writer lock is not accessible",
+        ),
+        _ => (
+            ErrorCategory::Unavailable,
+            Recoverability::Retryable,
+            "project writer lock operation failed",
+        ),
+    };
+    Error::with_source(category, recoverability, message, source).with_context(
+        ErrorContext::new(COMPONENT, "acquire_destination_writer_lock")
+            .with_field("destination", destination.display().to_string())
+            .with_field("lock_path", lock_path.display().to_string()),
+    )
+}
+
+fn publish_candidate<F>(
+    database: &mut ProjectDatabase,
+    candidate: &Path,
+    candidate_generation: &ProjectFileGeneration,
+    plan: &SavePlan,
+    hook: &mut F,
+) -> Result<()>
+where
+    F: FnMut(SaveStage) -> Result<()>,
+{
+    let writer_lock = if plan.publication_mode == PublicationMode::ReplaceExisting {
+        let writer_lock = DestinationWriterLock::try_acquire(&plan.destination)?;
+        invoke_hook(hook, SaveStage::WriterLocked)?;
+        let observed = observe_commit_destination(plan)?;
+        validate_active_generation(plan, observed.as_ref())?;
+        validate_destination_expectation(plan, observed.as_ref())?;
+        Some(writer_lock)
+    } else {
+        None
+    };
+
     let result = match plan.publication_mode {
         PublicationMode::ReplaceExisting => fs::rename(candidate, &plan.destination),
         PublicationMode::RequireAbsent => fs::hard_link(candidate, &plan.destination),
@@ -669,25 +867,119 @@ fn publish_candidate(candidate: &Path, plan: &SavePlan) -> Result<()> {
                 .with_field("publication_state", "not_published"),
         );
         error
-    })
+    })?;
+
+    if plan.rebind {
+        database.rebind_after_save_as(plan.destination.clone(), candidate_generation.clone());
+    } else if plan.aliases_active {
+        database.accept_saved_generation(candidate_generation.clone());
+    }
+    drop(writer_lock);
+    Ok(())
 }
 
-fn validate_destination_expectation(plan: &SavePlan) -> Result<()> {
-    let observed = destination_metadata(&plan.destination)?;
-    let unchanged = match (&plan.destination_expectation, observed.as_ref()) {
-        (DestinationExpectation::Absent, None) => true,
-        (DestinationExpectation::Existing(expected), Some(metadata)) => {
-            metadata.is_file() && DestinationIdentity::from_metadata(metadata) == *expected
+fn observe_commit_destination(plan: &SavePlan) -> Result<Option<ProjectFileGeneration>> {
+    let metadata = match fs::symlink_metadata(&plan.destination) {
+        Ok(metadata) => metadata,
+        Err(source) if source.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(source) => {
+            let source = io_error(source, "inspect_commit_destination", &plan.destination);
+            return Err(commit_observation_error(plan, source));
         }
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        let source = invalid_destination(
+            "inspect_commit_destination",
+            &plan.destination,
+            "project destination ceased to be a real regular file",
+        );
+        return Err(commit_observation_error(plan, source));
+    }
+    observe_project_file_generation(&plan.destination, "observe_commit_destination")
+        .map(Some)
+        .map_err(|source| commit_observation_error(plan, source))
+}
+
+fn commit_observation_error(plan: &SavePlan, source: Error) -> Error {
+    if let Some(expected) = plan.active_generation.as_ref() {
+        Error::with_source(
+            ErrorCategory::Conflict,
+            Recoverability::UserCorrectable,
+            "active project changed since this authority accepted it",
+            source,
+        )
+        .with_context(
+            ErrorContext::new(COMPONENT, "validate_active_generation")
+                .with_field("path", plan.destination.display().to_string())
+                .with_field("expected_length", expected.length().to_string())
+                .with_field("generation_state", "unavailable"),
+        )
+    } else {
+        Error::with_source(
+            ErrorCategory::Conflict,
+            Recoverability::Retryable,
+            "project destination changed while the save candidate was prepared",
+            source,
+        )
+        .with_context(
+            ErrorContext::new(COMPONENT, "validate_destination_commit_generation")
+                .with_field("path", plan.destination.display().to_string())
+                .with_field("generation_state", "unavailable"),
+        )
+    }
+}
+
+fn validate_active_generation(
+    plan: &SavePlan,
+    observed: Option<&ProjectFileGeneration>,
+) -> Result<()> {
+    let Some(expected) = plan.active_generation.as_ref() else {
+        return Ok(());
+    };
+    if observed
+        .map(|observed| observed.same_active_content(expected))
+        .unwrap_or(false)
+    {
+        return Ok(());
+    }
+    let mut context = ErrorContext::new(COMPONENT, "validate_active_generation")
+        .with_field("path", plan.destination.display().to_string())
+        .with_field("expected_length", expected.length().to_string())
+        .with_field("generation_state", "changed");
+    if let Some(observed) = observed {
+        context.insert_field("observed_length", observed.length().to_string());
+    } else {
+        context.insert_field("generation_state", "missing");
+    }
+    Err(Error::new(
+        ErrorCategory::Conflict,
+        Recoverability::UserCorrectable,
+        "active project changed since this authority accepted it",
+    )
+    .with_context(context))
+}
+
+fn validate_destination_expectation(
+    plan: &SavePlan,
+    observed: Option<&ProjectFileGeneration>,
+) -> Result<()> {
+    let unchanged = match (&plan.destination_expectation, observed) {
+        (DestinationExpectation::Absent, None) => true,
+        (DestinationExpectation::Existing(expected), Some(observed)) => expected == observed,
+        (DestinationExpectation::Unobservable, _) => false,
         _ => false,
     };
     if unchanged {
         Ok(())
     } else {
-        Err(conflict(
-            "validate_destination_commit_identity",
-            &plan.destination,
+        Err(Error::new(
+            ErrorCategory::Conflict,
+            Recoverability::Retryable,
             "project destination changed while the save candidate was prepared",
+        )
+        .with_context(
+            ErrorContext::new(COMPONENT, "validate_destination_commit_generation")
+                .with_field("path", plan.destination.display().to_string()),
         ))
     }
 }
@@ -918,6 +1210,11 @@ mod tests {
     const ABORT_CHILD_PATH: &str = "SUPERI_SAVE_ABORT_CHILD_PATH";
     const ABORT_CHILD_DESTINATION: &str = "SUPERI_SAVE_ABORT_CHILD_DESTINATION";
     const ABORT_CHILD_STAGE: &str = "SUPERI_SAVE_ABORT_CHILD_STAGE";
+    const RACE_CHILD_PATH: &str = "SUPERI_SAVE_RACE_CHILD_PATH";
+    const RACE_CHILD_READY: &str = "SUPERI_SAVE_RACE_CHILD_READY";
+    const RACE_CHILD_START: &str = "SUPERI_SAVE_RACE_CHILD_START";
+    const RACE_CHILD_RESULT: &str = "SUPERI_SAVE_RACE_CHILD_RESULT";
+    const RACE_CHILD_IDENTITY: &str = "SUPERI_SAVE_RACE_CHILD_IDENTITY";
     static NEXT_TEST_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 
     struct TestDirectory {
@@ -1017,6 +1314,7 @@ mod tests {
             SaveStage::CandidateSyncing,
             SaveStage::CandidateSynced,
             SaveStage::Publishing,
+            SaveStage::WriterLocked,
         ];
 
         for stage in stages {
@@ -1094,6 +1392,7 @@ mod tests {
                 "{stage:?}"
             );
             assert_valid_project(&destination, &expected);
+            assert_eq!(database.load().unwrap().snapshot(), expected, "{stage:?}");
             assert!(
                 has_context_field(&error, "publication_state", "published"),
                 "{stage:?}: {error}"
@@ -1169,6 +1468,182 @@ mod tests {
             .execute_save_command_inner(command, &expected, &mut hook)
             .unwrap();
         panic!("abort checkpoint was not reached: {target_stage}");
+    }
+
+    #[test]
+    fn held_writer_lock_returns_retryable_conflict_without_publication() {
+        let directory = TestDirectory::new("held-writer-lock");
+        let active = directory.project("active.superi");
+        let old = test_snapshot("lock old", 0x5060);
+        let new = test_snapshot("lock new", 0x5070);
+        create_project(&active, &old);
+        let old_bytes = fs::read(&active).unwrap();
+        let mut database = ProjectDatabase::open(&active).unwrap();
+        let writer_lock = DestinationWriterLock::try_acquire(&active).unwrap();
+
+        let error = database.replace(&new).unwrap_err();
+
+        assert_eq!(error.category(), ErrorCategory::Conflict);
+        assert_eq!(error.recoverability(), Recoverability::Retryable);
+        assert_eq!(fs::read(&active).unwrap(), old_bytes);
+        assert_valid_project(&active, &old);
+        assert_eq!(directory.candidate_count(), 0);
+        drop(writer_lock);
+
+        database.replace(&new).unwrap();
+        assert_valid_project(&active, &new);
+        let lock_path = writer_lock_path(&active).unwrap();
+        let lock_metadata = fs::symlink_metadata(lock_path).unwrap();
+        assert!(lock_metadata.is_file());
+        assert!(!lock_metadata.file_type().is_symlink());
+    }
+
+    #[test]
+    fn same_length_byte_changes_produce_distinct_private_generations() {
+        let directory = TestDirectory::new("generation-digest");
+        let path = directory.project("bytes.bin");
+        fs::write(&path, b"aaaa").unwrap();
+        let first = observe_project_file_generation(&path, "observe_test_generation").unwrap();
+        fs::write(&path, b"bbbb").unwrap();
+        let second = observe_project_file_generation(&path, "observe_test_generation").unwrap();
+
+        assert_eq!(first.length(), second.length());
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn unsafe_writer_lock_entry_fails_closed_without_publication() {
+        let directory = TestDirectory::new("unsafe-writer-lock");
+        let active = directory.project("active.superi");
+        let old = test_snapshot("unsafe lock old", 0x50c0);
+        let new = test_snapshot("unsafe lock new", 0x50d0);
+        create_project(&active, &old);
+        let old_bytes = fs::read(&active).unwrap();
+        let lock_path = writer_lock_path(&active).unwrap();
+        fs::remove_file(&lock_path).unwrap();
+        fs::create_dir(&lock_path).unwrap();
+        let mut database = ProjectDatabase::open(&active).unwrap();
+
+        let error = database.replace(&new).unwrap_err();
+
+        assert_eq!(error.category(), ErrorCategory::Unsupported);
+        assert_eq!(error.recoverability(), Recoverability::UserCorrectable);
+        assert_eq!(fs::read(&active).unwrap(), old_bytes);
+        assert_valid_project(&active, &old);
+        assert!(lock_path.is_dir());
+        assert_eq!(directory.candidate_count(), 0);
+    }
+
+    #[test]
+    fn process_writer_race_child() {
+        let Some(active) = std::env::var_os(RACE_CHILD_PATH).map(PathBuf::from) else {
+            return;
+        };
+        let ready = PathBuf::from(std::env::var_os(RACE_CHILD_READY).unwrap());
+        let start = PathBuf::from(std::env::var_os(RACE_CHILD_START).unwrap());
+        let result = PathBuf::from(std::env::var_os(RACE_CHILD_RESULT).unwrap());
+        let identity = std::env::var(RACE_CHILD_IDENTITY)
+            .unwrap()
+            .parse::<u128>()
+            .unwrap();
+        let expected = test_snapshot("process writer", identity);
+        let mut database = ProjectDatabase::open(&active).unwrap();
+        fs::write(&ready, b"ready").unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !start.exists() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "writer race start barrier timed out"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        let outcome = match database.replace(&expected) {
+            Ok(()) => "ok".to_string(),
+            Err(error) => format!(
+                "{}:{}",
+                error.category().code(),
+                error.recoverability().code()
+            ),
+        };
+        fs::write(result, outcome).unwrap();
+    }
+
+    #[test]
+    fn child_process_writers_publish_exactly_one_same_baseline_generation() {
+        let executable = std::env::current_exe().unwrap();
+        let directory = TestDirectory::new("writer-race");
+        let active = directory.project("active.superi");
+        let start = directory.project("start");
+        let old = test_snapshot("race old", 0x5080);
+        let first = test_snapshot("process writer", 0x5090);
+        let second = test_snapshot("process writer", 0x50a0);
+        let third = test_snapshot("race after", 0x50b0);
+        create_project(&active, &old);
+
+        let mut children = Vec::new();
+        let mut ready_paths = Vec::new();
+        let mut result_paths = Vec::new();
+        for (index, identity) in [0x5090_u128, 0x50a0_u128].into_iter().enumerate() {
+            let ready = directory.project(&format!("ready-{index}"));
+            let result = directory.project(&format!("result-{index}"));
+            let child = Command::new(&executable)
+                .arg("--exact")
+                .arg("save::tests::process_writer_race_child")
+                .arg("--nocapture")
+                .env(RACE_CHILD_PATH, &active)
+                .env(RACE_CHILD_READY, &ready)
+                .env(RACE_CHILD_START, &start)
+                .env(RACE_CHILD_RESULT, &result)
+                .env(RACE_CHILD_IDENTITY, identity.to_string())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap();
+            children.push(child);
+            ready_paths.push(ready);
+            result_paths.push(result);
+        }
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while ready_paths.iter().any(|path| !path.exists()) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "writer race readiness barrier timed out"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        fs::write(&start, b"start").unwrap();
+        for child in &mut children {
+            assert!(child.wait().unwrap().success());
+        }
+
+        let results = result_paths
+            .iter()
+            .map(|path| fs::read_to_string(path).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(results.iter().filter(|result| *result == "ok").count(), 1);
+        assert_eq!(
+            results
+                .iter()
+                .filter(|result| result.starts_with("conflict:"))
+                .count(),
+            1
+        );
+        let published = ProjectDatabase::open_read_only(&active)
+            .unwrap()
+            .load()
+            .unwrap()
+            .snapshot();
+        assert!(published == first || published == second);
+        assert_eq!(directory.candidate_count(), 0);
+        let lock_path = writer_lock_path(&active).unwrap();
+        let lock_metadata = fs::symlink_metadata(&lock_path).unwrap();
+        assert!(lock_metadata.is_file());
+        assert!(!lock_metadata.file_type().is_symlink());
+
+        let mut later = ProjectDatabase::open(&active).unwrap();
+        later.replace(&third).unwrap();
+        assert_valid_project(&active, &third);
     }
 
     #[test]

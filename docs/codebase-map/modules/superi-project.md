@@ -2,7 +2,7 @@
 module_id: superi-project
 source_paths:
   - open/crates/superi-project
-source_hash: e28e3e80b379fc7938e9131e0d303677caaa95bf04ba0eb6d924a92b123f5280
+source_hash: 006d8576a88a176cc32c134432aabe7dc67c961153ef26ad8535d356b4c23837
 source_files: 22
 mapped_at_commit: working-tree
 ---
@@ -25,8 +25,9 @@ creates a new nonoverwriting `.superi` database or secured in-memory database, o
 state read-only, opens current or supported legacy state with write authority, and reconstructs one
 complete `ProjectDocument`. One typed command surface atomically saves the active file, publishes
 save-as and copy destinations under explicit collision policy, and creates no-clobber backups. A
-file-backed database retains only its absolute active path between operations, while an in-memory
-database retains its secured connection until save-as establishes active file identity. Writable
+file-backed database retains its absolute active path and one validated content generation between
+operations, while an in-memory database retains its secured connection until save-as establishes
+active file identity and generation. Writable
 open reports its source schema and migrates exact schema 0, 1, 2, or 3 to schema 4 through contiguous
 immediate transactions. The schema persists canonical timeline, graph, settings, and audio
 component documents beside one strict extension-record table instead of copying domain models into
@@ -65,14 +66,14 @@ migration, file creation, salvage, or authority change. A restore recommendation
 the independently validated recovery path rather than opening another mutation surface.
 
 This module does not own command-history storage, branching, or selection policy. It also does not
-yet own persisted command logs, engine restoration transactions, modified-since-open conflict
-policy, runtime readiness, plugin process state, or direct file commands in the public API and CLI.
+yet own persisted command logs, engine restoration transactions, runtime readiness, plugin process
+state, or direct file commands in the public API and CLI.
 Those remain assigned to their engine, API, or later project checkpoints.
 
 ## Source inventory
 
 - `open/crates/superi-project/Cargo.toml`: Declares audio, core, graph, timeline, exact workspace
-  `rusqlite`, workspace Serde, SHA-256, and JSON component dependencies.
+  `rusqlite`, synchronization-only `fs4`, workspace Serde, SHA-256, and JSON component dependencies.
 - `open/crates/superi-project/src/autosave.rs`: Implements validated runtime policy, host-driven
   monotonic scheduling, typed configure, tick, save-now, prune, and inspect commands, deterministic
   project and artifact naming, atomic Backup publication, bounded collision retry, strict managed
@@ -106,21 +107,23 @@ Those remain assigned to their engine, API, or later project checkpoints.
   evidence, stable media lookup, and reusable draft plus revision-fenced document commands that
   retain editable timeline graphs and suppress false document revisions for semantic no-ops.
 - `open/crates/superi-project/src/persist.rs`: Implements secured short-lived file connections and
-  retained in-memory storage, active path identity, schema 4 plus frozen schema-1, schema-2, and
-  schema-3 migration helpers, deterministic timeline, graph, settings, audio, and extension
-  component records and manifest evidence, canonical strict extension metadata, separately hashed
-  opaque payload bytes, checked in-memory replacement, strict interpretation, bounded decoding,
-  complete shared SQLite and foreign-key collection, and checked aggregate reconstruction.
+  retained in-memory storage, active path identity and validated file generations, stable
+  before-and-after generation observation, schema 4 plus frozen schema-1, schema-2, and schema-3
+  migration helpers, deterministic timeline, graph, settings, audio, and extension component
+  records and manifest evidence, canonical strict extension metadata, separately hashed opaque
+  payload bytes, checked in-memory replacement, strict interpretation, bounded decoding, complete
+  shared SQLite and foreign-key collection, and checked aggregate reconstruction.
 - `open/crates/superi-project/src/recovery.rs`: Implements opaque autosave generation identities,
   deterministic restart discovery, complete current-schema database loading, semantic comparison
   across editorial, settings, authored clip-mix, extension, root, and graph state, internal raw
   failure diagnostics with stable next actions, per-action file identity revalidation, durable
   exact tombstone dismissal, degraded cleanup evidence, and restart tombstone cleanup.
 - `open/crates/superi-project/src/save.rs`: Implements the typed save, save-as, copy, and backup
-  commands, explicit collision policy, complete same-parent SQLite candidates, semantic and
-  integrity validation, handle closure and platform-correct file synchronization, atomic
-  replacement or no-clobber publication, active-path rebinding, classified publication state, and
-  owned-candidate cleanup.
+  commands, explicit collision policy, stable sibling writer-lock ownership for replacement saves,
+  active and destination generation conflict checks, complete same-parent SQLite candidates,
+  semantic and integrity validation, handle closure and platform-correct file synchronization,
+  atomic replacement or no-clobber publication, active-path rebinding, classified publication
+  state, and owned-candidate cleanup.
 - `open/crates/superi-project/src/settings.rs`: Owns schema `1.0.0`, the exact timeline, color,
   audio, cache, proxy, and render key vocabulary, deterministic root-derived defaults, strict
   cross-field validation, and bounded ordered set or remove transactions.
@@ -146,8 +149,10 @@ Those remain assigned to their engine, API, or later project checkpoints.
   preservation, rollback, read-only enforcement, and corruption rejection.
 - `open/crates/superi-project/tests/save_contract.rs`: Proves the public save surface through real
   file-backed and in-memory projects, exact active-path changes, collision policy, read-only
-  publications, alias and invalid-destination rejection, bounds before mutation, current-schema
-  integrity, non-UTF-8 destinations, permissions, and later save behavior after copy or save-as.
+  publications, stale-authority detection with explicit save-as and copy escape paths, missing and
+  malformed active-file protection, alias and invalid-destination rejection, bounds before
+  mutation, current-schema integrity, non-UTF-8 destinations, permissions, and later save behavior
+  after copy or save-as.
 - `open/crates/superi-project/tests/project_settings_contract.rs`: Proves default and configured
   settings, strict atomic revision-fenced transactions, no-op behavior, complete domain validation,
   schema-4 durability, manifest coverage, and migration defaults.
@@ -377,15 +382,22 @@ File publication adds one explicit commit boundary:
    one immediate transaction and proves exact semantic equality before and after candidate commit.
 3. The SQLite connection closes before the candidate file is synchronized through a handle with the
    access required by its platform, including write access on Windows. Sidecar absence is required,
-   Unix parent directories are synchronized, and a destination expectation is rechecked immediately
-   before publication.
-4. Replace-existing uses same-parent atomic rename. Require-absent uses an atomic hard-link claim and
+   and Unix parent directories are synchronized.
+4. Replace-existing opens a deterministic hidden sibling lock, rejects symlink, directory, or
+   identity-substituted lock entries, and acquires one nonblocking exclusive operating-system lock.
+   A held lock is a retryable conflict; unsupported locking fails closed as user-correctable.
+5. While that writer lock remains held, the command rechecks the destination generation captured at
+   command start and, for the active path, the content generation captured by create or open. A
+   changed destination is retryable; a stale, missing, replaced, corrupt, or nonregular active file
+   is a user-correctable conflict and is never recreated or overwritten.
+6. Replace-existing uses same-parent atomic rename. Require-absent uses an atomic hard-link claim and
    removes the private candidate only after the destination name is owned. A race becomes a
    classified conflict instead of clobbering the competing entry.
-5. Save-as changes active identity immediately after successful publication and before any fallible
-   finalization. Prepublication failures preserve the prior destination and active identity;
-   postpublication failures report `publication_state=published`, unconfirmed durability, exact
-   destination and candidate context, and a recovery action without claiming rollback.
+7. Save and save-as install the freshly observed active generation at the publication commit point;
+   save-as also rebinds active identity before any fallible finalization. Prepublication failures
+   preserve the prior destination and active identity; postpublication failures report
+   `publication_state=published`, unconfirmed durability, exact destination and candidate context,
+   and a recovery action without claiming rollback.
 
 Autosave composes that publication authority without another persistence model:
 
@@ -429,8 +441,11 @@ Recovery consumes the same durable namespace without another persistence model:
    and synchronizes it, then removes only that tombstone. A cleanup failure cannot resurrect the
    candidate and is retained as degraded evidence for later discovery cleanup.
 
-Load follows the same path without partial publication. One deferred read transaction pins a
-coherent SQLite snapshot across every identity, schema, metadata, component, and manifest query.
+Load follows the same path without partial publication. A file-backed load first requires the
+current active generation to match the generation captured by create, open, save, or save-as. One
+deferred read transaction then pins a coherent SQLite snapshot across every identity, schema,
+metadata, component, and manifest query, and a second generation check after handle closure rejects
+a collaborator change during the read.
 Timeline bytes reconstruct the validated `EditorialProject`, and settings bytes reconstruct the
 strict project schema without coercion. Each timeline graph uses
 `ProjectGraph::restore_timeline`, each standalone graph uses `StandaloneProjectGraph::new`, and
@@ -530,6 +545,9 @@ and acquires the exact reachable source and decoder set before one resources pub
   connection type leakage. Its bundled feature also exposes modern defensive configuration.
 - Exact `sha2` 0.10.9 supplies component and project manifest integrity without defining the later
   public dirty-state hash.
+- Exact `fs4` 1.1.0 supplies synchronization-only nonblocking operating-system file locks for the
+  persistent sibling writer-lock entry without adding networking, process discovery, or public API
+  types.
 - `serde` and `serde_json` supply strict canonical settings and extension metadata encoding and
   decoding, while tests also use JSON to build exact legacy revision-0 component fixtures from
   current canonical payloads.
@@ -625,6 +643,14 @@ and acquires the exact reachable source and decoder set before one resources pub
   active state, retains no live SQLite handle across ordinary calls, and never reports an unconfirmed
   postpublication error as if the old path were restored. Directory synchronization is explicit on
   Unix; other platforms do not receive an unsupported physical-durability guarantee.
+- A file-backed database retains one validated active generation containing complete-byte SHA-256,
+  length, modification time, and available local file identity. Load, Save, and same-path SaveAs
+  compare that generation before authority changes; a conflict preserves the caller snapshot and
+  collaborator bytes. Permission-only changes remain compatible and are preserved by the next save.
+- Replacement publication is serialized by one deterministic persistent sibling lock file. Lock
+  acquisition is nonblocking, the lock is held through generation validation and the publication
+  commit point, unsafe lock entries fail closed, and the file remains as coordination state so
+  unlinking cannot split cooperating writers into different lock generations.
 - Autosave is bound to exactly one project identity and accepts only caller-supplied monotonic time.
   It starts no timer or thread, stores no process clock in project meaning, publishes at most once
   for each observed tick, and rejects backward time without changing schedule or files.
@@ -691,15 +717,21 @@ foreign-platform visibility, stable `MediaId` commands, revision conflicts, pres
 edits, explicit missing and fingerprint-mismatch state, exact database round trips, accepted relinks,
 and safe rejection of opaque or future syntax.
 
-`save_contract.rs` contains eight public file contracts. They prove atomic active replacement,
+`save_contract.rs` contains ten public file contracts. They prove atomic active replacement,
 save-as rebinding from memory and read-only sources, copy and backup identity preservation, both
 collision policies, supplied live-state capture, invalid destination and canonical alias rejection,
 bounded failure before filesystem mutation, non-UTF-8 paths and hard-link alias detection on Unix,
 dangling symbolic-link rejection, permission preservation, and exact current-schema reload plus
-integrity for every published artifact. Private save tests inject every prepublication and
-postpublication stage, exercise destination races, classify representative storage exhaustion, and
-abort subprocesses at candidate-close, candidate-sync, publication, and completion stages for both
-rename and no-clobber publication paths.
+integrity for every published artifact. They also prove that stale authorities cannot overwrite a
+collaborator, that stale loads fail visibly, that SaveCopy and distinct SaveAs remain explicit
+recovery paths, and that missing, corrupt, directory-substituted, or symlink-substituted active
+files are never clobbered. Private save tests inject every prepublication and postpublication stage,
+exercise destination and same-baseline writer races in real subprocesses, prove one winner and one
+visible conflict, separately prove that an actively held sibling lock is retryable, reject unsafe
+lock entries, distinguish same-length content generations, classify representative storage
+exhaustion, and abort subprocesses at
+candidate-close, candidate-sync, publication, and completion stages for both rename and no-clobber
+publication paths.
 
 `autosave_contract.rs` contains five public controller contracts. They prove exact due boundaries,
 disable and re-enable control, forced manual recovery points, unchanged periodic suppression,
@@ -744,7 +776,8 @@ graph, settings, audio, and extension component records, integrity manifest, tra
 replacement, exact schema-0, schema-1, frozen schema-2, and frozen schema-3 compatibility, ordered
 forward migration, checked reconstruction, durable create
 and read-only reopen, writable current or legacy open, atomic save, save-as, copy, and backup
-publication, explicit collision policy, active path identity, versioned referenced-media paths,
+publication, explicit collision policy, active path identity, validated modified-since-open
+generation fencing, cooperative writer serialization, versioned referenced-media paths,
 stable identity commands, and the real engine and public API consumers are substantive and
 test-backed. Its checked whole-snapshot restore seam supports the engine-owned session command
 history without moving branching policy or retained entries into the project crate. The same
@@ -759,15 +792,15 @@ without exposing filesystem identity or creating a second store. The public inte
 complete current and supported legacy reconstruction, deterministic bounded evidence, verified
 identity, and repair reporting without creating another database or recovery authority.
 
-Additional schema revisions beyond 4, persisted history or command logs, modified-since-open
-write conflict policy, cross-process file locking, authenticated integrity, dirty-state hashing,
-public database adaptation, CLI, and scripting remain absent.
+Additional schema revisions beyond 4, persisted history or command logs, authenticated integrity,
+dirty-state hashing, public database adaptation, CLI, and scripting remain absent.
 Autosave policy is process-local and recovery roots are caller selected; no background timer,
 persistent scheduler, wire adapter, runtime registry, plugin worker, or automatic recovery choice
 is claimed. Exact schemas 0, 1, 2, and 3 are the supported predecessors. Future, older unknown, or
 extended layouts remain rejected until an explicit migration or preservation contract exists.
-Current atomicity proofs cover ordinary local filesystem semantics and do not claim strict
-cross-process compare-and-swap after the final destination recheck, network filesystem behavior, or
+Current atomicity proofs cover ordinary local filesystem semantics, including cooperating
+cross-process replacement through the persistent sibling lock. They do not claim interoperability
+with writers that ignore the lock, reliable advisory-lock behavior on every network filesystem, or
 physical power-loss proof on every platform. Rust 1.80 exposes no stable portable Windows file
 identity, so a pre-existing Windows hard-link alias is not recognized as the active path; explicit
 collision policy still prevents unintended no-clobber publication, and replace-existing changes
@@ -796,7 +829,8 @@ decision, and one exact successor step appended to the contiguous migration regi
 schema 0, schema 1, schema 2, schema 3, or schema 4 in place after release. Keep every file-backed save
 operation on `ProjectSaveCommand` and the existing complete-candidate publication path. Preserve
 active-path rebinding at the publication commit point, explicit collision policy, precommit cleanup
-ownership, and honest published-error context together. Keep autosave clockless, host-driven,
+ownership, the persistent sibling lock, active and destination generation fencing, and honest
+published-error context together. Keep autosave clockless, host-driven,
 count-bounded, and routed through `ProjectSaveCommand::Backup`. Preserve its strict filenames,
 foreign-entry exclusion, regular-file-only pruning, and postpublication evidence
 together with recovery's opaque identity, complete load, file revalidation, classified diagnostic,

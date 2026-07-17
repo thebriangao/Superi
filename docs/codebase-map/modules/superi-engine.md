@@ -2,7 +2,7 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: c76a60bf2cdc8346166bc8cff35f3bf63567b6aca3a496e3e81c82db11124418
+source_hash: 691d43b0d09193a79fb778dd8b1c2d6db2cbc21a44281b623994c4440bac3851
 source_files: 63
 mapped_at_commit: working-tree
 ---
@@ -283,8 +283,9 @@ through the existing dispatcher.
   EngineControl command surface for discovery, complete semantic comparison including authored
   clip-mix state, durable monotonic restore, and
   exact dismissal; active database reopen equality; empty restored session history; candidate
-  retention; persistence-failure atomicity; stale and terminal classification; and event-queue
-  backpressure before every persistent mutation.
+  retention; persistence-failure atomicity; externally replaced active-database conflict
+  preservation; stale and terminal classification; and event-queue backpressure before every
+  persistent mutation.
 - `open/crates/superi-engine/tests/project_settings_dispatcher_contract.rs`: Proves authoritative
   project attachment, exact typed resolution for all six policy domains, optimistic transactions,
   no-op event suppression under a full queue, invalid and stale rollback, ordered replacement
@@ -1396,13 +1397,15 @@ from one through three.
 This proves consumer compatibility only; it does not add engine scheduling, worker, dispatcher,
 wire, or recovery-selection behavior.
 
-Three project recovery dispatcher contracts attach a real file-backed active database and the exact
+Four project recovery dispatcher contracts attach a real file-backed active database and the exact
 project autosave namespace. They prove discovery, read-only semantic comparison, monotonic durable
 restore including authored clip-mix state with empty new-session history, source-candidate retention,
 exact later dismissal, complete replacement event correlation, and exact database reopen equality.
-Read-only persistence failure,
+Read-only persistence failure, an external active-file replacement after coordinator attachment,
 stale fences, terminal revision exhaustion, and a full 64-event queue all preserve disk, history,
-candidate, sequences, and events before authority changes.
+candidate, sequences, and events before authority changes. The external replacement is reported as
+a user-correctable conflict, preserves the collaborator database byte for byte, and publishes no
+history state or dispatcher event.
 
 Three project settings dispatcher contracts attach one real project document and prove complete
 default inspection, exact typed resolution across timeline, color, audio, cache, proxy, and render,
@@ -1600,8 +1603,10 @@ Typed project settings resolution and dispatcher control are substantive and tes
 preserve durable authored scalar meaning and expose one real API path, but resolution does not
 automatically reconfigure live timeline, color, audio, cache, proxy, or render owners. Project
 database open and save commands and autosave scheduling remain outside engine and API. Recovery
-commands are implemented and test-backed through the existing dispatcher, but no background
-autosave worker, open-project shell, CLI adapter, or cross-process lock owner is claimed.
+commands are implemented and test-backed through the existing dispatcher. The lower project
+database rejects an externally changed active generation before recovery publication; engine does
+not duplicate that writer lock or file authority. No background autosave worker, open-project
+shell, or CLI adapter is claimed.
 
 Project extension integration is substantive and test-backed. History, compound transactions,
 dispatch, ordered replacement events, persistence, save, autosave, undo, and redo preserve plugin,
@@ -1685,7 +1690,8 @@ Audio. Keep project recovery behind the one dispatcher-attached coordinator, pre
 and history agreement at attachment, reserve sequences and events before filesystem mutation, and
 publish the prepared active database before committing restored history. Recovery paths must retain
 opaque identity, complete durable aggregate comparison, candidate-after-restore, and separate
-explicit dismissal behavior.
+explicit dismissal behavior. Treat a project-owned stale active generation as an atomic recovery
+conflict and preserve collaborator bytes, selected history, the candidate, sequences, and events.
 Keep settings keys, defaults, candidate validation, and persistence project-owned. Engine may only
 resolve validated snapshots into existing subsystem types and dispatch transactions through the
 same `ProjectCommandHistory` document owner. Preserve dynamic no-op event reservation, complete

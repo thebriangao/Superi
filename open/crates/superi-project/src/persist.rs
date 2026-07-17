@@ -6,10 +6,11 @@
 //! policy remain separate project concerns.
 
 use std::fmt;
-use std::fs::OpenOptions;
+use std::fs::{self, File, Metadata, OpenOptions};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use rusqlite::config::DbConfig;
 use rusqlite::{params, Connection, ErrorCode, OpenFlags, TransactionBehavior};
@@ -76,9 +77,246 @@ pub(crate) const EXTENSION_RECORDS_SCHEMA: &str = "CREATE TABLE extension_record
 /// Current canonical metadata representation for one opaque extension record.
 pub const PROJECT_EXTENSION_METADATA_FORMAT_REVISION: u32 = 1;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ProjectFileGeneration {
+    digest: [u8; 32],
+    length: u64,
+    modified: Option<SystemTime>,
+    #[cfg(unix)]
+    device: u64,
+    #[cfg(unix)]
+    inode: u64,
+    #[cfg(unix)]
+    mode: u32,
+}
+
+impl ProjectFileGeneration {
+    fn from_metadata(digest: [u8; 32], metadata: &Metadata) -> Self {
+        #[cfg(unix)]
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+        Self {
+            digest,
+            length: metadata.len(),
+            modified: metadata.modified().ok(),
+            #[cfg(unix)]
+            device: metadata.dev(),
+            #[cfg(unix)]
+            inode: metadata.ino(),
+            #[cfg(unix)]
+            mode: metadata.permissions().mode(),
+        }
+    }
+
+    pub(crate) const fn length(&self) -> u64 {
+        self.length
+    }
+
+    pub(crate) fn same_active_content(&self, other: &Self) -> bool {
+        self.digest == other.digest
+            && self.length == other.length
+            && self.modified == other.modified
+            && {
+                #[cfg(unix)]
+                {
+                    self.device == other.device && self.inode == other.inode
+                }
+                #[cfg(not(unix))]
+                {
+                    true
+                }
+            }
+    }
+
+    #[cfg(unix)]
+    pub(crate) const fn mode(&self) -> u32 {
+        self.mode
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ProjectFileMetadata {
+    length: u64,
+    modified: Option<SystemTime>,
+    #[cfg(unix)]
+    device: u64,
+    #[cfg(unix)]
+    inode: u64,
+    #[cfg(unix)]
+    mode: u32,
+}
+
+impl ProjectFileMetadata {
+    fn from_metadata(metadata: &Metadata) -> Self {
+        #[cfg(unix)]
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+        Self {
+            length: metadata.len(),
+            modified: metadata.modified().ok(),
+            #[cfg(unix)]
+            device: metadata.dev(),
+            #[cfg(unix)]
+            inode: metadata.ino(),
+            #[cfg(unix)]
+            mode: metadata.permissions().mode(),
+        }
+    }
+}
+
+pub(crate) fn observe_project_file_generation(
+    path: &Path,
+    operation: &'static str,
+) -> Result<ProjectFileGeneration> {
+    let first = observe_project_file_generation_once(path, operation)?;
+    let second = observe_project_file_generation_once(path, operation)?;
+    if first == second {
+        Ok(second)
+    } else {
+        Err(project_file_changed_error(
+            operation,
+            path,
+            "project file changed while its generation was observed",
+        ))
+    }
+}
+
+fn observe_project_file_generation_once(
+    path: &Path,
+    operation: &'static str,
+) -> Result<ProjectFileGeneration> {
+    let path_before = fs::symlink_metadata(path)
+        .map_err(|source| project_file_io_error(source, operation, path))?;
+    validate_generation_file_type(&path_before, operation, path)?;
+    let path_before = ProjectFileMetadata::from_metadata(&path_before);
+
+    let mut file =
+        File::open(path).map_err(|source| project_file_io_error(source, operation, path))?;
+    let opened_before = file
+        .metadata()
+        .map_err(|source| project_file_io_error(source, operation, path))?;
+    if !opened_before.is_file() {
+        return Err(project_file_type_error(operation, path));
+    }
+    let opened_before = ProjectFileMetadata::from_metadata(&opened_before);
+    if path_before != opened_before {
+        return Err(project_file_changed_error(
+            operation,
+            path,
+            "project path identity changed while the file was opened",
+        ));
+    }
+
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|source| project_file_io_error(source, operation, path))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+
+    let opened_after = file
+        .metadata()
+        .map_err(|source| project_file_io_error(source, operation, path))?;
+    let path_after = fs::symlink_metadata(path)
+        .map_err(|source| project_file_io_error(source, operation, path))?;
+    validate_generation_file_type(&path_after, operation, path)?;
+    let opened_after_identity = ProjectFileMetadata::from_metadata(&opened_after);
+    let path_after_identity = ProjectFileMetadata::from_metadata(&path_after);
+    if opened_before != opened_after_identity || opened_after_identity != path_after_identity {
+        return Err(project_file_changed_error(
+            operation,
+            path,
+            "project file changed while its bytes were read",
+        ));
+    }
+
+    Ok(ProjectFileGeneration::from_metadata(
+        hasher.finalize().into(),
+        &opened_after,
+    ))
+}
+
+fn validate_generation_file_type(
+    metadata: &Metadata,
+    operation: &'static str,
+    path: &Path,
+) -> Result<()> {
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        Err(project_file_type_error(operation, path))
+    } else {
+        Ok(())
+    }
+}
+
+fn project_file_type_error(operation: &'static str, path: &Path) -> Error {
+    project_error(
+        ErrorCategory::InvalidInput,
+        Recoverability::UserCorrectable,
+        operation,
+        "project path must name a real regular file",
+    )
+    .with_context(
+        ErrorContext::new(COMPONENT, operation).with_field("path", path.display().to_string()),
+    )
+}
+
+fn project_file_changed_error(
+    operation: &'static str,
+    path: &Path,
+    message: &'static str,
+) -> Error {
+    project_error(
+        ErrorCategory::Conflict,
+        Recoverability::Retryable,
+        operation,
+        message,
+    )
+    .with_context(
+        ErrorContext::new(COMPONENT, operation).with_field("path", path.display().to_string()),
+    )
+}
+
+fn project_file_io_error(source: std::io::Error, operation: &'static str, path: &Path) -> Error {
+    let (category, recoverability, message) = match source.kind() {
+        std::io::ErrorKind::NotFound => (
+            ErrorCategory::NotFound,
+            Recoverability::UserCorrectable,
+            "project file does not exist",
+        ),
+        std::io::ErrorKind::PermissionDenied => (
+            ErrorCategory::PermissionDenied,
+            Recoverability::UserCorrectable,
+            "project file is not accessible",
+        ),
+        std::io::ErrorKind::Unsupported => (
+            ErrorCategory::Unsupported,
+            Recoverability::UserCorrectable,
+            "filesystem does not support stable project file observation",
+        ),
+        _ => (
+            ErrorCategory::Unavailable,
+            Recoverability::Retryable,
+            "project file generation could not be observed",
+        ),
+    };
+    Error::with_source(category, recoverability, message, source).with_context(
+        ErrorContext::new(COMPONENT, operation).with_field("path", path.display().to_string()),
+    )
+}
+
 enum ProjectDatabaseStorage {
-    File { active_path: PathBuf },
-    Memory { connection: Connection },
+    File {
+        active_path: PathBuf,
+        generation: ProjectFileGeneration,
+    },
+    Memory {
+        connection: Connection,
+    },
 }
 
 /// One secured authority over a stable whole-project database.
@@ -126,8 +364,15 @@ impl ProjectDatabase {
             return Err(error);
         }
         let active_path = canonicalize_project_path(path, "canonicalize_created_database")?;
+        let generation = capture_validated_project_generation(
+            &active_path,
+            "capture_created_database_generation",
+        )?;
         Ok(Self {
-            storage: ProjectDatabaseStorage::File { active_path },
+            storage: ProjectDatabaseStorage::File {
+                active_path,
+                generation,
+            },
             writable: true,
             source_schema_revision: PROJECT_SCHEMA_REVISION,
         })
@@ -156,8 +401,15 @@ impl ProjectDatabase {
         let mut connection = open_file_connection(&active_path, true)?;
         let source_schema_revision = migrate_connection(&mut connection)?;
         close_connection(connection, "close_writable_database")?;
+        let generation = capture_validated_project_generation(
+            &active_path,
+            "capture_writable_database_generation",
+        )?;
         Ok(Self {
-            storage: ProjectDatabaseStorage::File { active_path },
+            storage: ProjectDatabaseStorage::File {
+                active_path,
+                generation,
+            },
             writable: true,
             source_schema_revision,
         })
@@ -167,11 +419,15 @@ impl ProjectDatabase {
     pub fn open_read_only(path: impl AsRef<Path>) -> Result<Self> {
         let active_path =
             canonicalize_project_path(path.as_ref(), "canonicalize_read_only_database")?;
-        let connection = open_file_connection(&active_path, false)?;
-        validate_identity_and_schema(&connection)?;
-        close_connection(connection, "close_read_only_database")?;
+        let generation = capture_validated_project_generation(
+            &active_path,
+            "capture_read_only_database_generation",
+        )?;
         Ok(Self {
-            storage: ProjectDatabaseStorage::File { active_path },
+            storage: ProjectDatabaseStorage::File {
+                active_path,
+                generation,
+            },
             writable: false,
             source_schema_revision: PROJECT_SCHEMA_REVISION,
         })
@@ -181,7 +437,7 @@ impl ProjectDatabase {
     #[must_use]
     pub fn active_path(&self) -> Option<&Path> {
         match &self.storage {
-            ProjectDatabaseStorage::File { active_path } => Some(active_path),
+            ProjectDatabaseStorage::File { active_path, .. } => Some(active_path),
             ProjectDatabaseStorage::Memory { .. } => None,
         }
     }
@@ -245,13 +501,20 @@ impl ProjectDatabase {
     pub fn load(&self) -> Result<ProjectDocument> {
         match &self.storage {
             ProjectDatabaseStorage::Memory { connection } => load_from_connection(connection),
-            ProjectDatabaseStorage::File { active_path } => {
+            ProjectDatabaseStorage::File {
+                active_path,
+                generation,
+            } => {
+                verify_active_generation(active_path, generation, "verify_active_before_load")?;
                 let connection = open_file_connection(active_path, false)?;
                 let loaded = load_from_connection(&connection);
                 let closed = close_connection(connection, "close_loaded_database");
-                match (loaded, closed) {
-                    (Ok(document), Ok(())) => Ok(document),
-                    (Err(error), _) | (Ok(_), Err(error)) => Err(error),
+                let generation_after =
+                    verify_active_generation(active_path, generation, "verify_active_after_load");
+                match (generation_after, loaded, closed) {
+                    (Err(error), _, _) => Err(error),
+                    (Ok(()), Ok(document), Ok(())) => Ok(document),
+                    (Ok(()), Err(error), _) | (Ok(()), Ok(_), Err(error)) => Err(error),
                 }
             }
         }
@@ -261,9 +524,96 @@ impl ProjectDatabase {
         self.writable
     }
 
-    pub(crate) fn rebind_after_save_as(&mut self, active_path: PathBuf) {
-        self.storage = ProjectDatabaseStorage::File { active_path };
+    pub(crate) fn active_generation(&self) -> Option<&ProjectFileGeneration> {
+        match &self.storage {
+            ProjectDatabaseStorage::File { generation, .. } => Some(generation),
+            ProjectDatabaseStorage::Memory { .. } => None,
+        }
+    }
+
+    pub(crate) fn accept_saved_generation(&mut self, generation: ProjectFileGeneration) {
+        let ProjectDatabaseStorage::File {
+            generation: active_generation,
+            ..
+        } = &mut self.storage
+        else {
+            unreachable!("saved generation requires file-backed storage")
+        };
+        *active_generation = generation;
+    }
+
+    pub(crate) fn rebind_after_save_as(
+        &mut self,
+        active_path: PathBuf,
+        generation: ProjectFileGeneration,
+    ) {
+        self.storage = ProjectDatabaseStorage::File {
+            active_path,
+            generation,
+        };
         self.writable = true;
+    }
+}
+
+fn capture_validated_project_generation(
+    active_path: &Path,
+    operation: &'static str,
+) -> Result<ProjectFileGeneration> {
+    let before = observe_project_file_generation(active_path, operation)?;
+    let connection = open_file_connection(active_path, false)?;
+    let validated = validate_identity_and_schema(&connection);
+    let closed = close_connection(connection, "close_generation_validation_database");
+    match (validated, closed) {
+        (Err(error), _) | (Ok(()), Err(error)) => return Err(error),
+        (Ok(()), Ok(())) => {}
+    }
+    let after = observe_project_file_generation(active_path, operation)?;
+    if before == after {
+        Ok(after)
+    } else {
+        Err(project_file_changed_error(
+            operation,
+            active_path,
+            "project file changed while its open baseline was validated",
+        ))
+    }
+}
+
+fn verify_active_generation(
+    active_path: &Path,
+    expected: &ProjectFileGeneration,
+    operation: &'static str,
+) -> Result<()> {
+    let observed = observe_project_file_generation(active_path, operation).map_err(|source| {
+        Error::with_source(
+            ErrorCategory::Conflict,
+            Recoverability::UserCorrectable,
+            "active project changed since this authority accepted it",
+            source,
+        )
+        .with_context(
+            ErrorContext::new(COMPONENT, operation)
+                .with_field("path", active_path.display().to_string())
+                .with_field("expected_length", expected.length().to_string())
+                .with_field("generation_state", "unavailable"),
+        )
+    })?;
+    if observed.same_active_content(expected) {
+        Ok(())
+    } else {
+        Err(project_error(
+            ErrorCategory::Conflict,
+            Recoverability::UserCorrectable,
+            operation,
+            "active project changed since this authority accepted it",
+        )
+        .with_context(
+            ErrorContext::new(COMPONENT, operation)
+                .with_field("path", active_path.display().to_string())
+                .with_field("expected_length", expected.length().to_string())
+                .with_field("observed_length", observed.length().to_string())
+                .with_field("generation_state", "changed"),
+        ))
     }
 }
 
