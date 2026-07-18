@@ -8,6 +8,7 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent,
+  type MouseEvent,
   type PointerEvent,
   type WheelEvent,
 } from "react";
@@ -16,8 +17,21 @@ import type {
   EditorCanonicalDocument,
   EditorPlaybackState,
   EditorRationalTime,
+  EditorStateSnapshot,
   EditorTimeRange,
 } from "./api.ts";
+import {
+  generateProjectMediaPreview,
+  readProjectMediaLibrary,
+  type MediaPreviewBundle,
+} from "./project-lifecycle.ts";
+import {
+  formatTimelineClipTiming,
+  projectTimelineClipDetails,
+  timelineClipAutomationKeyPercent,
+  type TimelineClipPresentation,
+  type TimelineClipProjection,
+} from "./timeline-clip-presentation.ts";
 import {
   TimelineProjectionError,
   buildTimelineRulerTicks,
@@ -39,16 +53,27 @@ const DEFAULT_PIXELS_PER_SECOND = 96;
 
 type TimelineGesture = "playhead" | "in" | "out";
 
+type TimelineClipPreviewState =
+  | { readonly status: "loading" }
+  | { readonly status: "ready"; readonly bundle: MediaPreviewBundle }
+  | { readonly status: "unavailable"; readonly reason: string };
+
 export interface TimelineWorkspaceProps {
   readonly document: EditorCanonicalDocument;
   readonly rootTimelineId: string;
   readonly playback: EditorPlaybackState;
+  readonly snapshot: EditorStateSnapshot;
+  readonly sharedSelectedClipIds: readonly string[];
+  readonly onSelectClip: (clipId: string, extend: boolean) => void;
 }
 
 export function TimelineWorkspace({
   document,
   rootTimelineId,
   playback,
+  snapshot,
+  sharedSelectedClipIds,
+  onSelectClip,
 }: TimelineWorkspaceProps) {
   const projection = useMemo(() => {
     try {
@@ -67,6 +92,25 @@ export function TimelineWorkspace({
     }
   }, [document, rootTimelineId]);
   const model = projection.model;
+  const clipProjection = useMemo(
+    () => (model ? projectTimelineClipDetails(snapshot, model) : null),
+    [model, snapshot],
+  );
+  const clipById = useMemo(() => {
+    const result = new Map<string, TimelineClipPresentation>();
+    if (clipProjection?.status === "ready") {
+      for (const clip of clipProjection.clips) result.set(clip.id, clip);
+    }
+    return result;
+  }, [clipProjection]);
+  const sharedSelection = useMemo(
+    () => new Set(sharedSelectedClipIds),
+    [sharedSelectedClipIds],
+  );
+  const clipPreviews = useTimelineClipPreviews(
+    clipProjection,
+    snapshot.project.project_revision,
+  );
   const initial = initialView(model, playback);
   const [playhead, setPlayhead] = useState(initial.playhead);
   const [inPoint, setInPoint] = useState(initial.inPoint);
@@ -488,6 +532,11 @@ export function TimelineWorkspace({
         Scroll to navigate, Shift-scroll to move horizontally, Command or Control
         scroll to zoom, and drag the ruler or range handles for frame-precise timing.
       </p>
+      {clipProjection?.status === "unavailable" ? (
+        <p className="timeline-clip-detail-failure" role="alert">
+          {clipProjection.reason}
+        </p>
+      ) : null}
       <div
         className={`timeline-scroll${gesture ? " timeline-scroll-gesturing" : ""}`}
         ref={scrollRef}
@@ -592,14 +641,21 @@ export function TimelineWorkspace({
                 {track.items.length === 0 ? (
                   <span className="timeline-empty-lane">No timed items</span>
                 ) : (
-                  visibleItems.map((item) => (
-                    <TimelineItem
-                      item={item}
-                      key={`${item.kind}:${item.id}`}
-                      model={model}
-                      pixelsPerSecond={pixelsPerSecond}
-                    />
-                  ))
+                  visibleItems.map((item) => {
+                    const detail = clipById.get(item.id) ?? null;
+                    return (
+                      <TimelineItem
+                        detail={detail}
+                        item={item}
+                        key={`${item.kind}:${item.id}`}
+                        model={model}
+                        onSelectClip={onSelectClip}
+                        pixelsPerSecond={pixelsPerSecond}
+                        previews={clipPreviews}
+                        sharedSelected={sharedSelection.has(item.id)}
+                      />
+                    );
+                  })
                 )}
               </div>
             </Fragment>
@@ -624,29 +680,121 @@ export function TimelineWorkspace({
 }
 
 function TimelineItem({
+  detail,
   item,
   model,
+  onSelectClip,
   pixelsPerSecond,
+  previews,
+  sharedSelected,
 }: {
+  readonly detail: TimelineClipPresentation | null;
   readonly item: TimelineCanvasItem;
   readonly model: TimelineCanvasModel;
+  readonly onSelectClip: (clipId: string, extend: boolean) => void;
   readonly pixelsPerSecond: number;
+  readonly previews: ReadonlyMap<string, TimelineClipPreviewState>;
+  readonly sharedSelected: boolean;
 }) {
   const left = (item.startSeconds - model.startSeconds) * pixelsPerSecond;
   const width = Math.max(2, (item.endSeconds - item.startSeconds) * pixelsPerSecond);
   const sourceLabel = item.source
     ? `${item.source.kind}:${item.source.id}`
     : item.kind;
+  const preview =
+    detail?.source.kind === "media"
+      ? previews.get(detail.source.id) ?? null
+      : null;
   const evidence = [
-    item.group ? `group ${item.group.length}` : null,
-    item.link ? `link ${item.link.length}` : null,
-    item.selected ? "selected" : null,
+    detail?.source.kind === "media" ? detail.source.relinkStatus : null,
+    preview?.status === "loading"
+      ? "preview loading"
+      : preview?.status === "unavailable"
+        ? "preview unavailable"
+        : null,
+    detail?.retimed ? "retimed" : null,
+    detail?.multicam ? `multi ${detail.multicam.switchCount}` : null,
+    detail && detail.effects.length > 0
+      ? detail.effects.length === 1
+        ? detail.effects[0]?.label
+        : `fx ${detail.effects.length}`
+      : null,
+    detail?.automation && detail.automation.keyframes.length > 0
+      ? `keys ${detail.automation.keyframes.length}`
+      : null,
+    detail?.automation ? `gain ${detail.automation.mode}` : null,
+    detail?.automation?.activePass?.touchActive ? "touch active" : null,
+    detail?.automation?.activePass?.latchActive ? "latch active" : null,
+    detail && detail.markers.length > 0
+      ? `marks ${detail.markers.length}`
+      : null,
+    detail && detail.metadataKeys.length > 0
+      ? `meta ${detail.metadataKeys.length}`
+      : null,
+    detail && detail.groupedClipIds.length > 0
+      ? `group ${detail.groupedClipIds.length + 1}`
+      : item.group
+        ? `group ${item.group.length}`
+        : null,
+    detail && detail.linkedClipIds.length > 0
+      ? `link ${detail.linkedClipIds.length + 1}`
+      : item.link
+        ? `link ${item.link.length}`
+        : null,
+    detail?.targeted ? "target" : null,
+    detail?.syncLocked ? "sync" : null,
+    item.selected ? "timeline selected" : null,
+    sharedSelected ? "workspace selected" : null,
   ].filter((value): value is string => value !== null);
   const title = [
     `${item.name} (${item.kind}:${item.id})`,
-    `record ${formatExactRange(item.recordRange)}`,
-    item.sourceRange ? `source ${formatExactRange(item.sourceRange)}` : null,
-    item.source ? `source identity ${sourceLabel}` : null,
+    detail ? formatTimelineClipTiming(detail) : `record ${formatExactRange(item.recordRange)}`,
+    detail
+      ? `source identity ${detail.source.kind}:${detail.source.id} (${detail.source.name})`
+      : item.source
+        ? `source identity ${sourceLabel}`
+        : null,
+    detail?.source.kind === "media"
+      ? `source state ${detail.source.relinkStatus}`
+      : null,
+    preview?.status === "loading"
+      ? "preview loading"
+      : preview?.status === "unavailable"
+        ? `preview unavailable: ${preview.reason}`
+        : null,
+    detail?.retimed
+      ? `retime ${detail.timeMap.segments
+          .map((segment) => `${segment.rateNumerator}/${segment.rateDenominator}`)
+          .join(", ")}`
+      : null,
+    detail && detail.effects.length > 0
+      ? `effects ${detail.effects
+          .map(
+            (effect) =>
+              `${effect.label} (${effect.nodeType}, ${effect.driverCount} drivers)`,
+          )
+          .join(", ")}`
+      : null,
+    detail?.automation
+      ? `clip gain ${detail.automation.mode}, keyframes ${detail.automation.keyframes
+          .map(
+            (keyframe) =>
+              `${keyframe.sample}@${keyframe.sampleRate}=${keyframe.value}`,
+          )
+          .join(", ") || "none"}, active pass ${
+          detail.automation.activePass
+            ? `${detail.automation.activePass.currentValue}, touch ${detail.automation.activePass.touchActive}, latch ${detail.automation.activePass.latchActive}`
+            : "none"
+        }`
+      : null,
+    detail && detail.markers.length > 0
+      ? `markers ${detail.markers
+          .map((marker) => marker.label ?? marker.id)
+          .join(", ")}`
+      : null,
+    detail && detail.metadataKeys.length > 0
+      ? `metadata ${detail.metadataKeys.join(", ")}`
+      : null,
     item.transition
       ? `transition ${item.transition.from.kind}:${item.transition.from.id} ` +
         `to ${item.transition.to.kind}:${item.transition.to.id}`
@@ -654,40 +802,309 @@ function TimelineItem({
   ]
     .filter((value): value is string => value !== null)
     .join("\n");
+  const className =
+    `timeline-item timeline-item-${item.kind}` +
+    (item.selected ? " timeline-item-selected" : "") +
+    (sharedSelected ? " timeline-item-shared-selected" : "");
+  const data = {
+    "data-item-id": item.id,
+    "data-item-kind": item.kind,
+    "data-record-start": item.recordRange.start.value,
+    "data-record-duration": item.recordRange.duration.value,
+    "data-source-id": item.source?.id,
+    "data-grouped": item.group ? "true" : "false",
+    "data-linked": item.link ? "true" : "false",
+  };
+  const label = [
+    item.name,
+    item.kind,
+    `${formatTimelineTime(item.startSeconds, model.editRate)} to ${formatTimelineTime(
+      item.endSeconds,
+      model.editRate,
+    )}`,
+    detail ? `source ${detail.source.name}` : sourceLabel,
+    ...evidence,
+  ].join(", ");
+  const contents = (
+    <>
+      {item.kind === "clip" ? (
+        <TimelineClipVisual detail={detail} preview={preview} />
+      ) : null}
+      {detail?.automation ? (
+        <TimelineClipAutomationKeys detail={detail} />
+      ) : null}
+      <span className="timeline-item-copy">
+        <span className="timeline-item-kind">{item.kind}</span>
+        <strong>{item.name}</strong>
+        <small>{detail?.source.name ?? sourceLabel}</small>
+        {evidence.length > 0 ? (
+          <span className="timeline-item-evidence">
+            {evidence.map((value) => (
+              <b key={value}>{value}</b>
+            ))}
+          </span>
+        ) : null}
+      </span>
+    </>
+  );
+
+  if (item.kind === "clip") {
+    return (
+      <button
+        {...data}
+        aria-label={label}
+        aria-pressed={sharedSelected}
+        className={className}
+        onClick={(event: MouseEvent<HTMLButtonElement>) =>
+          onSelectClip(
+            item.id,
+            event.shiftKey || event.metaKey || event.ctrlKey,
+          )
+        }
+        onPointerDown={(event) => event.stopPropagation()}
+        style={{ left, width }}
+        title={title}
+        type="button"
+      >
+        {contents}
+      </button>
+    );
+  }
   return (
     <div
-      className={
-        `timeline-item timeline-item-${item.kind}` +
-        (item.selected ? " timeline-item-selected" : "")
-      }
-      data-item-id={item.id}
-      data-item-kind={item.kind}
-      data-record-start={item.recordRange.start.value}
-      data-record-duration={item.recordRange.duration.value}
-      data-source-id={item.source?.id}
-      data-grouped={item.group ? "true" : "false"}
-      data-linked={item.link ? "true" : "false"}
+      {...data}
+      aria-label={label}
+      className={className}
       role="group"
-      aria-label={
-        `${item.name}, ${item.kind}, ` +
-        `${formatTimelineTime(item.startSeconds, model.editRate)} to ` +
-        formatTimelineTime(item.endSeconds, model.editRate)
-      }
-      title={title}
       style={{ left, width }}
+      title={title}
     >
-      <span className="timeline-item-kind">{item.kind}</span>
-      <strong>{item.name}</strong>
-      <small>{sourceLabel}</small>
-      {evidence.length > 0 ? (
-        <span className="timeline-item-evidence">
-          {evidence.map((value) => (
-            <b key={value}>{value}</b>
-          ))}
-        </span>
-      ) : null}
+      {contents}
     </div>
   );
+}
+
+function TimelineClipAutomationKeys({
+  detail,
+}: {
+  readonly detail: TimelineClipPresentation;
+}) {
+  const positioned =
+    detail.automation?.keyframes.flatMap((keyframe, index) => {
+      const percent = timelineClipAutomationKeyPercent(detail, keyframe);
+      return percent === null ? [] : [{ keyframe, index, percent }];
+    }) ?? [];
+  if (positioned.length === 0) return null;
+  return (
+    <span className="timeline-item-keyframes" aria-hidden="true">
+      {positioned.map(({ keyframe, index, percent }) => (
+        <span
+          className="timeline-item-keyframe"
+          data-keyframe-sample={keyframe.sample}
+          key={`${keyframe.sample}:${keyframe.sampleRate}:${index}`}
+          style={{ left: `${percent}%` }}
+          title={`${keyframe.sample}@${keyframe.sampleRate}=${keyframe.value}`}
+        />
+      ))}
+    </span>
+  );
+}
+
+function TimelineClipVisual({
+  detail,
+  preview,
+}: {
+  readonly detail: TimelineClipPresentation | null;
+  readonly preview: TimelineClipPreviewState | null;
+}) {
+  if (preview?.status === "ready" && detail?.trackKind === "audio") {
+    const waveform = preview.bundle.waveform;
+    if (waveform.status === "ready") {
+      return (
+        <span className="timeline-item-preview timeline-item-waveform" aria-hidden="true">
+          <img alt="" draggable={false} src={waveform.artifact.image.data_url} />
+        </span>
+      );
+    }
+  }
+  if (preview?.status === "ready" && detail?.trackKind === "video") {
+    const filmstrip = preview.bundle.filmstrip;
+    if (filmstrip.status === "ready" && filmstrip.artifact.frames.length > 0) {
+      return (
+        <span className="timeline-item-preview timeline-item-filmstrip" aria-hidden="true">
+          {filmstrip.artifact.frames.slice(0, 8).map((frame, index) => (
+            <img
+              alt=""
+              draggable={false}
+              key={`${frame.source_index ?? index}:${index}`}
+              src={frame.data_url}
+            />
+          ))}
+        </span>
+      );
+    }
+    const thumbnail = preview.bundle.thumbnail;
+    if (thumbnail.status === "ready") {
+      return (
+        <span className="timeline-item-preview" aria-hidden="true">
+          <img alt="" draggable={false} src={thumbnail.artifact.data_url} />
+        </span>
+      );
+    }
+    const still = preview.bundle.preview;
+    if (still.status === "ready") {
+      return (
+        <span className="timeline-item-preview" aria-hidden="true">
+          <img alt="" draggable={false} src={still.artifact.data_url} />
+        </span>
+      );
+    }
+  }
+  const fallback =
+    preview?.status === "loading"
+      ? "Loading preview"
+      : preview?.status === "unavailable"
+        ? preview.reason
+        : detail?.source.kind === "timeline"
+          ? "Nested timeline"
+          : "Preview unavailable";
+  return (
+    <span className="timeline-item-preview-fallback" aria-hidden="true" title={fallback}>
+      {detail?.trackKind === "audio" ? "wave" : "clip"}
+    </span>
+  );
+}
+
+function useTimelineClipPreviews(
+  projection: TimelineClipProjection | null,
+  projectRevision: number,
+): ReadonlyMap<string, TimelineClipPreviewState> {
+  const [previews, setPreviews] = useState<
+    ReadonlyMap<string, TimelineClipPreviewState>
+  >(() => new Map());
+
+  useEffect(() => {
+    let cancelled = false;
+    if (projection?.status !== "ready") {
+      setPreviews(new Map());
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const sources = new Map<
+      string,
+      Extract<TimelineClipPresentation["source"], { readonly kind: "media" }>
+    >();
+    for (const clip of projection.clips) {
+      if (clip.source.kind === "media") sources.set(clip.source.id, clip.source);
+    }
+    const initial = new Map<string, TimelineClipPreviewState>();
+    for (const source of sources.values()) {
+      initial.set(
+        source.id,
+        source.relinkStatus === "missing" ||
+          source.relinkStatus === "fingerprint_mismatch"
+          ? {
+              status: "unavailable",
+              reason: `Source is ${source.relinkStatus.replaceAll("_", " ")}.`,
+            }
+          : { status: "loading" },
+      );
+    }
+    setPreviews(initial);
+
+    const update = (mediaId: string, state: TimelineClipPreviewState) => {
+      if (cancelled) return;
+      setPreviews((current) => {
+        const next = new Map(current);
+        next.set(mediaId, state);
+        return next;
+      });
+    };
+
+    const hydrate = async () => {
+      const eligible = [...sources.values()].filter(
+        (source) =>
+          source.relinkStatus !== "missing" &&
+          source.relinkStatus !== "fingerprint_mismatch",
+      );
+      if (eligible.length === 0) return;
+      try {
+        const library = await readProjectMediaLibrary();
+        if (cancelled) return;
+        if (
+          library.project_revision !== projectRevision ||
+          projection.projectRevision !== projectRevision
+        ) {
+          for (const source of eligible) {
+            update(source.id, {
+              status: "unavailable",
+              reason: "Media library project revision changed.",
+            });
+          }
+          return;
+        }
+        const itemById = new Map(
+          library.items.map((item) => [item.media_id, item] as const),
+        );
+        for (const source of eligible) {
+          if (cancelled) return;
+          const item = itemById.get(source.id);
+          if (item === undefined) {
+            update(source.id, {
+              status: "unavailable",
+              reason: "Media library record is unavailable.",
+            });
+            continue;
+          }
+          if (
+            item.offline.status === "offline" &&
+            !item.offline.derived_fallback_available
+          ) {
+            update(source.id, {
+              status: "unavailable",
+              reason: "Source media is offline without a derived preview.",
+            });
+            continue;
+          }
+          try {
+            const bundle = await generateProjectMediaPreview(library, item);
+            if (cancelled) return;
+            if (
+              bundle.media_id !== source.id ||
+              bundle.freshness !== item.content_fingerprint
+            ) {
+              update(source.id, {
+                status: "unavailable",
+                reason: "Generated preview freshness changed.",
+              });
+              continue;
+            }
+            update(source.id, { status: "ready", bundle });
+          } catch {
+            update(source.id, {
+              status: "unavailable",
+              reason: "Preview generation failed.",
+            });
+          }
+        }
+      } catch {
+        for (const source of eligible) {
+          update(source.id, {
+            status: "unavailable",
+            reason: "Media library could not be read.",
+          });
+        }
+      }
+    };
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectRevision, projection]);
+
+  return previews;
 }
 
 function TimelineReadout({

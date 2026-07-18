@@ -834,6 +834,10 @@ The vector shape authoring flow is:
   handle
   parameters. A higher integration owner can pair that editorial projection with the effects-owned
   transition definitions without reversing the dependency or copying timeline mutation policy.
+- The production editing workspace reads only effect node types already present in the canonical
+  timeline graph and labels nodes reached from a clip before the next timeline-owned node. It does
+  not import this crate, instantiate definitions, evaluate pixels, edit parameters, or claim that
+  effects-owned `AnimationCurve` values are legal in the current compiled timeline graph payload.
 - `superi-engine::plugins` now owns deterministic native bundle discovery, canonical validation,
   platform-launcher coordination, heterogeneous boxed hosts, exact activation grants, classified
   containment, restart and quarantine recovery, and shared playback, rendering, and export graph
@@ -1163,8 +1167,8 @@ implementations are scalar, allocation-bounded CPU proofs, not performance produ
 and vector shapes, masks, and text have no rasterizer or rendered consumer.
 
 There is no GPU shader parity, engine registry, production runtime catalog, timeline attachment,
-playback, viewport, export, project persistence, UI, production spatial transform, camera, light, or
-motion-blur execution, vector shape rasterization, mask rasterization,
+playback, viewport, export, project persistence, effect editing UI, production spatial transform,
+camera, light, or motion-blur execution, vector shape rasterization, mask rasterization,
 propagation solver, text rasterization or glyph atlas, production tracking attachment, pyramid or GPU
 tracking acceleration, production transition
 attachment, concrete platform worker transport, GPU-handle transport, or production native OFX
@@ -1223,6 +1227,9 @@ Keep presets complete and schema-exact, allocate fresh instance identities on re
 availability derived rather than persisted, and require explicit checked forward migrations. Do not
 turn the preset document into a project container or let missing implementations erase saved schema,
 typed values, drivers, edges, or editable graph meaning.
+Keep desktop effect badges topology-backed and read only. Do not present visual keyframes until a
+legal project-level property identity and persisted curve owner crosses the public editor boundary;
+clip-gain automation owned by audio must not be relabeled as an effects curve.
 Keep animation property meaning with node schemas and exact time ownership in core. Preserve checked
 immutable editing, the authored-versus-derived timing split, bounded expressions, exact schema
 matching, atomic catalog publication, workflow-neutral instances, request-local literal sampling,

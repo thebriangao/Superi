@@ -493,6 +493,9 @@ the matching delayed dry block to caller output.
 - `superi-engine::dispatcher` owns optional lifecycle-scoped automation state, serialized
   inspection and transaction execution, dynamic no-op event reservation, and complete replacement
   events. `superi-api` projects that engine boundary without a direct dependency on this crate.
+- The production editing workspace consumes the attached public automation replacement as read-only
+  clip detail. It correlates only exact `clip_gain` targets, signed sample positions, sample rates,
+  finite values, mode, and active-pass state, and adds no automation mutation or prepared curve.
 - `superi-project` owns clip-mix state inside the durable project aggregate and stores the canonical
   codec bytes as the singleton schema-4 audio component. Engine project command history restores
   authored clip-mix snapshots, while audio device, callback, meter, resampler, and prepared graph
@@ -779,6 +782,9 @@ and controller persistence, and a timing-matched isolated bridge fallback are al
 VST3 subset is canonical single-main-bus processing exercised through the graph master. Audio Unit
 instruments, MIDI, broader effect automation, preset browsing, plug-in UI, dynamic latency rebuild,
 and concrete cross-process transport remain absent.
+The production timeline surface now presents attached clip-gain modes, exact keyframe samples, and
+clip-relative keyframe diamond positions, but this remains observation only and does not make
+automation durable project state.
 Engine consumes timeline edit outcomes for atomic clip identity reconciliation and foreground
 playback feeds the bounded device producer while coordinating video from the actual audio clock.
 That foreground path now exposes bounded video correction and applied discontinuity recovery without
@@ -870,6 +876,8 @@ Preserve automation's ordered candidate transaction, exact revision fence, finit
 curve, half-open overwrite regions, and separate edit-versus-prepare boundary. Extend targets only
 through typed schema changes and real consumers. Never dispatch, allocate, lock, or mutate authored
 state from `ClipMixProcessor::process`, and keep the fixed-gain preparation path behavior compatible.
+Keep read-only desktop keyframes correlated to one attached automation snapshot and exact clip ID.
+Never infer visual effect curves from audio keys or persist UI preview state into this owner.
 
 After source changes, refresh this map's inventory, architecture, invariants, tests, hash, and file
 count from resulting behavior, then update consumer maps and validate the global map closure.

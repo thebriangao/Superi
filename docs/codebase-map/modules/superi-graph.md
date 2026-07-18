@@ -817,6 +817,10 @@ atomically with the rest of the project, but no `ProjectMutation` variant direct
   render coordinators and `superi-concurrency`.
 - Direct manifest consumers are `superi-ai`, `superi-cache`, `superi-color`, `superi-effects`,
   `superi-timeline`, `superi-project`, and `superi-engine`.
+- The production editing workspace is a read-only canonical-document consumer through the public
+  editor snapshot. It starts at real compiled clip nodes, follows outgoing edges through
+  non-timeline nodes until the next timeline-owned node, and presents reached node types plus exact
+  parameter-driver counts without importing graph mutation, evaluation, or catalog policy.
 - Project consumes `EditableGraph` and `GraphSnapshot` directly for retained timeline and named
   standalone graph state. It validates project-level identity and revision relationships while all
   node, port, parameter, edge, transaction, and immutable graph semantics remain owned here.
@@ -1210,8 +1214,10 @@ change the evaluator result. Cache can dispatch caller-compiled snapshots. Effec
 production definition catalog, exact-schema compiler adapter, graph-native transition catalog, and
 bounded CPU reference factory, but it has no production GPU runtime factory and does not connect
 complete ROI and invalidation plans or timeline-owned transitions to a rendered-frame application
-flow. Engine playback is the first production role consumer of an externally prepared evaluation
-snapshot. Its prediction contract proves cached warming does not change foreground meaning, and its
+flow. The desktop clip surface can inspect canonical topology and driver evidence, but it does not
+evaluate nodes or imply runtime availability. Engine playback is the first production role consumer
+of an externally prepared evaluation snapshot. Its prediction contract proves cached warming does
+not change foreground meaning, and its
 foreground contract evaluates one exact scene value through validated retention and CPU display
 conversion. Engine render-export is a second production role consumer: it binds each prepared
 decoded frame to one immutable snapshot, evaluates the exact requested time and region, retains the
@@ -1344,6 +1350,9 @@ together. Higher domains may adapt literal payloads, but graph must retain depen
 driver meaning, exact type tags, cycle checks, memoization, and completion order. Do not add implicit
 catalog lookup, host scripting, caller-specific formulas, or cached results without graph revision
 ownership and invalidation proof.
+Read-only presentation must retain node and driver identities from one canonical graph revision,
+stop at owning timeline boundaries, and never synthesize topology, effect scope, or keyframes from
+arbitrary parameter payloads.
 
 Keep `GraphValue<T>` neutral and lossless. Add variants only for shared representation needs with
 checked construction, validated serialization, exact equality, and explicit expression behavior.

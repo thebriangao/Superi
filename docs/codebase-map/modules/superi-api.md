@@ -760,8 +760,11 @@ messages, contexts, paths, and source chains never serialize.
 The production React and Tauri application consumes the committed generated contract through one
 injected client and retains the complete public editor snapshot. Its editing workspace strictly
 projects the canonical timeline document into a read-only canvas without adding public mutation
-authority. Native routing remains deliberately limited, so the application presents classified
-unavailable state for unrouted methods. No network transport, shell source loader, extension host,
+authority. The same canvas now supplements clips from the snapshot's canonical graph documents and
+attached audio automation, showing only real clip-scoped node, driver, and sample-key evidence
+while keeping canonical timeline selection distinct from shared UI selection. Native routing
+remains deliberately limited, so the application presents classified unavailable state for
+unrouted methods. No network transport, shell source loader, extension host,
 or closed-tier client is present. The local script interpreter is an in-process public API consumer,
 not a process sandbox or general-purpose language runtime. The local CLI host is a real filesystem
 and JSON-RPC process consumer, and the event stream remains transport-neutral.
@@ -1074,7 +1077,9 @@ bulk runtime payloads or hidden polling.
 The production frontend timeline contract is the downstream canonical-document consumer proof. It
 rejects wrong revisions and root identities, preserves exact source and record ranges plus stable
 relationships and track intent, and keeps playhead, range, scroll, and zoom outside API mutation
-ownership.
+ownership. Its supplemental clip contract also proves canonical graph and attached automation
+inspection, exact keyframe samples, shared `superi.editor.state` references, and no new public
+method, resource, or authored transaction.
 
 ## Current status and risks
 
@@ -1102,7 +1107,8 @@ recovery, and automation operation before dispatch.
 Generated bindings are implemented as a deterministic representation of the current in-process
 public surface and are consumed by the production desktop application. They do not themselves
 provide complete native wire routing, mutation authority, or a second authored-state owner. The
-editing workspace now uses their editor-state timeline document as an exact read-only canvas input.
+editing workspace now uses their editor-state timeline, graph, and attached automation state as an
+exact read-only canvas and clip-detail input.
 Scenario schema 1 remains deliberately narrow and fixed to one canonical edit. Its reference
 state proves transactional control semantics, not production timeline, graph, or media ownership.
 Authored clip-gain automation is a substantive strict transaction and event surface over the engine
@@ -1187,6 +1193,9 @@ Keep generic editor DTOs API-owned and strict, conversions complete before dispa
 authored apply operations inside one engine-owned compound transaction. Add every new lower editor
 operation to the explicit parity contract, public evidence projection, schema catalog, CLI schema
 consumer, and real dispatcher proof without adding direct API dependencies on lower domain crates.
+Downstream presentation may correlate canonical resources only by their stable public identities
+and revisions. It must not reinterpret missing graph or automation state as authored success,
+infer an unsupported keyframe owner, or turn shared selection into a public timeline mutation.
 Keep durable command recording on `superi.project.command.execute`. Serialize and validate exact
 typed requests before dispatch, correlate each successful command with one record and event, keep
 metadata free of raw payloads, reauthorize every retained replay request, return no partial batch on

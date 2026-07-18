@@ -640,6 +640,8 @@ Timeline document flow preserves those owners without becoming a project contain
   complete editor-state inspection and API projection now expose the canonical timeline document,
   and the production editing workspace strictly consumes that document as a read-only canvas while
   retaining exact identity, timing, grouping, targeting, synchronization, and selection evidence.
+  Its supplemental clip presentation reuses that frozen projection for names, source state, exact
+  time maps, markers, metadata, multicam intent, and separate canonical versus shared selection.
   No timeline-specific typed public DTO or application-authored mutation path exists yet.
 
 ## Invariants and operational boundaries
@@ -903,7 +905,8 @@ grouped-source compound synthesis, timeline-specific typed public adaptation, mu
 and runtime playback, timeline-driven autosave scheduling, recovery orchestration, and API
 mutation integration remain absent. Generic editor-state inspection and the public API preserve the
 canonical timeline document, and the production editing workspace now renders it through a strict
-read-only projection with transient navigation state. Engine
+read-only projection with transient navigation state plus supplemental clip detail that does not
+reparse geometry or mutate editorial state. Engine
 preparation integration now consumes and retains the compiled graph, and engine transport consumes
 the standalone signed rate value, but no
 owner yet binds that prepared native timeline graph to decoded playback, multicam mixing, or render
@@ -935,8 +938,9 @@ engine color propagation contract consumes the narrow metadata seam. The project
 retains real generic editable graph state that can admit a higher-tier effects catalog, interprets
 recognized referenced-media paths without duplicating media state, and engine resource preparation
 consumes its exact selected compilation and resolved local target. The API and editing workspace
-inspect canonical editorial state, but no API, CLI, playback, application, or production render
-owner evaluates the compiled graph result yet.
+inspect canonical editorial state and the workspace may label real clip-scoped graph nodes, but no
+API, CLI, playback, application, or production render owner evaluates the compiled graph result
+yet.
 
 ## Maintenance notes
 
@@ -963,6 +967,8 @@ Keep the production workspace projection strict against the canonical document r
 exact ranges, stable identities, relationships, targeting, synchronization, and selection. Local
 playhead, range, scroll, and zoom may remain presentation intent, but authored gestures must enter
 through project and engine command ownership rather than reconstructing timeline policy in React.
+Supplemental clip presentation must reuse that exact projection, keep source and record evidence
+unchanged, and preserve canonical timeline selection separately from application selection.
 Keep timeline edits in project command history behind the engine compound command owner and preserve
 full project snapshot restoration. Preserve the old-canonical, retained, and next-canonical
 three-way merge roles, including conflict rejection, instead of recompiling away direct graph edits.
