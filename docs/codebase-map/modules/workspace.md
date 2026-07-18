@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: c9fc650945d5bc8662281a45c9c88fc3d7852bfce385539d65edb48afa0276bb
-source_files: 230
+source_hash: d59b2787ab33ea2437976a23a4be6094636bf78814b07a8ff1583bbf28846423
+source_files: 232
 mapped_at_commit: working-tree
 ---
 
@@ -29,7 +29,7 @@ cannot resolve a material question. Multiple checkpoints still use separate
 Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers but obeys an
 explicit positive user concurrency value. The file is ignored by Git and copied into managed
 worktrees through `.worktreeinclude`, so the mapping script does not include it in this module's
-208-file inventory or source hash. It must still be reread independently before repository work.
+232-file inventory or source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
 ratified architecture, while `open/Cargo.toml` and `open/Cargo.lock` expose the dependency graph
@@ -445,6 +445,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   language artifacts, exact transcript timing, speaker and timeline relationships, local AI content
   entries, deterministic metadata plus transcript plus local-content search, and the production
   inspector consumer without model or network dependence.
+- `docs/checkpoints/P3.W03.C012.md`: Durable implementation evidence for one ordered atomic batch
+  transaction spanning rename, organization, transparent optimized transcode and proxy state,
+  fingerprint-guarded relink, metadata upsert and removal, real multi-selection UI consumption,
+  complete rollback, derived-only persistence exclusion, and deterministic original fallback.
 
 ### Production desktop application
 
@@ -491,7 +495,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   relink, intentional source replacement, and conform controls, then consumes revision-fenced native
   content search with ranked signal evidence. Its structured language-analysis editor preserves
   exact frame timing, rational rate, speaker, timeline plus clip relationships, and local AI labels,
-  terms, and transcript links as ordinary state, including explicit stale-source confirmation.
+  terms, and transcript links as ordinary state, including explicit stale-source confirmation. The
+  same production media browser owns presentation-only multi-selection and invokes one native
+  revision-fenced batch for numbered
+  rename, active-bin organization, generating optimized transcode or proxy records, root-based
+  relink, and metadata upsert or removal, then replaces its view from returned commit evidence.
 - `app/src/lifecycle.ts`: Defines the exact shell-local serialized lifecycle contract and typed
   asynchronous wrappers for the two Tauri lifecycle commands without importing engine bindings.
 - `app/src/project-lifecycle.ts`: Defines strict shell-local project lifecycle, settings, media
@@ -500,7 +508,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   region DTOs plus derived-media purpose, quality, lifecycle, attachment, selection-evidence DTOs
   and typed wrappers for the lifecycle and media-library Tauri commands. It also mirrors offline
   recovery plus persisted content-analysis artifacts and exposes revision-fenced native replacement
-  and content-search wrappers with exact explainable match evidence.
+  and content-search wrappers with exact explainable match evidence. The same bridge exposes exact
+  C012 batch operation and result DTOs. Local fallback search includes names, paths, source facts,
+  built-in and user metadata, annotations, and offline state without introducing another persisted
+  search index.
 - `app/src/main.tsx`: Constructs one process-lifetime `DesktopSuperiTransport`, injects it through
   the generated API provider, disposes it at unload, and mounts the React application under strict
   mode.
@@ -509,7 +520,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   shared selection, lifecycle controls, media-browser list and grid layouts, thumbnail fallbacks,
   source and user metadata details, editorial annotation controls, usage summaries, engine API
   status presentation, ranked content-search evidence, structured language and local-content
-  artifact editing, stale-analysis warnings, and responsive 16:9 native viewer reservations.
+  artifact editing, stale-analysis warnings, responsive multi-selection batch controls, and
+  responsive 16:9 native viewer reservations.
 - `app/src/transport.ts`: Implements the concrete generated `SuperiTransport` through one injected
   or Tauri-backed invoke/listen host, generation-scoped request identities, ordered event replay,
   stale and duplicate rejection, reconnect, cooperative cancellation, and exact
@@ -594,14 +606,21 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   replaces it without changing other media state. Its read-only revision-fenced query composes
   imported, source, user, editorial, availability, transcript, relationship, and local-content
   fields, returns bounded weighted evidence with stable media-ID tie breaking, keeps stale analysis
-  inspectable after source replacement, and requires no network or model runtime.
+  inspectable after source replacement, and requires no network or model runtime. C012 adds a
+  bounded ordered batch that clones the snapshot,
+  applies rename, organization, fixed-purpose derived-media, relink, and metadata operations, rejects
+  the complete batch with its operation index on any failure, and advances one revision on success.
+  Stable presentation names survive reimport. Replacement responses serialize refreshed usage,
+  identity, smart membership, thumbnail, offline, and resolved-representation state for the actual
+  consumer, while sidecar publication removes those derived-only fields before atomic replacement
+  and restores them from authoritative inputs on read.
 - `app/src-tauri/src/lib.rs`: Configures the mock and native Tauri builders, retains the linked
   engine process, manages its bounded connection and transport state alongside application
   lifecycle and project-session state, registers lifecycle, project, viewport, and API commands,
   including media-library snapshot, organization mutation, source inspection, user metadata, and
   editorial annotation, C007 identity-selection, C008 derived-media mutation, C009 offline recovery,
-  and C011 content-analysis mutation plus content-search commands, initializes the recovery root,
-  emits one ordered Tauri event, records
+  C011 content-analysis mutation plus content-search commands, and C012 atomic batch commands,
+  initializes the recovery root, emits one ordered Tauri event, records
   nonblocking exit intent, and joins the engine owner after the native application stops.
 - `app/src-tauri/src/main.rs`: Starts the native production desktop host.
 - `app/src-tauri/tests/engine_connection_contract.rs`: Proves dedicated EngineControl ownership,
@@ -638,6 +657,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/tests/media_content_search_contract.rs`: Freezes C011 persisted language and local
   content artifacts, exact timing, speaker and timeline relationships, the two native commands,
   strict TypeScript bridge, production search and editing consumer, and offline model independence.
+- `app/src-tauri/tests/media_batch_operations_contract.rs`: Freezes every C012 native, command,
+  typed-bridge, and production-consumer marker and executes a real two-source project through one
+  nine-operation revision. It proves stable IDs and fingerprints, generating optimized and proxy
+  fallback, one revision advance, complete mixed-operation rollback, durable reopen, and exclusion
+  of runtime-only presentation derivations from the sidecar.
 - `app/src-tauri/tests/project_settings_contract.rs`: Proves default inspection, complete atomic
   settings update, lifecycle revision coherence, durable reopen, and stale-revision rejection
   through the real local project host.
@@ -966,6 +990,12 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
   strict TypeScript checking of the production lifecycle and generated public API clients, Vite
   production bundling, and application-contract proof. `ci/frontend-smoke/` remains an independent
   focused generated-binding compatibility consumer rather than application coverage.
+- The shell-local media-management surface now includes one `mutate_project_media_batch` Tauri
+  command. Its strict tagged operation union, expected project and library revisions, bounded
+  ordered list, deterministic affected-ID evidence, and complete replacement snapshot are mirrored
+  exactly in TypeScript and consumed by the production React media browser. It remains application
+  presentation state rather than a new engine API, codec executor, project document, or search
+  service.
 - `.github/workflows/network-isolated.yml` and `open/ci/` form a fourth CI surface. It prepares
   artifacts before isolation, then proves current workspace tests, fixture validation, and the CLI
   consumer run with no non-loopback interface, no IPv4 route, and Cargo offline mode.
@@ -1013,6 +1043,29 @@ update inventory and every affected architectural statement, and refresh consume
 index when contracts, ownership, layering, flow, or status changes. Only after prose is reconciled
 may the exact `hash` and file count be recorded. Validation must pass after updates, after final
 integration or rebase, and before delivery. A passing hash never excuses stale prose.
+
+The desktop C012 media flow extends the existing C004 through C009 presentation owner without a new
+authority:
+
+1. React retains only a set of selected stable media IDs and constructs one explicit ordered batch
+   from visible editor intent.
+2. The typed bridge adds the current project and library revision fences and invokes one shell-local
+   Tauri command.
+3. `DesktopProjectState` reads current timeline usage, resolves the active project identity, and
+   asks its existing `MediaLibrarySnapshot` to apply the complete list to a clone.
+4. Rename changes only presentation name, organize reuses bin movement, proxy and transcode reuse
+   the C008 source-fresh attachment normalizer, relink reuses the C009 fingerprint guard, and
+   metadata reuses the C005 validator.
+5. Any failure returns its zero-based operation index and discards the candidate. Success validates
+   the complete candidate, advances one library revision, refreshes thumbnails, duplicate identity,
+   smart membership, availability, and representation resolution, then replaces authoritative
+   state once.
+6. Sidecar serialization removes current-project usage, derived identity, smart membership,
+   thumbnail, availability, and resolved-representation projections before temporary-file rename.
+   Durable presentation names, bins, metadata, annotations, selections, source paths, attachments,
+   and explicit representation choice remain stored.
+7. The returned replacement snapshot includes every refreshed projection. Generating derived media
+   remains inspectable but resolves to the original source until matching ready evidence exists.
 
 The build control plane begins at `open/Cargo.toml`. Cargo expands `crates/*` and `tools/*`, applies
 shared package metadata and lint defaults, resolves member and external dependencies into
@@ -1401,7 +1454,11 @@ of open runtime behavior.
   availability, relink, intentional replacement, and conform without changing stable media identity.
   C011 adds source-bound ordinary transcript and local-content artifacts plus deterministic native
   search, retaining stale analysis for inspection while requiring explicit current-source confirmation
-  before further editing. Preview generation, batch operations, and removable-volume monitoring
+  before further editing. C012 applies only its named fields through one ordered bounded candidate,
+  retains stable identity and source freshness, reports the failing operation index without partial
+  commit, and advances one revision on success. Runtime-only usage, duplicate grouping, smart
+  membership, thumbnail, availability, and resolved-representation projections reach the consumer
+  but remain absent from sidecar authority. Preview generation and removable-volume monitoring
   remain separately owned.
 - The MIT tree rejects GPL, LGPL, AGPL, MPL, patent-encumbered in-tree codecs, and dependencies or
   models without adequate redistribution and provenance rights. Operating-system and vendor codec
@@ -1475,6 +1532,19 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   and existing React media-detail consumer. It protects C007 identity and tracked selection state
   while proving replaceable source-fresh attachments, explicit status and quality choice, and
   deterministic original fallback.
+
+- The focused offline-media proof freezes the C009 native owner, Tauri registration, typed bridge,
+  and production detail and search consumer. It protects the C008 attachment and fallback contract
+  while proving online, partial, and offline state plus guarded relink, deliberate replacement, and
+  exact conform behavior.
+
+- The focused media-batch proof freezes the C012 tagged operation union, native candidate owner,
+  command registration, typed bridge, and real multi-selection consumer. Its integration test
+  imports two real local sources, commits nine mixed operations at one revision, proves stable IDs
+  and fingerprints plus original fallback for generating proxy and optimized choices, rejects a
+  later mixed batch without partial state, checks derived-only sidecar exclusion, and reopens the
+  committed state. The retained C004 through C009 contract ring and production frontend typecheck,
+  tests, and build protect every adjacent consumer.
 
 - Fresh local configuration proof parses `.codex/config.toml` with Python `tomllib`, confirms the
   exact Sol and max values plus the absence of an agent stanza, verifies that no project agent
@@ -1758,8 +1828,13 @@ now persists model-independent transcript and local AI content entries, validate
 speaker, timeline and clip relationships, and provides deterministic revision-fenced metadata,
 transcript, and local-content search with explainable evidence. React consumes that query under bin
 and smart-collection scope and edits the ordinary artifacts through atomic replacement. Thumbnail,
-filmstrip, waveform, preview generation, batch operations, and removable-volume monitoring remain
-separately owned.
+filmstrip, waveform, preview generation, and removable-volume monitoring remain separately owned.
+The same browser also selects
+many visible identities and commits ordered numbered rename, active-bin organization, generating
+optimized transcode or proxy records, root-based relink, and metadata edits through one atomic
+revision-fenced batch. Responses carry refreshed runtime projections, while the sidecar retains only
+durable authority and derived choices. Actual transcode bytes, thumbnail, filmstrip, waveform,
+preview generation, and automatic local-AI analysis remain separately owned.
 Fresh Cargo metadata expands the member globs to 25
 packages: 19 crates under
 `open/crates/` plus the `superi-fixture-tool`, `superi-dependency-check`,
@@ -1822,7 +1897,7 @@ stable editor snapshot, and local scripting runtime are implemented. CLI project
 execution now routes through the durable local API host and bounded JSON-RPC automation. Logging,
 subscription hosting, and autosave hosting remain incomplete.
 The synchronized remote revision before this checkpoint is
-`88edc77f54229818550107c90b418198b7511251`.
+`b3f99b62847978b30c9cbdd4c1fd690fa3c1bdbb`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
 root README, deny policy, and structure guide with license-audit CI. Commit
 `e0b3af9f099f527a8544d1b0317896640969903b` added the executable dependency-policy contract and its
@@ -1999,8 +2074,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`c4f049e9676aa48cc1876b66f4823a33d230c074` when this checkpoint began. Its hash describes the exact
-152 discovered source files, including generated binary payloads, layered on the integrated revision.
+`b3f99b62847978b30c9cbdd4c1fd690fa3c1bdbb` when this checkpoint began. Its hash describes the exact
+232 discovered source files, including generated binary payloads, layered on the integrated revision.
 
 ## Maintenance notes
 

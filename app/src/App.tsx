@@ -27,6 +27,7 @@ import {
   inspectProjectMediaSource,
   mutateProjectMediaAnnotations,
   mutateProjectMediaContentAnalysis,
+  mutateProjectMediaBatch,
   mutateProjectMediaIdentity,
   mutateProjectDerivedMedia,
   mutateProjectOfflineMedia,
@@ -44,6 +45,7 @@ import {
   type DesktopMediaImportResult,
   type MediaLibraryMutation,
   type MediaLibrarySnapshot,
+  type MediaBatchOperation,
   type MediaEditorialAnnotations,
   type MediaBrowserItem,
   type MediaContentAnalysis,
@@ -353,6 +355,16 @@ function ApplicationShell() {
   );
 }
 
+function sourceBasename(path: string): string {
+  return path.split(/[\\/]/u).filter(Boolean).at(-1) ?? path;
+}
+
+function sourcePathUnderRoot(root: string, path: string): string {
+  const trimmedRoot = root.replace(/[\\/]+$/u, "");
+  const separator = root.includes("\\") && !root.includes("/") ? "\\" : "/";
+  return `${trimmedRoot}${separator}${sourceBasename(path)}`;
+}
+
 function SystemPanel() {
   const api = useSuperiApi();
   const { dispatch } = useApplication();
@@ -392,6 +404,14 @@ function SystemPanel() {
   const [replacementFingerprint, setReplacementFingerprint] = useState("");
   const [userMetadataKey, setUserMetadataKey] = useState("");
   const [userMetadataValue, setUserMetadataValue] = useState("");
+  const [batchMediaIds, setBatchMediaIds] =
+    useState<ReadonlySet<string>>(new Set());
+  const [batchNamePrefix, setBatchNamePrefix] = useState("");
+  const [batchRelinkRoot, setBatchRelinkRoot] = useState("");
+  const [batchMetadataKey, setBatchMetadataKey] = useState("");
+  const [batchMetadataValue, setBatchMetadataValue] = useState("");
+  const [batchPending, setBatchPending] = useState(false);
+  const [batchResult, setBatchResult] = useState<string | null>(null);
   const [thumbnailFailures, setThumbnailFailures] =
     useState<ReadonlySet<string>>(new Set());
 
@@ -822,6 +842,26 @@ function SystemPanel() {
     }
   };
 
+  const runMediaBatch = async (
+    operations: readonly MediaBatchOperation[],
+  ) => {
+    if (mediaLibrary === null || operations.length === 0) return;
+    setBatchPending(true);
+    setBatchResult(null);
+    try {
+      const result = await mutateProjectMediaBatch(mediaLibrary, operations);
+      setMediaLibrary(result.snapshot);
+      setBatchResult(
+        `${result.operation_count} operations committed for ${result.affected_media_ids.length} media at library revision ${result.snapshot.revision}.`,
+      );
+      setProjectFailure(null);
+    } catch (error: unknown) {
+      setProjectFailure(projectFailureFrom(error));
+    } finally {
+      setBatchPending(false);
+    }
+  };
+
   const createProject = () => {
     const identity = crypto.randomUUID();
     void executeProject({
@@ -867,6 +907,8 @@ function SystemPanel() {
   const selectedMedia = mediaLibrary?.items.find(
     (item) => item.media_id === selectedMediaId,
   );
+  const batchSelectedMedia =
+    mediaLibrary?.items.filter((item) => batchMediaIds.has(item.media_id)) ?? [];
 
   return (
     <div className="panel-content system-panel" aria-live="polite">
@@ -1095,6 +1137,225 @@ function SystemPanel() {
                     } with explainable match evidence`}
               </p>
             ) : null}
+
+            <section
+              className="media-batch-operations"
+              data-testid="media-batch-operations"
+              aria-label="Batch media operations"
+            >
+              <header className="media-batch-header">
+                <div>
+                  <p className="eyebrow">Large project tools</p>
+                  <h5>Batch operations</h5>
+                </div>
+                <strong>{batchSelectedMedia.length} selected</strong>
+              </header>
+              <label className="media-batch-selection">
+                Media in the current view
+                <select
+                  multiple
+                  value={[...batchMediaIds]}
+                  size={Math.max(3, Math.min(visibleMedia.length, 7))}
+                  onChange={(event) =>
+                    setBatchMediaIds(
+                      new Set(
+                        Array.from(
+                          event.currentTarget.selectedOptions,
+                          (option) => option.value,
+                        ),
+                      ),
+                    )
+                  }
+                >
+                  {visibleMedia.map((item) => (
+                    <option value={item.media_id} key={item.media_id}>
+                      {item.name} ({item.offline.status})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="actions media-batch-selection-actions">
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={visibleMedia.length === 0 || batchPending}
+                  onClick={() =>
+                    setBatchMediaIds(
+                      new Set(visibleMedia.map((item) => item.media_id)),
+                    )
+                  }
+                >Select visible</button>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={batchSelectedMedia.length === 0 || batchPending}
+                  onClick={() => setBatchMediaIds(new Set())}
+                >Clear selection</button>
+              </div>
+              <div className="media-batch-fields">
+                <label>
+                  Rename prefix
+                  <input
+                    value={batchNamePrefix}
+                    maxLength={480}
+                    onChange={(event) => setBatchNamePrefix(event.currentTarget.value)}
+                    placeholder="Interview"
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={
+                    batchPending ||
+                    batchSelectedMedia.length === 0 ||
+                    batchNamePrefix.trim().length === 0
+                  }
+                  onClick={() =>
+                    void runMediaBatch(
+                      batchSelectedMedia.map((item, index) => ({
+                        kind: "rename",
+                        media_id: item.media_id,
+                        name: `${batchNamePrefix.trim()} ${String(index + 1).padStart(3, "0")}`,
+                      })),
+                    )
+                  }
+                >Batch rename</button>
+                <button
+                  type="button"
+                  disabled={batchPending || batchSelectedMedia.length === 0}
+                  onClick={() =>
+                    void runMediaBatch(
+                      batchSelectedMedia.map((item) => ({
+                        kind: "organize",
+                        media_id: item.media_id,
+                        bin_id: activeBinId,
+                      })),
+                    )
+                  }
+                >Organize selected</button>
+                <button
+                  type="button"
+                  disabled={batchPending || batchSelectedMedia.length === 0}
+                  onClick={() =>
+                    void runMediaBatch(
+                      batchSelectedMedia.map((item) => ({
+                        kind: "transcode",
+                        media_id: item.media_id,
+                        artifact_id: `optimized:${item.media_id}:${mediaLibrary.project_revision}:${mediaLibrary.revision + 1}`,
+                        quality: "full",
+                        status: "generating",
+                        source_fingerprint: item.content_fingerprint,
+                        source_revision: mediaLibrary.project_revision,
+                        byte_len: 0,
+                        select: true,
+                      })),
+                    )
+                  }
+                >Queue optimized transcode</button>
+                <button
+                  type="button"
+                  disabled={batchPending || batchSelectedMedia.length === 0}
+                  onClick={() =>
+                    void runMediaBatch(
+                      batchSelectedMedia.map((item) => ({
+                        kind: "proxy",
+                        media_id: item.media_id,
+                        artifact_id: `proxy:${item.media_id}:${mediaLibrary.project_revision}:${mediaLibrary.revision + 1}`,
+                        quality: "quarter",
+                        status: "generating",
+                        source_fingerprint: item.content_fingerprint,
+                        source_revision: mediaLibrary.project_revision,
+                        byte_len: 0,
+                        select: true,
+                      })),
+                    )
+                  }
+                >Queue proxy</button>
+                <label>
+                  Relink root
+                  <input
+                    value={batchRelinkRoot}
+                    onChange={(event) => setBatchRelinkRoot(event.currentTarget.value)}
+                    placeholder="/Volumes/Project/Media"
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={
+                    batchPending ||
+                    batchSelectedMedia.length === 0 ||
+                    batchRelinkRoot.trim().length === 0
+                  }
+                  onClick={() =>
+                    void runMediaBatch(
+                      batchSelectedMedia.map((item) => ({
+                        kind: "relink",
+                        media_id: item.media_id,
+                        source_paths: item.source_paths.map((path) =>
+                          sourcePathUnderRoot(batchRelinkRoot.trim(), path),
+                        ),
+                        candidate_fingerprint: item.content_fingerprint,
+                      })),
+                    )
+                  }
+                >Batch relink</button>
+                <label>
+                  Metadata key
+                  <input
+                    value={batchMetadataKey}
+                    onChange={(event) => setBatchMetadataKey(event.currentTarget.value)}
+                    placeholder="production.unit"
+                  />
+                </label>
+                <label>
+                  Metadata value
+                  <input
+                    value={batchMetadataValue}
+                    onChange={(event) => setBatchMetadataValue(event.currentTarget.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={
+                    batchPending ||
+                    batchSelectedMedia.length === 0 ||
+                    batchMetadataKey.trim().length === 0
+                  }
+                  onClick={() =>
+                    void runMediaBatch(
+                      batchSelectedMedia.map((item) => ({
+                        kind: "metadata_upsert",
+                        media_id: item.media_id,
+                        key: batchMetadataKey.trim(),
+                        value: batchMetadataValue,
+                      })),
+                    )
+                  }
+                >Update metadata</button>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={
+                    batchPending ||
+                    batchSelectedMedia.length === 0 ||
+                    batchMetadataKey.trim().length === 0
+                  }
+                  onClick={() =>
+                    void runMediaBatch(
+                      batchSelectedMedia.map((item) => ({
+                        kind: "metadata_remove",
+                        media_id: item.media_id,
+                        key: batchMetadataKey.trim(),
+                      })),
+                    )
+                  }
+                >Remove metadata</button>
+              </div>
+              <p className="media-batch-note">
+                Proxy and optimized work stays replaceable and uses the original source
+                until matching ready artifact evidence is attached.
+              </p>
+              {batchResult ? <p role="status">{batchResult}</p> : null}
+            </section>
 
             <div className="media-browser-layout">
               <aside className="media-browser-navigation">

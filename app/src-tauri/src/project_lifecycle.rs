@@ -41,7 +41,9 @@ use tauri::State;
 
 const MAX_RECENT_PROJECTS: usize = 32;
 const MAX_IMPORT_SOURCES: usize = 4096;
+const MAX_MEDIA_BATCH_OPERATIONS: usize = 4096;
 const MAX_MEDIA_BINS: usize = 1024;
+const MAX_MEDIA_DISPLAY_NAME_BYTES: usize = 512;
 const MAX_SMART_COLLECTIONS: usize = 256;
 const MAX_USER_METADATA_ENTRIES: usize = 128;
 const MAX_USER_METADATA_KEY_BYTES: usize = 64;
@@ -539,18 +541,17 @@ pub enum DerivedMediaStatus {
 }
 
 /// User intent for transparent media representation selection.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MediaRepresentationChoice {
+    #[default]
     Original,
-    Proxy { quality: DerivedMediaQuality },
-    Optimized { quality: DerivedMediaQuality },
-}
-
-impl Default for MediaRepresentationChoice {
-    fn default() -> Self {
-        Self::Original
-    }
+    Proxy {
+        quality: DerivedMediaQuality,
+    },
+    Optimized {
+        quality: DerivedMediaQuality,
+    },
 }
 
 /// One replaceable attachment bound to exact authoritative source freshness.
@@ -762,9 +763,9 @@ pub struct MediaBrowserItem {
     annotations: MediaEditorialAnnotations,
     #[serde(default)]
     content_analysis: MediaContentAnalysis,
-    #[serde(skip, default = "unused_media")]
+    #[serde(default = "unused_media")]
     usage: MediaUsageIndicator,
-    #[serde(skip, default = "untracked_media_identity")]
+    #[serde(default = "untracked_media_identity")]
     identity_tracking: MediaIdentityTracking,
     #[serde(default)]
     selections: Vec<MediaSelection>,
@@ -772,11 +773,11 @@ pub struct MediaBrowserItem {
     derived_media: Vec<DerivedMediaAttachment>,
     #[serde(default)]
     representation_choice: MediaRepresentationChoice,
-    #[serde(skip, default = "original_representation")]
+    #[serde(default = "original_representation")]
     resolved_representation: ResolvedMediaRepresentation,
-    #[serde(skip, default = "unavailable_offline_state")]
+    #[serde(default = "unavailable_offline_state")]
     offline: OfflineMediaState,
-    #[serde(skip, default = "unavailable_thumbnail")]
+    #[serde(default = "unavailable_thumbnail")]
     thumbnail: ThumbnailPresentation,
 }
 
@@ -901,7 +902,7 @@ pub struct SmartCollectionView {
     collection_id: String,
     name: String,
     name_contains: String,
-    #[serde(skip, default)]
+    #[serde(default)]
     media_ids: Vec<String>,
 }
 
@@ -992,6 +993,7 @@ impl MediaLibrarySnapshot {
                 .binary_search_by(|item| item.media_id.cmp(&imported.media_id))
             {
                 Ok(index) => {
+                    let name = self.items[index].name.clone();
                     let bin_id = self.items[index].bin_id.clone();
                     let user_metadata = self.items[index].user_metadata.clone();
                     let annotations = self.items[index].annotations.clone();
@@ -1004,6 +1006,7 @@ impl MediaLibrarySnapshot {
                         .inspection_generation
                         .saturating_add(1);
                     self.items[index] = MediaBrowserItem::from_imported(imported);
+                    self.items[index].name = name;
                     self.items[index].bin_id = bin_id;
                     self.items[index].user_metadata = user_metadata;
                     self.items[index].annotations = annotations;
@@ -1114,24 +1117,7 @@ impl MediaLibrarySnapshot {
             .iter_mut()
             .find(|item| item.media_id == update.media_id)
             .ok_or_else(|| media_library_invalid("Imported media was not found"))?;
-        match update.mutation {
-            UserMetadataMutation::Upsert { key, value } => {
-                validate_user_metadata_key(&key)?;
-                validate_user_metadata_value(&value)?;
-                if !item.user_metadata.contains_key(&key)
-                    && item.user_metadata.len() >= MAX_USER_METADATA_ENTRIES
-                {
-                    return Err(media_library_invalid("User metadata limit reached"));
-                }
-                item.user_metadata.insert(key, value);
-            }
-            UserMetadataMutation::Remove { key } => {
-                validate_user_metadata_key(&key)?;
-                if item.user_metadata.remove(&key).is_none() {
-                    return Err(media_library_invalid("User metadata key was not found"));
-                }
-            }
-        }
+        normalize_user_metadata(item, update.mutation)?;
         candidate.validate()?;
         candidate.revision = candidate.revision.checked_add(1).ok_or_else(|| {
             DesktopProjectFailure::new(
@@ -1367,6 +1353,160 @@ impl MediaLibrarySnapshot {
         candidate.refresh_derived();
         *self = candidate;
         Ok(())
+    }
+
+    fn apply_media_batch(
+        &mut self,
+        update: MediaBatchUpdate,
+    ) -> Result<Vec<String>, DesktopProjectFailure> {
+        if update.expected_project_revision != self.project_revision
+            || update.expected_library_revision != self.revision
+        {
+            return Err(user_correctable(
+                "media_library_revision_stale",
+                "Media library changed",
+                "Refresh the media library and try again.",
+            ));
+        }
+        if update.operations.is_empty() || update.operations.len() > MAX_MEDIA_BATCH_OPERATIONS {
+            return Err(media_library_invalid(
+                "Media batch is empty or exceeds the operation limit",
+            ));
+        }
+
+        let mut candidate = self.clone();
+        let mut affected_media_ids = Vec::new();
+        let mut affected = BTreeSet::new();
+        for (index, operation) in update.operations.into_iter().enumerate() {
+            let media_id = operation.media_id().to_owned();
+            candidate
+                .apply_batch_operation(operation)
+                .map_err(|failure| {
+                    failure.with_context("batch_operation_index", index.to_string())
+                })?;
+            if affected.insert(media_id.clone()) {
+                affected_media_ids.push(media_id);
+            }
+        }
+        candidate.validate()?;
+        candidate.revision = candidate.revision.checked_add(1).ok_or_else(|| {
+            DesktopProjectFailure::new(
+                DesktopProjectFailureClass::Terminal,
+                "media_library_revision_exhausted",
+                "Media library cannot continue",
+                "Restart Superi before continuing.",
+            )
+        })?;
+        candidate.refresh_derived();
+        *self = candidate;
+        Ok(affected_media_ids)
+    }
+
+    fn apply_batch_operation(
+        &mut self,
+        operation: MediaBatchOperation,
+    ) -> Result<(), DesktopProjectFailure> {
+        match operation {
+            MediaBatchOperation::Rename { media_id, name } => {
+                validate_media_display_name(&name)?;
+                self.media_item_mut(&media_id)?.name = name;
+            }
+            MediaBatchOperation::Organize { media_id, bin_id } => {
+                self.apply_mutation(MediaLibraryMutation::MoveMedia { media_id, bin_id })?;
+            }
+            MediaBatchOperation::Transcode {
+                media_id,
+                artifact_id,
+                quality,
+                status,
+                source_fingerprint,
+                source_revision,
+                byte_len,
+                select,
+            } => self.apply_batch_derived_media(
+                media_id,
+                DerivedMediaMutation::CreateOrReplace {
+                    artifact_id,
+                    purpose: DerivedMediaPurpose::Optimized,
+                    quality,
+                    status,
+                    source_fingerprint,
+                    source_revision,
+                    byte_len,
+                },
+                select.then_some(MediaRepresentationChoice::Optimized { quality }),
+            )?,
+            MediaBatchOperation::Proxy {
+                media_id,
+                artifact_id,
+                quality,
+                status,
+                source_fingerprint,
+                source_revision,
+                byte_len,
+                select,
+            } => self.apply_batch_derived_media(
+                media_id,
+                DerivedMediaMutation::CreateOrReplace {
+                    artifact_id,
+                    purpose: DerivedMediaPurpose::Proxy,
+                    quality,
+                    status,
+                    source_fingerprint,
+                    source_revision,
+                    byte_len,
+                },
+                select.then_some(MediaRepresentationChoice::Proxy { quality }),
+            )?,
+            MediaBatchOperation::Relink {
+                media_id,
+                source_paths,
+                candidate_fingerprint,
+            } => normalize_offline_media(
+                self.media_item_mut(&media_id)?,
+                OfflineMediaMutation::Relink {
+                    source_paths,
+                    candidate_fingerprint,
+                },
+            )?,
+            MediaBatchOperation::MetadataUpsert {
+                media_id,
+                key,
+                value,
+            } => normalize_user_metadata(
+                self.media_item_mut(&media_id)?,
+                UserMetadataMutation::Upsert { key, value },
+            )?,
+            MediaBatchOperation::MetadataRemove { media_id, key } => normalize_user_metadata(
+                self.media_item_mut(&media_id)?,
+                UserMetadataMutation::Remove { key },
+            )?,
+        }
+        Ok(())
+    }
+
+    fn apply_batch_derived_media(
+        &mut self,
+        media_id: String,
+        mutation: DerivedMediaMutation,
+        choice: Option<MediaRepresentationChoice>,
+    ) -> Result<(), DesktopProjectFailure> {
+        let item = self.media_item_mut(&media_id)?;
+        normalize_derived_media(item, mutation)?;
+        if let Some(choice) = choice {
+            normalize_derived_media(item, DerivedMediaMutation::SetChoice { choice })?;
+        }
+        Ok(())
+    }
+
+    fn media_item_mut(
+        &mut self,
+        media_id: &str,
+    ) -> Result<&mut MediaBrowserItem, DesktopProjectFailure> {
+        self.items
+            .iter_mut()
+            .find(|item| item.media_id == media_id)
+            .ok_or_else(|| media_library_invalid("Imported media was not found"))
     }
 
     fn apply_mutation(
@@ -1725,6 +1865,86 @@ pub struct OfflineMediaUpdate {
     pub mutation: OfflineMediaMutation,
 }
 
+/// One ordered C012 operation against a stable imported-media identity.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum MediaBatchOperation {
+    Rename {
+        media_id: String,
+        name: String,
+    },
+    Organize {
+        media_id: String,
+        bin_id: Option<String>,
+    },
+    Transcode {
+        media_id: String,
+        artifact_id: String,
+        quality: DerivedMediaQuality,
+        status: DerivedMediaStatus,
+        source_fingerprint: String,
+        source_revision: u64,
+        byte_len: u64,
+        select: bool,
+    },
+    Proxy {
+        media_id: String,
+        artifact_id: String,
+        quality: DerivedMediaQuality,
+        status: DerivedMediaStatus,
+        source_fingerprint: String,
+        source_revision: u64,
+        byte_len: u64,
+        select: bool,
+    },
+    Relink {
+        media_id: String,
+        source_paths: Vec<String>,
+        candidate_fingerprint: String,
+    },
+    MetadataUpsert {
+        media_id: String,
+        key: String,
+        value: String,
+    },
+    MetadataRemove {
+        media_id: String,
+        key: String,
+    },
+}
+
+impl MediaBatchOperation {
+    fn media_id(&self) -> &str {
+        match self {
+            Self::Rename { media_id, .. }
+            | Self::Organize { media_id, .. }
+            | Self::Transcode { media_id, .. }
+            | Self::Proxy { media_id, .. }
+            | Self::Relink { media_id, .. }
+            | Self::MetadataUpsert { media_id, .. }
+            | Self::MetadataRemove { media_id, .. } => media_id,
+        }
+    }
+}
+
+/// One bounded revision-fenced C012 batch executed as a single replacement transaction.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaBatchUpdate {
+    pub expected_project_revision: u64,
+    pub expected_library_revision: u64,
+    pub operations: Vec<MediaBatchOperation>,
+}
+
+/// Deterministic evidence and replacement state from one committed media batch.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaBatchResult {
+    operation_count: usize,
+    affected_media_ids: Vec<String>,
+    snapshot: MediaLibrarySnapshot,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct MediaLibraryStore {
@@ -1736,6 +1956,14 @@ fn require_media_text(field: &'static str, value: &str) -> Result<(), DesktopPro
         return Err(
             media_library_invalid("Media library text is invalid").with_context("field", field)
         );
+    }
+    Ok(())
+}
+
+fn validate_media_display_name(name: &str) -> Result<(), DesktopProjectFailure> {
+    require_media_text("media_name", name)?;
+    if name.trim() != name || name.len() > MAX_MEDIA_DISPLAY_NAME_BYTES {
+        return Err(media_library_invalid("Media name is invalid"));
     }
     Ok(())
 }
@@ -1784,6 +2012,31 @@ fn validate_user_metadata_key(key: &str) -> Result<(), DesktopProjectFailure> {
 fn validate_user_metadata_value(value: &str) -> Result<(), DesktopProjectFailure> {
     if value.len() > MAX_USER_METADATA_VALUE_BYTES || value.chars().any(char::is_control) {
         return Err(media_library_invalid("User metadata value is invalid"));
+    }
+    Ok(())
+}
+
+fn normalize_user_metadata(
+    item: &mut MediaBrowserItem,
+    mutation: UserMetadataMutation,
+) -> Result<(), DesktopProjectFailure> {
+    match mutation {
+        UserMetadataMutation::Upsert { key, value } => {
+            validate_user_metadata_key(&key)?;
+            validate_user_metadata_value(&value)?;
+            if !item.user_metadata.contains_key(&key)
+                && item.user_metadata.len() >= MAX_USER_METADATA_ENTRIES
+            {
+                return Err(media_library_invalid("User metadata limit reached"));
+            }
+            item.user_metadata.insert(key, value);
+        }
+        UserMetadataMutation::Remove { key } => {
+            validate_user_metadata_key(&key)?;
+            if item.user_metadata.remove(&key).is_none() {
+                return Err(media_library_invalid("User metadata key was not found"));
+            }
+        }
     }
     Ok(())
 }
@@ -3758,6 +4011,40 @@ impl DesktopProjectState {
         Ok(snapshot)
     }
 
+    pub fn mutate_media_batch(
+        &self,
+        update: MediaBatchUpdate,
+    ) -> Result<MediaBatchResult, DesktopProjectFailure> {
+        let operation_count = update.operations.len();
+        let (project_id, project_revision, project_path) =
+            self.active_project_context("mutate_media_batch")?;
+        let usage = inspect_media_usage(Path::new(&project_path))?;
+        let path = self
+            .media_library_path_lock("mutate_media_batch")?
+            .clone()
+            .ok_or_else(not_initialized)?;
+        let (snapshot, affected_media_ids) = {
+            let mut store = self.media_library_lock("mutate_media_batch")?;
+            let mut candidate_store = store.clone();
+            let library = candidate_store
+                .projects
+                .entry(project_id)
+                .or_insert_with(|| MediaLibrarySnapshot::empty(project_revision));
+            library.project_revision = project_revision;
+            let affected_media_ids = library.apply_media_batch(update)?;
+            library.refresh_usage(&usage);
+            let snapshot = library.clone();
+            publish_media_library_store(&path, &candidate_store)?;
+            *store = candidate_store;
+            (snapshot, affected_media_ids)
+        };
+        Ok(MediaBatchResult {
+            operation_count,
+            affected_media_ids,
+            snapshot,
+        })
+    }
+
     fn activate_media_library(
         &self,
         snapshot: &DesktopProjectSnapshot,
@@ -3842,20 +4129,9 @@ impl DesktopProjectState {
             .ok_or_else(not_initialized)?;
         let bytes = {
             let store = self.media_library_lock("persist_media_library")?;
-            serde_json::to_vec_pretty(&*store).map_err(|_| {
-                DesktopProjectFailure::new(
-                    DesktopProjectFailureClass::Terminal,
-                    "media_library_store_serialize_failed",
-                    "Media library could not be saved",
-                    "Restart Superi before continuing.",
-                )
-            })?
+            serialize_media_library_store(&store)?
         };
-        let temporary = path.with_extension("json.tmp");
-        std::fs::write(&temporary, bytes)
-            .map_err(|source| media_library_store_failure("write", source))?;
-        std::fs::rename(&temporary, &path)
-            .map_err(|source| media_library_store_failure("publish", source))
+        publish_media_library_bytes(&path, bytes)
     }
 
     fn lock(
@@ -3905,6 +4181,72 @@ impl DesktopProjectState {
             .with_context("operation", operation)
         })
     }
+}
+
+fn serialize_media_library_store(
+    store: &MediaLibraryStore,
+) -> Result<Vec<u8>, DesktopProjectFailure> {
+    let mut value = serde_json::to_value(store).map_err(|_| media_library_serialize_failure())?;
+    let projects = value
+        .get_mut("projects")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(media_library_serialize_failure)?;
+    for library in projects.values_mut() {
+        let items = library
+            .get_mut("items")
+            .and_then(serde_json::Value::as_array_mut)
+            .ok_or_else(media_library_serialize_failure)?;
+        for item in items {
+            let item = item
+                .as_object_mut()
+                .ok_or_else(media_library_serialize_failure)?;
+            for derived in [
+                "usage",
+                "identity_tracking",
+                "resolved_representation",
+                "offline",
+                "thumbnail",
+            ] {
+                item.remove(derived);
+            }
+        }
+        let smart_collections = library
+            .get_mut("smart_collections")
+            .and_then(serde_json::Value::as_array_mut)
+            .ok_or_else(media_library_serialize_failure)?;
+        for collection in smart_collections {
+            collection
+                .as_object_mut()
+                .ok_or_else(media_library_serialize_failure)?
+                .remove("media_ids");
+        }
+    }
+    serde_json::to_vec_pretty(&value).map_err(|_| media_library_serialize_failure())
+}
+
+fn publish_media_library_store(
+    path: &Path,
+    store: &MediaLibraryStore,
+) -> Result<(), DesktopProjectFailure> {
+    let bytes = serialize_media_library_store(store)?;
+    publish_media_library_bytes(path, bytes)
+}
+
+fn publish_media_library_bytes(path: &Path, bytes: Vec<u8>) -> Result<(), DesktopProjectFailure> {
+    let temporary = path.with_extension("json.tmp");
+    std::fs::write(&temporary, bytes)
+        .map_err(|source| media_library_store_failure("write", source))?;
+    std::fs::rename(&temporary, path)
+        .map_err(|source| media_library_store_failure("publish", source))
+}
+
+fn media_library_serialize_failure() -> DesktopProjectFailure {
+    DesktopProjectFailure::new(
+        DesktopProjectFailureClass::Terminal,
+        "media_library_store_serialize_failed",
+        "Media library could not be saved",
+        "Restart Superi before continuing.",
+    )
 }
 
 fn media_library_store_failure(
@@ -4087,6 +4429,17 @@ pub async fn mutate_project_offline_media(
     tauri::async_runtime::spawn_blocking(move || state.mutate_offline_media(update))
         .await
         .map_err(|_| project_task_failed("mutate_offline_media"))?
+}
+
+#[tauri::command]
+pub async fn mutate_project_media_batch(
+    update: MediaBatchUpdate,
+    state: State<'_, DesktopProjectState>,
+) -> Result<MediaBatchResult, DesktopProjectFailure> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.mutate_media_batch(update))
+        .await
+        .map_err(|_| project_task_failed("mutate_media_batch"))?
 }
 
 /// Closed desktop command set for project lifecycle behavior only.

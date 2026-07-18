@@ -393,6 +393,69 @@ export type MediaLibraryMutation =
       readonly collection_id: string;
     };
 
+export type MediaBatchOperation =
+  | {
+      readonly kind: "rename";
+      readonly media_id: string;
+      readonly name: string;
+    }
+  | {
+      readonly kind: "organize";
+      readonly media_id: string;
+      readonly bin_id: string | null;
+    }
+  | {
+      readonly kind: "transcode";
+      readonly media_id: string;
+      readonly artifact_id: string;
+      readonly quality: DerivedMediaQuality;
+      readonly status: DerivedMediaStatus;
+      readonly source_fingerprint: string;
+      readonly source_revision: number;
+      readonly byte_len: number;
+      readonly select: boolean;
+    }
+  | {
+      readonly kind: "proxy";
+      readonly media_id: string;
+      readonly artifact_id: string;
+      readonly quality: DerivedMediaQuality;
+      readonly status: DerivedMediaStatus;
+      readonly source_fingerprint: string;
+      readonly source_revision: number;
+      readonly byte_len: number;
+      readonly select: boolean;
+    }
+  | {
+      readonly kind: "relink";
+      readonly media_id: string;
+      readonly source_paths: readonly string[];
+      readonly candidate_fingerprint: string;
+    }
+  | {
+      readonly kind: "metadata_upsert";
+      readonly media_id: string;
+      readonly key: string;
+      readonly value: string;
+    }
+  | {
+      readonly kind: "metadata_remove";
+      readonly media_id: string;
+      readonly key: string;
+    };
+
+export interface MediaBatchUpdate {
+  readonly expected_project_revision: number;
+  readonly expected_library_revision: number;
+  readonly operations: readonly MediaBatchOperation[];
+}
+
+export interface MediaBatchResult {
+  readonly operation_count: number;
+  readonly affected_media_ids: readonly string[];
+  readonly snapshot: MediaLibrarySnapshot;
+}
+
 export type DesktopProjectCommand =
   | {
       readonly kind: "create";
@@ -439,6 +502,7 @@ const MUTATE_MEDIA_CONTENT_ANALYSIS_COMMAND =
 const SEARCH_MEDIA_CONTENT_COMMAND = "search_project_media_content";
 const MUTATE_DERIVED_MEDIA_COMMAND = "mutate_project_derived_media";
 const MUTATE_OFFLINE_MEDIA_COMMAND = "mutate_project_offline_media";
+const MUTATE_MEDIA_BATCH_COMMAND = "mutate_project_media_batch";
 
 export async function getDesktopProjectSnapshot(): Promise<DesktopProjectSnapshot> {
   return invoke<DesktopProjectSnapshot>(SNAPSHOT_COMMAND);
@@ -600,6 +664,18 @@ export async function mutateProjectOfflineMedia(
   });
 }
 
+export async function mutateProjectMediaBatch(
+  snapshot: MediaLibrarySnapshot,
+  operations: readonly MediaBatchOperation[],
+): Promise<MediaBatchResult> {
+  const update: MediaBatchUpdate = {
+    expected_project_revision: snapshot.project_revision,
+    expected_library_revision: snapshot.revision,
+    operations,
+  };
+  return invoke<MediaBatchResult>(MUTATE_MEDIA_BATCH_COMMAND, { update });
+}
+
 export function localSearchMedia(
   items: readonly MediaBrowserItem[],
   query: string,
@@ -614,6 +690,10 @@ export function localSearchMedia(
       ...item.source_paths,
       ...Object.keys(item.metadata),
       ...Object.values(item.metadata),
+      ...Object.keys(item.user_metadata),
+      ...Object.values(item.user_metadata),
+      ...Object.keys(item.source_metadata.fields),
+      ...Object.values(item.source_metadata.fields),
       ...item.annotations.labels,
       ...item.annotations.keywords,
     ].some((value) => value.toLocaleLowerCase().includes(needle)),
