@@ -22,7 +22,7 @@ const COMPONENT: &str = "superi-desktop.viewport";
 
 /// Geometry and visibility published by the React workspace shell.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DesktopViewportPlacement {
     x: f64,
     y: f64,

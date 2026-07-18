@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 3d6cb98fdeaf4fb3833edfd6c041de744d8705e177221bfe2798b8141e0e0714
-source_files: 204
+source_hash: 7be1eb8a6cb44f76d2888e2f183c343502923a8431e7a8bba07d1556499acebd
+source_files: 206
 mapped_at_commit: working-tree
 ---
 
@@ -29,7 +29,7 @@ cannot resolve a material question. Multiple checkpoints still use separate
 Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers but obeys an
 explicit positive user concurrency value. The file is ignored by Git and copied into managed
 worktrees through `.worktreeinclude`, so the mapping script does not include it in this module's
-201-file inventory or source hash. It must still be reread independently before repository work.
+206-file inventory or source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
 ratified architecture, while `open/Cargo.toml` and `open/Cargo.lock` expose the dependency graph
@@ -410,6 +410,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 
 - `docs/checkpoints/P3.W02.C001.md`: Durable implementation evidence for the managed GPU display
   presenter, native Tauri viewport owner, and persistent editing-panel geometry and status bridge.
+- `docs/checkpoints/P3.W02.C002.md`: Durable implementation evidence for the strict control-only
+  viewport placement payload, direct native presentation boundary, focused command-seam contract,
+  and explicit exclusion of media handles and webview image fallbacks.
 
 ### Production desktop application
 
@@ -439,7 +442,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   ordered channels, routes, synchronization observation, continuity evidence, and the one
   persistent native editing viewport.
 - `app/src/native-viewport.tsx`: Reserves the native output rectangle and publishes only geometry,
-  scale, visibility, and returned status to the shell-local viewport command.
+  scale, visibility, and returned status to the shell-local viewport command; it never constructs
+  an encoded image, blob URL, pixel readback, or webview frame path.
 - `app/src/App.tsx`: Registers the five professional workspace routes and panels above the delivered
   application framework while retaining the system shell, shared selection, lifecycle controls,
   generated validation request, and engine-introspection state.
@@ -459,6 +463,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/app-contract.test.mjs`: Verifies exact production pins, lifecycle and engine-process
   ownership seams, application framework composition, transport isolation, production workflow
   routing, and the hashed React bundle.
+- `app/tests/native-viewport-ipc-contract.test.mjs`: Freezes the shell-local viewport command as a
+  placement-only Tauri payload, verifies both React invocations use that command, and excludes
+  webview image conversion or pixel-readback mechanisms from the consumer.
 - `app/tests/application-framework.test.ts`: Verifies duplicate and reference validation, immutable
   routing and panel reconciliation, exact public-resource selection, local-first asynchronous API
   command delegation, shortcut normalization, and editable-target safety.
@@ -477,7 +484,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   on the public API, engine, shared concurrency, and core contracts.
 - `app/src-tauri/src/viewport.rs`: Owns the native child window, checked CSS-to-physical placement,
   shell-local status, dedicated GPU submission thread, managed cleared canonical source texture,
-  direct presentation, and join-before-host-drop lifetime.
+  direct presentation, and join-before-host-drop lifetime. Its Tauri placement DTO denies unknown
+  fields, so frame payloads, image data, and texture handles cannot enter the native presenter.
 - `app/src-tauri/Cargo.toml`: Declares the `superi-desktop` library and binary, exact Tauri and
   serialization pins, stable Rust edition, and downward-only lifecycle, engine, and public API
   dependencies.
