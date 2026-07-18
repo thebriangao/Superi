@@ -535,6 +535,32 @@ impl LocalProjectHost {
     }
 
     /// Publishes a copy while preserving active project identity.
+    pub fn save(project_path: impl AsRef<Path>) -> Result<LocalProjectSaveResult> {
+        let mut database = engine::ProjectDatabase::open(project_path)?;
+        let snapshot = database.load()?.snapshot();
+        let outcome = database.execute_save_command(engine::ProjectSaveCommand::Save, &snapshot)?;
+        Ok(LocalProjectSaveResult::from_engine(&outcome))
+    }
+
+    /// Publishes a complete project and rebinds active identity only after the commit point.
+    pub fn save_as(
+        project_path: impl AsRef<Path>,
+        destination: impl AsRef<Path>,
+        collision: LocalProjectCollision,
+    ) -> Result<LocalProjectSaveResult> {
+        let mut database = engine::ProjectDatabase::open(project_path)?;
+        let snapshot = database.load()?.snapshot();
+        let outcome = database.execute_save_command(
+            engine::ProjectSaveCommand::SaveAs {
+                destination: destination.as_ref().to_path_buf(),
+                collision: collision.into_engine(),
+            },
+            &snapshot,
+        )?;
+        Ok(LocalProjectSaveResult::from_engine(&outcome))
+    }
+
+    /// Publishes a copy while preserving active project identity.
     pub fn save_copy(
         project_path: impl AsRef<Path>,
         destination: impl AsRef<Path>,

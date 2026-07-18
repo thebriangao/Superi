@@ -4,6 +4,7 @@
 
 pub mod engine;
 pub mod lifecycle;
+pub mod project_lifecycle;
 pub mod transport;
 pub mod viewport;
 
@@ -15,6 +16,7 @@ use lifecycle::{
     ApplicationLifecycle, ApplicationLifecyclePhase, ApplicationLifecycleRequest,
     DesktopLifecycleSnapshot, LifecycleIntent,
 };
+use project_lifecycle::DesktopProjectState;
 use serde::Serialize;
 use superi_core::error::Error;
 use tauri::{AppHandle, Builder, Emitter, Manager, RunEvent, Runtime, State};
@@ -90,11 +92,14 @@ pub fn configure<R: Runtime>(builder: Builder<R>, lifecycle: ApplicationLifecycl
     builder
         .manage(ManagedLifecycle(lifecycle))
         .manage(DesktopTransportState::new())
+        .manage(DesktopProjectState::default())
         .manage(viewport::DesktopViewportState::default())
         .invoke_handler(tauri::generate_handler![
             desktop_lifecycle_snapshot,
             desktop_lifecycle_request,
             desktop_api_dispatch,
+            project_lifecycle::desktop_project_snapshot,
+            project_lifecycle::desktop_project_execute,
             viewport::desktop_viewport_update
         ])
 }
@@ -117,6 +122,8 @@ pub fn run() {
     let app = configure(tauri::Builder::default(), lifecycle)
         .manage(engine.connection())
         .setup(move |app| {
+            app.state::<DesktopProjectState>()
+                .initialize(app.path().app_data_dir()?.join("recovery"))?;
             app.state::<viewport::DesktopViewportState>()
                 .initialize(app)?;
             spawn_exit_monitor(app.handle().clone(), setup_lifecycle.clone());

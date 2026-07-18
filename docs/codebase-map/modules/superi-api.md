@@ -2,7 +2,7 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: 5adff20730ee002c640f5f05e6345ddbb34e4e7179e60dcd68191673c1041962
+source_hash: b67b8ba5644076de5e5d29dc59b1dc30fa582adca22d891f1a2c0be6064e5c4c
 source_files: 41
 mapped_at_commit: working-tree
 ---
@@ -35,7 +35,7 @@ The command-log query returns safe metadata or individually reauthorized retaine
 with explicit cursor gaps after oldest-first eviction. Network transport, dynamic routing, push
 delivery, public job submission, and typed job results remain absent. A new
 API-owned local project host composes production project database open, no-clobber creation, durable
-publication, copy, backup, recovery, editor state, settings, and generic authored commands through
+save and collision-aware save-as publication, copy, backup, recovery, editor state, settings, and generic authored commands through
 one scoped EngineControl dispatcher. Its strict JSON-RPC 2.0 automation adapter routes existing
 typed API methods and acknowledges each request only after durable publication. The generic editor,
 scripting, local project, and job facades project existing owners without duplicating authored
@@ -95,7 +95,7 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   validation, and version modules, plus the feature-gated TypeScript renderer.
 - `open/crates/superi-api/src/local.rs`: Implements strict no-clobber project creation, complete
   current-schema open and validation, scoped EngineControl dispatch, durable mutation publication,
-  copy, backup, recovery attachment, coherent render inspection, settings configuration, domain
+  collaborative-safe save, collision-aware save-as, copy, backup, recovery attachment, coherent render inspection, settings configuration, domain
   filtering for media and timeline commands, and strict caller-correlated JSON-RPC automation over
   existing public DTOs, including durable publication of every successful generic command and
   committed `superi-json` script prefix plus read-only command-log inspection.
@@ -428,7 +428,7 @@ read-only queries.
 
 `LocalProjectHost` is the process-local persistence adapter consumed by `superi-cli`. Its strict
 creation request uses caller-supplied canonical project and root timeline IDs, names, and exact edit
-rate. It exposes complete editor, settings, render, validation, copy, backup, recovery, generic
+rate. It exposes complete editor, settings, render, validation, save, save-as, copy, backup, recovery, generic
 project, media-only, and timeline-only operations. Mutating calls load one complete project, execute
 through the existing facade inside scoped EngineControl, drain correlated events, publish the
 selected snapshot through `ProjectDatabase`, and only then return success. `LocalAutomationRequest`
@@ -608,7 +608,7 @@ events, or claim whole-script atomicity.
 The durable local process flow composes those facades without changing their contracts:
 
 ```text
-strict CLI request or JSON-RPC line
+desktop lifecycle request, strict CLI request, or JSON-RPC line
   -> LocalProjectHost opens and completely loads ProjectDatabase
   -> scoped standalone EngineControl dispatcher attaches ProjectDocument
   -> existing ProjectEditorApi, ProjectSettingsApi, or ProjectRecoveryApi
@@ -626,6 +626,8 @@ command schema and optimistic revisions. Project history remains session-local, 
 operation persists only the selected project snapshot. One-shot recovery compare, restore, and
 dismiss calls rebuild the ephemeral recovery catalog first and privately drain that prerequisite
 replacement event, then return only events correlated to the caller's requested operation.
+The desktop project lifecycle consumes these same save, save-as, validation, and recovery methods
+without moving active-session, recent-project, or presentation failure state into `superi-api`.
 
 Projection preserves stable core identifiers as strings, exact rational rates, named timeline and
 track identity, half-open ranges, full image-port graph topology, row-major binary64 mirror matrix,

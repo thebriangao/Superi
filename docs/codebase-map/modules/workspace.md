@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: c0af23cbd2d5f8339f96bef4c8d8a93fa4d82c98a49990ba3fe1a278ce188a27
-source_files: 208
+source_hash: 91cb3a5a2087a7571d0f4ddae27af5e8b5580f99c44a3d9672e2d1ab08ebf23b
+source_files: 212
 mapped_at_commit: working-tree
 ---
 
@@ -415,6 +415,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and explicit exclusion of media handles and webview image fallbacks.
 - `docs/checkpoints/P3.W02.C003.md`: Durable implementation evidence for the four native viewer
   roles, canonical scene-to-display intent, role-aware workspace consumers, and focused proof.
+- `docs/checkpoints/P3.W03.C001.md`: Durable implementation evidence for create, open, close, save,
+  save-as, bounded recents, revision-fenced recovery, four actionable failure classes, the Tauri
+  session owner, and the production React consumer.
 
 ### Production desktop application
 
@@ -448,9 +451,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   never constructs an encoded image, blob URL, pixel readback, or webview frame path.
 - `app/src/App.tsx`: Registers the five professional workspace routes and panels above the delivered
   application framework while retaining the system shell, shared selection, lifecycle controls,
-  generated validation request, and engine-introspection state.
+  generated validation request, engine-introspection state, and the production project lifecycle
+  consumer for create, open, close, save, save-as, recent, and recovery actions.
 - `app/src/lifecycle.ts`: Defines the exact shell-local serialized lifecycle contract and typed
   asynchronous wrappers for the two Tauri lifecycle commands without importing engine bindings.
+- `app/src/project-lifecycle.ts`: Defines the strict shell-local project command and complete
+  replacement snapshot types plus typed wrappers for the two Tauri project lifecycle commands.
 - `app/src/main.tsx`: Constructs one process-lifetime `DesktopSuperiTransport`, injects it through
   the generated API provider, disposes it at unload, and mounts the React application under strict
   mode.
@@ -516,11 +522,15 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/src/transport.rs`: Owns the thin bounded desktop command dispatcher above the
   managed `EngineConnection`, generation-scoped request and cancellation state, exact public error
   conversion, and a 64-record ordered replacement-event replay window without engine semantics.
+- `app/src-tauri/src/project_lifecycle.rs`: Owns the sole serialized desktop project session above
+  `LocalProjectHost`, including commit-only active identity, bounded deduplicated recent projects,
+  revision-fenced recovery presentation, last-valid state retention, and retryable, degraded,
+  user-correctable, or terminal actionable failures.
 - `app/src-tauri/src/lib.rs`: Configures the mock and native Tauri builders, retains the linked
   engine process, manages its bounded connection and transport state alongside application
-  lifecycle state, registers the lifecycle commands plus one asynchronous API dispatcher, emits one
-  ordered Tauri event, records nonblocking exit intent, and joins the engine owner after the native
-  application stops.
+  lifecycle and project-session state, registers lifecycle, project, viewport, and API commands,
+  initializes the recovery root, emits one ordered Tauri event, records nonblocking exit intent,
+  and joins the engine owner after the native application stops.
 - `app/src-tauri/src/main.rs`: Starts the native production desktop host.
 - `app/src-tauri/tests/engine_connection_contract.rs`: Proves dedicated EngineControl ownership,
   truthful public validation projection, bounded nonblocking admission, stable connection reuse
@@ -528,6 +538,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/tests/lifecycle_contract.rs`: Proves exact startup and shutdown acknowledgement,
   stale-token rejection, ordered restart, classified recovery, terminal failure, and blocking-safe
   change observation.
+- `app/src-tauri/tests/project_lifecycle_contract.rs`: Proves create, open, close, save, save-as,
+  bounded recent ordering, revision-fenced recovery restore, commit-only state changes, and all four
+  actionable failure classes through a deterministic backend.
 - `app/src-tauri/tests/transport_contract.rs`: Proves the bounded transport owner opens exactly one
   ordered connection generation with the stable desktop stream identity and no false replay or
   resync state.
@@ -1193,6 +1206,13 @@ the generated `SuperiTransport`, and `app/src/api.ts` remains the sole `SuperiCl
 consumes the injected binding for validation, health, and actionable presentation without owning
 engine commands or project behavior.
 
+Beside the engine lifecycle, Tauri manages one serialized `DesktopProjectLifecycle` initialized
+with the application recovery root. Its concrete backend calls only `LocalProjectHost` creation,
+validation, save, save-as, and recovery methods; successful durable results alone replace active
+identity and bounded recent state. The typed React adapter invokes complete project commands and the
+System panel renders the returned replacement snapshot and reviewed failure action without owning
+project persistence, settings, media organization, relinking, proxy generation, or search.
+
 The documents deliberately point into other modules:
 
 - `superi-core` owns shared identifiers, time, geometry, errors, diagnostics, and serializable base
@@ -1583,6 +1603,9 @@ editing, compositing, color, audio, delivery, and system routes; the professiona
 same snapshot, preserve exact audio sample, channel, route, synchronization, and continuity fields,
 and retain classified degraded state when the native bridge reports editor methods as unrouted.
 No view takes engine or transport ownership, and unavailable runtime behavior remains honest.
+The System panel also consumes one Tauri-owned project lifecycle that durably creates, validates,
+saves, rebinds through save-as, closes, reopens recent paths, and restores opaque recovery
+candidates while retaining actionable classified failure context beside the last valid state.
 Fresh Cargo metadata expands the member globs to 25
 packages: 19 crates under
 `open/crates/` plus the `superi-fixture-tool`, `superi-dependency-check`,

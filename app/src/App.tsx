@@ -16,6 +16,13 @@ import {
   type ApplicationLifecycleRequest,
   type DesktopLifecycleSnapshot,
 } from "./lifecycle";
+import {
+  executeDesktopProject,
+  getDesktopProjectSnapshot,
+  type DesktopProjectCommand,
+  type DesktopProjectFailure,
+  type DesktopProjectSnapshot,
+} from "./project-lifecycle";
 import { classifyDesktopTransportError } from "./transport";
 import {
   AudioWorkspacePanel,
@@ -320,6 +327,14 @@ function SystemPanel() {
   const [engineApi, setEngineApi] = useState<EngineApiStatus | null>(null);
   const [clientFailure, setClientFailure] = useState<ClientFailure | null>(null);
   const [requestPending, setRequestPending] = useState(false);
+  const [projectSnapshot, setProjectSnapshot] =
+    useState<DesktopProjectSnapshot | null>(null);
+  const [projectFailure, setProjectFailure] =
+    useState<DesktopProjectFailure | null>(null);
+  const [projectPending, setProjectPending] = useState(false);
+  const [projectPath, setProjectPath] = useState("");
+  const [projectName, setProjectName] = useState("Untitled Project");
+  const [saveAsPath, setSaveAsPath] = useState("");
 
   const refresh = useCallback(async () => {
     try {
@@ -346,6 +361,25 @@ function SystemPanel() {
       window.clearInterval(timer);
     };
   }, [refresh]);
+
+  useEffect(() => {
+    let active = true;
+    void getDesktopProjectSnapshot()
+      .then((project) => {
+        if (active) {
+          setProjectSnapshot(project);
+          setProjectFailure(project.failure);
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setProjectFailure(projectFailureFrom(error));
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (api === null) {
@@ -405,6 +439,35 @@ function SystemPanel() {
     } finally {
       setRequestPending(false);
     }
+  };
+
+  const executeProject = async (command: DesktopProjectCommand) => {
+    setProjectPending(true);
+    try {
+      const project = await executeDesktopProject(command);
+      setProjectSnapshot(project);
+      setProjectFailure(project.failure);
+    } catch (error: unknown) {
+      setProjectFailure(projectFailureFrom(error));
+    } finally {
+      setProjectPending(false);
+    }
+  };
+
+  const createProject = () => {
+    const identity = crypto.randomUUID();
+    void executeProject({
+      kind: "create",
+      path: projectPath,
+      project: {
+        project_id: identity,
+        project_name: projectName.trim() || "Untitled Project",
+        root_timeline_id: crypto.randomUUID(),
+        root_timeline_name: `${projectName.trim() || "Untitled Project"} Timeline`,
+        edit_rate_numerator: 24,
+        edit_rate_denominator: 1,
+      },
+    });
   };
 
   const failure = snapshot?.failure ?? clientFailure;
@@ -503,8 +566,170 @@ function SystemPanel() {
           Quit Superi
         </button>
       </div>
+
+      <section aria-labelledby="project-lifecycle-title">
+        <h4 id="project-lifecycle-title">Project lifecycle</h4>
+        <p className="explanation">
+          {projectSnapshot?.active
+            ? `${projectSnapshot.active.identity.project_id} at ${projectSnapshot.active.path}`
+            : "No project is open."}
+        </p>
+
+        {projectFailure ? (
+          <div className="failure" role="alert">
+            <p>{projectFailure.title}</p>
+            <p>{projectFailure.action}</p>
+            <p className="failure-code">
+              {projectFailure.code} / {projectFailure.class}
+            </p>
+          </div>
+        ) : null}
+
+        <label>
+          Project path
+          <input
+            value={projectPath}
+            onChange={(event) => setProjectPath(event.currentTarget.value)}
+          />
+        </label>
+        <label>
+          Project name
+          <input
+            value={projectName}
+            onChange={(event) => setProjectName(event.currentTarget.value)}
+          />
+        </label>
+        <div className="actions" aria-label="Project open actions">
+          <button
+            type="button"
+            disabled={projectPending || projectPath.trim().length === 0}
+            onClick={createProject}
+          >
+            Create
+          </button>
+          <button
+            type="button"
+            disabled={projectPending || projectPath.trim().length === 0}
+            onClick={() =>
+              void executeProject({ kind: "open", path: projectPath })
+            }
+          >
+            Open
+          </button>
+          <button
+            type="button"
+            disabled={projectPending || projectSnapshot?.active === null}
+            onClick={() => void executeProject({ kind: "save" })}
+          >
+            Save
+          </button>
+          <button
+            className="secondary"
+            type="button"
+            disabled={projectPending || projectSnapshot?.active === null}
+            onClick={() => void executeProject({ kind: "close" })}
+          >
+            Close
+          </button>
+        </div>
+
+        <label>
+          Save-as path
+          <input
+            value={saveAsPath}
+            onChange={(event) => setSaveAsPath(event.currentTarget.value)}
+          />
+        </label>
+        <div className="actions" aria-label="Project save and recovery actions">
+          <button
+            type="button"
+            disabled={
+              projectPending ||
+              projectSnapshot?.active === null ||
+              saveAsPath.trim().length === 0
+            }
+            onClick={() =>
+              void executeProject({
+                kind: "save_as",
+                destination: saveAsPath,
+                replace_existing: false,
+              })
+            }
+          >
+            Save as
+          </button>
+          <button
+            type="button"
+            disabled={projectPending || projectSnapshot?.active === null}
+            onClick={() =>
+              void executeProject({ kind: "discover_recovery" })
+            }
+          >
+            Find recovery
+          </button>
+        </div>
+
+        {projectSnapshot?.recent.length ? (
+          <div className="actions" aria-label="Recent projects">
+            {projectSnapshot.recent.map((recent) => (
+              <button
+                className="secondary"
+                type="button"
+                key={recent.path}
+                disabled={projectPending}
+                onClick={() =>
+                  void executeProject({
+                    kind: "open_recent",
+                    path: recent.path,
+                  })
+                }
+              >
+                {recent.path}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {projectSnapshot?.recovery?.candidates.map((candidate) => (
+          <button
+            type="button"
+            key={candidate.candidate_id}
+            disabled={projectPending}
+            onClick={() =>
+              void executeProject({
+                kind: "restore_recovery",
+                catalog_revision:
+                  projectSnapshot.recovery?.catalog_revision ?? 0,
+                candidate_id: candidate.candidate_id,
+              })
+            }
+          >
+            {candidate.action}
+          </button>
+        ))}
+      </section>
     </div>
   );
+}
+
+function projectFailureFrom(error: unknown): DesktopProjectFailure {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "class" in error &&
+    "code" in error &&
+    "title" in error &&
+    "action" in error
+  ) {
+    return error as DesktopProjectFailure;
+  }
+  return {
+    class: "terminal",
+    code: "project_transport_unavailable",
+    title: "Project service is unavailable",
+    action: "Restart Superi before continuing.",
+    context: {},
+  };
 }
 
 function engineSelectionReference(
