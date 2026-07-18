@@ -202,6 +202,40 @@ export interface MediaSelection {
   readonly tracked_regions: readonly MediaTrackedRegion[];
 }
 
+export type DerivedMediaPurpose = "proxy" | "optimized";
+export type DerivedMediaQuality = "eighth" | "quarter" | "half" | "full";
+export type DerivedMediaStatus = "generating" | "ready" | "stale" | "failed";
+export type MediaRepresentationChoice =
+  | { readonly kind: "original" }
+  | { readonly kind: "proxy"; readonly quality: DerivedMediaQuality }
+  | { readonly kind: "optimized"; readonly quality: DerivedMediaQuality };
+
+export interface DerivedMediaAttachment {
+  readonly artifact_id: string;
+  readonly purpose: DerivedMediaPurpose;
+  readonly quality: DerivedMediaQuality;
+  readonly status: DerivedMediaStatus;
+  readonly source_fingerprint: string;
+  readonly source_revision: number;
+  readonly byte_len: number;
+}
+
+export interface ResolvedMediaRepresentation {
+  readonly representation: "original" | DerivedMediaPurpose;
+  readonly quality: DerivedMediaQuality | null;
+  readonly artifact_id: string | null;
+  readonly fallback_to_original: boolean;
+}
+
+export type DerivedMediaMutation =
+  | ({ readonly kind: "create_or_replace" } & DerivedMediaAttachment)
+  | { readonly kind: "set_choice"; readonly choice: MediaRepresentationChoice }
+  | {
+      readonly kind: "remove";
+      readonly purpose: DerivedMediaPurpose;
+      readonly quality: DerivedMediaQuality;
+    };
+
 export interface MediaBrowserItem {
   readonly media_id: string;
   readonly name: string;
@@ -221,6 +255,9 @@ export interface MediaBrowserItem {
   readonly usage: MediaUsageIndicator;
   readonly identity_tracking: MediaIdentityTracking;
   readonly selections: readonly MediaSelection[];
+  readonly derived_media: readonly DerivedMediaAttachment[];
+  readonly representation_choice: MediaRepresentationChoice;
+  readonly resolved_representation: ResolvedMediaRepresentation;
   readonly thumbnail: ThumbnailPresentation;
 }
 
@@ -310,6 +347,7 @@ const INSPECT_MEDIA_SOURCE_COMMAND = "inspect_project_media_source";
 const MUTATE_MEDIA_METADATA_COMMAND = "mutate_project_media_metadata";
 const MUTATE_MEDIA_ANNOTATIONS_COMMAND = "mutate_project_media_annotations";
 const MUTATE_MEDIA_IDENTITY_COMMAND = "mutate_project_media_identity";
+const MUTATE_DERIVED_MEDIA_COMMAND = "mutate_project_derived_media";
 
 export async function getDesktopProjectSnapshot(): Promise<DesktopProjectSnapshot> {
   return invoke<DesktopProjectSnapshot>(SNAPSHOT_COMMAND);
@@ -406,6 +444,21 @@ export async function mutateProjectMediaIdentity(
       expected_library_revision: snapshot.revision,
       media_id: mediaId,
       selections,
+    },
+  });
+}
+
+export async function mutateProjectDerivedMedia(
+  snapshot: MediaLibrarySnapshot,
+  mediaId: string,
+  mutation: DerivedMediaMutation,
+): Promise<MediaLibrarySnapshot> {
+  return invoke<MediaLibrarySnapshot>(MUTATE_DERIVED_MEDIA_COMMAND, {
+    update: {
+      expected_project_revision: snapshot.project_revision,
+      expected_library_revision: snapshot.revision,
+      media_id: mediaId,
+      mutation,
     },
   });
 }

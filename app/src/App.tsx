@@ -27,6 +27,7 @@ import {
   inspectProjectMediaSource,
   mutateProjectMediaAnnotations,
   mutateProjectMediaIdentity,
+  mutateProjectDerivedMedia,
   mutateProjectMediaMetadata,
   mutateProjectMediaLibrary,
   readProjectMediaLibrary,
@@ -42,6 +43,7 @@ import {
   type MediaLibrarySnapshot,
   type MediaEditorialAnnotations,
   type MediaSelection,
+  type DerivedMediaMutation,
   type UserMetadataMutation,
 } from "./project-lifecycle";
 import { classifyDesktopTransportError } from "./transport";
@@ -712,6 +714,24 @@ function SystemPanel() {
     }
   };
 
+  const mutateDerivedMedia = async (mutation: DerivedMediaMutation) => {
+    if (mediaLibrary === null || selectedMedia === undefined) {
+      return;
+    }
+    try {
+      setMediaLibrary(
+        await mutateProjectDerivedMedia(
+          mediaLibrary,
+          selectedMedia.media_id,
+          mutation,
+        ),
+      );
+      setProjectFailure(null);
+    } catch (error: unknown) {
+      setProjectFailure(projectFailureFrom(error));
+    }
+  };
+
   const createProject = () => {
     const identity = crypto.randomUUID();
     void executeProject({
@@ -1336,6 +1356,80 @@ function SystemPanel() {
                           ))}
                         </article>
                       ))}
+                    </section>
+                    <section aria-label="Proxy and optimized media">
+                      <h5>Proxy and optimized media</h5>
+                      <p>
+                        Active: {selectedMedia.resolved_representation.representation}
+                        {selectedMedia.resolved_representation.fallback_to_original
+                          ? " (deterministic original fallback)"
+                          : ""}
+                      </p>
+                      <div className="actions">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void mutateDerivedMedia({
+                              kind: "set_choice",
+                              choice: { kind: "original" },
+                            })
+                          }
+                        >
+                          Use original
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void mutateDerivedMedia({
+                              kind: "create_or_replace",
+                              artifact_id: crypto.randomUUID(),
+                              purpose: "proxy",
+                              quality: "quarter",
+                              status: "ready",
+                              source_fingerprint: selectedMedia.content_fingerprint,
+                              source_revision: mediaLibrary.project_revision,
+                              byte_len: 1,
+                            })
+                          }
+                        >
+                          Create or replace proxy
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void mutateDerivedMedia({
+                              kind: "set_choice",
+                              choice: { kind: "proxy", quality: "quarter" },
+                            })
+                          }
+                        >
+                          Use quarter proxy
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void mutateDerivedMedia({
+                              kind: "create_or_replace",
+                              artifact_id: crypto.randomUUID(),
+                              purpose: "optimized",
+                              quality: "full",
+                              status: "ready",
+                              source_fingerprint: selectedMedia.content_fingerprint,
+                              source_revision: mediaLibrary.project_revision,
+                              byte_len: 1,
+                            })
+                          }
+                        >
+                          Create or replace optimized media
+                        </button>
+                      </div>
+                      <ul>
+                        {selectedMedia.derived_media.map((attachment) => (
+                          <li key={`${attachment.purpose}:${attachment.quality}`}>
+                            {attachment.purpose} / {attachment.quality} / {attachment.status}
+                          </li>
+                        ))}
+                      </ul>
                     </section>
                     <div className="user-metadata-editor">
                       <h5>User metadata</h5>

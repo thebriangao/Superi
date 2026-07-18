@@ -58,6 +58,7 @@ const MAX_SELECTION_NAME_BYTES: usize = 128;
 const MAX_TRACKED_REGIONS: usize = 32;
 const MAX_TRACKED_OBSERVATIONS: usize = 1024;
 const MAX_IDENTITY_PAYLOAD_BYTES: usize = 64 * 1024;
+const MAX_DERIVED_MEDIA_ATTACHMENTS: usize = 16;
 const NORMALIZED_REGION_SCALE: u32 = 1_000_000;
 
 const TIMELINE_RATE_NUMERATOR_KEY: &str = "superi.project.timeline.default_rate_numerator";
@@ -451,6 +452,81 @@ pub struct MediaSelection {
     tracked_regions: Vec<MediaTrackedRegion>,
 }
 
+/// Replaceable derived-media role; the imported source remains authoritative.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DerivedMediaPurpose {
+    Proxy,
+    Optimized,
+}
+
+/// Explicit derived-media quality ordered from lowest to highest fidelity.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DerivedMediaQuality {
+    Eighth,
+    Quarter,
+    Half,
+    Full,
+}
+
+/// Inspectable lifecycle state for one replaceable derived artifact.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DerivedMediaStatus {
+    Generating,
+    Ready,
+    Stale,
+    Failed,
+}
+
+/// User intent for transparent media representation selection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum MediaRepresentationChoice {
+    Original,
+    Proxy { quality: DerivedMediaQuality },
+    Optimized { quality: DerivedMediaQuality },
+}
+
+impl Default for MediaRepresentationChoice {
+    fn default() -> Self {
+        Self::Original
+    }
+}
+
+/// One replaceable attachment bound to exact authoritative source freshness.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DerivedMediaAttachment {
+    artifact_id: String,
+    purpose: DerivedMediaPurpose,
+    quality: DerivedMediaQuality,
+    status: DerivedMediaStatus,
+    source_fingerprint: String,
+    source_revision: u64,
+    byte_len: u64,
+}
+
+/// Deterministic selection evidence exposed without changing source identity.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResolvedMediaRepresentation {
+    representation: String,
+    quality: Option<DerivedMediaQuality>,
+    artifact_id: Option<String>,
+    fallback_to_original: bool,
+}
+
+fn original_representation() -> ResolvedMediaRepresentation {
+    ResolvedMediaRepresentation {
+        representation: "original".to_owned(),
+        quality: None,
+        artifact_id: None,
+        fallback_to_original: false,
+    }
+}
+
 fn untracked_media_identity() -> MediaIdentityTracking {
     MediaIdentityTracking::default()
 }
@@ -604,6 +680,12 @@ pub struct MediaBrowserItem {
     identity_tracking: MediaIdentityTracking,
     #[serde(default)]
     selections: Vec<MediaSelection>,
+    #[serde(default)]
+    derived_media: Vec<DerivedMediaAttachment>,
+    #[serde(default)]
+    representation_choice: MediaRepresentationChoice,
+    #[serde(skip, default = "original_representation")]
+    resolved_representation: ResolvedMediaRepresentation,
     #[serde(skip, default = "unavailable_thumbnail")]
     thumbnail: ThumbnailPresentation,
 }
@@ -647,6 +729,9 @@ impl MediaBrowserItem {
             usage: unused_media(),
             identity_tracking: untracked_media_identity(),
             selections: Vec::new(),
+            derived_media: Vec::new(),
+            representation_choice: MediaRepresentationChoice::Original,
+            resolved_representation: original_representation(),
             thumbnail: thumbnail_presentation(media),
         }
     }
@@ -665,6 +750,21 @@ impl MediaBrowserItem {
             frame_rate_denominator: self.frame_rate_denominator,
         };
         self.thumbnail = thumbnail_presentation(&media);
+    }
+
+    fn refresh_derived_media(&mut self) {
+        for attachment in &mut self.derived_media {
+            if attachment.source_fingerprint != self.content_fingerprint
+                && attachment.status == DerivedMediaStatus::Ready
+            {
+                attachment.status = DerivedMediaStatus::Stale;
+            }
+        }
+        self.resolved_representation = resolve_media_representation(
+            self.representation_choice,
+            &self.content_fingerprint,
+            &self.derived_media,
+        );
     }
 }
 
@@ -713,6 +813,7 @@ impl MediaLibrarySnapshot {
     fn refresh_derived(&mut self) {
         for item in &mut self.items {
             item.refresh_thumbnail();
+            item.refresh_derived_media();
         }
         for collection in &mut self.smart_collections {
             let needle = collection.name_contains.to_lowercase();
@@ -778,6 +879,8 @@ impl MediaLibrarySnapshot {
                     let user_metadata = self.items[index].user_metadata.clone();
                     let annotations = self.items[index].annotations.clone();
                     let selections = self.items[index].selections.clone();
+                    let derived_media = self.items[index].derived_media.clone();
+                    let representation_choice = self.items[index].representation_choice;
                     let inspection_generation = self.items[index]
                         .source_metadata
                         .inspection_generation
@@ -787,6 +890,8 @@ impl MediaLibrarySnapshot {
                     self.items[index].user_metadata = user_metadata;
                     self.items[index].annotations = annotations;
                     self.items[index].selections = selections;
+                    self.items[index].derived_media = derived_media;
+                    self.items[index].representation_choice = representation_choice;
                     self.items[index].source_metadata =
                         source_metadata_inspection(imported, inspection_generation);
                 }
@@ -978,6 +1083,40 @@ impl MediaLibrarySnapshot {
             .find(|item| item.media_id == update.media_id)
             .ok_or_else(|| media_library_invalid("Imported media was not found"))?;
         item.selections = selections;
+        candidate.validate()?;
+        candidate.revision = candidate.revision.checked_add(1).ok_or_else(|| {
+            DesktopProjectFailure::new(
+                DesktopProjectFailureClass::Terminal,
+                "media_library_revision_exhausted",
+                "Media library cannot continue",
+                "Restart Superi before continuing.",
+            )
+        })?;
+        candidate.refresh_derived();
+        *self = candidate;
+        Ok(())
+    }
+
+    fn apply_derived_media(
+        &mut self,
+        update: DerivedMediaUpdate,
+    ) -> Result<(), DesktopProjectFailure> {
+        if update.expected_project_revision != self.project_revision
+            || update.expected_library_revision != self.revision
+        {
+            return Err(user_correctable(
+                "media_library_revision_stale",
+                "Media library changed",
+                "Refresh the media library and try again.",
+            ));
+        }
+        let mut candidate = self.clone();
+        let item = candidate
+            .items
+            .iter_mut()
+            .find(|item| item.media_id == update.media_id)
+            .ok_or_else(|| media_library_invalid("Imported media was not found"))?;
+        normalize_derived_media(item, update.mutation)?;
         candidate.validate()?;
         candidate.revision = candidate.revision.checked_add(1).ok_or_else(|| {
             DesktopProjectFailure::new(
@@ -1217,6 +1356,38 @@ pub struct MediaIdentityUpdate {
     pub selections: Vec<MediaSelection>,
 }
 
+/// One revision-fenced derived-media lifecycle mutation for a stable C007 identity.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum DerivedMediaMutation {
+    CreateOrReplace {
+        artifact_id: String,
+        purpose: DerivedMediaPurpose,
+        quality: DerivedMediaQuality,
+        status: DerivedMediaStatus,
+        source_fingerprint: String,
+        source_revision: u64,
+        byte_len: u64,
+    },
+    SetChoice {
+        choice: MediaRepresentationChoice,
+    },
+    Remove {
+        purpose: DerivedMediaPurpose,
+        quality: DerivedMediaQuality,
+    },
+}
+
+/// Atomic C008 update that never mutates source, annotations, or tracked selections.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DerivedMediaUpdate {
+    pub expected_project_revision: u64,
+    pub expected_library_revision: u64,
+    pub media_id: String,
+    pub mutation: DerivedMediaMutation,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct MediaLibraryStore {
@@ -1386,6 +1557,102 @@ fn normalize_media_selections(
         return Err(media_library_invalid("Media identity state is too large"));
     }
     Ok(selections)
+}
+
+fn normalize_derived_media(
+    item: &mut MediaBrowserItem,
+    mutation: DerivedMediaMutation,
+) -> Result<(), DesktopProjectFailure> {
+    match mutation {
+        DerivedMediaMutation::CreateOrReplace {
+            artifact_id,
+            purpose,
+            quality,
+            status,
+            source_fingerprint,
+            source_revision,
+            byte_len,
+        } => {
+            require_media_text("artifact_id", &artifact_id)?;
+            if source_fingerprint != item.content_fingerprint {
+                return Err(user_correctable(
+                    "derived_media_source_stale",
+                    "Source changed before derived media was attached",
+                    "Regenerate the proxy or optimized media from the current source.",
+                ));
+            }
+            if byte_len == 0 && status == DerivedMediaStatus::Ready {
+                return Err(media_library_invalid("Ready derived media cannot be empty"));
+            }
+            let attachment = DerivedMediaAttachment {
+                artifact_id,
+                purpose,
+                quality,
+                status,
+                source_fingerprint,
+                source_revision,
+                byte_len,
+            };
+            if let Some(existing) = item
+                .derived_media
+                .iter_mut()
+                .find(|candidate| candidate.purpose == purpose && candidate.quality == quality)
+            {
+                *existing = attachment;
+            } else {
+                if item.derived_media.len() >= MAX_DERIVED_MEDIA_ATTACHMENTS {
+                    return Err(media_library_invalid(
+                        "Derived media attachment limit reached",
+                    ));
+                }
+                item.derived_media.push(attachment);
+            }
+            item.derived_media
+                .sort_by_key(|attachment| (attachment.purpose as u8, attachment.quality));
+        }
+        DerivedMediaMutation::SetChoice { choice } => item.representation_choice = choice,
+        DerivedMediaMutation::Remove { purpose, quality } => item
+            .derived_media
+            .retain(|attachment| attachment.purpose != purpose || attachment.quality != quality),
+    }
+    item.refresh_derived_media();
+    Ok(())
+}
+
+fn resolve_media_representation(
+    choice: MediaRepresentationChoice,
+    source_fingerprint: &str,
+    attachments: &[DerivedMediaAttachment],
+) -> ResolvedMediaRepresentation {
+    let (purpose, quality, representation) = match choice {
+        MediaRepresentationChoice::Original => return original_representation(),
+        MediaRepresentationChoice::Proxy { quality } => {
+            (DerivedMediaPurpose::Proxy, quality, "proxy")
+        }
+        MediaRepresentationChoice::Optimized { quality } => {
+            (DerivedMediaPurpose::Optimized, quality, "optimized")
+        }
+    };
+    let selected = attachments.iter().find(|attachment| {
+        attachment.purpose == purpose
+            && attachment.quality == quality
+            && attachment.status == DerivedMediaStatus::Ready
+            && attachment.source_fingerprint == source_fingerprint
+    });
+    match selected {
+        Some(attachment) => ResolvedMediaRepresentation {
+            representation: representation.to_owned(),
+            quality: Some(quality),
+            artifact_id: Some(attachment.artifact_id.clone()),
+            fallback_to_original: false,
+        },
+        None => ResolvedMediaRepresentation {
+            representation: "original".to_owned(),
+            quality: None,
+            artifact_id: None,
+            fallback_to_original: true,
+        },
+    }
 }
 
 fn normalize_annotation_text(
@@ -2519,6 +2786,28 @@ impl DesktopProjectState {
         Ok(snapshot)
     }
 
+    pub fn mutate_derived_media(
+        &self,
+        update: DerivedMediaUpdate,
+    ) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+        let (project_id, project_revision, project_path) =
+            self.active_project_context("mutate_derived_media")?;
+        let usage = inspect_media_usage(Path::new(&project_path))?;
+        let snapshot = {
+            let mut store = self.media_library_lock("mutate_derived_media")?;
+            let library = store
+                .projects
+                .entry(project_id)
+                .or_insert_with(|| MediaLibrarySnapshot::empty(project_revision));
+            library.project_revision = project_revision;
+            library.apply_derived_media(update)?;
+            library.refresh_usage(&usage);
+            library.clone()
+        };
+        self.persist_media_libraries()?;
+        Ok(snapshot)
+    }
+
     fn activate_media_library(
         &self,
         snapshot: &DesktopProjectSnapshot,
@@ -2804,6 +3093,17 @@ pub async fn mutate_project_media_identity(
     tauri::async_runtime::spawn_blocking(move || state.mutate_media_identity(update))
         .await
         .map_err(|_| project_task_failed("mutate_media_identity"))?
+}
+
+#[tauri::command]
+pub async fn mutate_project_derived_media(
+    update: DerivedMediaUpdate,
+    state: State<'_, DesktopProjectState>,
+) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.mutate_derived_media(update))
+        .await
+        .map_err(|_| project_task_failed("mutate_derived_media"))?
 }
 
 /// Closed desktop command set for project lifecycle behavior only.
