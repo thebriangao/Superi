@@ -38,7 +38,7 @@ against raw source before changing code.
 | `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline fixture validation, generation, and typed golden verification | Implemented validation library, six generators, seven-command CLI, four golden harnesses, and focused contracts |
 | `tool-superi-test-report` | [module map](modules/tool-superi-test-report.md) | `open/tools/superi-test-report` | Offline structured platform-lane evidence generator | Implemented strict schema, deterministic findings, collision-safe CLI, and focused contracts |
 | `tool-superi-api-bindings` | [module map](modules/tool-superi-api-bindings.md) | `open/tools/superi-api-bindings` | Deterministic committed TypeScript API artifact generator and freshness checker | Implemented pure rendering, idempotent generation, nonmutating freshness checks, and focused contracts |
-| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, production React and Tauri shell, workspace configuration, fixtures, generated TypeScript artifact, retained frontend consumer, and agent workflows | Active control layer: deterministic checkpoint workflow, explicit revisioned application and headless-engine lifecycle, one durable project lifecycle with bounded recents, revision-fenced recovery, and four actionable failure classes, a linked EngineControl dispatcher, bounded native validation connection, shell-local lifecycle and control-only viewport commands, injected generated `SuperiClient`, thin command/event transport, ordered replay and reconnect, cooperative cancellation, deterministic application routing, transient workspace layout, panel and command registries, immutable shared selection, one public editor-snapshot presentation owner, five professional workspaces, and source, program, composite, and color native GPU viewers are delivered; one GPU submission owner presents role-addressed canonical RGBA16F results through immutable ACEScg-to-sRGB intent, while strict placement rejects unknown media fields and React excludes encoded-image or readback fallbacks |
+| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, production React and Tauri shell, workspace configuration, fixtures, generated TypeScript artifact, retained frontend consumer, and agent workflows | Active control layer: deterministic checkpoint workflow, explicit revisioned application and headless-engine lifecycle, one durable project lifecycle with bounded recents, revision-fenced recovery, four actionable failure classes, and atomic project-settings inspection and editing, a linked EngineControl dispatcher, bounded native validation connection, shell-local lifecycle and control-only viewport commands, injected generated `SuperiClient`, thin command/event transport, ordered replay and reconnect, cooperative cancellation, deterministic application routing, transient workspace layout, panel and command registries, immutable shared selection, one public editor-snapshot presentation owner, five professional workspaces, and source, program, composite, and color native GPU viewers are delivered; one GPU submission owner presents role-addressed canonical RGBA16F results through immutable ACEScg-to-sRGB intent, while strict placement rejects unknown media fields and React excludes encoded-image or readback fallbacks |
 
 ## Ownership and repository boundaries
 
@@ -216,9 +216,10 @@ The production desktop lifecycle is implemented without creating a second engine
     and focused contracts keep frame bytes, image conversion, blob URLs, pixel readback, and texture
     handles outside this IPC seam while fixing precision, alpha, transform order, and display intent.
 13. A separate Tauri-owned project lifecycle calls `LocalProjectHost` for durable create, open,
-    save, save-as, validation, and recovery work. It commits active and bounded recent presentation
-    only after success, retains revision-fenced recovery candidates and reviewed actionable failure
-    context, and exposes complete replacement state to one typed System-panel consumer.
+    save, save-as, validation, recovery, settings inspection, and atomic settings transactions. It
+    commits active and bounded recent presentation only after success, retains revision-fenced
+    recovery candidates and reviewed actionable failure context, and exposes complete lifecycle and
+    settings state to one typed System-panel consumer.
 
 Media registry construction and capability introspection are implemented as follows:
 
@@ -538,9 +539,10 @@ direction:
    save and save-as reuse collaborative-safe publication and collision rules; copy, backup, and
    recovery reuse existing project commands and active-database ownership. Validation is a
    read-only complete current-schema reconstruction.
-4. The desktop project lifecycle retains only active identity, bounded recent paths, recovery
-   presentation, and actionable failure state. Its React consumer receives complete replacement
-   snapshots and never supplies recovery artifact paths or owns project settings.
+4. The desktop project lifecycle retains active identity, bounded recent paths, recovery
+   presentation, actionable failure state, and a projection of the durable project settings owner.
+   Its React consumer receives complete replacement snapshots, never supplies recovery artifact
+   paths, and edits settings only through revision-fenced project transactions.
 5. `superi-cli` retains paths as operating-system values and consumes only API DTOs. Media and
    timeline commands enforce exact action partitions; render inspection returns editor and settings
    state from one loaded revision; render configuration accepts only existing render setting keys.

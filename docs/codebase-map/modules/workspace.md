@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 91cb3a5a2087a7571d0f4ddae27af5e8b5580f99c44a3d9672e2d1ab08ebf23b
-source_files: 212
+source_hash: bebdef3e78c2c07cc8c958c6dbd5b0c23989f5701ec9a4c28feb319a675a5624
+source_files: 214
 mapped_at_commit: working-tree
 ---
 
@@ -418,6 +418,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W03.C001.md`: Durable implementation evidence for create, open, close, save,
   save-as, bounded recents, revision-fenced recovery, four actionable failure classes, the Tauri
   session owner, and the production React consumer.
+- `docs/checkpoints/P3.W03.C002.md`: Durable implementation evidence for project-owned frame rate,
+  resolution, color, audio, cache, proxy, and working-folder settings attached to that lifecycle.
 
 ### Production desktop application
 
@@ -452,11 +454,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/App.tsx`: Registers the five professional workspace routes and panels above the delivered
   application framework while retaining the system shell, shared selection, lifecycle controls,
   generated validation request, engine-introspection state, and the production project lifecycle
-  consumer for create, open, close, save, save-as, recent, and recovery actions.
+  consumer for create, open, close, save, save-as, recent, recovery, and compact project-settings
+  inspection and editing.
 - `app/src/lifecycle.ts`: Defines the exact shell-local serialized lifecycle contract and typed
   asynchronous wrappers for the two Tauri lifecycle commands without importing engine bindings.
-- `app/src/project-lifecycle.ts`: Defines the strict shell-local project command and complete
-  replacement snapshot types plus typed wrappers for the two Tauri project lifecycle commands.
+- `app/src/project-lifecycle.ts`: Defines strict shell-local project lifecycle and settings DTOs
+  plus typed wrappers for the four Tauri project commands.
 - `app/src/main.tsx`: Constructs one process-lifetime `DesktopSuperiTransport`, injects it through
   the generated API provider, disposes it at unload, and mounts the React application under strict
   mode.
@@ -525,7 +528,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/src/project_lifecycle.rs`: Owns the sole serialized desktop project session above
   `LocalProjectHost`, including commit-only active identity, bounded deduplicated recent projects,
   revision-fenced recovery presentation, last-valid state retention, and retryable, degraded,
-  user-correctable, or terminal actionable failures.
+  user-correctable, or terminal actionable failures. It projects and atomically updates the
+  project-owned settings snapshot without taking persistence authority.
 - `app/src-tauri/src/lib.rs`: Configures the mock and native Tauri builders, retains the linked
   engine process, manages its bounded connection and transport state alongside application
   lifecycle and project-session state, registers lifecycle, project, viewport, and API commands,
@@ -541,6 +545,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/tests/project_lifecycle_contract.rs`: Proves create, open, close, save, save-as,
   bounded recent ordering, revision-fenced recovery restore, commit-only state changes, and all four
   actionable failure classes through a deterministic backend.
+- `app/src-tauri/tests/project_settings_contract.rs`: Proves default inspection, complete atomic
+  settings update, lifecycle revision coherence, durable reopen, and stale-revision rejection
+  through the real local project host.
 - `app/src-tauri/tests/transport_contract.rs`: Proves the bounded transport owner opens exactly one
   ordered connection generation with the stable desktop stream identity and no false replay or
   resync state.
@@ -1208,10 +1215,11 @@ engine commands or project behavior.
 
 Beside the engine lifecycle, Tauri manages one serialized `DesktopProjectLifecycle` initialized
 with the application recovery root. Its concrete backend calls only `LocalProjectHost` creation,
-validation, save, save-as, and recovery methods; successful durable results alone replace active
-identity and bounded recent state. The typed React adapter invokes complete project commands and the
-System panel renders the returned replacement snapshot and reviewed failure action without owning
-project persistence, settings, media organization, relinking, proxy generation, or search.
+validation, save, save-as, recovery, settings inspection, and atomic settings transaction methods;
+successful durable results alone replace active identity and bounded recent state. The typed React
+adapter invokes complete project commands and the System panel renders lifecycle state, reviewed
+failure actions, and an editable projection of project settings without owning persistence, media
+organization, relinking, proxy generation, or search.
 
 The documents deliberately point into other modules:
 
@@ -1605,7 +1613,9 @@ and retain classified degraded state when the native bridge reports editor metho
 No view takes engine or transport ownership, and unavailable runtime behavior remains honest.
 The System panel also consumes one Tauri-owned project lifecycle that durably creates, validates,
 saves, rebinds through save-as, closes, reopens recent paths, and restores opaque recovery
-candidates while retaining actionable classified failure context beside the last valid state.
+candidates while retaining actionable classified failure context beside the last valid state. It
+now inspects and atomically updates frame-rate, resolution, color, audio sample-rate and channel,
+cache, proxy, and working-folder authority through that same lifecycle.
 Fresh Cargo metadata expands the member globs to 25
 packages: 19 crates under
 `open/crates/` plus the `superi-fixture-tool`, `superi-dependency-check`,

@@ -2,7 +2,7 @@
 module_id: superi-project
 source_paths:
   - open/crates/superi-project
-source_hash: 0e240855a5cfb914566a564a05c1f69bba64ad8a63f20956651eb4c0cef36cb8
+source_hash: 7b04a7c93651295f5fc6a4928bbca29e94bf00f875864902bb8f451a6e387e7b
 source_files: 28
 mapped_at_commit: working-tree
 ---
@@ -21,7 +21,8 @@ forward migration paths. One
 `ProjectDocument` combines
 the validated
 editorial project, selected root timeline, retained compiled timeline graphs, optional named
-standalone editable graphs, complete timeline, color, audio, cache, proxy, and render settings,
+standalone editable graphs, complete timeline, color, audio, cache, proxy, render, and optional
+working-folder settings,
 authored clip-mix state, bounded plugin, effect, AI artifact metadata, future namespaced extension
 records, one optimistic authored document revision, and one independent monotonic command-log
 sequence. Immutable `ProjectSnapshot` values
@@ -157,8 +158,9 @@ project authority.
   atomic replacement or no-clobber publication, active-path rebinding, classified publication
   state, and owned-candidate cleanup.
 - `open/crates/superi-project/src/settings.rs`: Owns schema `1.0.0`, the exact timeline, color,
-  audio, cache, proxy, and render key vocabulary, deterministic root-derived defaults, strict
-  cross-field validation, and bounded ordered set or remove transactions.
+  audio, cache, proxy, render, and optional working-folder key vocabulary, deterministic
+  root-derived defaults, bounded path validation, strict cross-field validation, and bounded
+  ordered set or remove transactions.
 - `open/crates/superi-project/tests/document_contract.rs`: Proves coherent construction, immutable
   concurrent snapshots, ordinary graph editing, atomic failure behavior, compilation freshness,
   standalone graph identity, checked reconstruction, revision-fenced whole-snapshot restoration,
@@ -670,6 +672,8 @@ and acquires the exact reachable source and decoder set before one resources pub
 - Setting transactions contain one to 64 unique known keys and validate the complete candidate.
   Values are never coerced, conditional pairs remain complete, and no-op publication preserves the
   document revision.
+- Optional working, cache, and proxy folder values are platform-neutral project policy strings.
+  Each is nonempty, NUL-free, and bounded to 4,096 bytes; this module does not perform relocation.
 - Extension identity is the ordered compound extension and record key. A project contains at most
   4096 records, each record ID is at most 128 bytes, each opaque payload is at most 64 MiB, each
   capability set is at most 1024 entries, and structured failure context and message counts are

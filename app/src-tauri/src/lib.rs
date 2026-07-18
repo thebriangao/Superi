@@ -100,6 +100,8 @@ pub fn configure<R: Runtime>(builder: Builder<R>, lifecycle: ApplicationLifecycl
             desktop_api_dispatch,
             project_lifecycle::desktop_project_snapshot,
             project_lifecycle::desktop_project_execute,
+            project_lifecycle::desktop_project_settings,
+            project_lifecycle::desktop_project_settings_update,
             viewport::desktop_viewport_update
         ])
 }

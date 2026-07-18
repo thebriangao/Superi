@@ -44,6 +44,52 @@ export interface DesktopProjectSnapshot {
   readonly failure: DesktopProjectFailure | null;
 }
 
+export interface DesktopProjectSettings {
+  readonly project_revision: number;
+  readonly frame_rate_numerator: number;
+  readonly frame_rate_denominator: number;
+  readonly timecode_mode: string;
+  readonly resolution_width: number | null;
+  readonly resolution_height: number | null;
+  readonly color_mode: string;
+  readonly color_working_space: string;
+  readonly color_config_id: string | null;
+  readonly color_config_fingerprint: string | null;
+  readonly audio_sample_rate_hz: number;
+  readonly audio_output_layout: string;
+  readonly cache_mode: string;
+  readonly cache_max_bytes: number | null;
+  readonly cache_max_frames: number | null;
+  readonly proxy_mode: string;
+  readonly proxy_quality: string;
+  readonly working_folder: string | null;
+  readonly cache_folder: string | null;
+  readonly proxy_folder: string | null;
+}
+
+export interface DesktopProjectSettingsUpdate {
+  readonly expected_project_revision: number;
+  readonly frame_rate_numerator: number;
+  readonly frame_rate_denominator: number;
+  readonly timecode_mode: string;
+  readonly resolution_width: number | null;
+  readonly resolution_height: number | null;
+  readonly color_mode: string;
+  readonly color_working_space: string;
+  readonly color_config_id: string | null;
+  readonly color_config_fingerprint: string | null;
+  readonly audio_sample_rate_hz: number;
+  readonly audio_output_layout: string;
+  readonly cache_mode: string;
+  readonly cache_max_bytes: number | null;
+  readonly cache_max_frames: number | null;
+  readonly proxy_mode: string;
+  readonly proxy_quality: string;
+  readonly working_folder: string | null;
+  readonly cache_folder: string | null;
+  readonly proxy_folder: string | null;
+}
+
 export interface DesktopProjectCreateRequest {
   readonly project_id: string;
   readonly project_name: string;
@@ -77,6 +123,8 @@ export type DesktopProjectCommand =
 
 const SNAPSHOT_COMMAND = "desktop_project_snapshot";
 const EXECUTE_COMMAND = "desktop_project_execute";
+const SETTINGS_COMMAND = "desktop_project_settings";
+const UPDATE_SETTINGS_COMMAND = "desktop_project_settings_update";
 
 export async function getDesktopProjectSnapshot(): Promise<DesktopProjectSnapshot> {
   return invoke<DesktopProjectSnapshot>(SNAPSHOT_COMMAND);
@@ -86,4 +134,14 @@ export async function executeDesktopProject(
   command: DesktopProjectCommand,
 ): Promise<DesktopProjectSnapshot> {
   return invoke<DesktopProjectSnapshot>(EXECUTE_COMMAND, { command });
+}
+
+export async function getDesktopProjectSettings(): Promise<DesktopProjectSettings> {
+  return invoke<DesktopProjectSettings>(SETTINGS_COMMAND);
+}
+
+export async function updateDesktopProjectSettings(
+  update: DesktopProjectSettingsUpdate,
+): Promise<DesktopProjectSettings> {
+  return invoke<DesktopProjectSettings>(UPDATE_SETTINGS_COMMAND, { update });
 }

@@ -20,6 +20,8 @@ pub const PROJECT_SETTINGS_FORMAT_REVISION: u32 = 1;
 pub const MAX_PROJECT_SETTING_MUTATIONS: usize = 64;
 /// Maximum bytes accepted in a project-owned symbolic identifier.
 pub const MAX_PROJECT_SETTING_IDENTIFIER_BYTES: usize = 128;
+/// Maximum bytes accepted in one project-owned working-folder setting.
+pub const MAX_PROJECT_SETTING_PATH_BYTES: usize = 4_096;
 
 /// Exact schema for the project settings key vocabulary.
 pub const PROJECT_SETTINGS_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
@@ -38,6 +40,9 @@ pub const CACHE_MAX_BYTES_KEY: &str = "superi.project.cache.max_bytes";
 pub const CACHE_MAX_FRAMES_KEY: &str = "superi.project.cache.max_frames";
 pub const PROXY_MODE_KEY: &str = "superi.project.proxy.mode";
 pub const PROXY_QUALITY_KEY: &str = "superi.project.proxy.quality";
+pub const WORKING_FOLDER_KEY: &str = "superi.project.working.folder";
+pub const WORKING_CACHE_FOLDER_KEY: &str = "superi.project.working.cache_folder";
+pub const WORKING_PROXY_FOLDER_KEY: &str = "superi.project.working.proxy_folder";
 pub const RENDER_FRAME_RATE_MODE_KEY: &str = "superi.project.render.frame_rate_mode";
 pub const RENDER_RATE_NUMERATOR_KEY: &str = "superi.project.render.rate_numerator";
 pub const RENDER_RATE_DENOMINATOR_KEY: &str = "superi.project.render.rate_denominator";
@@ -64,6 +69,9 @@ pub const PROJECT_SETTING_KEYS: &[&str] = &[
     CACHE_MAX_FRAMES_KEY,
     PROXY_MODE_KEY,
     PROXY_QUALITY_KEY,
+    WORKING_FOLDER_KEY,
+    WORKING_CACHE_FOLDER_KEY,
+    WORKING_PROXY_FOLDER_KEY,
     RENDER_FRAME_RATE_MODE_KEY,
     RENDER_RATE_NUMERATOR_KEY,
     RENDER_RATE_DENOMINATOR_KEY,
@@ -377,6 +385,10 @@ fn validate_snapshot(snapshot: &SettingsSnapshot) -> Result<()> {
         "validate_proxy",
     )?;
 
+    validate_optional_folder(snapshot, WORKING_FOLDER_KEY)?;
+    validate_optional_folder(snapshot, WORKING_CACHE_FOLDER_KEY)?;
+    validate_optional_folder(snapshot, WORKING_PROXY_FOLDER_KEY)?;
+
     match required_text(snapshot, RENDER_FRAME_RATE_MODE_KEY)? {
         "timeline" => {
             reject_present(snapshot, RENDER_RATE_NUMERATOR_KEY, "validate_render")?;
@@ -508,6 +520,31 @@ fn reject_present(snapshot: &SettingsSnapshot, key: &str, operation: &'static st
             "project setting is forbidden by the selected mode",
         )
         .with_context(context(operation).with_field("key", key)));
+    }
+    Ok(())
+}
+
+fn validate_optional_folder(snapshot: &SettingsSnapshot, key: &str) -> Result<()> {
+    let key_value = parse_key(key)?;
+    let Some(value) = snapshot.get(&key_value) else {
+        return Ok(());
+    };
+    let folder = value.as_text().ok_or_else(|| {
+        invalid(
+            "validate_working_folder",
+            "project working-folder setting requires a text value",
+        )
+        .with_context(context("validate_working_folder").with_field("key", key))
+    })?;
+    if folder.trim().is_empty()
+        || folder.len() > MAX_PROJECT_SETTING_PATH_BYTES
+        || folder.contains('\0')
+    {
+        return Err(invalid(
+            "validate_working_folder",
+            "project working-folder setting is invalid",
+        )
+        .with_context(context("validate_working_folder").with_field("key", key)));
     }
     Ok(())
 }

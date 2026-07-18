@@ -19,8 +19,12 @@ import {
 import {
   executeDesktopProject,
   getDesktopProjectSnapshot,
+  getDesktopProjectSettings,
+  updateDesktopProjectSettings,
   type DesktopProjectCommand,
   type DesktopProjectFailure,
+  type DesktopProjectSettings,
+  type DesktopProjectSettingsUpdate,
   type DesktopProjectSnapshot,
 } from "./project-lifecycle";
 import { classifyDesktopTransportError } from "./transport";
@@ -335,6 +339,9 @@ function SystemPanel() {
   const [projectPath, setProjectPath] = useState("");
   const [projectName, setProjectName] = useState("Untitled Project");
   const [saveAsPath, setSaveAsPath] = useState("");
+  const [projectSettings, setProjectSettings] =
+    useState<DesktopProjectSettings | null>(null);
+  const [projectSettingsPending, setProjectSettingsPending] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -380,6 +387,33 @@ function SystemPanel() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (!projectSnapshot?.active) {
+      setProjectSettings(null);
+      return () => {
+        active = false;
+      };
+    }
+    void getDesktopProjectSettings()
+      .then((settings) => {
+        if (active) {
+          setProjectSettings(settings);
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setProjectFailure(projectFailureFrom(error));
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    projectSnapshot?.active?.path,
+    projectSnapshot?.active?.identity.project_revision,
+  ]);
 
   useEffect(() => {
     if (api === null) {
@@ -451,6 +485,29 @@ function SystemPanel() {
       setProjectFailure(projectFailureFrom(error));
     } finally {
       setProjectPending(false);
+    }
+  };
+
+  const saveProjectSettings = async () => {
+    if (projectSettings === null) {
+      return;
+    }
+    const { project_revision, ...values } = projectSettings;
+    const update: DesktopProjectSettingsUpdate = {
+      expected_project_revision: project_revision,
+      ...values,
+    };
+    setProjectSettingsPending(true);
+    try {
+      const settings = await updateDesktopProjectSettings(update);
+      setProjectSettings(settings);
+      const project = await getDesktopProjectSnapshot();
+      setProjectSnapshot(project);
+      setProjectFailure(project.failure);
+    } catch (error: unknown) {
+      setProjectFailure(projectFailureFrom(error));
+    } finally {
+      setProjectSettingsPending(false);
     }
   };
 
@@ -669,6 +726,324 @@ function SystemPanel() {
           </button>
         </div>
 
+        {projectSettings ? (
+          <fieldset disabled={projectSettingsPending || projectPending}>
+            <legend>Project settings</legend>
+            <p className="explanation">
+              Revision {projectSettings.project_revision}. Audio sample timing and
+              channel layout are stored as project authority.
+            </p>
+            <label>
+              Frame-rate numerator
+              <input
+                type="number"
+                min="1"
+                value={projectSettings.frame_rate_numerator}
+                onChange={(event) =>
+                  setProjectSettings({
+                    ...projectSettings,
+                    frame_rate_numerator: Number(event.currentTarget.value),
+                  })
+                }
+              />
+            </label>
+            <label>
+              Frame-rate denominator
+              <input
+                type="number"
+                min="1"
+                value={projectSettings.frame_rate_denominator}
+                onChange={(event) =>
+                  setProjectSettings({
+                    ...projectSettings,
+                    frame_rate_denominator: Number(event.currentTarget.value),
+                  })
+                }
+              />
+            </label>
+            <label>
+              Timecode
+              <select
+                value={projectSettings.timecode_mode}
+                onChange={(event) =>
+                  setProjectSettings({
+                    ...projectSettings,
+                    timecode_mode: event.currentTarget.value,
+                  })
+                }
+              >
+                <option value="non_drop_frame">Non-drop frame</option>
+                <option value="drop_frame">Drop frame</option>
+              </select>
+            </label>
+            <label>
+              Resolution width
+              <input
+                type="number"
+                min="1"
+                value={projectSettings.resolution_width ?? ""}
+                onChange={(event) =>
+                  setProjectSettings({
+                    ...projectSettings,
+                    resolution_width: optionalNumber(event.currentTarget.value),
+                  })
+                }
+              />
+            </label>
+            <label>
+              Resolution height
+              <input
+                type="number"
+                min="1"
+                value={projectSettings.resolution_height ?? ""}
+                onChange={(event) =>
+                  setProjectSettings({
+                    ...projectSettings,
+                    resolution_height: optionalNumber(event.currentTarget.value),
+                  })
+                }
+              />
+            </label>
+            <label>
+              Color mode
+              <select
+                value={projectSettings.color_mode}
+                onChange={(event) => {
+                  const colorMode = event.currentTarget.value;
+                  setProjectSettings({
+                    ...projectSettings,
+                    color_mode: colorMode,
+                    color_working_space:
+                      colorMode === "built_in_acescg"
+                        ? "acescg"
+                        : projectSettings.color_working_space,
+                    color_config_id:
+                      colorMode === "built_in_acescg"
+                        ? null
+                        : projectSettings.color_config_id,
+                    color_config_fingerprint:
+                      colorMode === "built_in_acescg"
+                        ? null
+                        : projectSettings.color_config_fingerprint,
+                  });
+                }}
+              >
+                <option value="built_in_acescg">Built-in ACEScg</option>
+                <option value="pinned_config">Pinned config</option>
+              </select>
+            </label>
+            <label>
+              Working color space
+              <input
+                value={projectSettings.color_working_space}
+                onChange={(event) =>
+                  setProjectSettings({
+                    ...projectSettings,
+                    color_working_space: event.currentTarget.value,
+                  })
+                }
+              />
+            </label>
+            {projectSettings.color_mode === "pinned_config" ? (
+              <>
+                <label>
+                  Color config ID
+                  <input
+                    value={projectSettings.color_config_id ?? ""}
+                    onChange={(event) =>
+                      setProjectSettings({
+                        ...projectSettings,
+                        color_config_id: optionalText(event.currentTarget.value),
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  Color config fingerprint
+                  <input
+                    value={projectSettings.color_config_fingerprint ?? ""}
+                    onChange={(event) =>
+                      setProjectSettings({
+                        ...projectSettings,
+                        color_config_fingerprint: optionalText(
+                          event.currentTarget.value,
+                        ),
+                      })
+                    }
+                  />
+                </label>
+              </>
+            ) : null}
+            <label>
+              Audio sample rate (Hz)
+              <input
+                type="number"
+                min="1"
+                value={projectSettings.audio_sample_rate_hz}
+                onChange={(event) =>
+                  setProjectSettings({
+                    ...projectSettings,
+                    audio_sample_rate_hz: Number(event.currentTarget.value),
+                  })
+                }
+              />
+            </label>
+            <label>
+              Audio channel layout
+              <select
+                value={projectSettings.audio_output_layout}
+                onChange={(event) =>
+                  setProjectSettings({
+                    ...projectSettings,
+                    audio_output_layout: event.currentTarget.value,
+                  })
+                }
+              >
+                <option value="mono">Mono</option>
+                <option value="stereo">Stereo</option>
+                <option value="quad">Quad</option>
+                <option value="surround_5_1">5.1 surround</option>
+                <option value="surround_7_1">7.1 surround</option>
+              </select>
+            </label>
+            <label>
+              Cache policy
+              <select
+                value={projectSettings.cache_mode}
+                onChange={(event) => {
+                  const cacheMode = event.currentTarget.value;
+                  setProjectSettings({
+                    ...projectSettings,
+                    cache_mode: cacheMode,
+                    cache_max_bytes:
+                      cacheMode === "bounded"
+                        ? (projectSettings.cache_max_bytes ?? 8 * 1_024 * 1_024)
+                        : null,
+                    cache_max_frames:
+                      cacheMode === "bounded"
+                        ? (projectSettings.cache_max_frames ?? 96)
+                        : null,
+                  });
+                }}
+              >
+                <option value="automatic">Automatic</option>
+                <option value="bounded">Bounded</option>
+                <option value="disabled">Disabled</option>
+              </select>
+            </label>
+            {projectSettings.cache_mode === "bounded" ? (
+              <>
+                <label>
+                  Cache bytes
+                  <input
+                    type="number"
+                    min="1"
+                    value={projectSettings.cache_max_bytes ?? ""}
+                    onChange={(event) =>
+                      setProjectSettings({
+                        ...projectSettings,
+                        cache_max_bytes: optionalNumber(
+                          event.currentTarget.value,
+                        ),
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  Cache frames
+                  <input
+                    type="number"
+                    min="1"
+                    value={projectSettings.cache_max_frames ?? ""}
+                    onChange={(event) =>
+                      setProjectSettings({
+                        ...projectSettings,
+                        cache_max_frames: optionalNumber(
+                          event.currentTarget.value,
+                        ),
+                      })
+                    }
+                  />
+                </label>
+              </>
+            ) : null}
+            <label>
+              Proxy policy
+              <select
+                value={projectSettings.proxy_mode}
+                onChange={(event) =>
+                  setProjectSettings({
+                    ...projectSettings,
+                    proxy_mode: event.currentTarget.value,
+                  })
+                }
+              >
+                <option value="disabled">Disabled</option>
+                <option value="on_demand">On demand</option>
+                <option value="prefer">Prefer proxies</option>
+              </select>
+            </label>
+            <label>
+              Proxy quality
+              <select
+                value={projectSettings.proxy_quality}
+                onChange={(event) =>
+                  setProjectSettings({
+                    ...projectSettings,
+                    proxy_quality: event.currentTarget.value,
+                  })
+                }
+              >
+                <option value="eighth">Eighth</option>
+                <option value="quarter">Quarter</option>
+                <option value="half">Half</option>
+                <option value="full">Full</option>
+              </select>
+            </label>
+            <label>
+              Working folder
+              <input
+                value={projectSettings.working_folder ?? ""}
+                onChange={(event) =>
+                  setProjectSettings({
+                    ...projectSettings,
+                    working_folder: optionalText(event.currentTarget.value),
+                  })
+                }
+              />
+            </label>
+            <label>
+              Cache folder
+              <input
+                value={projectSettings.cache_folder ?? ""}
+                onChange={(event) =>
+                  setProjectSettings({
+                    ...projectSettings,
+                    cache_folder: optionalText(event.currentTarget.value),
+                  })
+                }
+              />
+            </label>
+            <label>
+              Proxy folder
+              <input
+                value={projectSettings.proxy_folder ?? ""}
+                onChange={(event) =>
+                  setProjectSettings({
+                    ...projectSettings,
+                    proxy_folder: optionalText(event.currentTarget.value),
+                  })
+                }
+              />
+            </label>
+            <div className="actions">
+              <button type="button" onClick={() => void saveProjectSettings()}>
+                Save project settings
+              </button>
+            </div>
+          </fieldset>
+        ) : null}
+
         {projectSnapshot?.recent.length ? (
           <div className="actions" aria-label="Recent projects">
             {projectSnapshot.recent.map((recent) => (
@@ -710,6 +1085,14 @@ function SystemPanel() {
       </section>
     </div>
   );
+}
+
+function optionalNumber(value: string): number | null {
+  return value.length === 0 ? null : Number(value);
+}
+
+function optionalText(value: string): string | null {
+  return value.length === 0 ? null : value;
 }
 
 function projectFailureFrom(error: unknown): DesktopProjectFailure {
