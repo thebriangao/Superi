@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: d59b2787ab33ea2437976a23a4be6094636bf78814b07a8ff1583bbf28846423
-source_files: 232
+source_hash: ad8cdf5af41116a733f9418c9471a78f89a8a1bf3b23c2d99e85c062dd0243ce
+source_files: 235
 mapped_at_commit: working-tree
 ---
 
@@ -29,7 +29,7 @@ cannot resolve a material question. Multiple checkpoints still use separate
 Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers but obeys an
 explicit positive user concurrency value. The file is ignored by Git and copied into managed
 worktrees through `.worktreeinclude`, so the mapping script does not include it in this module's
-232-file inventory or source hash. It must still be reread independently before repository work.
+235-file inventory or source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
 ratified architecture, while `open/Cargo.toml` and `open/Cargo.lock` expose the dependency graph
@@ -441,6 +441,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W03.C009.md`: Durable implementation evidence for local offline state and
   search, revision-fenced relink, intentional source replacement, frame-rate conform, preserved C008
   freshness and fallback, and the production media-browser consumer.
+- `docs/checkpoints/P3.W03.C010.md`: Durable implementation evidence for revision-fenced generated
+  thumbnails, canonical-order filmstrips, exact channel-separated PCM waveforms, selected-media
+  previews, bounded ephemeral artifacts, typed unavailable states, and the production inspector.
 - `docs/checkpoints/P3.W03.C011.md`: Durable implementation evidence for source-bound editable
   language artifacts, exact transcript timing, speaker and timeline relationships, local AI content
   entries, deterministic metadata plus transcript plus local-content search, and the production
@@ -499,7 +502,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   same production media browser owns presentation-only multi-selection and invokes one native
   revision-fenced batch for numbered
   rename, active-bin organization, generating optimized transcode or proxy records, root-based
-  relink, and metadata upsert or removal, then replaces its view from returned commit evidence.
+  relink, and metadata upsert or removal, then replaces its view from returned commit evidence. The
+  selected-media path also requests
+  one freshness-fenced generated bundle, rejects late identity mismatches, replaces only the
+  selected card thumbnail, and displays bounded preview, canonical filmstrip, waveform, exact
+  sample-range, sample-rate, frame-count, ordered-channel, and unavailable-state evidence.
 - `app/src/lifecycle.ts`: Defines the exact shell-local serialized lifecycle contract and typed
   asynchronous wrappers for the two Tauri lifecycle commands without importing engine bindings.
 - `app/src/project-lifecycle.ts`: Defines strict shell-local project lifecycle, settings, media
@@ -509,9 +516,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and typed wrappers for the lifecycle and media-library Tauri commands. It also mirrors offline
   recovery plus persisted content-analysis artifacts and exposes revision-fenced native replacement
   and content-search wrappers with exact explainable match evidence. The same bridge exposes exact
-  C012 batch operation and result DTOs. Local fallback search includes names, paths, source facts,
-  built-in and user metadata, annotations, and offline state without introducing another persisted
-  search index.
+  C010 thumbnail, filmstrip, waveform, and preview product DTOs plus C012 batch operation and result
+  DTOs. Local fallback search includes names, paths, source facts, built-in and user metadata,
+  annotations, and offline state without introducing another persisted search index.
 - `app/src/main.tsx`: Constructs one process-lifetime `DesktopSuperiTransport`, injects it through
   the generated API provider, disposes it at unload, and mounts the React application under strict
   mode.
@@ -520,8 +527,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   shared selection, lifecycle controls, media-browser list and grid layouts, thumbnail fallbacks,
   source and user metadata details, editorial annotation controls, usage summaries, engine API
   status presentation, ranked content-search evidence, structured language and local-content
-  artifact editing, stale-analysis warnings, responsive multi-selection batch controls, and
-  responsive 16:9 native viewer reservations.
+  artifact editing, stale-analysis warnings, bounded preview raster, horizontally scrollable
+  filmstrip, channel-separated waveform, responsive multi-selection batch controls, and responsive
+  16:9 native viewer reservations.
 - `app/src/transport.ts`: Implements the concrete generated `SuperiTransport` through one injected
   or Tauri-backed invoke/listen host, generation-scoped request identities, ordered event replay,
   stale and duplicate rejection, reconnect, cooperative cancellation, and exact
@@ -548,7 +556,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tsconfig.json`: Enables strict no-emit TypeScript, isolated modules, and bundler resolution.
 - `app/vite.config.ts`: Configures the React Vite build and fixed Tauri development port.
 - `app/src-tauri/Cargo.lock`: Locks the standalone desktop host together with its path dependencies
-  on the public API, engine, shared concurrency, and core contracts.
+  on the public API, engine, shared concurrency, core, image, media-I/O, and Rust codec contracts,
+  plus the pinned PNG decoder and data-URL encoder.
 - `app/src-tauri/src/viewport.rs`: Owns four role-addressed native child windows, checked
   CSS-to-physical placement, per-role status, one dedicated GPU submission thread, managed canonical
   RGBA16F results, immutable ACEScg-to-sRGB display intent, direct presentation, and
@@ -557,9 +566,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/tests/viewer_presentation_contract.rs`: Freezes source, program, composite, and
   color role order plus canonical precision, alpha, scene meaning, terminal display meaning,
   transform order, deterministic intent, arbitrary 8K extent, and invalid zero-extent behavior.
-- `app/src-tauri/Cargo.toml`: Declares the `superi-desktop` library and binary, exact Tauri and
-  serialization pins, stable Rust edition, and downward-only lifecycle, engine, and public API
-  dependencies.
+- `app/src-tauri/Cargo.toml`: Declares the `superi-desktop` library and binary, exact Tauri,
+  serialization, image, and base64 pins, stable Rust edition, and downward-only lifecycle, engine,
+  public API, media-I/O, image, and in-tree codec dependencies.
 - `app/src-tauri/build.rs`: Runs the standard Tauri build integration.
 - `app/src-tauri/rust-toolchain.toml`: Selects stable Rust with rustfmt and Clippy.
 - `app/src-tauri/tauri.conf.json`: Declares the Superi identity, production frontend, bounded main
@@ -600,7 +609,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   bounded replaceable proxy and optimized attachments beside that state, binds them to exact source
   freshness, and deterministically resolves explicit quality intent or original-source fallback.
   C009 derives online, partial, or offline source state and owns revision-fenced relink, intentional
-  replacement, and exact conform changes. C011 persists bounded model-independent content analysis
+  replacement, and exact conform changes. C010 resolves an immutable selected-media item under
+  revision and fingerprint fences, then performs bounded still, sequence, or WAVE generation without
+  persisting artifacts. C011 persists bounded model-independent content analysis
   against one source fingerprint, canonicalizes editable transcript text, exact rational-frame
   timing, speakers, timeline plus clip relationships, and linked local AI content, and atomically
   replaces it without changing other media state. Its read-only revision-fenced query composes
@@ -614,12 +625,22 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   identity, smart membership, thumbnail, offline, and resolved-representation state for the actual
   consumer, while sidecar publication removes those derived-only fields before atomic replacement
   and restores them from authoritative inputs on read.
+- `app/src-tauri/src/project_lifecycle/media_preview.rs`: Implements one bounded nonauthoritative
+  preview generator over an immutable media-browser item. It decodes supported still containers,
+  adapts explicit RGBA8 sRGB straight-alpha images into `superi-image`, selects at most six
+  deterministic sequence frames, scales every raster through the lower thumbnail operation,
+  encodes bounded PNG data URLs, opens WAVE through the media-I/O PCM source, decodes exact blocks
+  through the in-tree PCM backend, and retains validated start sample, sample rate, frame count, and
+  ordered channel labels beside a channel-separated waveform. Every product is independently ready
+  or unavailable, and no artifact enters project, media-library, derived-media, playback, routing,
+  or export state.
 - `app/src-tauri/src/lib.rs`: Configures the mock and native Tauri builders, retains the linked
   engine process, manages its bounded connection and transport state alongside application
   lifecycle and project-session state, registers lifecycle, project, viewport, and API commands,
   including media-library snapshot, organization mutation, source inspection, user metadata, and
   editorial annotation, C007 identity-selection, C008 derived-media mutation, C009 offline recovery,
-  C011 content-analysis mutation plus content-search commands, and C012 atomic batch commands,
+  C010 generated-preview, C011 content-analysis mutation plus content-search, and C012 atomic batch
+  commands,
   initializes the recovery root, emits one ordered Tauri event, records
   nonblocking exit intent, and joins the engine owner after the native application stops.
 - `app/src-tauri/src/main.rs`: Starts the native production desktop host.
@@ -653,7 +674,14 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   optimized-media lifecycle, explicit status and quality selection, deterministic original fallback,
   registered native command, typed bridge, production detail consumer, and C009+ exclusions.
 - `app/src-tauri/tests/offline_media_contract.rs`: Freezes C009 offline availability, local search,
-  relink, replace, and conform integration while preserving C008 and excluding C010 preview work.
+  relink, replace, and conform integration while preserving C008 and keeping C010 artifacts out of
+  persisted offline state.
+- `app/src-tauri/tests/media_preview_generation_contract.rs`: Writes and imports one real PNG still,
+  three real PNG sequence frames, one stereo 48 kHz 16-bit WAVE whose 262,145 frames cross the
+  media-I/O packet boundary, and one unsupported video source. It proves bounded data-URL thumbnail,
+  preview, canonical-order filmstrip, and exact continuous waveform products, stale revision and
+  fingerprint rejection, explicit unavailable states, native command registration, the strict
+  TypeScript bridge, and the production React inspector.
 - `app/src-tauri/tests/media_content_search_contract.rs`: Freezes C011 persisted language and local
   content artifacts, exact timing, speaker and timeline relationships, the two native commands,
   strict TypeScript bridge, production search and editing consumer, and offline model independence.
@@ -1366,17 +1394,26 @@ successful durable results alone replace active identity and bounded recent stat
 adapter invokes complete project commands and the System panel renders lifecycle state, reviewed
 failure actions, and an editable projection of project settings. The project-identity media store
 owns bins, smart collections, freshness-fenced source inspection, and revision-fenced generic user
-metadata; the React consumer only submits typed commands and replacement snapshots. Relinking,
-proxy generation, indexed search, annotations, and duplicate detection remain separate owners.
+metadata; the React consumer only submits typed commands and replacement snapshots. The same owner
+now resolves a preview request against exact project, library, media, and fingerprint fences, then
+releases its lock before bounded source work. The child generator composes `superi-image` scaling,
+`superi-media-io` WAVE parsing and continuity-validated waveform generation, and the in-tree PCM
+decoder into ephemeral PNG data URLs. React requests only the selected item, rejects a late media or
+fingerprint mismatch, and never persists generated bytes. Video, compressed-audio, EXR, and DPX
+preview products remain explicitly unavailable until a bounded application decoder session exists.
 
 The documents deliberately point into other modules:
 
 - `superi-core` owns shared identifiers, time, geometry, errors, diagnostics, and serializable base
   types.
 - `superi-image`, `superi-gpu`, `superi-concurrency`, and `superi-media-io` own representation,
-  resource, scheduling, and codec-neutral media foundations.
+  resource, scheduling, and codec-neutral media foundations. The desktop preview consumer uses
+  image-owned aspect-fit scaling plus media-I/O-owned PCM source, exact block, and waveform
+  continuity contracts without moving those algorithms or semantic owners into the shell.
 - `superi-codecs-rs`, `superi-codecs-platform`, and `superi-codecs-vendor` implement the three codec
-  acquisition classes behind media interfaces.
+  acquisition classes behind media interfaces. The desktop preview path directly consumes only the
+  in-tree PCM decoder for a WAVE source whose container metadata supplies the exact explicit format;
+  it does not construct a platform, vendor, or general playback registry.
 - `superi-graph`, `superi-cache`, `superi-color`, `superi-effects`, `superi-timeline`, `superi-audio`,
   and `superi-ai` own evaluation and capability layers.
 - `superi-project` owns aggregate validation, authored clip-mix and opaque extension durability,
@@ -1452,14 +1489,15 @@ of open runtime behavior.
   observations without changing that authority. C008 adds replaceable source-fresh derived-media
   attachments and explicit quality selection with deterministic original fallback. C009 adds local
   availability, relink, intentional replacement, and conform without changing stable media identity.
+  C010 adds nonserialized bounded generated products behind exact project, library, media, and
+  fingerprint fences; it cannot change any C008 or C009 authority.
   C011 adds source-bound ordinary transcript and local-content artifacts plus deterministic native
   search, retaining stale analysis for inspection while requiring explicit current-source confirmation
   before further editing. C012 applies only its named fields through one ordered bounded candidate,
   retains stable identity and source freshness, reports the failing operation index without partial
   commit, and advances one revision on success. Runtime-only usage, duplicate grouping, smart
   membership, thumbnail, availability, and resolved-representation projections reach the consumer
-  but remain absent from sidecar authority. Preview generation and removable-volume monitoring
-  remain separately owned.
+  but remain absent from sidecar authority. Removable-volume monitoring remains separately owned.
 - The MIT tree rejects GPL, LGPL, AGPL, MPL, patent-encumbered in-tree codecs, and dependencies or
   models without adequate redistribution and provenance rights. Operating-system and vendor codec
   paths remain isolated and explicit.
@@ -1537,6 +1575,12 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   and production detail and search consumer. It protects the C008 attachment and fallback contract
   while proving online, partial, and offline state plus guarded relink, deliberate replacement, and
   exact conform behavior.
+
+- The focused generated-preview proof freezes the C010 read-only state fence, native command,
+  strict bridge, and selected-media inspector. Real still, sequence, WAVE, and unsupported-video
+  inputs prove aspect-fit output, canonical sequence order, exact sample count across two decoded
+  blocks, ordered stereo meaning, bounded PNG data URLs, stale-request rejection, and explicit
+  unavailable products while the C003, C004, C008, and C009 contracts protect adjacent state.
 
 - The focused media-batch proof freezes the C012 tagged operation union, native candidate owner,
   command registration, typed bridge, and real multi-selection consumer. Its integration test
@@ -1827,14 +1871,17 @@ search plus explicit relink, source replacement, and frame-rate conform flows. T
 now persists model-independent transcript and local AI content entries, validates exact source timing,
 speaker, timeline and clip relationships, and provides deterministic revision-fenced metadata,
 transcript, and local-content search with explainable evidence. React consumes that query under bin
-and smart-collection scope and edits the ordinary artifacts through atomic replacement. Thumbnail,
-filmstrip, waveform, preview generation, and removable-volume monitoring remain separately owned.
-The same browser also selects
+and smart-collection scope and edits the ordinary artifacts through atomic replacement. The selected
+media path also generates thumbnail, filmstrip, waveform, and preview products on demand under exact
+revision and fingerprint fences. Supported stills and image sequences produce bounded pixels and
+canonical representative frames; WAVE produces channel-separated exact sample and routing evidence.
+Generated data remains ephemeral, and unsupported video, compressed-audio, EXR, and DPX surfaces
+remain honest unavailable states. The same browser also selects
 many visible identities and commits ordered numbered rename, active-bin organization, generating
 optimized transcode or proxy records, root-based relink, and metadata edits through one atomic
 revision-fenced batch. Responses carry refreshed runtime projections, while the sidecar retains only
-durable authority and derived choices. Actual transcode bytes, thumbnail, filmstrip, waveform,
-preview generation, and automatic local-AI analysis remain separately owned.
+durable authority and derived choices. Actual transcode bytes, automatic local-AI analysis, and
+removable-volume monitoring remain separately owned.
 Fresh Cargo metadata expands the member globs to 25
 packages: 19 crates under
 `open/crates/` plus the `superi-fixture-tool`, `superi-dependency-check`,
@@ -2075,7 +2122,7 @@ The largest current risk is cross-document drift:
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
 `b3f99b62847978b30c9cbdd4c1fd690fa3c1bdbb` when this checkpoint began. Its hash describes the exact
-232 discovered source files, including generated binary payloads, layered on the integrated revision.
+235 discovered source files, including generated binary payloads, layered on the integrated revision.
 
 ## Maintenance notes
 

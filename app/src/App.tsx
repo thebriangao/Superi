@@ -21,6 +21,7 @@ import {
 } from "./lifecycle";
 import {
   executeDesktopProject,
+  generateProjectMediaPreview,
   getDesktopProjectSnapshot,
   getDesktopProjectSettings,
   importDesktopMedia,
@@ -46,6 +47,7 @@ import {
   type MediaLibraryMutation,
   type MediaLibrarySnapshot,
   type MediaBatchOperation,
+  type MediaPreviewBundle,
   type MediaEditorialAnnotations,
   type MediaBrowserItem,
   type MediaContentAnalysis,
@@ -414,6 +416,9 @@ function SystemPanel() {
   const [batchResult, setBatchResult] = useState<string | null>(null);
   const [thumbnailFailures, setThumbnailFailures] =
     useState<ReadonlySet<string>>(new Set());
+  const [mediaPreview, setMediaPreview] = useState<MediaPreviewBundle | null>(null);
+  const [mediaPreviewPending, setMediaPreviewPending] = useState(false);
+  const [mediaPreviewFailure, setMediaPreviewFailure] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -909,6 +914,56 @@ function SystemPanel() {
   );
   const batchSelectedMedia =
     mediaLibrary?.items.filter((item) => batchMediaIds.has(item.media_id)) ?? [];
+
+  useEffect(() => {
+    let active = true;
+    if (mediaLibrary === null || selectedMedia === undefined) {
+      setMediaPreview(null);
+      setMediaPreviewFailure(null);
+      setMediaPreviewPending(false);
+      return () => {
+        active = false;
+      };
+    }
+    const requestedMediaId = selectedMedia.media_id;
+    const requestedFreshness = selectedMedia.content_fingerprint;
+    setMediaPreview(null);
+    setMediaPreviewFailure(null);
+    setMediaPreviewPending(true);
+    setThumbnailFailures((current) => {
+      const next = new Set(current);
+      next.delete(requestedMediaId);
+      return next;
+    });
+    void generateProjectMediaPreview(mediaLibrary, selectedMedia)
+      .then((preview) => {
+        if (
+          active &&
+          preview.media_id === requestedMediaId &&
+          preview.freshness === requestedFreshness
+        ) {
+          setMediaPreview(preview);
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setMediaPreviewFailure(projectFailureFrom(error).title);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setMediaPreviewPending(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    mediaLibrary?.project_revision,
+    mediaLibrary?.revision,
+    selectedMedia?.media_id,
+    selectedMedia?.content_fingerprint,
+  ]);
 
   return (
     <div className="panel-content system-panel" aria-live="polite">
@@ -1464,7 +1519,16 @@ function SystemPanel() {
 
               <div className={`media-items media-items-${mediaViewMode}`}>
                 {visibleMedia.map((item) => {
+                  const generatedThumbnail =
+                    item.media_id === selectedMediaId &&
+                    mediaPreview?.media_id === item.media_id &&
+                    mediaPreview.freshness === item.content_fingerprint &&
+                    mediaPreview.thumbnail.status === "ready" &&
+                    !thumbnailFailures.has(item.media_id)
+                      ? mediaPreview.thumbnail.artifact
+                      : null;
                   const showSource =
+                    generatedThumbnail === null &&
                     item.thumbnail.kind === "source" &&
                     !thumbnailFailures.has(item.media_id);
                   const searchResult = contentSearchByMediaId.get(item.media_id);
@@ -1478,7 +1542,17 @@ function SystemPanel() {
                       onClick={() => setSelectedMediaId(item.media_id)}
                     >
                       <span className="media-thumbnail">
-                        {showSource && item.thumbnail.kind === "source" ? (
+                        {generatedThumbnail !== null ? (
+                          <img
+                            alt=""
+                            src={generatedThumbnail.data_url}
+                            onError={() =>
+                              setThumbnailFailures((current) =>
+                                new Set(current).add(item.media_id),
+                              )
+                            }
+                          />
+                        ) : showSource && item.thumbnail.kind === "source" ? (
                           <img
                             alt=""
                             src={convertFileSrc(item.thumbnail.source_path)}
@@ -1542,6 +1616,95 @@ function SystemPanel() {
                 {selectedMedia ? (
                   <>
                     <strong>{selectedMedia.name}</strong>
+                    <section className="media-preview" aria-label="Generated media preview">
+                      <h5>Preview</h5>
+                      {mediaPreviewPending ? (
+                        <p className="source-metadata-status">Generating preview</p>
+                      ) : null}
+                      {mediaPreviewFailure ? (
+                        <p className="media-preview-unavailable">{mediaPreviewFailure}</p>
+                      ) : null}
+                      {mediaPreview?.media_id === selectedMedia.media_id &&
+                      mediaPreview.freshness === selectedMedia.content_fingerprint ? (
+                        <>
+                          {mediaPreview.preview.status === "ready" ? (
+                            <img
+                              className="media-preview-image"
+                              src={mediaPreview.preview.artifact.data_url}
+                              width={mediaPreview.preview.artifact.width}
+                              height={mediaPreview.preview.artifact.height}
+                              alt={`Generated preview for ${selectedMedia.name}`}
+                            />
+                          ) : (
+                            <p className="media-preview-unavailable">
+                              {mediaPreview.preview.reason}
+                            </p>
+                          )}
+
+                          <p className="media-preview-status">
+                            Thumbnail {mediaPreview.thumbnail.status}
+                          </p>
+
+                          {mediaPreview.filmstrip.status === "ready" ? (
+                            <div
+                              className="media-preview-filmstrip"
+                              aria-label={`${mediaPreview.filmstrip.artifact.frames.length} representative frames`}
+                            >
+                              {mediaPreview.filmstrip.artifact.frames.map((frame, index) => (
+                                <img
+                                  key={`${frame.source_index ?? index}:${frame.data_url.length}`}
+                                  src={frame.data_url}
+                                  width={frame.width}
+                                  height={frame.height}
+                                  alt={`Representative frame ${
+                                    frame.source_index === null ? index + 1 : frame.source_index + 1
+                                  } of ${frame.source_count}`}
+                                />
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="media-preview-unavailable">
+                              {mediaPreview.filmstrip.reason}
+                            </p>
+                          )}
+
+                          {mediaPreview.waveform.status === "ready" ? (
+                            <div className="media-preview-waveform">
+                              <img
+                                src={mediaPreview.waveform.artifact.image.data_url}
+                                width={mediaPreview.waveform.artifact.image.width}
+                                height={mediaPreview.waveform.artifact.image.height}
+                                alt={`Channel-separated waveform for ${selectedMedia.name}`}
+                              />
+                              <dl>
+                                <div>
+                                  <dt>Sample range</dt>
+                                  <dd>
+                                    {mediaPreview.waveform.artifact.start_sample} to {mediaPreview.waveform.artifact.start_sample + mediaPreview.waveform.artifact.frame_count}
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt>Sample rate</dt>
+                                  <dd>{mediaPreview.waveform.artifact.sample_rate} Hz</dd>
+                                </div>
+                                <div>
+                                  <dt>Frames</dt>
+                                  <dd>{mediaPreview.waveform.artifact.frame_count}</dd>
+                                </div>
+                                <div>
+                                  <dt>Channels</dt>
+                                  <dd>{mediaPreview.waveform.artifact.channel_layout.join(", ")}</dd>
+                                </div>
+                              </dl>
+                            </div>
+                          ) : (
+                            <p className="media-preview-unavailable">
+                              {mediaPreview.waveform.reason}
+                            </p>
+                          )}
+                        </>
+                      ) : null}
+                    </section>
                     <section aria-label="Offline media">
                       <h5>Offline media</h5>
                       <p>{selectedMedia.offline.status}</p>

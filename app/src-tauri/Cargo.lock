@@ -4167,17 +4167,21 @@ dependencies = [
 name = "superi-desktop"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
+ "image",
  "pollster",
  "serde",
  "serde_json",
  "sha2",
  "superi-api",
+ "superi-codecs-rs",
  "superi-color",
  "superi-concurrency",
  "superi-core",
  "superi-engine",
  "superi-gpu",
  "superi-image",
+ "superi-media-io",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

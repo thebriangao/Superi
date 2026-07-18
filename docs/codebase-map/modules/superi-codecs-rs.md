@@ -306,6 +306,11 @@ Direct consumers and producers are:
   Render-export consumes the prepared decoder owner and ordinary encoder selection, proves exact
   WAVE PCM decode and encode completion, and drives real WebM AV1 decode plus VP9 encode far enough
   to reject observed duration drift before publishing an artifact.
+- The desktop application constructs `PcmBackend` directly for bounded WAVE selected-media preview.
+  It preserves the source format and packet clock through exact decoded `AudioBlock` values, then
+  delegates continuity and channel-ordered waveform construction to `superi-media-io`. This narrow
+  path intentionally avoids default registry construction and does not expose the other codec
+  families, playback, resampling, mixing, or routing.
 - `superi-media-io` Matroska/WebM and MP4/MOV readers produce codec IDs, elementary packets,
   configuration, timing, trimming, color, and provenance metadata consumed here.
 - Registry and engine capability consumers inspect the detailed codec rows without invoking codec
@@ -459,6 +464,10 @@ or `FIXME` in the implementation surface. Current limitations and contradictions
   Later packet PTS values do not override the inferred contiguous cursor.
 - PCM changes only storage and byte order; it does not resample, normalize, or convert numeric sample
   types. Raw PCM is not self-describing and always needs an external codec ID and audio format.
+- The desktop's direct PCM consumer is limited to self-describing WAVE input already parsed by
+  `PcmContainerSource`, with an application-owned decoded-byte ceiling. It does not remove the
+  registry's eager optional-library risk for engine consumers or make raw PCM independently
+  discoverable.
 - Error recoverability is not perfectly uniform across codec modules. Consumers should honor the
   full typed category and context rather than infer policy from codec class.
 - The crate requires a C compiler even for consumers interested only in Rust codec paths because
@@ -488,6 +497,11 @@ context must be reconciled with the owning `superi-media-io` map and raw interfa
 container codec IDs or `codec.configuration`, delay, padding, or color keys must update both the
 container and codec contract tests. Recheck the engine elementary-stream export consumer whenever
 codec timing, metadata attribution, drain, reset, or fallback-visible behavior changes.
+
+Keep the desktop WAVE preview consumer aligned whenever PCM sample formats, byte-order handling,
+planar layout, decoder lifecycle, or packet-duration validation changes. Preserve the direct
+in-tree PCM construction boundary unless the application gains a bounded registry owner whose
+optional codec failures cannot disable otherwise supported preview formats.
 
 Treat `vp9.rs`, `vpx_ffi.rs`, `vpx_shim.c`, `vpx_shim.h`, the vendored headers, runtime version
 filter, and VPx tests as one compatibility unit. Any enum value, field order, symbol list, ABI

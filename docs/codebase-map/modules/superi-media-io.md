@@ -183,6 +183,11 @@ Waveform preview begins after audio decode. The adapter checks one stable audio 
   without a runtime tool dependency. It drives malformed, truncated, unsupported, and post-open
   partially readable cases through `PcmContainerSource` and the shared error and corruption
   vocabulary.
+- The desktop application directly opens supported WAVE sources with `PcmContainerSource`, decodes
+  exact packets through the in-tree PCM backend, and passes complete contiguous `AudioBlock` values
+  to `generate_audio_waveform_image`. Its selected-media response preserves the validated start
+  sample, sample rate, frame count, and ordered channel layout while application revision fencing,
+  byte ceilings, data-URL encoding, and ephemeral UI ownership remain above this crate.
 
 `superi-engine::media` is the production registry owner for `MkvWebmBackend`, `Mp4MovBackend`,
 `MxfBackend`, and `PcmContainerBackend`. Its resource preparation path uses bounded probing, opens
@@ -198,8 +203,10 @@ now binds explicit acquired source routes through decode, graph or audio process
 complete in-memory elementary packet streams. `nodes`, transport, native presentation, container
 muxing, and output publication remain incomplete, so there is still no scheduled
 source-to-decode-to-playback or encode-to-container flow. Repository search likewise finds no
-production consumer for paired selection, source timecode tracks, image-sequence traits, or
-waveform generation.
+production consumer for paired selection, source timecode tracks, or image-sequence traits. The
+desktop selected-media path is now a production waveform consumer, but it deliberately supports
+only bounded WAVE preview generation and does not claim playback, mixing, routing, or persistent
+artifact ownership.
 
 ## Invariants and operational boundaries
 
@@ -279,7 +286,8 @@ The module is substantive and test-rich at the value, probing, demux, timing, se
 interruption, PCM, and waveform-adapter layers. It provides four real source backends and exact
 contracts consumed by three codec families plus engine source and decoder preparation,
 introspection, upload, generation, transparent proxy or original-source resolution, and exact
-render-export lifecycle orchestration. It is not merely a scaffold.
+render-export lifecycle orchestration. The desktop application also consumes exact PCM container
+and waveform contracts for bounded selected-media inspection. It is not merely a scaffold.
 
 Its canonical fixture consumers now cover the complete current raw pixel-format and
 standard-video-rate matrix, synchronized multichannel PCM at three common audio rates, exact timing
@@ -310,6 +318,11 @@ Principal incomplete behavior and risks are:
 ## Maintenance notes
 
 When adding or changing media behavior, update the common contract and its actual implementers together. A new pixel or sample representation may require changes in decoded buffer validation, software/platform codec adapters, engine upload, waveform normalization, and tests. A new codec capability must keep coarse registration and correlated detail consistent.
+
+Keep the desktop waveform consumer aligned with exact packet timing, contiguous decoded-block
+validation, channel-layout order, source identity, and application-owned resource ceilings. Do not
+describe this preview path as playback, resampling, mixing, device routing, or a general compressed
+audio decoder.
 
 Container changes should keep probe, full parser, public metadata projection, packet ordering, seek behavior, fingerprint checks, resource bounds, operation polling, and contract fixtures aligned. Do not generalize one format's cancellation, error category, packet atomicity, source cap, or seek behavior to another.
 

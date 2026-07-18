@@ -621,6 +621,61 @@ kbd {
   margin: 0.1rem 0 0;
 }
 
+.media-preview {
+  display: grid;
+  gap: 0.5rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--ink) 14%, transparent);
+}
+
+.media-preview h5,
+.media-preview p {
+  margin: 0;
+}
+
+.media-preview-image,
+.media-preview-waveform > img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 13rem;
+  object-fit: contain;
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
+}
+
+.media-preview-filmstrip {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
+}
+
+.media-preview-filmstrip img {
+  width: 4.5rem;
+  height: 2.55rem;
+  flex: 0 0 4.5rem;
+  object-fit: cover;
+  border-radius: 0.3rem;
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
+}
+
+.media-preview-waveform {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.media-preview-status,
+.media-preview-unavailable {
+  color: color-mix(in srgb, var(--ink) 68%, transparent);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.media-preview-unavailable {
+  overflow-wrap: anywhere;
+}
+
 .source-metadata-status {
   margin: 0;
   text-transform: capitalize;

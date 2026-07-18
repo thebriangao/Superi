@@ -39,6 +39,13 @@ use superi_core::ids::MediaId;
 use superi_engine::editor::{ClipSource, EditorialProject, ProjectDatabase};
 use tauri::State;
 
+mod media_preview;
+
+pub use media_preview::{
+    FilmstripArtifact, MediaPreviewBundle, MediaPreviewProduct, MediaPreviewRequest,
+    PreviewImageArtifact, WaveformArtifact,
+};
+
 const MAX_RECENT_PROJECTS: usize = 32;
 const MAX_IMPORT_SOURCES: usize = 4096;
 const MAX_MEDIA_BATCH_OPERATIONS: usize = 4096;
@@ -296,6 +303,11 @@ impl DesktopImportedMedia {
     #[must_use]
     pub fn source_paths(&self) -> &[String] {
         &self.source_paths
+    }
+
+    #[must_use]
+    pub fn content_fingerprint(&self) -> &str {
+        &self.content_fingerprint
     }
 
     #[must_use]
@@ -3817,6 +3829,44 @@ impl DesktopProjectState {
         Ok(library.clone())
     }
 
+    pub fn generate_media_preview(
+        &self,
+        request: MediaPreviewRequest,
+    ) -> Result<MediaPreviewBundle, DesktopProjectFailure> {
+        let (project_id, project_revision) =
+            self.active_project_identity("generate_media_preview")?;
+        let item = {
+            let store = self.media_library_lock("generate_media_preview")?;
+            let library = store.projects.get(&project_id).ok_or_else(|| {
+                media_library_invalid("Media library preview state is unavailable")
+            })?;
+            if request.expected_project_revision != project_revision
+                || request.expected_project_revision != library.project_revision
+                || request.expected_library_revision != library.revision
+            {
+                return Err(user_correctable(
+                    "media_preview_revision_stale",
+                    "Media preview request is stale",
+                    "Refresh the media library and request the preview again.",
+                ));
+            }
+            library
+                .items
+                .iter()
+                .find(|item| item.media_id == request.media_id)
+                .cloned()
+                .ok_or_else(|| media_library_invalid("Imported media was not found"))?
+        };
+        if item.content_fingerprint != request.expected_freshness {
+            return Err(user_correctable(
+                "media_preview_freshness_stale",
+                "Media preview source changed",
+                "Refresh the media library and request the preview again.",
+            ));
+        }
+        Ok(media_preview::generate(&item))
+    }
+
     pub fn mutate_media_library(
         &self,
         update: MediaLibraryUpdate,
@@ -4330,6 +4380,17 @@ pub async fn project_media_library(
     tauri::async_runtime::spawn_blocking(move || state.media_library())
         .await
         .map_err(|_| project_task_failed("media_library"))?
+}
+
+#[tauri::command]
+pub async fn desktop_generate_media_preview(
+    request: MediaPreviewRequest,
+    state: State<'_, DesktopProjectState>,
+) -> Result<MediaPreviewBundle, DesktopProjectFailure> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.generate_media_preview(request))
+        .await
+        .map_err(|_| project_task_failed("generate_media_preview"))?
 }
 
 #[tauri::command]

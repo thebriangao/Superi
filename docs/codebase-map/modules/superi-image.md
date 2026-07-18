@@ -268,6 +268,11 @@ Current source-level consumers are narrower than the manifest graph:
   `WaveformImage`, and `render_waveform_image`. It owns decoded PCM validation and peak extraction,
   then delegates validated rasterization to this crate. Its decoded `VideoFrame` also retains the
   image-owned `ColorPipelineMetadata` contract.
+- The desktop application consumes dense image descriptors and `generate_thumbnail` for bounded
+  selected-media thumbnails, still previews, and canonically ordered image-sequence filmstrip
+  frames. It adapts decoded conventional raster pixels into explicit RGBA8, sRGB, straight-alpha
+  images before calling this crate, while source selection, PNG data-URL encoding, revision fences,
+  and UI lifetime remain application-owned.
 - `superi-graph` directly consumes color pipeline metadata as the neutral graph propagation seam.
   Cache, timeline, and engine surfaces then preserve that exact value without moving transform
   execution into this crate.
@@ -403,6 +408,10 @@ structured `Unsupported` results and explicit representation boundaries.
 - Waveform output is a complete CPU RGBA8 raster without antialiasing, sparse/vector storage,
   multiresolution representation, or GPU execution. The generic channel limit is also applied to
   source audio channel count even though the image output always has four channels.
+- Desktop preview generation is a real direct consumer of aspect-fit scaling and the waveform
+  raster returned through `superi-media-io`, but it remains an on-demand CPU path for supported
+  stills, image sequences, and WAVE. It does not make this crate a video decoder, artifact cache,
+  or persistent thumbnail owner.
 - Sequence discovery requires UTF-8 canonical filenames and does not refresh after construction.
   Black-reference choice prefers an earlier frame then any later frame, and heterogeneous files can
   make black representation depend on that reference. Hard-link publication depends on filesystem
@@ -440,3 +449,7 @@ structured `Unsupported` results and explicit representation boundaries.
 - Keep consumer maps explicit that `superi-color` owns color transforms, `superi-gpu` owns device
   resources and transfers, and `superi-media-io` owns PCM interpretation. Do not describe
   `Image`, `ImageAccess`, `StillImage`, and GPU frames as one generic image buffer.
+- Keep the desktop consumer explicit that application decoding and response encoding surround this
+  crate's existing dense image and scaling contracts. Any new persistent preview ownership, new
+  decoded format, or change from CPU data URLs to GPU-resident presentation requires coordinated
+  workspace and consumer-map updates.

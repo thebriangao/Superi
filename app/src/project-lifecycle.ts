@@ -348,6 +348,47 @@ export interface MediaBrowserItem {
   readonly thumbnail: ThumbnailPresentation;
 }
 
+export interface MediaPreviewRequest {
+  readonly expected_project_revision: number;
+  readonly expected_library_revision: number;
+  readonly media_id: string;
+  readonly expected_freshness: string;
+}
+
+export interface PreviewImageArtifact {
+  readonly data_url: string;
+  readonly width: number;
+  readonly height: number;
+  readonly source_index: number | null;
+  readonly source_count: number;
+}
+
+export interface FilmstripArtifact {
+  readonly frames: readonly PreviewImageArtifact[];
+  readonly source_count: number;
+}
+
+export interface WaveformArtifact {
+  readonly image: PreviewImageArtifact;
+  readonly start_sample: number;
+  readonly sample_rate: number;
+  readonly frame_count: number;
+  readonly channel_layout: readonly string[];
+}
+
+export type MediaPreviewProduct<T> =
+  | { readonly status: "ready"; readonly artifact: T }
+  | { readonly status: "unavailable"; readonly reason: string };
+
+export interface MediaPreviewBundle {
+  readonly media_id: string;
+  readonly freshness: string;
+  readonly thumbnail: MediaPreviewProduct<PreviewImageArtifact>;
+  readonly filmstrip: MediaPreviewProduct<FilmstripArtifact>;
+  readonly waveform: MediaPreviewProduct<WaveformArtifact>;
+  readonly preview: MediaPreviewProduct<PreviewImageArtifact>;
+}
+
 export interface MediaBinView {
   readonly bin_id: string;
   readonly name: string;
@@ -492,6 +533,7 @@ const SETTINGS_COMMAND = "desktop_project_settings";
 const UPDATE_SETTINGS_COMMAND = "desktop_project_settings_update";
 const IMPORT_MEDIA_COMMAND = "desktop_project_media_import";
 const MEDIA_LIBRARY_COMMAND = "project_media_library";
+const GENERATE_MEDIA_PREVIEW_COMMAND = "desktop_generate_media_preview";
 const MUTATE_MEDIA_LIBRARY_COMMAND = "mutate_project_media_library";
 const INSPECT_MEDIA_SOURCE_COMMAND = "inspect_project_media_source";
 const MUTATE_MEDIA_METADATA_COMMAND = "mutate_project_media_metadata";
@@ -532,6 +574,19 @@ export async function importDesktopMedia(
 
 export async function readProjectMediaLibrary(): Promise<MediaLibrarySnapshot> {
   return invoke<MediaLibrarySnapshot>(MEDIA_LIBRARY_COMMAND);
+}
+
+export async function generateProjectMediaPreview(
+  snapshot: MediaLibrarySnapshot,
+  item: MediaBrowserItem,
+): Promise<MediaPreviewBundle> {
+  const request: MediaPreviewRequest = {
+    expected_project_revision: snapshot.project_revision,
+    expected_library_revision: snapshot.revision,
+    media_id: item.media_id,
+    expected_freshness: item.content_fingerprint,
+  };
+  return invoke<MediaPreviewBundle>(GENERATE_MEDIA_PREVIEW_COMMAND, { request });
 }
 
 export async function mutateProjectMediaLibrary(
