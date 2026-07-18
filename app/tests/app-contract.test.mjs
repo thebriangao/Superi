@@ -31,8 +31,10 @@ test("production app pins the approved React, Vite, TypeScript, and Tauri toolch
   assert.match(cargo, /^tauri-build = \{ version = "=2\.6\.3"/m);
 });
 
-test("lifecycle seam is explicit without claiming adjacent process or API binding work", () => {
+test("engine process link is explicit without claiming binding or transport work", () => {
   const frontend = read(resolve(appRoot, "src/lifecycle.ts"));
+  const cargo = read(resolve(tauriRoot, "Cargo.toml"));
+  const engine = read(resolve(tauriRoot, "src/engine.rs"));
   const lifecycle = read(resolve(tauriRoot, "src/lifecycle.rs"));
   const host = read(resolve(tauriRoot, "src/lib.rs"));
 
@@ -44,8 +46,18 @@ test("lifecycle seam is explicit without claiming adjacent process or API bindin
   assert.match(lifecycle, /headless-engine/);
   assert.match(lifecycle, /request_restart/);
   assert.match(lifecycle, /request_recovery/);
+  assert.match(cargo, /^superi-api = \{ path = "\.\.\/\.\.\/open\/crates\/superi-api" \}/m);
+  assert.match(cargo, /^superi-engine = \{ path = "\.\.\/\.\.\/open\/crates\/superi-engine" \}/m);
+  assert.match(engine, /ExecutionDomain::EngineControl/);
+  assert.match(engine, /EngineCommandDispatcher::new/);
+  assert.match(engine, /sync_channel\(REQUEST_CAPACITY\)/);
+  assert.match(engine, /\.try_send\(EngineRequest::IntegrationValidation/);
+  assert.match(engine, /IntegrationValidationApi::new/);
+  assert.match(host, /LinkedEngineProcess::launch/);
+  assert.match(host, /\.manage\(engine\.connection\(\)\)/);
   assert.match(host, /RunEvent::ExitRequested/);
   assert.doesNotMatch(frontend, /open\/bindings\/typescript\/superi-api/);
+  assert.doesNotMatch(engine, /LocalProjectHost|JsonRpc|tauri::command|reconnect|cancel/);
   assert.doesNotMatch(lifecycle, /Command::new|process::Command|TcpStream/);
 });
 

@@ -2,18 +2,19 @@
 
 //! Native Tauri ownership for the Superi desktop lifecycle.
 
+pub mod engine;
 pub mod lifecycle;
 
 use std::thread;
 use std::time::Duration;
 
+use engine::LinkedEngineProcess;
 use lifecycle::{
     ApplicationLifecycle, ApplicationLifecyclePhase, ApplicationLifecycleRequest,
-    DesktopLifecycleSnapshot, HeadlessEngineFailure, LifecycleIntent,
+    DesktopLifecycleSnapshot, LifecycleIntent,
 };
 use serde::Serialize;
-use superi_concurrency::lifecycle::LifecyclePhase;
-use superi_core::error::{Error, ErrorCategory, Recoverability};
+use superi_core::error::Error;
 use tauri::{AppHandle, Builder, RunEvent, Runtime, State};
 
 #[derive(Clone)]
@@ -80,9 +81,11 @@ pub fn run() {
     let lifecycle = ApplicationLifecycle::new().expect("desktop lifecycle should initialize");
     let setup_lifecycle = lifecycle.clone();
     let event_lifecycle = lifecycle.clone();
+    let engine = LinkedEngineProcess::launch(lifecycle.clone())
+        .expect("headless engine process should initialize");
     let app = configure(tauri::Builder::default(), lifecycle)
+        .manage(engine.connection())
         .setup(move |app| {
-            spawn_unattached_headless_engine(setup_lifecycle.clone());
             spawn_exit_monitor(app.handle().clone(), setup_lifecycle.clone());
             Ok(())
         })
@@ -100,52 +103,9 @@ pub fn run() {
             }
         }
     });
-}
-
-fn spawn_unattached_headless_engine(lifecycle: ApplicationLifecycle) {
-    thread::Builder::new()
-        .name("superi-unattached-engine".to_owned())
-        .spawn(move || {
-            let Ok(engine) = lifecycle.headless_engine_participant() else {
-                return;
-            };
-            loop {
-                let observed = engine.signal().load();
-                match observed.phase() {
-                    LifecyclePhase::Starting => {
-                        let _ = engine.fail(
-                            HeadlessEngineFailure::new(
-                                ErrorCategory::Unavailable,
-                                Recoverability::Retryable,
-                                "The headless engine connection is not available in this build.",
-                            )
-                            .with_context("superi-desktop.engine", "connect"),
-                        );
-                    }
-                    LifecyclePhase::Stopping => {
-                        if let Ok(snapshot) = engine.acknowledge(observed) {
-                            if snapshot.application_phase() == ApplicationLifecyclePhase::Stopped
-                                && snapshot.intent() == LifecycleIntent::Shutdown
-                            {
-                                return;
-                            }
-                            continue;
-                        }
-                    }
-                    LifecyclePhase::Stopped => return,
-                    _ => {}
-                }
-
-                let revision = lifecycle.snapshot().revision();
-                if lifecycle
-                    .wait_for_change(revision, Duration::from_secs(60))
-                    .is_err()
-                {
-                    return;
-                }
-            }
-        })
-        .expect("unattached engine lifecycle thread should start");
+    if let Err(error) = engine.join() {
+        eprintln!("headless engine process did not stop cleanly: {error}");
+    }
 }
 
 fn spawn_exit_monitor<R: Runtime>(app: AppHandle<R>, lifecycle: ApplicationLifecycle) {
@@ -171,12 +131,7 @@ fn spawn_exit_monitor<R: Runtime>(app: AppHandle<R>, lifecycle: ApplicationLifec
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
-
-    use super::{
-        configure, spawn_unattached_headless_engine, ApplicationLifecycle,
-        ApplicationLifecyclePhase, ManagedLifecycle,
-    };
+    use super::{configure, ApplicationLifecycle, ManagedLifecycle};
     use tauri::Manager;
 
     #[test]
@@ -193,34 +148,5 @@ mod tests {
                 .engine_generation(),
             1
         );
-    }
-
-    #[test]
-    fn unattached_engine_recovery_observes_the_new_start_without_poll_delay() {
-        let lifecycle = ApplicationLifecycle::new().unwrap();
-        spawn_unattached_headless_engine(lifecycle.clone());
-
-        wait_for_failed_generation(&lifecycle, 1);
-        lifecycle.request_recovery().unwrap();
-        wait_for_failed_generation(&lifecycle, 2);
-        lifecycle.request_shutdown().unwrap();
-    }
-
-    fn wait_for_failed_generation(lifecycle: &ApplicationLifecycle, generation: u64) {
-        let deadline = Instant::now() + Duration::from_secs(2);
-        loop {
-            let snapshot = lifecycle.snapshot();
-            if snapshot.application_phase() == ApplicationLifecyclePhase::Failed
-                && snapshot.engine_generation() == generation
-            {
-                return;
-            }
-            let remaining = deadline
-                .checked_duration_since(Instant::now())
-                .expect("unattached engine lifecycle transition timed out");
-            lifecycle
-                .wait_for_change(snapshot.revision(), remaining)
-                .expect("unattached engine lifecycle wait should succeed");
-        }
     }
 }
