@@ -10,10 +10,17 @@ import {
   TimelineProjectionError,
   buildTimelineRulerTicks,
   clampTimelineRange,
+  expandTimelineSelection,
   formatTimelineTime,
+  parseTimelineSelectionIdentity,
   projectTimelineDocument,
   resolveTimelineSnap,
+  timelineRectanglesIntersect,
   timelineItemsInWindow,
+  timelineSelectionIdentity,
+  timelineSelectionNeighbor,
+  timelineSelectionRange,
+  timelineSelectionTargets,
 } from "../src/timeline-workspace.ts";
 
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -593,6 +600,113 @@ test("item target ties retain lower editorial object identity order", () => {
   assert.equal(match?.target.label, "Opening start");
 });
 
+test("selection helpers preserve identity, relationship, range, lasso, and navigation intent", () => {
+  const document = canonicalDocument();
+  const content = document.content as Record<string, unknown>;
+  const payload = content.payload as Record<string, unknown>;
+  const timelines = payload.timelines as Array<Record<string, unknown>>;
+  const timeline = timelines[0];
+  const tracks = timeline.tracks as Array<Record<string, unknown>>;
+  const audioItems = tracks[1].items as unknown[];
+  const audioRate = Object.freeze({ numerator: 48_000, denominator: 1 });
+  audioItems.push({
+    kind: "clip",
+    id: "clip.c",
+    name: "Room tone",
+    source: { kind: "media", id: "media.c" },
+    source_range: rangeAt("0", "48000", audioRate),
+    record_range: rangeAt("0", "48000", audioRate),
+    time_map: {
+      record_duration: {
+        value: "48000",
+        timebase: audioRate,
+      },
+      source_timebase: audioRate,
+      segments: [
+        {
+          record_range: rangeAt("0", "48000", audioRate),
+          source_start: { value: "0", timebase: audioRate },
+          rate_numerator: "1",
+          rate_denominator: "1",
+        },
+      ],
+    },
+  });
+  const editState = timeline.edit_state as Record<string, unknown>;
+  editState.groups = [["clip.a", "clip.b"]];
+  editState.links = [["clip.b", "clip.c"]];
+
+  const model = projectTimelineDocument(document, "timeline.main");
+  const targets = timelineSelectionTargets(model);
+  const keyA = targets.find((target) => target.item.id === "clip.a")?.key;
+  const keyB = targets.find((target) => target.item.id === "clip.b")?.key;
+  const keyC = targets.find((target) => target.item.id === "clip.c")?.key;
+  const transitionKey = targets.find(
+    (target) => target.item.id === "transition.ab",
+  )?.key;
+  assert.ok(keyA);
+  assert.ok(keyB);
+  assert.ok(keyC);
+  assert.ok(transitionKey);
+
+  assert.deepEqual(expandTimelineSelection(model, [keyA]), [
+    keyC,
+    keyA,
+    keyB,
+  ]);
+  assert.deepEqual(expandTimelineSelection(model, [keyA], true), [keyA]);
+  assert.deepEqual(timelineSelectionRange(model, keyA, keyB), [
+    keyA,
+    transitionKey,
+    keyB,
+    keyC,
+  ]);
+  editState.linked_selection_enabled = false;
+  const unlinkedModel = projectTimelineDocument(document, "timeline.main");
+  assert.deepEqual(expandTimelineSelection(unlinkedModel, [keyA]), [keyA, keyB]);
+  assert.equal(timelineSelectionNeighbor(model, keyA, "up"), keyC);
+  assert.equal(timelineSelectionNeighbor(model, keyA, "right"), transitionKey);
+  assert.equal(timelineSelectionNeighbor(model, keyB, "home"), keyA);
+  assert.equal(timelineSelectionNeighbor(model, keyA, "end"), keyB);
+
+  const identity = timelineSelectionIdentity("timeline/main", {
+    kind: "clip",
+    id: "clip / exact",
+  });
+  assert.deepEqual(parseTimelineSelectionIdentity(identity), {
+    timelineId: "timeline/main",
+    object: { kind: "clip", id: "clip / exact" },
+  });
+  assert.equal(parseTimelineSelectionIdentity("project:unrelated"), null);
+  assert.throws(
+    () =>
+      timelineSelectionIdentity("timeline.main", {
+        kind: "clip",
+        id: "x".repeat(4_096),
+      }),
+    /identity is too long/i,
+  );
+  assert.equal(
+    parseTimelineSelectionIdentity(`superi.timeline.object/${"x".repeat(4_096)}`),
+    null,
+  );
+
+  assert.equal(
+    timelineRectanglesIntersect(
+      { left: 10, top: 10, right: 30, bottom: 30 },
+      { left: 29, top: 29, right: 40, bottom: 40 },
+    ),
+    true,
+  );
+  assert.equal(
+    timelineRectanglesIntersect(
+      { left: 10, top: 10, right: 30, bottom: 30 },
+      { left: 31, top: 31, right: 40, bottom: 40 },
+    ),
+    false,
+  );
+});
+
 test("timeline surface is integrated without a second authored mutation owner", () => {
   const workspaces = readFileSync(
     resolve(appRoot, "src/editor-workspaces.tsx"),
@@ -620,11 +734,38 @@ test("timeline surface is integrated without a second authored mutation owner", 
   assert.match(timeline, /aria-live="polite"/);
   assert.match(timeline, /event\.key !== "Escape"/);
   assert.match(timeline, /timeline-snap-guide/);
+  assert.match(workspaces, /selection=\{state\.selection\}/);
+  assert.match(workspaces, /dispatchSelection=\{dispatch\}/);
+  assert.match(timeline, /role="listbox"/);
+  assert.match(timeline, /aria-multiselectable="true"/);
+  assert.match(timeline, /role="option"/);
+  assert.match(timeline, /aria-selected=\{interactionSelected\}/);
+  assert.match(timeline, /aria-live="polite"/);
+  assert.match(timeline, /timelineRectanglesIntersect/);
+  assert.match(timeline, /beginSelection/);
+  assert.match(timeline, /commitLasso/);
+  assert.match(timeline, /timelineSelectionRange/);
+  assert.match(timeline, /timelineSelectionNeighbor/);
+  assert.match(timeline, /event\.key === "ArrowLeft"/);
+  assert.match(timeline, /event\.key === "ArrowRight"/);
+  assert.match(timeline, /event\.key === "ArrowUp"/);
+  assert.match(timeline, /event\.key === "ArrowDown"/);
+  assert.match(timeline, /event\.key === "Home"/);
+  assert.match(timeline, /event\.key === "End"/);
+  assert.match(timeline, /event\.key === "Escape"/);
+  assert.match(timeline, /event\.key\.toLowerCase\(\) === "a"/);
+  assert.match(timeline, /Shift-click/);
+  assert.match(timeline, /Option-click/);
+  assert.match(timeline, /drag empty track space/);
   assert.match(timeline, /model\?\.tracks\.slice\(\)\.reverse\(\)/);
   assert.match(timeline, /timelineItemsInWindow/);
   assert.match(styles, /\.timeline-ruler \{[\s\S]*?z-index: 9;/);
   assert.match(styles, /\.timeline-range \{[\s\S]*?z-index: 10;/);
   assert.match(styles, /\.timeline-playhead \{[\s\S]*?z-index: 11;/);
+  assert.match(styles, /\.timeline-lasso \{/);
+  assert.match(styles, /\.timeline-selection-status \{/);
+  assert.match(styles, /\.timeline-item-authored-selected \{/);
+  assert.match(styles, /\.timeline-item:focus-visible \{/);
   assert.match(styles, /button\.timeline-range-handle \{[\s\S]*?pointer-events: auto;/);
   assert.match(styles, /\.timeline-snap-controls/);
   assert.match(styles, /\.timeline-snap-guide/);

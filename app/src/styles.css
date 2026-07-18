@@ -1465,6 +1465,10 @@ button.timeline-snap-rule[aria-pressed="true"] {
 }
 
 .timeline-gesture-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin: 0;
   padding: 7px 12px;
   border-bottom: 1px solid #252c2f;
@@ -1484,6 +1488,22 @@ button.timeline-snap-rule[aria-pressed="true"] {
   line-height: 1.4;
 }
 
+.timeline-gesture-hint > span {
+  min-width: 0;
+}
+
+.timeline-selection-status {
+  flex: 0 0 auto;
+  padding: 3px 6px;
+  border: 1px solid #34434a;
+  border-radius: 4px;
+  color: #c7e8f7;
+  background: #172329;
+  font-size: 9px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
 .timeline-scroll {
   position: relative;
   width: 100%;
@@ -1500,6 +1520,11 @@ button.timeline-snap-rule[aria-pressed="true"] {
 .timeline-scroll-gesturing,
 .timeline-scroll-gesturing * {
   cursor: ew-resize !important;
+}
+
+.timeline-scroll-selecting,
+.timeline-scroll-selecting * {
+  cursor: crosshair !important;
 }
 
 .timeline-stage {
@@ -1690,7 +1715,8 @@ button.timeline-snap-rule[aria-pressed="true"] {
   color: #dce8ed;
   background: #243943;
   box-shadow: 0 2px 6px rgb(0 0 0 / 22%);
-  pointer-events: none;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 button.timeline-item {
@@ -1836,19 +1862,23 @@ button.timeline-item:focus-visible {
     0 3px 9px rgb(0 0 0 / 30%);
 }
 
-.timeline-item-shared-selected {
+.timeline-item-authored-selected {
   box-shadow:
-    inset 0 0 0 2px #dfc582,
-    0 3px 9px rgb(0 0 0 / 30%);
+    inset 0 -2px #dfc582,
+    0 2px 6px rgb(0 0 0 / 22%);
 }
 
-.timeline-item-selected.timeline-item-shared-selected {
+.timeline-item-authored-selected.timeline-item-selected {
   box-shadow:
+    inset 0 -2px #dfc582,
     0 0 0 1px #aaddff,
-    inset 0 0 0 2px #dfc582,
     0 3px 9px rgb(0 0 0 / 30%);
 }
 
+.timeline-item:focus-visible {
+  outline: 2px solid #f4f7f2;
+  outline-offset: 2px;
+}
 .timeline-item-kind {
   overflow: hidden;
   color: rgb(224 239 246 / 62%);
@@ -1907,6 +1937,16 @@ button.timeline-item:focus-visible {
   border-right: 1px solid rgb(223 197 130 / 54%);
   border-left: 1px solid rgb(223 197 130 / 54%);
   background: rgb(223 197 130 / 7%);
+  pointer-events: none;
+}
+
+.timeline-lasso {
+  position: absolute;
+  z-index: 8;
+  border: 1px solid #aaddff;
+  border-radius: 2px;
+  background: rgb(170 221 255 / 12%);
+  box-shadow: inset 0 0 0 1px rgb(8 16 20 / 40%);
   pointer-events: none;
 }
 
@@ -2162,6 +2202,8 @@ button.timeline-playhead-handle span {
   }
 
   .timeline-gesture-hint {
+    align-items: flex-start;
+    flex-direction: column;
     line-height: 1.55;
   }
 }

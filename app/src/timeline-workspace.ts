@@ -7,6 +7,8 @@ const MAX_RULER_TICKS = 4_000;
 const SAFE_SIGNED_DECIMAL = /^(?:0|-[1-9][0-9]*|[1-9][0-9]*)$/;
 const SAFE_UNSIGNED_DECIMAL = /^(?:0|[1-9][0-9]*)$/;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
+const TIMELINE_SELECTION_IDENTITY_PREFIX = "superi.timeline.object/";
+const MAX_TIMELINE_SELECTION_IDENTITY_LENGTH = 4_096;
 
 export interface TimelineRate {
   readonly numerator: number;
@@ -174,6 +176,29 @@ export interface TimelineRulerOptions {
   readonly visibleEndSeconds: number;
   readonly pixelsPerSecond: number;
   readonly editRate: TimelineRate;
+}
+
+export interface TimelineSelectionTarget {
+  readonly key: string;
+  readonly trackId: string;
+  readonly trackIndex: number;
+  readonly itemIndex: number;
+  readonly item: TimelineCanvasItem;
+}
+
+export type TimelineSelectionDirection =
+  | "left"
+  | "right"
+  | "up"
+  | "down"
+  | "home"
+  | "end";
+
+export interface TimelineRectangle {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
 }
 
 interface ParsedPoint {
@@ -889,6 +914,216 @@ export function clampNumber(value: number, minimum: number, maximum: number): nu
   return Math.min(maximum, Math.max(minimum, value));
 }
 
+export function timelineSelectionTargets(
+  model: TimelineCanvasModel,
+): readonly TimelineSelectionTarget[] {
+  const targets: TimelineSelectionTarget[] = [];
+  const tracks = model.tracks.slice().reverse();
+  for (const [trackIndex, track] of tracks.entries()) {
+    for (const [itemIndex, item] of track.items.entries()) {
+      targets.push(
+        Object.freeze({
+          key: objectKey(item),
+          trackId: track.id,
+          trackIndex,
+          itemIndex,
+          item,
+        }),
+      );
+    }
+  }
+  return Object.freeze(targets);
+}
+
+export function timelineObjectKey(value: TimelineObjectReference): string {
+  return objectKey(value);
+}
+
+export function expandTimelineSelection(
+  model: TimelineCanvasModel,
+  requestedKeys: readonly string[],
+  direct = false,
+): readonly string[] {
+  const targets = timelineSelectionTargets(model);
+  const targetsByKey = new Map(targets.map((target) => [target.key, target]));
+  const clipKeys = new Map(
+    targets
+      .filter((target) => target.item.kind === "clip")
+      .map((target) => [target.item.id, target.key]),
+  );
+  const expanded = new Set(
+    requestedKeys.filter((key) => targetsByKey.has(key)),
+  );
+  if (direct) {
+    return Object.freeze(
+      targets.filter((target) => expanded.has(target.key)).map((target) => target.key),
+    );
+  }
+
+  const pending = [...expanded]
+    .map((key) => targetsByKey.get(key))
+    .filter(
+      (target): target is TimelineSelectionTarget =>
+        target !== undefined && target.item.kind === "clip",
+    )
+    .map((target) => target.item.id);
+  const visited = new Set<string>();
+  while (pending.length > 0) {
+    const clipId = pending.pop();
+    if (clipId === undefined || visited.has(clipId)) continue;
+    visited.add(clipId);
+    const key = clipKeys.get(clipId);
+    if (key === undefined) continue;
+    expanded.add(key);
+    const target = targetsByKey.get(key);
+    if (target === undefined) continue;
+    const related = [
+      ...(target.item.group ?? []),
+      ...(model.linkedSelectionEnabled ? target.item.link ?? [] : []),
+    ];
+    for (const member of related) {
+      if (!visited.has(member) && clipKeys.has(member)) pending.push(member);
+    }
+  }
+
+  return Object.freeze(
+    targets.filter((target) => expanded.has(target.key)).map((target) => target.key),
+  );
+}
+
+export function timelineSelectionRange(
+  model: TimelineCanvasModel,
+  anchorKey: string,
+  focusKey: string,
+  direct = false,
+): readonly string[] {
+  const targets = timelineSelectionTargets(model);
+  const anchorIndex = targets.findIndex((target) => target.key === anchorKey);
+  const focusIndex = targets.findIndex((target) => target.key === focusKey);
+  if (focusIndex === -1) return Object.freeze([]);
+  if (anchorIndex === -1) {
+    return expandTimelineSelection(model, [focusKey], direct);
+  }
+  const start = Math.min(anchorIndex, focusIndex);
+  const end = Math.max(anchorIndex, focusIndex);
+  const directKeys = targets.slice(start, end + 1).map((target) => target.key);
+  const directKeySet = new Set(directKeys);
+  const expanded = expandTimelineSelection(model, directKeys, direct);
+  return Object.freeze([
+    ...directKeys,
+    ...expanded.filter((key) => !directKeySet.has(key)),
+  ]);
+}
+
+export function timelineSelectionNeighbor(
+  model: TimelineCanvasModel,
+  currentKey: string,
+  direction: TimelineSelectionDirection,
+): string | null {
+  const targets = timelineSelectionTargets(model);
+  const current = targets.find((target) => target.key === currentKey);
+  if (current === undefined) return null;
+  const trackTargets = targets.filter(
+    (target) => target.trackIndex === current.trackIndex,
+  );
+  const localIndex = trackTargets.findIndex((target) => target.key === currentKey);
+  if (direction === "left") return trackTargets[localIndex - 1]?.key ?? null;
+  if (direction === "right") return trackTargets[localIndex + 1]?.key ?? null;
+  if (direction === "home") return trackTargets[0]?.key ?? null;
+  if (direction === "end") return trackTargets.at(-1)?.key ?? null;
+
+  const step = direction === "up" ? -1 : 1;
+  const trackCount = Math.max(0, ...targets.map((target) => target.trackIndex)) + 1;
+  const currentCenter = (current.item.startSeconds + current.item.endSeconds) / 2;
+  for (
+    let trackIndex = current.trackIndex + step;
+    trackIndex >= 0 && trackIndex < trackCount;
+    trackIndex += step
+  ) {
+    const candidates = targets.filter((target) => target.trackIndex === trackIndex);
+    if (candidates.length === 0) continue;
+    return candidates.reduce((nearest, candidate) => {
+      const nearestCenter =
+        (nearest.item.startSeconds + nearest.item.endSeconds) / 2;
+      const candidateCenter =
+        (candidate.item.startSeconds + candidate.item.endSeconds) / 2;
+      return Math.abs(candidateCenter - currentCenter) <
+        Math.abs(nearestCenter - currentCenter)
+        ? candidate
+        : nearest;
+    }).key;
+  }
+  return null;
+}
+
+export function timelineSelectionIdentity(
+  timelineId: string,
+  object: TimelineObjectReference,
+): string {
+  if (timelineId.length === 0 || object.id.length === 0) {
+    throw projectionError("selection.identity", "timeline selection identity is incomplete");
+  }
+  const identity =
+    TIMELINE_SELECTION_IDENTITY_PREFIX +
+    `${encodeURIComponent(timelineId)}/${object.kind}/${encodeURIComponent(object.id)}`;
+  if (identity.length > MAX_TIMELINE_SELECTION_IDENTITY_LENGTH) {
+    throw projectionError("selection.identity", "timeline selection identity is too long");
+  }
+  return identity;
+}
+
+export function parseTimelineSelectionIdentity(identity: string): {
+  readonly timelineId: string;
+  readonly object: TimelineObjectReference;
+} | null {
+  if (
+    identity.length > MAX_TIMELINE_SELECTION_IDENTITY_LENGTH ||
+    !identity.startsWith(TIMELINE_SELECTION_IDENTITY_PREFIX)
+  ) {
+    return null;
+  }
+  const encoded = identity.slice(TIMELINE_SELECTION_IDENTITY_PREFIX.length).split("/");
+  if (encoded.length !== 3) return null;
+  const [timelineId, kind, id] = encoded;
+  if (kind === undefined || !isItemKind(kind)) return null;
+  try {
+    const decodedTimelineId = decodeURIComponent(timelineId ?? "");
+    const decodedId = decodeURIComponent(id ?? "");
+    if (decodedTimelineId.length === 0 || decodedId.length === 0) return null;
+    return Object.freeze({
+      timelineId: decodedTimelineId,
+      object: Object.freeze({ kind, id: decodedId }),
+    });
+  } catch {
+    return null;
+  }
+}
+
+export function timelineRectanglesIntersect(
+  left: TimelineRectangle,
+  right: TimelineRectangle,
+): boolean {
+  const values = [
+    left.left,
+    left.top,
+    left.right,
+    left.bottom,
+    right.left,
+    right.top,
+    right.right,
+    right.bottom,
+  ];
+  if (!values.every(Number.isFinite)) return false;
+  const leftBox = normalizeRectangle(left);
+  const rightBox = normalizeRectangle(right);
+  return !(
+    leftBox.right < rightBox.left ||
+    leftBox.left > rightBox.right ||
+    leftBox.bottom < rightBox.top ||
+    leftBox.top > rightBox.bottom
+  );
+}
+
 function parseItem(
   value: unknown,
   path: string,
@@ -1174,16 +1409,20 @@ function parseObjectReference(value: unknown, path: string): TimelineObjectRefer
 
 function parseItemKind(value: unknown, path: string): TimelineItemKind {
   const kind = asString(value, path);
-  if (
-    kind !== "clip" &&
-    kind !== "gap" &&
-    kind !== "transition" &&
-    kind !== "generator" &&
-    kind !== "caption"
-  ) {
+  if (!isItemKind(kind)) {
     throw projectionError(path, `unsupported timeline item kind ${kind}`);
   }
   return kind;
+}
+
+function isItemKind(value: string): value is TimelineItemKind {
+  return (
+    value === "clip" ||
+    value === "gap" ||
+    value === "transition" ||
+    value === "generator" ||
+    value === "caption"
+  );
 }
 
 function parseTrackKind(value: unknown, path: string): TimelineTrackKind {
@@ -1415,6 +1654,15 @@ function timelineItemKindOrder(kind: TimelineItemKind): number {
     case "caption":
       return 4;
   }
+}
+
+function normalizeRectangle(value: TimelineRectangle): TimelineRectangle {
+  return {
+    left: Math.min(value.left, value.right),
+    top: Math.min(value.top, value.bottom),
+    right: Math.max(value.left, value.right),
+    bottom: Math.max(value.top, value.bottom),
+  };
 }
 
 function exactUnitsToSeconds(

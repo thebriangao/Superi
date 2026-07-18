@@ -8,11 +8,15 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent,
-  type MouseEvent,
   type PointerEvent,
+  type RefCallback,
   type WheelEvent,
 } from "react";
 
+import type {
+  ApplicationAction,
+  ApplicationSelection,
+} from "./application.ts";
 import type {
   EditorCanonicalDocument,
   EditorPlaybackState,
@@ -38,16 +42,26 @@ import {
   buildTimelineRulerTicks,
   clampNumber,
   clampTimelineRange,
+  expandTimelineSelection,
   formatTimelineTime,
+  parseTimelineSelectionIdentity,
   projectTimelineDocument,
   resolveTimelineSnap,
   snapTimelineTime,
+  timelineObjectKey,
+  timelineRectanglesIntersect,
   timelineItemsInWindow,
   timelineFrameDuration,
+  timelineSelectionIdentity,
+  timelineSelectionNeighbor,
+  timelineSelectionRange,
+  timelineSelectionTargets,
   type TimelineCanvasItem,
   type TimelineCanvasModel,
   type TimelineSnapMatch,
   type TimelineSnapRules,
+  type TimelineRectangle,
+  type TimelineSelectionDirection,
 } from "./timeline-workspace.ts";
 
 const HEADER_WIDTH = 184;
@@ -56,6 +70,8 @@ const MAX_PIXELS_PER_SECOND = 1_600;
 const DEFAULT_PIXELS_PER_SECOND = 96;
 const SNAP_TOLERANCE_PIXELS = 10;
 const MAX_SNAP_TOLERANCE_FRAMES = 12;
+const LASSO_DRAG_THRESHOLD = 4;
+const TIMELINE_SELECTION_HELP_ID = "timeline-selection-help";
 
 const TIMELINE_SNAP_RULES = [
   { key: "timelineStart", label: "Timeline start" },
@@ -76,13 +92,28 @@ type TimelineClipPreviewState =
   | { readonly status: "ready"; readonly bundle: MediaPreviewBundle }
   | { readonly status: "unavailable"; readonly reason: string };
 
+interface TimelineLasso {
+  readonly pointerId: number;
+  readonly startX: number;
+  readonly startY: number;
+  readonly currentX: number;
+  readonly currentY: number;
+  readonly additive: boolean;
+  readonly toggle: boolean;
+  readonly direct: boolean;
+  readonly dragged: boolean;
+  readonly baseKeys: readonly string[];
+}
+
 export interface TimelineWorkspaceProps {
   readonly document: EditorCanonicalDocument;
   readonly rootTimelineId: string;
   readonly playback: EditorPlaybackState;
   readonly snapshot: EditorStateSnapshot;
-  readonly sharedSelectedClipIds: readonly string[];
-  readonly onSelectClip: (clipId: string, extend: boolean) => void;
+  readonly selection: ApplicationSelection;
+  readonly dispatchSelection: (action: ApplicationAction) => void;
+  readonly selectionSchemaVersion: string;
+  readonly selectionRevision: number;
 }
 
 export function TimelineWorkspace({
@@ -90,8 +121,10 @@ export function TimelineWorkspace({
   rootTimelineId,
   playback,
   snapshot,
-  sharedSelectedClipIds,
-  onSelectClip,
+  selection,
+  dispatchSelection,
+  selectionSchemaVersion,
+  selectionRevision,
 }: TimelineWorkspaceProps) {
   const projection = useMemo(() => {
     try {
@@ -121,10 +154,6 @@ export function TimelineWorkspace({
     }
     return result;
   }, [clipProjection]);
-  const sharedSelection = useMemo(
-    () => new Set(sharedSelectedClipIds),
-    [sharedSelectedClipIds],
-  );
   const clipPreviews = useTimelineClipPreviews(
     clipProjection,
     snapshot.project.project_revision,
@@ -144,17 +173,129 @@ export function TimelineWorkspace({
     ...TIMELINE_DEFAULT_SNAP_RULES,
   }));
   const [snapMatch, setSnapMatch] = useState<TimelineSnapMatch | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
   const gestureOriginRef = useRef<{
     readonly kind: TimelineGesture;
     readonly value: number;
   } | null>(null);
   const gesturePointerRef = useRef<number | null>(null);
+  const [lasso, setLasso] = useState<TimelineLasso | null>(null);
+  const [lassoPreviewKeys, setLassoPreviewKeys] = useState<readonly string[] | null>(
+    null,
+  );
+  const [focusedKey, setFocusedKey] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef(new Map<string, HTMLElement>());
+  const lassoRef = useRef<TimelineLasso | null>(null);
+  const lassoPreviewKeysRef = useRef<readonly string[] | null>(null);
   const pendingScrollRef = useRef<number | null>(null);
   const autoFitIdentityRef = useRef<string | null>(null);
   const viewIdentityRef = useRef(
     model ? `${model.projectId}:${model.id}` : null,
   );
+  const selectionTargets = useMemo(
+    () => (model ? timelineSelectionTargets(model) : []),
+    [model],
+  );
+  const selectionTargetsByKey = useMemo(
+    () => new Map(selectionTargets.map((target) => [target.key, target])),
+    [selectionTargets],
+  );
+  const selectedKeys = useMemo(() => {
+    if (!model) return Object.freeze([]) as readonly string[];
+    const keys: string[] = [];
+    const seen = new Set<string>();
+    for (const reference of selection.items) {
+      if (
+        reference.resource !== "superi.editor.state" ||
+        reference.schema_version !== selectionSchemaVersion ||
+        reference.revision !== selectionRevision
+      ) {
+        continue;
+      }
+      const parsed = parseTimelineSelectionIdentity(reference.identity);
+      if (parsed?.timelineId !== model.id) continue;
+      const key = timelineObjectKey(parsed.object);
+      if (!selectionTargetsByKey.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      keys.push(key);
+    }
+    return Object.freeze(keys);
+  }, [
+    model,
+    selection.items,
+    selectionRevision,
+    selectionSchemaVersion,
+    selectionTargetsByKey,
+  ]);
+  const selectionAnchorKey = useMemo(() => {
+    if (!model || selection.anchor === null) return null;
+    const reference = selection.anchor;
+    if (
+      reference.resource !== "superi.editor.state" ||
+      reference.schema_version !== selectionSchemaVersion ||
+      reference.revision !== selectionRevision
+    ) {
+      return null;
+    }
+    const parsed = parseTimelineSelectionIdentity(reference.identity);
+    if (parsed?.timelineId !== model.id) return null;
+    const key = timelineObjectKey(parsed.object);
+    return selectionTargetsByKey.has(key) ? key : null;
+  }, [
+    model,
+    selection.anchor,
+    selectionRevision,
+    selectionSchemaVersion,
+    selectionTargetsByKey,
+  ]);
+  const visibleSelectionKeys = lassoPreviewKeys ?? selectedKeys;
+  const visibleSelection = useMemo(
+    () => new Set(visibleSelectionKeys),
+    [visibleSelectionKeys],
+  );
+  const authoredSelection = useMemo(
+    () =>
+      new Set(
+        selectionTargets
+          .filter((target) => target.item.selected)
+          .map((target) => target.key),
+      ),
+    [selectionTargets],
+  );
+  const rovingFocusKey =
+    (focusedKey !== null && selectionTargetsByKey.has(focusedKey)
+      ? focusedKey
+      : null) ??
+    selectionAnchorKey ??
+    selectedKeys[0] ??
+    authoredSelection.values().next().value ??
+    selectionTargets[0]?.key ??
+    null;
+
+  useEffect(() => {
+    if (focusedKey !== null && !selectionTargetsByKey.has(focusedKey)) {
+      setFocusedKey(rovingFocusKey);
+    }
+  }, [focusedKey, rovingFocusKey, selectionTargetsByKey]);
+
+  useEffect(() => {
+    const pointerId = lassoRef.current?.pointerId ?? gesturePointerRef.current;
+    lassoRef.current = null;
+    lassoPreviewKeysRef.current = null;
+    gestureOriginRef.current = null;
+    gesturePointerRef.current = null;
+    setLasso(null);
+    setLassoPreviewKeys(null);
+    setGesture(null);
+    setSnapMatch(null);
+    if (
+      pointerId !== null &&
+      scrollRef.current?.hasPointerCapture(pointerId)
+    ) {
+      scrollRef.current.releasePointerCapture(pointerId);
+    }
+  }, [model?.id, model?.projectId, model?.projectRevision, selectionRevision]);
 
   useLayoutEffect(() => {
     const viewport = scrollRef.current;
@@ -387,6 +528,218 @@ export function TimelineWorkspace({
     [inPoint, model, outPoint],
   );
 
+  const commitSelection = useCallback(
+    (keys: readonly string[], requestedAnchor: string | null) => {
+      if (!model) return;
+      const normalized: string[] = [];
+      const seen = new Set<string>();
+      for (const key of keys) {
+        if (!selectionTargetsByKey.has(key) || seen.has(key)) continue;
+        seen.add(key);
+        normalized.push(key);
+      }
+      if (normalized.length === 0) {
+        dispatchSelection({ type: "clear_selection" });
+        return;
+      }
+      const references = normalized.map((key) => {
+        const target = selectionTargetsByKey.get(key)!;
+        return Object.freeze({
+          resource: "superi.editor.state" as const,
+          schema_version: selectionSchemaVersion,
+          identity: timelineSelectionIdentity(model.id, target.item),
+          revision: selectionRevision,
+        });
+      });
+      const anchorIndex =
+        requestedAnchor === null ? -1 : normalized.indexOf(requestedAnchor);
+      dispatchSelection({
+        type: "replace_selection",
+        items: references,
+        anchor: anchorIndex === -1 ? references.at(-1) ?? null : references[anchorIndex],
+      });
+    },
+    [
+      dispatchSelection,
+      model,
+      selectionRevision,
+      selectionSchemaVersion,
+      selectionTargetsByKey,
+    ],
+  );
+
+  const selectTarget = useCallback(
+    (
+      targetKey: string,
+      modifiers: {
+        readonly shiftKey: boolean;
+        readonly altKey: boolean;
+        readonly metaKey: boolean;
+        readonly ctrlKey: boolean;
+      },
+      fallbackAnchor: string | null = null,
+    ) => {
+      if (!model || !selectionTargetsByKey.has(targetKey)) return;
+      const direct = modifiers.altKey;
+      const toggle = modifiers.metaKey || modifiers.ctrlKey;
+      if (modifiers.shiftKey) {
+        const range = timelineSelectionRange(
+          model,
+          selectionAnchorKey ?? fallbackAnchor ?? targetKey,
+          targetKey,
+          direct,
+        );
+        commitSelection(
+          toggle ? unionSelection(selectedKeys, range) : range,
+          targetKey,
+        );
+        return;
+      }
+      const related = expandTimelineSelection(model, [targetKey], direct);
+      if (!toggle) {
+        commitSelection(related, targetKey);
+        return;
+      }
+      const current = new Set(selectedKeys);
+      const remove = related.every((key) => current.has(key));
+      for (const key of related) {
+        if (remove) current.delete(key);
+        else current.add(key);
+      }
+      commitSelection(
+        selectionTargets
+          .filter((target) => current.has(target.key))
+          .map((target) => target.key),
+        remove ? selectionAnchorKey : targetKey,
+      );
+    },
+    [
+      commitSelection,
+      model,
+      selectedKeys,
+      selectionAnchorKey,
+      selectionTargets,
+      selectionTargetsByKey,
+    ],
+  );
+
+  const focusItem = useCallback(
+    (key: string) => {
+      setFocusedKey(key);
+      const target = selectionTargetsByKey.get(key);
+      const viewport = scrollRef.current;
+      if (model && target && viewport) {
+        const itemStart =
+          (target.item.startSeconds - model.startSeconds) * pixelsPerSecond;
+        const itemEnd =
+          (target.item.endSeconds - model.startSeconds) * pixelsPerSecond;
+        let nextScroll = viewport.scrollLeft;
+        if (itemStart < viewport.scrollLeft) nextScroll = itemStart;
+        else if (itemEnd > viewport.scrollLeft + visibleContentWidth) {
+          nextScroll = itemEnd - visibleContentWidth;
+        }
+        nextScroll = clampNumber(nextScroll, 0, maxScrollLeft);
+        if (nextScroll !== viewport.scrollLeft) {
+          viewport.scrollLeft = nextScroll;
+          setScrollLeft(nextScroll);
+        }
+      }
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const item = itemRefs.current.get(key);
+          item?.focus({ preventScroll: true });
+          item?.scrollIntoView({ block: "nearest", inline: "nearest" });
+        });
+      });
+    },
+    [
+      maxScrollLeft,
+      model,
+      pixelsPerSecond,
+      selectionTargetsByKey,
+      visibleContentWidth,
+    ],
+  );
+
+  const itemRef = useCallback(
+    (key: string): RefCallback<HTMLElement> =>
+      (node) => {
+        if (node === null) itemRefs.current.delete(key);
+        else itemRefs.current.set(key, node);
+      },
+    [],
+  );
+
+  const beginSelection = useCallback(
+    (event: PointerEvent<HTMLElement>, key: string) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setFocusedKey(key);
+      event.currentTarget.focus({ preventScroll: true });
+      selectTarget(key, event, key);
+    },
+    [selectTarget],
+  );
+
+  const itemKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLElement>, key: string) => {
+      if (!model) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
+        event.preventDefault();
+        commitSelection(
+          selectionTargets.map((target) => target.key),
+          key,
+        );
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        commitSelection([], null);
+        return;
+      }
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectTarget(key, event, key);
+        return;
+      }
+
+      let direction: TimelineSelectionDirection | null = null;
+      if (event.key === "ArrowLeft") direction = "left";
+      else if (event.key === "ArrowRight") direction = "right";
+      else if (event.key === "ArrowUp") direction = "up";
+      else if (event.key === "ArrowDown") direction = "down";
+      else if (event.key === "Home") direction = "home";
+      else if (event.key === "End") direction = "end";
+      if (direction === null) return;
+      event.preventDefault();
+      const next = timelineSelectionNeighbor(model, key, direction);
+      if (next === null) return;
+      focusItem(next);
+      if (event.shiftKey) {
+        commitSelection(
+          timelineSelectionRange(
+            model,
+            selectionAnchorKey ?? key,
+            next,
+            event.altKey,
+          ),
+          next,
+        );
+      } else {
+        commitSelection(expandTimelineSelection(model, [next], event.altKey), next);
+      }
+    },
+    [
+      commitSelection,
+      focusItem,
+      model,
+      selectTarget,
+      selectionAnchorKey,
+      selectionTargets,
+    ],
+  );
+
   const beginGesture = useCallback(
     (event: PointerEvent<HTMLElement>, kind: TimelineGesture) => {
       if (!model || event.button !== 0) return;
@@ -406,44 +759,173 @@ export function TimelineWorkspace({
     [applyGesture, eventTime, inPoint, model, outPoint, playhead],
   );
 
-  const moveGesture = useCallback(
+  const beginLasso = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
-      if (!gesture) return;
+      if (!model || event.button !== 0) return;
       event.preventDefault();
-      const resolved = eventTime(gesture, event.clientX);
+      event.stopPropagation();
+      scrollRef.current?.setPointerCapture(event.pointerId);
+      gestureOriginRef.current = { kind: "playhead", value: playhead };
+      gesturePointerRef.current = event.pointerId;
+      const resolved = eventTime("playhead", event.clientX);
       setSnapMatch(resolved.match);
-      applyGesture(gesture, resolved.value);
+      applyGesture("playhead", resolved.value);
+      const toggle = event.metaKey || event.ctrlKey;
+      const additive = event.shiftKey;
+      const nextLasso = Object.freeze({
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        currentX: event.clientX,
+        currentY: event.clientY,
+        additive,
+        toggle,
+        direct: event.altKey,
+        dragged: false,
+        baseKeys: selectedKeys,
+      });
+      const preview = toggle || additive ? selectedKeys : Object.freeze([]);
+      lassoRef.current = nextLasso;
+      lassoPreviewKeysRef.current = preview;
+      setLasso(nextLasso);
+      setLassoPreviewKeys(preview);
     },
-    [applyGesture, eventTime, gesture],
+    [applyGesture, eventTime, model, playhead, selectedKeys],
   );
 
-  const endGesture = useCallback((event: PointerEvent<HTMLDivElement>) => {
-    if (scrollRef.current?.hasPointerCapture(event.pointerId)) {
-      scrollRef.current.releasePointerCapture(event.pointerId);
+  const moveGesture = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      const activeLasso = lassoRef.current;
+      if (activeLasso) {
+        if (event.pointerId !== activeLasso.pointerId) return;
+        if (!model) {
+          lassoRef.current = null;
+          lassoPreviewKeysRef.current = null;
+          setLasso(null);
+          setLassoPreviewKeys(null);
+          return;
+        }
+        event.preventDefault();
+        const distance = Math.hypot(
+          event.clientX - activeLasso.startX,
+          event.clientY - activeLasso.startY,
+        );
+        const dragged = activeLasso.dragged || distance >= LASSO_DRAG_THRESHOLD;
+        const rectangle = pointerRectangle(
+          activeLasso.startX,
+          activeLasso.startY,
+          event.clientX,
+          event.clientY,
+        );
+        const hitKeys: string[] = [];
+        for (const item of scrollRef.current?.querySelectorAll<HTMLElement>(
+          "[data-selection-key]",
+        ) ?? []) {
+          const key = item.dataset.selectionKey;
+          if (
+            key !== undefined &&
+            timelineRectanglesIntersect(rectangle, item.getBoundingClientRect())
+          ) {
+            hitKeys.push(key);
+          }
+        }
+        const related = dragged
+          ? expandTimelineSelection(model, hitKeys, activeLasso.direct)
+          : [];
+        let preview: readonly string[];
+        if (activeLasso.toggle) {
+          const toggled = new Set(activeLasso.baseKeys);
+          for (const key of related) {
+            if (toggled.has(key)) toggled.delete(key);
+            else toggled.add(key);
+          }
+          preview = selectionTargets
+            .filter((target) => toggled.has(target.key))
+            .map((target) => target.key);
+        } else if (activeLasso.additive) {
+          preview = unionSelection(activeLasso.baseKeys, related);
+        } else {
+          preview = related;
+        }
+        const nextPreview = Object.freeze([...preview]);
+        const nextLasso = Object.freeze({
+          ...activeLasso,
+          currentX: event.clientX,
+          currentY: event.clientY,
+          dragged,
+        });
+        lassoPreviewKeysRef.current = nextPreview;
+        lassoRef.current = nextLasso;
+        setLassoPreviewKeys(nextPreview);
+        setLasso(nextLasso);
+        return;
+      }
+      if (gesture) {
+        event.preventDefault();
+        const resolved = eventTime(gesture, event.clientX);
+        setSnapMatch(resolved.match);
+        applyGesture(gesture, resolved.value);
+      }
+    },
+    [applyGesture, eventTime, gesture, model, selectionTargets],
+  );
+
+  const commitLasso = useCallback(() => {
+    const activeLasso = lassoRef.current;
+    if (!activeLasso) return;
+    const preview = lassoPreviewKeysRef.current ?? activeLasso.baseKeys;
+    if (activeLasso.dragged) {
+      commitSelection(preview, preview.at(-1) ?? null);
+    } else if (!activeLasso.additive && !activeLasso.toggle) {
+      commitSelection([], null);
     }
+    lassoRef.current = null;
+    lassoPreviewKeysRef.current = null;
+    setLasso(null);
+    setLassoPreviewKeys(null);
+  }, [commitSelection]);
+
+  const endGesture = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      const activeLasso = lassoRef.current;
+      const pointerId = activeLasso?.pointerId ?? gesturePointerRef.current;
+      if (pointerId !== null && event.pointerId !== pointerId) return;
+      if (activeLasso) commitLasso();
+      gestureOriginRef.current = null;
+      gesturePointerRef.current = null;
+      setGesture(null);
+      if (scrollRef.current?.hasPointerCapture(event.pointerId)) {
+        scrollRef.current.releasePointerCapture(event.pointerId);
+      }
+    },
+    [commitLasso],
+  );
+
+  const cancelGesture = useCallback((event?: PointerEvent<HTMLDivElement>) => {
+    const activeLasso = lassoRef.current;
+    const origin = gestureOriginRef.current;
+    const pointerId = activeLasso?.pointerId ?? gesturePointerRef.current;
+    if (origin === null && activeLasso === null) return;
+    if (event && pointerId !== null && event.pointerId !== pointerId) return;
+    if (origin) applyGesture(origin.kind, origin.value);
     gestureOriginRef.current = null;
     gesturePointerRef.current = null;
+    lassoRef.current = null;
+    lassoPreviewKeysRef.current = null;
     setGesture(null);
-  }, []);
-
-  const cancelGesture = useCallback(() => {
-    const origin = gestureOriginRef.current;
-    const pointerId = gesturePointerRef.current;
-    if (origin) applyGesture(origin.kind, origin.value);
+    setLasso(null);
+    setLassoPreviewKeys(null);
+    setSnapMatch(null);
     if (
       pointerId !== null &&
       scrollRef.current?.hasPointerCapture(pointerId)
     ) {
       scrollRef.current.releasePointerCapture(pointerId);
     }
-    gestureOriginRef.current = null;
-    gesturePointerRef.current = null;
-    setSnapMatch(null);
-    setGesture(null);
   }, [applyGesture]);
 
   useEffect(() => {
-    if (!gesture) return;
+    if (!gesture && !lasso) return;
     const reverseOnEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -451,7 +933,7 @@ export function TimelineWorkspace({
     };
     window.addEventListener("keydown", reverseOnEscape);
     return () => window.removeEventListener("keydown", reverseOnEscape);
-  }, [cancelGesture, gesture]);
+  }, [cancelGesture, gesture, lasso]);
 
   const handleWheel = useCallback(
     (event: WheelEvent<HTMLDivElement>) => {
@@ -590,6 +1072,10 @@ export function TimelineWorkspace({
         : gesture
           ? `${gestureName} remains frame aligned, with no enabled target in range.`
           : `${model.snapTargets.length} exact targets ready. Drag a timing tool to preview its consequence.`;
+  const lassoStyle =
+    lasso?.dragged && stageRef.current
+      ? lassoStageRectangle(lasso, stageRef.current.getBoundingClientRect())
+      : null;
 
   return (
     <section className="timeline-workspace" data-timeline-canvas>
@@ -622,6 +1108,10 @@ export function TimelineWorkspace({
           <TimelineReadout
             label="Visible"
             value={formatTimelineTime(visibleStartSeconds, model.editRate)}
+          />
+          <TimelineReadout
+            label="Selected"
+            value={String(visibleSelectionKeys.length)}
           />
         </div>
         <div className="timeline-toolbar-actions">
@@ -725,26 +1215,50 @@ export function TimelineWorkspace({
           {snapStatus}
         </output>
       </section>
-      <p className="timeline-gesture-hint">
-        Scroll to navigate, Shift-scroll to move horizontally, Command or Control
-        scroll to zoom, and drag the ruler or range handles for frame-precise timing.
-        Press Escape during a drag to reverse it immediately.
-      </p>
+      <div className="timeline-gesture-hint" id={TIMELINE_SELECTION_HELP_ID}>
+        <span>
+          Click to select, Command or Control-click toggles, Shift-click selects a
+          range, Option-click selects directly, and drag empty track space for a
+          lasso. Arrow keys navigate, Shift extends, Command or Control-A selects
+          all, and Escape clears. Escape during a timing or lasso drag reverses
+          it immediately. Scroll to navigate, Shift-scroll pans, and Command or
+          Control-scroll zooms around the pointer.
+        </span>
+        <output className="timeline-selection-status" aria-live="polite">
+          {visibleSelectionKeys.length === 0
+            ? "No timeline items selected"
+            : `${visibleSelectionKeys.length} timeline item${
+                visibleSelectionKeys.length === 1 ? "" : "s"
+              } selected`}
+        </output>
+      </div>
       {clipProjection?.status === "unavailable" ? (
         <p className="timeline-clip-detail-failure" role="alert">
           {clipProjection.reason}
         </p>
       ) : null}
       <div
-        className={`timeline-scroll${gesture ? " timeline-scroll-gesturing" : ""}`}
+        className={
+          `timeline-scroll${gesture ? " timeline-scroll-gesturing" : ""}` +
+          (lasso ? " timeline-scroll-selecting" : "")
+        }
         ref={scrollRef}
         onScroll={(event) => setScrollLeft(event.currentTarget.scrollLeft)}
         onPointerMove={moveGesture}
         onPointerUp={endGesture}
-        onPointerCancel={() => cancelGesture()}
+        onPointerCancel={cancelGesture}
+        onLostPointerCapture={cancelGesture}
         onWheel={handleWheel}
       >
-        <div className="timeline-stage" style={stageStyle}>
+        <div
+          aria-describedby={TIMELINE_SELECTION_HELP_ID}
+          aria-label={`${model.name} timeline items`}
+          aria-multiselectable="true"
+          className="timeline-stage"
+          ref={stageRef}
+          role="listbox"
+          style={stageStyle}
+        >
           <div className="timeline-corner">
             <span>{displayTracks.length} tracks</span>
             <strong>
@@ -834,23 +1348,30 @@ export function TimelineWorkspace({
               <div
                 className={`timeline-lane timeline-lane-${track.kind}`}
                 data-track-id={track.id}
-                onPointerDown={(event) => beginGesture(event, "playhead")}
+                onPointerDown={beginLasso}
               >
                 {track.items.length === 0 ? (
                   <span className="timeline-empty-lane">No timed items</span>
                 ) : (
                   visibleItems.map((item) => {
                     const detail = clipById.get(item.id) ?? null;
+                    const key = timelineObjectKey(item);
                     return (
                       <TimelineItem
+                        authoredSelected={authoredSelection.has(key)}
                         detail={detail}
+                        focused={rovingFocusKey === key}
+                        interactionSelected={visibleSelection.has(key)}
                         item={item}
-                        key={`${item.kind}:${item.id}`}
+                        itemRef={itemRef(key)}
+                        key={key}
                         model={model}
-                        onSelectClip={onSelectClip}
+                        onFocus={() => setFocusedKey(key)}
+                        onKeyDown={(event) => itemKeyDown(event, key)}
+                        onPointerDown={(event) => beginSelection(event, key)}
                         pixelsPerSecond={pixelsPerSecond}
                         previews={clipPreviews}
-                        sharedSelected={sharedSelection.has(item.id)}
+                        selectionKey={key}
                       />
                     );
                   })
@@ -858,6 +1379,9 @@ export function TimelineWorkspace({
               </div>
             </Fragment>
           ))}
+          {lassoStyle ? (
+            <div className="timeline-lasso" style={lassoStyle} aria-hidden="true" />
+          ) : null}
           <div
             className="timeline-range"
             style={{
@@ -891,21 +1415,33 @@ export function TimelineWorkspace({
 }
 
 function TimelineItem({
+  authoredSelected,
   detail,
+  focused,
+  interactionSelected,
   item,
+  itemRef,
   model,
-  onSelectClip,
+  onFocus,
+  onKeyDown,
+  onPointerDown,
   pixelsPerSecond,
   previews,
-  sharedSelected,
+  selectionKey,
 }: {
+  readonly authoredSelected: boolean;
   readonly detail: TimelineClipPresentation | null;
+  readonly focused: boolean;
+  readonly interactionSelected: boolean;
   readonly item: TimelineCanvasItem;
+  readonly itemRef: RefCallback<HTMLElement>;
   readonly model: TimelineCanvasModel;
-  readonly onSelectClip: (clipId: string, extend: boolean) => void;
+  readonly onFocus: () => void;
+  readonly onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
+  readonly onPointerDown: (event: PointerEvent<HTMLElement>) => void;
   readonly pixelsPerSecond: number;
   readonly previews: ReadonlyMap<string, TimelineClipPreviewState>;
-  readonly sharedSelected: boolean;
+  readonly selectionKey: string;
 }) {
   const left = (item.startSeconds - model.startSeconds) * pixelsPerSecond;
   const width = Math.max(2, (item.endSeconds - item.startSeconds) * pixelsPerSecond);
@@ -954,8 +1490,8 @@ function TimelineItem({
         : null,
     detail?.targeted ? "target" : null,
     detail?.syncLocked ? "sync" : null,
-    item.selected ? "timeline selected" : null,
-    sharedSelected ? "workspace selected" : null,
+    authoredSelected ? "authored selected" : null,
+    interactionSelected ? "workspace selected" : null,
   ].filter((value): value is string => value !== null);
   const title = [
     `${item.name} (${item.kind}:${item.id})`,
@@ -1015,8 +1551,8 @@ function TimelineItem({
     .join("\n");
   const className =
     `timeline-item timeline-item-${item.kind}` +
-    (item.selected ? " timeline-item-selected" : "") +
-    (sharedSelected ? " timeline-item-shared-selected" : "");
+    (authoredSelected ? " timeline-item-authored-selected" : "") +
+    (interactionSelected ? " timeline-item-selected" : "");
   const data = {
     "data-item-id": item.id,
     "data-item-kind": item.kind,
@@ -1025,6 +1561,7 @@ function TimelineItem({
     "data-source-id": item.source?.id,
     "data-grouped": item.group ? "true" : "false",
     "data-linked": item.link ? "true" : "false",
+    "data-selection-key": selectionKey,
   };
   const label = [
     item.name,
@@ -1041,9 +1578,7 @@ function TimelineItem({
       {item.kind === "clip" ? (
         <TimelineClipVisual detail={detail} preview={preview} />
       ) : null}
-      {detail?.automation ? (
-        <TimelineClipAutomationKeys detail={detail} />
-      ) : null}
+      {detail?.automation ? <TimelineClipAutomationKeys detail={detail} /> : null}
       <span className="timeline-item-copy">
         <span className="timeline-item-kind">{item.kind}</span>
         <strong>{item.name}</strong>
@@ -1058,22 +1593,27 @@ function TimelineItem({
       </span>
     </>
   );
+  const keyShortcuts =
+    "ArrowLeft ArrowRight ArrowUp ArrowDown Home End Shift+ArrowLeft " +
+    "Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown Shift+Home Shift+End " +
+    "Control+A Meta+A Enter Space Escape";
 
   if (item.kind === "clip") {
     return (
       <button
         {...data}
+        aria-describedby={TIMELINE_SELECTION_HELP_ID}
+        aria-keyshortcuts={keyShortcuts}
         aria-label={label}
-        aria-pressed={sharedSelected}
+        aria-selected={interactionSelected}
         className={className}
-        onClick={(event: MouseEvent<HTMLButtonElement>) =>
-          onSelectClip(
-            item.id,
-            event.shiftKey || event.metaKey || event.ctrlKey,
-          )
-        }
-        onPointerDown={(event) => event.stopPropagation()}
+        onFocus={onFocus}
+        onKeyDown={onKeyDown}
+        onPointerDown={onPointerDown}
+        ref={itemRef}
+        role="option"
         style={{ left, width }}
+        tabIndex={focused ? 0 : -1}
         title={title}
         type="button"
       >
@@ -1084,10 +1624,18 @@ function TimelineItem({
   return (
     <div
       {...data}
+      aria-describedby={TIMELINE_SELECTION_HELP_ID}
+      aria-keyshortcuts={keyShortcuts}
       aria-label={label}
+      aria-selected={interactionSelected}
       className={className}
-      role="group"
+      onFocus={onFocus}
+      onKeyDown={onKeyDown}
+      onPointerDown={onPointerDown}
+      ref={itemRef}
+      role="option"
       style={{ left, width }}
+      tabIndex={focused ? 0 : -1}
       title={title}
     >
       {contents}
@@ -1331,6 +1879,52 @@ function TimelineReadout({
       <strong>{value}</strong>
     </span>
   );
+}
+
+function unionSelection(
+  left: readonly string[],
+  right: readonly string[],
+): readonly string[] {
+  const values: string[] = [];
+  const seen = new Set<string>();
+  for (const key of [...left, ...right]) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    values.push(key);
+  }
+  return Object.freeze(values);
+}
+
+function pointerRectangle(
+  firstX: number,
+  firstY: number,
+  secondX: number,
+  secondY: number,
+): TimelineRectangle {
+  return {
+    left: Math.min(firstX, secondX),
+    top: Math.min(firstY, secondY),
+    right: Math.max(firstX, secondX),
+    bottom: Math.max(firstY, secondY),
+  };
+}
+
+function lassoStageRectangle(
+  lasso: TimelineLasso,
+  stage: TimelineRectangle,
+): CSSProperties {
+  const rectangle = pointerRectangle(
+    lasso.startX,
+    lasso.startY,
+    lasso.currentX,
+    lasso.currentY,
+  );
+  return {
+    left: rectangle.left - stage.left,
+    top: rectangle.top - stage.top,
+    width: Math.max(1, rectangle.right - rectangle.left),
+    height: Math.max(1, rectangle.bottom - rectangle.top),
+  };
 }
 
 function initialView(

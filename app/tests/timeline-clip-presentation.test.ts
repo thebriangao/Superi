@@ -531,7 +531,7 @@ test("keeps malformed supplemental or unsafe canonical state unavailable", () =>
   });
 });
 
-test("integrates real previews and shared selection into the existing canvas owner", () => {
+test("integrates real previews and application selection into the existing canvas owner", () => {
   const workspaces = readFileSync(
     resolve(appRoot, "src/editor-workspaces.tsx"),
     "utf8",
@@ -546,22 +546,29 @@ test("integrates real previews and shared selection into the existing canvas own
   );
 
   assert.match(workspaces, /snapshot=\{snapshot\}/);
-  assert.match(workspaces, /sharedSelectedClipIds=\{sharedSelectedClipIds\}/);
-  assert.match(workspaces, /type: "extend_selection"/);
-  assert.match(workspaces, /type: "replace_selection"/);
-  assert.match(workspaces, /resource: "superi\.editor\.state"/);
+  assert.match(workspaces, /selection=\{state\.selection\}/);
+  assert.match(workspaces, /dispatchSelection=\{dispatch\}/);
+  assert.match(workspaces, /selectionSchemaVersion=\{snapshot\.schema_version\}/);
+  assert.match(
+    workspaces,
+    /selectionRevision=\{snapshot\.project\.project_revision\}/,
+  );
+  assert.doesNotMatch(workspaces, /sharedSelectedClipIds|onSelectClip/);
   assert.match(timeline, /projectTimelineClipDetails/);
   assert.match(timeline, /readProjectMediaLibrary/);
   assert.match(timeline, /generateProjectMediaPreview/);
   assert.match(timeline, /bundle\.freshness !== item\.content_fingerprint/);
-  assert.match(timeline, /aria-pressed=\{sharedSelected\}/);
+  assert.match(timeline, /timelineSelectionIdentity/);
+  assert.match(timeline, /aria-selected=\{interactionSelected\}/);
+  assert.match(timeline, /role="option"/);
   assert.match(timeline, /\.\.\.evidence,/);
   assert.match(timeline, /formatTimelineClipTiming/);
   assert.match(timeline, /timeline-item-filmstrip/);
   assert.match(timeline, /timeline-item-waveform/);
   assert.match(timeline, /timeline-item-keyframe/);
   assert.match(styles, /button\.timeline-item \{[\s\S]*?pointer-events: auto;/);
-  assert.match(styles, /\.timeline-item-shared-selected/);
+  assert.match(styles, /\.timeline-item-authored-selected/);
+  assert.match(styles, /\.timeline-item-selected/);
   assert.match(styles, /\.timeline-item-preview/);
   assert.doesNotMatch(
     timeline,

@@ -11,15 +11,6 @@ import { TimelineWorkspace } from "./timeline-workspace.tsx";
 export function EditingWorkspacePanel() {
   const { editorProject, refreshEditorProject, dispatch, state } = useApplication();
   const snapshot = editorProject.snapshot;
-  const sharedSelectedClipIds = snapshot
-    ? state.selection.items
-        .filter(
-          (item) =>
-            item.resource === "superi.editor.state" &&
-            item.revision === snapshot.project.project_revision,
-        )
-        .map((item) => item.identity)
-    : [];
   return (
     <WorkspaceSurface
       label="Editing"
@@ -34,23 +25,13 @@ export function EditingWorkspacePanel() {
         <>
           <TimelineWorkspace
             document={snapshot.timeline.document}
-            onSelectClip={(clipId, extend) => {
-              const item = {
-                resource: "superi.editor.state" as const,
-                schema_version: snapshot.schema_version,
-                identity: clipId,
-                revision: snapshot.project.project_revision,
-              };
-              dispatch(
-                extend
-                  ? { type: "extend_selection", item }
-                  : { type: "replace_selection", items: [item], anchor: item },
-              );
-            }}
             rootTimelineId={snapshot.project.root_timeline_id}
-            sharedSelectedClipIds={sharedSelectedClipIds}
             snapshot={snapshot}
             playback={snapshot.playback}
+            selection={state.selection}
+            dispatchSelection={dispatch}
+            selectionSchemaVersion={snapshot.schema_version}
+            selectionRevision={snapshot.project.project_revision}
           />
           <div className="editor-summary-grid">
             <Metric label="Project" value={snapshot.project.project_id} />

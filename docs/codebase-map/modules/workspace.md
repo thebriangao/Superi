@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 3d2f2ec2d38540cbc48068732fdf8ce55cdc6a31a868b50a0bb7dba18a85ce41
-source_files: 249
+source_hash: 1e30f139e6d077a01b567e4eabed011090d1adbc091ea8ad277382a48e796b24
+source_files: 250
 mapped_at_commit: working-tree
 ---
 
@@ -473,6 +473,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   playhead, item-edge, and marker-edge targets, stable tie ordering, configurable transient rules,
   visible consequence feedback, Escape reversal, strict malformed-owner failure, and preservation
   of the lower authored-state boundary.
+- `docs/checkpoints/P3.W04.C004.md`: Durable implementation evidence for application-owned timeline
+  selection references, canonical group and link expansion, direct and range selection, geometric
+  lasso, roving keyboard navigation, accessibility state, and authored-state ownership exclusions.
 
 ### Production desktop application
 
@@ -501,17 +504,20 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/editor-workspaces.tsx`: Renders editing, compositing, color, audio, delivery, and shared
   selection panels from the one application-owned public snapshot, including exact sample rates,
   ordered channels, routes, synchronization observation, continuity evidence, source and program
-  editing viewers, one composite viewer, one color viewer, the canonical timeline canvas, and the
-  stateful `SourceMonitor` in the editing source slot without moving hooks or Tauri access into this
-  workspace file. Clip activation publishes stable `superi.editor.state` references through the
-  existing shared selection reducer while canonical timeline selection remains separate.
+  editing viewers, one composite viewer, one color viewer, and the canonical timeline canvas. It
+  passes the existing shared selection, dispatch, public schema, and project revision into that
+  canvas and retains the stateful `SourceMonitor` in the editing source slot without moving a new
+  context, reducer, API client, or Tauri access into this workspace file.
 - `app/src/timeline-workspace.ts`: Strictly projects the embedded canonical revision 1 timeline
   document into a deeply frozen canvas model with exact rational source and record ranges, stable
   identities and relationships, external-global-start display placement, exact owner-clock snap
   targets, deterministic extent, ruler, time-label, visible-window, and range math, and explicit
   malformed-document rejection. Its pure snap resolver honors the canonical switch plus transient
   target rules, exact cross-clock representability, integer frame tolerance, and the lower stable
-  target order without authoring timeline state.
+  target order without authoring timeline state. Pure selection helpers add reversible
+  timeline-object identity, topmost-first order,
+  canonical fixed-point group and enabled-link expansion, direct selection, contiguous ranges,
+  same-track and nearest-temporal cross-track navigation, and normalized lasso intersection.
 - `app/src/timeline-clip-presentation.ts`: Supplements the existing frozen canvas model with strict
   read-only clip media names and relink state, exact time maps, markers, metadata, multicam intent,
   clip-scoped graph effects and parameter drivers, and attached clip-gain sample keyframes with
@@ -521,12 +527,17 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/timeline-workspace.tsx`: Renders the editing timeline with sticky track headers and ruler,
   exact record-positioned items, transient playhead and in and out range, native scrolling,
   pointer-anchored zoom, topmost-first track presentation, bounded visible-item overscan, fit
-  controls, frame stepping, accessible clip buttons, canonical and shared selection indicators,
+  controls, frame stepping, accessible clip buttons, authored and interaction selection indicators,
   authored state badges, graph effects and automation keys, six session snap rules, exact target
   consequence status, a visible target guide, and Escape or pointer-cancel restoration without
-  taking authored mutation ownership. It progressively reads one revision-matched media library,
+  taking authored mutation ownership. Honest unavailable state remains visible. It progressively
+  reads one revision-matched media library,
   deduplicates sources, generates previews sequentially, and accepts only matching media and
   freshness identities before displaying filmstrips, thumbnails, or waveforms.
+  It also projects the existing application selection into labeled multiselect options, group and
+  link aware click selection, exact-object Option selection, Command or Control toggle, Shift range,
+  mounted-rectangle lasso preview and commit, roving keyboard focus, offscreen focus scrolling, and
+  a polite live count without taking authored mutation ownership.
 - `app/src/native-viewport.tsx`: Reserves role-addressed native output rectangles and publishes only
   role, geometry, scale, visibility, and returned status to the shell-local viewport command; it
   never constructs an encoded image, blob URL, pixel readback, or webview frame path. Its composed
@@ -586,10 +597,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   artifact editing, stale-analysis warnings, bounded preview raster, horizontally scrollable
   filmstrip, channel-separated waveform, responsive multi-selection batch controls, the sticky
   timeline grid, ruler, tracks, accessible clip buttons, layered filmstrip and waveform visuals,
-  canonical and shared selection treatments, dense state badges, range, playhead, snap rule strip,
-  exact target status and guide, controls, and responsive 16:9 native viewer reservations. It also
-  defines compact ready, stale, and empty
-  source-monitor controls with exact state details and responsive action groups.
+  dense state badges, range, playhead, controls, interaction selection, authored selection
+  evidence, lasso, visible focus, live status, snap rule strip, exact target status and guide, and
+  responsive 16:9 native viewer
+  reservations. It also defines compact ready, stale, and empty source-monitor
+  controls with exact state details and responsive action groups.
 - `app/src/transport.ts`: Implements the concrete generated `SuperiTransport` through one injected
   or Tauri-backed invoke/listen host, generation-scoped request identities, ordered event replay,
   stale and duplicate rejection, reconnect, cooperative cancellation, and exact
@@ -614,14 +626,17 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and range math, exact timeline, track, object, item, and playhead snap targets, inexact-clock and
   object-overscan omission, stable tie ordering, per-kind filtering, persistent and session
   disablement, invalid-document and marker-owner failures, real React integration, transient
-  navigation and target controls, visible consequence and reversal wiring, and the absence of a
-  frontend mutation owner.
+  navigation and target controls, visible consequence and reversal wiring, selection identity
+  round trips, fixed-point related and
+  direct selection, display-order ranges, directional neighbors, lasso geometry, real React
+  integration, multiselect accessibility, shared selection wiring, transient navigation controls,
+  and the absence of a frontend authored mutation owner.
 - `app/tests/timeline-clip-presentation.test.ts`: Verifies supplemental reuse of the exact canvas
   projection, external global-start placement, mixed record clocks, source names and relink state,
   retime, linking, grouping, targeting, synchronization, markers, metadata, multicam intent,
   clip-scoped effects and drivers, exact clip-gain sample keys and positions, deep immutability,
   malformed-state rejection, real preview-command composition, stale freshness rejection, and
-  shared selection.
+  application-owned selection integration.
 - `app/tests/api-bindings.test.mjs`: Verifies the canonical generated re-export, complete typed map
   boundary, concrete provider/bootstrap injection, and real request/subscription forwarding without
   duplicating generated client policy.
@@ -1702,7 +1717,10 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
 - The focused timeline-canvas proof freezes strict revision 1 parsing, exact source and record
   ranges, stable grouping, linking, selection, target and synchronization evidence, two-pass
   transition placement, deterministic ruler and range math, real editing-workspace composition,
-  transient navigation controls, and the exclusion of any frontend authored mutation owner.
+  reversible shared selection identities, canonical fixed-point group and link expansion, direct
+  and range selection, directional neighbors, lasso geometry, multiselect semantics, roving focus,
+  keyboard coverage, live status, transient navigation controls, and the exclusion of any frontend
+  authored mutation owner.
 
 - The focused timeline-clip proof freezes reuse of that canvas model, exact source and record
   evidence, mixed clocks, stable media and relationship identity, relink, retime, marker, metadata,
@@ -2032,10 +2050,13 @@ targets, exposes a session master plus six target-kind rules, reports every acce
 draws the active or last guide, and reverses an active gesture through its captured origin.
 Existing clip items now add real generated filmstrips, thumbnails, and waveforms when available,
 plus exact source, relationship, effect, driver, marker, metadata, multicam, retime, and clip-gain
-automation evidence with positioned keyframe diamonds. Canonical timeline selection and shared
-application selection remain distinct, and those controls retain only transient viewing intent, so
-timeline, project, engine, and public command owners remain authoritative for every authored
-mutation.
+automation evidence with positioned keyframe diamonds.
+The canvas now projects exact current-revision timeline-object references through the shared
+application selection, follows canonical groups and enabled links to a fixed point, preserves
+Option direct-object intent, and supports click, toggle, contiguous range, mounted-rectangle lasso,
+and roving keyboard selection with visible focus and live status. Those controls retain only
+transient viewing and interaction intent, so timeline, project, engine, and public command owners
+remain authoritative for every authored selection, relationship, or edit mutation.
 No view takes engine or transport ownership, and unavailable runtime behavior remains honest.
 The System panel also consumes one Tauri-owned project lifecycle that durably creates, validates,
 saves, rebinds through save-as, closes, reopens recent paths, and restores opaque recovery
@@ -2138,7 +2159,7 @@ stable editor snapshot, and local scripting runtime are implemented. CLI project
 execution now routes through the durable local API host and bounded JSON-RPC automation. Logging,
 subscription hosting, and autosave hosting remain incomplete.
 The synchronized remote revision before this checkpoint is
-`679862a09fa656cfc8c5dc9eb2d6a721008e72ad`.
+`db23c0a1392ad26040e6bcb469bf0a4fda3c4b59`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
 root README, deny policy, and structure guide with license-audit CI. Commit
 `e0b3af9f099f527a8544d1b0317896640969903b` added the executable dependency-policy contract and its
@@ -2315,8 +2336,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`59723e3351045bbdcc7134e087a0106ae6a52269` when this checkpoint began. Its hash describes the exact
-248 discovered source files, including generated binary payloads, layered on the integrated
+`db23c0a1392ad26040e6bcb469bf0a4fda3c4b59` when this checkpoint began. Its hash describes the exact
+250 discovered source files, including generated binary payloads, layered on the integrated
 revision.
 
 ## Maintenance notes
@@ -2362,8 +2383,12 @@ capability, feature, failure, control, query, event, resource, or reconnect beha
 Discovery must remain a declarative projection of authoritative runtime owners and must never imply
 a privileged frontend, CLI, closed-tier, or plugin execution route.
 Keep the timeline canvas projection synchronized with the canonical timeline document revision,
-exact rational clocks, stable identities, and relationship fields. View navigation may remain local,
-but authored edits must route through the existing project, engine, and public command owners.
+exact rational clocks, stable identities, and relationship fields. Keep application selection
+references revision-fenced and reversible, mirror the lower fixed-point rule exactly, keep group
+expansion unconditional, keep link expansion behind the canonical flag, and retain direct-object
+selection. View navigation, lasso geometry, focus, and interaction selection may remain local, but
+authored selection, relationships, and edits must route through the existing project, engine, and
+public command owners.
 Keep snap candidates exact in the timeline edit clock, preserve the lower target class and stable tie
 order, skip inexact cross-clock coordinates, resolve object markers relative to their owner, and keep
 session switches, rule filters, visible consequences, and gesture origins transient. Later authored
@@ -2371,4 +2396,4 @@ clip gestures must call the lower snapping and edit owners rather than treating 
 an authored operation.
 Keep clip detail supplemental to that exact projection. Graph badges must follow real clip-scoped
 topology, keyframes must come from a legal attached owner, previews must retain project, library,
-media, and freshness fences, and canonical selection must remain distinct from shared UI selection.
+media, and freshness fences, and authored selection must remain distinct from shared UI selection.
