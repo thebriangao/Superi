@@ -202,6 +202,65 @@ export interface MediaSelection {
   readonly tracked_regions: readonly MediaTrackedRegion[];
 }
 
+export interface MediaTimelineRelationship {
+  readonly timeline_id: string;
+  readonly clip_id: string | null;
+}
+
+export interface MediaTranscriptSegment {
+  readonly segment_id: string;
+  readonly text: string;
+  readonly start_frame: number;
+  readonly end_frame: number;
+  readonly rate_numerator: number;
+  readonly rate_denominator: number;
+  readonly speaker: string | null;
+  readonly timeline_relationships: readonly MediaTimelineRelationship[];
+}
+
+export interface MediaLocalAiContent {
+  readonly content_id: string;
+  readonly label: string;
+  readonly terms: readonly string[];
+  readonly segment_ids: readonly string[];
+}
+
+export interface MediaContentAnalysis {
+  readonly source_fingerprint: string;
+  readonly provenance: string | null;
+  readonly transcript_segments: readonly MediaTranscriptSegment[];
+  readonly local_ai_content: readonly MediaLocalAiContent[];
+}
+
+export type MediaContentSearchSignal = "metadata" | "transcript" | "local_ai";
+
+export interface MediaContentSearchMatch {
+  readonly signal: MediaContentSearchSignal;
+  readonly evidence: string;
+  readonly segment_id: string | null;
+  readonly start_frame: number | null;
+  readonly end_frame: number | null;
+  readonly rate_numerator: number | null;
+  readonly rate_denominator: number | null;
+  readonly speaker: string | null;
+  readonly timeline_relationships: readonly MediaTimelineRelationship[];
+}
+
+export interface MediaContentSearchResult {
+  readonly media_id: string;
+  readonly name: string;
+  readonly score: number;
+  readonly analysis_fresh: boolean;
+  readonly matches: readonly MediaContentSearchMatch[];
+}
+
+export interface MediaContentSearchSnapshot {
+  readonly project_revision: number;
+  readonly library_revision: number;
+  readonly query: string;
+  readonly results: readonly MediaContentSearchResult[];
+}
+
 export type DerivedMediaPurpose = "proxy" | "optimized";
 export type DerivedMediaQuality = "eighth" | "quarter" | "half" | "full";
 export type DerivedMediaStatus = "generating" | "ready" | "stale" | "failed";
@@ -278,6 +337,7 @@ export interface MediaBrowserItem {
   readonly source_metadata: SourceMetadataInspection;
   readonly user_metadata: Readonly<Record<string, string>>;
   readonly annotations: MediaEditorialAnnotations;
+  readonly content_analysis: MediaContentAnalysis;
   readonly usage: MediaUsageIndicator;
   readonly identity_tracking: MediaIdentityTracking;
   readonly selections: readonly MediaSelection[];
@@ -374,6 +434,9 @@ const INSPECT_MEDIA_SOURCE_COMMAND = "inspect_project_media_source";
 const MUTATE_MEDIA_METADATA_COMMAND = "mutate_project_media_metadata";
 const MUTATE_MEDIA_ANNOTATIONS_COMMAND = "mutate_project_media_annotations";
 const MUTATE_MEDIA_IDENTITY_COMMAND = "mutate_project_media_identity";
+const MUTATE_MEDIA_CONTENT_ANALYSIS_COMMAND =
+  "mutate_project_media_content_analysis";
+const SEARCH_MEDIA_CONTENT_COMMAND = "search_project_media_content";
 const MUTATE_DERIVED_MEDIA_COMMAND = "mutate_project_derived_media";
 const MUTATE_OFFLINE_MEDIA_COMMAND = "mutate_project_offline_media";
 
@@ -472,6 +535,37 @@ export async function mutateProjectMediaIdentity(
       expected_library_revision: snapshot.revision,
       media_id: mediaId,
       selections,
+    },
+  });
+}
+
+export async function mutateProjectMediaContentAnalysis(
+  snapshot: MediaLibrarySnapshot,
+  item: MediaBrowserItem,
+  analysis: MediaContentAnalysis,
+): Promise<MediaLibrarySnapshot> {
+  return invoke<MediaLibrarySnapshot>(MUTATE_MEDIA_CONTENT_ANALYSIS_COMMAND, {
+    update: {
+      expected_project_revision: snapshot.project_revision,
+      expected_library_revision: snapshot.revision,
+      media_id: item.media_id,
+      expected_source_fingerprint: item.content_fingerprint,
+      analysis,
+    },
+  });
+}
+
+export async function searchProjectMediaContent(
+  snapshot: MediaLibrarySnapshot,
+  query: string,
+  maxResults = 100,
+): Promise<MediaContentSearchSnapshot> {
+  return invoke<MediaContentSearchSnapshot>(SEARCH_MEDIA_CONTENT_COMMAND, {
+    request: {
+      expected_project_revision: snapshot.project_revision,
+      expected_library_revision: snapshot.revision,
+      query,
+      max_results: maxResults,
     },
   });
 }

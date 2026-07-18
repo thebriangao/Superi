@@ -59,6 +59,22 @@ const MAX_TRACKED_REGIONS: usize = 32;
 const MAX_TRACKED_OBSERVATIONS: usize = 1024;
 const MAX_IDENTITY_PAYLOAD_BYTES: usize = 64 * 1024;
 const MAX_DERIVED_MEDIA_ATTACHMENTS: usize = 16;
+const MAX_TRANSCRIPT_SEGMENTS: usize = 4096;
+const MAX_TRANSCRIPT_TEXT_BYTES: usize = 16 * 1024;
+const MAX_TRANSCRIPT_SPEAKER_BYTES: usize = 256;
+const MAX_TIMELINE_RELATIONSHIPS: usize = 64;
+const MAX_CONTENT_IDENTIFIER_BYTES: usize = 256;
+const MAX_CONTENT_PROVENANCE_BYTES: usize = 512;
+const MAX_LOCAL_AI_CONTENT: usize = 2048;
+const MAX_LOCAL_AI_TERMS: usize = 64;
+const MAX_LOCAL_AI_TERM_BYTES: usize = 256;
+const MAX_LOCAL_AI_SEGMENT_LINKS: usize = 256;
+const MAX_CONTENT_ANALYSIS_PAYLOAD_BYTES: usize = 4 * 1024 * 1024;
+const MAX_CONTENT_SEARCH_QUERY_BYTES: usize = 512;
+const MAX_CONTENT_SEARCH_TOKENS: usize = 32;
+const MAX_CONTENT_SEARCH_RESULTS: usize = 256;
+const MAX_CONTENT_SEARCH_MATCHES: usize = 16;
+const MAX_CONTENT_SEARCH_EVIDENCE_CHARS: usize = 512;
 const NORMALIZED_REGION_SCALE: u32 = 1_000_000;
 
 const TIMELINE_RATE_NUMERATOR_KEY: &str = "superi.project.timeline.default_rate_numerator";
@@ -452,6 +468,48 @@ pub struct MediaSelection {
     tracked_regions: Vec<MediaTrackedRegion>,
 }
 
+/// Stable relationship from one language segment to an ordinary timeline clip.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaTimelineRelationship {
+    timeline_id: String,
+    clip_id: Option<String>,
+}
+
+/// One editable exact-time language-analysis artifact.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaTranscriptSegment {
+    segment_id: String,
+    text: String,
+    start_frame: i64,
+    end_frame: i64,
+    rate_numerator: u32,
+    rate_denominator: u32,
+    speaker: Option<String>,
+    timeline_relationships: Vec<MediaTimelineRelationship>,
+}
+
+/// One ordinary editable entry produced by a bounded local content-analysis tool.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaLocalAiContent {
+    content_id: String,
+    label: String,
+    terms: Vec<String>,
+    segment_ids: Vec<String>,
+}
+
+/// Persisted model-independent language and local content artifacts for one source identity.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaContentAnalysis {
+    source_fingerprint: String,
+    provenance: Option<String>,
+    transcript_segments: Vec<MediaTranscriptSegment>,
+    local_ai_content: Vec<MediaLocalAiContent>,
+}
+
 /// Replaceable derived-media role; the imported source remains authoritative.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -702,6 +760,8 @@ pub struct MediaBrowserItem {
     user_metadata: BTreeMap<String, String>,
     #[serde(default)]
     annotations: MediaEditorialAnnotations,
+    #[serde(default)]
+    content_analysis: MediaContentAnalysis,
     #[serde(skip, default = "unused_media")]
     usage: MediaUsageIndicator,
     #[serde(skip, default = "untracked_media_identity")]
@@ -756,6 +816,7 @@ impl MediaBrowserItem {
             source_metadata: source_metadata_inspection(media, 1),
             user_metadata: BTreeMap::new(),
             annotations: MediaEditorialAnnotations::default(),
+            content_analysis: MediaContentAnalysis::default(),
             usage: unused_media(),
             identity_tracking: untracked_media_identity(),
             selections: Vec::new(),
@@ -934,6 +995,7 @@ impl MediaLibrarySnapshot {
                     let bin_id = self.items[index].bin_id.clone();
                     let user_metadata = self.items[index].user_metadata.clone();
                     let annotations = self.items[index].annotations.clone();
+                    let content_analysis = self.items[index].content_analysis.clone();
                     let selections = self.items[index].selections.clone();
                     let derived_media = self.items[index].derived_media.clone();
                     let representation_choice = self.items[index].representation_choice;
@@ -945,6 +1007,7 @@ impl MediaLibrarySnapshot {
                     self.items[index].bin_id = bin_id;
                     self.items[index].user_metadata = user_metadata;
                     self.items[index].annotations = annotations;
+                    self.items[index].content_analysis = content_analysis;
                     self.items[index].selections = selections;
                     self.items[index].derived_media = derived_media;
                     self.items[index].representation_choice = representation_choice;
@@ -1153,6 +1216,91 @@ impl MediaLibrarySnapshot {
         Ok(())
     }
 
+    fn apply_content_analysis(
+        &mut self,
+        update: MediaContentAnalysisUpdate,
+    ) -> Result<(), DesktopProjectFailure> {
+        if update.expected_project_revision != self.project_revision
+            || update.expected_library_revision != self.revision
+        {
+            return Err(user_correctable(
+                "media_library_revision_stale",
+                "Media library changed",
+                "Refresh the media library and try again.",
+            ));
+        }
+        let mut candidate = self.clone();
+        let item = candidate
+            .items
+            .iter_mut()
+            .find(|item| item.media_id == update.media_id)
+            .ok_or_else(|| media_library_invalid("Imported media was not found"))?;
+        let analysis = normalize_content_analysis(update.analysis)?;
+        if update.expected_source_fingerprint != item.content_fingerprint
+            || (!analysis.source_fingerprint.is_empty()
+                && analysis.source_fingerprint != item.content_fingerprint)
+        {
+            return Err(user_correctable(
+                "media_content_source_stale",
+                "Source changed before content analysis was saved",
+                "Refresh the media library and apply the analysis to the current source.",
+            ));
+        }
+        item.content_analysis = analysis;
+        candidate.validate()?;
+        candidate.revision = candidate.revision.checked_add(1).ok_or_else(|| {
+            DesktopProjectFailure::new(
+                DesktopProjectFailureClass::Terminal,
+                "media_library_revision_exhausted",
+                "Media library cannot continue",
+                "Restart Superi before continuing.",
+            )
+        })?;
+        candidate.refresh_derived();
+        *self = candidate;
+        Ok(())
+    }
+
+    fn search_content(
+        &self,
+        request: MediaContentSearchRequest,
+    ) -> Result<MediaContentSearchSnapshot, DesktopProjectFailure> {
+        if request.expected_project_revision != self.project_revision
+            || request.expected_library_revision != self.revision
+        {
+            return Err(user_correctable(
+                "media_content_search_revision_stale",
+                "Media library changed during search",
+                "Refresh the media library and search again.",
+            ));
+        }
+        let (query, tokens) = normalize_content_search_query(request.query)?;
+        let max_results = usize::from(request.max_results.unwrap_or(100));
+        if max_results == 0 || max_results > MAX_CONTENT_SEARCH_RESULTS {
+            return Err(media_library_invalid(
+                "Content search result limit is invalid",
+            ));
+        }
+        let mut results = self
+            .items
+            .iter()
+            .filter_map(|item| search_media_content(item, &query, &tokens))
+            .collect::<Vec<_>>();
+        results.sort_by(|left, right| {
+            right
+                .score
+                .cmp(&left.score)
+                .then_with(|| left.media_id.cmp(&right.media_id))
+        });
+        results.truncate(max_results);
+        Ok(MediaContentSearchSnapshot {
+            project_revision: self.project_revision,
+            library_revision: self.revision,
+            query,
+            results,
+        })
+    }
+
     fn apply_derived_media(
         &mut self,
         update: DerivedMediaUpdate,
@@ -1344,6 +1492,11 @@ impl MediaLibrarySnapshot {
                     "Media selections and tracked regions are not canonical",
                 ));
             }
+            if normalize_content_analysis(item.content_analysis.clone())? != item.content_analysis {
+                return Err(media_library_invalid(
+                    "Media content analysis is not canonical",
+                ));
+            }
         }
         for bin in &self.bins {
             let mut current = bin.parent_id.as_deref();
@@ -1444,6 +1597,72 @@ pub struct MediaIdentityUpdate {
     pub expected_library_revision: u64,
     pub media_id: String,
     pub selections: Vec<MediaSelection>,
+}
+
+/// Atomic replacement of ordinary editable content-analysis artifacts.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaContentAnalysisUpdate {
+    pub expected_project_revision: u64,
+    pub expected_library_revision: u64,
+    pub media_id: String,
+    pub expected_source_fingerprint: String,
+    pub analysis: MediaContentAnalysis,
+}
+
+/// Explicit signal group responsible for one content-search match.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaContentSearchSignal {
+    Metadata,
+    Transcript,
+    LocalAi,
+}
+
+/// One concise piece of explainable evidence for a content-search result.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaContentSearchMatch {
+    signal: MediaContentSearchSignal,
+    evidence: String,
+    segment_id: Option<String>,
+    start_frame: Option<i64>,
+    end_frame: Option<i64>,
+    rate_numerator: Option<u32>,
+    rate_denominator: Option<u32>,
+    speaker: Option<String>,
+    timeline_relationships: Vec<MediaTimelineRelationship>,
+}
+
+/// One deterministically ranked media match.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaContentSearchResult {
+    media_id: String,
+    name: String,
+    score: u64,
+    analysis_fresh: bool,
+    matches: Vec<MediaContentSearchMatch>,
+}
+
+/// Revision-fenced read-only content-search request.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaContentSearchRequest {
+    pub expected_project_revision: u64,
+    pub expected_library_revision: u64,
+    pub query: String,
+    pub max_results: Option<u16>,
+}
+
+/// Complete native query response tied to one authoritative media-library revision.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaContentSearchSnapshot {
+    project_revision: u64,
+    library_revision: u64,
+    query: String,
+    results: Vec<MediaContentSearchResult>,
 }
 
 /// One revision-fenced derived-media lifecycle mutation for a stable C007 identity.
@@ -1675,6 +1894,477 @@ fn normalize_media_selections(
         return Err(media_library_invalid("Media identity state is too large"));
     }
     Ok(selections)
+}
+
+fn normalize_content_analysis(
+    mut analysis: MediaContentAnalysis,
+) -> Result<MediaContentAnalysis, DesktopProjectFailure> {
+    if analysis.transcript_segments.len() > MAX_TRANSCRIPT_SEGMENTS {
+        return Err(media_library_invalid("Transcript segment limit reached"));
+    }
+    if analysis.local_ai_content.len() > MAX_LOCAL_AI_CONTENT {
+        return Err(media_library_invalid("Local AI content limit reached"));
+    }
+    analysis.provenance = normalize_annotation_text(
+        analysis.provenance,
+        MAX_CONTENT_PROVENANCE_BYTES,
+        "Content analysis provenance is invalid",
+    )?;
+    if analysis.provenance.is_none()
+        && analysis.transcript_segments.is_empty()
+        && analysis.local_ai_content.is_empty()
+    {
+        return Ok(MediaContentAnalysis::default());
+    }
+    if analysis.source_fingerprint.is_empty() {
+        return Err(media_library_invalid(
+            "Content analysis must identify its source",
+        ));
+    }
+    analysis.source_fingerprint =
+        normalize_content_identifier(analysis.source_fingerprint, "content_source_fingerprint")?;
+
+    analysis.transcript_segments.sort_by(|left, right| {
+        left.start_frame
+            .cmp(&right.start_frame)
+            .then_with(|| left.end_frame.cmp(&right.end_frame))
+            .then_with(|| left.segment_id.cmp(&right.segment_id))
+    });
+    let mut segment_ids = BTreeSet::new();
+    for segment in &mut analysis.transcript_segments {
+        segment.segment_id = normalize_content_identifier(
+            std::mem::take(&mut segment.segment_id),
+            "transcript_segment_id",
+        )?;
+        if !segment_ids.insert(segment.segment_id.clone())
+            || segment.start_frame >= segment.end_frame
+            || segment.rate_numerator == 0
+            || segment.rate_denominator == 0
+            || segment.timeline_relationships.len() > MAX_TIMELINE_RELATIONSHIPS
+        {
+            return Err(media_library_invalid("Transcript segment is invalid"));
+        }
+        segment.text = normalize_required_content_text(
+            std::mem::take(&mut segment.text),
+            MAX_TRANSCRIPT_TEXT_BYTES,
+            "Transcript text is invalid",
+        )?;
+        segment.speaker = normalize_annotation_text(
+            segment.speaker.take(),
+            MAX_TRANSCRIPT_SPEAKER_BYTES,
+            "Transcript speaker is invalid",
+        )?;
+        for relationship in &mut segment.timeline_relationships {
+            relationship.timeline_id = normalize_content_identifier(
+                std::mem::take(&mut relationship.timeline_id),
+                "timeline_relationship_id",
+            )?;
+            relationship.clip_id = relationship
+                .clip_id
+                .take()
+                .map(|clip_id| normalize_content_identifier(clip_id, "timeline_clip_id"))
+                .transpose()?;
+        }
+        segment.timeline_relationships.sort();
+        if segment
+            .timeline_relationships
+            .windows(2)
+            .any(|pair| pair[0] == pair[1])
+        {
+            return Err(media_library_invalid(
+                "Transcript timeline relationships must be unique",
+            ));
+        }
+    }
+    analysis.transcript_segments.sort_by(|left, right| {
+        left.start_frame
+            .cmp(&right.start_frame)
+            .then_with(|| left.end_frame.cmp(&right.end_frame))
+            .then_with(|| left.segment_id.cmp(&right.segment_id))
+    });
+
+    analysis
+        .local_ai_content
+        .sort_by(|left, right| left.content_id.cmp(&right.content_id));
+    let mut content_ids = BTreeSet::new();
+    for content in &mut analysis.local_ai_content {
+        content.content_id = normalize_content_identifier(
+            std::mem::take(&mut content.content_id),
+            "local_ai_content_id",
+        )?;
+        if !content_ids.insert(content.content_id.clone())
+            || content.segment_ids.len() > MAX_LOCAL_AI_SEGMENT_LINKS
+        {
+            return Err(media_library_invalid("Local AI content is invalid"));
+        }
+        content.label = normalize_required_content_text(
+            std::mem::take(&mut content.label),
+            MAX_LOCAL_AI_TERM_BYTES,
+            "Local AI content label is invalid",
+        )?;
+        content.terms = normalize_annotation_terms(
+            std::mem::take(&mut content.terms),
+            MAX_LOCAL_AI_TERMS,
+            MAX_LOCAL_AI_TERM_BYTES,
+            "Local AI content term is invalid",
+        )?;
+        content.terms.sort_by_key(|term| term.to_lowercase());
+        for segment_id in &mut content.segment_ids {
+            *segment_id =
+                normalize_content_identifier(std::mem::take(segment_id), "local_ai_segment_id")?;
+        }
+        content.segment_ids.sort();
+        if content
+            .segment_ids
+            .windows(2)
+            .any(|pair| pair[0] == pair[1])
+            || content
+                .segment_ids
+                .iter()
+                .any(|segment_id| !segment_ids.contains(segment_id))
+        {
+            return Err(media_library_invalid(
+                "Local AI content references an invalid transcript segment",
+            ));
+        }
+    }
+    analysis
+        .local_ai_content
+        .sort_by(|left, right| left.content_id.cmp(&right.content_id));
+
+    let bytes = serde_json::to_vec(&analysis)
+        .map_err(|_| media_library_invalid("Content analysis could not be encoded"))?;
+    if bytes.len() > MAX_CONTENT_ANALYSIS_PAYLOAD_BYTES {
+        return Err(media_library_invalid("Content analysis is too large"));
+    }
+    Ok(analysis)
+}
+
+fn normalize_content_identifier(
+    value: String,
+    field: &'static str,
+) -> Result<String, DesktopProjectFailure> {
+    let value = value.trim();
+    if value.is_empty()
+        || value.len() > MAX_CONTENT_IDENTIFIER_BYTES
+        || value.chars().any(char::is_control)
+    {
+        return Err(media_library_invalid(field));
+    }
+    Ok(value.to_owned())
+}
+
+fn normalize_required_content_text(
+    value: String,
+    max_bytes: usize,
+    field: &'static str,
+) -> Result<String, DesktopProjectFailure> {
+    normalize_annotation_text(Some(value), max_bytes, field)?
+        .ok_or_else(|| media_library_invalid(field))
+}
+
+#[derive(Clone)]
+struct ContentSearchField {
+    searchable: String,
+    weight: u64,
+    evidence: MediaContentSearchMatch,
+}
+
+fn normalize_content_search_query(
+    query: String,
+) -> Result<(String, Vec<String>), DesktopProjectFailure> {
+    let query = query.trim();
+    if query.is_empty()
+        || query.len() > MAX_CONTENT_SEARCH_QUERY_BYTES
+        || query.chars().any(char::is_control)
+    {
+        return Err(media_library_invalid("Content search query is invalid"));
+    }
+    let mut tokens = query
+        .split_whitespace()
+        .map(str::to_lowercase)
+        .collect::<Vec<_>>();
+    tokens.sort();
+    tokens.dedup();
+    if tokens.is_empty() || tokens.len() > MAX_CONTENT_SEARCH_TOKENS {
+        return Err(media_library_invalid("Content search query is invalid"));
+    }
+    Ok((query.to_owned(), tokens))
+}
+
+fn search_media_content(
+    item: &MediaBrowserItem,
+    query: &str,
+    tokens: &[String],
+) -> Option<MediaContentSearchResult> {
+    let mut fields = Vec::new();
+    push_content_search_field(
+        &mut fields,
+        MediaContentSearchSignal::Metadata,
+        20,
+        format!("Name: {}", item.name),
+        None,
+    );
+    push_content_search_field(
+        &mut fields,
+        MediaContentSearchSignal::Metadata,
+        18,
+        format!("Media identity: {}", item.media_id),
+        None,
+    );
+    push_content_search_field(
+        &mut fields,
+        MediaContentSearchSignal::Metadata,
+        14,
+        format!("Content fingerprint: {}", item.content_fingerprint),
+        None,
+    );
+    if let Some(bin_id) = &item.bin_id {
+        push_content_search_field(
+            &mut fields,
+            MediaContentSearchSignal::Metadata,
+            12,
+            format!("Bin: {bin_id}"),
+            None,
+        );
+    }
+    for source_path in &item.source_paths {
+        push_content_search_field(
+            &mut fields,
+            MediaContentSearchSignal::Metadata,
+            14,
+            format!("Source: {source_path}"),
+            None,
+        );
+    }
+    let offline_status = match item.offline.status {
+        OfflineMediaStatus::Online => "online",
+        OfflineMediaStatus::Partial => "partial",
+        OfflineMediaStatus::Offline => "offline",
+    };
+    push_content_search_field(
+        &mut fields,
+        MediaContentSearchSignal::Metadata,
+        10,
+        format!("Availability: {offline_status}"),
+        None,
+    );
+    for (key, value) in &item.metadata {
+        push_content_search_field(
+            &mut fields,
+            MediaContentSearchSignal::Metadata,
+            16,
+            format!("Metadata {key}: {value}"),
+            None,
+        );
+    }
+    for (key, value) in &item.source_metadata.fields {
+        push_content_search_field(
+            &mut fields,
+            MediaContentSearchSignal::Metadata,
+            16,
+            format!("Source metadata {key}: {value}"),
+            None,
+        );
+    }
+    for (key, value) in &item.user_metadata {
+        push_content_search_field(
+            &mut fields,
+            MediaContentSearchSignal::Metadata,
+            22,
+            format!("User metadata {key}: {value}"),
+            None,
+        );
+    }
+    if let Some(clip_name) = &item.annotations.clip_name {
+        push_content_search_field(
+            &mut fields,
+            MediaContentSearchSignal::Metadata,
+            24,
+            format!("Clip name: {clip_name}"),
+            None,
+        );
+    }
+    for label in &item.annotations.labels {
+        push_content_search_field(
+            &mut fields,
+            MediaContentSearchSignal::Metadata,
+            24,
+            format!("Label: {label}"),
+            None,
+        );
+    }
+    for keyword in &item.annotations.keywords {
+        push_content_search_field(
+            &mut fields,
+            MediaContentSearchSignal::Metadata,
+            24,
+            format!("Keyword: {keyword}"),
+            None,
+        );
+    }
+    if let Some(comment) = &item.annotations.comment {
+        push_content_search_field(
+            &mut fields,
+            MediaContentSearchSignal::Metadata,
+            18,
+            format!("Comment: {comment}"),
+            None,
+        );
+    }
+    if let Some(rating) = item.annotations.rating {
+        push_content_search_field(
+            &mut fields,
+            MediaContentSearchSignal::Metadata,
+            10,
+            format!("Rating: {rating}"),
+            None,
+        );
+    }
+    if item.annotations.favorite {
+        push_content_search_field(
+            &mut fields,
+            MediaContentSearchSignal::Metadata,
+            10,
+            "Favorite: true".to_owned(),
+            None,
+        );
+    }
+
+    for segment in &item.content_analysis.transcript_segments {
+        let relationships = segment
+            .timeline_relationships
+            .iter()
+            .map(|relationship| match &relationship.clip_id {
+                Some(clip_id) => format!("{} {clip_id}", relationship.timeline_id),
+                None => relationship.timeline_id.clone(),
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        let speaker = segment.speaker.as_deref().unwrap_or("unassigned");
+        let searchable = format!(
+            "Transcript {} speaker {speaker} {} {relationships}",
+            segment.segment_id, segment.text
+        );
+        let evidence = MediaContentSearchMatch {
+            signal: MediaContentSearchSignal::Transcript,
+            evidence: truncate_content_search_evidence(&format!("{speaker}: {}", segment.text)),
+            segment_id: Some(segment.segment_id.clone()),
+            start_frame: Some(segment.start_frame),
+            end_frame: Some(segment.end_frame),
+            rate_numerator: Some(segment.rate_numerator),
+            rate_denominator: Some(segment.rate_denominator),
+            speaker: segment.speaker.clone(),
+            timeline_relationships: segment.timeline_relationships.clone(),
+        };
+        fields.push(ContentSearchField {
+            searchable: searchable.to_lowercase(),
+            weight: 40,
+            evidence,
+        });
+    }
+
+    for content in &item.content_analysis.local_ai_content {
+        let linked_segment = content.segment_ids.iter().find_map(|segment_id| {
+            item.content_analysis
+                .transcript_segments
+                .iter()
+                .find(|segment| &segment.segment_id == segment_id)
+        });
+        push_content_search_field(
+            &mut fields,
+            MediaContentSearchSignal::LocalAi,
+            32,
+            format!(
+                "Local AI {}: {} terms {} segments {}",
+                content.content_id,
+                content.label,
+                content.terms.join(" "),
+                content.segment_ids.join(" ")
+            ),
+            linked_segment,
+        );
+    }
+
+    if tokens
+        .iter()
+        .any(|token| !fields.iter().any(|field| field.searchable.contains(token)))
+    {
+        return None;
+    }
+    let query = query.to_lowercase();
+    let mut score = 0_u64;
+    let mut matches = fields
+        .into_iter()
+        .filter_map(|field| {
+            let token_match = tokens.iter().any(|token| field.searchable.contains(token));
+            if !token_match {
+                return None;
+            }
+            let phrase_bonus = if field.searchable.contains(&query) {
+                field.weight
+            } else {
+                0
+            };
+            score = score.saturating_add(field.weight.saturating_add(phrase_bonus));
+            Some((field.weight.saturating_add(phrase_bonus), field.evidence))
+        })
+        .collect::<Vec<_>>();
+    matches.sort_by(|left, right| {
+        right
+            .0
+            .cmp(&left.0)
+            .then_with(|| left.1.evidence.cmp(&right.1.evidence))
+    });
+    let matches = matches
+        .into_iter()
+        .take(MAX_CONTENT_SEARCH_MATCHES)
+        .map(|(_, evidence)| evidence)
+        .collect();
+    Some(MediaContentSearchResult {
+        media_id: item.media_id.clone(),
+        name: item.name.clone(),
+        score,
+        analysis_fresh: !item.content_analysis.source_fingerprint.is_empty()
+            && item.content_analysis.source_fingerprint == item.content_fingerprint,
+        matches,
+    })
+}
+
+fn push_content_search_field(
+    fields: &mut Vec<ContentSearchField>,
+    signal: MediaContentSearchSignal,
+    weight: u64,
+    evidence: String,
+    segment: Option<&MediaTranscriptSegment>,
+) {
+    if evidence.trim().is_empty() {
+        return;
+    }
+    fields.push(ContentSearchField {
+        searchable: evidence.to_lowercase(),
+        weight,
+        evidence: MediaContentSearchMatch {
+            signal,
+            evidence: truncate_content_search_evidence(&evidence),
+            segment_id: segment.map(|segment| segment.segment_id.clone()),
+            start_frame: segment.map(|segment| segment.start_frame),
+            end_frame: segment.map(|segment| segment.end_frame),
+            rate_numerator: segment.map(|segment| segment.rate_numerator),
+            rate_denominator: segment.map(|segment| segment.rate_denominator),
+            speaker: segment.and_then(|segment| segment.speaker.clone()),
+            timeline_relationships: segment
+                .map(|segment| segment.timeline_relationships.clone())
+                .unwrap_or_default(),
+        },
+    });
+}
+
+fn truncate_content_search_evidence(value: &str) -> String {
+    value
+        .chars()
+        .take(MAX_CONTENT_SEARCH_EVIDENCE_CHARS)
+        .collect()
 }
 
 fn normalize_derived_media(
@@ -2984,6 +3674,46 @@ impl DesktopProjectState {
         Ok(snapshot)
     }
 
+    pub fn mutate_content_analysis(
+        &self,
+        update: MediaContentAnalysisUpdate,
+    ) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+        let (project_id, project_revision, project_path) =
+            self.active_project_context("mutate_content_analysis")?;
+        let usage = inspect_media_usage(Path::new(&project_path))?;
+        let snapshot = {
+            let mut store = self.media_library_lock("mutate_content_analysis")?;
+            let library = store
+                .projects
+                .entry(project_id)
+                .or_insert_with(|| MediaLibrarySnapshot::empty(project_revision));
+            library.project_revision = project_revision;
+            library.apply_content_analysis(update)?;
+            library.refresh_usage(&usage);
+            library.clone()
+        };
+        self.persist_media_libraries()?;
+        Ok(snapshot)
+    }
+
+    pub fn search_media_content(
+        &self,
+        request: MediaContentSearchRequest,
+    ) -> Result<MediaContentSearchSnapshot, DesktopProjectFailure> {
+        let (project_id, project_revision, project_path) =
+            self.active_project_context("search_media_content")?;
+        let usage = inspect_media_usage(Path::new(&project_path))?;
+        let mut store = self.media_library_lock("search_media_content")?;
+        let library = store
+            .projects
+            .entry(project_id)
+            .or_insert_with(|| MediaLibrarySnapshot::empty(project_revision));
+        library.project_revision = project_revision;
+        library.refresh_derived();
+        library.refresh_usage(&usage);
+        library.search_content(request)
+    }
+
     pub fn mutate_derived_media(
         &self,
         update: DerivedMediaUpdate,
@@ -3313,6 +4043,28 @@ pub async fn mutate_project_media_identity(
     tauri::async_runtime::spawn_blocking(move || state.mutate_media_identity(update))
         .await
         .map_err(|_| project_task_failed("mutate_media_identity"))?
+}
+
+#[tauri::command]
+pub async fn mutate_project_media_content_analysis(
+    update: MediaContentAnalysisUpdate,
+    state: State<'_, DesktopProjectState>,
+) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.mutate_content_analysis(update))
+        .await
+        .map_err(|_| project_task_failed("mutate_content_analysis"))?
+}
+
+#[tauri::command]
+pub async fn search_project_media_content(
+    request: MediaContentSearchRequest,
+    state: State<'_, DesktopProjectState>,
+) -> Result<MediaContentSearchSnapshot, DesktopProjectFailure> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.search_media_content(request))
+        .await
+        .map_err(|_| project_task_failed("search_media_content"))?
 }
 
 #[tauri::command]
@@ -4220,5 +4972,171 @@ mod tests {
             })
             .is_err());
         assert_eq!(library, original);
+    }
+
+    #[test]
+    fn content_analysis_is_editable_searchable_persistent_and_source_aware() {
+        let imported = missing_imported_media();
+        let mut library = MediaLibrarySnapshot::empty(11);
+        let mut item = MediaBrowserItem::from_imported(&imported);
+        item.user_metadata.insert(
+            "production.location".to_owned(),
+            "river overlook".to_owned(),
+        );
+        library.items.push(item);
+        library.refresh_derived();
+
+        let analysis = MediaContentAnalysis {
+            source_fingerprint: imported.content_fingerprint.clone(),
+            provenance: Some("local language pass".to_owned()),
+            transcript_segments: vec![MediaTranscriptSegment {
+                segment_id: "segment-b".to_owned(),
+                text: "The planning meeting starts after sunset.".to_owned(),
+                start_frame: 120,
+                end_frame: 240,
+                rate_numerator: 24,
+                rate_denominator: 1,
+                speaker: Some("Alice".to_owned()),
+                timeline_relationships: vec![MediaTimelineRelationship {
+                    timeline_id: "timeline-main".to_owned(),
+                    clip_id: Some("clip-dialogue".to_owned()),
+                }],
+            }],
+            local_ai_content: vec![MediaLocalAiContent {
+                content_id: "topic-1".to_owned(),
+                label: "Outdoor production".to_owned(),
+                terms: vec!["Sunset".to_owned(), "river".to_owned()],
+                segment_ids: vec!["segment-b".to_owned()],
+            }],
+        };
+        library
+            .apply_content_analysis(MediaContentAnalysisUpdate {
+                expected_project_revision: 11,
+                expected_library_revision: 0,
+                media_id: imported.media_id.clone(),
+                expected_source_fingerprint: imported.content_fingerprint.clone(),
+                analysis,
+            })
+            .expect("ordinary content analysis should be editable");
+
+        assert_eq!(library.revision, 1);
+        assert_eq!(
+            library.items[0].content_analysis.local_ai_content[0].terms,
+            vec!["river".to_owned(), "Sunset".to_owned()]
+        );
+
+        let mixed = library
+            .search_content(MediaContentSearchRequest {
+                expected_project_revision: 11,
+                expected_library_revision: 1,
+                query: "river meeting alice".to_owned(),
+                max_results: Some(20),
+            })
+            .expect("metadata, transcript, and local content should compose");
+        assert_eq!(mixed.results.len(), 1);
+        assert!(mixed.results[0].analysis_fresh);
+        assert!(mixed.results[0]
+            .matches
+            .iter()
+            .any(|evidence| evidence.signal == MediaContentSearchSignal::Metadata));
+        let transcript = mixed.results[0]
+            .matches
+            .iter()
+            .find(|evidence| evidence.signal == MediaContentSearchSignal::Transcript)
+            .expect("search must return exact language evidence");
+        assert_eq!(transcript.start_frame, Some(120));
+        assert_eq!(transcript.end_frame, Some(240));
+        assert_eq!(transcript.speaker.as_deref(), Some("Alice"));
+        assert_eq!(transcript.timeline_relationships.len(), 1);
+        assert!(mixed.results[0]
+            .matches
+            .iter()
+            .any(|evidence| evidence.signal == MediaContentSearchSignal::LocalAi));
+
+        let encoded = serde_json::to_string(&library).expect("analysis must serialize");
+        let mut restored: MediaLibrarySnapshot =
+            serde_json::from_str(&encoded).expect("analysis must restore without a model");
+        restored.refresh_derived();
+        assert_eq!(
+            restored.items[0].content_analysis,
+            library.items[0].content_analysis
+        );
+        assert_eq!(
+            restored
+                .search_content(MediaContentSearchRequest {
+                    expected_project_revision: 11,
+                    expected_library_revision: 1,
+                    query: "sunset".to_owned(),
+                    max_results: None,
+                })
+                .expect("restored analysis should remain searchable")
+                .results
+                .len(),
+            1
+        );
+
+        let mut cleared = library.clone();
+        cleared
+            .apply_content_analysis(MediaContentAnalysisUpdate {
+                expected_project_revision: 11,
+                expected_library_revision: 1,
+                media_id: imported.media_id.clone(),
+                expected_source_fingerprint: imported.content_fingerprint.clone(),
+                analysis: MediaContentAnalysis::default(),
+            })
+            .expect("editors should be able to clear ordinary analysis state");
+        assert_eq!(
+            cleared.items[0].content_analysis,
+            MediaContentAnalysis::default()
+        );
+
+        let original = library.clone();
+        let mut stale_source = original.items[0].content_analysis.clone();
+        stale_source.source_fingerprint = "sha256:other".to_owned();
+        assert!(library
+            .apply_content_analysis(MediaContentAnalysisUpdate {
+                expected_project_revision: 11,
+                expected_library_revision: 1,
+                media_id: imported.media_id.clone(),
+                expected_source_fingerprint: imported.content_fingerprint.clone(),
+                analysis: stale_source,
+            })
+            .is_err());
+        assert_eq!(library, original);
+
+        let mut invalid = original.items[0].content_analysis.clone();
+        invalid.transcript_segments[0].rate_denominator = 0;
+        assert!(library
+            .apply_content_analysis(MediaContentAnalysisUpdate {
+                expected_project_revision: 11,
+                expected_library_revision: 1,
+                media_id: imported.media_id.clone(),
+                expected_source_fingerprint: imported.content_fingerprint.clone(),
+                analysis: invalid,
+            })
+            .is_err());
+        assert_eq!(library, original);
+
+        library
+            .apply_offline_media(OfflineMediaUpdate {
+                expected_project_revision: 11,
+                expected_library_revision: 1,
+                media_id: imported.media_id,
+                mutation: OfflineMediaMutation::Replace {
+                    source_paths: vec!["/missing/replacement.mov".to_owned()],
+                    replacement_fingerprint: "sha256:replacement".to_owned(),
+                },
+            })
+            .expect("source replacement should retain inspectable analysis");
+        let stale = library
+            .search_content(MediaContentSearchRequest {
+                expected_project_revision: 11,
+                expected_library_revision: 2,
+                query: "meeting".to_owned(),
+                max_results: None,
+            })
+            .expect("stale analysis should remain inspectable without a model");
+        assert_eq!(stale.results.len(), 1);
+        assert!(!stale.results[0].analysis_fresh);
     }
 }

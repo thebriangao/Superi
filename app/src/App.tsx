@@ -26,10 +26,11 @@ import {
   importDesktopMedia,
   inspectProjectMediaSource,
   mutateProjectMediaAnnotations,
+  mutateProjectMediaContentAnalysis,
   mutateProjectMediaIdentity,
   mutateProjectDerivedMedia,
   mutateProjectOfflineMedia,
-  localSearchMedia,
+  searchProjectMediaContent,
   mutateProjectMediaMetadata,
   mutateProjectMediaLibrary,
   readProjectMediaLibrary,
@@ -44,7 +45,13 @@ import {
   type MediaLibraryMutation,
   type MediaLibrarySnapshot,
   type MediaEditorialAnnotations,
+  type MediaBrowserItem,
+  type MediaContentAnalysis,
+  type MediaContentSearchSnapshot,
+  type MediaLocalAiContent,
   type MediaSelection,
+  type MediaTimelineRelationship,
+  type MediaTranscriptSegment,
   type DerivedMediaMutation,
   type OfflineMediaMutation,
   type UserMetadataMutation,
@@ -378,6 +385,9 @@ function SystemPanel() {
   const [smartName, setSmartName] = useState("");
   const [smartNeedle, setSmartNeedle] = useState("");
   const [mediaSearch, setMediaSearch] = useState("");
+  const [contentSearch, setContentSearch] =
+    useState<MediaContentSearchSnapshot | null>(null);
+  const [contentSearchPending, setContentSearchPending] = useState(false);
   const [offlineSourcePath, setOfflineSourcePath] = useState("");
   const [replacementFingerprint, setReplacementFingerprint] = useState("");
   const [userMetadataKey, setUserMetadataKey] = useState("");
@@ -456,6 +466,48 @@ function SystemPanel() {
     projectSnapshot?.active?.path,
     projectSnapshot?.active?.identity.project_revision,
   ]);
+
+  useEffect(() => {
+    let active = true;
+    const query = mediaSearch.trim();
+    if (mediaLibrary === null || query.length === 0) {
+      setContentSearch(null);
+      setContentSearchPending(false);
+      return () => {
+        active = false;
+      };
+    }
+    setContentSearch(null);
+    setContentSearchPending(true);
+    const timer = window.setTimeout(() => {
+      void searchProjectMediaContent(mediaLibrary, query)
+        .then((result) => {
+          if (
+            active &&
+            result.project_revision === mediaLibrary.project_revision &&
+            result.library_revision === mediaLibrary.revision
+          ) {
+            setContentSearch(result);
+            setProjectFailure(null);
+          }
+        })
+        .catch((error: unknown) => {
+          if (active) {
+            setContentSearch(null);
+            setProjectFailure(projectFailureFrom(error));
+          }
+        })
+        .finally(() => {
+          if (active) {
+            setContentSearchPending(false);
+          }
+        });
+    }, 120);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [mediaLibrary, mediaSearch]);
 
   useEffect(() => {
     let active = true;
@@ -720,6 +772,26 @@ function SystemPanel() {
     }
   };
 
+  const mutateMediaContentAnalysis = async (
+    analysis: MediaContentAnalysis,
+  ) => {
+    if (mediaLibrary === null || selectedMedia === undefined) {
+      return;
+    }
+    try {
+      setMediaLibrary(
+        await mutateProjectMediaContentAnalysis(
+          mediaLibrary,
+          selectedMedia,
+          analysis,
+        ),
+      );
+      setProjectFailure(null);
+    } catch (error: unknown) {
+      setProjectFailure(projectFailureFrom(error));
+    }
+  };
+
   const mutateDerivedMedia = async (mutation: DerivedMediaMutation) => {
     if (mediaLibrary === null || selectedMedia === undefined) {
       return;
@@ -773,15 +845,25 @@ function SystemPanel() {
   const activeCollection = mediaLibrary?.smart_collections.find(
     (collection) => collection.collection_id === activeCollectionId,
   );
-  const visibleMedia = localSearchMedia(
+  const scopedMedia =
     mediaLibrary?.items.filter((item) => {
       if (activeCollection) {
         return activeCollection.media_ids.includes(item.media_id);
       }
       return activeBinId === null || item.bin_id === activeBinId;
-    }) ?? [],
-    mediaSearch,
+    }) ?? [];
+  const normalizedMediaSearch = mediaSearch.trim().toLocaleLowerCase();
+  const contentSearchReady =
+    contentSearch?.query.toLocaleLowerCase() === normalizedMediaSearch;
+  const contentSearchByMediaId = new Map(
+    contentSearchReady
+      ? contentSearch.results.map((result) => [result.media_id, result] as const)
+      : [],
   );
+  const visibleMedia =
+    normalizedMediaSearch.length === 0
+      ? scopedMedia
+      : scopedMedia.filter((item) => contentSearchByMediaId.has(item.media_id));
   const selectedMedia = mediaLibrary?.items.find(
     (item) => item.media_id === selectedMediaId,
   );
@@ -996,14 +1078,23 @@ function SystemPanel() {
               </div>
             </header>
             <label>
-              Search local media
+              Search local media content
               <input
                 type="search"
                 value={mediaSearch}
                 onChange={(event) => setMediaSearch(event.currentTarget.value)}
-                placeholder="Name, path, metadata, label, or offline state"
+                placeholder="Search metadata, transcript, or local AI content"
               />
             </label>
+            {normalizedMediaSearch.length > 0 ? (
+              <p className="media-search-status" role="status">
+                {contentSearchPending
+                  ? "Searching the current local media revision"
+                  : `${contentSearch?.results.length ?? 0} ranked result${
+                      contentSearch?.results.length === 1 ? "" : "s"
+                    } with explainable match evidence`}
+              </p>
+            ) : null}
 
             <div className="media-browser-layout">
               <aside className="media-browser-navigation">
@@ -1115,6 +1206,8 @@ function SystemPanel() {
                   const showSource =
                     item.thumbnail.kind === "source" &&
                     !thumbnailFailures.has(item.media_id);
+                  const searchResult = contentSearchByMediaId.get(item.media_id);
+                  const strongestMatch = searchResult?.matches[0];
                   return (
                     <button
                       type="button"
@@ -1143,11 +1236,42 @@ function SystemPanel() {
                       <span className="media-item-copy">
                         <strong>{item.name}</strong>
                         <small>{item.kind.replace("_", " ")}</small>
+                        {strongestMatch ? (
+                          <span className="media-search-evidence">
+                            <b>{strongestMatch.signal.replace("_", " ")}</b>
+                            {strongestMatch.evidence}
+                            {strongestMatch.signal !== "metadata" &&
+                            searchResult &&
+                            !searchResult.analysis_fresh ? (
+                              <em>Retained analysis from a replaced source</em>
+                            ) : null}
+                            {strongestMatch.start_frame !== null &&
+                            strongestMatch.end_frame !== null ? (
+                              <em>
+                                Frames {strongestMatch.start_frame} to{" "}
+                                {strongestMatch.end_frame}
+                                {strongestMatch.rate_numerator !== null &&
+                                strongestMatch.rate_denominator !== null
+                                  ? ` at ${strongestMatch.rate_numerator}/${strongestMatch.rate_denominator}`
+                                  : ""}
+                                {strongestMatch.timeline_relationships.length > 0
+                                  ? ` in ${strongestMatch.timeline_relationships
+                                      .map((relationship) =>
+                                        relationship.clip_id
+                                          ? `${relationship.timeline_id}/${relationship.clip_id}`
+                                          : relationship.timeline_id,
+                                      )
+                                      .join(", ")}`
+                                  : ""}
+                              </em>
+                            ) : null}
+                          </span>
+                        ) : null}
                       </span>
                     </button>
                   );
                 })}
-                {visibleMedia.length === 0 ? (
+                {visibleMedia.length === 0 && !contentSearchPending ? (
                   <p className="explanation">No media in this view.</p>
                 ) : null}
               </div>
@@ -1296,6 +1420,11 @@ function SystemPanel() {
                       </label>
                       <button type="submit">Save annotations</button>
                     </form>
+                    <MediaContentAnalysisEditor
+                      key={`${selectedMedia.media_id}:content:${mediaLibrary.revision}`}
+                      item={selectedMedia}
+                      onSave={mutateMediaContentAnalysis}
+                    />
                     <section aria-label="Media usage">
                       <h5>Usage</h5>
                       <p>
@@ -1956,6 +2085,503 @@ function SystemPanel() {
       </section>
     </div>
   );
+}
+
+interface MediaContentAnalysisEditorProps {
+  readonly item: MediaBrowserItem;
+  readonly onSave: (analysis: MediaContentAnalysis) => Promise<void>;
+}
+
+function MediaContentAnalysisEditor({
+  item,
+  onSave,
+}: MediaContentAnalysisEditorProps) {
+  const analysis = item.content_analysis;
+  const hasAnalysis = analysis.source_fingerprint.length > 0;
+  const analysisFresh =
+    hasAnalysis && analysis.source_fingerprint === item.content_fingerprint;
+  const editable = !hasAnalysis || analysisFresh;
+  const save = (replacement: MediaContentAnalysis) => {
+    const hasArtifacts =
+      replacement.provenance !== null ||
+      replacement.transcript_segments.length > 0 ||
+      replacement.local_ai_content.length > 0;
+    void onSave({
+      ...replacement,
+      source_fingerprint: hasArtifacts
+        ? replacement.source_fingerprint || item.content_fingerprint
+        : "",
+    });
+  };
+
+  return (
+    <section
+      className="media-content-analysis"
+      aria-label="Editable language analysis"
+    >
+      <header>
+        <div>
+          <h5>Editable language analysis</h5>
+          <p>
+            Analysis is ordinary project state and stays searchable without the
+            model.
+          </p>
+        </div>
+        <strong className={analysisFresh ? "content-fresh" : "content-stale"}>
+          {!hasAnalysis ? "not analyzed" : analysisFresh ? "current" : "stale source"}
+        </strong>
+      </header>
+      {hasAnalysis && analysisFresh ? (
+        <button
+          type="button"
+          className="secondary"
+          onClick={() =>
+            void onSave({
+              source_fingerprint: "",
+              provenance: null,
+              transcript_segments: [],
+              local_ai_content: [],
+            })
+          }
+        >
+          Clear content analysis
+        </button>
+      ) : null}
+      {hasAnalysis && !analysisFresh ? (
+        <div className="content-analysis-warning">
+          <p>
+            Retained from {analysis.source_fingerprint}. Review it before binding
+            it to {item.content_fingerprint}.
+          </p>
+          <button
+            type="button"
+            onClick={() =>
+              void onSave({
+                ...analysis,
+                source_fingerprint: item.content_fingerprint,
+              })
+            }
+          >
+            Confirm analysis for current source
+          </button>
+        </div>
+      ) : null}
+
+      <fieldset disabled={!editable}>
+        <form
+          className="content-analysis-provenance"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const fields = new FormData(event.currentTarget);
+            save({
+              ...analysis,
+              provenance: optionalFormText(fields, "analysis_provenance"),
+            });
+          }}
+        >
+          <label>
+            Analysis provenance
+            <input
+              name="analysis_provenance"
+              defaultValue={analysis.provenance ?? ""}
+              maxLength={512}
+              placeholder="Manual edit or audited local tool"
+            />
+          </label>
+          <button type="submit">Save provenance</button>
+        </form>
+
+        <div className="content-analysis-group">
+          <div className="content-analysis-heading">
+            <h5>Transcript segments</h5>
+            <span>{analysis.transcript_segments.length}</span>
+          </div>
+          {analysis.transcript_segments.map((segment) => (
+            <form
+              className="content-artifact-card"
+              key={segment.segment_id}
+              onSubmit={(event) => {
+                event.preventDefault();
+                const replacement = transcriptSegmentFromForm(
+                  new FormData(event.currentTarget),
+                  segment.segment_id,
+                  item,
+                );
+                save({
+                  ...analysis,
+                  transcript_segments: analysis.transcript_segments.map(
+                    (candidate) =>
+                      candidate.segment_id === segment.segment_id
+                        ? replacement
+                        : candidate,
+                  ),
+                });
+              }}
+            >
+              <label>
+                Segment ID
+                <input value={segment.segment_id} readOnly />
+              </label>
+              <label>
+                Editable text
+                <textarea
+                  name="segment_text"
+                  defaultValue={segment.text}
+                  maxLength={16_384}
+                  required
+                />
+              </label>
+              <div className="content-timing-grid">
+                <label>
+                  Start frame
+                  <input
+                    name="segment_start"
+                    type="number"
+                    defaultValue={segment.start_frame}
+                    required
+                  />
+                </label>
+                <label>
+                  End frame
+                  <input
+                    name="segment_end"
+                    type="number"
+                    defaultValue={segment.end_frame}
+                    required
+                  />
+                </label>
+                <label>
+                  Rate numerator
+                  <input
+                    name="segment_rate_numerator"
+                    type="number"
+                    min={1}
+                    defaultValue={segment.rate_numerator}
+                    required
+                  />
+                </label>
+                <label>
+                  Rate denominator
+                  <input
+                    name="segment_rate_denominator"
+                    type="number"
+                    min={1}
+                    defaultValue={segment.rate_denominator}
+                    required
+                  />
+                </label>
+              </div>
+              <label>
+                Speaker
+                <input
+                  name="segment_speaker"
+                  defaultValue={segment.speaker ?? ""}
+                  maxLength={256}
+                />
+              </label>
+              <label>
+                Timeline relationships, one timeline_id | clip_id per line
+                <textarea
+                  name="segment_relationships"
+                  defaultValue={timelineRelationshipsText(
+                    segment.timeline_relationships,
+                  )}
+                />
+              </label>
+              <div className="actions">
+                <button type="submit">Save transcript segment</button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() =>
+                    save({
+                      ...analysis,
+                      transcript_segments: analysis.transcript_segments.filter(
+                        (candidate) => candidate.segment_id !== segment.segment_id,
+                      ),
+                      local_ai_content: analysis.local_ai_content.map((content) => ({
+                        ...content,
+                        segment_ids: content.segment_ids.filter(
+                          (segmentId) => segmentId !== segment.segment_id,
+                        ),
+                      })),
+                    })
+                  }
+                >
+                  Remove segment
+                </button>
+              </div>
+            </form>
+          ))}
+          <form
+            className="content-artifact-card content-artifact-new"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const fields = new FormData(event.currentTarget);
+              const segmentId =
+                optionalFormText(fields, "segment_id") ?? crypto.randomUUID();
+              save({
+                ...analysis,
+                transcript_segments: [
+                  ...analysis.transcript_segments,
+                  transcriptSegmentFromForm(fields, segmentId, item),
+                ],
+              });
+            }}
+          >
+            <strong>Add transcript segment</strong>
+            <label>
+              Segment ID, optional
+              <input name="segment_id" maxLength={256} />
+            </label>
+            <label>
+              Editable text
+              <textarea name="segment_text" maxLength={16_384} required />
+            </label>
+            <div className="content-timing-grid">
+              <label>
+                Start frame
+                <input
+                  name="segment_start"
+                  type="number"
+                  defaultValue={item.first_frame ?? 0}
+                  required
+                />
+              </label>
+              <label>
+                End frame
+                <input
+                  name="segment_end"
+                  type="number"
+                  defaultValue={(item.first_frame ?? 0) + 1}
+                  required
+                />
+              </label>
+              <label>
+                Rate numerator
+                <input
+                  name="segment_rate_numerator"
+                  type="number"
+                  min={1}
+                  defaultValue={item.frame_rate_numerator ?? 24}
+                  required
+                />
+              </label>
+              <label>
+                Rate denominator
+                <input
+                  name="segment_rate_denominator"
+                  type="number"
+                  min={1}
+                  defaultValue={item.frame_rate_denominator ?? 1}
+                  required
+                />
+              </label>
+            </div>
+            <label>
+              Speaker
+              <input name="segment_speaker" maxLength={256} />
+            </label>
+            <label>
+              Timeline relationships, one timeline_id | clip_id per line
+              <textarea name="segment_relationships" />
+            </label>
+            <button type="submit">Add transcript segment</button>
+          </form>
+        </div>
+
+        <div className="content-analysis-group">
+          <div className="content-analysis-heading">
+            <h5>Local AI content</h5>
+            <span>{analysis.local_ai_content.length}</span>
+          </div>
+          {analysis.local_ai_content.map((content) => (
+            <form
+              className="content-artifact-card"
+              key={content.content_id}
+              onSubmit={(event) => {
+                event.preventDefault();
+                const replacement = localAiContentFromForm(
+                  new FormData(event.currentTarget),
+                  content.content_id,
+                );
+                save({
+                  ...analysis,
+                  local_ai_content: analysis.local_ai_content.map((candidate) =>
+                    candidate.content_id === content.content_id
+                      ? replacement
+                      : candidate,
+                  ),
+                });
+              }}
+            >
+              <label>
+                Content ID
+                <input value={content.content_id} readOnly />
+              </label>
+              <label>
+                Editable label
+                <input
+                  name="content_label"
+                  defaultValue={content.label}
+                  maxLength={256}
+                  required
+                />
+              </label>
+              <label>
+                Search terms, comma separated
+                <input
+                  name="content_terms"
+                  defaultValue={content.terms.join(", ")}
+                />
+              </label>
+              <label>
+                Transcript segment IDs, comma separated
+                <input
+                  name="content_segment_ids"
+                  defaultValue={content.segment_ids.join(", ")}
+                />
+              </label>
+              <div className="actions">
+                <button type="submit">Save local AI content</button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() =>
+                    save({
+                      ...analysis,
+                      local_ai_content: analysis.local_ai_content.filter(
+                        (candidate) => candidate.content_id !== content.content_id,
+                      ),
+                    })
+                  }
+                >
+                  Remove local content
+                </button>
+              </div>
+            </form>
+          ))}
+          <form
+            className="content-artifact-card content-artifact-new"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const fields = new FormData(event.currentTarget);
+              const contentId =
+                optionalFormText(fields, "content_id") ?? crypto.randomUUID();
+              save({
+                ...analysis,
+                local_ai_content: [
+                  ...analysis.local_ai_content,
+                  localAiContentFromForm(fields, contentId),
+                ],
+              });
+            }}
+          >
+            <strong>Add local AI content</strong>
+            <label>
+              Content ID, optional
+              <input name="content_id" maxLength={256} />
+            </label>
+            <label>
+              Editable label
+              <input name="content_label" maxLength={256} required />
+            </label>
+            <label>
+              Search terms, comma separated
+              <input name="content_terms" />
+            </label>
+            <label>
+              Transcript segment IDs, comma separated
+              <input name="content_segment_ids" />
+            </label>
+            <button type="submit">Add local AI content</button>
+          </form>
+        </div>
+      </fieldset>
+    </section>
+  );
+}
+
+function transcriptSegmentFromForm(
+  fields: FormData,
+  segmentId: string,
+  item: MediaBrowserItem,
+): MediaTranscriptSegment {
+  return {
+    segment_id: segmentId,
+    text: String(fields.get("segment_text") ?? "").trim(),
+    start_frame: Number(fields.get("segment_start")),
+    end_frame: Number(fields.get("segment_end")),
+    rate_numerator: Number(
+      fields.get("segment_rate_numerator") ?? item.frame_rate_numerator ?? 24,
+    ),
+    rate_denominator: Number(
+      fields.get("segment_rate_denominator") ?? item.frame_rate_denominator ?? 1,
+    ),
+    speaker: optionalFormText(fields, "segment_speaker"),
+    timeline_relationships: timelineRelationshipsFromForm(
+      fields,
+      "segment_relationships",
+    ),
+  };
+}
+
+function localAiContentFromForm(
+  fields: FormData,
+  contentId: string,
+): MediaLocalAiContent {
+  return {
+    content_id: contentId,
+    label: String(fields.get("content_label") ?? "").trim(),
+    terms: commaSeparatedTerms(fields, "content_terms"),
+    segment_ids: commaSeparatedTerms(fields, "content_segment_ids"),
+  };
+}
+
+function optionalFormText(fields: FormData, name: string): string | null {
+  const value = String(fields.get(name) ?? "").trim();
+  return value.length === 0 ? null : value;
+}
+
+function commaSeparatedTerms(fields: FormData, name: string): readonly string[] {
+  return String(fields.get(name) ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
+function timelineRelationshipsFromForm(
+  fields: FormData,
+  name: string,
+): readonly MediaTimelineRelationship[] {
+  return String(fields.get(name) ?? "")
+    .split("\n")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+    .map((value) => {
+      const separator = value.indexOf("|");
+      if (separator < 0) {
+        return { timeline_id: value, clip_id: null };
+      }
+      const timelineId = value.slice(0, separator).trim();
+      const clipId = value.slice(separator + 1).trim();
+      return {
+        timeline_id: timelineId,
+        clip_id: clipId.length === 0 ? null : clipId,
+      };
+    });
+}
+
+function timelineRelationshipsText(
+  relationships: readonly MediaTimelineRelationship[],
+): string {
+  return relationships
+    .map((relationship) =>
+      relationship.clip_id
+        ? `${relationship.timeline_id} | ${relationship.clip_id}`
+        : relationship.timeline_id,
+    )
+    .join("\n");
 }
 
 function optionalNumber(value: string): number | null {

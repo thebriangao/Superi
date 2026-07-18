@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 1e94569ed841c8581e07c07fadb669d9c6eb28f3586bc657760d5fba1980564d
-source_files: 228
+source_hash: c9fc650945d5bc8662281a45c9c88fc3d7852bfce385539d65edb48afa0276bb
+source_files: 230
 mapped_at_commit: working-tree
 ---
 
@@ -441,6 +441,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W03.C009.md`: Durable implementation evidence for local offline state and
   search, revision-fenced relink, intentional source replacement, frame-rate conform, preserved C008
   freshness and fallback, and the production media-browser consumer.
+- `docs/checkpoints/P3.W03.C011.md`: Durable implementation evidence for source-bound editable
+  language artifacts, exact transcript timing, speaker and timeline relationships, local AI content
+  entries, deterministic metadata plus transcript plus local-content search, and the production
+  inspector consumer without model or network dependence.
 
 ### Production desktop application
 
@@ -483,14 +487,20 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   read-only current-project usage indicators. The same detail shows exact duplicate identity and
   edits reusable source-time selections plus fixed-point tracked observations. It also creates or
   replaces proxy and optimized-media attachment records, shows status, and switches explicit
-  quality intent with transparent original-source fallback.
+  quality intent with transparent original-source fallback. It derives local availability and owns
+  relink, intentional source replacement, and conform controls, then consumes revision-fenced native
+  content search with ranked signal evidence. Its structured language-analysis editor preserves
+  exact frame timing, rational rate, speaker, timeline plus clip relationships, and local AI labels,
+  terms, and transcript links as ordinary state, including explicit stale-source confirmation.
 - `app/src/lifecycle.ts`: Defines the exact shell-local serialized lifecycle contract and typed
   asynchronous wrappers for the two Tauri lifecycle commands without importing engine bindings.
 - `app/src/project-lifecycle.ts`: Defines strict shell-local project lifecycle, settings, media
   import, media-library snapshot, derived-thumbnail, bin, smart-collection, source-inspection,
   user-metadata, editorial-annotation, derived-usage, duplicate-identity, selection, and tracked
   region DTOs plus derived-media purpose, quality, lifecycle, attachment, selection-evidence DTOs
-  and typed wrappers for the lifecycle and media-library Tauri commands.
+  and typed wrappers for the lifecycle and media-library Tauri commands. It also mirrors offline
+  recovery plus persisted content-analysis artifacts and exposes revision-fenced native replacement
+  and content-search wrappers with exact explainable match evidence.
 - `app/src/main.tsx`: Constructs one process-lifetime `DesktopSuperiTransport`, injects it through
   the generated API provider, disposes it at unload, and mounts the React application under strict
   mode.
@@ -498,7 +508,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   surfaces, professional workspace data views, exact audio route and continuity presentation,
   shared selection, lifecycle controls, media-browser list and grid layouts, thumbnail fallbacks,
   source and user metadata details, editorial annotation controls, usage summaries, engine API
-  status presentation, and responsive 16:9 native viewer reservations.
+  status presentation, ranked content-search evidence, structured language and local-content
+  artifact editing, stale-analysis warnings, and responsive 16:9 native viewer reservations.
 - `app/src/transport.ts`: Implements the concrete generated `SuperiTransport` through one injected
   or Tauri-backed invoke/listen host, generation-scoped request identities, ordered event replay,
   stale and duplicate rejection, reconnect, cooperative cancellation, and exact
@@ -576,12 +587,21 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and validates ordered fixed-point tracked observations before atomic replacement. C008 persists
   bounded replaceable proxy and optimized attachments beside that state, binds them to exact source
   freshness, and deterministically resolves explicit quality intent or original-source fallback.
+  C009 derives online, partial, or offline source state and owns revision-fenced relink, intentional
+  replacement, and exact conform changes. C011 persists bounded model-independent content analysis
+  against one source fingerprint, canonicalizes editable transcript text, exact rational-frame
+  timing, speakers, timeline plus clip relationships, and linked local AI content, and atomically
+  replaces it without changing other media state. Its read-only revision-fenced query composes
+  imported, source, user, editorial, availability, transcript, relationship, and local-content
+  fields, returns bounded weighted evidence with stable media-ID tie breaking, keeps stale analysis
+  inspectable after source replacement, and requires no network or model runtime.
 - `app/src-tauri/src/lib.rs`: Configures the mock and native Tauri builders, retains the linked
   engine process, manages its bounded connection and transport state alongside application
   lifecycle and project-session state, registers lifecycle, project, viewport, and API commands,
   including media-library snapshot, organization mutation, source inspection, user metadata, and
-  editorial annotation, C007 identity-selection, and C008 derived-media mutation commands, initializes the recovery
-  root, emits one ordered Tauri event, records
+  editorial annotation, C007 identity-selection, C008 derived-media mutation, C009 offline recovery,
+  and C011 content-analysis mutation plus content-search commands, initializes the recovery root,
+  emits one ordered Tauri event, records
   nonblocking exit intent, and joins the engine owner after the native application stops.
 - `app/src-tauri/src/main.rs`: Starts the native production desktop host.
 - `app/src-tauri/tests/engine_connection_contract.rs`: Proves dedicated EngineControl ownership,
@@ -615,6 +635,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   registered native command, typed bridge, production detail consumer, and C009+ exclusions.
 - `app/src-tauri/tests/offline_media_contract.rs`: Freezes C009 offline availability, local search,
   relink, replace, and conform integration while preserving C008 and excluding C010 preview work.
+- `app/src-tauri/tests/media_content_search_contract.rs`: Freezes C011 persisted language and local
+  content artifacts, exact timing, speaker and timeline relationships, the two native commands,
+  strict TypeScript bridge, production search and editing consumer, and offline model independence.
 - `app/src-tauri/tests/project_settings_contract.rs`: Proves default inspection, complete atomic
   settings update, lifecycle revision coherence, durable reopen, and stale-revision rejection
   through the real local project host.
@@ -1374,8 +1397,12 @@ of open runtime behavior.
   replacement; usage is a nonserialized projection of current timeline clip references. C007 adds
   exact fingerprint duplicate identity plus persisted bounded selections and manual tracked-region
   observations without changing that authority. C008 adds replaceable source-fresh derived-media
-  attachments and explicit quality selection with deterministic original fallback. Relinking,
-  source replacement, conform, offline handling, and search remain later work.
+  attachments and explicit quality selection with deterministic original fallback. C009 adds local
+  availability, relink, intentional replacement, and conform without changing stable media identity.
+  C011 adds source-bound ordinary transcript and local-content artifacts plus deterministic native
+  search, retaining stale analysis for inspection while requiring explicit current-source confirmation
+  before further editing. Preview generation, batch operations, and removable-volume monitoring
+  remain separately owned.
 - The MIT tree rejects GPL, LGPL, AGPL, MPL, patent-encumbered in-tree codecs, and dependencies or
   models without adequate redistribution and provenance rights. Operating-system and vendor codec
   paths remain isolated and explicit.
@@ -1726,8 +1753,13 @@ counts derived from current timeline clip references. It now also derives canoni
 identity from exact fingerprints and atomically persists reusable rational-frame selections with
 manually refinable fixed-point tracked observations. The same detail now owns the C008 derived-media
 lifecycle and transparent switching, then derives local availability and provides bounded local
-search plus explicit relink, source replacement, and frame-rate conform flows. Thumbnail, filmstrip,
-waveform, preview generation, and local-AI content indexing remain separately owned.
+search plus explicit relink, source replacement, and frame-rate conform flows. The same native owner
+now persists model-independent transcript and local AI content entries, validates exact source timing,
+speaker, timeline and clip relationships, and provides deterministic revision-fenced metadata,
+transcript, and local-content search with explainable evidence. React consumes that query under bin
+and smart-collection scope and edits the ordinary artifacts through atomic replacement. Thumbnail,
+filmstrip, waveform, preview generation, batch operations, and removable-volume monitoring remain
+separately owned.
 Fresh Cargo metadata expands the member globs to 25
 packages: 19 crates under
 `open/crates/` plus the `superi-fixture-tool`, `superi-dependency-check`,
