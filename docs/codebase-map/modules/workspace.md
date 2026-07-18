@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 7c5bc32603e29767e4176af1318eb69059c79ff54c96e98efd55346703a43a4c
-source_files: 251
+source_hash: 28d6276d11f2aa81aca188f1e7d407b2994316da4011f016fb9227d98fec15ee
+source_files: 254
 mapped_at_commit: working-tree
 ---
 
@@ -480,6 +480,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   playhead, item-edge, and marker-edge targets, stable tie ordering, configurable transient rules,
   visible consequence feedback, Escape reversal, strict malformed-owner failure, and preservation
   of the lower authored-state boundary.
+- `docs/checkpoints/P3.W04.C007.md`: Durable implementation evidence for exact ripple, roll, slip,
+  slide, razor, trim, extend, ripple-delete, and gap plans, mixed-clock synchronization, typed
+  identity allocation, immutable consequence previews, the shared atomic project executor, and
+  lower-owned durable semantics and history.
 
 ### Production desktop application
 
@@ -531,6 +535,13 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   inclusive source marks, exact target clocks, selection, legal bounds, and minimum fragment IDs,
   then builds existing generated insert, overwrite, append, replace, lift, extract, backspace,
   undo, and redo project requests with a visible consequence description.
+- `app/src/timeline-editing.ts`: Compiles ripple, roll, slip, slide, razor, trim, ripple or roll
+  extend, ripple delete, synchronized gap insertion, and gap closure from the frozen canonical
+  canvas model into existing public `TimelineEditOperation` batches. It preserves exact rational
+  clocks with checked integer conversion, validates primary and synchronized track locks before
+  typed identity allocation, derives the lower modified-object boundary for immutable previews,
+  and leaves atomic mutation, history, grouping, synchronization, and final validation with the
+  native project command owner.
 - `app/src/timeline-clip-presentation.ts`: Supplements the existing frozen canvas model with strict
   read-only clip media names and relink state, exact time maps, markers, metadata, multicam intent,
   clip-scoped graph effects and parameter drivers, and attached clip-gain sample keyframes with
@@ -545,9 +556,13 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   consequence status, a visible target guide, and Escape or pointer-cancel restoration without
   taking authored mutation ownership. It adds four-kind creation, inline naming, bounded height,
   order, target, lock, sync lock, audio mute and solo, enable, guarded delete, pending and failure
-  state, and honest unavailable state. It also exposes explicit per-track edit targeting, all seven
-  editorial gestures, exact source, target, and consequence state, pending and failure state,
-  Backspace extraction, and immediate undo and redo through the application command callback. It
+  state, and honest unavailable state. It also exposes explicit per-track edit targeting, insert,
+  overwrite, append, replace, lift, extract, Backspace extraction, and immediate undo and redo with
+  exact source, target, consequence, pending, and failure state through the application command
+  callback. Ripple, roll, slip, slide, razor, trim, ripple or roll extend, ripple delete, gap insert,
+  and gap closure use the exact compiler, snap-aware pointer drafts, one-frame nudges, visible
+  affected-object previews, and one shared pending exclusion before publishing the entire operation
+  batch through the injected application action executor. It
   progressively reads one revision-matched media library,
   deduplicates sources, generates previews sequentially, and accepts only matching media and
   freshness identities before displaying filmstrips, thumbnails, or waveforms.
@@ -622,7 +637,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   disabled output presentation, and visible command failures. It also defines compact ready, stale,
   and empty source-monitor
   controls with exact state details and responsive action groups. The timeline edit console adds
-  compact gesture, history, target, consequence, shortcut, pending, and result states.
+  compact source-placement and exact timing-tool controls, history, target, consequence, affected
+  object, shortcut, pending, and result states.
 - `app/src/transport.ts`: Implements the concrete generated `SuperiTransport` through one injected
   or Tauri-backed invoke/listen host, generation-scoped request identities, ordered event replay,
   stale and duplicate rejection, reconnect, cooperative cancellation, and exact
@@ -652,9 +668,14 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   eleven durable track gestures, visible consequence and reversal wiring, selection identity round
   trips, fixed-point related and direct selection, display-order ranges, directional neighbors,
   lasso geometry, real React integration, multiselect accessibility, shared selection wiring,
-  transient navigation controls, all seven generated edit requests, minimal fragments, exact
+  transient navigation controls, all seven source-placement edit requests, minimal fragments, exact
   inclusive source-mark conversion, selection override, replace conformance, history requests,
   visible consequences, failure fences, and the absence of a frontend authored mutation owner.
+- `app/tests/timeline-editing.test.ts`: Verifies the complete timing-tool catalog, exact 24 fps,
+  24000/1001, 48 kHz, and inexact 44.1 kHz behavior, typed fragment and gap identities, canonical
+  sync-track ordering, direct and ripple extend modes, ripple-delete and gap batches, lower-matched
+  affected-object previews, deep immutability, lock rejection before allocation, and publication
+  through the shared project action executor without direct transport ownership.
 - `app/tests/timeline-clip-presentation.test.ts`: Verifies supplemental reuse of the exact canvas
   projection, external global-start placement, mixed record clocks, source names and relink state,
   retime, linking, grouping, targeting, synchronization, markers, metadata, multicam intent,
@@ -1574,6 +1595,13 @@ projection resolves timeline, item, and owner-clock marker boundaries into exact
 skips inexact cross-clock points and valid object-marker overscan, exposes explicit session rules,
 guides, and live consequences, and restores captured transient origin on Escape or pointer
 cancellation.
+The C007 timing compiler consumes that same frozen projection and emits only existing public edit
+operations for ripple, roll, slip, slide, razor, trim, extend, ripple delete, and gap work. It
+converts every affected track clock exactly, allocates typed identities only after validation, and
+publishes the complete immutable batch through `ApplicationProvider.executeProjectActions` as one
+`edit_timeline` action. That shared executor supplies the unique transaction identity, revision
+fence, native retained-editor route, history, event delivery, and canonical snapshot refresh, so
+React owns gesture intent and preview but never becomes an authored-state owner.
 The same canvas supplements clip items from the snapshot's canonical graph and attached audio
 automation, and it hydrates real media previews through the existing freshness-fenced Tauri owner.
 Shared clip activation remains an application selection reference, not an authored timeline edit.
@@ -1775,6 +1803,12 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   half-open conversion, minimum fragment identities, shared target selection, replace conformance,
   immediate history requests, visible consequences, and the exclusion of any frontend authored
   mutation owner.
+
+- The focused timing-tool proof freezes all seven direct tools plus ripple delete and gap work,
+  exact mixed-clock conversion, synchronized track ordering, typed allocation, immutable affected
+  previews, preallocation lock and inexact-clock rejection, and the production shared-executor
+  wiring. Lower timeline, engine transaction, API editor, and native transport contracts remain the
+  semantic, atomicity, persistence, event, and history proof beneath that frontend compiler.
 
 - The focused timeline-clip proof freezes reuse of that canvas model, exact source and record
   evidence, mixed clocks, stable media and relationship identity, relink, retime, marker, metadata,

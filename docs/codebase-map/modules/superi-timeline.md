@@ -657,10 +657,11 @@ Timeline document flow preserves those owners without becoming a project contain
   traverses reachable media and nested timeline relationships, and clones the exact project-retained
   compilation with prepared source and decoder owners. Engine transport separately consumes the
   retime-owned reduced signed `PlaybackRate` without importing editorial mutation policy.
-- Engine command history now reverses complete project snapshots that contain this editorial and
-  compiled graph state. Timeline remains unaware of history and owns no stack; no engine
-  `ProjectMutation` variant wraps timeline edit commands yet, and compound timeline plus audio or
-  graph transactions remain later integration work.
+- Engine command history reverses complete project snapshots that contain this editorial and
+  compiled graph state. `CompoundProjectAction::EditTimeline` applies an ordered nonempty batch of
+  native `EditOperation` values inside the engine transaction boundary, while the public
+  `ProjectAction::EditTimeline` and strict `TimelineEditOperation` wire translate into that owner.
+  Timeline remains unaware of history and owns no stack.
 - Public integration tests and the `otio_roundtrip` example are real consumers. The engine's
   complete editor-state inspection and API projection now expose the canonical timeline document,
   and the production editing workspace strictly consumes that document as a read-only canvas while
@@ -671,7 +672,11 @@ Timeline document flow preserves those owners without becoming a project contain
   edit clock for transient playhead and range gestures, preserves persistent disablement and stable
   target ordering, skips inexact points and valid object-marker overscan, and exposes session rules,
   visible consequence feedback, and reversal without claiming authored snapping ownership.
-  No timeline-specific typed public DTO or application-authored mutation path exists yet.
+  The workspace timing compiler now turns ripple, roll, slip, slide, razor, trim, extend, ripple
+  delete, and gap intent into those existing public operation batches with exact mixed-clock and
+  typed-identity validation. It publishes one batch through the application-owned project executor;
+  this crate and the engine remain authoritative for semantic validation, synchronization,
+  relationship preservation, atomic publication, and history.
 
 ## Invariants and operational boundaries
 
@@ -949,8 +954,9 @@ scheduling, and recovery orchestration remain absent. Generic editor-state inspe
 public API preserve the canonical timeline document and expose typed track mutation through durable
 project commands. The production editing workspace renders the strict projection with transient
 navigation and shared-selection state, exact target snapping, visible session rule and consequence
-state, reversible pointer gestures, and supplemental clip detail that does not reparse geometry.
-Track gestures return through the durable project command owner. Engine
+state, reversible pointer gestures, supplemental clip detail that does not reparse geometry, and
+exact advanced timing plans that enter the existing public operation wire as one atomic batch.
+Track and item gestures return through the durable project command owner. Engine
 preparation integration now consumes and retains the compiled graph, and engine transport consumes
 the standalone signed rate value, but no
 owner yet binds that prepared native timeline graph to decoded playback, multicam mixing, or render
@@ -1012,6 +1018,10 @@ Keep the production workspace projection strict against the canonical document r
 exact ranges, stable identities, relationships, targeting, synchronization, and selection. Local
 playhead, range, scroll, and zoom may remain presentation intent, but authored gestures must enter
 through project and engine command ownership rather than reconstructing timeline policy in React.
+Frontend timing planners may translate direct user coordinates into this module's public operation
+forms only when they preserve exact clocks, typed identity domains, synchronized-track order, lock
+admission, and one atomic lower-owned publication. Native validation and history remain mandatory;
+the preview cannot be treated as canonical state.
 The UI may project this module's published exact snap candidates for transient gesture feedback only
 when it preserves target classes, persistent disablement, exact cross-clock omission, object-relative
 marker resolution, and stable tie order. Session filters, guides, and captured gesture origins must

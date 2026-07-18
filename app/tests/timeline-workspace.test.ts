@@ -211,6 +211,7 @@ test("canonical projection preserves exact editorial timing and relationships", 
   const video = model.tracks[0];
   assert.equal(video.id, "track.video.1");
   assert.equal(video.kind, "video");
+  assert.deepEqual(video.timebase, rate);
   assert.equal(video.targeted, true);
   assert.equal(video.height, 88);
   assert.equal(video.locked, false);
@@ -222,6 +223,10 @@ test("canonical projection preserves exact editorial timing and relationships", 
   assert.equal(audio.muted, true);
   assert.equal(audio.solo, true);
   assert.equal(audio.enabled, false);
+  assert.deepEqual(audio.timebase, {
+    numerator: 48_000,
+    denominator: 1,
+  });
 
   const opening = video.items.find((item) => item.id === "clip.a");
   assert.ok(opening);

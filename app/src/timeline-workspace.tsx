@@ -27,6 +27,7 @@ import type {
   TimelineTrackMutation,
   ExecuteProjectCommand,
   ExecuteProjectCommandResult,
+  ProjectAction,
 } from "./api.ts";
 import type { SourceMonitorSnapshot } from "./project-lifecycle.ts";
 import {
@@ -41,6 +42,18 @@ import {
   type TimelineClipPresentation,
   type TimelineClipProjection,
 } from "./timeline-clip-presentation.ts";
+import {
+  TimelineEditingError,
+  compileGapClose,
+  compileGapInsert,
+  compileRippleDelete,
+  compileTimelineGesture,
+  timelineEditingTools,
+  type TimelineEditPlan,
+  type TimelineEditingSide,
+  type TimelineEditingTool,
+  type TimelineExtendMode,
+} from "./timeline-editing.ts";
 import {
   TIMELINE_DEFAULT_SNAP_RULES,
   TimelineProjectionError,
@@ -86,6 +99,7 @@ const DEFAULT_PIXELS_PER_SECOND = 96;
 const SNAP_TOLERANCE_PIXELS = 10;
 const MAX_SNAP_TOLERANCE_FRAMES = 12;
 const LASSO_DRAG_THRESHOLD = 4;
+const EDIT_DRAG_THRESHOLD = 4;
 const TIMELINE_SELECTION_HELP_ID = "timeline-selection-help";
 
 const TIMELINE_SNAP_RULES = [
@@ -110,6 +124,20 @@ const TIMELINE_EDIT_GESTURES: readonly TimelineEditGesture[] = [
 ];
 
 type TimelineGesture = "playhead" | "in" | "out";
+
+interface TimelineEditTarget {
+  readonly trackId: string;
+  readonly itemId: string;
+}
+
+interface TimelineEditGestureState extends TimelineEditTarget {
+  readonly pointerId: number;
+  readonly side: TimelineEditingSide;
+  readonly grabOffsetSeconds: number;
+  readonly pointerStartClientX: number;
+  readonly dragged: boolean;
+  readonly plan: TimelineEditPlan | null;
+}
 
 type TimelineClipPreviewState =
   | { readonly status: "loading" }
@@ -141,6 +169,9 @@ export interface TimelineWorkspaceProps {
   readonly mutateTracks: (
     mutations: readonly TimelineTrackMutation[],
   ) => Promise<void>;
+  readonly executeProjectActions: (
+    actions: readonly ProjectAction[],
+  ) => Promise<ExecuteProjectCommandResult>;
   readonly sourceMonitor: SourceMonitorSnapshot | null;
   readonly onExecuteProjectCommand: (
     request: ExecuteProjectCommand,
@@ -157,6 +188,7 @@ export function TimelineWorkspace({
   selectionSchemaVersion,
   selectionRevision,
   mutateTracks,
+  executeProjectActions,
   sourceMonitor,
   onExecuteProjectCommand,
 }: TimelineWorkspaceProps) {
@@ -203,6 +235,21 @@ export function TimelineWorkspace({
   const [viewportWidth, setViewportWidth] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [gesture, setGesture] = useState<TimelineGesture | null>(null);
+  const [editingTool, setEditingTool] = useState<TimelineEditingTool>("trim");
+  const [editingSide, setEditingSide] =
+    useState<TimelineEditingSide>("end");
+  const [extendMode, setExtendMode] =
+    useState<TimelineExtendMode>("ripple");
+  const [activeEditTarget, setActiveEditTarget] =
+    useState<TimelineEditTarget | null>(null);
+  const [editGesture, setEditGesture] =
+    useState<TimelineEditGestureState | null>(null);
+  const [editPlan, setEditPlan] = useState<TimelineEditPlan | null>(null);
+  const [editFailure, setEditFailure] = useState<string | null>(null);
+  const [editMessage, setEditMessage] = useState(
+    "Select a timed object, choose a tool, then drag or apply at the playhead.",
+  );
+  const [gapFrameCount, setGapFrameCount] = useState(24);
   const [sessionSnappingEnabled, setSessionSnappingEnabled] = useState(true);
   const [snapRules, setSnapRules] = useState<TimelineSnapRules>(() => ({
     ...TIMELINE_DEFAULT_SNAP_RULES,
@@ -407,6 +454,9 @@ export function TimelineWorkspace({
       setSnapRules({ ...TIMELINE_DEFAULT_SNAP_RULES });
       setSnapMatch(null);
       setRangeExplicit(false);
+      setActiveEditTarget(null);
+      setEditGesture(null);
+      setEditPlan(null);
       return;
     }
     setPlayhead((value) =>
@@ -422,13 +472,15 @@ export function TimelineWorkspace({
 
   useEffect(() => {
     setSnapMatch(null);
+    setEditGesture(null);
+    setEditPlan(null);
   }, [model?.documentSha256]);
 
   const sourceProjection = useMemo(
     () => (model ? projectSourceMonitorForTimelineEdit(sourceMonitor, model) : null),
     [model, sourceMonitor],
   );
-  const editPlan = useMemo<TimelineEditCommandResult | null>(() => {
+  const gestureCommandPlan = useMemo<TimelineEditCommandResult | null>(() => {
     if (!model) return null;
     let previewSequence = 0;
     const plan = buildTimelineEditCommand({
@@ -606,6 +658,38 @@ export function TimelineWorkspace({
     return () => window.removeEventListener("keydown", handleEditShortcut, true);
   }, [executeEdit, executeHistory]);
 
+  const activeEditTrack = useMemo(
+    () =>
+      model && activeEditTarget
+        ? model.tracks.find((track) => track.id === activeEditTarget.trackId) ?? null
+        : null,
+    [activeEditTarget, model],
+  );
+  const activeEditItem = useMemo(
+    () =>
+      activeEditTrack && activeEditTarget
+        ? activeEditTrack.items.find(
+            (item) =>
+              item.id === activeEditTarget.itemId && item.kind !== "transition",
+          ) ?? null
+        : null,
+    [activeEditTarget, activeEditTrack],
+  );
+  const operationTrack =
+    activeEditTrack ??
+    model?.tracks.find((track) => track.targeted) ??
+    model?.tracks[0] ??
+    null;
+  const activeEditLocked = activeEditTrack?.locked ?? false;
+  const operationTrackLocked = operationTrack?.locked ?? false;
+
+  useEffect(() => {
+    if (activeEditTarget && (!activeEditTrack || !activeEditItem)) {
+      setActiveEditTarget(null);
+      setEditMessage("The prior edit target no longer exists in this revision.");
+    }
+  }, [activeEditItem, activeEditTarget, activeEditTrack]);
+
   const visibleContentWidth = Math.max(1, viewportWidth - HEADER_WIDTH);
   const contentWidth = model
     ? Math.max(model.durationSeconds * pixelsPerSecond, visibleContentWidth)
@@ -780,6 +864,463 @@ export function TimelineWorkspace({
       sessionSnappingEnabled,
       snapRules,
     ],
+  );
+
+  const rawEditPointerTime = useCallback(
+    (clientX: number): number => {
+      const viewport = scrollRef.current;
+      if (!viewport || !model) return 0;
+      const bounds = viewport.getBoundingClientRect();
+      const contentX =
+        clientX - bounds.left + viewport.scrollLeft - HEADER_WIDTH;
+      return clampNumber(
+        model.startSeconds +
+          clampNumber(contentX, 0, contentWidth) / pixelsPerSecond,
+        model.startSeconds,
+        model.endSeconds,
+      );
+    },
+    [contentWidth, model, pixelsPerSecond],
+  );
+
+  const resolveEditTime = useCallback(
+    (
+      raw: number,
+    ): { readonly value: number; readonly match: TimelineSnapMatch | null } => {
+      if (!model) return { value: 0, match: null };
+      const frameAligned = clampNumber(
+        snapTimelineTime(raw, model.editRate, model.globalStartSeconds),
+        model.startSeconds,
+        model.endSeconds,
+      );
+      const match = resolveTimelineSnap(model, {
+        atSeconds: frameAligned,
+        toleranceFrames: pointerSnapToleranceFrames,
+        playheadSeconds: playhead,
+        rules: snapRules,
+        sessionEnabled: sessionSnappingEnabled,
+      });
+      return { value: match?.timeSeconds ?? frameAligned, match };
+    },
+    [
+      model,
+      playhead,
+      pointerSnapToleranceFrames,
+      sessionSnappingEnabled,
+      snapRules,
+    ],
+  );
+
+  const compileEditGesturePlan = useCallback(
+    (
+      target: TimelineEditTarget,
+      side: TimelineEditingSide,
+      toSeconds: number,
+    ): TimelineEditPlan => {
+      if (!model) throw new TimelineEditingError("Timeline state is unavailable.");
+      return compileTimelineGesture({
+        model,
+        tool: editingTool,
+        trackId: target.trackId,
+        itemId: target.itemId,
+        side,
+        toSeconds,
+        extendMode,
+      });
+    },
+    [editingTool, extendMode, model],
+  );
+
+  const showEditPlan = useCallback((plan: TimelineEditPlan) => {
+    setEditPlan(plan);
+    setEditFailure(null);
+    setEditMessage(
+      `${plan.label}. ${plan.operations.length} atomic ${
+        plan.operations.length === 1 ? "operation" : "operations"
+      }, ${plan.affectedItemIds.length} affected ${
+        plan.affectedItemIds.length === 1 ? "object" : "objects"
+      }.`,
+    );
+  }, []);
+
+  const reportEditFailure = useCallback((error: unknown) => {
+    const message = timelineEditErrorMessage(error);
+    setEditPlan(null);
+    setEditFailure(message);
+    setEditMessage(message);
+  }, []);
+
+  const executeEditPlan = useCallback(
+    async (plan: TimelineEditPlan) => {
+      if (commandPendingRef.current) return;
+      commandPendingRef.current = true;
+      setCommandPending(true);
+      setEditFailure(null);
+      setEditMessage(`Applying ${plan.label.toLowerCase()} through project history.`);
+      try {
+        const result = await executeProjectActions([
+          {
+            action: "edit_timeline",
+            operations: [...plan.operations],
+          },
+        ]);
+        setEditPlan(null);
+        setSnapMatch(null);
+        setEditMessage(
+          `${plan.label} applied at project revision ${result.state.project_revision} and refreshed from canonical state. Undo is available immediately.`,
+        );
+      } catch (error) {
+        reportEditFailure(error);
+      } finally {
+        commandPendingRef.current = false;
+        setCommandPending(false);
+      }
+    },
+    [executeProjectActions, reportEditFailure],
+  );
+
+  const beginEditGesture = useCallback(
+    (
+      event: PointerEvent<HTMLElement>,
+      trackId: string,
+      item: TimelineCanvasItem,
+    ) => {
+      if (!model || commandPending || event.button !== 0 || item.kind === "transition") {
+        return;
+      }
+      const track = model.tracks.find((candidate) => candidate.id === trackId);
+      if (track?.locked) {
+        reportEditFailure(
+          new TimelineEditingError(
+            `${track.name} is locked. Selection remains available, but timing edits are disabled.`,
+          ),
+        );
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const target = { trackId, itemId: item.id };
+      const edgeSide = timelineToolUsesEdge(editingTool)
+        ? event.clientX <=
+          event.currentTarget.getBoundingClientRect().left +
+            event.currentTarget.getBoundingClientRect().width / 2
+          ? "start"
+          : "end"
+        : editingSide;
+      setActiveEditTarget(target);
+      setEditingSide(edgeSide);
+      setEditFailure(null);
+      scrollRef.current?.setPointerCapture(event.pointerId);
+
+      const rawPointer = rawEditPointerTime(event.clientX);
+      const targetStart =
+        editingTool === "razor" || editingTool === "slip" || editingTool === "slide"
+          ? item.startSeconds
+          : edgeSide === "start"
+            ? item.startSeconds
+            : item.endSeconds;
+      const resolved = resolveEditTime(
+        editingTool === "razor" ? rawPointer : targetStart,
+      );
+      let plan: TimelineEditPlan | null = null;
+      if (editingTool === "razor") {
+        try {
+          plan = compileEditGesturePlan(target, edgeSide, resolved.value);
+          showEditPlan(plan);
+        } catch (error) {
+          reportEditFailure(error);
+        }
+      } else {
+        setEditPlan(null);
+        setEditMessage(
+          `Drag ${item.name} with ${timelineToolLabel(editingTool).toLowerCase()}, then release to apply.`,
+        );
+      }
+      setSnapMatch(resolved.match);
+      setEditGesture({
+        ...target,
+        pointerId: event.pointerId,
+        side: edgeSide,
+        grabOffsetSeconds:
+          editingTool === "razor" ? 0 : rawPointer - targetStart,
+        pointerStartClientX: event.clientX,
+        dragged: editingTool === "razor",
+        plan,
+      });
+    },
+    [
+      compileEditGesturePlan,
+      commandPending,
+      editingSide,
+      editingTool,
+      model,
+      rawEditPointerTime,
+      reportEditFailure,
+      resolveEditTime,
+      showEditPlan,
+    ],
+  );
+
+  const moveEditGesture = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (!editGesture || event.pointerId !== editGesture.pointerId) return;
+      event.preventDefault();
+      const dragged =
+        editGesture.dragged ||
+        Math.abs(event.clientX - editGesture.pointerStartClientX) >=
+          EDIT_DRAG_THRESHOLD;
+      if (!dragged) return;
+      const raw = rawEditPointerTime(event.clientX) - editGesture.grabOffsetSeconds;
+      const resolved = resolveEditTime(raw);
+      try {
+        const plan = compileEditGesturePlan(
+          editGesture,
+          editGesture.side,
+          resolved.value,
+        );
+        setEditGesture((current) =>
+          current && current.pointerId === event.pointerId
+            ? { ...current, dragged, plan }
+            : current,
+        );
+        showEditPlan(plan);
+      } catch (error) {
+        setEditGesture((current) =>
+          current && current.pointerId === event.pointerId
+            ? { ...current, dragged, plan: null }
+            : current,
+        );
+        reportEditFailure(error);
+      }
+      setSnapMatch(resolved.match);
+    },
+    [
+      compileEditGesturePlan,
+      editGesture,
+      rawEditPointerTime,
+      reportEditFailure,
+      resolveEditTime,
+      showEditPlan,
+    ],
+  );
+
+  const endEditGesture = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (!editGesture || event.pointerId !== editGesture.pointerId) return;
+      const dragged =
+        editGesture.dragged ||
+        Math.abs(event.clientX - editGesture.pointerStartClientX) >=
+          EDIT_DRAG_THRESHOLD;
+      let plan: TimelineEditPlan | null = null;
+      if (dragged) {
+        const raw =
+          rawEditPointerTime(event.clientX) - editGesture.grabOffsetSeconds;
+        const resolved = resolveEditTime(raw);
+        try {
+          plan = compileEditGesturePlan(
+            editGesture,
+            editGesture.side,
+            resolved.value,
+          );
+          showEditPlan(plan);
+          setSnapMatch(resolved.match);
+        } catch (error) {
+          reportEditFailure(error);
+        }
+      }
+      if (scrollRef.current?.hasPointerCapture(event.pointerId)) {
+        scrollRef.current.releasePointerCapture(event.pointerId);
+      }
+      setEditGesture(null);
+      if (plan) void executeEditPlan(plan);
+    },
+    [
+      compileEditGesturePlan,
+      editGesture,
+      executeEditPlan,
+      rawEditPointerTime,
+      reportEditFailure,
+      resolveEditTime,
+      showEditPlan,
+    ],
+  );
+
+  const cancelEditGesture = useCallback(() => {
+    if (!editGesture) return;
+    if (scrollRef.current?.hasPointerCapture(editGesture.pointerId)) {
+      scrollRef.current.releasePointerCapture(editGesture.pointerId);
+    }
+    setEditGesture(null);
+    setEditPlan(null);
+    setEditFailure(null);
+    setSnapMatch(null);
+    setEditMessage("Edit gesture cancelled before publication.");
+  }, [editGesture]);
+
+  const applyEditAtPlayhead = useCallback(() => {
+    if (!activeEditTarget || !activeEditItem || commandPending) return;
+    try {
+      const plan = compileEditGesturePlan(
+        activeEditTarget,
+        editingSide,
+        playhead,
+      );
+      showEditPlan(plan);
+      void executeEditPlan(plan);
+    } catch (error) {
+      reportEditFailure(error);
+    }
+  }, [
+    activeEditItem,
+    activeEditTarget,
+    compileEditGesturePlan,
+    commandPending,
+    editingSide,
+    executeEditPlan,
+    playhead,
+    reportEditFailure,
+    showEditPlan,
+  ]);
+
+  const nudgeActiveEdit = useCallback(
+    (direction: -1 | 1) => {
+      if (!model || !activeEditTarget || !activeEditItem || commandPending) return;
+      const frame = timelineFrameDuration(model.editRate);
+      const base =
+        editingTool === "razor"
+          ? playhead
+          : editingTool === "slip" || editingTool === "slide"
+            ? activeEditItem.startSeconds
+            : editingSide === "start"
+              ? activeEditItem.startSeconds
+              : activeEditItem.endSeconds;
+      try {
+        const plan = compileEditGesturePlan(
+          activeEditTarget,
+          editingSide,
+          base + direction * frame,
+        );
+        showEditPlan(plan);
+        void executeEditPlan(plan);
+      } catch (error) {
+        reportEditFailure(error);
+      }
+    },
+    [
+      activeEditItem,
+      activeEditTarget,
+      compileEditGesturePlan,
+      commandPending,
+      editingSide,
+      editingTool,
+      executeEditPlan,
+      model,
+      playhead,
+      reportEditFailure,
+      showEditPlan,
+    ],
+  );
+
+  const rippleDeleteRange = useCallback(() => {
+    if (!model || !operationTrack || commandPending) return;
+    try {
+      const plan = compileRippleDelete({
+        model,
+        trackId: operationTrack.id,
+        startSeconds: Math.min(inPoint, outPoint),
+        endSeconds: Math.max(inPoint, outPoint),
+      });
+      showEditPlan(plan);
+      void executeEditPlan(plan);
+    } catch (error) {
+      reportEditFailure(error);
+    }
+  }, [
+    commandPending,
+    executeEditPlan,
+    inPoint,
+    model,
+    operationTrack,
+    outPoint,
+    reportEditFailure,
+    showEditPlan,
+  ]);
+
+  const insertGapAtPlayhead = useCallback(() => {
+    if (!model || !operationTrack || commandPending) return;
+    try {
+      const plan = compileGapInsert({
+        model,
+        trackId: operationTrack.id,
+        atSeconds: playhead,
+        frameCount: gapFrameCount,
+      });
+      showEditPlan(plan);
+      void executeEditPlan(plan);
+    } catch (error) {
+      reportEditFailure(error);
+    }
+  }, [
+    commandPending,
+    executeEditPlan,
+    gapFrameCount,
+    model,
+    operationTrack,
+    playhead,
+    reportEditFailure,
+    showEditPlan,
+  ]);
+
+  const closeActiveGap = useCallback(() => {
+    if (
+      !model ||
+      !activeEditTrack ||
+      !activeEditItem ||
+      activeEditItem.kind !== "gap" ||
+      commandPending
+    ) {
+      return;
+    }
+    try {
+      const plan = compileGapClose({
+        model,
+        trackId: activeEditTrack.id,
+        gapId: activeEditItem.id,
+      });
+      showEditPlan(plan);
+      void executeEditPlan(plan);
+    } catch (error) {
+      reportEditFailure(error);
+    }
+  }, [
+    activeEditItem,
+    activeEditTrack,
+    commandPending,
+    executeEditPlan,
+    model,
+    reportEditFailure,
+    showEditPlan,
+  ]);
+
+  const activateEditTarget = useCallback(
+    (trackId: string, item: TimelineCanvasItem) => {
+      if (item.kind === "transition") {
+        setActiveEditTarget(null);
+        setEditPlan(null);
+        setEditFailure(null);
+        setEditMessage(
+          "Transitions are edited through their adjacent timed objects.",
+        );
+        return;
+      }
+      setActiveEditTarget({ trackId, itemId: item.id });
+      setEditPlan(null);
+      setEditFailure(null);
+      setEditMessage(
+        `${item.name} selected for ${timelineToolLabel(editingTool).toLowerCase()}.`,
+      );
+    },
+    [editingTool],
   );
 
   const applyGesture = useCallback(
@@ -1197,15 +1738,16 @@ export function TimelineWorkspace({
   }, [applyGesture]);
 
   useEffect(() => {
-    if (!gesture && !lasso) return;
+    if (!gesture && !lasso && !editGesture) return;
     const reverseOnEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
-      cancelGesture();
+      if (editGesture) cancelEditGesture();
+      else cancelGesture();
     };
     window.addEventListener("keydown", reverseOnEscape);
     return () => window.removeEventListener("keydown", reverseOnEscape);
-  }, [cancelGesture, gesture, lasso]);
+  }, [cancelEditGesture, cancelGesture, editGesture, gesture, lasso]);
 
   const handleWheel = useCallback(
     (event: WheelEvent<HTMLDivElement>) => {
@@ -1338,6 +1880,11 @@ export function TimelineWorkspace({
   const snapTargetX = snapMatch
     ? (snapMatch.timeSeconds - model.startSeconds) * pixelsPerSecond
     : null;
+  const editPreviewX =
+    editPlan?.previewSeconds === null || editPlan === null
+      ? null
+      : (editPlan.previewSeconds - model.startSeconds) * pixelsPerSecond;
+  const editAffectedIds = new Set(editPlan?.affectedItemIds ?? []);
   const rangeStartX = (range.inPoint - model.startSeconds) * pixelsPerSecond;
   const rangeWidth = Math.max(
     1,
@@ -1350,7 +1897,9 @@ export function TimelineWorkspace({
   const targetSnappingActive =
     model.snappingEnabled && sessionSnappingEnabled;
   const gestureName =
-    gesture === "playhead"
+    editGesture
+      ? timelineToolLabel(editingTool)
+      : gesture === "playhead"
       ? "Playhead"
       : gesture === "in"
         ? "In point"
@@ -1368,13 +1917,18 @@ export function TimelineWorkspace({
       ? "Project target snapping is off. Gestures remain frame precise."
       : !sessionSnappingEnabled
         ? "Session target snapping is paused. Gestures remain frame precise."
-        : gesture
+        : gesture || editGesture
           ? `${gestureName} remains frame aligned, with no enabled target in range.`
           : `${model.snapTargets.length} exact targets ready. Drag a timing tool to preview its consequence.`;
   const lassoStyle =
     lasso?.dragged && stageRef.current
       ? lassoStageRectangle(lasso, stageRef.current.getBoundingClientRect())
       : null;
+  const activeTargetLabel = activeEditItem
+    ? `${activeEditItem.name} on ${activeEditTrack?.name ?? activeEditTarget?.trackId}`
+    : operationTrack
+      ? `No object selected, operations target ${operationTrack.name}`
+      : "No editable track is available";
 
   return (
     <section className="timeline-workspace" data-timeline-canvas>
@@ -1497,6 +2051,154 @@ export function TimelineWorkspace({
         </div>
       </header>
       <section
+        className="timeline-edit-controls"
+        aria-label="Timeline editing tools"
+        data-ready={true}
+      >
+        <div className="timeline-edit-tool-catalog" role="toolbar">
+          {timelineEditingTools.map((tool) => (
+            <button
+              className="secondary timeline-edit-tool"
+              type="button"
+              aria-pressed={editingTool === tool.id}
+              data-timeline-editing-tool={tool.id}
+              disabled={commandPending}
+              key={tool.id}
+              title={tool.description}
+              onClick={() => {
+                setEditingTool(tool.id);
+                setEditPlan(null);
+                setEditFailure(null);
+                setEditMessage(tool.description);
+              }}
+            >
+              {tool.label}
+            </button>
+          ))}
+        </div>
+        <div className="timeline-edit-modes">
+          <span role="group" aria-label="Editing edge">
+            {(["start", "end"] as const).map((side) => (
+              <button
+                className="secondary"
+                type="button"
+                aria-pressed={editingSide === side}
+                disabled={commandPending}
+                key={side}
+                onClick={() => setEditingSide(side)}
+              >
+                {side === "start" ? "Start edge" : "End edge"}
+              </button>
+            ))}
+          </span>
+          <span role="group" aria-label="Extend behavior">
+            {(["ripple", "roll"] as const).map((mode) => (
+              <button
+                className="secondary"
+                type="button"
+                aria-pressed={extendMode === mode}
+                disabled={editingTool !== "extend" || commandPending}
+                key={mode}
+                onClick={() => setExtendMode(mode)}
+              >
+                Extend {mode}
+              </button>
+            ))}
+          </span>
+        </div>
+        <div className="timeline-edit-actions">
+          <button
+            className="secondary"
+            type="button"
+            disabled={!activeEditItem || activeEditLocked || commandPending}
+            onClick={applyEditAtPlayhead}
+          >
+            Apply at playhead
+          </button>
+          <button
+            className="secondary"
+            type="button"
+            aria-label="Nudge edit backward one frame"
+            disabled={!activeEditItem || activeEditLocked || commandPending}
+            onClick={() => nudgeActiveEdit(-1)}
+          >
+            Nudge -1f
+          </button>
+          <button
+            className="secondary"
+            type="button"
+            aria-label="Nudge edit forward one frame"
+            disabled={!activeEditItem || activeEditLocked || commandPending}
+            onClick={() => nudgeActiveEdit(1)}
+          >
+            Nudge +1f
+          </button>
+          <button
+            className="secondary"
+            type="button"
+            disabled={
+              !operationTrack ||
+              operationTrackLocked ||
+              range.inPoint === range.outPoint ||
+              commandPending
+            }
+            onClick={rippleDeleteRange}
+          >
+            Ripple delete range
+          </button>
+          <label>
+            <span>Gap frames</span>
+            <input
+              type="number"
+              min="1"
+              max="100000"
+              step="1"
+              value={gapFrameCount}
+              disabled={commandPending}
+              onChange={(event) => {
+                const value = Number(event.currentTarget.value);
+                if (Number.isSafeInteger(value) && value > 0) {
+                  setGapFrameCount(value);
+                }
+              }}
+            />
+          </label>
+          <button
+            className="secondary"
+            type="button"
+            disabled={!operationTrack || operationTrackLocked || commandPending}
+            onClick={insertGapAtPlayhead}
+          >
+            Insert gap at playhead
+          </button>
+          <button
+            className="secondary"
+            type="button"
+            disabled={
+              activeEditItem?.kind !== "gap" || activeEditLocked || commandPending
+            }
+            onClick={closeActiveGap}
+          >
+            Close gap
+          </button>
+        </div>
+        <div className="timeline-edit-consequence">
+          <span>
+            <small>Target</small>
+            <strong>{activeTargetLabel}</strong>
+          </span>
+          <output
+            className="timeline-edit-status"
+            aria-live="polite"
+            data-failed={editFailure !== null}
+            data-pending={commandPending}
+          >
+            {commandPending ? "Publishing one atomic edit transaction. " : ""}
+            {editMessage}
+          </output>
+        </div>
+      </section>
+      <section
         className="timeline-snap-controls"
         aria-label="Timeline snap target rules"
         data-enabled={targetSnappingActive}
@@ -1540,7 +2242,9 @@ export function TimelineWorkspace({
           lasso. Arrow keys navigate, Shift extends, Command or Control-A selects
           all, and Escape clears. Escape during a timing or lasso drag reverses
           it immediately. Scroll to navigate, Shift-scroll pans, and Command or
-          Control-scroll zooms around the pointer.
+          Control-scroll zooms around the pointer. Choose an edit tool and drag a
+          timed item, or use the exact playhead and frame-nudge actions. Edit
+          previews publish only when the gesture is released.
         </span>
         <output className="timeline-selection-status" aria-live="polite">
           {visibleSelectionKeys.length === 0
@@ -1585,7 +2289,7 @@ export function TimelineWorkspace({
               disabled={commandPending}
               aria-pressed={selectedEdit === edit}
               data-ready={
-                selectedEdit === edit && editPlan?.status === "ready"
+                selectedEdit === edit && gestureCommandPlan?.status === "ready"
               }
               onFocus={() => setSelectedEdit(edit)}
               onPointerEnter={() => setSelectedEdit(edit)}
@@ -1598,7 +2302,7 @@ export function TimelineWorkspace({
         <dl className="timeline-edit-state">
           <div>
             <dt>Target</dt>
-            <dd>{editPlan?.target ?? "No target track"}</dd>
+            <dd>{gestureCommandPlan?.target ?? "No target track"}</dd>
           </div>
           <div>
             <dt>Source</dt>
@@ -1611,9 +2315,9 @@ export function TimelineWorkspace({
           <div>
             <dt>Consequence</dt>
             <dd>
-              {editPlan?.status === "ready"
-                ? editPlan.consequence
-                : editPlan?.reason ?? "Choose an edit gesture."}
+              {gestureCommandPlan?.status === "ready"
+                ? gestureCommandPlan.consequence
+                : gestureCommandPlan?.reason ?? "Choose an edit gesture."}
             </dd>
           </div>
         </dl>
@@ -1642,14 +2346,26 @@ export function TimelineWorkspace({
       <div
         className={
           `timeline-scroll${gesture ? " timeline-scroll-gesturing" : ""}` +
-          (lasso ? " timeline-scroll-selecting" : "")
+          (lasso ? " timeline-scroll-selecting" : "") +
+          (editGesture ? " timeline-scroll-editing" : "")
         }
         ref={scrollRef}
         onScroll={(event) => setScrollLeft(event.currentTarget.scrollLeft)}
-        onPointerMove={moveGesture}
-        onPointerUp={endGesture}
-        onPointerCancel={cancelGesture}
-        onLostPointerCapture={cancelGesture}
+        onPointerMove={(event) => {
+          if (editGesture) moveEditGesture(event);
+          else moveGesture(event);
+        }}
+        onPointerUp={(event) => {
+          if (editGesture) endEditGesture(event);
+          else endGesture(event);
+        }}
+        onPointerCancel={(event) => {
+          if (editGesture) cancelEditGesture();
+          else cancelGesture(event);
+        }}
+        onLostPointerCapture={(event) => {
+          if (!editGesture) cancelGesture(event);
+        }}
         onWheel={handleWheel}
       >
         <div
@@ -1775,15 +2491,31 @@ export function TimelineWorkspace({
                         detail={detail}
                         focused={rovingFocusKey === key}
                         interactionSelected={visibleSelection.has(key)}
+                        editingActive={
+                          activeEditTarget?.trackId === track.id &&
+                          activeEditTarget.itemId === item.id
+                        }
+                        editingAffected={editAffectedIds.has(item.id)}
                         item={item}
                         itemRef={itemRef(key)}
                         key={key}
                         model={model}
-                        onFocus={() => setFocusedKey(key)}
+                        onFocus={() => {
+                          setFocusedKey(key);
+                          activateEditTarget(track.id, item);
+                        }}
                         onKeyDown={(event) => itemKeyDown(event, key)}
                         onPointerDown={(event) => {
                           setTargetTrackId(track.id);
                           beginSelection(event, key);
+                          if (
+                            !event.shiftKey &&
+                            !event.altKey &&
+                            !event.metaKey &&
+                            !event.ctrlKey
+                          ) {
+                            beginEditGesture(event, track.id, item);
+                          }
                         }}
                         pixelsPerSecond={pixelsPerSecond}
                         previews={clipPreviews}
@@ -1811,6 +2543,22 @@ export function TimelineWorkspace({
             style={{ left: HEADER_WIDTH + playheadX }}
             aria-hidden="true"
           />
+          {editPlan && editPreviewX !== null ? (
+            <div
+              className="timeline-edit-preview"
+              style={{ left: HEADER_WIDTH + editPreviewX }}
+              aria-hidden="true"
+            >
+              <span>
+                {editPlan.label}
+                <b>
+                  {editPlan.operations.length} atomic {editPlan.operations.length === 1
+                    ? "operation"
+                    : "operations"}
+                </b>
+              </span>
+            </div>
+          ) : null}
           {snapMatch && snapTargetX !== null ? (
             <div
               className="timeline-snap-guide"
@@ -2216,6 +2964,8 @@ function TimelineItem({
   detail,
   focused,
   interactionSelected,
+  editingActive,
+  editingAffected,
   item,
   itemRef,
   model,
@@ -2230,6 +2980,8 @@ function TimelineItem({
   readonly detail: TimelineClipPresentation | null;
   readonly focused: boolean;
   readonly interactionSelected: boolean;
+  readonly editingActive: boolean;
+  readonly editingAffected: boolean;
   readonly item: TimelineCanvasItem;
   readonly itemRef: RefCallback<HTMLElement>;
   readonly model: TimelineCanvasModel;
@@ -2289,6 +3041,8 @@ function TimelineItem({
     detail?.syncLocked ? "sync" : null,
     authoredSelected ? "authored selected" : null,
     interactionSelected ? "workspace selected" : null,
+    editingActive ? "editing target" : null,
+    editingAffected ? "edit consequence" : null,
   ].filter((value): value is string => value !== null);
   const title = [
     `${item.name} (${item.kind}:${item.id})`,
@@ -2349,7 +3103,9 @@ function TimelineItem({
   const className =
     `timeline-item timeline-item-${item.kind}` +
     (authoredSelected ? " timeline-item-authored-selected" : "") +
-    (interactionSelected ? " timeline-item-selected" : "");
+    (interactionSelected ? " timeline-item-selected" : "") +
+    (editingActive ? " timeline-item-edit-active" : "") +
+    (editingAffected ? " timeline-item-edit-affected" : "");
   const data = {
     "data-item-id": item.id,
     "data-item-kind": item.kind,
@@ -2359,6 +3115,7 @@ function TimelineItem({
     "data-grouped": item.group ? "true" : "false",
     "data-linked": item.link ? "true" : "false",
     "data-selection-key": selectionKey,
+    "data-editing-active": editingActive ? "true" : "false",
   };
   const label = [
     item.name,
@@ -2773,6 +3530,20 @@ function publicRangeSeconds(value: EditorTimeRange): {
     (value.duration * value.start.timebase.denominator) /
     value.start.timebase.numerator;
   return { start, end: start + duration };
+}
+
+function timelineToolUsesEdge(tool: TimelineEditingTool): boolean {
+  return tool === "ripple" || tool === "roll" || tool === "trim" || tool === "extend";
+}
+
+function timelineToolLabel(tool: TimelineEditingTool): string {
+  return timelineEditingTools.find((candidate) => candidate.id === tool)?.label ?? tool;
+}
+
+function timelineEditErrorMessage(error: unknown): string {
+  if (error instanceof TimelineEditingError) return error.message;
+  if (error instanceof Error && error.message.length > 0) return error.message;
+  return "The timeline edit could not be completed.";
 }
 
 function formatExactRange(range: TimelineCanvasItem["recordRange"]): string {

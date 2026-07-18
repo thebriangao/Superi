@@ -54,6 +54,7 @@ export function EditingWorkspacePanel() {
             selectionSchemaVersion={snapshot.schema_version}
             selectionRevision={snapshot.project.project_revision}
             mutateTracks={mutateTracks}
+            executeProjectActions={executeProjectActions}
             sourceMonitor={sourceMonitor}
             onExecuteProjectCommand={executeProjectCommand}
           />
