@@ -25,6 +25,7 @@ import {
   getDesktopProjectSettings,
   importDesktopMedia,
   inspectProjectMediaSource,
+  mutateProjectMediaAnnotations,
   mutateProjectMediaMetadata,
   mutateProjectMediaLibrary,
   readProjectMediaLibrary,
@@ -38,6 +39,7 @@ import {
   type DesktopMediaImportResult,
   type MediaLibraryMutation,
   type MediaLibrarySnapshot,
+  type MediaEditorialAnnotations,
   type UserMetadataMutation,
 } from "./project-lifecycle";
 import { classifyDesktopTransportError } from "./transport";
@@ -670,6 +672,26 @@ function SystemPanel() {
     }
   };
 
+  const mutateMediaAnnotations = async (
+    annotations: MediaEditorialAnnotations,
+  ) => {
+    if (mediaLibrary === null || selectedMedia === undefined) {
+      return;
+    }
+    try {
+      setMediaLibrary(
+        await mutateProjectMediaAnnotations(
+          mediaLibrary,
+          selectedMedia.media_id,
+          annotations,
+        ),
+      );
+      setProjectFailure(null);
+    } catch (error: unknown) {
+      setProjectFailure(projectFailureFrom(error));
+    }
+  };
+
   const createProject = () => {
     const identity = crypto.randomUUID();
     void executeProject({
@@ -1089,6 +1111,92 @@ function SystemPanel() {
                     <button type="button" onClick={() => void inspectMediaSource()}>
                       Inspect source
                     </button>
+                    <form
+                      className="media-annotation-editor"
+                      key={`${selectedMedia.media_id}:${mediaLibrary?.revision ?? 0}`}
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        const fields = new FormData(event.currentTarget);
+                        const terms = (name: string) =>
+                          String(fields.get(name) ?? "")
+                            .split(",")
+                            .map((value) => value.trim())
+                            .filter((value) => value.length > 0);
+                        const optional = (name: string) => {
+                          const value = String(fields.get(name) ?? "").trim();
+                          return value.length === 0 ? null : value;
+                        };
+                        const rating = String(fields.get("rating") ?? "");
+                        void mutateMediaAnnotations({
+                          clip_name: optional("clip_name"),
+                          labels: terms("labels"),
+                          rating: rating.length === 0 ? null : Number(rating),
+                          keywords: terms("keywords"),
+                          comment: optional("comment"),
+                          favorite: fields.get("favorite") === "on",
+                        });
+                      }}
+                    >
+                      <h5>Editorial annotations</h5>
+                      <label>
+                        Clip name
+                        <input
+                          name="clip_name"
+                          defaultValue={selectedMedia.annotations.clip_name ?? ""}
+                          maxLength={256}
+                        />
+                      </label>
+                      <label>
+                        Labels, comma separated
+                        <input
+                          name="labels"
+                          defaultValue={selectedMedia.annotations.labels.join(", ")}
+                        />
+                      </label>
+                      <label>
+                        Rating
+                        <input
+                          name="rating"
+                          type="number"
+                          min={1}
+                          max={5}
+                          defaultValue={selectedMedia.annotations.rating ?? ""}
+                        />
+                      </label>
+                      <label>
+                        Keywords, comma separated
+                        <input
+                          name="keywords"
+                          defaultValue={selectedMedia.annotations.keywords.join(", ")}
+                        />
+                      </label>
+                      <label>
+                        Comment
+                        <textarea
+                          name="comment"
+                          defaultValue={selectedMedia.annotations.comment ?? ""}
+                          maxLength={4096}
+                        />
+                      </label>
+                      <label>
+                        <input
+                          name="favorite"
+                          type="checkbox"
+                          defaultChecked={selectedMedia.annotations.favorite}
+                        />
+                        Favorite
+                      </label>
+                      <button type="submit">Save annotations</button>
+                    </form>
+                    <section aria-label="Media usage">
+                      <h5>Usage</h5>
+                      <p>
+                        {selectedMedia.usage.clip_count} clips across {selectedMedia.usage.timeline_count} timelines
+                      </p>
+                      {selectedMedia.usage.timeline_ids.length > 0 ? (
+                        <p>{selectedMedia.usage.timeline_ids.join(", ")}</p>
+                      ) : null}
+                    </section>
                     <div className="user-metadata-editor">
                       <h5>User metadata</h5>
                       <dl>

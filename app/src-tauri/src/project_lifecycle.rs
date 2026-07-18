@@ -36,6 +36,7 @@ use superi_api::project::{ProjectSettingMutation, ProjectSettingValue, ProjectSe
 use superi_core::diagnostics::UserSafeError;
 use superi_core::error::{Error, ErrorCategory, Recoverability};
 use superi_core::ids::MediaId;
+use superi_engine::editor::{ClipSource, EditorialProject, ProjectDatabase};
 use tauri::State;
 
 const MAX_RECENT_PROJECTS: usize = 32;
@@ -45,6 +46,13 @@ const MAX_SMART_COLLECTIONS: usize = 256;
 const MAX_USER_METADATA_ENTRIES: usize = 128;
 const MAX_USER_METADATA_KEY_BYTES: usize = 64;
 const MAX_USER_METADATA_VALUE_BYTES: usize = 4096;
+const MAX_ANNOTATION_NAME_BYTES: usize = 256;
+const MAX_ANNOTATION_LABELS: usize = 32;
+const MAX_ANNOTATION_LABEL_BYTES: usize = 64;
+const MAX_ANNOTATION_KEYWORDS: usize = 64;
+const MAX_ANNOTATION_KEYWORD_BYTES: usize = 64;
+const MAX_ANNOTATION_COMMENT_BYTES: usize = 4096;
+const MAX_ANNOTATION_PAYLOAD_BYTES: usize = 16 * 1024;
 
 const TIMELINE_RATE_NUMERATOR_KEY: &str = "superi.project.timeline.default_rate_numerator";
 const TIMELINE_RATE_DENOMINATOR_KEY: &str = "superi.project.timeline.default_rate_denominator";
@@ -375,6 +383,31 @@ pub struct SourceMetadataInspection {
     fields: BTreeMap<String, String>,
 }
 
+/// Typed user-authored editorial annotations kept separate from source and generic metadata.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaEditorialAnnotations {
+    clip_name: Option<String>,
+    labels: Vec<String>,
+    rating: Option<u8>,
+    keywords: Vec<String>,
+    comment: Option<String>,
+    favorite: bool,
+}
+
+/// Read-only usage projected from current authoritative timeline clip references.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaUsageIndicator {
+    clip_count: u64,
+    timeline_count: u64,
+    timeline_ids: Vec<String>,
+}
+
+fn unused_media() -> MediaUsageIndicator {
+    MediaUsageIndicator::default()
+}
+
 fn unavailable_source_metadata() -> SourceMetadataInspection {
     SourceMetadataInspection {
         status: SourceMetadataStatus::Unavailable,
@@ -512,6 +545,10 @@ pub struct MediaBrowserItem {
     source_metadata: SourceMetadataInspection,
     #[serde(default)]
     user_metadata: BTreeMap<String, String>,
+    #[serde(default)]
+    annotations: MediaEditorialAnnotations,
+    #[serde(skip, default = "unused_media")]
+    usage: MediaUsageIndicator,
     #[serde(skip, default = "unavailable_thumbnail")]
     thumbnail: ThumbnailPresentation,
 }
@@ -551,6 +588,8 @@ impl MediaBrowserItem {
             metadata,
             source_metadata: source_metadata_inspection(media, 1),
             user_metadata: BTreeMap::new(),
+            annotations: MediaEditorialAnnotations::default(),
+            usage: unused_media(),
             thumbnail: thumbnail_presentation(media),
         }
     }
@@ -629,6 +668,15 @@ impl MediaLibrarySnapshot {
         }
     }
 
+    fn refresh_usage(&mut self, usage: &BTreeMap<String, MediaUsageIndicator>) {
+        for item in &mut self.items {
+            item.usage = usage
+                .get(&item.media_id)
+                .cloned()
+                .unwrap_or_else(unused_media);
+        }
+    }
+
     fn retain_import(&mut self, result: &DesktopMediaImportResult) {
         self.project_revision = result.project_revision;
         for imported in &result.imported {
@@ -639,6 +687,7 @@ impl MediaLibrarySnapshot {
                 Ok(index) => {
                     let bin_id = self.items[index].bin_id.clone();
                     let user_metadata = self.items[index].user_metadata.clone();
+                    let annotations = self.items[index].annotations.clone();
                     let inspection_generation = self.items[index]
                         .source_metadata
                         .inspection_generation
@@ -646,6 +695,7 @@ impl MediaLibrarySnapshot {
                     self.items[index] = MediaBrowserItem::from_imported(imported);
                     self.items[index].bin_id = bin_id;
                     self.items[index].user_metadata = user_metadata;
+                    self.items[index].annotations = annotations;
                     self.items[index].source_metadata =
                         source_metadata_inspection(imported, inspection_generation);
                 }
@@ -781,6 +831,41 @@ impl MediaLibrarySnapshot {
         Ok(())
     }
 
+    fn apply_annotations(
+        &mut self,
+        update: MediaAnnotationUpdate,
+    ) -> Result<(), DesktopProjectFailure> {
+        if update.expected_project_revision != self.project_revision
+            || update.expected_library_revision != self.revision
+        {
+            return Err(user_correctable(
+                "media_library_revision_stale",
+                "Media library changed",
+                "Refresh the media library and try again.",
+            ));
+        }
+        let annotations = normalize_annotations(update.annotations)?;
+        let mut candidate = self.clone();
+        let item = candidate
+            .items
+            .iter_mut()
+            .find(|item| item.media_id == update.media_id)
+            .ok_or_else(|| media_library_invalid("Imported media was not found"))?;
+        item.annotations = annotations;
+        candidate.validate()?;
+        candidate.revision = candidate.revision.checked_add(1).ok_or_else(|| {
+            DesktopProjectFailure::new(
+                DesktopProjectFailureClass::Terminal,
+                "media_library_revision_exhausted",
+                "Media library cannot continue",
+                "Restart Superi before continuing.",
+            )
+        })?;
+        candidate.refresh_derived();
+        *self = candidate;
+        Ok(())
+    }
+
     fn apply_mutation(
         &mut self,
         mutation: MediaLibraryMutation,
@@ -894,6 +979,11 @@ impl MediaLibrarySnapshot {
                 validate_user_metadata_key(key)?;
                 validate_user_metadata_value(value)?;
             }
+            if normalize_annotations(item.annotations.clone())? != item.annotations {
+                return Err(media_library_invalid(
+                    "Editorial annotations are not canonical",
+                ));
+            }
         }
         for bin in &self.bins {
             let mut current = bin.parent_id.as_deref();
@@ -976,6 +1066,16 @@ pub struct UserMetadataUpdate {
     pub mutation: UserMetadataMutation,
 }
 
+/// Atomic replacement of C006 annotations for one stable imported-media identity.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaAnnotationUpdate {
+    pub expected_project_revision: u64,
+    pub expected_library_revision: u64,
+    pub media_id: String,
+    pub annotations: MediaEditorialAnnotations,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct MediaLibraryStore {
@@ -1037,6 +1137,130 @@ fn validate_user_metadata_value(value: &str) -> Result<(), DesktopProjectFailure
         return Err(media_library_invalid("User metadata value is invalid"));
     }
     Ok(())
+}
+
+fn normalize_annotations(
+    annotations: MediaEditorialAnnotations,
+) -> Result<MediaEditorialAnnotations, DesktopProjectFailure> {
+    let normalized = MediaEditorialAnnotations {
+        clip_name: normalize_annotation_text(
+            annotations.clip_name,
+            MAX_ANNOTATION_NAME_BYTES,
+            "Clip name",
+        )?,
+        labels: normalize_annotation_terms(
+            annotations.labels,
+            MAX_ANNOTATION_LABELS,
+            MAX_ANNOTATION_LABEL_BYTES,
+            "Label",
+        )?,
+        rating: match annotations.rating {
+            Some(rating @ 1..=5) => Some(rating),
+            None => None,
+            Some(_) => return Err(media_library_invalid("Rating must be between 1 and 5")),
+        },
+        keywords: normalize_annotation_terms(
+            annotations.keywords,
+            MAX_ANNOTATION_KEYWORDS,
+            MAX_ANNOTATION_KEYWORD_BYTES,
+            "Keyword",
+        )?,
+        comment: normalize_annotation_text(
+            annotations.comment,
+            MAX_ANNOTATION_COMMENT_BYTES,
+            "Comment",
+        )?,
+        favorite: annotations.favorite,
+    };
+    let bytes = serde_json::to_vec(&normalized)
+        .map_err(|_| media_library_invalid("Editorial annotations could not be encoded"))?;
+    if bytes.len() > MAX_ANNOTATION_PAYLOAD_BYTES {
+        return Err(media_library_invalid(
+            "Editorial annotation payload is too large",
+        ));
+    }
+    Ok(normalized)
+}
+
+fn normalize_annotation_text(
+    value: Option<String>,
+    max_bytes: usize,
+    field: &'static str,
+) -> Result<Option<String>, DesktopProjectFailure> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    if value.len() > max_bytes
+        || value
+            .chars()
+            .any(|character| character.is_control() && !matches!(character, '\n' | '\t'))
+    {
+        return Err(media_library_invalid(field));
+    }
+    Ok(Some(value.to_owned()))
+}
+
+fn normalize_annotation_terms(
+    values: Vec<String>,
+    max_count: usize,
+    max_bytes: usize,
+    field: &'static str,
+) -> Result<Vec<String>, DesktopProjectFailure> {
+    if values.len() > max_count {
+        return Err(media_library_invalid(field));
+    }
+    let mut canonical = BTreeSet::new();
+    let mut normalized = Vec::with_capacity(values.len());
+    for value in values {
+        let value = normalize_annotation_text(Some(value), max_bytes, field)?
+            .ok_or_else(|| media_library_invalid(field))?;
+        if !canonical.insert(value.to_lowercase()) {
+            return Err(media_library_invalid(field));
+        }
+        normalized.push(value);
+    }
+    Ok(normalized)
+}
+
+fn derive_media_usage(project: &EditorialProject) -> BTreeMap<String, MediaUsageIndicator> {
+    let mut usage = BTreeMap::<String, MediaUsageIndicator>::new();
+    for timeline in project.timelines() {
+        let timeline_id = timeline.id().to_string();
+        let mut timeline_counts = BTreeMap::<String, u64>::new();
+        for clip in timeline
+            .tracks()
+            .iter()
+            .flat_map(|track| track.items())
+            .filter_map(|item| item.as_clip())
+        {
+            if let ClipSource::Media(media_id) = clip.source() {
+                let count = timeline_counts.entry(media_id.to_string()).or_default();
+                *count = count.saturating_add(1);
+            }
+        }
+        for (media_id, clip_count) in timeline_counts {
+            let indicator = usage.entry(media_id).or_default();
+            indicator.clip_count = indicator.clip_count.saturating_add(clip_count);
+            indicator.timeline_ids.push(timeline_id.clone());
+            indicator.timeline_count = indicator.timeline_ids.len() as u64;
+        }
+    }
+    usage
+}
+
+fn inspect_media_usage(
+    project_path: &Path,
+) -> Result<BTreeMap<String, MediaUsageIndicator>, DesktopProjectFailure> {
+    let database = ProjectDatabase::open_read_only(project_path)
+        .map_err(|error| safe_failure("inspect_media_usage", error))?;
+    let document = database
+        .load()
+        .map_err(|error| safe_failure("inspect_media_usage", error))?;
+    Ok(derive_media_usage(document.snapshot().editorial_project()))
 }
 
 /// One opaque recovery candidate projected for user selection.
@@ -1965,7 +2189,9 @@ impl DesktopProjectState {
     }
 
     pub fn media_library(&self) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
-        let (project_id, project_revision) = self.active_project_identity("media_library")?;
+        let (project_id, project_revision, project_path) =
+            self.active_project_context("media_library")?;
+        let usage = inspect_media_usage(Path::new(&project_path))?;
         let mut store = self.media_library_lock("media_library")?;
         let library = store
             .projects
@@ -1973,6 +2199,7 @@ impl DesktopProjectState {
             .or_insert_with(|| MediaLibrarySnapshot::empty(project_revision));
         library.project_revision = project_revision;
         library.refresh_derived();
+        library.refresh_usage(&usage);
         Ok(library.clone())
     }
 
@@ -1980,8 +2207,9 @@ impl DesktopProjectState {
         &self,
         update: MediaLibraryUpdate,
     ) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
-        let (project_id, project_revision) =
-            self.active_project_identity("mutate_media_library")?;
+        let (project_id, project_revision, project_path) =
+            self.active_project_context("mutate_media_library")?;
+        let usage = inspect_media_usage(Path::new(&project_path))?;
         let snapshot = {
             let mut store = self.media_library_lock("mutate_media_library")?;
             let library = store
@@ -1990,6 +2218,7 @@ impl DesktopProjectState {
                 .or_insert_with(|| MediaLibrarySnapshot::empty(project_revision));
             library.project_revision = project_revision;
             library.apply(update)?;
+            library.refresh_usage(&usage);
             library.clone()
         };
         self.persist_media_libraries()?;
@@ -2000,8 +2229,9 @@ impl DesktopProjectState {
         &self,
         request: SourceMetadataInspectionRequest,
     ) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
-        let (project_id, project_revision) =
-            self.active_project_identity("inspect_media_source")?;
+        let (project_id, project_revision, project_path) =
+            self.active_project_context("inspect_media_source")?;
+        let usage = inspect_media_usage(Path::new(&project_path))?;
         let snapshot = {
             let mut store = self.media_library_lock("inspect_media_source")?;
             let library = store
@@ -2010,6 +2240,7 @@ impl DesktopProjectState {
                 .or_insert_with(|| MediaLibrarySnapshot::empty(project_revision));
             library.project_revision = project_revision;
             library.inspect_source(request)?;
+            library.refresh_usage(&usage);
             library.clone()
         };
         self.persist_media_libraries()?;
@@ -2020,8 +2251,9 @@ impl DesktopProjectState {
         &self,
         update: UserMetadataUpdate,
     ) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
-        let (project_id, project_revision) =
-            self.active_project_identity("mutate_user_metadata")?;
+        let (project_id, project_revision, project_path) =
+            self.active_project_context("mutate_user_metadata")?;
+        let usage = inspect_media_usage(Path::new(&project_path))?;
         let snapshot = {
             let mut store = self.media_library_lock("mutate_user_metadata")?;
             let library = store
@@ -2030,6 +2262,29 @@ impl DesktopProjectState {
                 .or_insert_with(|| MediaLibrarySnapshot::empty(project_revision));
             library.project_revision = project_revision;
             library.apply_user_metadata(update)?;
+            library.refresh_usage(&usage);
+            library.clone()
+        };
+        self.persist_media_libraries()?;
+        Ok(snapshot)
+    }
+
+    pub fn mutate_annotations(
+        &self,
+        update: MediaAnnotationUpdate,
+    ) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+        let (project_id, project_revision, project_path) =
+            self.active_project_context("mutate_media_annotations")?;
+        let usage = inspect_media_usage(Path::new(&project_path))?;
+        let snapshot = {
+            let mut store = self.media_library_lock("mutate_media_annotations")?;
+            let library = store
+                .projects
+                .entry(project_id)
+                .or_insert_with(|| MediaLibrarySnapshot::empty(project_revision));
+            library.project_revision = project_revision;
+            library.apply_annotations(update)?;
+            library.refresh_usage(&usage);
             library.clone()
         };
         self.persist_media_libraries()?;
@@ -2087,6 +2342,30 @@ impl DesktopProjectState {
                 )
             })?;
         Ok((active.project_id().to_owned(), active.project_revision()))
+    }
+
+    fn active_project_context(
+        &self,
+        operation: &'static str,
+    ) -> Result<(String, u64, String), DesktopProjectFailure> {
+        let lifecycle = self.lock(operation)?;
+        let active = lifecycle
+            .as_ref()
+            .ok_or_else(not_initialized)?
+            .snapshot()
+            .active()
+            .ok_or_else(|| {
+                user_correctable(
+                    "project_not_open",
+                    "No project is open",
+                    "Create or open a project before continuing.",
+                )
+            })?;
+        Ok((
+            active.project_id().to_owned(),
+            active.project_revision(),
+            active.path().to_owned(),
+        ))
     }
 
     fn persist_media_libraries(&self) -> Result<(), DesktopProjectFailure> {
@@ -2275,6 +2554,17 @@ pub async fn mutate_project_media_metadata(
     tauri::async_runtime::spawn_blocking(move || state.mutate_user_metadata(update))
         .await
         .map_err(|_| project_task_failed("mutate_user_metadata"))?
+}
+
+#[tauri::command]
+pub async fn mutate_project_media_annotations(
+    update: MediaAnnotationUpdate,
+    state: State<'_, DesktopProjectState>,
+) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.mutate_annotations(update))
+        .await
+        .map_err(|_| project_task_failed("mutate_media_annotations"))?
 }
 
 /// Closed desktop command set for project lifecycle behavior only.

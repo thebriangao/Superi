@@ -158,6 +158,21 @@ export interface SourceMetadataInspection {
   readonly fields: Readonly<Record<string, string>>;
 }
 
+export interface MediaEditorialAnnotations {
+  readonly clip_name: string | null;
+  readonly labels: readonly string[];
+  readonly rating: number | null;
+  readonly keywords: readonly string[];
+  readonly comment: string | null;
+  readonly favorite: boolean;
+}
+
+export interface MediaUsageIndicator {
+  readonly clip_count: number;
+  readonly timeline_count: number;
+  readonly timeline_ids: readonly string[];
+}
+
 export interface MediaBrowserItem {
   readonly media_id: string;
   readonly name: string;
@@ -173,6 +188,8 @@ export interface MediaBrowserItem {
   readonly metadata: Readonly<Record<string, string>>;
   readonly source_metadata: SourceMetadataInspection;
   readonly user_metadata: Readonly<Record<string, string>>;
+  readonly annotations: MediaEditorialAnnotations;
+  readonly usage: MediaUsageIndicator;
   readonly thumbnail: ThumbnailPresentation;
 }
 
@@ -260,6 +277,7 @@ const MEDIA_LIBRARY_COMMAND = "project_media_library";
 const MUTATE_MEDIA_LIBRARY_COMMAND = "mutate_project_media_library";
 const INSPECT_MEDIA_SOURCE_COMMAND = "inspect_project_media_source";
 const MUTATE_MEDIA_METADATA_COMMAND = "mutate_project_media_metadata";
+const MUTATE_MEDIA_ANNOTATIONS_COMMAND = "mutate_project_media_annotations";
 
 export async function getDesktopProjectSnapshot(): Promise<DesktopProjectSnapshot> {
   return invoke<DesktopProjectSnapshot>(SNAPSHOT_COMMAND);
@@ -326,6 +344,21 @@ export async function mutateProjectMediaMetadata(
       expected_library_revision: snapshot.revision,
       media_id: mediaId,
       mutation,
+    },
+  });
+}
+
+export async function mutateProjectMediaAnnotations(
+  snapshot: MediaLibrarySnapshot,
+  mediaId: string,
+  annotations: MediaEditorialAnnotations,
+): Promise<MediaLibrarySnapshot> {
+  return invoke<MediaLibrarySnapshot>(MUTATE_MEDIA_ANNOTATIONS_COMMAND, {
+    update: {
+      expected_project_revision: snapshot.project_revision,
+      expected_library_revision: snapshot.revision,
+      media_id: mediaId,
+      annotations,
     },
   });
 }

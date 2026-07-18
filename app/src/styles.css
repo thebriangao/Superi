@@ -523,7 +523,8 @@ kbd {
   text-transform: capitalize;
 }
 
-.user-metadata-editor {
+.user-metadata-editor,
+.media-annotation-editor {
   display: grid;
   gap: 0.5rem;
   padding-top: 0.5rem;
