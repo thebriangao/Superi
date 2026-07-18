@@ -38,7 +38,7 @@ against raw source before changing code.
 | `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline fixture validation, generation, and typed golden verification | Implemented validation library, six generators, seven-command CLI, four golden harnesses, and focused contracts |
 | `tool-superi-test-report` | [module map](modules/tool-superi-test-report.md) | `open/tools/superi-test-report` | Offline structured platform-lane evidence generator | Implemented strict schema, deterministic findings, collision-safe CLI, and focused contracts |
 | `tool-superi-api-bindings` | [module map](modules/tool-superi-api-bindings.md) | `open/tools/superi-api-bindings` | Deterministic committed TypeScript API artifact generator and freshness checker | Implemented pure rendering, idempotent generation, nonmutating freshness checks, and focused contracts |
-| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, production React and Tauri shell, workspace configuration, fixtures, generated TypeScript artifact, retained frontend consumer, and agent workflows | Active control layer: deterministic checkpoint workflow, explicit revisioned application and headless-engine lifecycle, a linked EngineControl dispatcher, bounded native validation connection, shell-local lifecycle commands, contract slice, bounded local scripting, durable command recording, and generated public API frontend consumption are delivered; generated binding integration in the production shell, concrete engine command and event transport, and editor behavior remain absent |
+| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, production React and Tauri shell, workspace configuration, fixtures, generated TypeScript artifact, retained frontend consumer, and agent workflows | Active control layer: deterministic checkpoint workflow, explicit revisioned application and headless-engine lifecycle, a linked EngineControl dispatcher, bounded native validation connection, shell-local lifecycle commands, transport-neutral generated `SuperiClient` integration, contract slice, bounded local scripting, durable command recording, and generated public API frontend consumption are delivered; concrete engine command/event transport and editor behavior remain absent |
 
 ## Ownership and repository boundaries
 
@@ -190,8 +190,10 @@ The production desktop lifecycle is implemented without creating a second engine
    waiting stays with a blocking-safe caller, restart constructs a fresh dispatcher, and outstanding
    internal subsystem initialization remains truthfully visible.
 6. React renders the serialized application and engine phases, pending acknowledgement, safe failure,
-   and recovery affordances. It does not import generated public API bindings or own engine commands,
-   events, reconnection, cancellation, or transport error policy.
+   and recovery affordances through the two shell-local lifecycle commands.
+7. Separately, `app/src/api.ts` re-exports the complete generated public contract and constructs a
+   frozen `SuperiClient` binding around an injected `SuperiTransport`. The nullable React provider
+   owns no project state, engine commands, reconnection, cancellation, or transport error policy.
 
 Media registry construction and capability introspection are implemented as follows:
 
@@ -2242,10 +2244,11 @@ evidence rather than hosted workflow behavior.
 
 The frontend workflow runs on pull requests, pushes to `main`, and manual dispatch using a read-only
 Ubuntu 24.04 job. It installs exact Node.js 24.13.0, uses `npm ci` against the committed lockfile,
-runs strict no-emit TypeScript 5.9.3 checking over the production React lifecycle client, creates a
-Vite 7.3.6 production bundle, and verifies exact pins, lifecycle ownership boundaries, workflow
-routing, and the generated hashed JavaScript entry. The retained `ci/frontend-smoke/` fixture
-separately proves generated public API binding consumption without standing in for the application.
+runs strict no-emit TypeScript 5.9.3 checking over the production React lifecycle client and
+generated API adapter, creates a Vite 7.3.6 production bundle, and verifies exact pins, lifecycle and
+generated-client ownership boundaries, runtime transport forwarding, workflow routing, and the
+generated hashed JavaScript entry. The retained `ci/frontend-smoke/` fixture separately proves
+generated public API compatibility without standing in for the application.
 
 The Tauri Rust workflow runs on pull requests, pushes to `main`, and manual dispatch across macOS 26
 arm64, macOS 15 Intel, Windows 2025, and Ubuntu 24.04. It builds the production frontend, then uses

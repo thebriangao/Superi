@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 02478ff1ab477c3031e9c86cb35595a56b472c52a735d460ad35f68f47faa2ac
-source_files: 184
+source_hash: 62050859c18e91787c9e16fab4bef82e9caa6e3d4a5109a3297d3b1cadf19a40
+source_files: 188
 mapped_at_commit: working-tree
 ---
 
@@ -29,7 +29,7 @@ cannot resolve a material question. Multiple checkpoints still use separate
 Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers but obeys an
 explicit positive user concurrency value. The file is ignored by Git and copied into managed
 worktrees through `.worktreeinclude`, so the mapping script does not include it in this module's
-181-file inventory or source hash. It must still be reread independently before repository work.
+188-file inventory or source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
 ratified architecture, while `open/Cargo.toml` and `open/Cargo.lock` expose the dependency graph
@@ -199,6 +199,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   EngineControl process owner, bounded transport-neutral application connection, existing
   integration-validation projection, focused red-to-green proof, delivery context, and explicit
   generated-binding and command/event transport exclusions.
+- `docs/checkpoints/P3.W01.C003.md`: Durable implementation evidence for the production generated
+  TypeScript client adapter, complete map-derived request/event/resource surface, injected React
+  provider, focused runtime forwarding proof, and explicit concrete transport exclusions.
 - `docs/checkpoints/P1.W07.C008.md`: Durable implementation evidence for the open-tree boundary
   scanner. It records the dependency-free tool, canonical and malformed-tree contracts, locked
   workflow integration, isolated Rust verification, delivery context, and remaining static-policy
@@ -402,16 +405,24 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/package-lock.json`: Locks React 19.2.7, Tauri API 2.11.1, Tauri CLI 2.11.4, TypeScript 5.9.3,
   Vite 7.3.6, the React Vite plug-in 5.2.0, and their transitive frontend dependencies.
 - `app/package.json`: Declares the private production application package, exact toolchain and
-  runtime pins, strict typecheck, Vite build, application contract, and Tauri commands.
+  runtime pins, strict typecheck, Vite build, both application contracts, and Tauri commands.
+- `app/src/api.ts`: Re-exports the complete canonical generated TypeScript contract and constructs
+  one frozen `SuperiApiBindings` surface around an injected `SuperiTransport` and `SuperiClient`.
+- `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
+  without owning project state or concrete reliability behavior.
 - `app/src/App.tsx`: Renders the responsive lifecycle client with explicit application and engine
   state, safe failure context, and recovery, restart, and orderly quit controls.
 - `app/src/lifecycle.ts`: Defines the exact shell-local serialized lifecycle contract and typed
   asynchronous wrappers for the two Tauri lifecycle commands without importing engine bindings.
-- `app/src/main.tsx`: Mounts the React application under strict mode.
+- `app/src/main.tsx`: Mounts the React application under strict mode and the nullable generated API
+  provider seam that the concrete transport checkpoint supplies.
 - `app/src/styles.css`: Defines the responsive, accessible lifecycle shell presentation.
 - `app/tests/app-contract.test.mjs`: Verifies exact production pins, lifecycle and engine-process
   ownership seams, adjacent checkpoint exclusions, production workflow routing, and the hashed
   React bundle.
+- `app/tests/api-bindings.test.mjs`: Verifies the canonical generated re-export, complete typed map
+  boundary, injected provider/bootstrap seam, and real request/subscription forwarding without
+  transport policy.
 - `app/tsconfig.json`: Enables strict no-emit TypeScript, isolated modules, and bundler resolution.
 - `app/vite.config.ts`: Configures the React Vite build and fixed Tauri development port.
 - `app/src-tauri/Cargo.lock`: Locks the standalone desktop host together with its path dependencies
@@ -765,9 +776,9 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
 - `.github/workflows/dependency-policy.yml` is the separate dependency license and source policy
   surface.
 - `.github/workflows/frontend.yml` and `app/` form a third CI surface for locked npm installation,
-  strict TypeScript checking of the production lifecycle client, Vite production bundling, and
-  application-contract proof. `ci/frontend-smoke/` remains a focused generated public API binding
-  consumer rather than application coverage.
+  strict TypeScript checking of the production lifecycle and generated public API clients, Vite
+  production bundling, and application-contract proof. `ci/frontend-smoke/` remains an independent
+  focused generated-binding compatibility consumer rather than application coverage.
 - `.github/workflows/network-isolated.yml` and `open/ci/` form a fourth CI surface. It prepares
   artifacts before isolation, then proves current workspace tests, fixture validation, and the CLI
   consumer run with no non-loopback interface, no IPv4 route, and Cargo offline mode.
@@ -952,17 +963,19 @@ the platform crate's required version.
 
 The frontend CI path begins on pull requests, pushes to `main`, or manual dispatch. Its isolated
 Ubuntu 24.04 job installs the exact Node.js 24.13.0 declaration, performs a lockfile-only `npm ci`,
-runs strict no-emit TypeScript checking over the React lifecycle client, builds the production entry
-with Vite 7.3.6, and then tests workflow wiring, lifecycle ownership boundaries, exact pins, and the
-generated hashed bundle. The retained frontend fixture separately proves generated public API
-binding consumption without moving that adjacent integration into the lifecycle shell.
+runs strict no-emit TypeScript checking over the React lifecycle client and generated public API
+adapter, builds the production entry with Vite 7.3.6, and then tests workflow wiring, lifecycle and
+generated-client ownership boundaries, exact pins, runtime transport forwarding, and the generated
+hashed bundle. The retained frontend fixture separately proves checkout-independent generated
+contract compatibility without standing in for the production application.
 
 The Tauri Rust CI path begins on pull requests, pushes to `main`, or manual dispatch. Its blocking
 matrix builds the production frontend and compiles the pinned application host on macOS 26 arm64,
 macOS 15 Intel, Windows 2025, and Ubuntu 24.04. Every lane checks formatting, runs the mock-runtime
 and lifecycle tests, denies Clippy warnings, and compiles the real `superi-desktop` native wry binary
-from the lockfile. The shell owns explicit application and engine lifecycle state while process
-launch, public engine transport, generated binding integration, and editor behavior remain separate.
+from the lockfile. The shell owns explicit application and engine lifecycle state, linked process
+ownership, and the transport-neutral generated client/provider seam while concrete public engine
+transport and editor behavior remain separate.
 
 The network-isolated path begins on pull requests, pushes to `main`, or manual dispatch. It pins
 checkout, disables persisted credentials, installs stable Rust, runs the shared checksum-pinned
@@ -1095,9 +1108,11 @@ The production Tauri host consumes `superi-concurrency::LifecycleCoordinator`, t
 classification through explicit downward path dependencies. `LinkedEngineProcess` retains one
 dispatcher per application generation on a dedicated EngineControl thread and consumes the exact
 headless-engine participant seam. Tauri manages the fixed-capacity `EngineConnection`, while its
-React client still consumes only two shell-local asynchronous lifecycle commands. No generated
-public API binding, Tauri engine command or event transport, reconnection, cancellation, or editor
-state is owned by this checkpoint.
+React lifecycle client still consumes only two shell-local asynchronous commands. Separately,
+`app/src/api.ts` re-exports the canonical generated contract and constructs `SuperiClient` bindings
+from an injected `SuperiTransport`; `api-context.tsx` exposes those bindings without owning state.
+No Tauri engine command/event transport, reconnection, cancellation, transport error policy, or
+editor state is implemented by the generated-client checkpoint.
 
 The documents deliberately point into other modules:
 
@@ -1476,8 +1491,10 @@ generation, pending acknowledgement, and classified safe failure. A linked nativ
 retains one real dispatcher per generation on a dedicated EngineControl thread, exposes the existing
 integration-validation result over a bounded nonblocking Rust connection, and performs real orderly
 dispatcher shutdown before lifecycle acknowledgement. Internal subsystem readiness remains truthful;
-generated API binding integration, concrete engine command and event transport, and editor semantics
-remain adjacent work rather than mocked success. Fresh Cargo metadata expands the member globs to 25
+the production React bootstrap now consumes the complete generated TypeScript contract through a
+transport-injected `SuperiClient` provider with identical request and automation behavior. Concrete
+engine command/event transport and editor semantics remain adjacent work rather than mocked success.
+Fresh Cargo metadata expands the member globs to 25
 packages: 19 crates under
 `open/crates/` plus the `superi-fixture-tool`, `superi-dependency-check`,
 `superi-boundary-tool`, `superi-bench`, `superi-test-report`, and `superi-api-bindings` repository
@@ -1756,8 +1773,8 @@ and platform matrix overlap intentionally but currently disagree in status. When
 changes, update the most authoritative contract and every public status summary that would otherwise
 mislead a contributor. Keep planned requirements clearly separate from code paths and test evidence
 that exist and have run.
-Keep the committed TypeScript artifact, CLI schema consumer, frontend smoke consumer, API map,
-engine map, and global index synchronized whenever extension identity, lifecycle, capability,
-feature, failure, control, query, event, resource, or reconnect behavior changes. Discovery must
-remain a declarative projection of authoritative runtime owners and must never imply a privileged
-frontend, CLI, closed-tier, or plugin execution route.
+Keep the committed TypeScript artifact, CLI schema consumer, production app adapter, frontend smoke
+consumer, API map, engine map, and global index synchronized whenever extension identity, lifecycle,
+capability, feature, failure, control, query, event, resource, or reconnect behavior changes.
+Discovery must remain a declarative projection of authoritative runtime owners and must never imply
+a privileged frontend, CLI, closed-tier, or plugin execution route.

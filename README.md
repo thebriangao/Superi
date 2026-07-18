@@ -7,8 +7,9 @@ boundary.**
 > **Project status:** Superi is in early implementation. Several lower-level media, codec, image,
 > GPU, color, concurrency, and policy contracts are substantive, and the canonical CLI runner now
 > executes a disclosed contract-conformance slice. A production React and Tauri shell now owns an
-> explicit headless-engine lifecycle, but Superi is not yet a functioning video editor and does not
-> claim runtime import, rendering, or playable export.
+> explicit headless-engine lifecycle, one linked EngineControl dispatcher, and a transport-neutral
+> generated TypeScript API client seam, but Superi is not yet a functioning video editor and does
+> not claim runtime import, rendering, or playable export.
 
 Superi begins from a simple observation: professional post-production software has historically
 separated editing, compositing, color, and audio into different applications, different internal
@@ -303,12 +304,14 @@ and failure-prone work in the project.
 
 ## The application boundary
 
-The graphical application uses React in a Tauri 2 native desktop host and will communicate with the
-Rust engine through the public automation API. The initial shell owns only explicit startup,
-shutdown, restart, recovery, and failure state around a stable headless-engine participant seam; it
-does not claim engine launch or API transport. This direction gives Superi access to a
-mature interface ecosystem and a large design and engineering talent pool while keeping the
-performance-critical media pipeline native and GPU-driven.
+The graphical application uses React in a Tauri 2 native desktop host and communicates with the Rust
+engine through the public automation API. The current shell owns explicit startup, shutdown,
+restart, recovery, and failure state around one lifecycle-attached EngineControl dispatcher. Its
+React bootstrap consumes the complete generated TypeScript contract through an injected
+`SuperiTransport` provider, while concrete command/event transport and reliability behavior remain
+separate work. This direction gives Superi access to a mature interface ecosystem and a large design
+and engineering talent pool while keeping the performance-critical media pipeline native and
+GPU-driven.
 
 The UI is responsible for presenting timelines, panels, inspectors, node graphs, scopes, meters,
 project organization, and interaction. It is not responsible for secretly reimplementing editing
@@ -372,7 +375,8 @@ answers:
 - Which surfaces must remain public and stable?
 
 It does not yet answer how decoding, graph evaluation, color transformation, playback, persistence,
-or editing will actually be implemented, although the desktop lifecycle boundary is now concrete.
+or editing will actually be implemented, although the desktop lifecycle, linked process, and
+generated client boundaries are now concrete.
 
 ### Crate hierarchy
 
@@ -416,8 +420,8 @@ superi/
 │   ├── phases.md             Build sequence and subsystem inventory
 │   └── codecs.md             Codec policy and format matrix
 ├── app/                      Production React and Tauri desktop shell
-│   ├── src/                  Lifecycle client and application surface
-│   └── src-tauri/            Native lifecycle owner and shell commands
+│   ├── src/                  Lifecycle UI and generated public API client seam
+│   └── src-tauri/            Native lifecycle and EngineControl owners
 ├── open/
 │   ├── Cargo.toml            Runtime crate and repository tool workspace definition
 │   ├── Cargo.lock            Generated internal dependency graph
@@ -433,8 +437,9 @@ superi/
 ```
 
 The `closed/` directory contains a boundary notice only. No Superi Max implementation is present.
-The `/app` shell is deliberately limited to lifecycle behavior until the adjacent engine process,
-generated binding, and transport checkpoints connect the public automation surface.
+The `/app` shell now owns lifecycle, the linked EngineControl process, and a generated binding
+provider. Concrete command/event transport and editor behavior remain intentionally absent rather
+than represented by mocked success.
 
 ---
 
@@ -612,7 +617,7 @@ Several decisions require additional technical, legal, or empirical validation:
 - the exact legal and distribution posture for each codec family;
 - the production readiness and complete license posture of candidate permissive codec libraries;
 - the precise mechanism for faithful OTIO interchange;
-- the final engine process and transport mechanism behind the desktop shell;
+- the final concrete command/event transport and reliability mechanism behind the desktop shell;
 - the detailed device-loss, GPU-memory, and multi-adapter strategy;
 - the model runtime and redistribution audit for each proposed local AI capability;
 - the Superi Max permission model for filesystem and internet access;
@@ -637,7 +642,7 @@ The present implementation does **not** contain:
 - project serialization;
 - audio processing;
 - local model inference;
-- an engine-linked editor interface or production desktop API transport;
+- concrete production desktop API transport or an editor interface that consumes it;
 - Superi Max services, generation integrations, accounts, credits, or agent; or
 - a public release.
 
