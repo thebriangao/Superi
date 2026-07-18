@@ -642,6 +642,10 @@ Timeline document flow preserves those owners without becoming a project contain
   retaining exact identity, timing, grouping, targeting, synchronization, and selection evidence.
   Its supplemental clip presentation reuses that frozen projection for names, source state, exact
   time maps, markers, metadata, multicam intent, and separate canonical versus shared selection.
+  The canvas now also projects the exact timeline, item, and owner-clock marker candidates into the
+  edit clock for transient playhead and range gestures, preserves persistent disablement and stable
+  target ordering, skips inexact points and valid object-marker overscan, and exposes session rules,
+  visible consequence feedback, and reversal without claiming authored snapping ownership.
   No timeline-specific typed public DTO or application-authored mutation path exists yet.
 
 ## Invariants and operational boundaries
@@ -905,7 +909,8 @@ grouped-source compound synthesis, timeline-specific typed public adaptation, mu
 and runtime playback, timeline-driven autosave scheduling, recovery orchestration, and API
 mutation integration remain absent. Generic editor-state inspection and the public API preserve the
 canonical timeline document, and the production editing workspace now renders it through a strict
-read-only projection with transient navigation state plus supplemental clip detail that does not
+read-only projection with transient navigation state, exact target snapping, visible session rule
+and consequence state, reversible pointer gestures, and supplemental clip detail that does not
 reparse geometry or mutate editorial state. Engine
 preparation integration now consumes and retains the compiled graph, and engine transport consumes
 the standalone signed rate value, but no
@@ -967,6 +972,11 @@ Keep the production workspace projection strict against the canonical document r
 exact ranges, stable identities, relationships, targeting, synchronization, and selection. Local
 playhead, range, scroll, and zoom may remain presentation intent, but authored gestures must enter
 through project and engine command ownership rather than reconstructing timeline policy in React.
+The UI may project this module's published exact snap candidates for transient gesture feedback only
+when it preserves target classes, persistent disablement, exact cross-clock omission, object-relative
+marker resolution, and stable tie order. Session filters, guides, and captured gesture origins must
+remain presentation state, and later authored clip moves must enter the native snap and edit query
+path rather than treating the UI projection as a mutation authority.
 Supplemental clip presentation must reuse that exact projection, keep source and record evidence
 unchanged, and preserve canonical timeline selection separately from application selection.
 Keep timeline edits in project command history behind the engine compound command owner and preserve

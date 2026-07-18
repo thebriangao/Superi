@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: ef7fe33220edb397c41cf69dcd1108a753ae393d12c8c43fadfc2cc9954dbc8f
-source_files: 248
+source_hash: 3d2f2ec2d38540cbc48068732fdf8ce55cdc6a31a868b50a0bb7dba18a85ce41
+source_files: 249
 mapped_at_commit: working-tree
 ---
 
@@ -469,6 +469,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   exact clip-gain keyframes with clip-relative diamond positions, canonical and shared selection
   state, strict freshness rejection, and reuse of the existing canonical timeline projection
   without another authored owner.
+- `docs/checkpoints/P3.W04.C005.md`: Durable implementation evidence for exact owner-clock timeline,
+  playhead, item-edge, and marker-edge targets, stable tie ordering, configurable transient rules,
+  visible consequence feedback, Escape reversal, strict malformed-owner failure, and preservation
+  of the lower authored-state boundary.
 
 ### Production desktop application
 
@@ -503,9 +507,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   existing shared selection reducer while canonical timeline selection remains separate.
 - `app/src/timeline-workspace.ts`: Strictly projects the embedded canonical revision 1 timeline
   document into a deeply frozen canvas model with exact rational source and record ranges, stable
-  identities and relationships, external-global-start display placement, deterministic extent,
-  ruler, time-label, snapping, visible-window, and range math, and explicit malformed-document
-  rejection.
+  identities and relationships, external-global-start display placement, exact owner-clock snap
+  targets, deterministic extent, ruler, time-label, visible-window, and range math, and explicit
+  malformed-document rejection. Its pure snap resolver honors the canonical switch plus transient
+  target rules, exact cross-clock representability, integer frame tolerance, and the lower stable
+  target order without authoring timeline state.
 - `app/src/timeline-clip-presentation.ts`: Supplements the existing frozen canvas model with strict
   read-only clip media names and relink state, exact time maps, markers, metadata, multicam intent,
   clip-scoped graph effects and parameter drivers, and attached clip-gain sample keyframes with
@@ -516,7 +522,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   exact record-positioned items, transient playhead and in and out range, native scrolling,
   pointer-anchored zoom, topmost-first track presentation, bounded visible-item overscan, fit
   controls, frame stepping, accessible clip buttons, canonical and shared selection indicators,
-  authored state badges, graph effects and automation keys, and honest unavailable state without
+  authored state badges, graph effects and automation keys, six session snap rules, exact target
+  consequence status, a visible target guide, and Escape or pointer-cancel restoration without
   taking authored mutation ownership. It progressively reads one revision-matched media library,
   deduplicates sources, generates previews sequentially, and accepts only matching media and
   freshness identities before displaying filmstrips, thumbnails, or waveforms.
@@ -579,8 +586,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   artifact editing, stale-analysis warnings, bounded preview raster, horizontally scrollable
   filmstrip, channel-separated waveform, responsive multi-selection batch controls, the sticky
   timeline grid, ruler, tracks, accessible clip buttons, layered filmstrip and waveform visuals,
-  canonical and shared selection treatments, dense state badges, range, playhead, controls, and
-  responsive 16:9 native viewer reservations. It also defines compact ready, stale, and empty
+  canonical and shared selection treatments, dense state badges, range, playhead, snap rule strip,
+  exact target status and guide, controls, and responsive 16:9 native viewer reservations. It also
+  defines compact ready, stale, and empty
   source-monitor controls with exact state details and responsive action groups.
 - `app/src/transport.ts`: Implements the concrete generated `SuperiTransport` through one injected
   or Tauri-backed invoke/listen host, generation-scoped request identities, ordered event replay,
@@ -603,8 +611,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/timeline-workspace.test.ts`: Verifies strict canonical revision handling, exact track,
   item, source and record range, group, link, selection, target, synchronization, and transition
   preservation, external global-start placement, deterministic frame-aligned ruler, visible-window,
-  and range math, invalid-document failures, real React integration, transient navigation controls,
-  and the absence of a frontend mutation owner.
+  and range math, exact timeline, track, object, item, and playhead snap targets, inexact-clock and
+  object-overscan omission, stable tie ordering, per-kind filtering, persistent and session
+  disablement, invalid-document and marker-owner failures, real React integration, transient
+  navigation and target controls, visible consequence and reversal wiring, and the absence of a
+  frontend mutation owner.
 - `app/tests/timeline-clip-presentation.test.ts`: Verifies supplemental reuse of the exact canvas
   projection, external global-start placement, mixed record clocks, source names and relink state,
   retime, linking, grouping, targeting, synchronization, markers, metadata, multicam intent,
@@ -1337,8 +1348,9 @@ Ubuntu 24.04 job installs the exact Node.js 24.13.0 declaration, performs a lock
 runs strict no-emit TypeScript checking over the React application and generated public API adapter,
 builds the production entry with Vite 7.3.6, and then tests workflow wiring, lifecycle, generated
 client and transport ownership boundaries, deterministic application framework behavior, five
-professional workspace projections, exact audio semantics, canonical timeline projection and
-navigation, exact pins, runtime transport forwarding, and the generated hashed bundle. The retained frontend fixture
+professional workspace projections, exact audio semantics, canonical timeline projection,
+navigation, exact snap-target resolution, visible rule and reversal wiring, exact pins, runtime
+transport forwarding, and the generated hashed bundle. The retained frontend fixture
 separately proves checkout-independent generated contract compatibility without standing in for the
 production application.
 
@@ -1492,6 +1504,11 @@ engine commands or project behavior. The editing workspace additionally consumes
 timeline document already contained by the public editor snapshot. Its strict projection preserves
 exact authored identity, timing, grouping, targeting, and synchronization, while local playhead,
 range, scroll, and zoom remain transient presentation intent and never become another mutation path.
+That projection resolves timeline, item, and owner-clock marker boundaries into exact edit-rate
+targets, skipping inexact cross-clock points and valid object-marker overscan. Pointer gestures query
+those targets through the canonical persistent switch plus explicit session rules, expose the chosen
+identity and exact result through a guide and live status, and restore the captured transient origin
+on Escape or pointer cancellation.
 The same canvas supplements clip items from the snapshot's canonical graph and attached audio
 automation, and it hydrates real media previews through the existing freshness-fenced Tauri owner.
 Shared clip activation remains an application selection reference, not an authored timeline edit.
@@ -2010,6 +2027,9 @@ and retain classified degraded state when the native bridge reports editor metho
 The editing view now also parses the snapshot's canonical timeline document into a frozen
 identity-preserving canvas with sticky headers, an adaptive ruler, record-positioned tracks and
 items, a frame-snapped playhead, an explicit range, native scrolling, and pointer-anchored zoom.
+The same canvas projects exact timeline, item-edge, and timeline, track, or object marker-edge
+targets, exposes a session master plus six target-kind rules, reports every accepted coordinate,
+draws the active or last guide, and reverses an active gesture through its captured origin.
 Existing clip items now add real generated filmstrips, thumbnails, and waveforms when available,
 plus exact source, relationship, effect, driver, marker, metadata, multicam, retime, and clip-gain
 automation evidence with positioned keyframe diamonds. Canonical timeline selection and shared
@@ -2344,6 +2364,11 @@ a privileged frontend, CLI, closed-tier, or plugin execution route.
 Keep the timeline canvas projection synchronized with the canonical timeline document revision,
 exact rational clocks, stable identities, and relationship fields. View navigation may remain local,
 but authored edits must route through the existing project, engine, and public command owners.
+Keep snap candidates exact in the timeline edit clock, preserve the lower target class and stable tie
+order, skip inexact cross-clock coordinates, resolve object markers relative to their owner, and keep
+session switches, rule filters, visible consequences, and gesture origins transient. Later authored
+clip gestures must call the lower snapping and edit owners rather than treating the React resolver as
+an authored operation.
 Keep clip detail supplemental to that exact projection. Graph badges must follow real clip-scoped
 topology, keyframes must come from a legal attached owner, previews must retain project, library,
 media, and freshness fences, and canonical selection must remain distinct from shared UI selection.

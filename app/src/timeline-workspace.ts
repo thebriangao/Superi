@@ -47,6 +47,74 @@ export type TimelineItemKind =
 
 export type TimelineTrackKind = "video" | "audio" | "caption" | "data";
 
+export type TimelineSnapTargetKind =
+  | "timeline_start"
+  | "playhead"
+  | "item_start"
+  | "item_end"
+  | "marker_start"
+  | "marker_end";
+
+export interface TimelineSnapRules {
+  readonly timelineStart: boolean;
+  readonly playhead: boolean;
+  readonly itemStart: boolean;
+  readonly itemEnd: boolean;
+  readonly markerStart: boolean;
+  readonly markerEnd: boolean;
+}
+
+const TIMELINE_SNAP_RULE_KEYS = Object.freeze([
+  "timelineStart",
+  "playhead",
+  "itemStart",
+  "itemEnd",
+  "markerStart",
+  "markerEnd",
+] as const satisfies readonly (keyof TimelineSnapRules)[]);
+
+export const TIMELINE_DEFAULT_SNAP_RULES: Readonly<TimelineSnapRules> =
+  Object.freeze({
+    timelineStart: true,
+    playhead: true,
+    itemStart: true,
+    itemEnd: true,
+    markerStart: true,
+    markerEnd: true,
+  });
+
+export interface TimelineSnapTarget {
+  readonly kind: Exclude<TimelineSnapTargetKind, "playhead">;
+  readonly id: string;
+  readonly label: string;
+  readonly editorialObject: TimelineObjectReference | null;
+  readonly time: TimelineExactPoint;
+  readonly timeSeconds: number;
+}
+
+interface TimelinePlayheadSnapTarget {
+  readonly kind: "playhead";
+  readonly id: "playhead";
+  readonly label: "Playhead";
+  readonly editorialObject: null;
+  readonly time: TimelineExactPoint;
+  readonly timeSeconds: number;
+}
+
+export interface TimelineSnapRequest {
+  readonly atSeconds: number;
+  readonly toleranceFrames: number;
+  readonly playheadSeconds: number | null;
+  readonly rules: TimelineSnapRules;
+  readonly sessionEnabled: boolean;
+}
+
+export interface TimelineSnapMatch {
+  readonly target: TimelineSnapTarget | TimelinePlayheadSnapTarget;
+  readonly timeSeconds: number;
+  readonly distanceFrames: number;
+}
+
 export interface TimelineCanvasItem {
   readonly kind: TimelineItemKind;
   readonly id: string;
@@ -89,6 +157,7 @@ export interface TimelineCanvasModel {
   readonly durationSeconds: number;
   readonly linkedSelectionEnabled: boolean;
   readonly snappingEnabled: boolean;
+  readonly snapTargets: readonly TimelineSnapTarget[];
   readonly tracks: readonly TimelineCanvasTrack[];
 }
 
@@ -146,6 +215,7 @@ interface PendingTrack {
   readonly id: string;
   readonly name: string;
   readonly kind: TimelineTrackKind;
+  readonly recordRate: TimelineRate;
   readonly targeted: boolean;
   readonly syncLocked: boolean;
   readonly items: readonly (DirectItem | PendingTransition)[];
@@ -273,6 +343,11 @@ export function projectTimelineDocument(
       }
       const semantics = asObject(track.semantics, `${path}.semantics`);
       const kind = parseTrackKind(semantics.kind, `${path}.semantics.kind`);
+      const recordRate = parseTrackRecordRate(
+        semantics,
+        kind,
+        `${path}.semantics`,
+      );
       const items = asArray(track.items, `${path}.items`).map((item, itemIndex) =>
         parseItem(
           item,
@@ -287,6 +362,7 @@ export function projectTimelineDocument(
         id,
         name: asString(track.name, `${path}.name`),
         kind,
+        recordRate,
         targeted: state.targeted,
         syncLocked: state.syncLocked,
         items,
@@ -320,6 +396,15 @@ export function projectTimelineDocument(
       directItems.set(key, item);
     }
   }
+
+  const snapTargets = buildTimelineSnapTargets({
+    timeline,
+    timelinePath,
+    editRate,
+    globalStartSeconds: globalStart.seconds,
+    tracks: pendingTracks,
+    directItems,
+  });
 
   const tracks = pendingTracks.map((track): TimelineCanvasTrack => ({
     id: track.id,
@@ -376,6 +461,10 @@ export function projectTimelineDocument(
     startSeconds = Math.min(startSeconds, item.startSeconds);
     endSeconds = Math.max(endSeconds, item.endSeconds);
   }
+  for (const target of snapTargets) {
+    startSeconds = Math.min(startSeconds, target.timeSeconds);
+    endSeconds = Math.max(endSeconds, target.timeSeconds);
+  }
   if (endSeconds <= startSeconds) {
     endSeconds = startSeconds + MIN_EMPTY_DURATION_SECONDS;
   }
@@ -404,8 +493,185 @@ export function projectTimelineDocument(
       timeline.snapping_enabled,
       `${timelinePath}.snapping_enabled`,
     ),
+    snapTargets,
     tracks,
   });
+}
+
+function buildTimelineSnapTargets({
+  timeline,
+  timelinePath,
+  editRate,
+  globalStartSeconds,
+  tracks,
+  directItems,
+}: {
+  readonly timeline: Record<string, unknown>;
+  readonly timelinePath: string;
+  readonly editRate: TimelineRate;
+  readonly globalStartSeconds: number;
+  readonly tracks: readonly PendingTrack[];
+  readonly directItems: ReadonlyMap<string, DirectItem>;
+}): readonly TimelineSnapTarget[] {
+  const targets: TimelineSnapTarget[] = [];
+  const addTarget = (
+    kind: TimelineSnapTarget["kind"],
+    id: string,
+    label: string,
+    editorialObject: TimelineObjectReference | null,
+    units: bigint,
+    sourceRate: TimelineRate,
+    path: string,
+  ) => {
+    const editUnits = rescaleExactUnits(units, sourceRate, editRate);
+    if (editUnits === null) return;
+    const offsetSeconds = exactUnitsToSeconds(editUnits, editRate, path);
+    targets.push({
+      kind,
+      id,
+      label,
+      editorialObject,
+      time: { value: editUnits.toString(), timebase: editRate },
+      timeSeconds: offsetDisplaySeconds(globalStartSeconds, offsetSeconds, path),
+    });
+  };
+
+  addTarget(
+    "timeline_start",
+    asString(timeline.id, `${timelinePath}.id`),
+    "Timeline start",
+    null,
+    0n,
+    editRate,
+    `${timelinePath}.snap_targets.timeline_start`,
+  );
+
+  for (const item of directItems.values()) {
+    const range = item.parsedRecordRange;
+    addTarget(
+      "item_start",
+      item.id,
+      `${item.name} start`,
+      { kind: item.kind, id: item.id },
+      range.startUnits,
+      range.exact.start.timebase,
+      `${timelinePath}.snap_targets.item_start.${item.id}`,
+    );
+    addTarget(
+      "item_end",
+      item.id,
+      `${item.name} end`,
+      { kind: item.kind, id: item.id },
+      range.startUnits + range.durationUnits,
+      range.exact.start.timebase,
+      `${timelinePath}.snap_targets.item_end.${item.id}`,
+    );
+  }
+
+  const tracksById = new Map(tracks.map((track) => [track.id, track]));
+  const markerIds = new Set<string>();
+  for (const [index, value] of asArray(
+    timeline.markers,
+    `${timelinePath}.markers`,
+  ).entries()) {
+    const path = `${timelinePath}.markers[${index}]`;
+    const marker = asObject(value, path);
+    const id = asString(marker.id, `${path}.id`);
+    if (markerIds.has(id)) {
+      throw projectionError(path, `duplicate marker identity ${id}`);
+    }
+    markerIds.add(id);
+    const label = asNullableString(marker.label, `${path}.label`) ?? id;
+    asNullableString(marker.flag, `${path}.flag`);
+    asNullableString(marker.note, `${path}.note`);
+    asArray(marker.metadata, `${path}.metadata`);
+    const markedRange = parseRange(marker.marked_range, `${path}.marked_range`);
+    if (markedRange.startUnits < 0n) {
+      throw projectionError(
+        `${path}.marked_range.start`,
+        "marker range must not start before its owner zero",
+      );
+    }
+
+    const owner = asObject(marker.owner, `${path}.owner`);
+    const ownerKind = asString(owner.kind, `${path}.owner.kind`);
+    let ownerRate: TimelineRate;
+    let ownerStartUnits = 0n;
+    let ownerDurationUnits: bigint | null = null;
+    if (ownerKind === "timeline") {
+      ownerRate = editRate;
+    } else if (ownerKind === "track") {
+      const trackId = asString(owner.id, `${path}.owner.id`);
+      const track = tracksById.get(trackId);
+      if (!track) {
+        throw projectionError(
+          `${path}.owner.id`,
+          `marker owner track ${trackId} does not exist`,
+        );
+      }
+      ownerRate = track.recordRate;
+    } else if (ownerKind === "object") {
+      const object = parseObjectReference(owner.id, `${path}.owner.id`);
+      const item = directItems.get(objectKey(object));
+      if (!item) {
+        throw projectionError(
+          `${path}.owner.id`,
+          `marker owner object ${objectKey(object)} has no timed record range`,
+        );
+      }
+      ownerRate = item.parsedRecordRange.exact.start.timebase;
+      ownerStartUnits = item.parsedRecordRange.startUnits;
+      ownerDurationUnits = item.parsedRecordRange.durationUnits;
+    } else {
+      throw projectionError(
+        `${path}.owner.kind`,
+        `unsupported marker owner kind ${ownerKind}`,
+      );
+    }
+
+    if (!sameRate(markedRange.exact.start.timebase, ownerRate)) {
+      throw projectionError(
+        `${path}.marked_range`,
+        "marker range must use its owner's exact record clock",
+      );
+    }
+    if (
+      ownerDurationUnits !== null &&
+      markedRange.startUnits + markedRange.durationUnits > ownerDurationUnits
+    ) {
+      continue;
+    }
+    const startUnits = ownerStartUnits + markedRange.startUnits;
+    const endUnits = startUnits + markedRange.durationUnits;
+    addTarget(
+      "marker_start",
+      id,
+      `${label} start`,
+      null,
+      startUnits,
+      ownerRate,
+      `${path}.snap_target.start`,
+    );
+    addTarget(
+      "marker_end",
+      id,
+      `${label} end`,
+      null,
+      endUnits,
+      ownerRate,
+      `${path}.snap_target.end`,
+    );
+  }
+
+  targets.sort((left, right) => {
+    const leftUnits = BigInt(left.time.value);
+    const rightUnits = BigInt(right.time.value);
+    if (leftUnits !== rightUnits) return leftUnits < rightUnits ? -1 : 1;
+    const kind = snapTargetKindOrder(left.kind) - snapTargetKindOrder(right.kind);
+    if (kind !== 0) return kind;
+    return compareSnapTargetIdentity(left, right);
+  });
+  return deepFreeze(targets);
 }
 
 export function buildTimelineRulerTicks(
@@ -496,6 +762,91 @@ export function snapTimelineTime(
   return normalizeFloat(
     anchorSeconds + Math.round((seconds - anchorSeconds) / frameSeconds) * frameSeconds,
   );
+}
+
+export function resolveTimelineSnap(
+  model: TimelineCanvasModel,
+  request: TimelineSnapRequest,
+): TimelineSnapMatch | null {
+  if (!request.sessionEnabled || !model.snappingEnabled) return null;
+  if (
+    !Number.isSafeInteger(request.toleranceFrames) ||
+    request.toleranceFrames < 0
+  ) {
+    throw projectionError(
+      "snap.toleranceFrames",
+      "snap tolerance must be a nonnegative frame count",
+    );
+  }
+  validateSnapRules(request.rules);
+  const atUnits = displaySecondsToEditUnits(
+    request.atSeconds,
+    model,
+    "snap.atSeconds",
+  );
+  const tolerance = BigInt(request.toleranceFrames);
+  const candidates: Array<{
+    readonly target: TimelineSnapMatch["target"];
+    readonly units: bigint;
+    readonly distance: bigint;
+  }> = [];
+
+  for (const target of model.snapTargets) {
+    if (!snapRuleEnabled(target.kind, request.rules)) continue;
+    const units = BigInt(target.time.value);
+    const distance = absoluteBigInt(units - atUnits);
+    if (distance <= tolerance) candidates.push({ target, units, distance });
+  }
+
+  if (request.playheadSeconds !== null && request.rules.playhead) {
+    const units = tryDisplaySecondsToEditUnits(request.playheadSeconds, model);
+    if (units !== null) {
+      const distance = absoluteBigInt(units - atUnits);
+      if (distance <= tolerance) {
+        candidates.push({
+          target: deepFreeze({
+            kind: "playhead",
+            id: "playhead",
+            label: "Playhead",
+            editorialObject: null,
+            time: { value: units.toString(), timebase: model.editRate },
+            timeSeconds: offsetDisplaySeconds(
+              model.globalStartSeconds,
+              exactUnitsToSeconds(
+                units,
+                model.editRate,
+                "snap.playheadSeconds",
+              ),
+              "snap.playheadSeconds",
+            ),
+          }),
+          units,
+          distance,
+        });
+      }
+    }
+  }
+
+  candidates.sort((left, right) => {
+    if (left.distance !== right.distance) {
+      return left.distance < right.distance ? -1 : 1;
+    }
+    const kind =
+      snapTargetKindOrder(left.target.kind) -
+      snapTargetKindOrder(right.target.kind);
+    if (kind !== 0) return kind;
+    const identity = compareSnapTargetIdentity(left.target, right.target);
+    if (identity !== 0) return identity;
+    if (left.units === right.units) return 0;
+    return left.units < right.units ? -1 : 1;
+  });
+  const best = candidates[0];
+  if (!best) return null;
+  return deepFreeze({
+    target: best.target,
+    timeSeconds: best.target.timeSeconds,
+    distanceFrames: Number(best.distance),
+  });
 }
 
 export function clampTimelineRange(
@@ -671,7 +1022,6 @@ function resolveTransition(
 }
 
 function validateTrackSequence(track: PendingTrack, path: string): void {
-  let recordRate: TimelineRate | null = null;
   let priorEndUnits = 0n;
   for (const [index, item] of track.items.entries()) {
     if (item.kind === "transition") {
@@ -713,10 +1063,11 @@ function validateTrackSequence(track: PendingTrack, path: string): void {
     }
 
     const range = item.parsedRecordRange;
-    if (recordRate === null) {
-      recordRate = range.exact.start.timebase;
-    } else if (!sameRate(recordRate, range.exact.start.timebase)) {
-      throw projectionError(path, "track items must use one exact record clock");
+    if (!sameRate(track.recordRate, range.exact.start.timebase)) {
+      throw projectionError(
+        `${path}.items[${index}].record_range`,
+        "timed item must use its track's exact record clock",
+      );
     }
     if (range.startUnits !== priorEndUnits) {
       throw projectionError(
@@ -843,6 +1194,24 @@ function parseTrackKind(value: unknown, path: string): TimelineTrackKind {
   return kind;
 }
 
+function parseTrackRecordRate(
+  semantics: Record<string, unknown>,
+  kind: TimelineTrackKind,
+  path: string,
+): TimelineRate {
+  if (kind === "video") {
+    return parseRate(semantics.frame_rate, `${path}.frame_rate`);
+  }
+  if (kind === "audio") {
+    const sampleRate = asInteger(semantics.sample_rate, `${path}.sample_rate`);
+    if (sampleRate <= 0) {
+      throw projectionError(`${path}.sample_rate`, "sample rate must be positive");
+    }
+    return Object.freeze({ numerator: sampleRate, denominator: 1 });
+  }
+  return parseRate(semantics.timebase, `${path}.timebase`);
+}
+
 function parseTrackStates(
   value: unknown,
   path: string,
@@ -920,6 +1289,134 @@ function objectKey(value: TimelineObjectReference): string {
   return `${value.kind}:${value.id}`;
 }
 
+function rescaleExactUnits(
+  units: bigint,
+  sourceRate: TimelineRate,
+  targetRate: TimelineRate,
+): bigint | null {
+  const numerator =
+    units * BigInt(sourceRate.denominator) * BigInt(targetRate.numerator);
+  const denominator =
+    BigInt(sourceRate.numerator) * BigInt(targetRate.denominator);
+  if (numerator % denominator !== 0n) return null;
+  return numerator / denominator;
+}
+
+function displaySecondsToEditUnits(
+  seconds: number,
+  model: TimelineCanvasModel,
+  path: string,
+): bigint {
+  if (!Number.isFinite(seconds)) {
+    throw projectionError(path, "snap coordinate must be finite");
+  }
+  const units =
+    ((seconds - model.globalStartSeconds) * model.editRate.numerator) /
+    model.editRate.denominator;
+  if (!Number.isSafeInteger(Math.round(units)) || !nearlyInteger(units)) {
+    throw projectionError(path, "snap coordinate must use the timeline edit clock");
+  }
+  return BigInt(Math.round(units));
+}
+
+function tryDisplaySecondsToEditUnits(
+  seconds: number,
+  model: TimelineCanvasModel,
+): bigint | null {
+  try {
+    return displaySecondsToEditUnits(seconds, model, "snap.playheadSeconds");
+  } catch {
+    return null;
+  }
+}
+
+function validateSnapRules(rules: TimelineSnapRules): void {
+  if (typeof rules !== "object" || rules === null) {
+    throw projectionError("snap.rules", "snap rules must be an object");
+  }
+  for (const name of TIMELINE_SNAP_RULE_KEYS) {
+    const enabled = rules[name];
+    if (typeof enabled !== "boolean") {
+      throw projectionError(`snap.rules.${name}`, "snap rule must be boolean");
+    }
+  }
+}
+
+function snapRuleEnabled(
+  kind: TimelineSnapTargetKind,
+  rules: TimelineSnapRules,
+): boolean {
+  switch (kind) {
+    case "timeline_start":
+      return rules.timelineStart;
+    case "playhead":
+      return rules.playhead;
+    case "item_start":
+      return rules.itemStart;
+    case "item_end":
+      return rules.itemEnd;
+    case "marker_start":
+      return rules.markerStart;
+    case "marker_end":
+      return rules.markerEnd;
+  }
+}
+
+function snapTargetKindOrder(kind: TimelineSnapTargetKind): number {
+  switch (kind) {
+    case "timeline_start":
+      return 0;
+    case "playhead":
+      return 1;
+    case "item_start":
+      return 2;
+    case "item_end":
+      return 3;
+    case "marker_start":
+      return 4;
+    case "marker_end":
+      return 5;
+  }
+}
+
+function absoluteBigInt(value: bigint): bigint {
+  return value < 0n ? -value : value;
+}
+
+function compareStrings(left: string, right: string): number {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
+}
+
+function compareSnapTargetIdentity(
+  left: TimelineSnapMatch["target"],
+  right: TimelineSnapMatch["target"],
+): number {
+  if (left.editorialObject && right.editorialObject) {
+    const objectKind =
+      timelineItemKindOrder(left.editorialObject.kind) -
+      timelineItemKindOrder(right.editorialObject.kind);
+    if (objectKind !== 0) return objectKind;
+    return compareStrings(left.editorialObject.id, right.editorialObject.id);
+  }
+  return compareStrings(left.id, right.id);
+}
+
+function timelineItemKindOrder(kind: TimelineItemKind): number {
+  switch (kind) {
+    case "clip":
+      return 0;
+    case "gap":
+      return 1;
+    case "transition":
+      return 2;
+    case "generator":
+      return 3;
+    case "caption":
+      return 4;
+  }
+}
+
 function exactUnitsToSeconds(
   units: bigint,
   timebase: TimelineRate,
@@ -968,6 +1465,10 @@ function asString(value: unknown, path: string): string {
     throw projectionError(path, "expected a nonempty string");
   }
   return value;
+}
+
+function asNullableString(value: unknown, path: string): string | null {
+  return value === null ? null : asString(value, path);
 }
 
 function asBoolean(value: unknown, path: string): boolean {

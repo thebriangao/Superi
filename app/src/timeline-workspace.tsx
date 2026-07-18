@@ -33,23 +33,41 @@ import {
   type TimelineClipProjection,
 } from "./timeline-clip-presentation.ts";
 import {
+  TIMELINE_DEFAULT_SNAP_RULES,
   TimelineProjectionError,
   buildTimelineRulerTicks,
   clampNumber,
   clampTimelineRange,
   formatTimelineTime,
   projectTimelineDocument,
+  resolveTimelineSnap,
   snapTimelineTime,
   timelineItemsInWindow,
   timelineFrameDuration,
   type TimelineCanvasItem,
   type TimelineCanvasModel,
+  type TimelineSnapMatch,
+  type TimelineSnapRules,
 } from "./timeline-workspace.ts";
 
 const HEADER_WIDTH = 184;
 const MIN_PIXELS_PER_SECOND = 0.2;
 const MAX_PIXELS_PER_SECOND = 1_600;
 const DEFAULT_PIXELS_PER_SECOND = 96;
+const SNAP_TOLERANCE_PIXELS = 10;
+const MAX_SNAP_TOLERANCE_FRAMES = 12;
+
+const TIMELINE_SNAP_RULES = [
+  { key: "timelineStart", label: "Timeline start" },
+  { key: "playhead", label: "Playhead" },
+  { key: "itemStart", label: "Item starts" },
+  { key: "itemEnd", label: "Item ends" },
+  { key: "markerStart", label: "Marker starts" },
+  { key: "markerEnd", label: "Marker ends" },
+] as const satisfies readonly {
+  readonly key: keyof TimelineSnapRules;
+  readonly label: string;
+}[];
 
 type TimelineGesture = "playhead" | "in" | "out";
 
@@ -121,7 +139,17 @@ export function TimelineWorkspace({
   const [viewportWidth, setViewportWidth] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [gesture, setGesture] = useState<TimelineGesture | null>(null);
+  const [sessionSnappingEnabled, setSessionSnappingEnabled] = useState(true);
+  const [snapRules, setSnapRules] = useState<TimelineSnapRules>(() => ({
+    ...TIMELINE_DEFAULT_SNAP_RULES,
+  }));
+  const [snapMatch, setSnapMatch] = useState<TimelineSnapMatch | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const gestureOriginRef = useRef<{
+    readonly kind: TimelineGesture;
+    readonly value: number;
+  } | null>(null);
+  const gesturePointerRef = useRef<number | null>(null);
   const pendingScrollRef = useRef<number | null>(null);
   const autoFitIdentityRef = useRef<string | null>(null);
   const viewIdentityRef = useRef(
@@ -147,6 +175,9 @@ export function TimelineWorkspace({
       setPlayhead(next.playhead);
       setInPoint(next.inPoint);
       setOutPoint(next.outPoint);
+      setSessionSnappingEnabled(true);
+      setSnapRules({ ...TIMELINE_DEFAULT_SNAP_RULES });
+      setSnapMatch(null);
       return;
     }
     setPlayhead((value) =>
@@ -159,6 +190,10 @@ export function TimelineWorkspace({
       clampNumber(value, model.startSeconds, model.endSeconds),
     );
   }, [model, playback]);
+
+  useEffect(() => {
+    setSnapMatch(null);
+  }, [model?.documentSha256]);
 
   const visibleContentWidth = Math.max(1, viewportWidth - HEADER_WIDTH);
   const contentWidth = model
@@ -274,23 +309,66 @@ export function TimelineWorkspace({
     ],
   );
 
+  const pointerSnapToleranceFrames = model
+    ? clampNumber(
+        Math.ceil(
+          SNAP_TOLERANCE_PIXELS /
+            (pixelsPerSecond * timelineFrameDuration(model.editRate)),
+        ),
+        1,
+        MAX_SNAP_TOLERANCE_FRAMES,
+      )
+    : 1;
+
   const eventTime = useCallback(
-    (clientX: number) => {
+    (
+      kind: TimelineGesture,
+      clientX: number,
+    ): {
+      readonly value: number;
+      readonly match: TimelineSnapMatch | null;
+    } => {
       const viewport = scrollRef.current;
-      if (!viewport || !model) return 0;
+      if (!viewport || !model) return { value: 0, match: null };
       const bounds = viewport.getBoundingClientRect();
       const contentX =
         clientX - bounds.left + viewport.scrollLeft - HEADER_WIDTH;
       const raw =
         model.startSeconds +
         clampNumber(contentX, 0, contentWidth) / pixelsPerSecond;
-      return clampNumber(
+      const minimum = kind === "out" ? inPoint : model.startSeconds;
+      const maximum = kind === "in" ? outPoint : model.endSeconds;
+      const frameAligned = clampNumber(
         snapTimelineTime(raw, model.editRate, model.globalStartSeconds),
-        model.startSeconds,
-        model.endSeconds,
+        minimum,
+        maximum,
       );
+      const candidate = resolveTimelineSnap(model, {
+        atSeconds: frameAligned,
+        toleranceFrames: pointerSnapToleranceFrames,
+        playheadSeconds: kind === "playhead" ? null : playhead,
+        rules: snapRules,
+        sessionEnabled: sessionSnappingEnabled,
+      });
+      const match =
+        candidate &&
+        candidate.timeSeconds >= minimum &&
+        candidate.timeSeconds <= maximum
+          ? candidate
+          : null;
+      return { value: match?.timeSeconds ?? frameAligned, match };
     },
-    [contentWidth, model, pixelsPerSecond],
+    [
+      contentWidth,
+      inPoint,
+      model,
+      outPoint,
+      pixelsPerSecond,
+      playhead,
+      pointerSnapToleranceFrames,
+      sessionSnappingEnabled,
+      snapRules,
+    ],
   );
 
   const applyGesture = useCallback(
@@ -315,17 +393,26 @@ export function TimelineWorkspace({
       event.preventDefault();
       event.stopPropagation();
       scrollRef.current?.setPointerCapture(event.pointerId);
+      gestureOriginRef.current = {
+        kind,
+        value: kind === "playhead" ? playhead : kind === "in" ? inPoint : outPoint,
+      };
+      gesturePointerRef.current = event.pointerId;
       setGesture(kind);
-      applyGesture(kind, eventTime(event.clientX));
+      const resolved = eventTime(kind, event.clientX);
+      setSnapMatch(resolved.match);
+      applyGesture(kind, resolved.value);
     },
-    [applyGesture, eventTime, model],
+    [applyGesture, eventTime, inPoint, model, outPoint, playhead],
   );
 
   const moveGesture = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
       if (!gesture) return;
       event.preventDefault();
-      applyGesture(gesture, eventTime(event.clientX));
+      const resolved = eventTime(gesture, event.clientX);
+      setSnapMatch(resolved.match);
+      applyGesture(gesture, resolved.value);
     },
     [applyGesture, eventTime, gesture],
   );
@@ -334,8 +421,37 @@ export function TimelineWorkspace({
     if (scrollRef.current?.hasPointerCapture(event.pointerId)) {
       scrollRef.current.releasePointerCapture(event.pointerId);
     }
+    gestureOriginRef.current = null;
+    gesturePointerRef.current = null;
     setGesture(null);
   }, []);
+
+  const cancelGesture = useCallback(() => {
+    const origin = gestureOriginRef.current;
+    const pointerId = gesturePointerRef.current;
+    if (origin) applyGesture(origin.kind, origin.value);
+    if (
+      pointerId !== null &&
+      scrollRef.current?.hasPointerCapture(pointerId)
+    ) {
+      scrollRef.current.releasePointerCapture(pointerId);
+    }
+    gestureOriginRef.current = null;
+    gesturePointerRef.current = null;
+    setSnapMatch(null);
+    setGesture(null);
+  }, [applyGesture]);
+
+  useEffect(() => {
+    if (!gesture) return;
+    const reverseOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      cancelGesture();
+    };
+    window.addEventListener("keydown", reverseOnEscape);
+    return () => window.removeEventListener("keydown", reverseOnEscape);
+  }, [cancelGesture, gesture]);
 
   const handleWheel = useCallback(
     (event: WheelEvent<HTMLDivElement>) => {
@@ -387,6 +503,7 @@ export function TimelineWorkspace({
       }
       if (next === null) return;
       event.preventDefault();
+      setSnapMatch(null);
       const shouldSnap = event.key !== "Home" && event.key !== "End";
       applyGesture(
         kind,
@@ -401,6 +518,19 @@ export function TimelineWorkspace({
     },
     [applyGesture, inPoint, model, outPoint, playhead],
   );
+
+  const toggleSessionSnapping = useCallback(() => {
+    setSessionSnappingEnabled((enabled) => !enabled);
+    setSnapMatch(null);
+  }, []);
+
+  const toggleSnapRule = useCallback((rule: keyof TimelineSnapRules) => {
+    setSnapRules((current) => ({
+      ...current,
+      [rule]: !current[rule],
+    }));
+    setSnapMatch(null);
+  }, []);
 
   if (!model) {
     return (
@@ -424,6 +554,9 @@ export function TimelineWorkspace({
     model.endSeconds,
   );
   const playheadX = (playhead - model.startSeconds) * pixelsPerSecond;
+  const snapTargetX = snapMatch
+    ? (snapMatch.timeSeconds - model.startSeconds) * pixelsPerSecond
+    : null;
   const rangeStartX = (range.inPoint - model.startSeconds) * pixelsPerSecond;
   const rangeWidth = Math.max(
     1,
@@ -433,6 +566,30 @@ export function TimelineWorkspace({
     "--timeline-header-width": `${HEADER_WIDTH}px`,
     "--timeline-content-width": `${contentWidth}px`,
   } as CSSProperties;
+  const targetSnappingActive =
+    model.snappingEnabled && sessionSnappingEnabled;
+  const gestureName =
+    gesture === "playhead"
+      ? "Playhead"
+      : gesture === "in"
+        ? "In point"
+        : gesture === "out"
+          ? "Out point"
+          : "Last gesture";
+  const snapStatus = snapMatch
+    ? `${gestureName} snaps to ${snapMatch.target.label} at ${formatTimelineTime(
+        snapMatch.timeSeconds,
+        model.editRate,
+      )}, ${snapMatch.distanceFrames} ${
+        snapMatch.distanceFrames === 1 ? "frame" : "frames"
+      } away.`
+    : !model.snappingEnabled
+      ? "Project target snapping is off. Gestures remain frame precise."
+      : !sessionSnappingEnabled
+        ? "Session target snapping is paused. Gestures remain frame precise."
+        : gesture
+          ? `${gestureName} remains frame aligned, with no enabled target in range.`
+          : `${model.snapTargets.length} exact targets ready. Drag a timing tool to preview its consequence.`;
 
   return (
     <section className="timeline-workspace" data-timeline-canvas>
@@ -443,7 +600,7 @@ export function TimelineWorkspace({
           <span>{model.id}</span>
           <div className="timeline-intent-badges">
             <b data-enabled={model.snappingEnabled}>
-              Snap {model.snappingEnabled ? "on" : "off"}
+              Project snap {model.snappingEnabled ? "on" : "off"}
             </b>
             <b data-enabled={model.linkedSelectionEnabled}>
               Linked selection {model.linkedSelectionEnabled ? "on" : "off"}
@@ -472,6 +629,7 @@ export function TimelineWorkspace({
             className="secondary timeline-compact-button"
             type="button"
             onClick={() => {
+              setSnapMatch(null);
               setInPoint(Math.min(playhead, range.outPoint));
             }}
           >
@@ -481,6 +639,7 @@ export function TimelineWorkspace({
             className="secondary timeline-compact-button"
             type="button"
             onClick={() => {
+              setSnapMatch(null);
               setOutPoint(Math.max(playhead, range.inPoint));
             }}
           >
@@ -490,6 +649,7 @@ export function TimelineWorkspace({
             className="secondary timeline-compact-button"
             type="button"
             onClick={() => {
+              setSnapMatch(null);
               setInPoint(model.startSeconds);
               setOutPoint(model.endSeconds);
             }}
@@ -528,9 +688,47 @@ export function TimelineWorkspace({
           </button>
         </div>
       </header>
+      <section
+        className="timeline-snap-controls"
+        aria-label="Timeline snap target rules"
+        data-enabled={targetSnappingActive}
+      >
+        <button
+          className="secondary timeline-snap-master"
+          type="button"
+          aria-pressed={targetSnappingActive}
+          disabled={!model.snappingEnabled}
+          onClick={toggleSessionSnapping}
+        >
+          Session target snap {targetSnappingActive ? "on" : "off"}
+        </button>
+        <div className="timeline-snap-rules" role="group" aria-label="Included targets">
+          {TIMELINE_SNAP_RULES.map((rule) => (
+            <button
+              className="secondary timeline-snap-rule"
+              type="button"
+              aria-pressed={snapRules[rule.key]}
+              disabled={!targetSnappingActive}
+              key={rule.key}
+              onClick={() => toggleSnapRule(rule.key)}
+              title={`Include ${rule.label.toLowerCase()}`}
+            >
+              {rule.label}
+            </button>
+          ))}
+        </div>
+        <output
+          className="timeline-snap-status"
+          aria-live="polite"
+          data-matched={snapMatch !== null}
+        >
+          {snapStatus}
+        </output>
+      </section>
       <p className="timeline-gesture-hint">
         Scroll to navigate, Shift-scroll to move horizontally, Command or Control
         scroll to zoom, and drag the ruler or range handles for frame-precise timing.
+        Press Escape during a drag to reverse it immediately.
       </p>
       {clipProjection?.status === "unavailable" ? (
         <p className="timeline-clip-detail-failure" role="alert">
@@ -543,7 +741,7 @@ export function TimelineWorkspace({
         onScroll={(event) => setScrollLeft(event.currentTarget.scrollLeft)}
         onPointerMove={moveGesture}
         onPointerUp={endGesture}
-        onPointerCancel={endGesture}
+        onPointerCancel={() => cancelGesture()}
         onWheel={handleWheel}
       >
         <div className="timeline-stage" style={stageStyle}>
@@ -673,6 +871,19 @@ export function TimelineWorkspace({
             style={{ left: HEADER_WIDTH + playheadX }}
             aria-hidden="true"
           />
+          {snapMatch && snapTargetX !== null ? (
+            <div
+              className="timeline-snap-guide"
+              data-snap-kind={snapMatch.target.kind}
+              style={{ left: HEADER_WIDTH + snapTargetX }}
+              aria-hidden="true"
+            >
+              <span>
+                {snapMatch.target.label}
+                <b>{formatTimelineTime(snapMatch.timeSeconds, model.editRate)}</b>
+              </span>
+            </div>
+          ) : null}
         </div>
       </div>
     </section>

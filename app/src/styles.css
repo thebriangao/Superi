@@ -1412,6 +1412,58 @@ button.timeline-icon-button {
   text-align: center;
 }
 
+.timeline-snap-controls {
+  display: grid;
+  grid-template-columns: auto minmax(0, auto) minmax(220px, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 43px;
+  padding: 7px 12px;
+  border-bottom: 1px solid #293135;
+  background: #13191c;
+}
+
+button.timeline-snap-master,
+button.timeline-snap-rule {
+  min-height: 27px;
+  padding: 0 8px;
+  border-color: #394348;
+  color: #8f9a9d;
+  background: #111618;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+button.timeline-snap-master[aria-pressed="true"],
+button.timeline-snap-rule[aria-pressed="true"] {
+  border-color: #537386;
+  color: #d5edf8;
+  background: #1c2d35;
+  box-shadow: inset 0 0 0 1px rgb(170 221 255 / 8%);
+}
+
+.timeline-snap-rules {
+  display: flex;
+  min-width: 0;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.timeline-snap-status {
+  overflow: hidden;
+  color: #899598;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-snap-status[data-matched="true"] {
+  color: #c9ecfb;
+}
+
 .timeline-gesture-hint {
   margin: 0;
   padding: 7px 12px;
@@ -1892,6 +1944,43 @@ button.timeline-range-handle {
   pointer-events: none;
 }
 
+.timeline-snap-guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 14;
+  width: 1px;
+  background: #aaddff;
+  box-shadow:
+    0 0 0 1px rgb(170 221 255 / 12%),
+    0 0 12px rgb(170 221 255 / 28%);
+  pointer-events: none;
+}
+
+.timeline-snap-guide > span {
+  position: absolute;
+  top: 46px;
+  left: 6px;
+  display: grid;
+  min-width: max-content;
+  gap: 2px;
+  padding: 4px 6px;
+  border: 1px solid #5d8194;
+  border-radius: 4px;
+  color: #dff4fc;
+  background: #18272e;
+  box-shadow: 0 3px 10px rgb(0 0 0 / 34%);
+  font-size: 8px;
+  font-weight: 650;
+}
+
+.timeline-snap-guide b {
+  color: #9fcfe4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 8px;
+  font-weight: 550;
+}
+
 button.timeline-playhead-handle {
   position: absolute;
   top: 0;
@@ -2014,6 +2103,14 @@ button.timeline-playhead-handle span {
     grid-row: 2;
     justify-content: flex-start;
   }
+
+  .timeline-snap-controls {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .timeline-snap-status {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 620px) {
@@ -2054,6 +2151,14 @@ button.timeline-playhead-handle span {
 
   .timeline-readouts {
     grid-row: auto;
+  }
+
+  .timeline-snap-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .timeline-snap-status {
+    grid-column: 1;
   }
 
   .timeline-gesture-hint {

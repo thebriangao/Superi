@@ -6,11 +6,13 @@ import { fileURLToPath } from "node:url";
 
 import type { EditorCanonicalDocument } from "../src/api.ts";
 import {
+  TIMELINE_DEFAULT_SNAP_RULES,
   TimelineProjectionError,
   buildTimelineRulerTicks,
   clampTimelineRange,
   formatTimelineTime,
   projectTimelineDocument,
+  resolveTimelineSnap,
   timelineItemsInWindow,
 } from "../src/timeline-workspace.ts";
 
@@ -27,6 +29,26 @@ function duration(value: string) {
 
 function range(start: string, length: string) {
   return { start: time(start), duration: duration(length) };
+}
+
+function rangeAt(
+  start: string,
+  length: string,
+  timebase: { readonly numerator: number; readonly denominator: number },
+) {
+  return {
+    start: { value: start, timebase },
+    duration: { value: length, timebase },
+  };
+}
+
+function rootTimeline(document: EditorCanonicalDocument): Record<string, unknown> {
+  const content = document.content as Record<string, unknown>;
+  const payload = content.payload as Record<string, unknown>;
+  const timelines = payload.timelines as Array<Record<string, unknown>>;
+  const timeline = timelines[0];
+  assert.ok(timeline);
+  return timeline;
 }
 
 function clip(
@@ -199,6 +221,178 @@ test("canonical projection preserves exact editorial timing and relationships", 
   assert.ok(Object.isFrozen(video.items));
 });
 
+test("projects owner-clock targets and resolves exact configurable snap rules", () => {
+  const document = canonicalDocument();
+  const timeline = rootTimeline(document);
+  const audioRate = Object.freeze({ numerator: 48_000, denominator: 1 });
+  timeline.markers = [
+    {
+      id: "marker.timeline",
+      owner: { kind: "timeline" },
+      marked_range: range("84", "1"),
+      label: "Timeline note",
+      flag: null,
+      note: null,
+      metadata: [],
+    },
+    {
+      id: "marker.track",
+      owner: { kind: "track", id: "track.video.1" },
+      marked_range: range("72", "1"),
+      label: "Track note",
+      flag: null,
+      note: null,
+      metadata: [],
+    },
+    {
+      id: "marker.object",
+      owner: { kind: "object", id: { kind: "clip", id: "clip.a" } },
+      marked_range: range("12", "1"),
+      label: "Preferred cut",
+      flag: "cyan",
+      note: null,
+      metadata: [],
+    },
+    {
+      id: "marker.inexact",
+      owner: { kind: "track", id: "track.audio.1" },
+      marked_range: rangeAt("1", "1", audioRate),
+      label: "Subframe audio note",
+      flag: null,
+      note: null,
+      metadata: [],
+    },
+    {
+      id: "marker.overscan",
+      owner: { kind: "object", id: { kind: "clip", id: "clip.a" } },
+      marked_range: range("48", "1"),
+      label: "Outside clip",
+      flag: null,
+      note: null,
+      metadata: [],
+    },
+  ];
+
+  const model = projectTimelineDocument(document, "timeline.main");
+  assert.deepEqual(
+    model.snapTargets
+      .filter((target) => target.id.startsWith("marker."))
+      .map((target) => [target.kind, target.id, target.time.value]),
+    [
+      ["marker_start", "marker.object", "12"],
+      ["marker_end", "marker.object", "13"],
+      ["marker_start", "marker.track", "72"],
+      ["marker_end", "marker.track", "73"],
+      ["marker_start", "marker.timeline", "84"],
+      ["marker_end", "marker.timeline", "85"],
+    ],
+  );
+  assert.ok(
+    model.snapTargets.every(
+      (target) =>
+        target.id !== "marker.inexact" && target.id !== "marker.overscan",
+    ),
+  );
+  assert.ok(Object.isFrozen(model.snapTargets));
+  assert.ok(model.snapTargets.every(Object.isFrozen));
+
+  const tied = resolveTimelineSnap(model, {
+    atSeconds: 47 / 24,
+    toleranceFrames: 1,
+    playheadSeconds: null,
+    rules: TIMELINE_DEFAULT_SNAP_RULES,
+    sessionEnabled: true,
+  });
+  assert.equal(tied?.target.kind, "item_start");
+  assert.equal(tied?.target.id, "clip.b");
+  assert.equal(tied?.timeSeconds, 2);
+  assert.equal(tied?.distanceFrames, 1);
+
+  const withoutItemStarts = resolveTimelineSnap(model, {
+    atSeconds: 47 / 24,
+    toleranceFrames: 1,
+    playheadSeconds: null,
+    rules: { ...TIMELINE_DEFAULT_SNAP_RULES, itemStart: false },
+    sessionEnabled: true,
+  });
+  assert.equal(withoutItemStarts?.target.kind, "item_end");
+  assert.equal(withoutItemStarts?.target.id, "clip.a");
+
+  const marker = resolveTimelineSnap(model, {
+    atSeconds: 11 / 24,
+    toleranceFrames: 1,
+    playheadSeconds: null,
+    rules: TIMELINE_DEFAULT_SNAP_RULES,
+    sessionEnabled: true,
+  });
+  assert.equal(marker?.target.kind, "marker_start");
+  assert.equal(marker?.target.id, "marker.object");
+
+  const playhead = resolveTimelineSnap(model, {
+    atSeconds: 23 / 24,
+    toleranceFrames: 1,
+    playheadSeconds: 1,
+    rules: TIMELINE_DEFAULT_SNAP_RULES,
+    sessionEnabled: true,
+  });
+  assert.equal(playhead?.target.kind, "playhead");
+  assert.equal(playhead?.timeSeconds, 1);
+
+  const canonicalPlayhead = resolveTimelineSnap(model, {
+    atSeconds: 1,
+    toleranceFrames: 1,
+    playheadSeconds: 1 + Number.EPSILON,
+    rules: TIMELINE_DEFAULT_SNAP_RULES,
+    sessionEnabled: true,
+  });
+  assert.equal(canonicalPlayhead?.target.kind, "playhead");
+  assert.equal(canonicalPlayhead?.timeSeconds, 1);
+
+  const incompleteRules = { ...TIMELINE_DEFAULT_SNAP_RULES } as Record<
+    string,
+    boolean
+  >;
+  delete incompleteRules.markerEnd;
+  assert.throws(
+    () =>
+      resolveTimelineSnap(model, {
+        atSeconds: 1,
+        toleranceFrames: 1,
+        playheadSeconds: null,
+        rules: incompleteRules as never,
+        sessionEnabled: true,
+      }),
+    (error) =>
+      error instanceof TimelineProjectionError &&
+      /snap rule must be boolean \(snap\.rules\.markerEnd\)/i.test(error.message),
+  );
+
+  assert.equal(
+    resolveTimelineSnap(model, {
+      atSeconds: 23 / 24,
+      toleranceFrames: 1,
+      playheadSeconds: 1,
+      rules: TIMELINE_DEFAULT_SNAP_RULES,
+      sessionEnabled: false,
+    }),
+    null,
+  );
+
+  const disabledDocument = canonicalDocument();
+  rootTimeline(disabledDocument).snapping_enabled = false;
+  const disabled = projectTimelineDocument(disabledDocument, "timeline.main");
+  assert.equal(
+    resolveTimelineSnap(disabled, {
+      atSeconds: 47 / 24,
+      toleranceFrames: 1,
+      playheadSeconds: null,
+      rules: TIMELINE_DEFAULT_SNAP_RULES,
+      sessionEnabled: true,
+    }),
+    null,
+  );
+});
+
 test("ruler, time labels, and ranges remain deterministic across scale changes", () => {
   const ticks = buildTimelineRulerTicks({
     startSeconds: 0,
@@ -303,6 +497,100 @@ test("unsupported canonical state fails visibly instead of inventing timeline st
       error instanceof TimelineProjectionError &&
       /transition must sit between/i.test(error.message),
   );
+
+  const absentMarkerOwner = canonicalDocument();
+  rootTimeline(absentMarkerOwner).markers = [
+    {
+      id: "marker.absent",
+      owner: { kind: "track", id: "track.missing" },
+      marked_range: range("1", "1"),
+      label: null,
+      flag: null,
+      note: null,
+      metadata: [],
+    },
+  ];
+  assert.throws(
+    () => projectTimelineDocument(absentMarkerOwner, "timeline.main"),
+    (error) =>
+      error instanceof TimelineProjectionError &&
+      /marker owner track track\.missing does not exist/i.test(error.message),
+  );
+
+  const mismatchedObjectMarker = canonicalDocument();
+  rootTimeline(mismatchedObjectMarker).markers = [
+    {
+      id: "marker.wrong-clock",
+      owner: { kind: "object", id: { kind: "clip", id: "clip.a" } },
+      marked_range: rangeAt(
+        "48",
+        "1",
+        Object.freeze({ numerator: 48_000, denominator: 1 }),
+      ),
+      label: null,
+      flag: null,
+      note: null,
+      metadata: [],
+    },
+  ];
+  assert.throws(
+    () => projectTimelineDocument(mismatchedObjectMarker, "timeline.main"),
+    (error) =>
+      error instanceof TimelineProjectionError &&
+      /marker range must use its owner's exact record clock/i.test(error.message),
+  );
+});
+
+test("item target ties retain lower editorial object identity order", () => {
+  const document = canonicalDocument();
+  const timeline = rootTimeline(document);
+  const tracks = timeline.tracks as Array<Record<string, unknown>>;
+  tracks.unshift({
+    id: "track.video.gap",
+    name: "V0",
+    semantics: {
+      kind: "video",
+      frame_rate: rate,
+      compositing: "over",
+    },
+    items: [
+      {
+        kind: "gap",
+        id: "clip.a",
+        name: "Same ID gap",
+        record_range: range("0", "48"),
+      },
+    ],
+  });
+  const editState = timeline.edit_state as Record<string, unknown>;
+  const trackStates = editState.track_states as Array<Record<string, unknown>>;
+  trackStates.push({
+    track_id: "track.video.gap",
+    targeted: false,
+    sync_locked: false,
+  });
+
+  const model = projectTimelineDocument(document, "timeline.main");
+  const match = resolveTimelineSnap(model, {
+    atSeconds: 0,
+    toleranceFrames: 0,
+    playheadSeconds: null,
+    rules: {
+      timelineStart: false,
+      playhead: false,
+      itemStart: true,
+      itemEnd: false,
+      markerStart: false,
+      markerEnd: false,
+    },
+    sessionEnabled: true,
+  });
+  assert.equal(match?.target.kind, "item_start");
+  assert.deepEqual(match?.target.editorialObject, {
+    kind: "clip",
+    id: "clip.a",
+  });
+  assert.equal(match?.target.label, "Opening start");
 });
 
 test("timeline surface is integrated without a second authored mutation owner", () => {
@@ -326,12 +614,21 @@ test("timeline surface is integrated without a second authored mutation owner", 
   assert.match(timeline, /Fit timeline/);
   assert.match(timeline, /Command or Control/);
   assert.match(timeline, /Linked selection/);
+  assert.match(timeline, /resolveTimelineSnap/);
+  assert.match(timeline, /aria-label="Timeline snap target rules"/);
+  assert.match(timeline, /Session target snap/);
+  assert.match(timeline, /aria-live="polite"/);
+  assert.match(timeline, /event\.key !== "Escape"/);
+  assert.match(timeline, /timeline-snap-guide/);
   assert.match(timeline, /model\?\.tracks\.slice\(\)\.reverse\(\)/);
   assert.match(timeline, /timelineItemsInWindow/);
   assert.match(styles, /\.timeline-ruler \{[\s\S]*?z-index: 9;/);
   assert.match(styles, /\.timeline-range \{[\s\S]*?z-index: 10;/);
   assert.match(styles, /\.timeline-playhead \{[\s\S]*?z-index: 11;/);
   assert.match(styles, /button\.timeline-range-handle \{[\s\S]*?pointer-events: auto;/);
+  assert.match(styles, /\.timeline-snap-controls/);
+  assert.match(styles, /\.timeline-snap-guide/);
+  assert.match(styles, /\.timeline-snap-status/);
   assert.doesNotMatch(
     timeline,
     /superi\.project\.command\.execute|superi\.slice|useSuperiApi|DesktopSuperiTransport|@tauri-apps/,
