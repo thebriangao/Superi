@@ -26,6 +26,7 @@ import {
   importDesktopMedia,
   inspectProjectMediaSource,
   mutateProjectMediaAnnotations,
+  mutateProjectMediaIdentity,
   mutateProjectMediaMetadata,
   mutateProjectMediaLibrary,
   readProjectMediaLibrary,
@@ -40,6 +41,7 @@ import {
   type MediaLibraryMutation,
   type MediaLibrarySnapshot,
   type MediaEditorialAnnotations,
+  type MediaSelection,
   type UserMetadataMutation,
 } from "./project-lifecycle";
 import { classifyDesktopTransportError } from "./transport";
@@ -692,6 +694,24 @@ function SystemPanel() {
     }
   };
 
+  const mutateMediaIdentity = async (selections: readonly MediaSelection[]) => {
+    if (mediaLibrary === null || selectedMedia === undefined) {
+      return;
+    }
+    try {
+      setMediaLibrary(
+        await mutateProjectMediaIdentity(
+          mediaLibrary,
+          selectedMedia.media_id,
+          selections,
+        ),
+      );
+      setProjectFailure(null);
+    } catch (error: unknown) {
+      setProjectFailure(projectFailureFrom(error));
+    }
+  };
+
   const createProject = () => {
     const identity = crypto.randomUUID();
     void executeProject({
@@ -1196,6 +1216,126 @@ function SystemPanel() {
                       {selectedMedia.usage.timeline_ids.length > 0 ? (
                         <p>{selectedMedia.usage.timeline_ids.join(", ")}</p>
                       ) : null}
+                    </section>
+                    <section aria-label="Media identity and selections">
+                      <h5>Identity and selections</h5>
+                      <p>
+                        Canonical media: {selectedMedia.identity_tracking.canonical_media_id}
+                      </p>
+                      <p>
+                        Fingerprint: {selectedMedia.identity_tracking.content_fingerprint}
+                      </p>
+                      <p>
+                        Exact duplicates: {selectedMedia.identity_tracking.duplicate_media_ids.length}
+                      </p>
+                      {selectedMedia.identity_tracking.duplicate_media_ids.length > 0 ? (
+                        <p>{selectedMedia.identity_tracking.duplicate_media_ids.join(", ")}</p>
+                      ) : null}
+                      <form
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          const fields = new FormData(event.currentTarget);
+                          const start = Number(fields.get("selection_start"));
+                          const end = Number(fields.get("selection_end"));
+                          const selectionId = crypto.randomUUID();
+                          const regionId = crypto.randomUUID();
+                          void mutateMediaIdentity([
+                            ...selectedMedia.selections,
+                            {
+                              selection_id: selectionId,
+                              name: String(fields.get("selection_name") ?? "").trim(),
+                              start_frame: start,
+                              end_frame: end,
+                              rate_numerator: 24,
+                              rate_denominator: 1,
+                              tracked_regions: [
+                                {
+                                  region_id: regionId,
+                                  observations: [
+                                    {
+                                      frame: start,
+                                      x_millionths: 0,
+                                      y_millionths: 0,
+                                      width_millionths: 1_000_000,
+                                      height_millionths: 1_000_000,
+                                    },
+                                  ],
+                                },
+                              ],
+                            },
+                          ]);
+                        }}
+                      >
+                        <label>
+                          Selection name
+                          <input name="selection_name" required maxLength={128} />
+                        </label>
+                        <label>
+                          Start frame
+                          <input name="selection_start" type="number" required defaultValue={0} />
+                        </label>
+                        <label>
+                          End frame
+                          <input name="selection_end" type="number" required defaultValue={1} />
+                        </label>
+                        <button type="submit">Add reusable selection</button>
+                      </form>
+                      {selectedMedia.selections.map((selection) => (
+                        <article key={selection.selection_id}>
+                          <strong>{selection.name}</strong>
+                          <p>
+                            Frames {selection.start_frame} to {selection.end_frame} at {selection.rate_numerator}/{selection.rate_denominator}
+                          </p>
+                          {selection.tracked_regions.map((region) => (
+                            <div key={region.region_id}>
+                              {region.observations.map((observation) => (
+                                <form
+                                  key={observation.frame}
+                                  onSubmit={(event) => {
+                                    event.preventDefault();
+                                    const fields = new FormData(event.currentTarget);
+                                    const replacement = {
+                                      ...observation,
+                                      x_millionths: Number(fields.get("x_millionths")),
+                                      y_millionths: Number(fields.get("y_millionths")),
+                                      width_millionths: Number(fields.get("width_millionths")),
+                                      height_millionths: Number(fields.get("height_millionths")),
+                                    };
+                                    void mutateMediaIdentity(
+                                      selectedMedia.selections.map((candidate) =>
+                                        candidate.selection_id !== selection.selection_id
+                                          ? candidate
+                                          : {
+                                              ...candidate,
+                                              tracked_regions: candidate.tracked_regions.map((tracked) =>
+                                                tracked.region_id !== region.region_id
+                                                  ? tracked
+                                                  : {
+                                                      ...tracked,
+                                                      observations: tracked.observations.map((sample) =>
+                                                        sample.frame === observation.frame
+                                                          ? replacement
+                                                          : sample,
+                                                      ),
+                                                    },
+                                              ),
+                                            },
+                                      ),
+                                    );
+                                  }}
+                                >
+                                  <span>Frame {observation.frame}</span>
+                                  <input name="x_millionths" type="number" min={0} max={1_000_000} defaultValue={observation.x_millionths} />
+                                  <input name="y_millionths" type="number" min={0} max={1_000_000} defaultValue={observation.y_millionths} />
+                                  <input name="width_millionths" type="number" min={1} max={1_000_000} defaultValue={observation.width_millionths} />
+                                  <input name="height_millionths" type="number" min={1} max={1_000_000} defaultValue={observation.height_millionths} />
+                                  <button type="submit">Refine tracked region</button>
+                                </form>
+                              ))}
+                            </div>
+                          ))}
+                        </article>
+                      ))}
                     </section>
                     <div className="user-metadata-editor">
                       <h5>User metadata</h5>

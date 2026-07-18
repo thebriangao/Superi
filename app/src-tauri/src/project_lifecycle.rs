@@ -53,6 +53,12 @@ const MAX_ANNOTATION_KEYWORDS: usize = 64;
 const MAX_ANNOTATION_KEYWORD_BYTES: usize = 64;
 const MAX_ANNOTATION_COMMENT_BYTES: usize = 4096;
 const MAX_ANNOTATION_PAYLOAD_BYTES: usize = 16 * 1024;
+const MAX_MEDIA_SELECTIONS: usize = 64;
+const MAX_SELECTION_NAME_BYTES: usize = 128;
+const MAX_TRACKED_REGIONS: usize = 32;
+const MAX_TRACKED_OBSERVATIONS: usize = 1024;
+const MAX_IDENTITY_PAYLOAD_BYTES: usize = 64 * 1024;
+const NORMALIZED_REGION_SCALE: u32 = 1_000_000;
 
 const TIMELINE_RATE_NUMERATOR_KEY: &str = "superi.project.timeline.default_rate_numerator";
 const TIMELINE_RATE_DENOMINATOR_KEY: &str = "superi.project.timeline.default_rate_denominator";
@@ -404,6 +410,51 @@ pub struct MediaUsageIndicator {
     timeline_ids: Vec<String>,
 }
 
+/// Read-only exact-content identity projected from the current media library.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaIdentityTracking {
+    canonical_media_id: String,
+    content_fingerprint: String,
+    duplicate_media_ids: Vec<String>,
+}
+
+/// One exact-time fixed-point observation authored for a tracked region.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TrackedRegionObservation {
+    frame: i64,
+    x_millionths: u32,
+    y_millionths: u32,
+    width_millionths: u32,
+    height_millionths: u32,
+}
+
+/// One stable manually refinable tracked region within a reusable selection.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaTrackedRegion {
+    region_id: String,
+    observations: Vec<TrackedRegionObservation>,
+}
+
+/// Ordinary editable source-time selection retained beside C006 annotations.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaSelection {
+    selection_id: String,
+    name: String,
+    start_frame: i64,
+    end_frame: i64,
+    rate_numerator: u32,
+    rate_denominator: u32,
+    tracked_regions: Vec<MediaTrackedRegion>,
+}
+
+fn untracked_media_identity() -> MediaIdentityTracking {
+    MediaIdentityTracking::default()
+}
+
 fn unused_media() -> MediaUsageIndicator {
     MediaUsageIndicator::default()
 }
@@ -549,6 +600,10 @@ pub struct MediaBrowserItem {
     annotations: MediaEditorialAnnotations,
     #[serde(skip, default = "unused_media")]
     usage: MediaUsageIndicator,
+    #[serde(skip, default = "untracked_media_identity")]
+    identity_tracking: MediaIdentityTracking,
+    #[serde(default)]
+    selections: Vec<MediaSelection>,
     #[serde(skip, default = "unavailable_thumbnail")]
     thumbnail: ThumbnailPresentation,
 }
@@ -590,6 +645,8 @@ impl MediaBrowserItem {
             user_metadata: BTreeMap::new(),
             annotations: MediaEditorialAnnotations::default(),
             usage: unused_media(),
+            identity_tracking: untracked_media_identity(),
+            selections: Vec::new(),
             thumbnail: thumbnail_presentation(media),
         }
     }
@@ -666,6 +723,38 @@ impl MediaLibrarySnapshot {
                 .map(|item| item.media_id.clone())
                 .collect();
         }
+        self.refresh_identity_tracking();
+    }
+
+    fn refresh_identity_tracking(&mut self) {
+        let mut groups = BTreeMap::<String, Vec<String>>::new();
+        for item in &self.items {
+            groups
+                .entry(item.content_fingerprint.clone())
+                .or_default()
+                .push(item.media_id.clone());
+        }
+        for media_ids in groups.values_mut() {
+            media_ids.sort();
+            media_ids.dedup();
+        }
+        for item in &mut self.items {
+            let media_ids = groups
+                .get(&item.content_fingerprint)
+                .cloned()
+                .unwrap_or_else(|| vec![item.media_id.clone()]);
+            item.identity_tracking = MediaIdentityTracking {
+                canonical_media_id: media_ids
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| item.media_id.clone()),
+                content_fingerprint: item.content_fingerprint.clone(),
+                duplicate_media_ids: media_ids
+                    .into_iter()
+                    .filter(|media_id| media_id != &item.media_id)
+                    .collect(),
+            };
+        }
     }
 
     fn refresh_usage(&mut self, usage: &BTreeMap<String, MediaUsageIndicator>) {
@@ -688,6 +777,7 @@ impl MediaLibrarySnapshot {
                     let bin_id = self.items[index].bin_id.clone();
                     let user_metadata = self.items[index].user_metadata.clone();
                     let annotations = self.items[index].annotations.clone();
+                    let selections = self.items[index].selections.clone();
                     let inspection_generation = self.items[index]
                         .source_metadata
                         .inspection_generation
@@ -696,6 +786,7 @@ impl MediaLibrarySnapshot {
                     self.items[index].bin_id = bin_id;
                     self.items[index].user_metadata = user_metadata;
                     self.items[index].annotations = annotations;
+                    self.items[index].selections = selections;
                     self.items[index].source_metadata =
                         source_metadata_inspection(imported, inspection_generation);
                 }
@@ -866,6 +957,41 @@ impl MediaLibrarySnapshot {
         Ok(())
     }
 
+    fn apply_identity_update(
+        &mut self,
+        update: MediaIdentityUpdate,
+    ) -> Result<(), DesktopProjectFailure> {
+        if update.expected_project_revision != self.project_revision
+            || update.expected_library_revision != self.revision
+        {
+            return Err(user_correctable(
+                "media_library_revision_stale",
+                "Media library changed",
+                "Refresh the media library and try again.",
+            ));
+        }
+        let selections = normalize_media_selections(update.selections)?;
+        let mut candidate = self.clone();
+        let item = candidate
+            .items
+            .iter_mut()
+            .find(|item| item.media_id == update.media_id)
+            .ok_or_else(|| media_library_invalid("Imported media was not found"))?;
+        item.selections = selections;
+        candidate.validate()?;
+        candidate.revision = candidate.revision.checked_add(1).ok_or_else(|| {
+            DesktopProjectFailure::new(
+                DesktopProjectFailureClass::Terminal,
+                "media_library_revision_exhausted",
+                "Media library cannot continue",
+                "Restart Superi before continuing.",
+            )
+        })?;
+        candidate.refresh_derived();
+        *self = candidate;
+        Ok(())
+    }
+
     fn apply_mutation(
         &mut self,
         mutation: MediaLibraryMutation,
@@ -984,6 +1110,11 @@ impl MediaLibrarySnapshot {
                     "Editorial annotations are not canonical",
                 ));
             }
+            if normalize_media_selections(item.selections.clone())? != item.selections {
+                return Err(media_library_invalid(
+                    "Media selections and tracked regions are not canonical",
+                ));
+            }
         }
         for bin in &self.bins {
             let mut current = bin.parent_id.as_deref();
@@ -1074,6 +1205,16 @@ pub struct MediaAnnotationUpdate {
     pub expected_library_revision: u64,
     pub media_id: String,
     pub annotations: MediaEditorialAnnotations,
+}
+
+/// Atomic C007 replacement for editable selections on one stable media identity.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaIdentityUpdate {
+    pub expected_project_revision: u64,
+    pub expected_library_revision: u64,
+    pub media_id: String,
+    pub selections: Vec<MediaSelection>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -1180,6 +1321,71 @@ fn normalize_annotations(
         ));
     }
     Ok(normalized)
+}
+
+fn normalize_media_selections(
+    mut selections: Vec<MediaSelection>,
+) -> Result<Vec<MediaSelection>, DesktopProjectFailure> {
+    if selections.len() > MAX_MEDIA_SELECTIONS {
+        return Err(media_library_invalid("Media selection limit reached"));
+    }
+    selections.sort_by(|left, right| left.selection_id.cmp(&right.selection_id));
+    let mut selection_ids = BTreeSet::new();
+    for selection in &mut selections {
+        require_media_text("selection_id", &selection.selection_id)?;
+        require_media_text("selection_name", &selection.name)?;
+        if selection.name.len() > MAX_SELECTION_NAME_BYTES
+            || !selection_ids.insert(selection.selection_id.as_str())
+            || selection.start_frame >= selection.end_frame
+            || selection.rate_numerator == 0
+            || selection.rate_denominator == 0
+            || selection.tracked_regions.len() > MAX_TRACKED_REGIONS
+        {
+            return Err(media_library_invalid("Media selection is invalid"));
+        }
+        selection
+            .tracked_regions
+            .sort_by(|left, right| left.region_id.cmp(&right.region_id));
+        let mut region_ids = BTreeSet::new();
+        for region in &mut selection.tracked_regions {
+            require_media_text("region_id", &region.region_id)?;
+            if !region_ids.insert(region.region_id.as_str())
+                || region.observations.is_empty()
+                || region.observations.len() > MAX_TRACKED_OBSERVATIONS
+            {
+                return Err(media_library_invalid("Tracked region is invalid"));
+            }
+            region
+                .observations
+                .sort_by_key(|observation| observation.frame);
+            let mut prior_frame = None;
+            for observation in &region.observations {
+                let right = observation
+                    .x_millionths
+                    .checked_add(observation.width_millionths);
+                let bottom = observation
+                    .y_millionths
+                    .checked_add(observation.height_millionths);
+                if observation.frame < selection.start_frame
+                    || observation.frame >= selection.end_frame
+                    || prior_frame == Some(observation.frame)
+                    || observation.width_millionths == 0
+                    || observation.height_millionths == 0
+                    || right.is_none_or(|value| value > NORMALIZED_REGION_SCALE)
+                    || bottom.is_none_or(|value| value > NORMALIZED_REGION_SCALE)
+                {
+                    return Err(media_library_invalid("Tracked observation is invalid"));
+                }
+                prior_frame = Some(observation.frame);
+            }
+        }
+    }
+    let bytes = serde_json::to_vec(&selections)
+        .map_err(|_| media_library_invalid("Media identity state could not be encoded"))?;
+    if bytes.len() > MAX_IDENTITY_PAYLOAD_BYTES {
+        return Err(media_library_invalid("Media identity state is too large"));
+    }
+    Ok(selections)
 }
 
 fn normalize_annotation_text(
@@ -2291,6 +2497,28 @@ impl DesktopProjectState {
         Ok(snapshot)
     }
 
+    pub fn mutate_media_identity(
+        &self,
+        update: MediaIdentityUpdate,
+    ) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+        let (project_id, project_revision, project_path) =
+            self.active_project_context("mutate_media_identity")?;
+        let usage = inspect_media_usage(Path::new(&project_path))?;
+        let snapshot = {
+            let mut store = self.media_library_lock("mutate_media_identity")?;
+            let library = store
+                .projects
+                .entry(project_id)
+                .or_insert_with(|| MediaLibrarySnapshot::empty(project_revision));
+            library.project_revision = project_revision;
+            library.apply_identity_update(update)?;
+            library.refresh_usage(&usage);
+            library.clone()
+        };
+        self.persist_media_libraries()?;
+        Ok(snapshot)
+    }
+
     fn activate_media_library(
         &self,
         snapshot: &DesktopProjectSnapshot,
@@ -2565,6 +2793,17 @@ pub async fn mutate_project_media_annotations(
     tauri::async_runtime::spawn_blocking(move || state.mutate_annotations(update))
         .await
         .map_err(|_| project_task_failed("mutate_media_annotations"))?
+}
+
+#[tauri::command]
+pub async fn mutate_project_media_identity(
+    update: MediaIdentityUpdate,
+    state: State<'_, DesktopProjectState>,
+) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.mutate_media_identity(update))
+        .await
+        .map_err(|_| project_task_failed("mutate_media_identity"))?
 }
 
 /// Closed desktop command set for project lifecycle behavior only.

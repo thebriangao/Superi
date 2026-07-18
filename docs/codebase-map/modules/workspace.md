@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: c04891827b47860242a1f3ad757fc440d0bca6816dcfa034b65341624960b2d6
-source_files: 222
+source_hash: 51433f2f39a3e758f664279ae15da90ac5a474f3ac8fe9cdde96789d8247b329
+source_files: 224
 mapped_at_commit: working-tree
 ---
 
@@ -432,6 +432,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W03.C006.md`: Durable implementation evidence for typed editorial
   annotations, revision-fenced atomic replacement, derived-only timeline usage indicators, C005
   metadata preservation, and explicit C007 and later-work exclusions.
+- `docs/checkpoints/P3.W03.C007.md`: Durable implementation evidence for exact fingerprint duplicate
+  identity, persisted exact-time selections, fixed-point manually refinable tracked regions, C006
+  annotation preservation, and explicit C008 and later-work exclusions.
 
 ### Production desktop application
 
@@ -471,13 +474,14 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   editing, native media picking, recursive folder selection, native drag/drop import, hierarchical
   bins, smart collections, list and grid browsing, deterministic thumbnail fallback, read-only
   source metadata inspection, bounded generic user metadata editing, typed clip annotations, and
-  read-only current-project usage indicators.
+  read-only current-project usage indicators. The same detail shows exact duplicate identity and
+  edits reusable source-time selections plus fixed-point tracked observations.
 - `app/src/lifecycle.ts`: Defines the exact shell-local serialized lifecycle contract and typed
   asynchronous wrappers for the two Tauri lifecycle commands without importing engine bindings.
 - `app/src/project-lifecycle.ts`: Defines strict shell-local project lifecycle, settings, media
   import, media-library snapshot, derived-thumbnail, bin, smart-collection, source-inspection,
-  user-metadata, editorial-annotation, and derived-usage DTOs plus typed wrappers for the lifecycle
-  and media-library Tauri commands.
+  user-metadata, editorial-annotation, derived-usage, duplicate-identity, selection, and tracked
+  region DTOs plus typed wrappers for the lifecycle and media-library Tauri commands.
 - `app/src/main.tsx`: Constructs one process-lifetime `DesktopSuperiTransport`, injects it through
   the generated API provider, disposes it at unload, and mounts the React application under strict
   mode.
@@ -558,12 +562,15 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   metadata plus bounded typed clip names, labels, ratings, keywords, comments, and favorite intent
   without changing imported identity, source paths, or bin placement. Usage indicators are rebuilt
   from the current read-only project database by counting exact `ClipSource::Media` references and
-  are omitted from persisted presentation state.
+  are omitted from persisted presentation state. C007 derives canonical and duplicate media IDs
+  from exact content fingerprints, persists bounded rational-frame selections beside C006 state,
+  and validates ordered fixed-point tracked observations before atomic replacement.
 - `app/src-tauri/src/lib.rs`: Configures the mock and native Tauri builders, retains the linked
   engine process, manages its bounded connection and transport state alongside application
   lifecycle and project-session state, registers lifecycle, project, viewport, and API commands,
   including media-library snapshot, organization mutation, source inspection, user metadata, and
-  editorial annotation mutation commands, initializes the recovery root, emits one ordered Tauri event, records
+  editorial annotation plus C007 identity-selection mutation commands, initializes the recovery
+  root, emits one ordered Tauri event, records
   nonblocking exit intent, and joins the engine owner after the native application stops.
 - `app/src-tauri/src/main.rs`: Starts the native production desktop host.
 - `app/src-tauri/tests/engine_connection_contract.rs`: Proves dedicated EngineControl ownership,
@@ -589,6 +596,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/tests/media_annotations_contract.rs`: Freezes the C006 typed annotation and
   derived-usage owner, revision fences, stable C005 metadata attachment, registered native command,
   typed bridge, production media-detail consumer, and C007 duplicate-detection exclusion.
+- `app/src-tauri/tests/media_identity_contract.rs`: Freezes the C007 exact fingerprint identity
+  projection, reusable exact-time selections, manually refinable fixed-point tracked regions,
+  registered native command, typed bridge, production detail consumer, and C008+ exclusions.
 - `app/src-tauri/tests/project_settings_contract.rs`: Proves default inspection, complete atomic
   settings update, lifecycle revision coherence, durable reopen, and stale-revision rejection
   through the real local project host.
@@ -1345,8 +1355,9 @@ of open runtime behavior.
   Generic user metadata is revision-fenced, bounded, and stored beside the same media identity,
   while media IDs, content fingerprints, source paths, availability, and bin intent remain intact.
   C006 annotations occupy an adjacent typed field with bounded normalized content and atomic
-  replacement; usage is a nonserialized projection of current timeline clip references. Duplicate
-  grouping, relinking, proxies, and search remain outside C006.
+  replacement; usage is a nonserialized projection of current timeline clip references. C007 adds
+  exact fingerprint duplicate identity plus persisted bounded selections and manual tracked-region
+  observations without changing that authority. Relinking, proxies, and search remain later work.
 - The MIT tree rejects GPL, LGPL, AGPL, MPL, patent-encumbered in-tree codecs, and dependencies or
   models without adequate redistribution and provenance rights. Operating-system and vendor codec
   paths remain isolated and explicit.
@@ -1410,6 +1421,10 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   bridge, and existing React media-detail consumer. Strict TypeScript checking and the production
   application build exercise the real consumer while C005 behavior continues to protect source
   facts, generic metadata, identity, freshness, and bin intent.
+
+- The focused media identity proof freezes the C007 native owner, Tauri registration, typed bridge,
+  and existing React media-detail consumer. It protects C006 annotations and derived usage while
+  proving exact duplicate projection and ordinary editable selection and tracked-region state.
 
 - Fresh local configuration proof parses `.codex/config.toml` with Python `tomllib`, confirms the
   exact Sol and max values plus the absence of an agent stanza, verifies that no project agent
@@ -1684,8 +1699,10 @@ deterministic fallbacks without persisting derived media, refreshes bounded sour
 explicit ready, missing, or unavailable state, and edits bounded generic user metadata without
 changing source identity or organization. The same selected-media detail atomically replaces typed
 clip names, labels, ratings, keywords, comments, and favorite intent, then shows nonserialized usage
-counts derived from current timeline clip references. Duplicate detection, relinking, proxy
-switching, and indexed search remain later work.
+counts derived from current timeline clip references. It now also derives canonical and duplicate
+identity from exact fingerprints and atomically persists reusable rational-frame selections with
+manually refinable fixed-point tracked observations. Relinking, proxy switching, and indexed search
+remain later work.
 Fresh Cargo metadata expands the member globs to 25
 packages: 19 crates under
 `open/crates/` plus the `superi-fixture-tool`, `superi-dependency-check`,
