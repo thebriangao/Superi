@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: b1521964618c8a8d22bb787e9b05295b6d1617c3280e37d38a6b1bbcb6cebd26
-source_files: 193
+source_hash: c93b9d2714e572e5a2ee5b4bcc51dd2866d8b35975c71d11376656cc49bef73a
+source_files: 197
 mapped_at_commit: working-tree
 ---
 
@@ -29,7 +29,7 @@ cannot resolve a material question. Multiple checkpoints still use separate
 Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers but obeys an
 explicit positive user concurrency value. The file is ignored by Git and copied into managed
 worktrees through `.worktreeinclude`, so the mapping script does not include it in this module's
-188-file inventory or source hash. It must still be reread independently before repository work.
+197-file inventory or source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
 ratified architecture, while `open/Cargo.toml` and `open/Cargo.lock` expose the dependency graph
@@ -205,6 +205,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W01.C004.md`: Durable implementation evidence for the thin native command and
   ordered event bridge, concrete generated frontend transport, reconnect and cancellation state,
   classified public errors, real React consumer, focused proof, and remaining method-routing limits.
+- `docs/checkpoints/P3.W01.C005.md`: Durable implementation evidence for deterministic application
+  routing, transient workspace layout, explicit panel and command registries, immutable shared
+  public-resource selection, React composition, focused proof, and professional workspace limits.
 - `docs/checkpoints/P1.W07.C008.md`: Durable implementation evidence for the open-tree boundary
   scanner. It records the dependency-free tool, canonical and malformed-tree contracts, locked
   workflow integration, isolated Rust verification, delivery context, and remaining static-policy
@@ -408,29 +411,36 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/package-lock.json`: Locks React 19.2.7, Tauri API 2.11.1, Tauri CLI 2.11.4, TypeScript 5.9.3,
   Vite 7.3.6, the React Vite plug-in 5.2.0, and their transitive frontend dependencies.
 - `app/package.json`: Declares the private production application package, exact toolchain and
-  runtime pins, strict typecheck, Vite build, lifecycle, binding, and concrete transport contracts,
-  and Tauri commands.
+  runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
+  framework contracts, and Tauri commands.
 - `app/src/api.ts`: Re-exports the complete canonical generated TypeScript contract and constructs
   one frozen `SuperiApiBindings` surface around an injected `SuperiTransport` and `SuperiClient`.
 - `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
   without owning project state or concrete reliability behavior.
-- `app/src/App.tsx`: Renders the responsive lifecycle and generated API client with explicit
-  application, engine, validation, and health state, actionable classified failures, and recovery,
-  restart, and orderly quit controls.
+- `app/src/application.ts`: Defines immutable panel, route, and command registries, deterministic
+  transient workspace routing and panel focus or visibility state, typed immutable shared public
+  resource selection, and generated-client command delegation without transport behavior.
+- `app/src/application-context.tsx`: Provides the React application state owner, keyboard-to-command
+  registry adapter, and asynchronous command execution above the existing injected generated API.
+- `app/src/App.tsx`: Renders the minimal registry-driven workspace and system shell, shared selection
+  consumer, lifecycle controls, generated validation request, and engine-introspection event state.
 - `app/src/lifecycle.ts`: Defines the exact shell-local serialized lifecycle contract and typed
   asynchronous wrappers for the two Tauri lifecycle commands without importing engine bindings.
 - `app/src/main.tsx`: Constructs one process-lifetime `DesktopSuperiTransport`, injects it through
   the generated API provider, disposes it at unload, and mounts the React application under strict
   mode.
-- `app/src/styles.css`: Defines the responsive, accessible lifecycle and engine API shell
-  presentation.
+- `app/src/styles.css`: Defines the responsive, accessible application frame, route rail, panel
+  surfaces, shared selection presentation, lifecycle controls, and engine API status presentation.
 - `app/src/transport.ts`: Implements the concrete generated `SuperiTransport` through one injected
   or Tauri-backed invoke/listen host, generation-scoped request identities, ordered event replay,
   stale and duplicate rejection, reconnect, cooperative cancellation, and exact
   `SuperiTransportError` projection with actionable public context.
 - `app/tests/app-contract.test.mjs`: Verifies exact production pins, lifecycle and engine-process
-  ownership seams, adjacent checkpoint exclusions, production workflow routing, and the hashed
-  React bundle.
+  ownership seams, application framework composition, transport isolation, production workflow
+  routing, and the hashed React bundle.
+- `app/tests/application-framework.test.ts`: Verifies duplicate and reference validation, immutable
+  routing and panel reconciliation, exact public-resource selection, local-first asynchronous API
+  command delegation, shortcut normalization, and editable-target safety.
 - `app/tests/api-bindings.test.mjs`: Verifies the canonical generated re-export, complete typed map
   boundary, concrete provider/bootstrap injection, and real request/subscription forwarding without
   duplicating generated client policy.
@@ -985,19 +995,20 @@ the platform crate's required version.
 
 The frontend CI path begins on pull requests, pushes to `main`, or manual dispatch. Its isolated
 Ubuntu 24.04 job installs the exact Node.js 24.13.0 declaration, performs a lockfile-only `npm ci`,
-runs strict no-emit TypeScript checking over the React lifecycle client and generated public API
-adapter, builds the production entry with Vite 7.3.6, and then tests workflow wiring, lifecycle and
-generated-client ownership boundaries, exact pins, runtime transport forwarding, and the generated
-hashed bundle. The retained frontend fixture separately proves checkout-independent generated
-contract compatibility without standing in for the production application.
+runs strict no-emit TypeScript checking over the React application and generated public API adapter,
+builds the production entry with Vite 7.3.6, and then tests workflow wiring, lifecycle, generated
+client and transport ownership boundaries, deterministic application framework behavior, exact
+pins, runtime transport forwarding, and the generated hashed bundle. The retained frontend fixture
+separately proves checkout-independent generated contract compatibility without standing in for the
+production application.
 
 The Tauri Rust CI path begins on pull requests, pushes to `main`, or manual dispatch. Its blocking
 matrix builds the production frontend and compiles the pinned application host on macOS 26 arm64,
 macOS 15 Intel, Windows 2025, and Ubuntu 24.04. Every lane checks formatting, runs the mock-runtime
 and lifecycle tests, denies Clippy warnings, and compiles the real `superi-desktop` native wry binary
 from the lockfile. The shell owns explicit application and engine lifecycle state, linked process
-ownership, and the transport-neutral generated client/provider seam while concrete public engine
-transport and editor behavior remain separate.
+ownership, a concrete generated client transport, and the transient application framework while
+professional editing workspaces and broader generated method routing remain separate.
 
 The network-isolated path begins on pull requests, pushes to `main`, or manual dispatch. It pins
 checkout, disables persisted credentials, installs stable Rust, runs the shared checksum-pinned
@@ -1521,7 +1532,12 @@ transport-injected `SuperiClient` provider with identical request and automation
 native dispatcher now forwards integration validation through the retained EngineControl owner,
 emits ordered generated introspection replacement events, and exposes bounded replay, reconnect,
 cancellation, and all four public recoverability conditions through the concrete frontend transport.
-Other generated methods and editor semantics remain honestly unavailable rather than mocked.
+Above that unchanged transport, `application.ts` owns deterministic route, panel, and command
+registries plus transient panel layout and one immutable typed public-resource selection.
+`ApplicationProvider` composes the framework above `SuperiApiProvider`; the React shell renders
+generic workspace and system routes, and command handlers delegate through the injected generated
+API without taking engine or transport ownership. Professional editing workspaces and other
+generated method routes remain honestly unavailable rather than mocked.
 Fresh Cargo metadata expands the member globs to 25
 packages: 19 crates under
 `open/crates/` plus the `superi-fixture-tool`, `superi-dependency-check`,

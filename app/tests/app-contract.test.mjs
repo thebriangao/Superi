@@ -31,7 +31,7 @@ test("production app pins the approved React, Vite, TypeScript, and Tauri toolch
   assert.match(cargo, /^tauri-build = \{ version = "=2\.6\.3"/m);
 });
 
-test("engine process link is explicit without claiming binding or transport work", () => {
+test("engine process link remains routing-free beneath the desktop transport", () => {
   const frontend = read(resolve(appRoot, "src/lifecycle.ts"));
   const cargo = read(resolve(tauriRoot, "Cargo.toml"));
   const engine = read(resolve(tauriRoot, "src/engine.rs"));
@@ -59,6 +59,36 @@ test("engine process link is explicit without claiming binding or transport work
   assert.doesNotMatch(frontend, /open\/bindings\/typescript\/superi-api/);
   assert.doesNotMatch(engine, /LocalProjectHost|JsonRpc|tauri::command|reconnect|cancel/);
   assert.doesNotMatch(lifecycle, /Command::new|process::Command|TcpStream/);
+});
+
+test("application framework composes shared UI state above the delivered API client", () => {
+  const application = read(resolve(appRoot, "src/application.ts"));
+  const context = read(resolve(appRoot, "src/application-context.tsx"));
+  const app = read(resolve(appRoot, "src/App.tsx"));
+  const main = read(resolve(appRoot, "src/main.tsx"));
+  const transport = read(resolve(appRoot, "src/transport.ts"));
+  const packageJson = readJson(resolve(appRoot, "package.json"));
+
+  assert.match(application, /export class ApplicationRegistry/);
+  assert.match(application, /export function reduceApplicationState/);
+  assert.match(application, /export async function executeApplicationCommand/);
+  assert.match(application, /PublicResourceReference/);
+  assert.match(context, /export function ApplicationProvider/);
+  assert.match(context, /export function useApplication/);
+  assert.match(app, /new ApplicationRegistry/);
+  assert.match(app, /<ApplicationProvider registry=\{APPLICATION_REGISTRY\}>/);
+  assert.match(app, /superi\.engine\.introspection/);
+  assert.match(main, /new DesktopSuperiTransport\(\)/);
+  assert.match(transport, /implements SuperiTransport/);
+  assert.match(packageJson.scripts.test, /application-framework\.test\.ts/);
+  assert.doesNotMatch(
+    application,
+    /@tauri-apps|desktop_api_dispatch|DesktopSuperiTransport|reconnect|cancelRequest/,
+  );
+  assert.doesNotMatch(
+    context,
+    /@tauri-apps|desktop_api_dispatch|DesktopSuperiTransport|reconnect|cancelRequest/,
+  );
 });
 
 test("blocking workflows exercise the production app rather than CI-only smoke packages", () => {
