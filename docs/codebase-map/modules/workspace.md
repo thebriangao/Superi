@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: ad8cdf5af41116a733f9418c9471a78f89a8a1bf3b23c2d99e85c062dd0243ce
-source_files: 235
+source_hash: 52e47e7b0d68b4d7acf36829bc6c00a036cf1e5b114b179af52eac430e3a69f5
+source_files: 238
 mapped_at_commit: working-tree
 ---
 
@@ -452,6 +452,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   transaction spanning rename, organization, transparent optimized transcode and proxy state,
   fingerprint-guarded relink, metadata upsert and removal, real multi-selection UI consumption,
   complete rollback, derived-only persistence exclusion, and deterministic original fallback.
+- `docs/checkpoints/P3.W03.C013.md`: Durable implementation evidence for persisted source
+  baselines, conservative removable-volume state, exact changed-byte detection, explicit relink
+  intent, stable editorial identity, revision-fenced scans, strict bridge and inspector consumption,
+  and adjacent preview, batch, search, proxy, and offline compatibility.
 
 ### Production desktop application
 
@@ -506,7 +510,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   selected-media path also requests
   one freshness-fenced generated bundle, rejects late identity mismatches, replaces only the
   selected card thumbnail, and displays bounded preview, canonical filmstrip, waveform, exact
-  sample-range, sample-rate, frame-count, ordered-channel, and unavailable-state evidence.
+  sample-range, sample-rate, frame-count, ordered-channel, and unavailable-state evidence. The same
+  browser checks every source through metadata-efficient monitoring or forces exact bytes for one
+  selected identity, then displays scan generation, relink intent, path state, volume identity and
+  kind, mount state, accepted fingerprint, current observation, size, and actionable detail.
 - `app/src/lifecycle.ts`: Defines the exact shell-local serialized lifecycle contract and typed
   asynchronous wrappers for the two Tauri lifecycle commands without importing engine bindings.
 - `app/src/project-lifecycle.ts`: Defines strict shell-local project lifecycle, settings, media
@@ -517,8 +524,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   recovery plus persisted content-analysis artifacts and exposes revision-fenced native replacement
   and content-search wrappers with exact explainable match evidence. The same bridge exposes exact
   C010 thumbnail, filmstrip, waveform, and preview product DTOs plus C012 batch operation and result
-  DTOs. Local fallback search includes names, paths, source facts, built-in and user metadata,
-  annotations, and offline state without introducing another persisted search index.
+  DTOs. It also mirrors the complete C013 source-monitoring, fingerprint, volume, path, request, and
+  relink-intent records plus the revision-fenced scan wrapper. Local fallback search includes names,
+  paths, source facts, built-in and user metadata, annotations, offline state, source-monitoring
+  state, relink intent, and volume evidence without introducing another persisted search index.
 - `app/src/main.tsx`: Constructs one process-lifetime `DesktopSuperiTransport`, injects it through
   the generated API provider, disposes it at unload, and mounts the React application under strict
   mode.
@@ -621,6 +630,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   bounded ordered batch that clones the snapshot,
   applies rename, organization, fixed-purpose derived-media, relink, and metadata operations, rejects
   the complete batch with its operation index on any failure, and advances one revision on success.
+  C013 persists per-path accepted fingerprints, current observations, conservative volume identity,
+  path status, scan generation, and relink intent beside the same stable item. Import creates exact
+  baselines during its existing byte pass. Revision-fenced selected or all-media scans skip stable
+  bytes by metadata signature unless exact verification is requested, preserve every editorial and
+  derived field, reject changed sources from old-fingerprint preview generation, and never bind new
+  bytes automatically.
   Stable presentation names survive reimport. Replacement responses serialize refreshed usage,
   identity, smart membership, thumbnail, offline, and resolved-representation state for the actual
   consumer, while sidecar publication removes those derived-only fields before atomic replacement
@@ -634,13 +649,19 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   ordered channel labels beside a channel-separated waveform. Every product is independently ready
   or unavailable, and no artifact enters project, media-library, derived-media, playback, routing,
   or export state.
+- `app/src-tauri/src/project_lifecycle/source_monitoring.rs`: Defines persisted source fingerprints,
+  conservative system, removable, and unknown volume identity, mounted and offline state, exact path
+  observations, overall monitoring status, and explicit relink intent. It hashes import bytes once,
+  supports metadata-efficient or forced-exact scans, adopts legacy baselines only after aggregate
+  fingerprint proof, retains accepted evidence across loss and change, and classifies filesystem
+  failures without network, watcher, platform service, or automatic source replacement.
 - `app/src-tauri/src/lib.rs`: Configures the mock and native Tauri builders, retains the linked
   engine process, manages its bounded connection and transport state alongside application
   lifecycle and project-session state, registers lifecycle, project, viewport, and API commands,
   including media-library snapshot, organization mutation, source inspection, user metadata, and
   editorial annotation, C007 identity-selection, C008 derived-media mutation, C009 offline recovery,
   C010 generated-preview, C011 content-analysis mutation plus content-search, and C012 atomic batch
-  commands,
+  commands, plus the C013 revision-fenced source-scan command,
   initializes the recovery root, emits one ordered Tauri event, records
   nonblocking exit intent, and joins the engine owner after the native application stops.
 - `app/src-tauri/src/main.rs`: Starts the native production desktop host.
@@ -690,6 +711,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   nine-operation revision. It proves stable IDs and fingerprints, generating optimized and proxy
   fallback, one revision advance, complete mixed-operation rollback, durable reopen, and exclusion
   of runtime-only presentation derivations from the sidecar.
+- `app/src-tauri/tests/removable_media_contract.rs`: Freezes the C013 native owner, Tauri command,
+  strict bridge, and production inspector. Real filesystem proof covers import baselines, exact byte
+  changes, stable editor state, changed-preview rejection, stale rollback, accepted-byte return,
+  missing-file loss and restoration, durable sidecar reload, and absent conventional removable
+  volumes with retained `wait_for_volume` intent.
 - `app/src-tauri/tests/project_settings_contract.rs`: Proves default inspection, complete atomic
   settings update, lifecycle revision coherence, durable reopen, and stale-revision rejection
   through the real local project host.
@@ -1497,7 +1523,10 @@ of open runtime behavior.
   retains stable identity and source freshness, reports the failing operation index without partial
   commit, and advances one revision on success. Runtime-only usage, duplicate grouping, smart
   membership, thumbnail, availability, and resolved-representation projections reach the consumer
-  but remain absent from sidecar authority. Removable-volume monitoring remains separately owned.
+  but remain absent from sidecar authority. C013 adds persisted accepted source baselines, current
+  observations, volume state, scan generation, and relink intent without changing identity,
+  editorial state, or derived choices. Changed bytes remain unaccepted until an explicit C009
+  Relink or Replace path succeeds, and a changed source cannot be previewed under its old fingerprint.
 - The MIT tree rejects GPL, LGPL, AGPL, MPL, patent-encumbered in-tree codecs, and dependencies or
   models without adequate redistribution and provenance rights. Operating-system and vendor codec
   paths remain isolated and explicit.
@@ -1589,6 +1618,13 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   later mixed batch without partial state, checks derived-only sidecar exclusion, and reopens the
   committed state. The retained C004 through C009 contract ring and production frontend typecheck,
   tests, and build protect every adjacent consumer.
+
+- The focused source-monitoring proof freezes the C013 persisted model, scan request, native command,
+  strict bridge, and real inspector. Its integration tests use actual files to prove import-time
+  baselines, forced exact byte-change detection, stable identity and editorial state, stale-request
+  rollback, old-fingerprint preview rejection, accepted-byte return, mounted-volume file loss and
+  restoration, durable reload, and absent conventional removable-volume intent. A private unit test
+  fixes conservative macOS, Linux, system, and Windows volume classification.
 
 - Fresh local configuration proof parses `.codex/config.toml` with Python `tomllib`, confirms the
   exact Sol and max values plus the absence of an agent stanza, verifies that no project agent
@@ -1880,8 +1916,12 @@ remain honest unavailable states. The same browser also selects
 many visible identities and commits ordered numbered rename, active-bin organization, generating
 optimized transcode or proxy records, root-based relink, and metadata edits through one atomic
 revision-fenced batch. Responses carry refreshed runtime projections, while the sidecar retains only
-durable authority and derived choices. Actual transcode bytes, automatic local-AI analysis, and
-removable-volume monitoring remain separately owned.
+durable authority and derived choices. The same stable identities now retain import-time accepted
+source baselines and expose metadata-efficient all-source checks plus exact selected-source byte
+verification. The inspector distinguishes changed bytes, missing files, unavailable paths, and
+offline conventional removable volumes, retains explicit relink intent, and blocks changed sources
+from preview generation under stale freshness. Actual transcode bytes, automatic local-AI analysis,
+native filesystem notifications, and automatic background scan scheduling remain separately owned.
 Fresh Cargo metadata expands the member globs to 25
 packages: 19 crates under
 `open/crates/` plus the `superi-fixture-tool`, `superi-dependency-check`,

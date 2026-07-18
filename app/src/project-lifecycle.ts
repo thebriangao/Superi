@@ -288,6 +288,61 @@ export interface OfflineMediaState {
   readonly derived_fallback_available: boolean;
 }
 
+export type MediaVolumeKind = "system" | "removable" | "unknown";
+export type MediaVolumeStatus = "mounted" | "offline";
+export type MediaSourcePathStatus =
+  | "unchecked"
+  | "unchanged"
+  | "changed"
+  | "missing"
+  | "volume_offline"
+  | "unavailable";
+export type MediaRelinkIntent =
+  | "none"
+  | "wait_for_volume"
+  | "locate_source"
+  | "review_changed_source"
+  | "retry_inspection";
+export type MediaSourceMonitoringStatus = "unchecked" | "ready" | "attention";
+
+export interface MediaSourceVolume {
+  readonly volume_id: string;
+  readonly root_path: string;
+  readonly kind: MediaVolumeKind;
+  readonly status: MediaVolumeStatus;
+}
+
+export interface MediaSourceFingerprint {
+  readonly size_bytes: number;
+  readonly modified_unix_seconds: number | null;
+  readonly modified_subsec_nanos: number | null;
+  readonly content_fingerprint: string;
+}
+
+export interface MediaSourcePathState {
+  readonly path: string;
+  readonly volume: MediaSourceVolume;
+  readonly status: MediaSourcePathStatus;
+  readonly baseline: MediaSourceFingerprint | null;
+  readonly observed: MediaSourceFingerprint | null;
+  readonly detail: string | null;
+}
+
+export interface MediaSourceMonitoring {
+  readonly status: MediaSourceMonitoringStatus;
+  readonly scan_generation: number;
+  readonly expected_content_fingerprint: string;
+  readonly relink_intent: MediaRelinkIntent;
+  readonly paths: readonly MediaSourcePathState[];
+}
+
+export interface MediaSourceScanRequest {
+  readonly expected_project_revision: number;
+  readonly expected_library_revision: number;
+  readonly media_ids: readonly string[];
+  readonly verify_content: boolean;
+}
+
 export type OfflineMediaMutation =
   | {
       readonly kind: "relink";
@@ -338,6 +393,7 @@ export interface MediaBrowserItem {
   readonly user_metadata: Readonly<Record<string, string>>;
   readonly annotations: MediaEditorialAnnotations;
   readonly content_analysis: MediaContentAnalysis;
+  readonly source_monitoring: MediaSourceMonitoring;
   readonly usage: MediaUsageIndicator;
   readonly identity_tracking: MediaIdentityTracking;
   readonly selections: readonly MediaSelection[];
@@ -544,6 +600,7 @@ const MUTATE_MEDIA_CONTENT_ANALYSIS_COMMAND =
 const SEARCH_MEDIA_CONTENT_COMMAND = "search_project_media_content";
 const MUTATE_DERIVED_MEDIA_COMMAND = "mutate_project_derived_media";
 const MUTATE_OFFLINE_MEDIA_COMMAND = "mutate_project_offline_media";
+const SCAN_MEDIA_SOURCES_COMMAND = "scan_project_media_sources";
 const MUTATE_MEDIA_BATCH_COMMAND = "mutate_project_media_batch";
 
 export async function getDesktopProjectSnapshot(): Promise<DesktopProjectSnapshot> {
@@ -719,6 +776,20 @@ export async function mutateProjectOfflineMedia(
   });
 }
 
+export async function scanProjectMediaSources(
+  snapshot: MediaLibrarySnapshot,
+  mediaIds: readonly string[],
+  verifyContent: boolean,
+): Promise<MediaLibrarySnapshot> {
+  const request: MediaSourceScanRequest = {
+    expected_project_revision: snapshot.project_revision,
+    expected_library_revision: snapshot.revision,
+    media_ids: mediaIds,
+    verify_content: verifyContent,
+  };
+  return invoke<MediaLibrarySnapshot>(SCAN_MEDIA_SOURCES_COMMAND, { request });
+}
+
 export async function mutateProjectMediaBatch(
   snapshot: MediaLibrarySnapshot,
   operations: readonly MediaBatchOperation[],
@@ -742,7 +813,15 @@ export function localSearchMedia(
       item.name,
       item.media_id,
       item.offline.status,
+      item.source_monitoring.status,
+      item.source_monitoring.relink_intent,
       ...item.source_paths,
+      ...item.source_monitoring.paths.flatMap((path) => [
+        path.status,
+        path.volume.volume_id,
+        path.volume.kind,
+        path.volume.status,
+      ]),
       ...Object.keys(item.metadata),
       ...Object.values(item.metadata),
       ...Object.keys(item.user_metadata),

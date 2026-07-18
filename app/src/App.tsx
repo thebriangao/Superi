@@ -36,6 +36,7 @@ import {
   mutateProjectMediaMetadata,
   mutateProjectMediaLibrary,
   readProjectMediaLibrary,
+  scanProjectMediaSources,
   updateDesktopProjectSettings,
   type DesktopProjectCommand,
   type DesktopProjectFailure,
@@ -414,6 +415,7 @@ function SystemPanel() {
   const [batchMetadataValue, setBatchMetadataValue] = useState("");
   const [batchPending, setBatchPending] = useState(false);
   const [batchResult, setBatchResult] = useState<string | null>(null);
+  const [sourceScanPending, setSourceScanPending] = useState(false);
   const [thumbnailFailures, setThumbnailFailures] =
     useState<ReadonlySet<string>>(new Set());
   const [mediaPreview, setMediaPreview] = useState<MediaPreviewBundle | null>(null);
@@ -847,6 +849,24 @@ function SystemPanel() {
     }
   };
 
+  const scanMediaSources = async (
+    mediaIds: readonly string[],
+    verifyContent: boolean,
+  ) => {
+    if (mediaLibrary === null) return;
+    setSourceScanPending(true);
+    try {
+      setMediaLibrary(
+        await scanProjectMediaSources(mediaLibrary, mediaIds, verifyContent),
+      );
+      setProjectFailure(null);
+    } catch (error: unknown) {
+      setProjectFailure(projectFailureFrom(error));
+    } finally {
+      setSourceScanPending(false);
+    }
+  };
+
   const runMediaBatch = async (
     operations: readonly MediaBatchOperation[],
   ) => {
@@ -1162,6 +1182,12 @@ function SystemPanel() {
                 <h4>Media library</h4>
               </div>
               <div className="media-view-switch" aria-label="Media view">
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={sourceScanPending || mediaLibrary.items.length === 0}
+                  onClick={() => void scanMediaSources([], false)}
+                >Check all sources</button>
                 <button
                   type="button"
                   aria-pressed={mediaViewMode === "list"}
@@ -1571,6 +1597,12 @@ function SystemPanel() {
                       <span className="media-item-copy">
                         <strong>{item.name}</strong>
                         <small>{item.kind.replace("_", " ")}</small>
+                        <small>
+                          source {item.source_monitoring.status}
+                          {item.source_monitoring.relink_intent === "none"
+                            ? ""
+                            : ` / ${item.source_monitoring.relink_intent.replaceAll("_", " ")}`}
+                        </small>
                         {strongestMatch ? (
                           <span className="media-search-evidence">
                             <b>{strongestMatch.signal.replace("_", " ")}</b>
@@ -1616,6 +1648,59 @@ function SystemPanel() {
                 {selectedMedia ? (
                   <>
                     <strong>{selectedMedia.name}</strong>
+                    <section
+                      data-testid="source-monitoring"
+                      aria-label="Source monitoring"
+                    >
+                      <h5>Source monitoring</h5>
+                      <p>
+                        {selectedMedia.source_monitoring.status} / {selectedMedia.source_monitoring.relink_intent.replaceAll("_", " ")} / scan {selectedMedia.source_monitoring.scan_generation}
+                      </p>
+                      <button
+                        type="button"
+                        disabled={sourceScanPending}
+                        onClick={() =>
+                          void scanMediaSources([selectedMedia.media_id], true)
+                        }
+                      >Verify selected source bytes</button>
+                      {selectedMedia.source_monitoring.paths.map((sourcePath) => (
+                        <article key={sourcePath.path}>
+                          <strong>{sourcePath.status.replaceAll("_", " ")}</strong>
+                          <p>{sourcePath.path}</p>
+                          <dl>
+                            <div>
+                              <dt>Volume</dt>
+                              <dd>{sourcePath.volume.volume_id}</dd>
+                            </div>
+                            <div>
+                              <dt>Volume kind</dt>
+                              <dd>{sourcePath.volume.kind}</dd>
+                            </div>
+                            <div>
+                              <dt>Volume status</dt>
+                              <dd>{sourcePath.volume.status}</dd>
+                            </div>
+                            <div>
+                              <dt>Accepted bytes</dt>
+                              <dd>
+                                {sourcePath.baseline?.content_fingerprint ?? "not established"}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Observed bytes</dt>
+                              <dd>
+                                {sourcePath.observed?.content_fingerprint ?? "not available"}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Observed size</dt>
+                              <dd>{sourcePath.observed?.size_bytes ?? "not available"}</dd>
+                            </div>
+                          </dl>
+                          {sourcePath.detail ? <p>{sourcePath.detail}</p> : null}
+                        </article>
+                      ))}
+                    </section>
                     <section className="media-preview" aria-label="Generated media preview">
                       <h5>Preview</h5>
                       {mediaPreviewPending ? (

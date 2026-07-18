@@ -6,8 +6,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
-use std::fs::File;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -40,10 +38,16 @@ use superi_engine::editor::{ClipSource, EditorialProject, ProjectDatabase};
 use tauri::State;
 
 mod media_preview;
+mod source_monitoring;
 
 pub use media_preview::{
     FilmstripArtifact, MediaPreviewBundle, MediaPreviewProduct, MediaPreviewRequest,
     PreviewImageArtifact, WaveformArtifact,
+};
+pub use source_monitoring::{
+    MediaRelinkIntent, MediaSourceFingerprint, MediaSourceMonitoring, MediaSourceMonitoringStatus,
+    MediaSourcePathState, MediaSourcePathStatus, MediaSourceScanRequest, MediaSourceVolume,
+    MediaVolumeKind, MediaVolumeStatus,
 };
 
 const MAX_RECENT_PROJECTS: usize = 32;
@@ -287,6 +291,8 @@ pub struct DesktopImportedMedia {
     last_frame: Option<i64>,
     frame_rate_numerator: Option<u32>,
     frame_rate_denominator: Option<u32>,
+    #[serde(skip, default)]
+    source_fingerprints: Vec<MediaSourceFingerprint>,
 }
 
 impl DesktopImportedMedia {
@@ -775,6 +781,8 @@ pub struct MediaBrowserItem {
     annotations: MediaEditorialAnnotations,
     #[serde(default)]
     content_analysis: MediaContentAnalysis,
+    #[serde(default)]
+    source_monitoring: MediaSourceMonitoring,
     #[serde(default = "unused_media")]
     usage: MediaUsageIndicator,
     #[serde(default = "untracked_media_identity")]
@@ -830,6 +838,7 @@ impl MediaBrowserItem {
             user_metadata: BTreeMap::new(),
             annotations: MediaEditorialAnnotations::default(),
             content_analysis: MediaContentAnalysis::default(),
+            source_monitoring: MediaSourceMonitoring::from_imported(media),
             usage: unused_media(),
             identity_tracking: untracked_media_identity(),
             selections: Vec::new(),
@@ -853,11 +862,14 @@ impl MediaBrowserItem {
             last_frame: self.last_frame,
             frame_rate_numerator: self.frame_rate_numerator,
             frame_rate_denominator: self.frame_rate_denominator,
+            source_fingerprints: Vec::new(),
         };
         self.thumbnail = thumbnail_presentation(&media);
     }
 
     fn refresh_derived_media(&mut self) {
+        self.source_monitoring
+            .reconcile(&self.source_paths, &self.content_fingerprint);
         for attachment in &mut self.derived_media {
             if attachment.source_fingerprint != self.content_fingerprint
                 && attachment.status == DerivedMediaStatus::Ready
@@ -1105,6 +1117,7 @@ impl MediaLibrarySnapshot {
             last_frame: item.last_frame,
             frame_rate_numerator: item.frame_rate_numerator,
             frame_rate_denominator: item.frame_rate_denominator,
+            source_fingerprints: Vec::new(),
         };
         item.source_metadata = source_metadata_inspection(&media, generation);
         Ok(())
@@ -1353,6 +1366,66 @@ impl MediaLibrarySnapshot {
             .find(|item| item.media_id == update.media_id)
             .ok_or_else(|| media_library_invalid("Imported media was not found"))?;
         normalize_offline_media(item, update.mutation)?;
+        candidate.validate()?;
+        candidate.revision = candidate.revision.checked_add(1).ok_or_else(|| {
+            DesktopProjectFailure::new(
+                DesktopProjectFailureClass::Terminal,
+                "media_library_revision_exhausted",
+                "Media library cannot continue",
+                "Restart Superi before continuing.",
+            )
+        })?;
+        candidate.refresh_derived();
+        *self = candidate;
+        Ok(())
+    }
+
+    fn scan_media_sources(
+        &mut self,
+        request: MediaSourceScanRequest,
+    ) -> Result<(), DesktopProjectFailure> {
+        if request.expected_project_revision != self.project_revision
+            || request.expected_library_revision != self.revision
+        {
+            return Err(user_correctable(
+                "media_library_revision_stale",
+                "Media library changed",
+                "Refresh the media library and scan sources again.",
+            ));
+        }
+        if request.media_ids.len() > MAX_IMPORT_SOURCES {
+            return Err(media_library_invalid(
+                "Source scan contains too many media IDs",
+            ));
+        }
+        let media_ids = if request.media_ids.is_empty() {
+            self.items
+                .iter()
+                .map(|item| item.media_id.clone())
+                .collect::<Vec<_>>()
+        } else {
+            let unique = request.media_ids.iter().collect::<BTreeSet<_>>();
+            if unique.len() != request.media_ids.len() {
+                return Err(media_library_invalid(
+                    "Source scan media IDs are duplicated",
+                ));
+            }
+            request.media_ids
+        };
+        if media_ids.is_empty() {
+            return Err(media_library_invalid("Source scan has no media to inspect"));
+        }
+
+        let mut candidate = self.clone();
+        for media_id in media_ids {
+            require_media_text("media_id", &media_id)?;
+            let item = candidate
+                .items
+                .iter_mut()
+                .find(|item| item.media_id == media_id)
+                .ok_or_else(|| media_library_invalid("Source scan media was not found"))?;
+            source_monitoring::scan_item(item, request.verify_content)?;
+        }
         candidate.validate()?;
         candidate.revision = candidate.revision.checked_add(1).ok_or_else(|| {
             DesktopProjectFailure::new(
@@ -1649,6 +1722,11 @@ impl MediaLibrarySnapshot {
                     "Media content analysis is not canonical",
                 ));
             }
+            source_monitoring::validate(
+                &item.source_monitoring,
+                &item.source_paths,
+                &item.content_fingerprint,
+            )?;
         }
         for bin in &self.bins {
             let mut current = bin.parent_id.as_deref();
@@ -2696,6 +2774,7 @@ fn normalize_offline_media(
     item: &mut MediaBrowserItem,
     mutation: OfflineMediaMutation,
 ) -> Result<(), DesktopProjectFailure> {
+    let reset_monitoring;
     match mutation {
         OfflineMediaMutation::Relink {
             source_paths,
@@ -2711,6 +2790,7 @@ fn normalize_offline_media(
             }
             item.source_paths = source_paths;
             item.source_count = item.source_paths.len() as u64;
+            reset_monitoring = true;
         }
         OfflineMediaMutation::Replace {
             source_paths,
@@ -2723,6 +2803,7 @@ fn normalize_offline_media(
             item.content_fingerprint = replacement_fingerprint;
             item.metadata
                 .insert("freshness".to_owned(), item.content_fingerprint.clone());
+            reset_monitoring = true;
         }
         OfflineMediaMutation::Conform {
             frame_rate_numerator,
@@ -2737,7 +2818,12 @@ fn normalize_offline_media(
                 "frame_rate".to_owned(),
                 format!("{frame_rate_numerator}/{frame_rate_denominator}"),
             );
+            reset_monitoring = false;
         }
+    }
+    if reset_monitoring {
+        item.source_monitoring =
+            MediaSourceMonitoring::unscanned(&item.source_paths, &item.content_fingerprint);
     }
     let imported = DesktopImportedMedia {
         media_id: item.media_id.clone(),
@@ -2750,6 +2836,7 @@ fn normalize_offline_media(
         last_frame: item.last_frame,
         frame_rate_numerator: item.frame_rate_numerator,
         frame_rate_denominator: item.frame_rate_denominator,
+        source_fingerprints: Vec::new(),
     };
     item.source_metadata = source_metadata_inspection(
         &imported,
@@ -3864,6 +3951,13 @@ impl DesktopProjectState {
                 "Refresh the media library and request the preview again.",
             ));
         }
+        if item.source_monitoring.has_changed_source() {
+            return Err(user_correctable(
+                "media_preview_source_changed",
+                "Media preview source has changed",
+                "Review the changed source, then Relink or Replace it before generating a preview.",
+            ));
+        }
         Ok(media_preview::generate(&item))
     }
 
@@ -4054,6 +4148,28 @@ impl DesktopProjectState {
                 .or_insert_with(|| MediaLibrarySnapshot::empty(project_revision));
             library.project_revision = project_revision;
             library.apply_offline_media(update)?;
+            library.refresh_usage(&usage);
+            library.clone()
+        };
+        self.persist_media_libraries()?;
+        Ok(snapshot)
+    }
+
+    pub fn scan_media_sources(
+        &self,
+        request: MediaSourceScanRequest,
+    ) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+        let (project_id, project_revision, project_path) =
+            self.active_project_context("scan_media_sources")?;
+        let usage = inspect_media_usage(Path::new(&project_path))?;
+        let snapshot = {
+            let mut store = self.media_library_lock("scan_media_sources")?;
+            let library = store
+                .projects
+                .entry(project_id)
+                .or_insert_with(|| MediaLibrarySnapshot::empty(project_revision));
+            library.project_revision = project_revision;
+            library.scan_media_sources(request)?;
             library.refresh_usage(&usage);
             library.clone()
         };
@@ -4490,6 +4606,17 @@ pub async fn mutate_project_offline_media(
     tauri::async_runtime::spawn_blocking(move || state.mutate_offline_media(update))
         .await
         .map_err(|_| project_task_failed("mutate_offline_media"))?
+}
+
+#[tauri::command]
+pub async fn scan_project_media_sources(
+    request: MediaSourceScanRequest,
+    state: State<'_, DesktopProjectState>,
+) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.scan_media_sources(request))
+        .await
+        .map_err(|_| project_task_failed("scan_media_sources"))?
 }
 
 #[tauri::command]
@@ -4994,7 +5121,7 @@ fn build_discovered_source(
     frame_range: Option<(i64, i64)>,
     frame_rate: Option<(u32, u32)>,
 ) -> Result<DiscoveredImportSource, DesktopProjectFailure> {
-    let fingerprint = fingerprint_sources(&paths)?;
+    let (fingerprint, source_fingerprints) = fingerprint_sources(&paths)?;
     let source_paths: Vec<_> = paths
         .iter()
         .map(|path| path.to_string_lossy().into_owned())
@@ -5036,6 +5163,7 @@ fn build_discovered_source(
         last_frame: frame_range.map(|value| value.1),
         frame_rate_numerator: frame_rate.map(|value| value.0),
         frame_rate_denominator: frame_rate.map(|value| value.1),
+        source_fingerprints,
     };
     Ok(DiscoveredImportSource {
         desktop,
@@ -5060,24 +5188,11 @@ fn native_editor_path(path: String) -> EditorMediaPath {
     }
 }
 
-fn fingerprint_sources(paths: &[PathBuf]) -> Result<String, DesktopProjectFailure> {
-    let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    for path in paths {
-        let mut file = File::open(path)
-            .map_err(|source| import_io_failure("fingerprint_import_source", source))?;
-        loop {
-            let count = file
-                .read(&mut buffer)
-                .map_err(|source| import_io_failure("fingerprint_import_source", source))?;
-            if count == 0 {
-                break;
-            }
-            hasher.update(&buffer[..count]);
-        }
-        hasher.update([0]);
-    }
-    Ok(format!("sha256:{}", hex_bytes(&hasher.finalize())))
+fn fingerprint_sources(
+    paths: &[PathBuf],
+) -> Result<(String, Vec<MediaSourceFingerprint>), DesktopProjectFailure> {
+    source_monitoring::fingerprint_sources(paths)
+        .map_err(|source| import_io_failure("fingerprint_import_source", source))
 }
 
 fn stable_media_id(kind: DesktopImportedMediaKind, paths: &[String], fingerprint: &str) -> MediaId {
@@ -5096,15 +5211,6 @@ fn stable_media_id(kind: DesktopImportedMediaKind, paths: &[String], fingerprint
     raw.copy_from_slice(&digest[..16]);
     let raw = u128::from_be_bytes(raw);
     MediaId::from_raw(if raw == 0 { 1 } else { raw })
-}
-
-fn hex_bytes(bytes: &[u8]) -> String {
-    let mut output = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        use std::fmt::Write as _;
-        write!(&mut output, "{byte:02x}").expect("writing to String cannot fail");
-    }
-    output
 }
 
 fn import_permissions(
@@ -5282,6 +5388,7 @@ mod tests {
             last_frame: None,
             frame_rate_numerator: None,
             frame_rate_denominator: None,
+            source_fingerprints: Vec::new(),
         }
     }
 
