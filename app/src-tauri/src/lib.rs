@@ -4,18 +4,23 @@
 
 pub mod engine;
 pub mod lifecycle;
+pub mod transport;
 
 use std::thread;
 use std::time::Duration;
 
-use engine::LinkedEngineProcess;
+use engine::{EngineConnection, LinkedEngineProcess};
 use lifecycle::{
     ApplicationLifecycle, ApplicationLifecyclePhase, ApplicationLifecycleRequest,
     DesktopLifecycleSnapshot, LifecycleIntent,
 };
 use serde::Serialize;
 use superi_core::error::Error;
-use tauri::{AppHandle, Builder, RunEvent, Runtime, State};
+use tauri::{AppHandle, Builder, Emitter, RunEvent, Runtime, State};
+use transport::{
+    event_emission_error, transport_task_error, DesktopTransportCommand, DesktopTransportReply,
+    DesktopTransportState, DESKTOP_API_EVENT,
+};
 
 #[derive(Clone)]
 struct ManagedLifecycle(ApplicationLifecycle);
@@ -55,6 +60,27 @@ fn desktop_lifecycle_request(
     .map_err(Into::into)
 }
 
+#[tauri::command]
+async fn desktop_api_dispatch<R: Runtime>(
+    app: AppHandle<R>,
+    command: DesktopTransportCommand,
+    transport: State<'_, DesktopTransportState>,
+    engine: State<'_, EngineConnection>,
+) -> Result<DesktopTransportReply, superi_api::schema::PublicApiError> {
+    let transport = transport.inner().clone();
+    let engine = engine.inner().clone();
+    let outcome =
+        tauri::async_runtime::spawn_blocking(move || transport.dispatch_blocking(&engine, command))
+            .await
+            .map_err(|_| transport_task_error("join_dispatch"))??;
+    let (reply, event) = outcome.into_parts();
+    if let Some(event) = event {
+        app.emit(DESKTOP_API_EVENT, event)
+            .map_err(|_| event_emission_error())?;
+    }
+    Ok(reply)
+}
+
 /// Adds the application-owned lifecycle state and shell-local commands to a Tauri builder.
 ///
 /// C002 supplies the headless-engine process participant through
@@ -62,9 +88,11 @@ fn desktop_lifecycle_request(
 pub fn configure<R: Runtime>(builder: Builder<R>, lifecycle: ApplicationLifecycle) -> Builder<R> {
     builder
         .manage(ManagedLifecycle(lifecycle))
+        .manage(DesktopTransportState::new())
         .invoke_handler(tauri::generate_handler![
             desktop_lifecycle_snapshot,
-            desktop_lifecycle_request
+            desktop_lifecycle_request,
+            desktop_api_dispatch
         ])
 }
 

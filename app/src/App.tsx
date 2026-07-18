@@ -1,14 +1,24 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { useSuperiApi } from "./api-context";
 import {
   getDesktopLifecycle,
   requestDesktopLifecycle,
   type ApplicationLifecycleRequest,
   type DesktopLifecycleSnapshot,
 } from "./lifecycle";
+import { classifyDesktopTransportError } from "./transport";
 
 interface ClientFailure {
   readonly summary: string;
+  readonly action?: string;
+  readonly code?: string;
+  readonly recoverability?: string;
+}
+
+interface EngineApiStatus {
+  readonly condition: string;
+  readonly health: string;
 }
 
 const APPLICATION_LABELS: Record<
@@ -28,7 +38,9 @@ const APPLICATION_LABELS: Record<
 };
 
 export function App() {
+  const api = useSuperiApi();
   const [snapshot, setSnapshot] = useState<DesktopLifecycleSnapshot | null>(null);
+  const [engineApi, setEngineApi] = useState<EngineApiStatus | null>(null);
   const [clientFailure, setClientFailure] = useState<ClientFailure | null>(null);
   const [requestPending, setRequestPending] = useState(false);
 
@@ -57,6 +69,50 @@ export function App() {
       window.clearInterval(timer);
     };
   }, [refresh]);
+
+  useEffect(() => {
+    if (api === null) {
+      return;
+    }
+    let active = true;
+    const unsubscribe = api.subscribe(
+      "superi.engine.introspection.changed",
+      ({ snapshot: engine }) => {
+        if (active) {
+          setEngineApi((current) => ({
+            condition: current?.condition ?? "observed",
+            health: engine.health,
+          }));
+        }
+      },
+    );
+    void api
+      .request("superi.engine.integration.validation.get", null)
+      .then(({ snapshot: validation }) => {
+        if (active) {
+          setEngineApi({
+            condition: validation.condition,
+            health: validation.engine.health,
+          });
+          setClientFailure(null);
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          const failure = classifyDesktopTransportError(error);
+          setClientFailure({
+            summary: failure.title,
+            action: failure.action,
+            code: failure.code,
+            recoverability: failure.condition,
+          });
+        }
+      });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [api]);
 
   const request = async (intent: ApplicationLifecycleRequest) => {
     setRequestPending(true);
@@ -104,14 +160,21 @@ export function App() {
             <dt>Revision</dt>
             <dd>{snapshot?.revision ?? 0}</dd>
           </div>
+          <div>
+            <dt>Engine API</dt>
+            <dd>{engineApi ? `${engineApi.condition} / ${engineApi.health}` : "connecting"}</dd>
+          </div>
         </dl>
 
         {failure ? (
           <div className="failure" role="alert">
             <p>{failure.summary}</p>
-            {snapshot?.failure ? (
+            {clientFailure?.action ? <p>{clientFailure.action}</p> : null}
+            {snapshot?.failure || clientFailure?.code ? (
               <p className="failure-code">
-                {snapshot.failure.category} / {snapshot.failure.recoverability}
+                {snapshot?.failure
+                  ? `${snapshot.failure.category} / ${snapshot.failure.recoverability}`
+                  : `${clientFailure?.code} / ${clientFailure?.recoverability}`}
               </p>
             ) : null}
           </div>

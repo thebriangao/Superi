@@ -4138,6 +4138,7 @@ name = "superi-desktop"
 version = "0.0.0"
 dependencies = [
  "serde",
+ "serde_json",
  "superi-api",
  "superi-concurrency",
  "superi-core",

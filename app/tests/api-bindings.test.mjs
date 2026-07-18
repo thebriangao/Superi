@@ -28,7 +28,8 @@ test("production app exposes the canonical generated client through one injected
   assert.match(context, /export function SuperiApiProvider/);
   assert.match(context, /export function useSuperiApi/);
   assert.match(context, /transport: SuperiTransport \| null/);
-  assert.match(main, /<SuperiApiProvider transport=\{null\}>/);
+  assert.match(main, /new DesktopSuperiTransport\(\)/);
+  assert.match(main, /<SuperiApiProvider transport=\{transport\}>/);
   assert.doesNotMatch(api, /@tauri-apps\/api|\binvoke\b|\blisten\b|reconnect|cancellation/);
   assert.doesNotMatch(context, /@tauri-apps\/api|\binvoke\b|\blisten\b|reconnect|cancellation/);
   assert.doesNotMatch(lifecycle, /open\/bindings\/typescript\/superi-api/);

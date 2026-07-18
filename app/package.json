@@ -10,7 +10,7 @@
     "dev": "vite",
     "typecheck": "tsc --noEmit",
     "build": "vite build",
-    "test": "node --test tests/app-contract.test.mjs tests/api-bindings.test.mjs",
+    "test": "node --no-warnings --experimental-transform-types --test tests/app-contract.test.mjs tests/api-bindings.test.mjs tests/transport.test.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

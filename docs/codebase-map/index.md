@@ -38,7 +38,7 @@ against raw source before changing code.
 | `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline fixture validation, generation, and typed golden verification | Implemented validation library, six generators, seven-command CLI, four golden harnesses, and focused contracts |
 | `tool-superi-test-report` | [module map](modules/tool-superi-test-report.md) | `open/tools/superi-test-report` | Offline structured platform-lane evidence generator | Implemented strict schema, deterministic findings, collision-safe CLI, and focused contracts |
 | `tool-superi-api-bindings` | [module map](modules/tool-superi-api-bindings.md) | `open/tools/superi-api-bindings` | Deterministic committed TypeScript API artifact generator and freshness checker | Implemented pure rendering, idempotent generation, nonmutating freshness checks, and focused contracts |
-| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, production React and Tauri shell, workspace configuration, fixtures, generated TypeScript artifact, retained frontend consumer, and agent workflows | Active control layer: deterministic checkpoint workflow, explicit revisioned application and headless-engine lifecycle, a linked EngineControl dispatcher, bounded native validation connection, shell-local lifecycle commands, transport-neutral generated `SuperiClient` integration, contract slice, bounded local scripting, durable command recording, and generated public API frontend consumption are delivered; concrete engine command/event transport and editor behavior remain absent |
+| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, production React and Tauri shell, workspace configuration, fixtures, generated TypeScript artifact, retained frontend consumer, and agent workflows | Active control layer: deterministic checkpoint workflow, explicit revisioned application and headless-engine lifecycle, a linked EngineControl dispatcher, bounded native validation connection, shell-local lifecycle commands, injected generated `SuperiClient`, thin command/event transport, ordered replay and reconnect, cooperative cancellation, classified public failures, contract slice, bounded local scripting, durable command recording, and generated public API frontend consumption are delivered; broader generated method routing and editor behavior remain absent |
 
 ## Ownership and repository boundaries
 
@@ -183,17 +183,23 @@ The production desktop lifecycle is implemented without creating a second engine
 3. `LinkedEngineProcess` retains one full `EngineCommandDispatcher` per application generation on a
    dedicated EngineControl thread and consumes the participant only through signal,
    acknowledgement, and failure operations.
-4. Tauri manages the lifecycle owner and fixed-capacity `EngineConnection`, exposes only the two
-   asynchronous shell-local lifecycle commands, and joins the process owner after the native host
-   stops. Exit requests record orderly shutdown without blocking the main thread.
+4. Tauri manages the lifecycle owner and fixed-capacity `EngineConnection`, exposes the two
+   asynchronous shell-local lifecycle commands plus one asynchronous generated API dispatcher, and
+   joins the process owner after the native host stops. Exit requests record orderly shutdown
+   without blocking the main thread.
 5. The connection admits the existing typed integration-validation query with `try_send`; response
    waiting stays with a blocking-safe caller, restart constructs a fresh dispatcher, and outstanding
    internal subsystem initialization remains truthfully visible.
-6. React renders the serialized application and engine phases, pending acknowledgement, safe failure,
+6. The native transport routes the existing integration-validation method through that managed
+   connection, emits its generated engine-introspection replacement payload in monotonic envelopes,
+   retains 64 events for cursor replay, and converts only reviewed failure context to
+   `PublicApiError`.
+7. React renders the serialized application and engine phases, pending acknowledgement, safe failure,
    and recovery affordances through the two shell-local lifecycle commands.
-7. Separately, `app/src/api.ts` re-exports the complete generated public contract and constructs a
-   frozen `SuperiClient` binding around an injected `SuperiTransport`. The nullable React provider
-   owns no project state, engine commands, reconnection, cancellation, or transport error policy.
+8. Separately, `app/src/api.ts` re-exports the complete generated public contract and constructs a
+   frozen `SuperiClient` binding around the concrete `DesktopSuperiTransport`. The transport owns
+   invoke/listen delivery, generation and sequence fencing, replay, reconnect, cancellation, and
+   classified failure projection; the provider and React consumer own no engine behavior.
 
 Media registry construction and capability introspection are implemented as follows:
 

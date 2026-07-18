@@ -112,7 +112,7 @@ h1 {
 
 .lifecycle-details {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
   margin: 24px 0;
 }

@@ -20,6 +20,7 @@ tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
 serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.150"
 superi-api = { path = "../../open/crates/superi-api" }
 superi-concurrency = { path = "../../open/crates/superi-concurrency" }
 superi-core = { path = "../../open/crates/superi-core" }

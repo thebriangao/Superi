@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 62050859c18e91787c9e16fab4bef82e9caa6e3d4a5109a3297d3b1cadf19a40
-source_files: 188
+source_hash: b1521964618c8a8d22bb787e9b05295b6d1617c3280e37d38a6b1bbcb6cebd26
+source_files: 193
 mapped_at_commit: working-tree
 ---
 
@@ -202,6 +202,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W01.C003.md`: Durable implementation evidence for the production generated
   TypeScript client adapter, complete map-derived request/event/resource surface, injected React
   provider, focused runtime forwarding proof, and explicit concrete transport exclusions.
+- `docs/checkpoints/P3.W01.C004.md`: Durable implementation evidence for the thin native command and
+  ordered event bridge, concrete generated frontend transport, reconnect and cancellation state,
+  classified public errors, real React consumer, focused proof, and remaining method-routing limits.
 - `docs/checkpoints/P1.W07.C008.md`: Durable implementation evidence for the open-tree boundary
   scanner. It records the dependency-free tool, canonical and malformed-tree contracts, locked
   workflow integration, isolated Rust verification, delivery context, and remaining static-policy
@@ -405,30 +408,42 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/package-lock.json`: Locks React 19.2.7, Tauri API 2.11.1, Tauri CLI 2.11.4, TypeScript 5.9.3,
   Vite 7.3.6, the React Vite plug-in 5.2.0, and their transitive frontend dependencies.
 - `app/package.json`: Declares the private production application package, exact toolchain and
-  runtime pins, strict typecheck, Vite build, both application contracts, and Tauri commands.
+  runtime pins, strict typecheck, Vite build, lifecycle, binding, and concrete transport contracts,
+  and Tauri commands.
 - `app/src/api.ts`: Re-exports the complete canonical generated TypeScript contract and constructs
   one frozen `SuperiApiBindings` surface around an injected `SuperiTransport` and `SuperiClient`.
 - `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
   without owning project state or concrete reliability behavior.
-- `app/src/App.tsx`: Renders the responsive lifecycle client with explicit application and engine
-  state, safe failure context, and recovery, restart, and orderly quit controls.
+- `app/src/App.tsx`: Renders the responsive lifecycle and generated API client with explicit
+  application, engine, validation, and health state, actionable classified failures, and recovery,
+  restart, and orderly quit controls.
 - `app/src/lifecycle.ts`: Defines the exact shell-local serialized lifecycle contract and typed
   asynchronous wrappers for the two Tauri lifecycle commands without importing engine bindings.
-- `app/src/main.tsx`: Mounts the React application under strict mode and the nullable generated API
-  provider seam that the concrete transport checkpoint supplies.
-- `app/src/styles.css`: Defines the responsive, accessible lifecycle shell presentation.
+- `app/src/main.tsx`: Constructs one process-lifetime `DesktopSuperiTransport`, injects it through
+  the generated API provider, disposes it at unload, and mounts the React application under strict
+  mode.
+- `app/src/styles.css`: Defines the responsive, accessible lifecycle and engine API shell
+  presentation.
+- `app/src/transport.ts`: Implements the concrete generated `SuperiTransport` through one injected
+  or Tauri-backed invoke/listen host, generation-scoped request identities, ordered event replay,
+  stale and duplicate rejection, reconnect, cooperative cancellation, and exact
+  `SuperiTransportError` projection with actionable public context.
 - `app/tests/app-contract.test.mjs`: Verifies exact production pins, lifecycle and engine-process
   ownership seams, adjacent checkpoint exclusions, production workflow routing, and the hashed
   React bundle.
 - `app/tests/api-bindings.test.mjs`: Verifies the canonical generated re-export, complete typed map
-  boundary, injected provider/bootstrap seam, and real request/subscription forwarding without
-  transport policy.
+  boundary, concrete provider/bootstrap injection, and real request/subscription forwarding without
+  duplicating generated client policy.
+- `app/tests/transport.test.mjs`: Verifies the one native dispatcher call, generated request
+  identity, ordered replay, stale and duplicate event rejection, reconnect cursor, abort-driven
+  cancellation, and exact classified public error preservation through an injected headless host.
 - `app/tsconfig.json`: Enables strict no-emit TypeScript, isolated modules, and bundler resolution.
 - `app/vite.config.ts`: Configures the React Vite build and fixed Tauri development port.
 - `app/src-tauri/Cargo.lock`: Locks the standalone desktop host together with its path dependencies
   on the public API, engine, shared concurrency, and core contracts.
-- `app/src-tauri/Cargo.toml`: Declares the `superi-desktop` library and binary, exact Tauri pins,
-  stable Rust edition, and downward-only lifecycle, engine, and public API dependencies.
+- `app/src-tauri/Cargo.toml`: Declares the `superi-desktop` library and binary, exact Tauri and
+  serialization pins, stable Rust edition, and downward-only lifecycle, engine, and public API
+  dependencies.
 - `app/src-tauri/build.rs`: Runs the standard Tauri build integration.
 - `app/src-tauri/rust-toolchain.toml`: Selects stable Rust with rustfmt and Clippy.
 - `app/src-tauri/tauri.conf.json`: Declares the Superi identity, production frontend, bounded main
@@ -446,10 +461,14 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/src/engine.rs`: Owns one lifecycle-attached `EngineCommandDispatcher` on a dedicated
   EngineControl thread, a fixed-capacity nonblocking request connection, and projection through the
   existing integration-validation API contract.
+- `app/src-tauri/src/transport.rs`: Owns the thin bounded desktop command dispatcher above the
+  managed `EngineConnection`, generation-scoped request and cancellation state, exact public error
+  conversion, and a 64-record ordered replacement-event replay window without engine semantics.
 - `app/src-tauri/src/lib.rs`: Configures the mock and native Tauri builders, retains the linked
-  engine process, manages its bounded connection alongside application lifecycle state, registers
-  only the lifecycle commands, records nonblocking exit intent, and joins the engine owner after the
-  native application stops.
+  engine process, manages its bounded connection and transport state alongside application
+  lifecycle state, registers the lifecycle commands plus one asynchronous API dispatcher, emits one
+  ordered Tauri event, records nonblocking exit intent, and joins the engine owner after the native
+  application stops.
 - `app/src-tauri/src/main.rs`: Starts the native production desktop host.
 - `app/src-tauri/tests/engine_connection_contract.rs`: Proves dedicated EngineControl ownership,
   truthful public validation projection, bounded nonblocking admission, stable connection reuse
@@ -457,6 +476,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/tests/lifecycle_contract.rs`: Proves exact startup and shutdown acknowledgement,
   stale-token rejection, ordered restart, classified recovery, terminal failure, and blocking-safe
   change observation.
+- `app/src-tauri/tests/transport_contract.rs`: Proves the bounded transport owner opens exactly one
+  ordered connection generation with the stable desktop stream identity and no false replay or
+  resync state.
 
 ### Frontend CI contract
 
@@ -1108,11 +1130,14 @@ The production Tauri host consumes `superi-concurrency::LifecycleCoordinator`, t
 classification through explicit downward path dependencies. `LinkedEngineProcess` retains one
 dispatcher per application generation on a dedicated EngineControl thread and consumes the exact
 headless-engine participant seam. Tauri manages the fixed-capacity `EngineConnection`, while its
-React lifecycle client still consumes only two shell-local asynchronous commands. Separately,
-`app/src/api.ts` re-exports the canonical generated contract and constructs `SuperiClient` bindings
-from an injected `SuperiTransport`; `api-context.tsx` exposes those bindings without owning state.
-No Tauri engine command/event transport, reconnection, cancellation, transport error policy, or
-editor state is implemented by the generated-client checkpoint.
+React lifecycle client consumes only two shell-local asynchronous lifecycle commands. Above that
+unchanged connection, `transport.rs` registers one async Tauri API dispatcher for connect, request,
+cancel, and disconnect control, routes the existing integration-validation method into C002's
+EngineControl owner, converts failures through `PublicApiError`, and emits generated engine
+introspection replacement payloads in a bounded ordered envelope. `app/src/transport.ts` implements
+the generated `SuperiTransport`, and `app/src/api.ts` remains the sole `SuperiClient` factory. React
+consumes the injected binding for validation, health, and actionable presentation without owning
+engine commands or project behavior.
 
 The documents deliberately point into other modules:
 
@@ -1492,8 +1517,11 @@ retains one real dispatcher per generation on a dedicated EngineControl thread, 
 integration-validation result over a bounded nonblocking Rust connection, and performs real orderly
 dispatcher shutdown before lifecycle acknowledgement. Internal subsystem readiness remains truthful;
 the production React bootstrap now consumes the complete generated TypeScript contract through a
-transport-injected `SuperiClient` provider with identical request and automation behavior. Concrete
-engine command/event transport and editor semantics remain adjacent work rather than mocked success.
+transport-injected `SuperiClient` provider with identical request and automation behavior. One thin
+native dispatcher now forwards integration validation through the retained EngineControl owner,
+emits ordered generated introspection replacement events, and exposes bounded replay, reconnect,
+cancellation, and all four public recoverability conditions through the concrete frontend transport.
+Other generated methods and editor semantics remain honestly unavailable rather than mocked.
 Fresh Cargo metadata expands the member globs to 25
 packages: 19 crates under
 `open/crates/` plus the `superi-fixture-tool`, `superi-dependency-check`,
