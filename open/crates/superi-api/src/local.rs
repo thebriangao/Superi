@@ -811,15 +811,18 @@ fn require_media_command(request: &ExecuteProjectCommand) -> Result<()> {
     match request.command() {
         ProjectCommand::Apply { actions }
             if !actions.is_empty()
-                && actions
-                    .iter()
-                    .all(|action| matches!(action, ProjectAction::MutateMedia { .. })) =>
+                && actions.iter().all(|action| {
+                    matches!(
+                        action,
+                        ProjectAction::MutateMedia { .. } | ProjectAction::ImportMedia { .. }
+                    )
+                }) =>
         {
             Ok(())
         }
         _ => Err(invalid(
             "execute_media",
-            "media execute accepts only a nonempty apply command of mutate_media actions",
+            "media execute accepts only a nonempty apply command of media actions",
         )),
     }
 }

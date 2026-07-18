@@ -99,6 +99,44 @@ export interface DesktopProjectCreateRequest {
   readonly edit_rate_denominator: number;
 }
 
+export type DesktopMediaImportOrigin =
+  | "picker"
+  | "drag_drop"
+  | "folder_scan"
+  | "api"
+  | "automation";
+
+export interface DesktopMediaImportRequest {
+  readonly expected_project_revision: number;
+  readonly origin: DesktopMediaImportOrigin;
+  readonly paths: readonly string[];
+  readonly recursive: boolean;
+  readonly detect_image_sequences: boolean;
+}
+
+export interface DesktopImportedMedia {
+  readonly media_id: string;
+  readonly name: string;
+  readonly source_paths: readonly string[];
+  readonly content_fingerprint: string;
+  readonly kind: "file" | "image_sequence";
+  readonly source_count: number;
+  readonly first_frame: number | null;
+  readonly last_frame: number | null;
+  readonly frame_rate_numerator: number | null;
+  readonly frame_rate_denominator: number | null;
+}
+
+export interface DesktopMediaImportResult {
+  readonly project_revision: number;
+  readonly imported: readonly DesktopImportedMedia[];
+  readonly skipped: readonly string[];
+  readonly command_method: "superi.project.command.execute";
+  readonly event_name: "superi.project.state.changed";
+  readonly event_sequence: number | null;
+  readonly automation_method: "superi.project.command.execute" | null;
+}
+
 export type DesktopProjectCommand =
   | {
       readonly kind: "create";
@@ -125,6 +163,7 @@ const SNAPSHOT_COMMAND = "desktop_project_snapshot";
 const EXECUTE_COMMAND = "desktop_project_execute";
 const SETTINGS_COMMAND = "desktop_project_settings";
 const UPDATE_SETTINGS_COMMAND = "desktop_project_settings_update";
+const IMPORT_MEDIA_COMMAND = "desktop_project_media_import";
 
 export async function getDesktopProjectSnapshot(): Promise<DesktopProjectSnapshot> {
   return invoke<DesktopProjectSnapshot>(SNAPSHOT_COMMAND);
@@ -144,4 +183,10 @@ export async function updateDesktopProjectSettings(
   update: DesktopProjectSettingsUpdate,
 ): Promise<DesktopProjectSettings> {
   return invoke<DesktopProjectSettings>(UPDATE_SETTINGS_COMMAND, { update });
+}
+
+export async function importDesktopMedia(
+  request: DesktopMediaImportRequest,
+): Promise<DesktopMediaImportResult> {
+  return invoke<DesktopMediaImportResult>(IMPORT_MEDIA_COMMAND, { request });
 }

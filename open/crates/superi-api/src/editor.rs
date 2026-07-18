@@ -306,6 +306,10 @@ pub enum ProjectActionEvidence {
     MediaMutated {
         outcome: MediaMutationResult,
     },
+    MediaImported {
+        media_ids: Vec<String>,
+        skipped_media_ids: Vec<String>,
+    },
     ClipMixMutated {
         revision: u64,
     },
@@ -2515,6 +2519,137 @@ impl EditorMediaPath {
     }
 }
 
+/// Stable classification of one discovered import source.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum EditorImportedMediaKind {
+    File {},
+    ImageSequence {
+        source_count: u64,
+        first_frame: i64,
+        last_frame: i64,
+        frame_rate_numerator: u32,
+        frame_rate_denominator: u32,
+    },
+}
+
+/// One fully discovered source accepted by the durable project import action.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EditorImportedMedia {
+    pub media_id: String,
+    pub name: String,
+    pub paths: Vec<EditorMediaPath>,
+    pub content_fingerprint: String,
+    pub source: EditorImportedMediaKind,
+}
+
+impl EditorImportedMedia {
+    fn append_permission_requirements(
+        &self,
+        requirements: &mut Vec<ApiPermissionRequirement>,
+    ) -> Result<()> {
+        for path in &self.paths {
+            requirements.push(ApiPermissionRequirement::filesystem(
+                ApiFilesystemAccess::Read,
+                path.permission_path()?,
+            ));
+        }
+        Ok(())
+    }
+
+    fn into_engine(self) -> Result<engine::LinkedMediaReference> {
+        let target = self
+            .paths
+            .first()
+            .ok_or_else(|| {
+                invalid(
+                    "import_media",
+                    "import source must contain at least one path",
+                )
+            })?
+            .clone()
+            .into_engine()?
+            .to_target();
+        let mut media = engine::LinkedMediaReference::with_fingerprint(
+            parse_id(&self.media_id, "media_id")?,
+            self.name,
+            target,
+            None,
+            self.content_fingerprint,
+        )?;
+        let metadata = media.metadata_mut();
+        let kind_key = engine::MetadataKey::new("superi.import.kind")?;
+        let paths_key = engine::MetadataKey::new("superi.import.paths")?;
+        metadata.insert(
+            paths_key,
+            engine::MetadataValue::List(
+                self.paths
+                    .into_iter()
+                    .map(EditorMediaPath::into_engine)
+                    .collect::<Result<Vec<_>>>()?
+                    .into_iter()
+                    .map(|path| engine::MetadataValue::Text(path.to_target()))
+                    .collect(),
+            ),
+        );
+        match self.source {
+            EditorImportedMediaKind::File {} => {
+                metadata.insert(kind_key, engine::MetadataValue::Text("file".to_owned()));
+            }
+            EditorImportedMediaKind::ImageSequence {
+                source_count,
+                first_frame,
+                last_frame,
+                frame_rate_numerator,
+                frame_rate_denominator,
+            } => {
+                if source_count == 0
+                    || first_frame > last_frame
+                    || frame_rate_numerator == 0
+                    || frame_rate_denominator == 0
+                {
+                    return Err(invalid(
+                        "import_media",
+                        "image sequence metadata is invalid",
+                    ));
+                }
+                metadata.insert(
+                    kind_key,
+                    engine::MetadataValue::Text("image_sequence".to_owned()),
+                );
+                for (key, value) in [
+                    (
+                        "superi.import.source_count",
+                        engine::MetadataValue::Unsigned(source_count),
+                    ),
+                    (
+                        "superi.import.first_frame",
+                        engine::MetadataValue::Signed(first_frame),
+                    ),
+                    (
+                        "superi.import.last_frame",
+                        engine::MetadataValue::Signed(last_frame),
+                    ),
+                    (
+                        "superi.import.frame_rate_numerator",
+                        engine::MetadataValue::Unsigned(u64::from(frame_rate_numerator)),
+                    ),
+                    (
+                        "superi.import.frame_rate_denominator",
+                        engine::MetadataValue::Unsigned(u64::from(frame_rate_denominator)),
+                    ),
+                ] {
+                    metadata.insert(engine::MetadataKey::new(key)?, value);
+                }
+            }
+        }
+        Ok(media)
+    }
+}
+
 /// Every current referenced-media mutation.
 #[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -2931,6 +3066,9 @@ pub enum ProjectAction {
     MutateMedia {
         mutation: EditorMediaMutation,
     },
+    ImportMedia {
+        media: Vec<EditorImportedMedia>,
+    },
     MutateClipMix {
         mutations: Vec<EditorClipMixMutation>,
     },
@@ -2955,6 +3093,11 @@ impl ProjectAction {
                 }
                 EditorMediaMutation::MarkMissing { .. } => {}
             },
+            Self::ImportMedia { media } => {
+                for source in media {
+                    source.append_permission_requirements(requirements)?;
+                }
+            }
             Self::MutateExtension { mutation } => {
                 mutation.append_permission_requirements(requirements)?;
             }
@@ -2992,6 +3135,12 @@ impl ProjectAction {
             )),
             Self::MutateMedia { mutation } => Ok(engine::CompoundProjectAction::MutateMedia(
                 mutation.into_engine()?,
+            )),
+            Self::ImportMedia { media } => Ok(engine::CompoundProjectAction::import_media(
+                media
+                    .into_iter()
+                    .map(EditorImportedMedia::into_engine)
+                    .collect::<Result<Vec<_>>>()?,
             )),
             Self::MutateClipMix { mutations } => {
                 Ok(engine::CompoundProjectAction::mutate_clip_mix(
@@ -3436,6 +3585,12 @@ fn public_action_evidence(
         engine::CompoundProjectActionResult::MediaMutated(result) => {
             Ok(ProjectActionEvidence::MediaMutated {
                 outcome: public_media_result(*result),
+            })
+        }
+        engine::CompoundProjectActionResult::MediaImported(result) => {
+            Ok(ProjectActionEvidence::MediaImported {
+                media_ids: result.imported().iter().map(ToString::to_string).collect(),
+                skipped_media_ids: result.skipped().iter().map(ToString::to_string).collect(),
             })
         }
         engine::CompoundProjectActionResult::ClipMixMutated(revision) => {

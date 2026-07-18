@@ -2,7 +2,7 @@
 module_id: superi-project
 source_paths:
   - open/crates/superi-project
-source_hash: 7b04a7c93651295f5fc6a4928bbca29e94bf00f875864902bb8f451a6e387e7b
+source_hash: 14a1cec3c4761a1320961c5358baa8556ef1c12d61ca354578e9daafd6b0410c
 source_files: 28
 mapped_at_commit: working-tree
 ---
@@ -136,8 +136,9 @@ project authority.
   transactional canonical rewrites, shared complete integrity checks, and precommit rollback proof.
 - `open/crates/superi-project/src/media.rs`: Implements versioned referenced-media target encoding,
   portable relative path normalization, deterministic project-file resolution, host-platform
-  evidence, stable media lookup, and reusable draft plus revision-fenced document commands that
-  retain editable timeline graphs and suppress false document revisions for semantic no-ops.
+  evidence, stable media lookup, bounded atomic fingerprinted-media insertion, and reusable draft
+  plus revision-fenced document commands that retain editable timeline graphs and suppress false
+  document revisions for exact duplicate imports and other semantic no-ops.
 - `open/crates/superi-project/src/persist.rs`: Implements secured short-lived file connections and
   retained in-memory storage, active path identity and validated file generations, stable
   before-and-after generation observation, schema 5 plus frozen schema-1 through schema-4

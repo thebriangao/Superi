@@ -43,7 +43,7 @@ pub use superi_project::extensions::{
     ProjectExtensionRecordId,
 };
 pub use superi_project::media::{
-    ProjectMediaCommand, ProjectMediaCommandResult, ReferencedMediaPath,
+    ProjectMediaCommand, ProjectMediaCommandResult, ProjectMediaImportResult, ReferencedMediaPath,
 };
 pub use superi_project::{
     negotiate_project_format, project_format_support, ProjectDatabase, ProjectDestinationCollision,

@@ -2,7 +2,7 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 68cc5cb8e658875e5980096e73037faf6633925a3e50d7514cf0df299831f113
+source_hash: ec5dd6ab01404c4ae7bb71137a2001f4a4a45feacef58c372b712cb4a75497d5
 source_files: 70
 mapped_at_commit: working-tree
 ---
@@ -94,9 +94,9 @@ through the existing dispatcher.
   EngineControl for one bounded caller closure and drops the temporary dispatcher before returning.
 - `open/crates/superi-engine/src/editor.rs`: Exposes the curated checked construction vocabulary
   needed by upper-tier generic project, local file hosting, and version negotiation APIs, including
-  the project-owned compatibility table, typed negotiation result, and existing project save
-  command, collision, operation, and outcome vocabulary. It adds no wire model, mutation algorithm,
-  dispatcher, history, persistence owner, or lower dependency edge.
+  project media import results, the project-owned compatibility table, typed negotiation result,
+  and existing project save command, collision, operation, and outcome vocabulary. It adds no wire
+  model, mutation algorithm, dispatcher, history, persistence owner, or lower dependency edge.
 - `open/crates/superi-engine/src/editor_state.rs`: Captures one immutable project-history revision,
   deterministic diagnostics and settings, canonical timeline, graph, and clip-mix resources,
   bounded extension descriptors, exact audio routing and continuity, and explicit cached recovery,
@@ -171,8 +171,8 @@ through the existing dispatcher.
   infallible postpublication history replacement.
 - `open/crates/superi-engine/src/project_transaction.rs`: Implements the bounded whole-project
   transaction vocabulary, one outer project publication, ordered action results, timeline and
-  clip-mix reconciliation, extension commands, three-way retained graph preservation, per-action
-  aggregate validation, and complete rollback on any late failure.
+  clip-mix reconciliation, atomic linked-media batch import, extension commands, three-way retained
+  graph preservation, per-action aggregate validation, and complete rollback on any late failure.
 - `open/crates/superi-engine/src/proxy_substitution.rs`: Validates exact proxy purpose, source
   fingerprint, source revision, packet integrity, and stream metadata; translates cache quality to
   scheduler quality; consumes deterministic derived selection; lazily opens verified original

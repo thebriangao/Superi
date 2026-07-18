@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: bebdef3e78c2c07cc8c958c6dbd5b0c23989f5701ec9a4c28feb319a675a5624
-source_files: 214
+source_hash: 3e67a387d287880c3b15207d24171ad59ad666cf90701721b9e8d8cc0c9e84e7
+source_files: 216
 mapped_at_commit: working-tree
 ---
 
@@ -420,13 +420,17 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   session owner, and the production React consumer.
 - `docs/checkpoints/P3.W03.C002.md`: Durable implementation evidence for project-owned frame rate,
   resolution, color, audio, cache, proxy, and working-folder settings attached to that lifecycle.
+- `docs/checkpoints/P3.W03.C003.md`: Durable implementation evidence for atomic media import,
+  deterministic folder and image-sequence discovery, picker and drag/drop consumers, stable public
+  command/event/automation parity, durable reopen, and duplicate no-op behavior.
 
 ### Production desktop application
 
 - `app/.node-version`: Pins Node.js 24.13.0 for local and hosted production application gates.
 - `app/index.html`: Supplies the production webview document and React module entry.
-- `app/package-lock.json`: Locks React 19.2.7, Tauri API 2.11.1, Tauri CLI 2.11.4, TypeScript 5.9.3,
-  Vite 7.3.6, the React Vite plug-in 5.2.0, and their transitive frontend dependencies.
+- `app/package-lock.json`: Locks React 19.2.7, Tauri API 2.11.1, Tauri dialog 2.7.1, Tauri CLI
+  2.11.4, TypeScript 5.9.3, Vite 7.3.6, the React Vite plug-in 5.2.0, and their transitive frontend
+  dependencies.
 - `app/package.json`: Declares the private production application package, exact toolchain and
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
   framework and editor-workspace contracts, and Tauri commands.
@@ -454,12 +458,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/App.tsx`: Registers the five professional workspace routes and panels above the delivered
   application framework while retaining the system shell, shared selection, lifecycle controls,
   generated validation request, engine-introspection state, and the production project lifecycle
-  consumer for create, open, close, save, save-as, recent, recovery, and compact project-settings
-  inspection and editing.
+  consumer for create, open, close, save, save-as, recent, recovery, compact project-settings
+  editing, native media picking, recursive folder selection, and native drag/drop import.
 - `app/src/lifecycle.ts`: Defines the exact shell-local serialized lifecycle contract and typed
   asynchronous wrappers for the two Tauri lifecycle commands without importing engine bindings.
-- `app/src/project-lifecycle.ts`: Defines strict shell-local project lifecycle and settings DTOs
-  plus typed wrappers for the four Tauri project commands.
+- `app/src/project-lifecycle.ts`: Defines strict shell-local project lifecycle, settings, and media
+  import DTOs plus typed wrappers for the five Tauri project commands.
 - `app/src/main.tsx`: Constructs one process-lifetime `DesktopSuperiTransport`, injects it through
   the generated API provider, disposes it at unload, and mounts the React application under strict
   mode.
@@ -529,7 +533,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   `LocalProjectHost`, including commit-only active identity, bounded deduplicated recent projects,
   revision-fenced recovery presentation, last-valid state retention, and retryable, degraded,
   user-correctable, or terminal actionable failures. It projects and atomically updates the
-  project-owned settings snapshot without taking persistence authority.
+  project-owned settings snapshot, discovers bounded regular media without following symlinks,
+  groups numbered still sequences deterministically at the project frame rate, and delegates one
+  permission-checked import transaction without taking persistence authority.
 - `app/src-tauri/src/lib.rs`: Configures the mock and native Tauri builders, retains the linked
   engine process, manages its bounded connection and transport state alongside application
   lifecycle and project-session state, registers lifecycle, project, viewport, and API commands,
@@ -545,6 +551,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/tests/project_lifecycle_contract.rs`: Proves create, open, close, save, save-as,
   bounded recent ordering, revision-fenced recovery restore, commit-only state changes, and all four
   actionable failure classes through a deterministic backend.
+- `app/src-tauri/tests/media_import_contract.rs`: Proves picker, drag/drop, recursive folder scan,
+  deterministic image-sequence grouping, direct API and automation parity, correlated event
+  evidence, durable reopen, and duplicate no-op semantics through the real local project host.
 - `app/src-tauri/tests/project_settings_contract.rs`: Proves default inspection, complete atomic
   settings update, lifecycle revision coherence, durable reopen, and stale-revision rejection
   through the real local project host.

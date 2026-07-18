@@ -4,6 +4,7 @@
 //! project-file context that turns a versioned target into a local path, while leaving unknown
 //! locators untouched for interchange and future extensions.
 
+use std::collections::BTreeSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -17,6 +18,9 @@ use crate::document::{ProjectDocument, ProjectDraft, ProjectGraph, ProjectSnapsh
 const COMPONENT: &str = "superi-project.media";
 const MEDIA_PATH_TARGET_PREFIX: &str = "superi.media-path.v1:";
 const MEDIA_PATH_TARGET_NAMESPACE: &str = "superi.media-path.";
+
+/// Maximum number of media references accepted by one atomic import.
+pub const MAX_PROJECT_MEDIA_IMPORTS: usize = 4096;
 
 /// Stable target format used for project-owned filesystem references.
 pub const MEDIA_PATH_TARGET_FORMAT: &str = "superi.media-path.v1";
@@ -385,6 +389,27 @@ pub enum ProjectMediaCommandResult {
     Relink(RelinkDecision),
 }
 
+/// Semantic result of one atomic referenced-media import.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProjectMediaImportResult {
+    imported: Vec<MediaId>,
+    skipped: Vec<MediaId>,
+}
+
+impl ProjectMediaImportResult {
+    /// Returns newly inserted media identities in request order.
+    #[must_use]
+    pub fn imported(&self) -> &[MediaId] {
+        &self.imported
+    }
+
+    /// Returns already-present identical media identities in request order.
+    #[must_use]
+    pub fn skipped(&self) -> &[MediaId] {
+        &self.skipped
+    }
+}
+
 /// One media command result paired with the exact published project snapshot.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectMediaCommandOutcome {
@@ -461,6 +486,78 @@ impl ProjectDocument {
 }
 
 impl ProjectDraft<'_> {
+    /// Inserts a bounded media batch inside one whole-project publication.
+    pub fn import_media(
+        &mut self,
+        media: &[LinkedMediaReference],
+    ) -> Result<ProjectMediaImportResult> {
+        if media.is_empty() || media.len() > MAX_PROJECT_MEDIA_IMPORTS {
+            return Err(media_error(
+                ErrorCategory::InvalidInput,
+                Recoverability::UserCorrectable,
+                "import_media",
+                "media import must contain between 1 and 4096 references",
+            ));
+        }
+
+        let mut requested = BTreeSet::new();
+        let mut imported = Vec::new();
+        let mut skipped = Vec::new();
+        let mut pending = Vec::new();
+        for candidate in media {
+            if !requested.insert(candidate.id()) {
+                return Err(media_error(
+                    ErrorCategory::Conflict,
+                    Recoverability::UserCorrectable,
+                    "import_media",
+                    "media import contains a duplicate identity",
+                ));
+            }
+            match self.editorial_project().media_reference(candidate.id()) {
+                Some(existing) if existing == candidate => skipped.push(candidate.id()),
+                Some(_) => {
+                    return Err(media_error(
+                        ErrorCategory::Conflict,
+                        Recoverability::UserCorrectable,
+                        "import_media",
+                        "media identity already belongs to different source state",
+                    ))
+                }
+                None => {
+                    imported.push(candidate.id());
+                    pending.push(candidate.clone());
+                }
+            }
+        }
+
+        if pending.is_empty() {
+            return Ok(ProjectMediaImportResult { imported, skipped });
+        }
+
+        let retained_timeline_graphs = self
+            .graphs()
+            .filter_map(|graph| {
+                graph
+                    .root_timeline_id()
+                    .map(|root| (root, graph.graph().clone()))
+            })
+            .collect::<Vec<_>>();
+        let editorial_revision = self.editorial_project().revision();
+        self.editorial_project_mut()
+            .edit(editorial_revision, |editorial| {
+                for reference in pending {
+                    editorial.upsert_media_reference(reference);
+                }
+                Ok(())
+            })?;
+        for (root_timeline_id, graph) in retained_timeline_graphs {
+            let refreshed =
+                ProjectGraph::restore_timeline(self.editorial_project(), root_timeline_id, graph)?;
+            self.replace_graph(refreshed);
+        }
+        Ok(ProjectMediaImportResult { imported, skipped })
+    }
+
     /// Applies one media command inside an existing whole-project transaction.
     pub fn execute_media_command(
         &mut self,

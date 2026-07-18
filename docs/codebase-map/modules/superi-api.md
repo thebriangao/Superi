@@ -2,7 +2,7 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: b67b8ba5644076de5e5d29dc59b1dc30fa582adca22d891f1a2c0be6064e5c4c
+source_hash: b5b9c6baece4854e91beb7d3bd0c38124190473b5be78fdb33c233eb606f316a
 source_files: 41
 mapped_at_commit: working-tree
 ---
@@ -65,10 +65,11 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   editor state, project settings, project recovery, audio automation, scenario, cancellation,
   removal, restore, and dismissal contracts.
 - `open/crates/superi-api/src/editor.rs`: Owns the strict generic project command, action, timeline,
-  graph, media, clip-mix, and extension DTOs, checked engine conversion, typed history resource and
-  evidence, exact serialized request recording, bounded command-log query and result unions,
-  permission-checked replay detail, script prevalidation, and the dispatcher-backed apply, inspect,
-  undo, redo, script, event, state-query, and persistence facade.
+  graph, media import and mutation, clip-mix, and extension DTOs, checked engine conversion, exact
+  per-source filesystem permission derivation, typed import and history evidence, serialized
+  request recording, bounded command-log query and result unions, permission-checked replay detail,
+  script prevalidation, and the dispatcher-backed apply, inspect, undo, redo, script, event,
+  state-query, and persistence facade.
 - `open/crates/superi-api/src/extensions.rs`: Projects immutable engine registry snapshots into
   strict exact identity, lifecycle, requested and granted capability, core feature discovery, safe
   failure, and stable user-control DTOs. It owns the permission-free `superi.extensions.get` query,
@@ -96,9 +97,9 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
 - `open/crates/superi-api/src/local.rs`: Implements strict no-clobber project creation, complete
   current-schema open and validation, scoped EngineControl dispatch, durable mutation publication,
   collaborative-safe save, collision-aware save-as, copy, backup, recovery attachment, coherent render inspection, settings configuration, domain
-  filtering for media and timeline commands, and strict caller-correlated JSON-RPC automation over
-  existing public DTOs, including durable publication of every successful generic command and
-  committed `superi-json` script prefix plus read-only command-log inspection.
+  filtering for media mutation and import plus timeline commands, and strict caller-correlated
+  JSON-RPC automation over existing public DTOs, including durable publication of every successful
+  generic command and committed `superi-json` script prefix plus read-only command-log inspection.
   It owns path and acknowledgement ordering but no authored semantics.
 - `open/crates/superi-api/src/negotiation.rs`: Implements the permission-free stateless
   `superi.api.version.negotiate` query, strict bounded ascending client offers, highest common
@@ -146,7 +147,7 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   standalone construction failures from the shared user-safe projection.
 - `open/crates/superi-api/src/version.rs`: Owns all domain, catalog, and error schema revisions plus
   permanent method and event names, including catalog revision `1.4.0`, its `1.0.0` through `1.4.0`
-  release table, project editor schema `1.1.0`, command-log schema `1.0.0`, scripting schema `1.0.0`,
+  release table, project editor schema `1.2.0`, command-log schema `1.0.0`, scripting schema `1.0.0`,
   `superi.project.command_log.get`, `superi.project.script.run`, the version negotiation
   method, the complete `superi.jobs` vocabulary, the editor-state query, and event subscription
   open, close, and poll methods.
@@ -355,7 +356,7 @@ every ordered automation mutation. Results and events carry complete determinist
 events include exact engine command, event, caller transaction, and audio automation revision
 correlation.
 
-The generic authored project surface is schema `1.1.0`, with command
+The generic authored project surface is schema `1.2.0`, with command
 `superi.project.command.execute`, event `superi.project.state.changed`, and replacement resource
 `superi.project.history`. `ExecuteProjectCommand` carries one caller transaction identity, an exact
 expected project revision, and apply, undo, redo, or inspect. Apply contains one bounded ordered

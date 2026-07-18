@@ -6,9 +6,12 @@ use superi_core::ids::{GraphId, TimelineId};
 use superi_graph::mutate::{GraphMutation, GraphTransaction};
 use superi_project::document::{ProjectDocument, ProjectSnapshot};
 use superi_project::extensions::{ProjectExtensionCommand, ProjectExtensionCommandResult};
-use superi_project::media::{ProjectMediaCommand, ProjectMediaCommandResult};
+use superi_project::media::{
+    ProjectMediaCommand, ProjectMediaCommandResult, ProjectMediaImportResult,
+};
 use superi_timeline::compile::{recompile_timeline_preserving_edits, CompiledTimelineGraphValue};
 use superi_timeline::edit_ops::{EditBatchResult, EditOperation};
+use superi_timeline::model::LinkedMediaReference;
 
 use crate::audio_mix::apply_edit_batch_with_clip_mix;
 
@@ -34,6 +37,8 @@ pub enum CompoundProjectAction {
     },
     /// Apply one referenced-media path or relink command.
     MutateMedia(ProjectMediaCommand),
+    /// Insert one bounded referenced-media batch.
+    ImportMedia(Vec<LinkedMediaReference>),
     /// Apply a nonempty authored clip-mix mutation batch.
     MutateClipMix(Vec<ClipMixMutation>),
     /// Apply one durable extension-state command.
@@ -65,6 +70,12 @@ impl CompoundProjectAction {
         Self::MutateClipMix(mutations.into_iter().collect())
     }
 
+    /// Creates one atomic referenced-media import action.
+    #[must_use]
+    pub fn import_media(media: impl IntoIterator<Item = LinkedMediaReference>) -> Self {
+        Self::ImportMedia(media.into_iter().collect())
+    }
+
     /// Creates an extension-state mutation action.
     #[must_use]
     pub const fn mutate_extension(command: ProjectExtensionCommand) -> Self {
@@ -77,6 +88,7 @@ impl CompoundProjectAction {
             Self::EditTimeline(_) => "edit_timeline",
             Self::MutateGraph { .. } => "mutate_graph",
             Self::MutateMedia(_) => "mutate_media",
+            Self::ImportMedia(_) => "import_media",
             Self::MutateClipMix(_) => "mutate_clip_mix",
             Self::MutateExtension(_) => "mutate_extension",
         }
@@ -117,6 +129,9 @@ impl CompoundProjectTransaction {
             ) || matches!(
                 action,
                 CompoundProjectAction::MutateClipMix(mutations) if mutations.is_empty()
+            ) || matches!(
+                action,
+                CompoundProjectAction::ImportMedia(media) if media.is_empty()
             );
             if empty_batch {
                 return Err(transaction_error(
@@ -153,6 +168,8 @@ pub enum CompoundProjectActionResult {
     },
     /// A media command was accepted.
     MediaMutated(ProjectMediaCommandResult),
+    /// A referenced-media batch was accepted.
+    MediaImported(ProjectMediaImportResult),
     /// Authored clip-mix state published one new mix revision.
     ClipMixMutated(u64),
     /// Durable extension state was accepted.
@@ -234,6 +251,9 @@ pub fn execute_compound_project_transaction(
                 }
                 CompoundProjectAction::MutateMedia(command) => {
                     CompoundProjectActionResult::MediaMutated(draft.execute_media_command(command)?)
+                }
+                CompoundProjectAction::ImportMedia(media) => {
+                    CompoundProjectActionResult::MediaImported(draft.import_media(media)?)
                 }
                 CompoundProjectAction::MutateClipMix(mutations) => {
                     let mix_state = draft.clip_mix_state_mut();

@@ -90,6 +90,7 @@ async fn desktop_api_dispatch<R: Runtime>(
 /// [`ApplicationLifecycle::headless_engine_participant`] without changing this ownership.
 pub fn configure<R: Runtime>(builder: Builder<R>, lifecycle: ApplicationLifecycle) -> Builder<R> {
     builder
+        .plugin(tauri_plugin_dialog::init())
         .manage(ManagedLifecycle(lifecycle))
         .manage(DesktopTransportState::new())
         .manage(DesktopProjectState::default())
@@ -102,6 +103,7 @@ pub fn configure<R: Runtime>(builder: Builder<R>, lifecycle: ApplicationLifecycl
             project_lifecycle::desktop_project_execute,
             project_lifecycle::desktop_project_settings,
             project_lifecycle::desktop_project_settings_update,
+            project_lifecycle::desktop_project_media_import,
             viewport::desktop_viewport_update
         ])
 }

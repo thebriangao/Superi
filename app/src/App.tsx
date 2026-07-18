@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState, type ComponentType } from "react";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { open } from "@tauri-apps/plugin-dialog";
 
 import {
   ApplicationRegistry,
@@ -20,12 +22,15 @@ import {
   executeDesktopProject,
   getDesktopProjectSnapshot,
   getDesktopProjectSettings,
+  importDesktopMedia,
   updateDesktopProjectSettings,
   type DesktopProjectCommand,
   type DesktopProjectFailure,
   type DesktopProjectSettings,
   type DesktopProjectSettingsUpdate,
   type DesktopProjectSnapshot,
+  type DesktopMediaImportOrigin,
+  type DesktopMediaImportResult,
 } from "./project-lifecycle";
 import { classifyDesktopTransportError } from "./transport";
 import {
@@ -342,6 +347,9 @@ function SystemPanel() {
   const [projectSettings, setProjectSettings] =
     useState<DesktopProjectSettings | null>(null);
   const [projectSettingsPending, setProjectSettingsPending] = useState(false);
+  const [mediaImportPending, setMediaImportPending] = useState(false);
+  const [mediaImportResult, setMediaImportResult] =
+    useState<DesktopMediaImportResult | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -508,6 +516,65 @@ function SystemPanel() {
       setProjectFailure(projectFailureFrom(error));
     } finally {
       setProjectSettingsPending(false);
+    }
+  };
+
+  const importMediaPaths = useCallback(
+    async (origin: DesktopMediaImportOrigin, paths: readonly string[]) => {
+      const active = projectSnapshot?.active;
+      if (!active || paths.length === 0) {
+        return;
+      }
+      setMediaImportPending(true);
+      try {
+        const result = await importDesktopMedia({
+          expected_project_revision: active.identity.project_revision,
+          origin,
+          paths,
+          recursive: true,
+          detect_image_sequences: true,
+        });
+        setMediaImportResult(result);
+        const project = await getDesktopProjectSnapshot();
+        setProjectSnapshot(project);
+        setProjectFailure(project.failure);
+      } catch (error: unknown) {
+        setProjectFailure(projectFailureFrom(error));
+      } finally {
+        setMediaImportPending(false);
+      }
+    },
+    [
+      projectSnapshot?.active?.path,
+      projectSnapshot?.active?.identity.project_revision,
+    ],
+  );
+
+  useEffect(() => {
+    if (!projectSnapshot?.active) {
+      return;
+    }
+    const unlisten = getCurrentWebviewWindow().onDragDropEvent((event) => {
+      if (event.payload.type === "drop") {
+        void importMediaPaths("drag_drop", event.payload.paths);
+      }
+    });
+    return () => {
+      void unlisten.then((stop) => stop());
+    };
+  }, [importMediaPaths, projectSnapshot?.active?.path]);
+
+  const pickMedia = async () => {
+    const selected = await open({ multiple: true, directory: false });
+    if (selected !== null) {
+      await importMediaPaths("picker", Array.isArray(selected) ? selected : [selected]);
+    }
+  };
+
+  const scanFolder = async () => {
+    const selected = await open({ multiple: false, directory: true });
+    if (selected !== null) {
+      await importMediaPaths("folder_scan", [selected]);
     }
   };
 
@@ -689,6 +756,37 @@ function SystemPanel() {
             Close
           </button>
         </div>
+
+        {projectSnapshot?.active ? (
+          <div className="actions" aria-label="Media import actions">
+            <button
+              type="button"
+              disabled={projectPending || mediaImportPending}
+              onClick={() => void pickMedia()}
+            >
+              Import media
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={projectPending || mediaImportPending}
+              onClick={() => void scanFolder()}
+            >
+              Scan folder
+            </button>
+            <span className="explanation">
+              Drop files or folders anywhere in the window.
+            </span>
+          </div>
+        ) : null}
+        {mediaImportResult ? (
+          <p className="explanation" role="status">
+            Imported {mediaImportResult.imported.length} source
+            {mediaImportResult.imported.length === 1 ? "" : "s"}; skipped{" "}
+            {mediaImportResult.skipped.length}. Project revision{" "}
+            {mediaImportResult.project_revision}.
+          </p>
+        ) : null}
 
         <label>
           Save-as path

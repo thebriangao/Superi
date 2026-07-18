@@ -6,26 +6,40 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use std::fs::File;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use superi_api::commands::ApiCommand;
 use superi_api::commands::{
     ExecuteProjectSettingsTransaction, GetProjectRecovery, GetProjectSettings,
     RestoreProjectRecovery,
 };
+use superi_api::editor::{
+    EditorImportedMedia, EditorImportedMediaKind, EditorMediaPath, EditorMediaPathPlatform,
+    ExecuteProjectCommand, ExecuteProjectCommandResult, ProjectAction, ProjectActionEvidence,
+    ProjectCommand, ProjectCommandEvidence,
+};
+use superi_api::events::{ApiEvent, ProjectStateChanged};
 use superi_api::local::{
-    LocalProjectCollision, LocalProjectCreateRequest, LocalProjectHost, LocalProjectSummary,
+    LocalAutomationId, LocalAutomationRequest, LocalAutomationResult, LocalProjectCollision,
+    LocalProjectCreateRequest, LocalProjectExecution, LocalProjectHost, LocalProjectSummary,
 };
 use superi_api::permissions::{
-    ApiDestructiveOperation, ApiPermissionContext, ApiPermissionEffect, ApiPermissionRule,
+    ApiDestructiveOperation, ApiFilesystemAccess, ApiFilesystemPath, ApiFilesystemScope,
+    ApiPermissionContext, ApiPermissionEffect, ApiPermissionRule,
 };
 use superi_api::project::{ProjectSettingMutation, ProjectSettingValue, ProjectSettingsSnapshot};
 use superi_core::diagnostics::UserSafeError;
 use superi_core::error::{Error, ErrorCategory, Recoverability};
+use superi_core::ids::MediaId;
 use tauri::State;
 
 const MAX_RECENT_PROJECTS: usize = 32;
+const MAX_IMPORT_SOURCES: usize = 4096;
 
 const TIMELINE_RATE_NUMERATOR_KEY: &str = "superi.project.timeline.default_rate_numerator";
 const TIMELINE_RATE_DENOMINATOR_KEY: &str = "superi.project.timeline.default_rate_denominator";
@@ -182,6 +196,145 @@ pub struct DesktopProjectCreateRequest {
     pub root_timeline_name: String,
     pub edit_rate_numerator: u32,
     pub edit_rate_denominator: u32,
+}
+
+/// Desktop interaction that requested one authoritative media import.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DesktopMediaImportOrigin {
+    Picker,
+    DragDrop,
+    FolderScan,
+    Api,
+    Automation,
+}
+
+/// Strict discovery request shared by every desktop import entry point.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopMediaImportRequest {
+    pub expected_project_revision: u64,
+    pub origin: DesktopMediaImportOrigin,
+    pub paths: Vec<String>,
+    pub recursive: bool,
+    pub detect_image_sequences: bool,
+}
+
+/// Editor-visible source classification returned after import.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DesktopImportedMediaKind {
+    File,
+    ImageSequence,
+}
+
+/// One discovered source retained by the project transaction.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopImportedMedia {
+    media_id: String,
+    name: String,
+    source_paths: Vec<String>,
+    content_fingerprint: String,
+    kind: DesktopImportedMediaKind,
+    source_count: u64,
+    first_frame: Option<i64>,
+    last_frame: Option<i64>,
+    frame_rate_numerator: Option<u32>,
+    frame_rate_denominator: Option<u32>,
+}
+
+impl DesktopImportedMedia {
+    #[must_use]
+    pub fn media_id(&self) -> &str {
+        &self.media_id
+    }
+
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    #[must_use]
+    pub fn source_paths(&self) -> &[String] {
+        &self.source_paths
+    }
+
+    #[must_use]
+    pub const fn kind(&self) -> DesktopImportedMediaKind {
+        self.kind
+    }
+
+    #[must_use]
+    pub const fn source_count(&self) -> u64 {
+        self.source_count
+    }
+
+    #[must_use]
+    pub const fn frame_range(&self) -> Option<(i64, i64)> {
+        match (self.first_frame, self.last_frame) {
+            (Some(first), Some(last)) => Some((first, last)),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn frame_rate(&self) -> Option<(u32, u32)> {
+        match (self.frame_rate_numerator, self.frame_rate_denominator) {
+            (Some(numerator), Some(denominator)) => Some((numerator, denominator)),
+            _ => None,
+        }
+    }
+}
+
+/// Stable command, event, and automation evidence for one import attempt.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopMediaImportResult {
+    project_revision: u64,
+    imported: Vec<DesktopImportedMedia>,
+    skipped: Vec<String>,
+    command_method: String,
+    event_name: String,
+    event_sequence: Option<u64>,
+    automation_method: Option<String>,
+}
+
+impl DesktopMediaImportResult {
+    #[must_use]
+    pub const fn project_revision(&self) -> u64 {
+        self.project_revision
+    }
+
+    #[must_use]
+    pub fn imported(&self) -> &[DesktopImportedMedia] {
+        &self.imported
+    }
+
+    #[must_use]
+    pub fn skipped(&self) -> &[String] {
+        &self.skipped
+    }
+
+    #[must_use]
+    pub fn command_method(&self) -> &str {
+        &self.command_method
+    }
+
+    #[must_use]
+    pub fn event_name(&self) -> &str {
+        &self.event_name
+    }
+
+    #[must_use]
+    pub const fn event_sequence(&self) -> Option<u64> {
+        self.event_sequence
+    }
+
+    #[must_use]
+    pub fn automation_method(&self) -> Option<&str> {
+        self.automation_method.as_deref()
+    }
 }
 
 /// One opaque recovery candidate projected for user selection.
@@ -780,6 +933,91 @@ impl LocalProjectBackend {
         Ok((settings, identity))
     }
 
+    fn import_media(
+        &mut self,
+        path: &Path,
+        request: DesktopMediaImportRequest,
+    ) -> Result<(DesktopMediaImportResult, DesktopProjectIdentity), DesktopProjectFailure> {
+        let identity = Self::validate(path, "import_media")?;
+        if identity.project_revision() != request.expected_project_revision {
+            return Err(user_correctable(
+                "project_revision_stale",
+                "Project changed before media import",
+                "Refresh the project and try the import again.",
+            ));
+        }
+        let frame_rate = self.inspect_settings(path)?.frame_rate();
+        let origin = request.origin;
+        let discovered = discover_import_sources(&request, frame_rate)?;
+        if discovered.is_empty() {
+            return Ok((
+                DesktopMediaImportResult {
+                    project_revision: identity.project_revision(),
+                    imported: Vec::new(),
+                    skipped: Vec::new(),
+                    command_method: ExecuteProjectCommand::METHOD.to_owned(),
+                    event_name: ProjectStateChanged::NAME.to_owned(),
+                    event_sequence: None,
+                    automation_method: (origin == DesktopMediaImportOrigin::Automation)
+                        .then(|| ExecuteProjectCommand::METHOD.to_owned()),
+                },
+                identity,
+            ));
+        }
+
+        let permissions = import_permissions(&discovered)?;
+        let command = ExecuteProjectCommand::new(
+            format!(
+                "superi-desktop-import-{}-{}",
+                request.expected_project_revision,
+                discovered[0].desktop.media_id()
+            ),
+            request.expected_project_revision,
+            ProjectCommand::Apply {
+                actions: vec![ProjectAction::ImportMedia {
+                    media: discovered
+                        .iter()
+                        .map(|source| source.editor.clone())
+                        .collect(),
+                }],
+            },
+        );
+        let result = if origin == DesktopMediaImportOrigin::Automation {
+            let response = LocalProjectHost::execute_automation(
+                path,
+                LocalAutomationRequest::ProjectCommand {
+                    jsonrpc: "2.0".to_owned(),
+                    id: LocalAutomationId::String(format!(
+                        "desktop-import-{}",
+                        request.expected_project_revision
+                    )),
+                    params: command,
+                },
+                permissions,
+            )
+            .map_err(|error| safe_failure("import_media_automation", error))?;
+            match response.result() {
+                LocalAutomationResult::ProjectCommand(execution) => {
+                    present_import(execution, &discovered, true)?
+                }
+                _ => {
+                    return Err(DesktopProjectFailure::new(
+                        DesktopProjectFailureClass::Terminal,
+                        "media_import_automation_invalid",
+                        "Media import returned an invalid response",
+                        "Restart Superi before importing again.",
+                    ))
+                }
+            }
+        } else {
+            let execution = LocalProjectHost::execute_media(path, command, permissions)
+                .map_err(|error| safe_failure("import_media", error))?;
+            present_import(&execution, &discovered, false)?
+        };
+        let identity = Self::validate(path, "import_media")?;
+        Ok((result, identity))
+    }
+
     fn restore_permissions() -> Result<Arc<ApiPermissionContext>, DesktopProjectFailure> {
         ApiPermissionContext::new(
             "superi.desktop.project",
@@ -956,6 +1194,16 @@ impl DesktopProjectState {
             .update_settings(update)
     }
 
+    pub fn import_media(
+        &self,
+        request: DesktopMediaImportRequest,
+    ) -> Result<DesktopMediaImportResult, DesktopProjectFailure> {
+        self.lock("import_media")?
+            .as_mut()
+            .ok_or_else(not_initialized)?
+            .import_media(request)
+    }
+
     fn lock(
         &self,
         operation: &'static str,
@@ -1020,6 +1268,17 @@ pub async fn desktop_project_settings_update(
     tauri::async_runtime::spawn_blocking(move || state.update_settings(update))
         .await
         .map_err(|_| project_task_failed("update_settings"))?
+}
+
+#[tauri::command]
+pub async fn desktop_project_media_import(
+    request: DesktopMediaImportRequest,
+    state: State<'_, DesktopProjectState>,
+) -> Result<DesktopMediaImportResult, DesktopProjectFailure> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.import_media(request))
+        .await
+        .map_err(|_| project_task_failed("import_media"))?
 }
 
 /// Closed desktop command set for project lifecycle behavior only.
@@ -1305,6 +1564,409 @@ impl DesktopProjectLifecycle<LocalProjectBackend> {
             }
         }
     }
+
+    /// Discovers and imports media through the durable public project transaction.
+    pub fn import_media(
+        &mut self,
+        request: DesktopMediaImportRequest,
+    ) -> Result<DesktopMediaImportResult, DesktopProjectFailure> {
+        let path = self.active_record("import_media")?.path().to_owned();
+        match self.backend.import_media(Path::new(&path), request) {
+            Ok((result, identity)) => {
+                self.commit(ProjectTransition::RefreshActive { identity })?;
+                Ok(result)
+            }
+            Err(failure) => {
+                self.record_failure(failure.clone());
+                Err(failure)
+            }
+        }
+    }
+}
+
+#[derive(Clone)]
+struct DiscoveredImportSource {
+    desktop: DesktopImportedMedia,
+    editor: EditorImportedMedia,
+}
+
+type ImageSequenceKey = (PathBuf, String, String, usize);
+type ImageSequenceMembers = Vec<(i64, PathBuf)>;
+
+fn discover_import_sources(
+    request: &DesktopMediaImportRequest,
+    frame_rate: (u32, u32),
+) -> Result<Vec<DiscoveredImportSource>, DesktopProjectFailure> {
+    let mut files = BTreeSet::new();
+    for raw in &request.paths {
+        if raw.trim().is_empty() || raw.contains('\0') {
+            return Err(user_correctable(
+                "media_import_path_invalid",
+                "Media import path is invalid",
+                "Choose an existing media file or folder.",
+            ));
+        }
+        let path = std::fs::canonicalize(raw)
+            .map_err(|source| import_io_failure("resolve_import_path", source))?;
+        if path.is_dir() {
+            collect_import_directory(&path, request.recursive, &mut files)?;
+        } else if path.is_file() && supported_media_path(&path) {
+            files.insert(path);
+        }
+        if files.len() > MAX_IMPORT_SOURCES {
+            return Err(user_correctable(
+                "media_import_too_large",
+                "Media import contains too many sources",
+                "Import no more than 4096 sources at once.",
+            ));
+        }
+    }
+
+    let mut sequence_groups: BTreeMap<ImageSequenceKey, ImageSequenceMembers> = BTreeMap::new();
+    if request.detect_image_sequences {
+        for path in &files {
+            if let Some((prefix, width, frame)) = image_sequence_parts(path) {
+                sequence_groups
+                    .entry((
+                        path.parent().unwrap_or(Path::new("")).to_path_buf(),
+                        prefix,
+                        path.extension()
+                            .and_then(|value| value.to_str())
+                            .unwrap_or_default()
+                            .to_ascii_lowercase(),
+                        width,
+                    ))
+                    .or_default()
+                    .push((frame, path.clone()));
+            }
+        }
+    }
+
+    let mut consumed = BTreeSet::new();
+    let mut sources = Vec::new();
+    for ((_, prefix, extension, width), mut members) in sequence_groups {
+        if members.len() < 2 {
+            continue;
+        }
+        members.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+        let paths: Vec<_> = members.iter().map(|(_, path)| path.clone()).collect();
+        consumed.extend(paths.iter().cloned());
+        let first = members.first().expect("nonempty sequence").0;
+        let last = members.last().expect("nonempty sequence").0;
+        let name = format!("{prefix}[{first:0width$}-{last:0width$}].{extension}");
+        sources.push(build_discovered_source(
+            name,
+            paths,
+            DesktopImportedMediaKind::ImageSequence,
+            Some((first, last)),
+            Some(frame_rate),
+        )?);
+    }
+    for path in files {
+        if consumed.contains(&path) {
+            continue;
+        }
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("media")
+            .to_owned();
+        sources.push(build_discovered_source(
+            name,
+            vec![path],
+            DesktopImportedMediaKind::File,
+            None,
+            None,
+        )?);
+    }
+    sources.sort_by(|left, right| left.desktop.media_id.cmp(&right.desktop.media_id));
+    Ok(sources)
+}
+
+fn collect_import_directory(
+    root: &Path,
+    recursive: bool,
+    files: &mut BTreeSet<PathBuf>,
+) -> Result<(), DesktopProjectFailure> {
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        let mut entries = std::fs::read_dir(&directory)
+            .map_err(|source| import_io_failure("scan_import_folder", source))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|source| import_io_failure("scan_import_folder", source))?;
+        entries.sort_by_key(|entry| entry.path());
+        for entry in entries {
+            let file_type = entry
+                .file_type()
+                .map_err(|source| import_io_failure("scan_import_folder", source))?;
+            if file_type.is_symlink() {
+                continue;
+            }
+            let path = entry.path();
+            if file_type.is_dir() && recursive {
+                pending.push(path);
+            } else if file_type.is_file() && supported_media_path(&path) {
+                files.insert(
+                    std::fs::canonicalize(path)
+                        .map_err(|source| import_io_failure("scan_import_folder", source))?,
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn supported_media_path(path: &Path) -> bool {
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    matches!(
+        extension.as_str(),
+        "mov"
+            | "mp4"
+            | "mkv"
+            | "webm"
+            | "wav"
+            | "flac"
+            | "mp3"
+            | "aac"
+            | "png"
+            | "jpg"
+            | "jpeg"
+            | "exr"
+            | "tif"
+            | "tiff"
+            | "dpx"
+    )
+}
+
+fn image_sequence_parts(path: &Path) -> Option<(String, usize, i64)> {
+    let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+    if !matches!(
+        extension.as_str(),
+        "png" | "jpg" | "jpeg" | "exr" | "tif" | "tiff" | "dpx"
+    ) {
+        return None;
+    }
+    let stem = path.file_stem()?.to_str()?;
+    let digit_start = stem
+        .char_indices()
+        .rev()
+        .take_while(|(_, character)| character.is_ascii_digit())
+        .map(|(index, _)| index)
+        .last()?;
+    let digits = &stem[digit_start..];
+    Some((
+        stem[..digit_start].to_owned(),
+        digits.len(),
+        digits.parse().ok()?,
+    ))
+}
+
+fn build_discovered_source(
+    name: String,
+    paths: Vec<PathBuf>,
+    kind: DesktopImportedMediaKind,
+    frame_range: Option<(i64, i64)>,
+    frame_rate: Option<(u32, u32)>,
+) -> Result<DiscoveredImportSource, DesktopProjectFailure> {
+    let fingerprint = fingerprint_sources(&paths)?;
+    let source_paths: Vec<_> = paths
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect();
+    let media_id = stable_media_id(kind, &source_paths, &fingerprint).to_string();
+    let editor_paths = source_paths
+        .iter()
+        .cloned()
+        .map(native_editor_path)
+        .collect();
+    let source = match (kind, frame_range, frame_rate) {
+        (DesktopImportedMediaKind::File, _, _) => EditorImportedMediaKind::File {},
+        (DesktopImportedMediaKind::ImageSequence, Some((first, last)), Some((num, den))) => {
+            EditorImportedMediaKind::ImageSequence {
+                source_count: paths.len() as u64,
+                first_frame: first,
+                last_frame: last,
+                frame_rate_numerator: num,
+                frame_rate_denominator: den,
+            }
+        }
+        _ => {
+            return Err(DesktopProjectFailure::new(
+                DesktopProjectFailureClass::Terminal,
+                "media_import_discovery_invalid",
+                "Media discovery returned invalid state",
+                "Restart Superi before importing again.",
+            ))
+        }
+    };
+    let desktop = DesktopImportedMedia {
+        media_id: media_id.clone(),
+        name: name.clone(),
+        source_paths,
+        content_fingerprint: fingerprint.clone(),
+        kind,
+        source_count: paths.len() as u64,
+        first_frame: frame_range.map(|value| value.0),
+        last_frame: frame_range.map(|value| value.1),
+        frame_rate_numerator: frame_rate.map(|value| value.0),
+        frame_rate_denominator: frame_rate.map(|value| value.1),
+    };
+    Ok(DiscoveredImportSource {
+        desktop,
+        editor: EditorImportedMedia {
+            media_id,
+            name,
+            paths: editor_paths,
+            content_fingerprint: fingerprint,
+            source,
+        },
+    })
+}
+
+fn native_editor_path(path: String) -> EditorMediaPath {
+    EditorMediaPath::Absolute {
+        platform: if cfg!(windows) {
+            EditorMediaPathPlatform::Windows
+        } else {
+            EditorMediaPathPlatform::Unix
+        },
+        path,
+    }
+}
+
+fn fingerprint_sources(paths: &[PathBuf]) -> Result<String, DesktopProjectFailure> {
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    for path in paths {
+        let mut file = File::open(path)
+            .map_err(|source| import_io_failure("fingerprint_import_source", source))?;
+        loop {
+            let count = file
+                .read(&mut buffer)
+                .map_err(|source| import_io_failure("fingerprint_import_source", source))?;
+            if count == 0 {
+                break;
+            }
+            hasher.update(&buffer[..count]);
+        }
+        hasher.update([0]);
+    }
+    Ok(format!("sha256:{}", hex_bytes(&hasher.finalize())))
+}
+
+fn stable_media_id(kind: DesktopImportedMediaKind, paths: &[String], fingerprint: &str) -> MediaId {
+    let mut hasher = Sha256::new();
+    hasher.update(match kind {
+        DesktopImportedMediaKind::File => b"file".as_slice(),
+        DesktopImportedMediaKind::ImageSequence => b"image_sequence".as_slice(),
+    });
+    for path in paths {
+        hasher.update(path.as_bytes());
+        hasher.update([0]);
+    }
+    hasher.update(fingerprint.as_bytes());
+    let digest = hasher.finalize();
+    let mut raw = [0_u8; 16];
+    raw.copy_from_slice(&digest[..16]);
+    let raw = u128::from_be_bytes(raw);
+    MediaId::from_raw(if raw == 0 { 1 } else { raw })
+}
+
+fn hex_bytes(bytes: &[u8]) -> String {
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write as _;
+        write!(&mut output, "{byte:02x}").expect("writing to String cannot fail");
+    }
+    output
+}
+
+fn import_permissions(
+    sources: &[DiscoveredImportSource],
+) -> Result<Arc<ApiPermissionContext>, DesktopProjectFailure> {
+    let mut rules = Vec::new();
+    for source in sources {
+        for path in source.desktop.source_paths() {
+            let target = ApiFilesystemPath::native(path.clone())
+                .map_err(|error| safe_failure("authorize_media_import", error))?;
+            rules.push(ApiPermissionRule::filesystem(
+                ApiPermissionEffect::Allow,
+                ApiFilesystemAccess::Read,
+                ApiFilesystemScope::exact(target),
+            ));
+        }
+    }
+    ApiPermissionContext::new("superi.desktop.project", rules)
+        .map(Arc::new)
+        .map_err(|error| safe_failure("authorize_media_import", error))
+}
+
+fn present_import(
+    execution: &LocalProjectExecution<ExecuteProjectCommandResult, ProjectStateChanged>,
+    discovered: &[DiscoveredImportSource],
+    automation: bool,
+) -> Result<DesktopMediaImportResult, DesktopProjectFailure> {
+    let (imported_ids, skipped_ids) = match execution.result().evidence() {
+        ProjectCommandEvidence::Applied { actions } => actions
+            .iter()
+            .find_map(|action| match action {
+                ProjectActionEvidence::MediaImported {
+                    media_ids,
+                    skipped_media_ids,
+                } => Some((media_ids, skipped_media_ids)),
+                _ => None,
+            })
+            .ok_or_else(|| {
+                DesktopProjectFailure::new(
+                    DesktopProjectFailureClass::Terminal,
+                    "media_import_evidence_missing",
+                    "Media import evidence is unavailable",
+                    "Restart Superi before importing again.",
+                )
+            })?,
+        _ => {
+            return Err(DesktopProjectFailure::new(
+                DesktopProjectFailureClass::Terminal,
+                "media_import_evidence_invalid",
+                "Media import evidence is invalid",
+                "Restart Superi before importing again.",
+            ))
+        }
+    };
+    let imported_set: BTreeSet<_> = imported_ids.iter().map(String::as_str).collect();
+    Ok(DesktopMediaImportResult {
+        project_revision: execution.result().state().project_revision(),
+        imported: discovered
+            .iter()
+            .filter(|source| imported_set.contains(source.desktop.media_id()))
+            .map(|source| source.desktop.clone())
+            .collect(),
+        skipped: skipped_ids.clone(),
+        command_method: ExecuteProjectCommand::METHOD.to_owned(),
+        event_name: ProjectStateChanged::NAME.to_owned(),
+        event_sequence: execution
+            .result()
+            .authored_state_changed()
+            .then(|| execution.events().last().map(ProjectStateChanged::sequence))
+            .flatten(),
+        automation_method: automation.then(|| ExecuteProjectCommand::METHOD.to_owned()),
+    })
+}
+
+fn import_io_failure(operation: &'static str, source: std::io::Error) -> DesktopProjectFailure {
+    safe_failure(
+        operation,
+        Error::with_source(
+            ErrorCategory::Unavailable,
+            Recoverability::UserCorrectable,
+            "media import source could not be read",
+            source,
+        ),
+    )
 }
 
 enum ProjectTransition {
