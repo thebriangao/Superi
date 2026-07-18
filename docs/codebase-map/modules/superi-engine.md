@@ -1291,7 +1291,9 @@ audio mutation, so their user intent remains attached without synthesis.
   The API-local `superi-json` runtime interprets only its existing generic project command and
   complete editor-state request through that facade, so scripts retain engine revision fences,
   history, lower-domain validation, event sequencing, and selected snapshot meaning without adding
-  an engine script owner.
+  an engine script owner. The production editing workspace is now a downstream read-only consumer
+  of the canonical timeline document in that editor-state projection; its transient playhead,
+  range, scroll, and zoom do not become engine commands or another authored state owner.
 - Cache and GPU retain their own exact local budget enforcement, audio retains its preallocated
   callback-safe queue, media I/O retains decoded value and lifecycle ownership, and export retains
   logical job and publication ownership. The engine arbiter composes a higher shared managed-byte
@@ -1693,6 +1695,10 @@ automation, playback, and export availability, pending and latest runtime observ
 resource identity, three-channel source meaning, stereo destination meaning, one explicit muted
 route, and a sample-exact 100-sample record gap between different clip sources.
 
+The downstream production frontend timeline contract proves that the canonical timeline bytes from
+this aggregate can drive a strict identity-preserving canvas without moving mutation, history,
+playback, or runtime evaluation ownership into React.
+
 Two engine-introspection contracts use the real registry, dispatcher, lifecycle, error coordinator,
 and resource arbiter. They prove read-only ownership, exact optional accounting, canonical ordering,
 healthy admission, playback-only, rendering-plus-export, and export-only degradation, active
@@ -1881,7 +1887,10 @@ validation snapshots expose coherent adaptation and action evidence
 without adding mutation authority. Its project diagnostics command exposes project-owned canonical
 hash and component evidence without an event, history entry, or second semantic model.
 Its editor-state command captures the same selected project plus cached optional runtime
-observations in one eventless replacement aggregate without polling or bulk runtime payloads.
+observations in one eventless replacement aggregate without polling or bulk runtime payloads. The
+production editing workspace now consumes its canonical timeline document through a strict
+read-only canvas projection; all canvas navigation state is transient and no authored mutation
+returns through this observation path.
 Playback crosses
 one bounded nonblocking bridge to its real domain owner. Logical export state remains in the
 canonical queue behind a type-erased dispatcher controller, while prepared executors receive fresh
@@ -2015,7 +2024,8 @@ Keep `InspectEditorState` bound to that same selected history snapshot and the d
 retained optional observations. Preserve canonical authored resource bytes, exact audio clocks and
 routing, explicit freshness, eventless behavior, and zero hidden polling or filesystem work. Add a
 domain only through its authoritative owner and keep opaque payloads and typed runtime artifacts out
-of the aggregate.
+of the aggregate. Keep downstream timeline presentation strict against the canonical document and
+route every authored gesture through the existing project command and history owners.
 Keep the selected immutable snapshot directly consumable by the project-owned autosave command. A
 future background I/O integration may route that public surface, but must not duplicate policy,
 publication, naming, or retention in engine and must not block EngineControl, Playback, Render, or

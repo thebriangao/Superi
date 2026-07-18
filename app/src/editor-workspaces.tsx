@@ -6,6 +6,7 @@ import {
   projectAudioTrack,
   type EditorProjectPresentation,
 } from "./editor-project.ts";
+import { TimelineWorkspace } from "./timeline-workspace.tsx";
 
 export function EditingWorkspacePanel() {
   const { editorProject, refreshEditorProject, dispatch } = useApplication();
@@ -22,6 +23,11 @@ export function EditingWorkspacePanel() {
       </div>
       {snapshot ? (
         <>
+          <TimelineWorkspace
+            document={snapshot.timeline.document}
+            rootTimelineId={snapshot.project.root_timeline_id}
+            playback={snapshot.playback}
+          />
           <div className="editor-summary-grid">
             <Metric label="Project" value={snapshot.project.project_id} />
             <Metric

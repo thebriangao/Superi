@@ -756,11 +756,14 @@ messages, contexts, paths, and source chains never serialize.
   Vite bundle, including the extension query, event, resource, lifecycle, capability, and control
   declarations.
 
-No network transport, application UI, shell source loader, extension host, or closed-tier client is
-present. The local script interpreter is an in-process public API consumer, not a process sandbox
-or general-purpose language runtime. The local CLI host is a real filesystem and JSON-RPC process
-consumer. The event stream is a transport-neutral in-process owner that a later server can expose,
-and the frontend smoke package is a real generated-contract consumer, not an application.
+The production React and Tauri application consumes the committed generated contract through one
+injected client and retains the complete public editor snapshot. Its editing workspace strictly
+projects the canonical timeline document into a read-only canvas without adding public mutation
+authority. Native routing remains deliberately limited, so the application presents classified
+unavailable state for unrouted methods. No network transport, shell source loader, extension host,
+or closed-tier client is present. The local script interpreter is an in-process public API consumer,
+not a process sandbox or general-purpose language runtime. The local CLI host is a real filesystem
+and JSON-RPC process consumer, and the event stream remains transport-neutral.
 
 ## Invariants and operational boundaries
 
@@ -1066,6 +1069,11 @@ one coherent project revision, explicit color policy, optional automation attach
 playback, observed export state, strict unknown-field rejection, and exact JSON round trips without
 bulk runtime payloads or hidden polling.
 
+The production frontend timeline contract is the downstream canonical-document consumer proof. It
+rejects wrong revisions and root identities, preserves exact source and record ranges plus stable
+relationships and track intent, and keeps playhead, range, scroll, and zoom outside API mutation
+ownership.
+
 ## Current status and risks
 
 The API now has fourteen substantive domain surfaces including bounded ordered event delivery, one
@@ -1089,9 +1097,10 @@ history, scripting, and recovery owners, while live workers remain private to th
 Host-injected authorization now covers every current
 caller-selected filesystem target, plugin state and delegation mutation, and destructive job,
 recovery, and automation operation before dispatch.
-Generated bindings are
-implemented as a deterministic representation of the current in-process public surface, not as
-wire routing or a desktop application.
+Generated bindings are implemented as a deterministic representation of the current in-process
+public surface and are consumed by the production desktop application. They do not themselves
+provide complete native wire routing, mutation authority, or a second authored-state owner. The
+editing workspace now uses their editor-state timeline document as an exact read-only canvas input.
 Scenario schema 1 remains deliberately narrow and fixed to one canonical edit. Its reference
 state proves transactional control semantics, not production timeline, graph, or media ownership.
 Authored clip-gain automation is a substantive strict transaction and event surface over the engine
@@ -1196,6 +1205,9 @@ Keep complete editor state behind one dispatcher observation and one permanent p
 domain state by extending the authoritative engine aggregate and strict public projection together,
 preserve canonical authored document identity, keep optional owner freshness explicit, and never
 copy bulk runtime payloads or opaque extension bytes into the replacement snapshot.
+Keep the production timeline canvas on this same canonical resource and strict format revision.
+Its local playhead, range, scroll, and zoom are presentation intent only; authored edit gestures
+must use the existing project command and engine history owners.
 Keep extension discovery permission-free, immutable, canonical, and strictly declarative. Preserve
 exact versioned identity, requested and granted capability separation, core feature discovery,
 ready-only availability, bounded safe failure, semantic change-only events, and the exact existing

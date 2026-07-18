@@ -636,8 +636,11 @@ Timeline document flow preserves those owners without becoming a project contain
   compiled graph state. Timeline remains unaware of history and owns no stack; no engine
   `ProjectMutation` variant wraps timeline edit commands yet, and compound timeline plus audio or
   graph transactions remain later integration work.
-- Public integration tests and the `otio_roundtrip` example are real consumers. No application API
-  or editor surface exposes the general editorial model yet.
+- Public integration tests and the `otio_roundtrip` example are real consumers. The engine's
+  complete editor-state inspection and API projection now expose the canonical timeline document,
+  and the production editing workspace strictly consumes that document as a read-only canvas while
+  retaining exact identity, timing, grouping, targeting, synchronization, and selection evidence.
+  No timeline-specific typed public DTO or application-authored mutation path exists yet.
 
 ## Invariants and operational boundaries
 
@@ -896,9 +899,11 @@ canonical timeline and compiled graph components in stable SQLite schema 3 and a
 complete save, save-as, copy, and backup files. Effects has compatible
 graph-native transition authoring and a bounded oracle, but the production binder from this
 timeline-owned state to those visual schemas is absent. Graph evaluation, fit-to-fill,
-grouped-source compound synthesis, public API adaptation, multicam mixing
+grouped-source compound synthesis, timeline-specific typed public adaptation, multicam mixing
 and runtime playback, timeline-driven autosave scheduling, recovery orchestration, and API
-integration remain absent. Engine
+mutation integration remain absent. Generic editor-state inspection and the public API preserve the
+canonical timeline document, and the production editing workspace now renders it through a strict
+read-only projection with transient navigation state. Engine
 preparation integration now consumes and retains the compiled graph, and engine transport consumes
 the standalone signed rate value, but no
 owner yet binds that prepared native timeline graph to decoded playback, multicam mixing, or render
@@ -929,8 +934,9 @@ construction after JSON allocation rather than by a streaming preallocation quot
 engine color propagation contract consumes the narrow metadata seam. The project document now
 retains real generic editable graph state that can admit a higher-tier effects catalog, interprets
 recognized referenced-media paths without duplicating media state, and engine resource preparation
-consumes its exact selected compilation and resolved local target. No API, CLI, playback, or
-production render owner evaluates that result yet.
+consumes its exact selected compilation and resolved local target. The API and editing workspace
+inspect canonical editorial state, but no API, CLI, playback, application, or production render
+owner evaluates the compiled graph result yet.
 
 ## Maintenance notes
 
@@ -953,6 +959,10 @@ higher-level and grouped-source compound operations must consume `tracks_affecte
 selection state, and clip-owned time maps instead of recreating those policies. Add higher-level
 edit commands and graph evaluation only through their owning modules, and update project, engine,
 API, CLI, persistence, and fixture maps when those paths begin consuming native timeline state.
+Keep the production workspace projection strict against the canonical document revision and retain
+exact ranges, stable identities, relationships, targeting, synchronization, and selection. Local
+playhead, range, scroll, and zoom may remain presentation intent, but authored gestures must enter
+through project and engine command ownership rather than reconstructing timeline policy in React.
 Keep timeline edits in project command history behind the engine compound command owner and preserve
 full project snapshot restoration. Preserve the old-canonical, retained, and next-canonical
 three-way merge roles, including conflict rejection, instead of recompiling away direct graph edits.

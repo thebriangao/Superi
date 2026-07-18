@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 52e47e7b0d68b4d7acf36829bc6c00a036cf1e5b114b179af52eac430e3a69f5
-source_files: 238
+source_hash: ac2dd78c3106c49e3bc48ca88ca2634acb2675b4915c7a2015f8f2a38df5ff66
+source_files: 242
 mapped_at_commit: working-tree
 ---
 
@@ -29,7 +29,7 @@ cannot resolve a material question. Multiple checkpoints still use separate
 Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers but obeys an
 explicit positive user concurrency value. The file is ignored by Git and copied into managed
 worktrees through `.worktreeinclude`, so the mapping script does not include it in this module's
-235-file inventory or source hash. It must still be reread independently before repository work.
+242-file inventory or source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
 ratified architecture, while `open/Cargo.toml` and `open/Cargo.lock` expose the dependency graph
@@ -456,6 +456,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   baselines, conservative removable-volume state, exact changed-byte detection, explicit relink
   intent, stable editorial identity, revision-fenced scans, strict bridge and inspector consumption,
   and adjacent preview, batch, search, proxy, and offline compatibility.
+- `docs/checkpoints/P3.W04.C001.md`: Durable implementation evidence for the canonical timeline
+  canvas projection, identity-preserving tracks and items, exact rulers, playhead and range intent,
+  anchored scroll and zoom behavior, real editing-workspace consumption, and authored-state
+  ownership exclusions.
 
 ### Production desktop application
 
@@ -466,7 +470,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   dependencies.
 - `app/package.json`: Declares the private production application package, exact toolchain and
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
-  framework and editor-workspace contracts, and Tauri commands.
+  framework, editor-workspace, and timeline-canvas contracts, and Tauri commands.
 - `app/src/api.ts`: Re-exports the complete canonical generated TypeScript contract and constructs
   one frozen `SuperiApiBindings` surface around an injected `SuperiTransport` and `SuperiClient`.
 - `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
@@ -484,7 +488,17 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/editor-workspaces.tsx`: Renders editing, compositing, color, audio, delivery, and shared
   selection panels from the one application-owned public snapshot, including exact sample rates,
   ordered channels, routes, synchronization observation, continuity evidence, source and program
-  editing viewers, one composite viewer, and one color viewer.
+  editing viewers, one composite viewer, one color viewer, and the canonical timeline canvas.
+- `app/src/timeline-workspace.ts`: Strictly projects the embedded canonical revision 1 timeline
+  document into a deeply frozen canvas model with exact rational source and record ranges, stable
+  identities and relationships, external-global-start display placement, deterministic extent,
+  ruler, time-label, snapping, visible-window, and range math, and explicit malformed-document
+  rejection.
+- `app/src/timeline-workspace.tsx`: Renders the editing timeline with sticky track headers and ruler,
+  exact record-positioned items, transient playhead and in and out range, native scrolling,
+  pointer-anchored zoom, topmost-first track presentation, bounded visible-item overscan, fit
+  controls, frame stepping, targeting and synchronization evidence, and honest unavailable state
+  without taking authored mutation ownership.
 - `app/src/native-viewport.tsx`: Reserves a role-addressed native output rectangle and publishes only
   role, geometry, scale, visibility, and returned status to the shell-local viewport command; it
   never constructs an encoded image, blob URL, pixel readback, or webview frame path.
@@ -537,8 +551,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   source and user metadata details, editorial annotation controls, usage summaries, engine API
   status presentation, ranked content-search evidence, structured language and local-content
   artifact editing, stale-analysis warnings, bounded preview raster, horizontally scrollable
-  filmstrip, channel-separated waveform, responsive multi-selection batch controls, and responsive
-  16:9 native viewer reservations.
+  filmstrip, channel-separated waveform, responsive multi-selection batch controls, the sticky
+  timeline grid, ruler, tracks, items, range, playhead, controls, and responsive 16:9 native viewer
+  reservations.
 - `app/src/transport.ts`: Implements the concrete generated `SuperiTransport` through one injected
   or Tauri-backed invoke/listen host, generation-scoped request identities, ordered event replay,
   stale and duplicate rejection, reconnect, cooperative cancellation, and exact
@@ -556,6 +571,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   one existing application/project owner, exact source, program, composite, and color viewer
   consumers, explicit public editor request identity, and immutable preservation of sample timing,
   ordered channels, routes, and continuity evidence.
+- `app/tests/timeline-workspace.test.ts`: Verifies strict canonical revision handling, exact track,
+  item, source and record range, group, link, selection, target, synchronization, and transition
+  preservation, external global-start placement, deterministic frame-aligned ruler, visible-window,
+  and range math, invalid-document failures, real React integration, transient navigation controls,
+  and the absence of a frontend mutation owner.
 - `app/tests/api-bindings.test.mjs`: Verifies the canonical generated re-export, complete typed map
   boundary, concrete provider/bootstrap injection, and real request/subscription forwarding without
   duplicating generated client policy.
@@ -1260,8 +1280,8 @@ Ubuntu 24.04 job installs the exact Node.js 24.13.0 declaration, performs a lock
 runs strict no-emit TypeScript checking over the React application and generated public API adapter,
 builds the production entry with Vite 7.3.6, and then tests workflow wiring, lifecycle, generated
 client and transport ownership boundaries, deterministic application framework behavior, five
-professional workspace projections, exact audio semantics, exact pins, runtime transport forwarding,
-and the generated hashed bundle. The retained frontend fixture
+professional workspace projections, exact audio semantics, canonical timeline projection and
+navigation, exact pins, runtime transport forwarding, and the generated hashed bundle. The retained frontend fixture
 separately proves checkout-independent generated contract compatibility without standing in for the
 production application.
 
@@ -1411,7 +1431,10 @@ EngineControl owner, converts failures through `PublicApiError`, and emits gener
 introspection replacement payloads in a bounded ordered envelope. `app/src/transport.ts` implements
 the generated `SuperiTransport`, and `app/src/api.ts` remains the sole `SuperiClient` factory. React
 consumes the injected binding for validation, health, and actionable presentation without owning
-engine commands or project behavior.
+engine commands or project behavior. The editing workspace additionally consumes the canonical
+timeline document already contained by the public editor snapshot. Its strict projection preserves
+exact authored identity, timing, grouping, targeting, and synchronization, while local playhead,
+range, scroll, and zoom remain transient presentation intent and never become another mutation path.
 
 Beside the engine lifecycle, Tauri manages one serialized `DesktopProjectLifecycle` initialized
 with the application recovery root. Its concrete backend calls only `LocalProjectHost` creation,
@@ -1580,6 +1603,11 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   failure, immediate placeholder recovery, terminal behavior, and blocking-safe observation.
   Retained frontend and Tauri contracts continue to prove generated binding and toolchain
   compatibility without standing in for the product application.
+
+- The focused timeline-canvas proof freezes strict revision 1 parsing, exact source and record
+  ranges, stable grouping, linking, selection, target and synchronization evidence, two-pass
+  transition placement, deterministic ruler and range math, real editing-workspace composition,
+  transient navigation controls, and the exclusion of any frontend authored mutation owner.
 
 - The focused media metadata proof freezes the C005 native, typed bridge, and React consumer
   contract. Native behavior tests cover identity and bin preservation, persistent generic metadata,
@@ -1887,6 +1915,11 @@ of transient application state plus one last-valid public editor snapshot. The R
 editing, compositing, color, audio, delivery, and system routes; the professional views project the
 same snapshot, preserve exact audio sample, channel, route, synchronization, and continuity fields,
 and retain classified degraded state when the native bridge reports editor methods as unrouted.
+The editing view now also parses the snapshot's canonical timeline document into a frozen
+identity-preserving canvas with sticky headers, an adaptive ruler, record-positioned tracks and
+items, a frame-snapped playhead, an explicit range, native scrolling, and pointer-anchored zoom.
+Those controls retain only transient viewing intent, so timeline, project, engine, and public
+command owners remain authoritative for every authored mutation.
 No view takes engine or transport ownership, and unavailable runtime behavior remains honest.
 The System panel also consumes one Tauri-owned project lifecycle that durably creates, validates,
 saves, rebinds through save-as, closes, reopens recent paths, and restores opaque recovery
@@ -2161,8 +2194,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`b3f99b62847978b30c9cbdd4c1fd690fa3c1bdbb` when this checkpoint began. Its hash describes the exact
-235 discovered source files, including generated binary payloads, layered on the integrated revision.
+`679862a09fa656cfc8c5dc9eb2d6a721008e72ad` when this checkpoint began. Its hash describes the exact
+242 discovered source files, including generated binary payloads, layered on the integrated revision.
 
 ## Maintenance notes
 
@@ -2206,3 +2239,6 @@ consumer, API map, engine map, and global index synchronized whenever extension 
 capability, feature, failure, control, query, event, resource, or reconnect behavior changes.
 Discovery must remain a declarative projection of authoritative runtime owners and must never imply
 a privileged frontend, CLI, closed-tier, or plugin execution route.
+Keep the timeline canvas projection synchronized with the canonical timeline document revision,
+exact rational clocks, stable identities, and relationship fields. View navigation may remain local,
+but authored edits must route through the existing project, engine, and public command owners.
