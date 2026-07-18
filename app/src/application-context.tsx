@@ -21,6 +21,12 @@ import {
   type ApplicationState,
 } from "./application.ts";
 import { useSuperiApi } from "./api-context";
+import {
+  INITIAL_EDITOR_PROJECT,
+  createEditorStateRequest,
+  type EditorProjectPresentation,
+} from "./editor-project.ts";
+import { classifyDesktopTransportError } from "./transport.ts";
 
 export type ApplicationPanelRenderer = ComponentType;
 
@@ -36,6 +42,8 @@ export interface ApplicationContextValue {
     commandId: string,
   ) => Promise<ApplicationCommandResult>;
   readonly commandFailure: string | null;
+  readonly editorProject: EditorProjectPresentation;
+  readonly refreshEditorProject: () => Promise<void>;
 }
 
 const ApplicationContext = createContext<ApplicationContextValue | null>(null);
@@ -58,7 +66,66 @@ export function ApplicationProvider({
   );
   const stateRef = useRef(state);
   const [commandFailure, setCommandFailure] = useState<string | null>(null);
+  const [editorProject, setEditorProject] = useState<EditorProjectPresentation>(
+    INITIAL_EDITOR_PROJECT,
+  );
+  const editorRequestRevision = useRef(0);
+  const editorTransactionRevision = useRef(0);
   stateRef.current = state;
+
+  const refreshEditorProject = useCallback(async (): Promise<void> => {
+    const requestRevision = editorRequestRevision.current + 1;
+    editorRequestRevision.current = requestRevision;
+    if (api === null) {
+      setEditorProject((current) => ({
+        ...current,
+        status: "unavailable",
+        failure: null,
+      }));
+      return;
+    }
+
+    const transactionRevision = editorTransactionRevision.current + 1;
+    editorTransactionRevision.current = transactionRevision;
+    const transactionId = `superi.desktop.project-state.${transactionRevision}`;
+    setEditorProject((current) => ({
+      ...current,
+      status: current.snapshot === null ? "loading" : "refreshing",
+      transactionId,
+      failure: null,
+    }));
+
+    try {
+      const result = await api.request(
+        "superi.editor.state.get",
+        createEditorStateRequest(transactionId),
+      );
+      if (editorRequestRevision.current !== requestRevision) {
+        return;
+      }
+      if (result.transaction_id !== transactionId) {
+        throw new Error("editor state response transaction identity changed");
+      }
+      setEditorProject({
+        status: "ready",
+        transactionId,
+        commandSequence: result.command_sequence,
+        snapshot: result.snapshot,
+        failure: null,
+      });
+    } catch (error: unknown) {
+      if (editorRequestRevision.current !== requestRevision) {
+        return;
+      }
+      const failure = classifyDesktopTransportError(error);
+      setEditorProject((current) => ({
+        ...current,
+        status: failure.condition === "terminal" ? "failed" : "degraded",
+        transactionId,
+        failure,
+      }));
+    }
+  }, [api]);
 
   const executeCommand = useCallback(
     async (commandId: string): Promise<ApplicationCommandResult> => {
@@ -104,6 +171,25 @@ export function ApplicationProvider({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [executeCommand, registry]);
 
+  useEffect(() => {
+    void refreshEditorProject();
+    if (api === null) {
+      return;
+    }
+    const refresh = () => void refreshEditorProject();
+    const unsubscribers = [
+      api.subscribe("superi.project.state.changed", refresh),
+      api.subscribe("superi.audio.automation.changed", refresh),
+      api.subscribe("superi.jobs.changed", refresh),
+    ];
+    return () => {
+      editorRequestRevision.current += 1;
+      for (const unsubscribe of unsubscribers) {
+        unsubscribe();
+      }
+    };
+  }, [api, refreshEditorProject]);
+
   return (
     <ApplicationContext.Provider
       value={{
@@ -112,6 +198,8 @@ export function ApplicationProvider({
         dispatch,
         executeCommand,
         commandFailure,
+        editorProject,
+        refreshEditorProject,
       }}
     >
       {children}

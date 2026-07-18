@@ -7,9 +7,10 @@ boundary.**
 > **Project status:** Superi is in early implementation. Several lower-level media, codec, image,
 > GPU, color, concurrency, and policy contracts are substantive, and the canonical CLI runner now
 > executes a disclosed contract-conformance slice. A production React and Tauri shell now owns an
-> explicit headless-engine lifecycle, one linked EngineControl dispatcher, and a transport-neutral
-> generated TypeScript API client seam, but Superi is not yet a functioning video editor and does
-> not claim runtime import, rendering, or playable export.
+> explicit headless-engine lifecycle, one linked EngineControl dispatcher, a reliable generated API
+> transport, and five registry-backed professional workspaces over one public project snapshot.
+> The current native bridge still does not route broad editor methods, and Superi does not claim
+> runtime import, rendering, audio processing, or playable export.
 
 Superi begins from a simple observation: professional post-production software has historically
 separated editing, compositing, color, and audio into different applications, different internal
@@ -308,10 +309,12 @@ The graphical application uses React in a Tauri 2 native desktop host and commun
 engine through the public automation API. The current shell owns explicit startup, shutdown,
 restart, recovery, and failure state around one lifecycle-attached EngineControl dispatcher. Its
 React bootstrap consumes the complete generated TypeScript contract through an injected
-`SuperiTransport` provider, while concrete command/event transport and reliability behavior remain
-separate work. This direction gives Superi access to a mature interface ecosystem and a large design
-and engineering talent pool while keeping the performance-critical media pipeline native and
-GPU-driven.
+`SuperiTransport` provider. One concrete desktop transport owns ordered delivery, replay,
+reconnection, cancellation, and public failures. Above it, one application provider owns transient
+routing, panels, commands, shared resource selection, and the last public editor snapshot presented
+across editing, compositing, color, audio, and delivery workspaces. This direction gives Superi
+access to a mature interface ecosystem and a large design and engineering talent pool while keeping
+the performance-critical media pipeline native and GPU-driven.
 
 The UI is responsible for presenting timelines, panels, inspectors, node graphs, scopes, meters,
 project organization, and interaction. It is not responsible for secretly reimplementing editing
@@ -437,9 +440,10 @@ superi/
 ```
 
 The `closed/` directory contains a boundary notice only. No Superi Max implementation is present.
-The `/app` shell now owns lifecycle, the linked EngineControl process, and a generated binding
-provider. Concrete command/event transport and editor behavior remain intentionally absent rather
-than represented by mocked success.
+The `/app` shell now owns lifecycle, the linked EngineControl process, one generated binding and
+transport, one application/project presentation owner, and five professional workspace views.
+Broad editor method routing remains intentionally unavailable and is presented as a classified
+degraded state rather than represented by mocked success.
 
 ---
 
@@ -642,7 +646,8 @@ The present implementation does **not** contain:
 - project serialization;
 - audio processing;
 - local model inference;
-- concrete production desktop API transport or an editor interface that consumes it;
+- broad native routing for editor-state, project, audio, and delivery methods behind the existing
+  desktop transport;
 - Superi Max services, generation integrations, accounts, credits, or agent; or
 - a public release.
 

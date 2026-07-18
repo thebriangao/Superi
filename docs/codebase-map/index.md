@@ -38,7 +38,7 @@ against raw source before changing code.
 | `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline fixture validation, generation, and typed golden verification | Implemented validation library, six generators, seven-command CLI, four golden harnesses, and focused contracts |
 | `tool-superi-test-report` | [module map](modules/tool-superi-test-report.md) | `open/tools/superi-test-report` | Offline structured platform-lane evidence generator | Implemented strict schema, deterministic findings, collision-safe CLI, and focused contracts |
 | `tool-superi-api-bindings` | [module map](modules/tool-superi-api-bindings.md) | `open/tools/superi-api-bindings` | Deterministic committed TypeScript API artifact generator and freshness checker | Implemented pure rendering, idempotent generation, nonmutating freshness checks, and focused contracts |
-| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, production React and Tauri shell, workspace configuration, fixtures, generated TypeScript artifact, retained frontend consumer, and agent workflows | Active control layer: deterministic checkpoint workflow, explicit revisioned application and headless-engine lifecycle, a linked EngineControl dispatcher, bounded native validation connection, shell-local lifecycle commands, injected generated `SuperiClient`, thin command/event transport, ordered replay and reconnect, cooperative cancellation, classified public failures, deterministic application routing, transient workspace layout, panel and command registries, immutable shared selection, contract slice, bounded local scripting, durable command recording, and generated public API frontend consumption are delivered; broader generated method routing and professional editor workspaces remain absent |
+| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, production React and Tauri shell, workspace configuration, fixtures, generated TypeScript artifact, retained frontend consumer, and agent workflows | Active control layer: deterministic checkpoint workflow, explicit revisioned application and headless-engine lifecycle, a linked EngineControl dispatcher, bounded native validation connection, shell-local lifecycle commands, injected generated `SuperiClient`, thin command/event transport, ordered replay and reconnect, cooperative cancellation, classified public failures, deterministic application routing, transient workspace layout, panel and command registries, immutable shared selection, one public editor-snapshot presentation owner, and editing, compositing, color, audio, and delivery workspaces are delivered; broader generated method routing and runtime media behavior remain absent |
 
 ## Ownership and repository boundaries
 
@@ -205,6 +205,9 @@ The production desktop lifecycle is implemented without creating a second engine
 10. `ApplicationProvider` composes that model above the injected generated client. The shell routes
     generic workspace and system panels through the registries, and async commands delegate through
     `SuperiApiBindings` while local routing and selection remain responsive and nonauthoritative.
+11. The same `ApplicationProvider` retains one last-valid `EditorStateSnapshot` for presentation,
+    refreshes it through generated project, audio, and job events, and projects it across five
+    registry-backed professional workspaces without taking engine or transport ownership.
 
 Media registry construction and capability introspection are implemented as follows:
 

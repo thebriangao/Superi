@@ -17,6 +17,14 @@ import {
   type DesktopLifecycleSnapshot,
 } from "./lifecycle";
 import { classifyDesktopTransportError } from "./transport";
+import {
+  AudioWorkspacePanel,
+  ColorWorkspacePanel,
+  CompositingWorkspacePanel,
+  DeliveryWorkspacePanel,
+  EditingWorkspacePanel,
+  SharedSelectionPanel,
+} from "./editor-workspaces.tsx";
 
 interface ClientFailure {
   readonly summary: string;
@@ -48,19 +56,43 @@ const APPLICATION_LABELS: Record<
 };
 
 const APPLICATION_REGISTRY = new ApplicationRegistry<ComponentType>({
-  defaultRouteId: "workspace",
+  defaultRouteId: "editing",
   panels: [
     {
-      id: "application.overview",
-      title: "Workspace overview",
+      id: "workspace.editing",
+      title: "Editing workspace",
       region: "primary",
-      renderer: OverviewPanel,
+      renderer: EditingWorkspacePanel,
+    },
+    {
+      id: "workspace.compositing",
+      title: "Compositing workspace",
+      region: "primary",
+      renderer: CompositingWorkspacePanel,
+    },
+    {
+      id: "workspace.color",
+      title: "Color workspace",
+      region: "primary",
+      renderer: ColorWorkspacePanel,
+    },
+    {
+      id: "workspace.audio",
+      title: "Audio workspace",
+      region: "primary",
+      renderer: AudioWorkspacePanel,
+    },
+    {
+      id: "workspace.delivery",
+      title: "Delivery workspace",
+      region: "primary",
+      renderer: DeliveryWorkspacePanel,
     },
     {
       id: "application.selection",
       title: "Shared selection",
       region: "secondary",
-      renderer: SelectionPanel,
+      renderer: SharedSelectionPanel,
     },
     {
       id: "application.system",
@@ -71,10 +103,34 @@ const APPLICATION_REGISTRY = new ApplicationRegistry<ComponentType>({
   ],
   routes: [
     {
-      id: "workspace",
-      title: "Workspace",
-      panelIds: ["application.overview", "application.selection"],
-      defaultPanelId: "application.overview",
+      id: "editing",
+      title: "Editing",
+      panelIds: ["workspace.editing", "application.selection"],
+      defaultPanelId: "workspace.editing",
+    },
+    {
+      id: "compositing",
+      title: "Compositing",
+      panelIds: ["workspace.compositing", "application.selection"],
+      defaultPanelId: "workspace.compositing",
+    },
+    {
+      id: "color",
+      title: "Color",
+      panelIds: ["workspace.color", "application.selection"],
+      defaultPanelId: "workspace.color",
+    },
+    {
+      id: "audio",
+      title: "Audio",
+      panelIds: ["workspace.audio", "application.selection"],
+      defaultPanelId: "workspace.audio",
+    },
+    {
+      id: "delivery",
+      title: "Delivery",
+      panelIds: ["workspace.delivery", "application.selection"],
+      defaultPanelId: "workspace.delivery",
     },
     {
       id: "system",
@@ -85,16 +141,44 @@ const APPLICATION_REGISTRY = new ApplicationRegistry<ComponentType>({
   ],
   commands: [
     {
-      id: "application.route.workspace",
-      title: "Open workspace",
+      id: "application.route.editing",
+      title: "Open editing workspace",
       shortcut: "Mod+1",
       execute: ({ dispatch }) =>
-        dispatch({ type: "navigate", routeId: "workspace" }),
+        dispatch({ type: "navigate", routeId: "editing" }),
+    },
+    {
+      id: "application.route.compositing",
+      title: "Open compositing workspace",
+      shortcut: "Mod+2",
+      execute: ({ dispatch }) =>
+        dispatch({ type: "navigate", routeId: "compositing" }),
+    },
+    {
+      id: "application.route.color",
+      title: "Open color workspace",
+      shortcut: "Mod+3",
+      execute: ({ dispatch }) =>
+        dispatch({ type: "navigate", routeId: "color" }),
+    },
+    {
+      id: "application.route.audio",
+      title: "Open audio workspace",
+      shortcut: "Mod+4",
+      execute: ({ dispatch }) =>
+        dispatch({ type: "navigate", routeId: "audio" }),
+    },
+    {
+      id: "application.route.delivery",
+      title: "Open delivery workspace",
+      shortcut: "Mod+5",
+      execute: ({ dispatch }) =>
+        dispatch({ type: "navigate", routeId: "delivery" }),
     },
     {
       id: "application.route.system",
       title: "Open system",
-      shortcut: "Mod+2",
+      shortcut: "Mod+0",
       execute: ({ dispatch }) =>
         dispatch({ type: "navigate", routeId: "system" }),
     },
@@ -134,22 +218,27 @@ function ApplicationShell() {
           <h1 id="product-title">Superi</h1>
         </header>
         <nav className="route-list">
-          {registry.routeDefinitions.map((definition, index) => (
-            <button
-              className="route-button"
-              type="button"
-              key={definition.id}
-              aria-current={
-                definition.id === state.activeRouteId ? "page" : undefined
-              }
-              onClick={() =>
-                void executeCommand(`application.route.${definition.id}`)
-              }
-            >
-              <span>{definition.title}</span>
-              <kbd>{index + 1}</kbd>
-            </button>
-          ))}
+          {registry.routeDefinitions.map((definition, index) => {
+            const shortcut = registry.command(
+              `application.route.${definition.id}`,
+            ).shortcut;
+            return (
+              <button
+                className="route-button"
+                type="button"
+                key={definition.id}
+                aria-current={
+                  definition.id === state.activeRouteId ? "page" : undefined
+                }
+                onClick={() =>
+                  void executeCommand(`application.route.${definition.id}`)
+                }
+              >
+                <span>{definition.title}</span>
+                <kbd>{shortcut?.split("+").at(-1) ?? index + 1}</kbd>
+              </button>
+            );
+          })}
         </nav>
         <div className="selection-summary" aria-live="polite">
           <span>Shared selection</span>
@@ -221,74 +310,6 @@ function ApplicationShell() {
         </div>
       </section>
     </main>
-  );
-}
-
-function OverviewPanel() {
-  const { state, executeCommand } = useApplication();
-  return (
-    <div className="panel-content overview-panel">
-      <p className="panel-lede">
-        Routing, panel layout, commands, and selection share one transient
-        application snapshot. Project and media behavior remain engine-owned.
-      </p>
-      <dl className="framework-details">
-        <div>
-          <dt>Route</dt>
-          <dd>{state.activeRouteId}</dd>
-        </div>
-        <div>
-          <dt>App revision</dt>
-          <dd>{state.revision}</dd>
-        </div>
-        <div>
-          <dt>Visible panels</dt>
-          <dd>{state.visiblePanelIds.length}</dd>
-        </div>
-        <div>
-          <dt>Selected resources</dt>
-          <dd>{state.selection.items.length}</dd>
-        </div>
-      </dl>
-      <button
-        type="button"
-        onClick={() => void executeCommand("application.route.system")}
-      >
-        Open system status
-      </button>
-    </div>
-  );
-}
-
-function SelectionPanel() {
-  const { state, executeCommand } = useApplication();
-  return (
-    <div className="panel-content selection-panel">
-      {state.selection.items.length === 0 ? (
-        <p className="empty-selection">
-          Nothing is selected. Panels share public resource references without
-          copying engine state.
-        </p>
-      ) : (
-        <ul className="selection-list">
-          {state.selection.items.map((item) => (
-            <li key={`${item.resource}:${item.identity}`}>
-              <span>{item.resource}</span>
-              <strong>{item.identity}</strong>
-              <small>revision {item.revision}</small>
-            </li>
-          ))}
-        </ul>
-      )}
-      <button
-        className="secondary"
-        type="button"
-        disabled={state.selection.items.length === 0}
-        onClick={() => void executeCommand("application.selection.clear")}
-      >
-        Clear selection
-      </button>
-    </div>
   );
 }
 
