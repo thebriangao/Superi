@@ -368,7 +368,7 @@ fn expected_domain_version(name: &str) -> SemanticVersion {
             | "superi.project.state.changed"
             | "superi.project.history"
     ) {
-        SemanticVersion::new(1, 1, 0)
+        SemanticVersion::new(1, 2, 0)
     } else if name == GET_PUBLIC_API_SCHEMA_METHOD {
         PUBLIC_API_SCHEMA_VERSION.clone()
     } else {

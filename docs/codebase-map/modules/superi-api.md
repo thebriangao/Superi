@@ -2,7 +2,7 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: b5b9c6baece4854e91beb7d3bd0c38124190473b5be78fdb33c233eb606f316a
+source_hash: 942edfe9e0d2d42538cbf5802c4328207a9363a2ba72e86706e9bb66acbae62d
 source_files: 41
 mapped_at_commit: working-tree
 ---
@@ -210,7 +210,8 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   names, domain versions, primitive revision, canonical ordering, deterministic strict round trips,
   invalid catalog rejection, typed JSON-RPC success and failure exclusivity, all recovery classes,
   diagnostic visibility filtering, last-valid resource references, the complete permission
-  vocabulary, and exact metadata for every method.
+  vocabulary, and exact metadata for every method. Its explicit domain oracle locks the generic
+  authored project command, state event, and history resource to their released schema `1.2.0`.
 - `open/crates/superi-api/tests/scenario_contract.rs`: Covers the strict canonical schema, complete
   state projection, exact undo plus redo evidence, structured last-valid-state failures, and
   negative proof that private paths and raw engine context values never serialize.
@@ -955,7 +956,8 @@ surface, current domain versions, catalog schema `1.4.0`, error schema `1.0.0`, 
 stable primitive revision 1, strict deterministic catalog round trips, invalid identity and
 duplicate rejection, typed JSON-RPC exclusivity, all four recovery classes, user-safe diagnostic
 filtering, last-valid resource identity and revision, the complete permission vocabulary, and exact
-permission metadata for all 30 methods. They include local scripting, version negotiation, extension
+permission metadata for all 30 methods. The domain oracle explicitly matches the released generic
+project schema `1.2.0`, so a catalog bump cannot leave the exhaustive test on `1.1.0`. They include local scripting, version negotiation, extension
 discovery, command-log inspection, every public asynchronous job and event
 subscription method and resource, but do not claim a network transport server, dynamic method
 routing, push delivery, or authentication.

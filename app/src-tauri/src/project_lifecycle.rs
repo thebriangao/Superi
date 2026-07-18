@@ -38,11 +38,19 @@ use superi_engine::editor::{ClipSource, EditorialProject, ProjectDatabase};
 use tauri::State;
 
 mod media_preview;
+pub(crate) mod source_monitor;
 mod source_monitoring;
 
 pub use media_preview::{
     FilmstripArtifact, MediaPreviewBundle, MediaPreviewProduct, MediaPreviewRequest,
     PreviewImageArtifact, WaveformArtifact,
+};
+pub use source_monitor::{
+    desktop_source_monitor_load, desktop_source_monitor_seek, desktop_source_monitor_snapshot,
+    desktop_source_monitor_unload, desktop_source_monitor_update_marks, SourceMonitorEngineState,
+    SourceMonitorLoadRequest, SourceMonitorMarkMutation, SourceMonitorMarkUpdate,
+    SourceMonitorMarks, SourceMonitorSeekRequest, SourceMonitorSnapshot, SourceMonitorStream,
+    SourceMonitorTime, SourceMonitorUnloadRequest, SourceMonitorUpdateResult,
 };
 pub use source_monitoring::{
     MediaRelinkIntent, MediaSourceFingerprint, MediaSourceMonitoring, MediaSourceMonitoringStatus,
@@ -799,6 +807,8 @@ pub struct MediaBrowserItem {
     offline: OfflineMediaState,
     #[serde(default = "unavailable_thumbnail")]
     thumbnail: ThumbnailPresentation,
+    #[serde(default)]
+    source_monitor_marks: SourceMonitorMarks,
 }
 
 impl MediaBrowserItem {
@@ -847,6 +857,7 @@ impl MediaBrowserItem {
             resolved_representation: original_representation(),
             offline: unavailable_offline_state(),
             thumbnail: thumbnail_presentation(media),
+            source_monitor_marks: SourceMonitorMarks::default(),
         }
     }
 
@@ -1025,6 +1036,7 @@ impl MediaLibrarySnapshot {
                     let selections = self.items[index].selections.clone();
                     let derived_media = self.items[index].derived_media.clone();
                     let representation_choice = self.items[index].representation_choice;
+                    let source_monitor_marks = self.items[index].source_monitor_marks.clone();
                     let inspection_generation = self.items[index]
                         .source_metadata
                         .inspection_generation
@@ -1038,6 +1050,7 @@ impl MediaLibrarySnapshot {
                     self.items[index].selections = selections;
                     self.items[index].derived_media = derived_media;
                     self.items[index].representation_choice = representation_choice;
+                    self.items[index].source_monitor_marks = source_monitor_marks;
                     self.items[index].source_metadata =
                         source_metadata_inspection(imported, inspection_generation);
                 }
@@ -1727,6 +1740,7 @@ impl MediaLibrarySnapshot {
                 &item.source_paths,
                 &item.content_fingerprint,
             )?;
+            source_monitor::validate_marks(&item.source_monitor_marks)?;
         }
         for bin in &self.bins {
             let mut current = bin.parent_id.as_deref();
@@ -3783,6 +3797,7 @@ pub struct DesktopProjectState {
     lifecycle: Arc<Mutex<Option<DesktopProjectLifecycle<LocalProjectBackend>>>>,
     media_libraries: Arc<Mutex<MediaLibraryStore>>,
     media_library_path: Arc<Mutex<Option<PathBuf>>>,
+    source_monitor: Arc<Mutex<source_monitor::SourceMonitorRuntime>>,
 }
 
 impl Default for DesktopProjectState {
@@ -3791,6 +3806,7 @@ impl Default for DesktopProjectState {
             lifecycle: Arc::new(Mutex::new(None)),
             media_libraries: Arc::new(Mutex::new(MediaLibraryStore::default())),
             media_library_path: Arc::new(Mutex::new(None)),
+            source_monitor: Arc::new(Mutex::new(source_monitor::SourceMonitorRuntime::default())),
         }
     }
 }
@@ -3825,11 +3841,13 @@ impl DesktopProjectState {
         };
         for library in store.projects.values_mut() {
             library.refresh_derived();
+            library.validate()?;
         }
         let lifecycle = DesktopProjectLifecycle::new(LocalProjectBackend::new(recovery_root), 12)?;
         *self.lock("initialize")? = Some(lifecycle);
         *self.media_library_lock("initialize")? = store;
         *self.media_library_path_lock("initialize")? = Some(media_library_path);
+        self.reset_source_monitor("initialize")?;
         Ok(())
     }
 
@@ -3844,11 +3862,26 @@ impl DesktopProjectState {
         &self,
         command: DesktopProjectCommand,
     ) -> Result<DesktopProjectSnapshot, DesktopProjectFailure> {
+        let previous_active = {
+            let lifecycle = self.lock("execute")?;
+            lifecycle
+                .as_ref()
+                .ok_or_else(not_initialized)?
+                .snapshot()
+                .active()
+                .map(|active| (active.project_id().to_owned(), active.path().to_owned()))
+        };
         let snapshot = self
             .lock("execute")?
             .as_mut()
             .ok_or_else(not_initialized)?
             .execute(command)?;
+        let current_active = snapshot
+            .active()
+            .map(|active| (active.project_id().to_owned(), active.path().to_owned()));
+        if previous_active != current_active {
+            self.reset_source_monitor("execute_project_transition")?;
+        }
         self.activate_media_library(&snapshot)?;
         Ok(snapshot)
     }

@@ -1,4 +1,4 @@
-import { NativeViewport } from "./native-viewport.tsx";
+import { NativeViewport, SourceMonitor } from "./native-viewport.tsx";
 import type { ReactNode } from "react";
 
 import { useApplication } from "./application-context.tsx";
@@ -18,7 +18,7 @@ export function EditingWorkspacePanel() {
       refresh={refreshEditorProject}
     >
       <div className="native-viewer-grid native-viewer-grid-dual">
-        <NativeViewport role="source" label="Source" />
+        <SourceMonitor />
         <NativeViewport role="program" label="Program" />
       </div>
       {snapshot ? (

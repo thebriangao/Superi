@@ -2,7 +2,7 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: ec5dd6ab01404c4ae7bb71137a2001f4a4a45feacef58c372b712cb4a75497d5
+source_hash: 978d3608c992a07255139b50b9e79cb3f60724e457ad67980f6e04cd297077e4
 source_files: 70
 mapped_at_commit: working-tree
 ---
@@ -10,7 +10,7 @@ mapped_at_commit: working-tree
 ## Purpose and ownership
 
 `superi-engine` is the open orchestration layer. Its substantive paths cover canonical editorial
-command state, complete media backend registry assembly, transactional project snapshot or timeline
+command state, complete and source-only media backend registry assembly, transactional project snapshot or timeline
 graph plus source and decoder preparation, capability and health introspection, CPU-decoded frame upload, exact viewport and
 export color metadata branching, derived-media generation, transparent proxy resolution,
 predictive cache population, foreground graph and display-color execution, bounded audio admission,
@@ -147,8 +147,10 @@ through the existing dispatcher.
   explicit project and device coordination, reverse sleep preparation, forward wake revalidation,
   coherent playback, rendering, and export admission, recoverable degradation, rollback, reverse
   teardown, teardown retry, and fresh-lifetime restart.
-- `open/crates/superi-engine/src/media.rs`: Builds default and feature-gated media registries,
-  including atomically preflighted primary registrations for all four in-tree container sources.
+- `open/crates/superi-engine/src/media.rs`: Builds the complete default and feature-gated media
+  registries plus a source-only registry that avoids codec runtime initialization, all through one
+  atomically preflighted registration owner for the four in-tree container sources. A focused unit
+  contract locks exact source capability and stable backend order.
 - `open/crates/superi-engine/src/nodes.rs`: Placeholder for media and graph nodes.
 - `open/crates/superi-engine/src/playback.rs`: Defines playback-domain nonblocking prediction and
   foreground submission, complete decoded and scene semantic envelopes, shared-graph retained
@@ -489,8 +491,9 @@ codec, constraint, and hardware records through `MediaCapabilities::from_registr
 `EngineIntrospectionSnapshot` with lifecycle phase and revisions, health, canonical subsystem
 state, workflow availability and first blocker, safe active failure and recovery state, and optional
 exact `EngineResourceStatus` accounting across all six resource classes. `media` exposes the
-default registry with four primary source adapters and the feature-gated explicitly configured
-vendor constructor.
+default registry with four primary source adapters, a source-only constructor for inspection and
+monitor consumers that must not initialize decoder or encoder runtimes, and the feature-gated
+explicitly configured vendor constructor.
 
 `plugins` exposes canonical `OfxPluginBundle` validation, deterministic
 `discover_ofx_bundles`, the strict `OfxWorkerLauncher` platform seam, classified
@@ -844,6 +847,9 @@ Default registry construction atomically registers permissive Rust codecs plus p
 Matroska or WebM, MP4 or MOV, MXF, and WAV or AIFF sources. Source implementations and stable IDs
 are constructed and preflighted before source mutation. `os-codecs` may add host-discovered codec
 operations, and `vendor-codecs` requires explicit worker configuration.
+The source-only constructor runs that same preflight and registration path in a fresh registry
+without constructing any codec backend. Desktop source-monitor loading consumes this narrow engine
+assembly, while decode, encode, playback, and export continue to require the complete registry.
 Introspection reads declarations only, orders stable records, separates primary and fallback tiers,
 and never constructs a source or codec. The dispatcher then composes those immutable declarations
 with one optional resource-arbitration snapshot and its own recovery snapshot. Workflow readiness
@@ -1437,6 +1443,8 @@ audio mutation, so their user intent remains attached without synthesis.
 - Default registry construction is vendor free; host and vendor behavior remains opt-in.
 - Default registry construction includes all four in-tree source backends as primary priority-100
   registrations, with stable identifiers preflighted before source registry mutation.
+- Source-only registry construction exposes only those four Source capabilities and cannot make
+  source inspection depend on libvpx or another unrelated codec runtime.
 - Media introspection is declaration-only and has deterministic ordering.
 - Complete introspection requires EngineControl, reads the dispatcher-owned recovery snapshot, and
   cannot advance command, event, scenario, lifecycle, or resource state. Optional resource state
@@ -1741,6 +1749,10 @@ explicit missing state, and relative project-file context, and proves exact requ
 fallback-tier policy evidence, selected-factory failure without retry, pre-cancelled atomic failure,
 and later success through a fresh operation context.
 
+The focused `media` unit contract separately constructs the source-only registry, requires exactly
+the stable MKV/WebM, MP4/MOV, MXF, and PCM backend order, and proves every registration exposes only
+the Source capability. This is construction and declaration proof, not decode or presentation.
+
 The two generation contracts and three substitution contracts run through the default registry and
 real Rust AV1 encoder. They prove complete packet timing and metadata, deterministic content and
 artifact identity across
@@ -1952,6 +1964,9 @@ media owner now has a real export consumer. Its project entry point preserves on
 document compilation, and the request adapter now resolves project-owned filesystem targets through
 the real local source path. Playback and export do not yet acquire the whole bundle directly from
 the document owner.
+The source-only registry now has a production desktop monitor consumer, but the retained session,
+exact seek state, durable in and out marks, and Tauri command fencing remain workspace application
+owners. This does not turn engine registry assembly into an editor, decoder, or presenter.
 Export still requires caller-supplied graph, delivery, and audio stage owners and returns elementary
 streams without muxing or persistence. The export queue retains results in process memory, uses
 cooperative checkpoints, and requires an explicit blocking-safe shutdown; it is not a persistent or
@@ -1987,7 +2002,9 @@ accepted execution, and never allow another state mutation to overtake its reser
 production owner should replace the corresponding stub
 through its real crate rather than growing this reference model into a competing system. Registry
 or upload changes require updating their actual consumers and tests independently. Keep source
-registration synchronized with all four media-I/O adapters. Keep legacy resource preparation bound
+registration synchronized with all four media-I/O adapters, and keep the complete and source-only
+constructors routed through the same atomic source registration helper. Source-only consumers must
+not acquire decoder or encoder capabilities or initialize their runtimes. Keep legacy resource preparation bound
 to the timeline compiler and project resource preparation bound to the exact retained snapshot
 compilation, including snapshots returned after project schema migration. Both paths must preserve
 the exact reachable media set, persistent source identity,

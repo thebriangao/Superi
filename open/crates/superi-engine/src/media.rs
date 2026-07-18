@@ -32,6 +32,16 @@ pub fn media_backend_registry() -> Result<BackendRegistry> {
     Ok(registry)
 }
 
+/// Builds the engine-owned source registry without initializing decoder or encoder runtimes.
+///
+/// Source inspection, relinking, and monitor loading can open supported containers independently
+/// from codec availability. Decode and encode consumers must use [`media_backend_registry`].
+pub fn source_backend_registry() -> Result<BackendRegistry> {
+    let mut registry = BackendRegistry::new();
+    register_source_backends(&mut registry)?;
+    Ok(registry)
+}
+
 /// Builds the complete registry plus caller-selected vendor RAW worker plugins.
 ///
 /// This constructor exists only with `vendor-codecs`. It never discovers or downloads workers,
@@ -84,4 +94,29 @@ fn source_registration(backend: Arc<dyn MediaBackend>) -> Result<BackendRegistra
         SOURCE_PRIORITY,
         BackendTier::Primary,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use superi_media_io::backend::BackendCapability;
+
+    use super::source_backend_registry;
+
+    #[test]
+    fn source_only_registry_has_every_engine_container_without_codec_initialization() {
+        let registry = source_backend_registry().expect("source backends should construct");
+        let registrations = registry.registrations().collect::<Vec<_>>();
+        assert_eq!(registrations.len(), 4);
+        assert!(registrations.iter().all(|registration| {
+            let capabilities = registration.capabilities().iter().collect::<Vec<_>>();
+            capabilities == vec![&BackendCapability::Source]
+        }));
+        assert_eq!(
+            registrations
+                .iter()
+                .map(|registration| registration.backend().descriptor().id().as_str())
+                .collect::<Vec<_>>(),
+            vec!["mkv-webm", "mp4-mov", "mxf", "pcm-containers"]
+        );
+    }
 }

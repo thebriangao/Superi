@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: ac2dd78c3106c49e3bc48ca88ca2634acb2675b4915c7a2015f8f2a38df5ff66
-source_files: 242
+source_hash: 3f45b4c816fb91aea745156cc55dab6f81a8f93b8ad9c884836a6ba71cba9494
+source_files: 245
 mapped_at_commit: working-tree
 ---
 
@@ -29,7 +29,7 @@ cannot resolve a material question. Multiple checkpoints still use separate
 Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers but obeys an
 explicit positive user concurrency value. The file is ignored by Git and copied into managed
 worktrees through `.worktreeinclude`, so the mapping script does not include it in this module's
-242-file inventory or source hash. It must still be reread independently before repository work.
+current file inventory or source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
 ratified architecture, while `open/Cargo.toml` and `open/Cargo.lock` expose the dependency graph
@@ -456,6 +456,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   baselines, conservative removable-volume state, exact changed-byte detection, explicit relink
   intent, stable editorial identity, revision-fenced scans, strict bridge and inspector consumption,
   and adjacent preview, batch, search, proxy, and offline compatibility.
+- `docs/checkpoints/P3.W03.C014.md`: Durable implementation evidence for retained source-session
+  loading, exact seeking, fingerprint-bound in and out marks, optimistic revision fencing, the
+  engine source-only registry consumer, honest native viewer separation, and focused real-source
+  proof.
 - `docs/checkpoints/P3.W04.C001.md`: Durable implementation evidence for the canonical timeline
   canvas projection, identity-preserving tracks and items, exact rulers, playhead and range intent,
   anchored scroll and zoom behavior, real editing-workspace consumption, and authored-state
@@ -488,7 +492,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/editor-workspaces.tsx`: Renders editing, compositing, color, audio, delivery, and shared
   selection panels from the one application-owned public snapshot, including exact sample rates,
   ordered channels, routes, synchronization observation, continuity evidence, source and program
-  editing viewers, one composite viewer, one color viewer, and the canonical timeline canvas.
+  editing viewers, one composite viewer, one color viewer, the canonical timeline canvas, and the
+  stateful `SourceMonitor` in the editing source slot without moving hooks or Tauri access into this
+  workspace file.
 - `app/src/timeline-workspace.ts`: Strictly projects the embedded canonical revision 1 timeline
   document into a deeply frozen canvas model with exact rational source and record ranges, stable
   identities and relationships, external-global-start display placement, deterministic extent,
@@ -499,9 +505,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   pointer-anchored zoom, topmost-first track presentation, bounded visible-item overscan, fit
   controls, frame stepping, targeting and synchronization evidence, and honest unavailable state
   without taking authored mutation ownership.
-- `app/src/native-viewport.tsx`: Reserves a role-addressed native output rectangle and publishes only
+- `app/src/native-viewport.tsx`: Reserves role-addressed native output rectangles and publishes only
   role, geometry, scale, visibility, and returned status to the shell-local viewport command; it
-  never constructs an encoded image, blob URL, pixel readback, or webview frame path.
+  never constructs an encoded image, blob URL, pixel readback, or webview frame path. Its composed
+  `SourceMonitor` owns shell-local media-library and monitor state, exposes load, exact seek, mark,
+  clear, refresh, and unload controls, and labels the retained source session as separate from
+  decode and native GPU presentation.
 - `app/src/App.tsx`: Registers the five professional workspace routes and panels above the delivered
   application framework while retaining the system shell, shared selection, lifecycle controls,
   generated validation request, engine-introspection state, and the production project lifecycle
@@ -542,6 +551,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   relink-intent records plus the revision-fenced scan wrapper. Local fallback search includes names,
   paths, source facts, built-in and user metadata, annotations, offline state, source-monitoring
   state, relink intent, and volume evidence without introducing another persisted search index.
+  C014 adds exact rational source time, stream, engine-state, fingerprint-bound mark, replacement
+  snapshot, and atomic mark-result DTOs plus five optimistic Tauri wrappers.
 - `app/src/main.tsx`: Constructs one process-lifetime `DesktopSuperiTransport`, injects it through
   the generated API provider, disposes it at unload, and mounts the React application under strict
   mode.
@@ -553,7 +564,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   artifact editing, stale-analysis warnings, bounded preview raster, horizontally scrollable
   filmstrip, channel-separated waveform, responsive multi-selection batch controls, the sticky
   timeline grid, ruler, tracks, items, range, playhead, controls, and responsive 16:9 native viewer
-  reservations.
+  reservations. It also defines compact ready, stale, and empty source-monitor
+  controls with exact state details and responsive action groups.
 - `app/src/transport.ts`: Implements the concrete generated `SuperiTransport` through one injected
   or Tauri-backed invoke/listen host, generation-scoped request identities, ordered event replay,
   stale and duplicate rejection, reconnect, cooperative cancellation, and exact
@@ -569,8 +581,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   command delegation, shortcut normalization, and editable-target safety.
 - `app/tests/editor-workspaces.test.ts`: Verifies exactly five registry-backed professional routes,
   one existing application/project owner, exact source, program, composite, and color viewer
-  consumers, explicit public editor request identity, and immutable preservation of sample timing,
-  ordered channels, routes, and continuity evidence.
+  consumers including the composed source monitor, explicit public editor request identity,
+  state-free workspace projection, and immutable preservation of sample timing, ordered channels,
+  routes, and continuity evidence.
 - `app/tests/timeline-workspace.test.ts`: Verifies strict canonical revision handling, exact track,
   item, source and record range, group, link, selection, target, synchronization, and transition
   preservation, external global-start placement, deterministic frame-aligned ruler, visible-window,
@@ -659,7 +672,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   Stable presentation names survive reimport. Replacement responses serialize refreshed usage,
   identity, smart membership, thumbnail, offline, and resolved-representation state for the actual
   consumer, while sidecar publication removes those derived-only fields before atomic replacement
-  and restores them from authoritative inputs on read.
+  and restores them from authoritative inputs on read. C014 adds backward-compatible durable exact
+  in and out marks bound to source fingerprint, validates them with every complete library
+  candidate, preserves them across stable reimport, owns one retained monitor runtime, and releases
+  it whenever the active project identity or path changes.
 - `app/src-tauri/src/project_lifecycle/media_preview.rs`: Implements one bounded nonauthoritative
   preview generator over an immutable media-browser item. It decodes supported still containers,
   adapts explicit RGBA8 sRGB straight-alpha images into `superi-image`, selects at most six
@@ -675,13 +691,20 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   supports metadata-efficient or forced-exact scans, adopts legacy baselines only after aggregate
   fingerprint proof, retains accepted evidence across loss and change, and classifies filesystem
   failures without network, watcher, platform service, or automatic source replacement.
+- `app/src-tauri/src/project_lifecycle/source_monitor.rs`: Owns exact rational monitor DTOs,
+  optimistic project, library, and monitor revision fences, one retained boxed media source or
+  verified image range, real engine source-only registry probe and open, exact seek, ready or stale
+  reconciliation, fingerprint-bound mark candidate publication, and immediate unload. Source I/O
+  has explicit interactive deadlines and runs only through blocking Tauri workers. Snapshots expose
+  metadata and state only, never packets, decoded frames, audio blocks, textures, or presentation.
 - `app/src-tauri/src/lib.rs`: Configures the mock and native Tauri builders, retains the linked
   engine process, manages its bounded connection and transport state alongside application
   lifecycle and project-session state, registers lifecycle, project, viewport, and API commands,
   including media-library snapshot, organization mutation, source inspection, user metadata, and
   editorial annotation, C007 identity-selection, C008 derived-media mutation, C009 offline recovery,
   C010 generated-preview, C011 content-analysis mutation plus content-search, and C012 atomic batch
-  commands, plus the C013 revision-fenced source-scan command,
+  commands, plus the C013 revision-fenced source-scan command and the C014 source monitor snapshot,
+  load, seek, mark, and unload commands,
   initializes the recovery root, emits one ordered Tauri event, records
   nonblocking exit intent, and joins the engine owner after the native application stops.
 - `app/src-tauri/src/main.rs`: Starts the native production desktop host.
@@ -736,6 +759,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   changes, stable editor state, changed-preview rejection, stale rollback, accepted-byte return,
   missing-file loss and restoration, durable sidecar reload, and absent conventional removable
   volumes with retained `wait_for_volume` intent.
+- `app/src-tauri/tests/source_monitor_contract.rs`: Opens one real mono 48 kHz WAVE through the
+  engine source registry, proves retained exact seek, atomic and durable fingerprint-bound marks,
+  reversed-mark rollback, and unload. It also opens a real three-frame PNG sequence, proves the
+  exact imported 24 fps inclusive range and overrun rollback, and freezes Tauri registration,
+  bridge coverage, workspace purity, and honest no-presentation wording.
 - `app/src-tauri/tests/project_settings_contract.rs`: Proves default inspection, complete atomic
   settings update, lifecycle revision coherence, durable reopen, and stale-revision rejection
   through the real local project host.
@@ -796,8 +824,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   public API. It contains all named DTOs including version negotiation, exact method, event, and
   resource maps, recursive wire primitives, the bounded local scripting request, program, trace,
   and response types, strict extension identity, lifecycle, capability, safe failure, feature,
-  control, query, event, and resource declarations, and a transport-neutral typed client without
-  owning runtime IPC.
+  control, query, event, and resource declarations, generic project import-media request and result
+  evidence, and a transport-neutral typed client without owning runtime IPC. The committed artifact
+  is freshly regenerated from the canonical schema `1.2.0` project surface.
 - `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 25 local
   workspace packages, registry dependencies, target-support dependency trees, scenario digest
   and process-instrumentation dependency edges, the API introspection and validation contracts'
@@ -1070,6 +1099,12 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
   exactly in TypeScript and consumed by the production React media browser. It remains application
   presentation state rather than a new engine API, codec executor, project document, or search
   service.
+- The shell-local source-monitor surface exposes snapshot, load, exact seek, mark update, and unload
+  commands. Project, library, monitor, media, and fingerprint fences are mirrored exactly in the
+  TypeScript bridge; packet and frame payloads remain below the Tauri seam. Mark updates return one
+  atomic durable library replacement plus monitor snapshot, while load, seek, and unload mutate
+  only retained application runtime state. Scanner-confirmed changed bytes make an existing session
+  stale and fence further source operations until the accepted source identity is reviewed.
 - `.github/workflows/network-isolated.yml` and `open/ci/` form a fourth CI surface. It prepares
   artifacts before isolation, then proves current workspace tests, fixture validation, and the CLI
   consumer run with no non-loopback interface, no IPv4 route, and Cargo offline mode.
@@ -1450,6 +1485,16 @@ releases its lock before bounded source work. The child generator composes `supe
 decoder into ephemeral PNG data URLs. React requests only the selected item, rejects a late media or
 fingerprint mismatch, and never persists generated bytes. Video, compressed-audio, EXR, and DPX
 preview products remain explicitly unavailable until a bounded application decoder session exists.
+Beside that ephemeral generator, the C014 monitor validates the same project media identity and
+current source bytes, then opens a supported container through the engine source-only registry or
+retains one verified still or image-sequence range. Probe, open, fingerprinting, and exact seek run
+on blocking Tauri workers with interactive deadlines. One monitor mutex retains the boxed source,
+current rational coordinate, stream metadata, and monotonic revision. The media sidecar separately
+owns fingerprint-bound in and out marks, and only a complete validated candidate publication
+advances its library revision. C013 exact changed-byte evidence also participates in monitor
+readiness and operation admission, so a retained session becomes stale when its source requires
+review. The React editing view consumes metadata and command state while the existing native source
+viewport continues to own GPU presentation independently.
 
 The documents deliberately point into other modules:
 
@@ -1458,11 +1503,15 @@ The documents deliberately point into other modules:
 - `superi-image`, `superi-gpu`, `superi-concurrency`, and `superi-media-io` own representation,
   resource, scheduling, and codec-neutral media foundations. The desktop preview consumer uses
   image-owned aspect-fit scaling plus media-I/O-owned PCM source, exact block, and waveform
-  continuity contracts without moving those algorithms or semantic owners into the shell.
+  continuity contracts without moving those algorithms or semantic owners into the shell. The
+  source monitor retains media-I/O `MediaSource` and exact-seek behavior but never owns demux or
+  packet semantics.
 - `superi-codecs-rs`, `superi-codecs-platform`, and `superi-codecs-vendor` implement the three codec
   acquisition classes behind media interfaces. The desktop preview path directly consumes only the
   in-tree PCM decoder for a WAVE source whose container metadata supplies the exact explicit format;
-  it does not construct a platform, vendor, or general playback registry.
+  it does not construct a platform, vendor, or general playback registry. The C014 monitor instead
+  consumes `superi-engine::media::source_backend_registry`, whose source-only construction cannot
+  initialize these decoder or encoder runtimes.
 - `superi-graph`, `superi-cache`, `superi-color`, `superi-effects`, `superi-timeline`, `superi-audio`,
   and `superi-ai` own evaluation and capability layers.
 - `superi-project` owns aggregate validation, authored clip-mix and opaque extension durability,
@@ -1544,12 +1593,16 @@ of open runtime behavior.
   search, retaining stale analysis for inspection while requiring explicit current-source confirmation
   before further editing. C012 applies only its named fields through one ordered bounded candidate,
   retains stable identity and source freshness, reports the failing operation index without partial
-  commit, and advances one revision on success. Runtime-only usage, duplicate grouping, smart
+  commit, and advances one revision on success. C014 stores only exact in and out mark intent in the
+  sidecar, binds it to one source fingerprint, rejects reversed marks atomically, and exposes stale
+  runtime state instead of rebinding marks after identity changes. The retained monitor owns no
+  project content, decoded frames, playback transport, cache, or GPU presentation. Runtime-only usage, duplicate grouping, smart
   membership, thumbnail, availability, and resolved-representation projections reach the consumer
   but remain absent from sidecar authority. C013 adds persisted accepted source baselines, current
   observations, volume state, scan generation, and relink intent without changing identity,
   editorial state, or derived choices. Changed bytes remain unaccepted until an explicit C009
-  Relink or Replace path succeeds, and a changed source cannot be previewed under its old fingerprint.
+  Relink or Replace path succeeds, and a changed source cannot be previewed, loaded, sought, or
+  marked under its old fingerprint.
 - The MIT tree rejects GPL, LGPL, AGPL, MPL, patent-encumbered in-tree codecs, and dependencies or
   models without adequate redistribution and provenance rights. Operating-system and vendor codec
   paths remain isolated and explicit.
@@ -1653,6 +1706,15 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   rollback, old-fingerprint preview rejection, accepted-byte return, mounted-volume file loss and
   restoration, durable reload, and absent conventional removable-volume intent. A private unit test
   fixes conservative macOS, Linux, system, and Windows volume classification.
+- The focused source-monitor proof freezes the C014 engine source-only registry consumer, five
+  Tauri commands, exact bridge DTOs, state-free workspace projection, and honest separation from
+  decode and native presentation. One real WAVE proves content probe and open, retained 48 kHz exact
+  seek, atomic fingerprint-bound marks, reversed-mark rollback, scanner-driven changed-byte stale
+  state, operation fencing, sidecar reopen, and unload. A real three-frame PNG sequence proves its
+  imported 24 fps inclusive range and overrun rollback. The
+  focused engine unit proof requires the four stable source backends without codec runtime
+  initialization, while media import, identity, preview, viewer, TypeScript, frontend, and Tauri
+  gates protect adjacent consumers.
 
 - Fresh local configuration proof parses `.codex/config.toml` with Python `tomllib`, confirms the
   exact Sol and max values plus the absence of an agent stanza, verifies that no project agent
@@ -1955,6 +2017,11 @@ verification. The inspector distinguishes changed bytes, missing files, unavaila
 offline conventional removable volumes, retains explicit relink intent, and blocks changed sources
 from preview generation under stale freshness. Actual transcode bytes, automatic local-AI analysis,
 native filesystem notifications, and automatic background scan scheduling remain separately owned.
+The editing workspace now also retains one
+source-monitor session with explicit empty, ready, or stale engine state, source-only container
+loading, exact rational seek, and reversible fingerprint-bound in and out marks. Its native GPU
+source viewport remains the independent presentation owner; the monitor does not decode or present
+frames.
 Fresh Cargo metadata expands the member globs to 25
 packages: 19 crates under
 `open/crates/` plus the `superi-fixture-tool`, `superi-dependency-check`,
@@ -2017,7 +2084,7 @@ stable editor snapshot, and local scripting runtime are implemented. CLI project
 execution now routes through the durable local API host and bounded JSON-RPC automation. Logging,
 subscription hosting, and autosave hosting remain incomplete.
 The synchronized remote revision before this checkpoint is
-`b3f99b62847978b30c9cbdd4c1fd690fa3c1bdbb`.
+`679862a09fa656cfc8c5dc9eb2d6a721008e72ad`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
 root README, deny policy, and structure guide with license-audit CI. Commit
 `e0b3af9f099f527a8544d1b0317896640969903b` added the executable dependency-policy contract and its
@@ -2195,7 +2262,7 @@ The largest current risk is cross-document drift:
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
 `679862a09fa656cfc8c5dc9eb2d6a721008e72ad` when this checkpoint began. Its hash describes the exact
-242 discovered source files, including generated binary payloads, layered on the integrated revision.
+245 discovered source files, including generated binary payloads, layered on the integrated revision.
 
 ## Maintenance notes
 

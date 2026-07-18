@@ -1160,6 +1160,117 @@ kbd {
   letter-spacing: 0.04em;
 }
 
+.source-monitor {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  min-width: 0;
+}
+
+.source-monitor__controls {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid #30373a;
+  border-left: 3px solid #85bde0;
+  border-radius: 7px;
+  background: #101517;
+}
+
+.source-monitor[data-engine-state="ready"] .source-monitor__controls {
+  border-left-color: #8dc99c;
+}
+
+.source-monitor[data-engine-state="stale"] .source-monitor__controls {
+  border-left-color: #d29a79;
+}
+
+.source-monitor__heading,
+.source-monitor__actions,
+.source-monitor__seek,
+.source-monitor__marks {
+  display: flex;
+  align-items: end;
+  gap: 7px;
+}
+
+.source-monitor__heading {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.source-monitor__heading strong {
+  display: block;
+  margin-top: 2px;
+  text-transform: capitalize;
+}
+
+.source-monitor__eyebrow,
+.source-monitor__field span,
+.source-monitor__state dt {
+  color: #8f999b;
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.source-monitor__field {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+}
+
+.source-monitor__field select,
+.source-monitor__field input {
+  width: 100%;
+  min-width: 0;
+}
+
+.source-monitor__state {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #293034;
+  border-radius: 5px;
+  background: #293034;
+}
+
+.source-monitor__state div {
+  min-width: 0;
+  padding: 7px 8px;
+  background: #121719;
+}
+
+.source-monitor__state dd {
+  margin: 3px 0 0;
+  overflow: hidden;
+  color: #c2c9c6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-monitor__marks {
+  flex-wrap: wrap;
+}
+
+.source-monitor__note,
+.source-monitor__failure {
+  margin: 0;
+  color: #8f999b;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.source-monitor__failure {
+  color: #d7a091;
+}
+
 .timeline-workspace {
   min-width: 0;
   overflow: hidden;

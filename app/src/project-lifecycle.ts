@@ -402,6 +402,60 @@ export interface MediaBrowserItem {
   readonly representation_choice: MediaRepresentationChoice;
   readonly resolved_representation: ResolvedMediaRepresentation;
   readonly thumbnail: ThumbnailPresentation;
+  readonly source_monitor_marks: SourceMonitorMarks;
+}
+
+export interface SourceMonitorTime {
+  readonly value: number;
+  readonly timebase_numerator: number;
+  readonly timebase_denominator: number;
+}
+
+export interface SourceMonitorMarks {
+  readonly source_fingerprint: string | null;
+  readonly in_mark: SourceMonitorTime | null;
+  readonly out_mark: SourceMonitorTime | null;
+}
+
+export interface SourceMonitorStream {
+  readonly stream_id: number;
+  readonly kind: string;
+  readonly codec: string;
+  readonly timebase_numerator: number;
+  readonly timebase_denominator: number;
+}
+
+export interface SourceMonitorSnapshot {
+  readonly monitor_revision: number;
+  readonly engine_state: "empty" | "ready" | "stale";
+  readonly project_id: string | null;
+  readonly project_revision: number | null;
+  readonly library_revision: number | null;
+  readonly media_id: string | null;
+  readonly media_name: string | null;
+  readonly source_fingerprint: string | null;
+  readonly opened_fingerprint: string | null;
+  readonly backend_id: string | null;
+  readonly container_id: string | null;
+  readonly stream: SourceMonitorStream | null;
+  readonly current: SourceMonitorTime | null;
+  readonly duration: SourceMonitorTime | null;
+  readonly range_start: SourceMonitorTime | null;
+  readonly range_end: SourceMonitorTime | null;
+  readonly marks: SourceMonitorMarks;
+  readonly marks_fresh: boolean;
+  readonly presentation_note: string;
+}
+
+export type SourceMonitorMarkMutation =
+  | "set_in"
+  | "set_out"
+  | "clear_in"
+  | "clear_out";
+
+export interface SourceMonitorUpdateResult {
+  readonly monitor: SourceMonitorSnapshot;
+  readonly media_library: MediaLibrarySnapshot;
 }
 
 export interface MediaPreviewRequest {
@@ -590,6 +644,12 @@ const UPDATE_SETTINGS_COMMAND = "desktop_project_settings_update";
 const IMPORT_MEDIA_COMMAND = "desktop_project_media_import";
 const MEDIA_LIBRARY_COMMAND = "project_media_library";
 const GENERATE_MEDIA_PREVIEW_COMMAND = "desktop_generate_media_preview";
+const SOURCE_MONITOR_SNAPSHOT_COMMAND = "desktop_source_monitor_snapshot";
+const SOURCE_MONITOR_LOAD_COMMAND = "desktop_source_monitor_load";
+const SOURCE_MONITOR_SEEK_COMMAND = "desktop_source_monitor_seek";
+const SOURCE_MONITOR_UPDATE_MARKS_COMMAND =
+  "desktop_source_monitor_update_marks";
+const SOURCE_MONITOR_UNLOAD_COMMAND = "desktop_source_monitor_unload";
 const MUTATE_MEDIA_LIBRARY_COMMAND = "mutate_project_media_library";
 const INSPECT_MEDIA_SOURCE_COMMAND = "inspect_project_media_source";
 const MUTATE_MEDIA_METADATA_COMMAND = "mutate_project_media_metadata";
@@ -644,6 +704,62 @@ export async function generateProjectMediaPreview(
     expected_freshness: item.content_fingerprint,
   };
   return invoke<MediaPreviewBundle>(GENERATE_MEDIA_PREVIEW_COMMAND, { request });
+}
+
+export async function readSourceMonitorSnapshot(): Promise<SourceMonitorSnapshot> {
+  return invoke<SourceMonitorSnapshot>(SOURCE_MONITOR_SNAPSHOT_COMMAND);
+}
+
+export async function loadProjectSourceMonitor(
+  library: MediaLibrarySnapshot,
+  item: MediaBrowserItem,
+): Promise<SourceMonitorSnapshot> {
+  return invoke<SourceMonitorSnapshot>(SOURCE_MONITOR_LOAD_COMMAND, {
+    request: {
+      expected_project_revision: library.project_revision,
+      expected_library_revision: library.revision,
+      media_id: item.media_id,
+      expected_source_fingerprint: item.content_fingerprint,
+    },
+  });
+}
+
+export async function seekProjectSourceMonitor(
+  library: MediaLibrarySnapshot,
+  monitor: SourceMonitorSnapshot,
+  target: SourceMonitorTime,
+): Promise<SourceMonitorSnapshot> {
+  return invoke<SourceMonitorSnapshot>(SOURCE_MONITOR_SEEK_COMMAND, {
+    request: {
+      expected_project_revision: library.project_revision,
+      expected_library_revision: library.revision,
+      expected_monitor_revision: monitor.monitor_revision,
+      target,
+    },
+  });
+}
+
+export async function updateProjectSourceMonitorMarks(
+  library: MediaLibrarySnapshot,
+  monitor: SourceMonitorSnapshot,
+  mutation: SourceMonitorMarkMutation,
+): Promise<SourceMonitorUpdateResult> {
+  return invoke<SourceMonitorUpdateResult>(SOURCE_MONITOR_UPDATE_MARKS_COMMAND, {
+    update: {
+      expected_project_revision: library.project_revision,
+      expected_library_revision: library.revision,
+      expected_monitor_revision: monitor.monitor_revision,
+      mutation,
+    },
+  });
+}
+
+export async function unloadProjectSourceMonitor(
+  monitor: SourceMonitorSnapshot,
+): Promise<SourceMonitorSnapshot> {
+  return invoke<SourceMonitorSnapshot>(SOURCE_MONITOR_UNLOAD_COMMAND, {
+    request: { expected_monitor_revision: monitor.monitor_revision },
+  });
 }
 
 export async function mutateProjectMediaLibrary(
