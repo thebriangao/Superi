@@ -28,6 +28,8 @@ import {
   mutateProjectMediaAnnotations,
   mutateProjectMediaIdentity,
   mutateProjectDerivedMedia,
+  mutateProjectOfflineMedia,
+  localSearchMedia,
   mutateProjectMediaMetadata,
   mutateProjectMediaLibrary,
   readProjectMediaLibrary,
@@ -44,6 +46,7 @@ import {
   type MediaEditorialAnnotations,
   type MediaSelection,
   type DerivedMediaMutation,
+  type OfflineMediaMutation,
   type UserMetadataMutation,
 } from "./project-lifecycle";
 import { classifyDesktopTransportError } from "./transport";
@@ -374,6 +377,9 @@ function SystemPanel() {
   const [newBinParent, setNewBinParent] = useState<string | null>(null);
   const [smartName, setSmartName] = useState("");
   const [smartNeedle, setSmartNeedle] = useState("");
+  const [mediaSearch, setMediaSearch] = useState("");
+  const [offlineSourcePath, setOfflineSourcePath] = useState("");
+  const [replacementFingerprint, setReplacementFingerprint] = useState("");
   const [userMetadataKey, setUserMetadataKey] = useState("");
   const [userMetadataValue, setUserMetadataValue] = useState("");
   const [thumbnailFailures, setThumbnailFailures] =
@@ -732,6 +738,18 @@ function SystemPanel() {
     }
   };
 
+  const mutateOfflineMedia = async (mutation: OfflineMediaMutation) => {
+    if (mediaLibrary === null || selectedMedia === undefined) return;
+    try {
+      setMediaLibrary(
+        await mutateProjectOfflineMedia(mediaLibrary, selectedMedia.media_id, mutation),
+      );
+      setProjectFailure(null);
+    } catch (error: unknown) {
+      setProjectFailure(projectFailureFrom(error));
+    }
+  };
+
   const createProject = () => {
     const identity = crypto.randomUUID();
     void executeProject({
@@ -755,13 +773,15 @@ function SystemPanel() {
   const activeCollection = mediaLibrary?.smart_collections.find(
     (collection) => collection.collection_id === activeCollectionId,
   );
-  const visibleMedia =
+  const visibleMedia = localSearchMedia(
     mediaLibrary?.items.filter((item) => {
       if (activeCollection) {
         return activeCollection.media_ids.includes(item.media_id);
       }
       return activeBinId === null || item.bin_id === activeBinId;
-    }) ?? [];
+    }) ?? [],
+    mediaSearch,
+  );
   const selectedMedia = mediaLibrary?.items.find(
     (item) => item.media_id === selectedMediaId,
   );
@@ -975,6 +995,15 @@ function SystemPanel() {
                 >Grid</button>
               </div>
             </header>
+            <label>
+              Search local media
+              <input
+                type="search"
+                value={mediaSearch}
+                onChange={(event) => setMediaSearch(event.currentTarget.value)}
+                placeholder="Name, path, metadata, label, or offline state"
+              />
+            </label>
 
             <div className="media-browser-layout">
               <aside className="media-browser-navigation">
@@ -1128,6 +1157,45 @@ function SystemPanel() {
                 {selectedMedia ? (
                   <>
                     <strong>{selectedMedia.name}</strong>
+                    <section aria-label="Offline media">
+                      <h5>Offline media</h5>
+                      <p>{selectedMedia.offline.status}</p>
+                      <p>
+                        {selectedMedia.offline.available_paths.length} available / {selectedMedia.offline.missing_paths.length} missing
+                        {selectedMedia.offline.derived_fallback_available ? " / derived fallback ready" : ""}
+                      </p>
+                      <label>
+                        Local source path
+                        <input
+                          value={offlineSourcePath}
+                          onChange={(event) => setOfflineSourcePath(event.currentTarget.value)}
+                        />
+                      </label>
+                      <label>
+                        Replacement fingerprint
+                        <input
+                          value={replacementFingerprint}
+                          onChange={(event) => setReplacementFingerprint(event.currentTarget.value)}
+                        />
+                      </label>
+                      <div className="actions">
+                        <button type="button" disabled={!offlineSourcePath.trim()} onClick={() => void mutateOfflineMedia({
+                          kind: "relink",
+                          source_paths: [offlineSourcePath.trim()],
+                          candidate_fingerprint: selectedMedia.content_fingerprint,
+                        })}>Relink source</button>
+                        <button type="button" disabled={!offlineSourcePath.trim() || !replacementFingerprint.trim()} onClick={() => void mutateOfflineMedia({
+                          kind: "replace",
+                          source_paths: [offlineSourcePath.trim()],
+                          replacement_fingerprint: replacementFingerprint.trim(),
+                        })}>Replace source</button>
+                        <button type="button" onClick={() => void mutateOfflineMedia({
+                          kind: "conform",
+                          frame_rate_numerator: selectedMedia.frame_rate_numerator ?? 24,
+                          frame_rate_denominator: selectedMedia.frame_rate_denominator ?? 1,
+                        })}>Conform source</button>
+                      </div>
+                    </section>
                     <dl>
                       {Object.entries(selectedMedia.metadata).map(([key, value]) => (
                         <div key={key}>

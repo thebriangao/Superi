@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 5c5d4ddff9bead7271145d73df3bb760d9942bf9cb49d88be4bb80b5ce58dadb
-source_files: 226
+source_hash: 1e94569ed841c8581e07c07fadb669d9c6eb28f3586bc657760d5fba1980564d
+source_files: 228
 mapped_at_commit: working-tree
 ---
 
@@ -438,6 +438,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W03.C008.md`: Durable implementation evidence for source-fresh replaceable
   proxy and optimized-media attachments, explicit quality choice, inspectable status, deterministic
   original fallback, C007 state preservation, and explicit C009+ exclusions.
+- `docs/checkpoints/P3.W03.C009.md`: Durable implementation evidence for local offline state and
+  search, revision-fenced relink, intentional source replacement, frame-rate conform, preserved C008
+  freshness and fallback, and the production media-browser consumer.
 
 ### Production desktop application
 
@@ -610,6 +613,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/tests/derived_media_lifecycle_contract.rs`: Freezes the C008 source-bound proxy and
   optimized-media lifecycle, explicit status and quality selection, deterministic original fallback,
   registered native command, typed bridge, production detail consumer, and C009+ exclusions.
+- `app/src-tauri/tests/offline_media_contract.rs`: Freezes C009 offline availability, local search,
+  relink, replace, and conform integration while preserving C008 and excluding C010 preview work.
 - `app/src-tauri/tests/project_settings_contract.rs`: Proves default inspection, complete atomic
   settings update, lifecycle revision coherence, durable reopen, and stale-revision rejection
   through the real local project host.
@@ -1720,7 +1725,9 @@ clip names, labels, ratings, keywords, comments, and favorite intent, then shows
 counts derived from current timeline clip references. It now also derives canonical and duplicate
 identity from exact fingerprints and atomically persists reusable rational-frame selections with
 manually refinable fixed-point tracked observations. The same detail now owns the C008 derived-media
-lifecycle and transparent switching; relinking and indexed search remain later work.
+lifecycle and transparent switching, then derives local availability and provides bounded local
+search plus explicit relink, source replacement, and frame-rate conform flows. Thumbnail, filmstrip,
+waveform, preview generation, and local-AI content indexing remain separately owned.
 Fresh Cargo metadata expands the member globs to 25
 packages: 19 crates under
 `open/crates/` plus the `superi-fixture-tool`, `superi-dependency-check`,

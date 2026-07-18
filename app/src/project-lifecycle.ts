@@ -220,6 +220,32 @@ export interface DerivedMediaAttachment {
   readonly byte_len: number;
 }
 
+export type OfflineMediaStatus = "online" | "partial" | "offline";
+
+export interface OfflineMediaState {
+  readonly status: OfflineMediaStatus;
+  readonly available_paths: readonly string[];
+  readonly missing_paths: readonly string[];
+  readonly derived_fallback_available: boolean;
+}
+
+export type OfflineMediaMutation =
+  | {
+      readonly kind: "relink";
+      readonly source_paths: readonly string[];
+      readonly candidate_fingerprint: string;
+    }
+  | {
+      readonly kind: "replace";
+      readonly source_paths: readonly string[];
+      readonly replacement_fingerprint: string;
+    }
+  | {
+      readonly kind: "conform";
+      readonly frame_rate_numerator: number;
+      readonly frame_rate_denominator: number;
+    };
+
 export interface ResolvedMediaRepresentation {
   readonly representation: "original" | DerivedMediaPurpose;
   readonly quality: DerivedMediaQuality | null;
@@ -256,6 +282,7 @@ export interface MediaBrowserItem {
   readonly identity_tracking: MediaIdentityTracking;
   readonly selections: readonly MediaSelection[];
   readonly derived_media: readonly DerivedMediaAttachment[];
+  readonly offline: OfflineMediaState;
   readonly representation_choice: MediaRepresentationChoice;
   readonly resolved_representation: ResolvedMediaRepresentation;
   readonly thumbnail: ThumbnailPresentation;
@@ -348,6 +375,7 @@ const MUTATE_MEDIA_METADATA_COMMAND = "mutate_project_media_metadata";
 const MUTATE_MEDIA_ANNOTATIONS_COMMAND = "mutate_project_media_annotations";
 const MUTATE_MEDIA_IDENTITY_COMMAND = "mutate_project_media_identity";
 const MUTATE_DERIVED_MEDIA_COMMAND = "mutate_project_derived_media";
+const MUTATE_OFFLINE_MEDIA_COMMAND = "mutate_project_offline_media";
 
 export async function getDesktopProjectSnapshot(): Promise<DesktopProjectSnapshot> {
   return invoke<DesktopProjectSnapshot>(SNAPSHOT_COMMAND);
@@ -461,4 +489,39 @@ export async function mutateProjectDerivedMedia(
       mutation,
     },
   });
+}
+
+export async function mutateProjectOfflineMedia(
+  snapshot: MediaLibrarySnapshot,
+  mediaId: string,
+  mutation: OfflineMediaMutation,
+): Promise<MediaLibrarySnapshot> {
+  return invoke<MediaLibrarySnapshot>(MUTATE_OFFLINE_MEDIA_COMMAND, {
+    update: {
+      expected_project_revision: snapshot.project_revision,
+      expected_library_revision: snapshot.revision,
+      media_id: mediaId,
+      mutation,
+    },
+  });
+}
+
+export function localSearchMedia(
+  items: readonly MediaBrowserItem[],
+  query: string,
+): readonly MediaBrowserItem[] {
+  const needle = query.trim().toLocaleLowerCase();
+  if (needle.length === 0) return items;
+  return items.filter((item) =>
+    [
+      item.name,
+      item.media_id,
+      item.offline.status,
+      ...item.source_paths,
+      ...Object.keys(item.metadata),
+      ...Object.values(item.metadata),
+      ...item.annotations.labels,
+      ...item.annotations.keywords,
+    ].some((value) => value.toLocaleLowerCase().includes(needle)),
+  );
 }

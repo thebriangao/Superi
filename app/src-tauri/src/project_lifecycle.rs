@@ -518,6 +518,34 @@ pub struct ResolvedMediaRepresentation {
     fallback_to_original: bool,
 }
 
+/// Fresh local availability for the authoritative source paths.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OfflineMediaStatus {
+    Online,
+    Partial,
+    Offline,
+}
+
+/// Derived local-only source availability; never replaces stable media identity.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OfflineMediaState {
+    status: OfflineMediaStatus,
+    available_paths: Vec<String>,
+    missing_paths: Vec<String>,
+    derived_fallback_available: bool,
+}
+
+fn unavailable_offline_state() -> OfflineMediaState {
+    OfflineMediaState {
+        status: OfflineMediaStatus::Offline,
+        available_paths: Vec::new(),
+        missing_paths: Vec::new(),
+        derived_fallback_available: false,
+    }
+}
+
 fn original_representation() -> ResolvedMediaRepresentation {
     ResolvedMediaRepresentation {
         representation: "original".to_owned(),
@@ -686,6 +714,8 @@ pub struct MediaBrowserItem {
     representation_choice: MediaRepresentationChoice,
     #[serde(skip, default = "original_representation")]
     resolved_representation: ResolvedMediaRepresentation,
+    #[serde(skip, default = "unavailable_offline_state")]
+    offline: OfflineMediaState,
     #[serde(skip, default = "unavailable_thumbnail")]
     thumbnail: ThumbnailPresentation,
 }
@@ -732,6 +762,7 @@ impl MediaBrowserItem {
             derived_media: Vec::new(),
             representation_choice: MediaRepresentationChoice::Original,
             resolved_representation: original_representation(),
+            offline: unavailable_offline_state(),
             thumbnail: thumbnail_presentation(media),
         }
     }
@@ -765,6 +796,31 @@ impl MediaBrowserItem {
             &self.content_fingerprint,
             &self.derived_media,
         );
+        self.refresh_offline_state();
+    }
+
+    fn refresh_offline_state(&mut self) {
+        let (available_paths, missing_paths): (Vec<_>, Vec<_>) = self
+            .source_paths
+            .iter()
+            .cloned()
+            .partition(|path| Path::new(path).is_file());
+        let status = if missing_paths.is_empty() && !available_paths.is_empty() {
+            OfflineMediaStatus::Online
+        } else if available_paths.is_empty() {
+            OfflineMediaStatus::Offline
+        } else {
+            OfflineMediaStatus::Partial
+        };
+        self.offline = OfflineMediaState {
+            status,
+            available_paths,
+            missing_paths,
+            derived_fallback_available: self.derived_media.iter().any(|attachment| {
+                attachment.source_fingerprint == self.content_fingerprint
+                    && attachment.status == DerivedMediaStatus::Ready
+            }),
+        };
     }
 }
 
@@ -1131,6 +1187,40 @@ impl MediaLibrarySnapshot {
         Ok(())
     }
 
+    fn apply_offline_media(
+        &mut self,
+        update: OfflineMediaUpdate,
+    ) -> Result<(), DesktopProjectFailure> {
+        if update.expected_project_revision != self.project_revision
+            || update.expected_library_revision != self.revision
+        {
+            return Err(user_correctable(
+                "media_library_revision_stale",
+                "Media library changed",
+                "Refresh the media library and try again.",
+            ));
+        }
+        let mut candidate = self.clone();
+        let item = candidate
+            .items
+            .iter_mut()
+            .find(|item| item.media_id == update.media_id)
+            .ok_or_else(|| media_library_invalid("Imported media was not found"))?;
+        normalize_offline_media(item, update.mutation)?;
+        candidate.validate()?;
+        candidate.revision = candidate.revision.checked_add(1).ok_or_else(|| {
+            DesktopProjectFailure::new(
+                DesktopProjectFailureClass::Terminal,
+                "media_library_revision_exhausted",
+                "Media library cannot continue",
+                "Restart Superi before continuing.",
+            )
+        })?;
+        candidate.refresh_derived();
+        *self = candidate;
+        Ok(())
+    }
+
     fn apply_mutation(
         &mut self,
         mutation: MediaLibraryMutation,
@@ -1388,6 +1478,34 @@ pub struct DerivedMediaUpdate {
     pub mutation: DerivedMediaMutation,
 }
 
+/// Local-only recovery operations for one stable imported-media reference.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum OfflineMediaMutation {
+    Relink {
+        source_paths: Vec<String>,
+        candidate_fingerprint: String,
+    },
+    Replace {
+        source_paths: Vec<String>,
+        replacement_fingerprint: String,
+    },
+    Conform {
+        frame_rate_numerator: u32,
+        frame_rate_denominator: u32,
+    },
+}
+
+/// Revision-fenced offline-media mutation for one media identity.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OfflineMediaUpdate {
+    pub expected_project_revision: u64,
+    pub expected_library_revision: u64,
+    pub media_id: String,
+    pub mutation: OfflineMediaMutation,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct MediaLibraryStore {
@@ -1616,6 +1734,86 @@ fn normalize_derived_media(
             .retain(|attachment| attachment.purpose != purpose || attachment.quality != quality),
     }
     item.refresh_derived_media();
+    Ok(())
+}
+
+fn normalize_offline_media(
+    item: &mut MediaBrowserItem,
+    mutation: OfflineMediaMutation,
+) -> Result<(), DesktopProjectFailure> {
+    match mutation {
+        OfflineMediaMutation::Relink {
+            source_paths,
+            candidate_fingerprint,
+        } => {
+            validate_source_paths(&source_paths)?;
+            if candidate_fingerprint != item.content_fingerprint {
+                return Err(user_correctable(
+                    "relink_fingerprint_mismatch",
+                    "Relink candidate is different media",
+                    "Use Replace source to intentionally change the source identity.",
+                ));
+            }
+            item.source_paths = source_paths;
+            item.source_count = item.source_paths.len() as u64;
+        }
+        OfflineMediaMutation::Replace {
+            source_paths,
+            replacement_fingerprint,
+        } => {
+            validate_source_paths(&source_paths)?;
+            require_media_text("replacement_fingerprint", &replacement_fingerprint)?;
+            item.source_paths = source_paths;
+            item.source_count = item.source_paths.len() as u64;
+            item.content_fingerprint = replacement_fingerprint;
+            item.metadata
+                .insert("freshness".to_owned(), item.content_fingerprint.clone());
+        }
+        OfflineMediaMutation::Conform {
+            frame_rate_numerator,
+            frame_rate_denominator,
+        } => {
+            if frame_rate_numerator == 0 || frame_rate_denominator == 0 {
+                return Err(media_library_invalid("Conform frame rate must be positive"));
+            }
+            item.frame_rate_numerator = Some(frame_rate_numerator);
+            item.frame_rate_denominator = Some(frame_rate_denominator);
+            item.metadata.insert(
+                "frame_rate".to_owned(),
+                format!("{frame_rate_numerator}/{frame_rate_denominator}"),
+            );
+        }
+    }
+    let imported = DesktopImportedMedia {
+        media_id: item.media_id.clone(),
+        name: item.name.clone(),
+        source_paths: item.source_paths.clone(),
+        content_fingerprint: item.content_fingerprint.clone(),
+        kind: item.kind,
+        source_count: item.source_count,
+        first_frame: item.first_frame,
+        last_frame: item.last_frame,
+        frame_rate_numerator: item.frame_rate_numerator,
+        frame_rate_denominator: item.frame_rate_denominator,
+    };
+    item.source_metadata = source_metadata_inspection(
+        &imported,
+        item.source_metadata.inspection_generation.saturating_add(1),
+    );
+    item.refresh_thumbnail();
+    item.refresh_derived_media();
+    Ok(())
+}
+
+fn validate_source_paths(paths: &[String]) -> Result<(), DesktopProjectFailure> {
+    if paths.is_empty() || paths.len() > MAX_IMPORT_SOURCES {
+        return Err(media_library_invalid(
+            "Source path list is empty or too large",
+        ));
+    }
+    for path in paths {
+        require_media_text("source_path", path)?;
+    }
     Ok(())
 }
 
@@ -2808,6 +3006,28 @@ impl DesktopProjectState {
         Ok(snapshot)
     }
 
+    pub fn mutate_offline_media(
+        &self,
+        update: OfflineMediaUpdate,
+    ) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+        let (project_id, project_revision, project_path) =
+            self.active_project_context("mutate_offline_media")?;
+        let usage = inspect_media_usage(Path::new(&project_path))?;
+        let snapshot = {
+            let mut store = self.media_library_lock("mutate_offline_media")?;
+            let library = store
+                .projects
+                .entry(project_id)
+                .or_insert_with(|| MediaLibrarySnapshot::empty(project_revision));
+            library.project_revision = project_revision;
+            library.apply_offline_media(update)?;
+            library.refresh_usage(&usage);
+            library.clone()
+        };
+        self.persist_media_libraries()?;
+        Ok(snapshot)
+    }
+
     fn activate_media_library(
         &self,
         snapshot: &DesktopProjectSnapshot,
@@ -3104,6 +3324,17 @@ pub async fn mutate_project_derived_media(
     tauri::async_runtime::spawn_blocking(move || state.mutate_derived_media(update))
         .await
         .map_err(|_| project_task_failed("mutate_derived_media"))?
+}
+
+#[tauri::command]
+pub async fn mutate_project_offline_media(
+    update: OfflineMediaUpdate,
+    state: State<'_, DesktopProjectState>,
+) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.mutate_offline_media(update))
+        .await
+        .map_err(|_| project_task_failed("mutate_offline_media"))?
 }
 
 /// Closed desktop command set for project lifecycle behavior only.
