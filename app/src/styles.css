@@ -518,6 +518,18 @@ kbd {
   margin: 0.1rem 0 0;
 }
 
+.source-metadata-status {
+  margin: 0;
+  text-transform: capitalize;
+}
+
+.user-metadata-editor {
+  display: grid;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid color-mix(in srgb, var(--ink) 14%, transparent);
+}
+
 @media (max-width: 920px) {
   .media-browser-layout {
     flex-direction: column;

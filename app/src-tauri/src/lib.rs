@@ -106,6 +106,8 @@ pub fn configure<R: Runtime>(builder: Builder<R>, lifecycle: ApplicationLifecycl
             project_lifecycle::desktop_project_media_import,
             project_lifecycle::project_media_library,
             project_lifecycle::mutate_project_media_library,
+            project_lifecycle::inspect_project_media_source,
+            project_lifecycle::mutate_project_media_metadata,
             viewport::desktop_viewport_update
         ])
 }

@@ -149,6 +149,15 @@ export type ThumbnailPresentation =
       readonly freshness: string;
     };
 
+export type SourceMetadataStatus = "ready" | "missing" | "unavailable";
+
+export interface SourceMetadataInspection {
+  readonly status: SourceMetadataStatus;
+  readonly inspection_generation: number;
+  readonly freshness: string;
+  readonly fields: Readonly<Record<string, string>>;
+}
+
 export interface MediaBrowserItem {
   readonly media_id: string;
   readonly name: string;
@@ -162,6 +171,8 @@ export interface MediaBrowserItem {
   readonly frame_rate_denominator: number | null;
   readonly bin_id: string | null;
   readonly metadata: Readonly<Record<string, string>>;
+  readonly source_metadata: SourceMetadataInspection;
+  readonly user_metadata: Readonly<Record<string, string>>;
   readonly thumbnail: ThumbnailPresentation;
 }
 
@@ -232,6 +243,14 @@ export type DesktopProjectCommand =
       readonly candidate_id: string;
     };
 
+export type UserMetadataMutation =
+  | {
+      readonly kind: "upsert";
+      readonly key: string;
+      readonly value: string;
+    }
+  | { readonly kind: "remove"; readonly key: string };
+
 const SNAPSHOT_COMMAND = "desktop_project_snapshot";
 const EXECUTE_COMMAND = "desktop_project_execute";
 const SETTINGS_COMMAND = "desktop_project_settings";
@@ -239,6 +258,8 @@ const UPDATE_SETTINGS_COMMAND = "desktop_project_settings_update";
 const IMPORT_MEDIA_COMMAND = "desktop_project_media_import";
 const MEDIA_LIBRARY_COMMAND = "project_media_library";
 const MUTATE_MEDIA_LIBRARY_COMMAND = "mutate_project_media_library";
+const INSPECT_MEDIA_SOURCE_COMMAND = "inspect_project_media_source";
+const MUTATE_MEDIA_METADATA_COMMAND = "mutate_project_media_metadata";
 
 export async function getDesktopProjectSnapshot(): Promise<DesktopProjectSnapshot> {
   return invoke<DesktopProjectSnapshot>(SNAPSHOT_COMMAND);
@@ -278,6 +299,32 @@ export async function mutateProjectMediaLibrary(
     update: {
       expected_project_revision: snapshot.project_revision,
       expected_library_revision: snapshot.revision,
+      mutation,
+    },
+  });
+}
+
+export async function inspectProjectMediaSource(
+  item: MediaBrowserItem,
+): Promise<MediaLibrarySnapshot> {
+  return invoke<MediaLibrarySnapshot>(INSPECT_MEDIA_SOURCE_COMMAND, {
+    request: {
+      media_id: item.media_id,
+      expected_freshness: item.content_fingerprint,
+    },
+  });
+}
+
+export async function mutateProjectMediaMetadata(
+  snapshot: MediaLibrarySnapshot,
+  mediaId: string,
+  mutation: UserMetadataMutation,
+): Promise<MediaLibrarySnapshot> {
+  return invoke<MediaLibrarySnapshot>(MUTATE_MEDIA_METADATA_COMMAND, {
+    update: {
+      expected_project_revision: snapshot.project_revision,
+      expected_library_revision: snapshot.revision,
+      media_id: mediaId,
       mutation,
     },
   });

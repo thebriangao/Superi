@@ -24,6 +24,8 @@ import {
   getDesktopProjectSnapshot,
   getDesktopProjectSettings,
   importDesktopMedia,
+  inspectProjectMediaSource,
+  mutateProjectMediaMetadata,
   mutateProjectMediaLibrary,
   readProjectMediaLibrary,
   updateDesktopProjectSettings,
@@ -36,6 +38,7 @@ import {
   type DesktopMediaImportResult,
   type MediaLibraryMutation,
   type MediaLibrarySnapshot,
+  type UserMetadataMutation,
 } from "./project-lifecycle";
 import { classifyDesktopTransportError } from "./transport";
 import {
@@ -365,6 +368,8 @@ function SystemPanel() {
   const [newBinParent, setNewBinParent] = useState<string | null>(null);
   const [smartName, setSmartName] = useState("");
   const [smartNeedle, setSmartNeedle] = useState("");
+  const [userMetadataKey, setUserMetadataKey] = useState("");
+  const [userMetadataValue, setUserMetadataValue] = useState("");
   const [thumbnailFailures, setThumbnailFailures] =
     useState<ReadonlySet<string>>(new Set());
 
@@ -629,6 +634,36 @@ function SystemPanel() {
     }
     try {
       setMediaLibrary(await mutateProjectMediaLibrary(mediaLibrary, mutation));
+      setProjectFailure(null);
+    } catch (error: unknown) {
+      setProjectFailure(projectFailureFrom(error));
+    }
+  };
+
+  const inspectMediaSource = async () => {
+    if (selectedMedia === undefined) {
+      return;
+    }
+    try {
+      setMediaLibrary(await inspectProjectMediaSource(selectedMedia));
+      setProjectFailure(null);
+    } catch (error: unknown) {
+      setProjectFailure(projectFailureFrom(error));
+    }
+  };
+
+  const mutateMediaMetadata = async (mutation: UserMetadataMutation) => {
+    if (mediaLibrary === null || selectedMedia === undefined) {
+      return;
+    }
+    try {
+      setMediaLibrary(
+        await mutateProjectMediaMetadata(
+          mediaLibrary,
+          selectedMedia.media_id,
+          mutation,
+        ),
+      );
       setProjectFailure(null);
     } catch (error: unknown) {
       setProjectFailure(projectFailureFrom(error));
@@ -1039,6 +1074,63 @@ function SystemPanel() {
                         </div>
                       ))}
                     </dl>
+                    <h5>Source metadata</h5>
+                    <p className="source-metadata-status">
+                      {selectedMedia.source_metadata.status} inspection {selectedMedia.source_metadata.inspection_generation}
+                    </p>
+                    <dl>
+                      {Object.entries(selectedMedia.source_metadata.fields).map(([key, value]) => (
+                        <div key={key}>
+                          <dt>{key.replaceAll("_", " ")}</dt>
+                          <dd>{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                    <button type="button" onClick={() => void inspectMediaSource()}>
+                      Inspect source
+                    </button>
+                    <div className="user-metadata-editor">
+                      <h5>User metadata</h5>
+                      <dl>
+                        {Object.entries(selectedMedia.user_metadata).map(([key, value]) => (
+                          <div key={key}>
+                            <dt>{key}</dt>
+                            <dd>{value}</dd>
+                            <button
+                              type="button"
+                              onClick={() => void mutateMediaMetadata({ kind: "remove", key })}
+                            >Remove</button>
+                          </div>
+                        ))}
+                      </dl>
+                      <label>
+                        Metadata key
+                        <input
+                          value={userMetadataKey}
+                          onChange={(event) => setUserMetadataKey(event.currentTarget.value)}
+                        />
+                      </label>
+                      <label>
+                        Metadata value
+                        <input
+                          value={userMetadataValue}
+                          onChange={(event) => setUserMetadataValue(event.currentTarget.value)}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={userMetadataKey.trim().length === 0}
+                        onClick={() => {
+                          void mutateMediaMetadata({
+                            kind: "upsert",
+                            key: userMetadataKey.trim(),
+                            value: userMetadataValue,
+                          });
+                          setUserMetadataKey("");
+                          setUserMetadataValue("");
+                        }}
+                      >Save metadata</button>
+                    </div>
                     <button
                       type="button"
                       disabled={activeBinId === null}

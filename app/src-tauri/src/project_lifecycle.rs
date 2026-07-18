@@ -42,6 +42,9 @@ const MAX_RECENT_PROJECTS: usize = 32;
 const MAX_IMPORT_SOURCES: usize = 4096;
 const MAX_MEDIA_BINS: usize = 1024;
 const MAX_SMART_COLLECTIONS: usize = 256;
+const MAX_USER_METADATA_ENTRIES: usize = 128;
+const MAX_USER_METADATA_KEY_BYTES: usize = 64;
+const MAX_USER_METADATA_VALUE_BYTES: usize = 4096;
 
 const TIMELINE_RATE_NUMERATOR_KEY: &str = "superi.project.timeline.default_rate_numerator";
 const TIMELINE_RATE_DENOMINATOR_KEY: &str = "superi.project.timeline.default_rate_denominator";
@@ -353,6 +356,99 @@ pub enum ThumbnailPresentation {
     },
 }
 
+/// Current read-only inspection state for source-derived metadata.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceMetadataStatus {
+    Ready,
+    Missing,
+    Unavailable,
+}
+
+/// Bounded source facts tied to one exact imported-media freshness value.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceMetadataInspection {
+    status: SourceMetadataStatus,
+    inspection_generation: u64,
+    freshness: String,
+    fields: BTreeMap<String, String>,
+}
+
+fn unavailable_source_metadata() -> SourceMetadataInspection {
+    SourceMetadataInspection {
+        status: SourceMetadataStatus::Unavailable,
+        inspection_generation: 0,
+        freshness: "unavailable".to_owned(),
+        fields: BTreeMap::new(),
+    }
+}
+
+fn source_metadata_inspection(
+    media: &DesktopImportedMedia,
+    inspection_generation: u64,
+) -> SourceMetadataInspection {
+    let mut fields = BTreeMap::new();
+    fields.insert(
+        "content_fingerprint".to_owned(),
+        media.content_fingerprint.clone(),
+    );
+    fields.insert("source_count".to_owned(), media.source_count.to_string());
+    fields.insert(
+        "media_kind".to_owned(),
+        match media.kind {
+            DesktopImportedMediaKind::File => "file",
+            DesktopImportedMediaKind::ImageSequence => "image_sequence",
+        }
+        .to_owned(),
+    );
+    if let (Some(first), Some(last)) = (media.first_frame, media.last_frame) {
+        fields.insert("frame_range".to_owned(), format!("{first}-{last}"));
+    }
+    if let (Some(numerator), Some(denominator)) =
+        (media.frame_rate_numerator, media.frame_rate_denominator)
+    {
+        fields.insert(
+            "frame_rate".to_owned(),
+            format!("{numerator}/{denominator}"),
+        );
+    }
+
+    let status = match media.source_paths.first() {
+        None => SourceMetadataStatus::Unavailable,
+        Some(path) => {
+            if let Some(extension) = Path::new(path).extension().and_then(|value| value.to_str()) {
+                fields.insert("extension".to_owned(), extension.to_ascii_lowercase());
+            }
+            match std::fs::metadata(path) {
+                Ok(metadata) => {
+                    fields.insert("file_size_bytes".to_owned(), metadata.len().to_string());
+                    if let Ok(modified) = metadata.modified() {
+                        if let Ok(age) = modified.duration_since(std::time::UNIX_EPOCH) {
+                            fields.insert(
+                                "modified_unix_seconds".to_owned(),
+                                age.as_secs().to_string(),
+                            );
+                        }
+                    }
+                    SourceMetadataStatus::Ready
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    SourceMetadataStatus::Missing
+                }
+                Err(_) => SourceMetadataStatus::Unavailable,
+            }
+        }
+    };
+
+    SourceMetadataInspection {
+        status,
+        inspection_generation: inspection_generation.max(1),
+        freshness: media.content_fingerprint.clone(),
+        fields,
+    }
+}
+
 fn thumbnail_fallback(kind: DesktopImportedMediaKind, freshness: &str) -> ThumbnailPresentation {
     let kind = match kind {
         DesktopImportedMediaKind::File => "file",
@@ -412,6 +508,10 @@ pub struct MediaBrowserItem {
     frame_rate_denominator: Option<u32>,
     bin_id: Option<String>,
     metadata: BTreeMap<String, String>,
+    #[serde(default = "unavailable_source_metadata")]
+    source_metadata: SourceMetadataInspection,
+    #[serde(default)]
+    user_metadata: BTreeMap<String, String>,
     #[serde(skip, default = "unavailable_thumbnail")]
     thumbnail: ThumbnailPresentation,
 }
@@ -449,6 +549,8 @@ impl MediaBrowserItem {
             frame_rate_denominator: media.frame_rate_denominator,
             bin_id: None,
             metadata,
+            source_metadata: source_metadata_inspection(media, 1),
+            user_metadata: BTreeMap::new(),
             thumbnail: thumbnail_presentation(media),
         }
     }
@@ -536,8 +638,16 @@ impl MediaLibrarySnapshot {
             {
                 Ok(index) => {
                     let bin_id = self.items[index].bin_id.clone();
+                    let user_metadata = self.items[index].user_metadata.clone();
+                    let inspection_generation = self.items[index]
+                        .source_metadata
+                        .inspection_generation
+                        .saturating_add(1);
                     self.items[index] = MediaBrowserItem::from_imported(imported);
                     self.items[index].bin_id = bin_id;
+                    self.items[index].user_metadata = user_metadata;
+                    self.items[index].source_metadata =
+                        source_metadata_inspection(imported, inspection_generation);
                 }
                 Err(index) => self
                     .items
@@ -562,6 +672,101 @@ impl MediaLibrarySnapshot {
         }
         let mut candidate = self.clone();
         candidate.apply_mutation(update.mutation)?;
+        candidate.validate()?;
+        candidate.revision = candidate.revision.checked_add(1).ok_or_else(|| {
+            DesktopProjectFailure::new(
+                DesktopProjectFailureClass::Terminal,
+                "media_library_revision_exhausted",
+                "Media library cannot continue",
+                "Restart Superi before continuing.",
+            )
+        })?;
+        candidate.refresh_derived();
+        *self = candidate;
+        Ok(())
+    }
+
+    fn inspect_source(
+        &mut self,
+        request: SourceMetadataInspectionRequest,
+    ) -> Result<(), DesktopProjectFailure> {
+        let item = self
+            .items
+            .iter_mut()
+            .find(|item| item.media_id == request.media_id)
+            .ok_or_else(|| media_library_invalid("Imported media was not found"))?;
+        if item.content_fingerprint != request.expected_freshness {
+            return Err(user_correctable(
+                "source_metadata_stale",
+                "Source changed before inspection",
+                "Refresh the media library and inspect the source again.",
+            ));
+        }
+        let generation = item
+            .source_metadata
+            .inspection_generation
+            .checked_add(1)
+            .ok_or_else(|| {
+                DesktopProjectFailure::new(
+                    DesktopProjectFailureClass::Terminal,
+                    "source_metadata_generation_exhausted",
+                    "Source metadata cannot continue",
+                    "Restart Superi before inspecting this source again.",
+                )
+            })?;
+        let media = DesktopImportedMedia {
+            media_id: item.media_id.clone(),
+            name: item.name.clone(),
+            source_paths: item.source_paths.clone(),
+            content_fingerprint: item.content_fingerprint.clone(),
+            kind: item.kind,
+            source_count: item.source_count,
+            first_frame: item.first_frame,
+            last_frame: item.last_frame,
+            frame_rate_numerator: item.frame_rate_numerator,
+            frame_rate_denominator: item.frame_rate_denominator,
+        };
+        item.source_metadata = source_metadata_inspection(&media, generation);
+        Ok(())
+    }
+
+    fn apply_user_metadata(
+        &mut self,
+        update: UserMetadataUpdate,
+    ) -> Result<(), DesktopProjectFailure> {
+        if update.expected_project_revision != self.project_revision
+            || update.expected_library_revision != self.revision
+        {
+            return Err(user_correctable(
+                "media_library_revision_stale",
+                "Media library changed",
+                "Refresh the media library and try again.",
+            ));
+        }
+        let mut candidate = self.clone();
+        let item = candidate
+            .items
+            .iter_mut()
+            .find(|item| item.media_id == update.media_id)
+            .ok_or_else(|| media_library_invalid("Imported media was not found"))?;
+        match update.mutation {
+            UserMetadataMutation::Upsert { key, value } => {
+                validate_user_metadata_key(&key)?;
+                validate_user_metadata_value(&value)?;
+                if !item.user_metadata.contains_key(&key)
+                    && item.user_metadata.len() >= MAX_USER_METADATA_ENTRIES
+                {
+                    return Err(media_library_invalid("User metadata limit reached"));
+                }
+                item.user_metadata.insert(key, value);
+            }
+            UserMetadataMutation::Remove { key } => {
+                validate_user_metadata_key(&key)?;
+                if item.user_metadata.remove(&key).is_none() {
+                    return Err(media_library_invalid("User metadata key was not found"));
+                }
+            }
+        }
         candidate.validate()?;
         candidate.revision = candidate.revision.checked_add(1).ok_or_else(|| {
             DesktopProjectFailure::new(
@@ -681,6 +886,15 @@ impl MediaLibrarySnapshot {
     }
 
     fn validate(&self) -> Result<(), DesktopProjectFailure> {
+        for item in &self.items {
+            if item.user_metadata.len() > MAX_USER_METADATA_ENTRIES {
+                return Err(media_library_invalid("User metadata limit exceeded"));
+            }
+            for (key, value) in &item.user_metadata {
+                validate_user_metadata_key(key)?;
+                validate_user_metadata_value(value)?;
+            }
+        }
         for bin in &self.bins {
             let mut current = bin.parent_id.as_deref();
             let mut seen = BTreeSet::from([bin.bin_id.as_str()]);
@@ -736,6 +950,32 @@ pub struct MediaLibraryUpdate {
     pub mutation: MediaLibraryMutation,
 }
 
+/// Exact freshness-fenced request for one read-only source inspection.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceMetadataInspectionRequest {
+    pub media_id: String,
+    pub expected_freshness: String,
+}
+
+/// Generic user-authored metadata edits owned by C005.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum UserMetadataMutation {
+    Upsert { key: String, value: String },
+    Remove { key: String },
+}
+
+/// Revision-fenced user metadata update for one stable imported-media identity.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UserMetadataUpdate {
+    pub expected_project_revision: u64,
+    pub expected_library_revision: u64,
+    pub media_id: String,
+    pub mutation: UserMetadataMutation,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct MediaLibraryStore {
@@ -757,6 +997,46 @@ fn media_library_invalid(title: &'static str) -> DesktopProjectFailure {
         title,
         "Refresh the media library and try again.",
     )
+}
+
+fn validate_user_metadata_key(key: &str) -> Result<(), DesktopProjectFailure> {
+    let valid = !key.is_empty()
+        && key.len() <= MAX_USER_METADATA_KEY_BYTES
+        && key.trim() == key
+        && key
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-' | b':'));
+    if !valid {
+        return Err(media_library_invalid("User metadata key is invalid"));
+    }
+    let reserved = matches!(
+        key.to_ascii_lowercase().as_str(),
+        "name"
+            | "label"
+            | "labels"
+            | "rating"
+            | "ratings"
+            | "keyword"
+            | "keywords"
+            | "comment"
+            | "comments"
+            | "favorite"
+            | "favorites"
+            | "usage"
+    );
+    if reserved {
+        return Err(media_library_invalid(
+            "This metadata key is owned by a later editorial annotation checkpoint",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_user_metadata_value(value: &str) -> Result<(), DesktopProjectFailure> {
+    if value.len() > MAX_USER_METADATA_VALUE_BYTES || value.chars().any(char::is_control) {
+        return Err(media_library_invalid("User metadata value is invalid"));
+    }
+    Ok(())
 }
 
 /// One opaque recovery candidate projected for user selection.
@@ -1716,6 +1996,46 @@ impl DesktopProjectState {
         Ok(snapshot)
     }
 
+    pub fn inspect_media_source(
+        &self,
+        request: SourceMetadataInspectionRequest,
+    ) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+        let (project_id, project_revision) =
+            self.active_project_identity("inspect_media_source")?;
+        let snapshot = {
+            let mut store = self.media_library_lock("inspect_media_source")?;
+            let library = store
+                .projects
+                .entry(project_id)
+                .or_insert_with(|| MediaLibrarySnapshot::empty(project_revision));
+            library.project_revision = project_revision;
+            library.inspect_source(request)?;
+            library.clone()
+        };
+        self.persist_media_libraries()?;
+        Ok(snapshot)
+    }
+
+    pub fn mutate_user_metadata(
+        &self,
+        update: UserMetadataUpdate,
+    ) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+        let (project_id, project_revision) =
+            self.active_project_identity("mutate_user_metadata")?;
+        let snapshot = {
+            let mut store = self.media_library_lock("mutate_user_metadata")?;
+            let library = store
+                .projects
+                .entry(project_id)
+                .or_insert_with(|| MediaLibrarySnapshot::empty(project_revision));
+            library.project_revision = project_revision;
+            library.apply_user_metadata(update)?;
+            library.clone()
+        };
+        self.persist_media_libraries()?;
+        Ok(snapshot)
+    }
+
     fn activate_media_library(
         &self,
         snapshot: &DesktopProjectSnapshot,
@@ -1933,6 +2253,28 @@ pub async fn mutate_project_media_library(
     tauri::async_runtime::spawn_blocking(move || state.mutate_media_library(update))
         .await
         .map_err(|_| project_task_failed("mutate_media_library"))?
+}
+
+#[tauri::command]
+pub async fn inspect_project_media_source(
+    request: SourceMetadataInspectionRequest,
+    state: State<'_, DesktopProjectState>,
+) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.inspect_media_source(request))
+        .await
+        .map_err(|_| project_task_failed("inspect_media_source"))?
+}
+
+#[tauri::command]
+pub async fn mutate_project_media_metadata(
+    update: UserMetadataUpdate,
+    state: State<'_, DesktopProjectState>,
+) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.mutate_user_metadata(update))
+        .await
+        .map_err(|_| project_task_failed("mutate_user_metadata"))?
 }
 
 /// Closed desktop command set for project lifecycle behavior only.
@@ -2693,4 +3035,130 @@ fn project_task_failed(operation: &'static str) -> DesktopProjectFailure {
         "Restart Superi before continuing.",
     )
     .with_context("operation", operation)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn missing_imported_media() -> DesktopImportedMedia {
+        DesktopImportedMedia {
+            media_id: "media-c005".to_owned(),
+            name: "offline.mov".to_owned(),
+            source_paths: vec![std::env::temp_dir()
+                .join(format!("superi-c005-missing-{}.mov", std::process::id()))
+                .to_string_lossy()
+                .into_owned()],
+            content_fingerprint: "sha256:c005".to_owned(),
+            kind: DesktopImportedMediaKind::File,
+            source_count: 1,
+            first_frame: None,
+            last_frame: None,
+            frame_rate_numerator: None,
+            frame_rate_denominator: None,
+        }
+    }
+
+    #[test]
+    fn source_inspection_and_user_metadata_preserve_media_identity_and_bin_intent() {
+        let imported = missing_imported_media();
+        let mut library = MediaLibrarySnapshot::empty(7);
+        let mut item = MediaBrowserItem::from_imported(&imported);
+        item.bin_id = Some("bin-a".to_owned());
+        library.items.push(item);
+
+        library
+            .apply_user_metadata(UserMetadataUpdate {
+                expected_project_revision: 7,
+                expected_library_revision: 0,
+                media_id: imported.media_id.clone(),
+                mutation: UserMetadataMutation::Upsert {
+                    key: "production.note".to_owned(),
+                    value: "requires conform".to_owned(),
+                },
+            })
+            .expect("generic user metadata should be editable");
+
+        let identity = (
+            library.items[0].media_id.clone(),
+            library.items[0].content_fingerprint.clone(),
+            library.items[0].source_paths.clone(),
+            library.items[0].bin_id.clone(),
+        );
+        let revision = library.revision;
+        let generation = library.items[0].source_metadata.inspection_generation;
+
+        library
+            .inspect_source(SourceMetadataInspectionRequest {
+                media_id: imported.media_id.clone(),
+                expected_freshness: imported.content_fingerprint.clone(),
+            })
+            .expect("fresh source identity should be inspectable");
+
+        assert_eq!(library.revision, revision);
+        assert_eq!(
+            library.items[0].source_metadata.status,
+            SourceMetadataStatus::Missing
+        );
+        assert_eq!(
+            library.items[0].source_metadata.inspection_generation,
+            generation + 1
+        );
+        assert_eq!(
+            library.items[0].user_metadata.get("production.note"),
+            Some(&"requires conform".to_owned())
+        );
+        assert_eq!(
+            (
+                library.items[0].media_id.clone(),
+                library.items[0].content_fingerprint.clone(),
+                library.items[0].source_paths.clone(),
+                library.items[0].bin_id.clone(),
+            ),
+            identity
+        );
+
+        let encoded = serde_json::to_string(&library).expect("media library must serialize");
+        let restored: MediaLibrarySnapshot =
+            serde_json::from_str(&encoded).expect("media library must restore");
+        assert_eq!(
+            restored.items[0].source_metadata,
+            library.items[0].source_metadata
+        );
+        assert_eq!(
+            restored.items[0].user_metadata,
+            library.items[0].user_metadata
+        );
+    }
+
+    #[test]
+    fn stale_inspection_and_later_annotation_keys_leave_metadata_unchanged() {
+        let imported = missing_imported_media();
+        let mut library = MediaLibrarySnapshot::empty(3);
+        library
+            .items
+            .push(MediaBrowserItem::from_imported(&imported));
+        let original = library.clone();
+
+        assert!(library
+            .inspect_source(SourceMetadataInspectionRequest {
+                media_id: imported.media_id.clone(),
+                expected_freshness: "sha256:stale".to_owned(),
+            })
+            .is_err());
+        assert_eq!(library, original);
+
+        assert!(library
+            .apply_user_metadata(UserMetadataUpdate {
+                expected_project_revision: 3,
+                expected_library_revision: 0,
+                media_id: imported.media_id,
+                mutation: UserMetadataMutation::Upsert {
+                    key: "rating".to_owned(),
+                    value: "5".to_owned(),
+                },
+            })
+            .is_err());
+        assert_eq!(library, original);
+    }
 }
