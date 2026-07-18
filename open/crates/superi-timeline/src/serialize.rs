@@ -20,8 +20,8 @@ use superi_core::pixel::{ChannelLayout, ChannelPosition};
 use superi_core::serialization::STABLE_PRIMITIVE_SCHEMA_REVISION;
 use superi_core::time::{Duration, FrameRate, RationalTime, TimeRange, Timebase};
 
-use crate::compile::TimelineGraphValue;
-use crate::edit_state::{SelectionExpansion, SelectionUpdate};
+use crate::compile::{TimelineGraphValue, TrackOutputState};
+use crate::edit_state::{SelectionExpansion, SelectionUpdate, DEFAULT_TRACK_HEIGHT};
 use crate::markers::{
     Marker, MarkerFlag, MarkerLabel, MarkerNote, MarkerOwner, MetadataKey, MetadataOwner,
     MetadataValue, TimelineMetadata,
@@ -45,10 +45,11 @@ use crate::retime::{ClipTimeMap, PlaybackRate, RetimeSegment};
 const COMPONENT: &str = "superi-timeline.serialization";
 const TIMELINE_STATE_FORMAT: &str = "superi.timeline";
 const LEGACY_TIMELINE_STATE_FORMAT_REVISION: u32 = 0;
+const PREVIOUS_TIMELINE_STATE_FORMAT_REVISION: u32 = 1;
 const MAX_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
 
 /// The current incompatible revision of the timeline state document contract.
-pub const TIMELINE_STATE_FORMAT_REVISION: u32 = 1;
+pub const TIMELINE_STATE_FORMAT_REVISION: u32 = 2;
 
 /// One fully checked timeline state load and its canonical current document.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -133,6 +134,20 @@ pub fn deserialize_timeline_state(document: &[u8]) -> Result<TimelineStateLoad> 
             validate_current_envelope(&envelope)?;
             envelope.payload
         }
+        PREVIOUS_TIMELINE_STATE_FORMAT_REVISION => {
+            let envelope =
+                serde_json::from_value::<PreviousEnvelopeWire>(raw).map_err(|source| {
+                    document_error(
+                        ErrorCategory::CorruptData,
+                        Recoverability::UserCorrectable,
+                        "migrate_document",
+                        "previous timeline state document does not match its strict schema",
+                        [("source", source.to_string())],
+                    )
+                })?;
+            validate_previous_envelope(&envelope)?;
+            envelope.payload.into_current()
+        }
         LEGACY_TIMELINE_STATE_FORMAT_REVISION => {
             let envelope = serde_json::from_value::<LegacyEnvelopeWire>(raw).map_err(|source| {
                 document_error(
@@ -151,7 +166,7 @@ pub fn deserialize_timeline_state(document: &[u8]) -> Result<TimelineStateLoad> 
                     envelope.format_revision,
                 ));
             }
-            envelope.timeline_state
+            envelope.timeline_state.into_current()
         }
         revision => return Err(unsupported_format_error(TIMELINE_STATE_FORMAT, revision)),
     };
@@ -178,6 +193,16 @@ struct CurrentEnvelopeWire {
     payload: TimelineStatePayloadWire,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PreviousEnvelopeWire {
+    format: String,
+    format_revision: u32,
+    primitive_schema_revision: u32,
+    payload_sha256: String,
+    payload: PreviousTimelineStatePayloadWire,
+}
+
 #[derive(Serialize)]
 struct CurrentEnvelopeRef<'a> {
     format: &'static str,
@@ -192,7 +217,7 @@ struct CurrentEnvelopeRef<'a> {
 struct LegacyEnvelopeWire {
     format: String,
     format_revision: u32,
-    timeline_state: TimelineStatePayloadWire,
+    timeline_state: PreviousTimelineStatePayloadWire,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -204,6 +229,17 @@ struct TimelineStatePayloadWire {
     media: Vec<MediaWire>,
     media_library: MediaLibraryWire,
     timelines: Vec<TimelineWire>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PreviousTimelineStatePayloadWire {
+    project_id: ProjectId,
+    name: String,
+    revision: String,
+    media: Vec<MediaWire>,
+    media_library: MediaLibraryWire,
+    timelines: Vec<PreviousTimelineWire>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -297,6 +333,22 @@ struct TimelineWire {
     global_start: RationalTime,
     tracks: Vec<TrackWire>,
     edit_state: EditStateWire,
+    snapping_enabled: bool,
+    markers: Vec<MarkerWire>,
+    metadata: Vec<OwnedMetadataWire>,
+    multicam_source: Option<MulticamSourceWire>,
+    multicam_clips: Vec<MulticamClipWire>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PreviousTimelineWire {
+    id: TimelineId,
+    name: String,
+    edit_rate: Timebase,
+    global_start: RationalTime,
+    tracks: Vec<TrackWire>,
+    edit_state: PreviousEditStateWire,
     snapping_enabled: bool,
     markers: Vec<MarkerWire>,
     metadata: Vec<OwnedMetadataWire>,
@@ -470,6 +522,29 @@ struct EditStateWire {
 #[serde(deny_unknown_fields)]
 struct TrackEditStateWire {
     track_id: TrackId,
+    height: u16,
+    targeted: bool,
+    locked: bool,
+    sync_locked: bool,
+    muted: bool,
+    solo: bool,
+    enabled: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PreviousEditStateWire {
+    selected_objects: Vec<EditorialObjectIdWire>,
+    track_states: Vec<PreviousTrackEditStateWire>,
+    linked_selection_enabled: bool,
+    links: Vec<Vec<ClipId>>,
+    groups: Vec<Vec<ClipId>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PreviousTrackEditStateWire {
+    track_id: TrackId,
     targeted: bool,
     sync_locked: bool,
 }
@@ -617,9 +692,18 @@ enum TimelineGraphValueWire {
     OptionalMulticamSource { value: Option<MulticamSourceWire> },
     OptionalMulticamClip { value: Option<MulticamClipWire> },
     TrackSemantics { value: TrackSemanticsWire },
+    TrackOutputState { value: TrackOutputStateWire },
     TrackOrder { value: Vec<TrackId> },
     ObjectOrder { value: Vec<EditorialObjectIdWire> },
     StringMap { value: BTreeMap<String, String> },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TrackOutputStateWire {
+    enabled: bool,
+    muted: bool,
+    solo: bool,
 }
 
 impl Serialize for TimelineGraphValue {
@@ -676,6 +760,13 @@ impl TimelineGraphValueWire {
             TimelineGraphValue::TrackSemantics(value) => Self::TrackSemantics {
                 value: TrackSemanticsWire::from_semantics(value),
             },
+            TimelineGraphValue::TrackOutputState(value) => Self::TrackOutputState {
+                value: TrackOutputStateWire {
+                    enabled: value.enabled(),
+                    muted: value.muted(),
+                    solo: value.solo(),
+                },
+            },
             TimelineGraphValue::TrackOrder(value) => Self::TrackOrder {
                 value: value.clone(),
             },
@@ -713,6 +804,9 @@ impl TimelineGraphValueWire {
             Self::TrackSemantics { value } => {
                 TimelineGraphValue::TrackSemantics(value.into_semantics()?)
             }
+            Self::TrackOutputState { value } => TimelineGraphValue::TrackOutputState(
+                TrackOutputState::new(value.enabled, value.muted, value.solo),
+            ),
             Self::TrackOrder { value } => TimelineGraphValue::TrackOrder(value),
             Self::ObjectOrder { value } => {
                 TimelineGraphValue::ObjectOrder(value.into_iter().map(Into::into).collect())
@@ -768,6 +862,61 @@ impl TimelineStatePayloadWire {
         let mut project = EditorialProject::new(self.project_id, self.name, media, timelines)?;
         project.restore_persisted_state(revision, library)?;
         Ok(project)
+    }
+}
+
+impl PreviousTimelineStatePayloadWire {
+    fn into_current(self) -> TimelineStatePayloadWire {
+        TimelineStatePayloadWire {
+            project_id: self.project_id,
+            name: self.name,
+            revision: self.revision,
+            media: self.media,
+            media_library: self.media_library,
+            timelines: self
+                .timelines
+                .into_iter()
+                .map(PreviousTimelineWire::into_current)
+                .collect(),
+        }
+    }
+}
+
+impl PreviousTimelineWire {
+    fn into_current(self) -> TimelineWire {
+        TimelineWire {
+            id: self.id,
+            name: self.name,
+            edit_rate: self.edit_rate,
+            global_start: self.global_start,
+            tracks: self.tracks,
+            edit_state: EditStateWire {
+                selected_objects: self.edit_state.selected_objects,
+                track_states: self
+                    .edit_state
+                    .track_states
+                    .into_iter()
+                    .map(|state| TrackEditStateWire {
+                        track_id: state.track_id,
+                        height: DEFAULT_TRACK_HEIGHT,
+                        targeted: state.targeted,
+                        locked: false,
+                        sync_locked: state.sync_locked,
+                        muted: false,
+                        solo: false,
+                        enabled: true,
+                    })
+                    .collect(),
+                linked_selection_enabled: self.edit_state.linked_selection_enabled,
+                links: self.edit_state.links,
+                groups: self.edit_state.groups,
+            },
+            snapping_enabled: self.snapping_enabled,
+            markers: self.markers,
+            metadata: self.metadata,
+            multicam_source: self.multicam_source,
+            multicam_clips: self.multicam_clips,
+        }
     }
 }
 
@@ -981,8 +1130,13 @@ impl TimelineWire {
                     .expect("validated timeline has track edit state");
                 TrackEditStateWire {
                     track_id: state.track_id(),
+                    height: state.height(),
                     targeted: state.targeted(),
+                    locked: state.locked(),
                     sync_locked: state.sync_locked(),
+                    muted: state.muted(),
+                    solo: state.solo(),
+                    enabled: state.enabled(),
                 }
             })
             .collect();
@@ -1113,7 +1267,12 @@ impl TimelineWire {
                 ));
             }
             timeline.set_track_targeted(state.track_id, state.targeted)?;
+            timeline.set_track_height(state.track_id, state.height)?;
+            timeline.set_track_locked(state.track_id, state.locked)?;
             timeline.set_track_sync_locked(state.track_id, state.sync_locked)?;
+            timeline.set_track_muted(state.track_id, state.muted)?;
+            timeline.set_track_solo(state.track_id, state.solo)?;
+            timeline.set_track_enabled(state.track_id, state.enabled)?;
         }
         if track_state_ids.len() != timeline.tracks().len() {
             return Err(document_error(
@@ -1960,6 +2119,55 @@ fn validate_current_envelope(envelope: &CurrentEnvelopeWire) -> Result<()> {
             Recoverability::UserCorrectable,
             "verify_document",
             "timeline state payload integrity check failed",
+            std::iter::empty::<(&str, String)>(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_previous_envelope(envelope: &PreviousEnvelopeWire) -> Result<()> {
+    if envelope.format != TIMELINE_STATE_FORMAT
+        || envelope.format_revision != PREVIOUS_TIMELINE_STATE_FORMAT_REVISION
+    {
+        return Err(unsupported_format_error(
+            &envelope.format,
+            envelope.format_revision,
+        ));
+    }
+    if envelope.primitive_schema_revision != STABLE_PRIMITIVE_SCHEMA_REVISION {
+        return Err(document_error(
+            ErrorCategory::Unsupported,
+            Recoverability::UserCorrectable,
+            "migrate_document",
+            "previous timeline state document uses an unsupported primitive schema revision",
+            [(
+                "primitive_schema_revision",
+                envelope.primitive_schema_revision.to_string(),
+            )],
+        ));
+    }
+    let payload_bytes = serde_json::to_vec(&envelope.payload).map_err(|source| {
+        document_error(
+            ErrorCategory::CorruptData,
+            Recoverability::UserCorrectable,
+            "verify_document",
+            "previous timeline state payload cannot be canonicalized for integrity verification",
+            [("source", source.to_string())],
+        )
+    })?;
+    let actual = sha256_hex(&payload_bytes);
+    if envelope.payload_sha256.len() != 64
+        || !envelope
+            .payload_sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        || envelope.payload_sha256 != actual
+    {
+        return Err(document_error(
+            ErrorCategory::CorruptData,
+            Recoverability::UserCorrectable,
+            "verify_document",
+            "previous timeline state payload integrity check failed",
             std::iter::empty::<(&str, String)>(),
         ));
     }

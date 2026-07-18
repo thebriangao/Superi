@@ -1,7 +1,9 @@
 import type { EditorCanonicalDocument } from "./api.ts";
 
 const TIMELINE_FORMAT = "superi.timeline";
-const TIMELINE_FORMAT_REVISION = 1;
+const TIMELINE_FORMAT_REVISION = 2;
+export const MIN_TRACK_HEIGHT = 48;
+export const MAX_TRACK_HEIGHT = 320;
 const MIN_EMPTY_DURATION_SECONDS = 10;
 const MAX_RULER_TICKS = 4_000;
 const SAFE_SIGNED_DECIMAL = /^(?:0|-[1-9][0-9]*|[1-9][0-9]*)$/;
@@ -140,7 +142,12 @@ export interface TimelineCanvasTrack {
   readonly name: string;
   readonly kind: TimelineTrackKind;
   readonly targeted: boolean;
+  readonly height: number;
+  readonly locked: boolean;
   readonly syncLocked: boolean;
+  readonly muted: boolean;
+  readonly solo: boolean;
+  readonly enabled: boolean;
   readonly items: readonly TimelineCanvasItem[];
 }
 
@@ -242,7 +249,12 @@ interface PendingTrack {
   readonly kind: TimelineTrackKind;
   readonly recordRate: TimelineRate;
   readonly targeted: boolean;
+  readonly height: number;
+  readonly locked: boolean;
   readonly syncLocked: boolean;
+  readonly muted: boolean;
+  readonly solo: boolean;
+  readonly enabled: boolean;
   readonly items: readonly (DirectItem | PendingTransition)[];
 }
 
@@ -373,6 +385,12 @@ export function projectTimelineDocument(
         kind,
         `${path}.semantics`,
       );
+      if (kind !== "audio" && (state.muted || state.solo)) {
+        throw projectionError(
+          `${timelinePath}.edit_state.track_states`,
+          `non-audio track ${id} cannot retain mute or solo intent`,
+        );
+      }
       const items = asArray(track.items, `${path}.items`).map((item, itemIndex) =>
         parseItem(
           item,
@@ -389,7 +407,12 @@ export function projectTimelineDocument(
         kind,
         recordRate,
         targeted: state.targeted,
+        height: state.height,
+        locked: state.locked,
         syncLocked: state.syncLocked,
+        muted: state.muted,
+        solo: state.solo,
+        enabled: state.enabled,
         items,
       };
       validateTrackSequence(pending, path);
@@ -436,7 +459,12 @@ export function projectTimelineDocument(
     name: track.name,
     kind: track.kind,
     targeted: track.targeted,
+    height: track.height,
+    locked: track.locked,
     syncLocked: track.syncLocked,
+    muted: track.muted,
+    solo: track.solo,
+    enabled: track.enabled,
     items: track.items.map((item) =>
       item.kind === "transition"
         ? resolveTransition(
@@ -1454,10 +1482,29 @@ function parseTrackRecordRate(
 function parseTrackStates(
   value: unknown,
   path: string,
-): ReadonlyMap<string, { readonly targeted: boolean; readonly syncLocked: boolean }> {
+): ReadonlyMap<
+  string,
+  {
+    readonly height: number;
+    readonly targeted: boolean;
+    readonly locked: boolean;
+    readonly syncLocked: boolean;
+    readonly muted: boolean;
+    readonly solo: boolean;
+    readonly enabled: boolean;
+  }
+> {
   const result = new Map<
     string,
-    { readonly targeted: boolean; readonly syncLocked: boolean }
+    {
+      readonly height: number;
+      readonly targeted: boolean;
+      readonly locked: boolean;
+      readonly syncLocked: boolean;
+      readonly muted: boolean;
+      readonly solo: boolean;
+      readonly enabled: boolean;
+    }
   >();
   for (const [index, entry] of asArray(value, path).entries()) {
     const statePath = `${path}[${index}]`;
@@ -1466,9 +1513,21 @@ function parseTrackStates(
     if (result.has(id)) {
       throw projectionError(statePath, `duplicate track edit state ${id}`);
     }
+    const height = asInteger(state.height, `${statePath}.height`);
+    if (height < MIN_TRACK_HEIGHT || height > MAX_TRACK_HEIGHT) {
+      throw projectionError(
+        `${statePath}.height`,
+        `track height must be between ${MIN_TRACK_HEIGHT} and ${MAX_TRACK_HEIGHT}`,
+      );
+    }
     result.set(id, {
+      height,
       targeted: asBoolean(state.targeted, `${statePath}.targeted`),
+      locked: asBoolean(state.locked, `${statePath}.locked`),
       syncLocked: asBoolean(state.sync_locked, `${statePath}.sync_locked`),
+      muted: asBoolean(state.muted, `${statePath}.muted`),
+      solo: asBoolean(state.solo, `${statePath}.solo`),
+      enabled: asBoolean(state.enabled, `${statePath}.enabled`),
     });
   }
   return result;

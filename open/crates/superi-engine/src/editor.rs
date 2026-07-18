@@ -52,7 +52,7 @@ pub use superi_project::{
     ProjectVersionReason,
 };
 pub use superi_timeline::compile::{
-    CompiledTimelineGraphValue, TimelineGraphOrigin, TimelineGraphValue,
+    CompiledTimelineGraphValue, TimelineGraphOrigin, TimelineGraphValue, TrackOutputState,
 };
 pub use superi_timeline::edit_ops::{
     EditBatchResult, EditKind, EditOperation, EditSide, ExtendMode, RippleSyncAdjustment,
@@ -72,6 +72,10 @@ pub use superi_timeline::multicam::{
     MulticamSyncMethod,
 };
 pub use superi_timeline::retime::{ClipTimeMap, PlaybackRate, RetimeSegment};
+pub use superi_timeline::track_ops::{
+    TrackCreationKind, TrackMutation, TrackMutationBatchResult, TrackMutationKind,
+    TrackMutationOutcome, DEFAULT_TRACK_HEIGHT, MAX_TRACK_HEIGHT, MIN_TRACK_HEIGHT,
+};
 
 pub use crate::dispatcher::{
     EngineCommand, EngineCommandDispatcher, EngineCommandRequest, EngineCommandResult, EngineEvent,

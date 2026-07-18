@@ -60,6 +60,39 @@ test("editor requests use one explicit public transaction identity", () => {
   assert.throws(() => createEditorStateRequest("  "), /transaction identity/i);
 });
 
+test("timeline track gestures route through the application command owner", () => {
+  const applicationContext = read(
+    resolve(appRoot, "src/application-context.tsx"),
+  );
+  const workspaces = read(resolve(appRoot, "src/editor-workspaces.tsx"));
+  const timeline = read(resolve(appRoot, "src/timeline-workspace.tsx"));
+
+  assert.match(applicationContext, /executeProjectActions/);
+  assert.match(applicationContext, /superi\.project\.command\.execute/);
+  assert.match(applicationContext, /expected_project_revision/);
+  assert.match(workspaces, /action: "mutate_tracks"/);
+  assert.match(workspaces, /mutateTracks=\{mutateTracks\}/);
+  for (const operation of [
+    "create",
+    "delete",
+    "rename",
+    "set_height",
+    "reorder",
+    "set_targeted",
+    "set_locked",
+    "set_sync_locked",
+    "set_muted",
+    "set_solo",
+    "set_enabled",
+  ]) {
+    assert.match(timeline, new RegExp(`operation: "${operation}"`));
+  }
+  assert.doesNotMatch(
+    timeline,
+    /useSuperiApi|DesktopSuperiTransport|@tauri-apps\/api/,
+  );
+});
+
 test("audio projection preserves sample timing, channel order, routing, and continuity", () => {
   const track = {
     timeline_id: "timeline.main",

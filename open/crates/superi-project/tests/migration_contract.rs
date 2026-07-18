@@ -14,6 +14,7 @@ use superi_project::{
 };
 use superi_timeline::compile::CompiledTimelineGraphValue;
 use superi_timeline::model::{EditorialProject, Timeline};
+use superi_timeline::serialize::TIMELINE_STATE_FORMAT_REVISION;
 
 static NEXT_PATH: AtomicU64 = AtomicU64::new(0);
 
@@ -369,7 +370,7 @@ fn supported_legacy_project_migrates_canonically_and_remains_editable() {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(timeline_revision, 1);
+        assert_eq!(timeline_revision, i64::from(TIMELINE_STATE_FORMAT_REVISION));
         let noncurrent_graphs: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM graph_components WHERE format_revision != 1",

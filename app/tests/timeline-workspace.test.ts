@@ -91,12 +91,12 @@ function canonicalDocument(): EditorCanonicalDocument {
   return {
     resource: "superi.editor.state.timeline",
     format: "superi.timeline",
-    format_revision: 1,
+    format_revision: 2,
     byte_length: 1_024,
     sha256: "a".repeat(64),
     content: {
       format: "superi.timeline",
-      format_revision: 1,
+      format_revision: 2,
       primitive_schema_revision: 1,
       payload_sha256: "b".repeat(64),
       payload: {
@@ -155,13 +155,23 @@ function canonicalDocument(): EditorCanonicalDocument {
               track_states: [
                 {
                   track_id: "track.video.1",
+                  height: 88,
                   targeted: true,
+                  locked: false,
                   sync_locked: true,
+                  muted: false,
+                  solo: false,
+                  enabled: true,
                 },
                 {
                   track_id: "track.audio.1",
+                  height: 72,
                   targeted: false,
+                  locked: true,
                   sync_locked: false,
+                  muted: true,
+                  solo: true,
+                  enabled: false,
                 },
               ],
               linked_selection_enabled: true,
@@ -197,7 +207,16 @@ test("canonical projection preserves exact editorial timing and relationships", 
   assert.equal(video.id, "track.video.1");
   assert.equal(video.kind, "video");
   assert.equal(video.targeted, true);
+  assert.equal(video.height, 88);
+  assert.equal(video.locked, false);
   assert.equal(video.syncLocked, true);
+  assert.equal(video.enabled, true);
+  const audio = model.tracks[1];
+  assert.equal(audio.height, 72);
+  assert.equal(audio.locked, true);
+  assert.equal(audio.muted, true);
+  assert.equal(audio.solo, true);
+  assert.equal(audio.enabled, false);
 
   const opening = video.items.find((item) => item.id === "clip.a");
   assert.ok(opening);
@@ -573,8 +592,13 @@ test("item target ties retain lower editorial object identity order", () => {
   const trackStates = editState.track_states as Array<Record<string, unknown>>;
   trackStates.push({
     track_id: "track.video.gap",
+    height: 72,
     targeted: false,
+    locked: false,
     sync_locked: false,
+    muted: false,
+    solo: false,
+    enabled: true,
   });
 
   const model = projectTimelineDocument(document, "timeline.main");

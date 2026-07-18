@@ -655,7 +655,7 @@ export type EditorTimebase = { numerator: number; denominator: number };
 /**
  * Every exact timeline-domain value accepted by a compiled graph parameter.
  */
-export type EditorTimelineGraphValue = { kind: "project_id"; project_id: string } | { kind: "timeline_id"; timeline_id: string } | { kind: "track_id"; track_id: string } | { kind: "editorial_object_id"; object_id: EditorialObjectId } | { kind: "text"; value: string } | { kind: "optional_text"; value: string | null } | { kind: "timebase"; value: ExactTimebase } | { kind: "rational_time"; value: ExactTime } | { kind: "time_range"; value: ExactTimeRange } | { kind: "duration"; value: ExactDuration } | { kind: "clip_source"; value: EditorClipSource } | { kind: "clip_time_map"; value: EditorClipTimeMap } | { kind: "optional_multicam_source"; value: EditorMulticamSource | null } | { kind: "optional_multicam_clip"; value: EditorMulticamClip | null } | { kind: "track_semantics"; value: EditorTrackSemantics } | { kind: "track_order"; track_ids: string[] } | { kind: "object_order"; object_ids: EditorialObjectId[] } | { kind: "string_map"; values: { [key: string]: string } };
+export type EditorTimelineGraphValue = { kind: "project_id"; project_id: string } | { kind: "timeline_id"; timeline_id: string } | { kind: "track_id"; track_id: string } | { kind: "editorial_object_id"; object_id: EditorialObjectId } | { kind: "text"; value: string } | { kind: "optional_text"; value: string | null } | { kind: "timebase"; value: ExactTimebase } | { kind: "rational_time"; value: ExactTime } | { kind: "time_range"; value: ExactTimeRange } | { kind: "duration"; value: ExactDuration } | { kind: "clip_source"; value: EditorClipSource } | { kind: "clip_time_map"; value: EditorClipTimeMap } | { kind: "optional_multicam_source"; value: EditorMulticamSource | null } | { kind: "optional_multicam_clip"; value: EditorMulticamClip | null } | { kind: "track_semantics"; value: EditorTrackSemantics } | { kind: "track_output_state"; enabled: boolean; muted: boolean; solo: boolean } | { kind: "track_order"; track_ids: string[] } | { kind: "object_order"; object_ids: EditorialObjectId[] } | { kind: "string_map"; values: { [key: string]: string } };
 
 /**
  * Complete canonical timeline and editorial state.
@@ -1215,12 +1215,12 @@ export type PollEventsResult = { status: "events"; result: EventBatch } | { stat
 /**
  * Every authored action integrated by the production project transaction owner.
  */
-export type ProjectAction = { action: "select_root_timeline"; timeline_id: string } | { action: "edit_timeline"; operations: TimelineEditOperation[] } | { action: "mutate_graph"; graph_id: string; mutations: EditorGraphMutation[] } | { action: "mutate_media"; mutation: EditorMediaMutation } | { action: "import_media"; media: EditorImportedMedia[] } | { action: "mutate_clip_mix"; mutations: EditorClipMixMutation[] } | { action: "mutate_extension"; mutation: EditorExtensionMutation };
+export type ProjectAction = { action: "select_root_timeline"; timeline_id: string } | { action: "edit_timeline"; operations: TimelineEditOperation[] } | { action: "mutate_tracks"; mutations: TimelineTrackMutation[] } | { action: "mutate_graph"; graph_id: string; mutations: EditorGraphMutation[] } | { action: "mutate_media"; mutation: EditorMediaMutation } | { action: "import_media"; media: EditorImportedMedia[] } | { action: "mutate_clip_mix"; mutations: EditorClipMixMutation[] } | { action: "mutate_extension"; mutation: EditorExtensionMutation };
 
 /**
  * One action result inside an applied compound command.
  */
-export type ProjectActionEvidence = { result: "root_timeline_selected"; timeline_id: string } | { result: "timeline_edited"; revision: number; operations: TimelineEditKind[] } | { result: "graph_mutated"; graph_id: string; revision: number } | { result: "media_mutated"; outcome: MediaMutationResult } | { result: "media_imported"; media_ids: string[]; skipped_media_ids: string[] } | { result: "clip_mix_mutated"; revision: number } | { result: "extension_mutated"; outcome: ExtensionMutationResultKind; extension_id: string; record_id: string; replaced: boolean | null };
+export type ProjectActionEvidence = { result: "root_timeline_selected"; timeline_id: string } | { result: "timeline_edited"; revision: number; operations: TimelineEditKind[] } | { result: "tracks_mutated"; revision: number; mutations: TimelineTrackMutationKind[] } | { result: "graph_mutated"; graph_id: string; revision: number } | { result: "media_mutated"; outcome: MediaMutationResult } | { result: "media_imported"; media_ids: string[]; skipped_media_ids: string[] } | { result: "clip_mix_mutated"; revision: number } | { result: "extension_mutated"; outcome: ExtensionMutationResultKind; extension_id: string; record_id: string; replaced: boolean | null };
 
 /**
  * One generic project command on the stable public surface.
@@ -1611,6 +1611,21 @@ export type TimelineEditOperation = { operation: "insert"; timeline_id: string; 
  * Public canonical timeline state.
  */
 export type TimelineState = { track_id: string; clip_id: string; timeline_name: string; track_name: string; clip_name: string; edit_rate: ExactFrameRate; canvas_width: number; canvas_height: number; timeline_start_frame: number; source_start_frame: number; source_end_frame: number; timeline_end_frame: number; implementation: SliceImplementation };
+
+/**
+ * Semantic template used when creating one empty timeline track.
+ */
+export type TimelineTrackCreationKind = "video" | "audio" | "caption" | "data";
+
+/**
+ * One strict authored timeline track mutation.
+ */
+export type TimelineTrackMutation = { operation: "create"; timeline_id: string; track_id: string; name: string; kind: TimelineTrackCreationKind; position: number; height: number } | { operation: "delete"; timeline_id: string; track_id: string } | { operation: "rename"; timeline_id: string; track_id: string; name: string } | { operation: "set_height"; timeline_id: string; track_id: string; height: number } | { operation: "reorder"; timeline_id: string; track_id: string; position: number } | { operation: "set_targeted"; timeline_id: string; track_id: string; targeted: boolean } | { operation: "set_locked"; timeline_id: string; track_id: string; locked: boolean } | { operation: "set_sync_locked"; timeline_id: string; track_id: string; sync_locked: boolean } | { operation: "set_muted"; timeline_id: string; track_id: string; muted: boolean } | { operation: "set_solo"; timeline_id: string; track_id: string; solo: boolean } | { operation: "set_enabled"; timeline_id: string; track_id: string; enabled: boolean };
+
+/**
+ * Stable category returned for one applied timeline track mutation.
+ */
+export type TimelineTrackMutationKind = "create" | "delete" | "rename" | "set_height" | "reorder" | "set_targeted" | "set_locked" | "set_sync_locked" | "set_muted" | "set_solo" | "set_enabled";
 
 /**
  * Generator-only shadow for the core diagnostic value wire.

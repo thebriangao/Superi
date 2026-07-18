@@ -88,6 +88,41 @@ pub fn reconcile_clip_mix_edit_batch(
     state.apply(expected_revision, &mutations)
 }
 
+/// Releases authored audio intent for clips removed by a track mutation batch.
+///
+/// Track deletion owns every contained editorial object. This reconciliation compares the
+/// published editorial identities before and after the batch, then removes only mix controls whose
+/// clips disappeared from the complete project. The caller's outer project transaction supplies
+/// atomic rollback when either the track batch or this audio mutation fails.
+pub fn reconcile_removed_track_clip_mix(
+    previous: &EditorialProject,
+    next: &EditorialProject,
+    state: &mut ClipMixState,
+) -> Result<u64> {
+    let previous_clip_ids = clip_ids(previous);
+    let next_clip_ids = clip_ids(next);
+    let mutations = previous_clip_ids
+        .difference(&next_clip_ids)
+        .filter(|clip_id| state.controls(**clip_id).is_some())
+        .copied()
+        .map(ClipMixMutation::remove)
+        .collect::<Vec<_>>();
+    if mutations.is_empty() {
+        return Ok(state.revision());
+    }
+    state.apply(state.revision(), &mutations)
+}
+
+fn clip_ids(project: &EditorialProject) -> BTreeSet<ClipId> {
+    project
+        .timelines()
+        .flat_map(|timeline| timeline.tracks())
+        .flat_map(|track| track.items())
+        .filter_map(|item| item.as_clip())
+        .map(|clip| clip.id())
+        .collect()
+}
+
 fn owns_intent(
     state: &ClipMixState,
     clip_id: ClipId,

@@ -3,7 +3,7 @@
 use superi_core::settings::SemanticVersion;
 
 /// Schema version for the complete public API catalog.
-pub const PUBLIC_API_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 4, 0);
+pub const PUBLIC_API_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 5, 0);
 
 /// Every released public API catalog schema in ascending SemVer precedence order.
 pub const PUBLIC_API_SCHEMA_RELEASES: &[SemanticVersion] = &[
@@ -12,6 +12,7 @@ pub const PUBLIC_API_SCHEMA_RELEASES: &[SemanticVersion] = &[
     SemanticVersion::new(1, 2, 0),
     SemanticVersion::new(1, 3, 0),
     SemanticVersion::new(1, 4, 0),
+    SemanticVersion::new(1, 5, 0),
 ];
 
 /// Independent request and response schema for version negotiation.
@@ -39,7 +40,7 @@ pub const CLOSE_EVENT_SUBSCRIPTION_METHOD: &str = "superi.events.subscription.cl
 pub const POLL_EVENT_SUBSCRIPTION_METHOD: &str = "superi.events.subscription.poll";
 
 /// Schema version for the generic authored project command surface.
-pub const PROJECT_EDITOR_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 2, 0);
+pub const PROJECT_EDITOR_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 3, 0);
 
 /// JSON-RPC method for one generic authored project command.
 pub const EXECUTE_PROJECT_COMMAND_METHOD: &str = "superi.project.command.execute";

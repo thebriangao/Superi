@@ -19,7 +19,9 @@ use superi_core::time::{
 };
 use superi_graph::node::GraphColorMetadata;
 
-use crate::edit_state::{SelectionExpansion, SelectionUpdate, TimelineEditState};
+use crate::edit_state::{
+    SelectionExpansion, SelectionUpdate, TimelineEditState, MAX_TRACK_HEIGHT, MIN_TRACK_HEIGHT,
+};
 use crate::markers::{
     Marker, MetadataOwner, SnapMatch, SnapRequest, TimelineAnnotations, TimelineMetadata,
 };
@@ -2187,9 +2189,54 @@ impl Timeline {
         self.edit_state.set_track_targeted(track_id, targeted)
     }
 
+    /// Sets the bounded editor lane height for one existing track.
+    pub fn set_track_height(&mut self, track_id: TrackId, height: u16) -> Result<()> {
+        self.edit_state.set_track_height(track_id, height)
+    }
+
+    /// Sets whether authored item changes are prevented on one existing track.
+    pub fn set_track_locked(&mut self, track_id: TrackId, locked: bool) -> Result<()> {
+        self.edit_state.set_track_locked(track_id, locked)
+    }
+
     /// Sets whether ripple-style changes on other tracks keep one track synchronized.
     pub fn set_track_sync_locked(&mut self, track_id: TrackId, sync_locked: bool) -> Result<()> {
         self.edit_state.set_track_sync_locked(track_id, sync_locked)
+    }
+
+    /// Sets whether one existing audio track is suppressed from output.
+    pub fn set_track_muted(&mut self, track_id: TrackId, muted: bool) -> Result<()> {
+        if muted
+            && self
+                .track(track_id)
+                .is_some_and(|track| track.kind() != TrackKind::Audio)
+        {
+            return Err(invalid(
+                "set_track_muted",
+                "mute state is supported only for audio tracks",
+            ));
+        }
+        self.edit_state.set_track_muted(track_id, muted)
+    }
+
+    /// Sets whether one existing audio track is isolated from nonsolo audio tracks.
+    pub fn set_track_solo(&mut self, track_id: TrackId, solo: bool) -> Result<()> {
+        if solo
+            && self
+                .track(track_id)
+                .is_some_and(|track| track.kind() != TrackKind::Audio)
+        {
+            return Err(invalid(
+                "set_track_solo",
+                "solo state is supported only for audio tracks",
+            ));
+        }
+        self.edit_state.set_track_solo(track_id, solo)
+    }
+
+    /// Sets whether one existing track contributes to timeline output.
+    pub fn set_track_enabled(&mut self, track_id: TrackId, enabled: bool) -> Result<()> {
+        self.edit_state.set_track_enabled(track_id, enabled)
     }
 
     /// Updates the selected object set with related or exact-object behavior.
@@ -2298,6 +2345,89 @@ impl Timeline {
             .iter_mut()
             .find(|track| track.id() == id)
             .ok_or_else(|| not_found("find_track", "editorial track was not found", "track", id))
+    }
+
+    /// Inserts one track at a canonical bottom-to-top position.
+    pub fn insert_track(&mut self, position: usize, track: Track, height: u16) -> Result<()> {
+        if !(MIN_TRACK_HEIGHT..=MAX_TRACK_HEIGHT).contains(&height) {
+            return Err(invalid(
+                "insert_track",
+                "track height is outside the supported editor lane bounds",
+            ));
+        }
+        if position > self.tracks.len() {
+            return Err(invalid(
+                "insert_track",
+                "track position must not exceed the current track count",
+            ));
+        }
+        if self.track(track.id()).is_some() {
+            return Err(conflict(
+                "insert_track",
+                "duplicate track identity on timeline",
+                "track",
+                track.id(),
+            ));
+        }
+        let track_id = track.id();
+        self.tracks.insert(position, track);
+        self.edit_state.reconcile(&self.tracks);
+        self.edit_state.set_track_height(track_id, height)
+    }
+
+    /// Removes one unlocked track by stable identity.
+    pub fn remove_track(&mut self, id: TrackId) -> Result<Track> {
+        let position = self
+            .tracks
+            .iter()
+            .position(|track| track.id() == id)
+            .ok_or_else(|| {
+                not_found("remove_track", "editorial track was not found", "track", id)
+            })?;
+        if self
+            .edit_state
+            .track_state(id)
+            .is_some_and(|state| state.locked())
+        {
+            return Err(conflict(
+                "remove_track",
+                "locked tracks must be unlocked before deletion",
+                "track",
+                id,
+            ));
+        }
+        let removed = self.tracks.remove(position);
+        self.edit_state.reconcile(&self.tracks);
+        self.annotations.reconcile(&self.tracks);
+        self.reconcile_multicam_state();
+        Ok(removed)
+    }
+
+    /// Moves one track to a canonical bottom-to-top final position.
+    pub fn reorder_track(&mut self, id: TrackId, position: usize) -> Result<()> {
+        if position >= self.tracks.len() {
+            return Err(invalid(
+                "reorder_track",
+                "track position must identify one final position in the timeline",
+            ));
+        }
+        let current = self
+            .tracks
+            .iter()
+            .position(|track| track.id() == id)
+            .ok_or_else(|| {
+                not_found(
+                    "reorder_track",
+                    "editorial track was not found",
+                    "track",
+                    id,
+                )
+            })?;
+        if current != position {
+            let track = self.tracks.remove(current);
+            self.tracks.insert(position, track);
+        }
+        Ok(())
     }
 
     /// Replaces the editor-facing timeline name inside an unpublished draft.

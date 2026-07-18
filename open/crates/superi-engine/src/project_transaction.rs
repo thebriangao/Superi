@@ -12,8 +12,11 @@ use superi_project::media::{
 use superi_timeline::compile::{recompile_timeline_preserving_edits, CompiledTimelineGraphValue};
 use superi_timeline::edit_ops::{EditBatchResult, EditOperation};
 use superi_timeline::model::LinkedMediaReference;
+use superi_timeline::track_ops::{
+    apply_track_mutation_batch, TrackMutation, TrackMutationBatchResult,
+};
 
-use crate::audio_mix::apply_edit_batch_with_clip_mix;
+use crate::audio_mix::{apply_edit_batch_with_clip_mix, reconcile_removed_track_clip_mix};
 
 const COMPONENT: &str = "superi-engine.project-transaction";
 
@@ -28,6 +31,8 @@ pub enum CompoundProjectAction {
     SelectRootTimeline(TimelineId),
     /// Apply a nonempty atomic editorial operation batch.
     EditTimeline(Vec<EditOperation>),
+    /// Apply a nonempty atomic track mutation batch.
+    MutateTracks(Vec<TrackMutation>),
     /// Apply a nonempty ordered mutation batch to one retained graph.
     MutateGraph {
         /// Stable retained graph identity.
@@ -50,6 +55,12 @@ impl CompoundProjectAction {
     #[must_use]
     pub fn edit_timeline(operations: impl IntoIterator<Item = EditOperation>) -> Self {
         Self::EditTimeline(operations.into_iter().collect())
+    }
+
+    /// Creates an atomic track mutation action.
+    #[must_use]
+    pub fn mutate_tracks(mutations: impl IntoIterator<Item = TrackMutation>) -> Self {
+        Self::MutateTracks(mutations.into_iter().collect())
     }
 
     /// Creates a graph mutation action.
@@ -86,6 +97,7 @@ impl CompoundProjectAction {
         match self {
             Self::SelectRootTimeline(_) => "select_root_timeline",
             Self::EditTimeline(_) => "edit_timeline",
+            Self::MutateTracks(_) => "mutate_tracks",
             Self::MutateGraph { .. } => "mutate_graph",
             Self::MutateMedia(_) => "mutate_media",
             Self::ImportMedia(_) => "import_media",
@@ -125,6 +137,9 @@ impl CompoundProjectTransaction {
                 CompoundProjectAction::EditTimeline(operations) if operations.is_empty()
             ) || matches!(
                 action,
+                CompoundProjectAction::MutateTracks(mutations) if mutations.is_empty()
+            ) || matches!(
+                action,
                 CompoundProjectAction::MutateGraph { mutations, .. } if mutations.is_empty()
             ) || matches!(
                 action,
@@ -159,6 +174,8 @@ pub enum CompoundProjectActionResult {
     RootTimelineSelected(TimelineId),
     /// Editorial operations and clip identity reconciliation were published.
     TimelineEdited(EditBatchResult),
+    /// Track mutations and graph reconciliation were published.
+    TracksMutated(TrackMutationBatchResult),
     /// A retained graph published one new graph revision.
     GraphMutated {
         /// Stable retained graph identity.
@@ -234,6 +251,26 @@ pub fn execute_compound_project_transaction(
                         draft.replace_timeline_compilation(reconciled)?;
                     }
                     CompoundProjectActionResult::TimelineEdited(edit)
+                }
+                CompoundProjectAction::MutateTracks(mutations) => {
+                    let old_project = draft.editorial_project().clone();
+                    let retained = draft
+                        .graphs()
+                        .filter_map(|graph| graph.as_timeline().cloned())
+                        .collect::<Vec<_>>();
+                    let (editorial, mix_state) = draft.editorial_and_clip_mix_mut();
+                    let result =
+                        apply_track_mutation_batch(editorial, editorial.revision(), mutations)?;
+                    reconcile_removed_track_clip_mix(&old_project, editorial, mix_state)?;
+                    for compilation in retained {
+                        let reconciled = recompile_timeline_preserving_edits(
+                            &old_project,
+                            &compilation,
+                            draft.editorial_project(),
+                        )?;
+                        draft.replace_timeline_compilation(reconciled)?;
+                    }
+                    CompoundProjectActionResult::TracksMutated(result)
                 }
                 CompoundProjectAction::MutateGraph {
                     graph_id,

@@ -2,8 +2,8 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: f03fb3f29c487f9713992fec47fa247d952bc37293cda683d1251c1c8640204c
-source_files: 30
+source_hash: 5fccadac9d42d1f86ff7254a4b42a3964f76142edfd70f4ac692aba3fb55db68
+source_files: 32
 mapped_at_commit: working-tree
 ---
 
@@ -12,8 +12,9 @@ mapped_at_commit: working-tree
 `superi-timeline` owns the foundational Rust-native editorial project model and typed track
 semantics. It represents linked media, timelines, ordered tracks, clips, explicit gaps,
 transitions, generators, captions, and nested timeline sources with core-owned identities and
-exact rational timing. It also owns authoritative timeline selection, track targeting, sync locks,
-linked selection, and clip grouping. Video, audio, caption, and timed-data tracks carry their
+exact rational timing. It also owns authoritative timeline selection, bounded track height,
+targeting, authored-item locks, sync locks, audio mute and solo, output enable, linked selection,
+and clip grouping. Video, audio, caption, and timed-data tracks carry their
 explicit clock and media behavior. Clip range maps keep source and record clocks synchronized,
 while resolved range contexts expose known media availability or derived nested-timeline
 availability without destroying overscan. Timeline, track, and object markers preserve permanent
@@ -50,9 +51,11 @@ replacement operations inherit target switch intent and source-angle membership 
 atomic edit path used by selection, links, groups, annotations, nesting, and retiming.
 
 Versioned `superi.timeline` component documents preserve that complete editable project state in
-canonical JSON. Revision 1 records the stable core primitive revision, protects the canonical
-payload with SHA-256, rejects malformed or unknown state, migrates the supported revision 0
-envelope in memory, and reconstructs every owner through checked constructors and timeline APIs.
+canonical JSON. Revision 2 records the stable core primitive revision, protects the canonical
+payload with SHA-256, rejects malformed or unknown state, migrates the supported revision 1 and
+revision 0 envelopes in memory, and reconstructs every owner through checked constructors and
+timeline APIs. Revision 1 state receives the exact former 72 pixel height plus neutral target,
+lock, mute, solo, and enable defaults.
 The codec returns canonical current bytes only after whole-project validation. It owns no file I/O,
 SQLite schema, autosave policy, replacement protocol, or recovery journal. `superi-project` now
 retains this editorial state in memory and stores the canonical component bytes inside its stable
@@ -92,22 +95,23 @@ with stable warnings.
   bidirectional editorial provenance, and a shared graph payload that retains all native values as
   exact domain variants beside catalog-neutral processing values. It can install externally checked
   editable state only when the deterministic graph identity matches the compiled project and root.
-  It also performs a checked three-way recompile that applies new canonical editorial structure
-  while preserving nonconflicting retained parameters, custom nodes, and custom edges.
+  It also retains typed enable, mute, and solo output intent independently from nonprocessing track
+  controls and performs a checked three-way recompile that applies new canonical editorial
+  structure while preserving nonconflicting retained parameters, custom nodes, and custom edges.
 - `open/crates/superi-timeline/examples/otio_roundtrip.rs`: Imports one OTIO document through the
   public native boundary, reports stable diagnostics, and writes deterministic OTIO 0.18.1 JSON.
 - `open/crates/superi-timeline/src/edit_ops.rs`: Implements directly inspectable foundational and
   advanced commands, exact source-aware and retime-aware trimming and splitting, deterministic
   fragment identities, explicit sync-locked ripple plans, transition reconciliation, result
-  reports, and atomic multi-track batches.
+  reports, locked-track enforcement, and atomic multi-track batches.
 - `open/crates/superi-timeline/src/edit_state.rs`: Implements exact and relationship-expanded
-  selection, per-track targeting and sync-lock intent, canonical clip links and groups, stable
-  introspection, and structural reconciliation.
+  selection, bounded track height, per-track target, lock, sync-lock, mute, solo, and enable intent,
+  canonical clip links and groups, stable introspection, and structural reconciliation.
 - `open/crates/superi-timeline/src/ids.rs`: Re-exports the canonical project, editorial object, and
   multicam angle identities owned by `superi-core`.
 - `open/crates/superi-timeline/src/lib.rs`: Exports the implemented identity, edit-state, edit
-  operation, model, media, retime, nesting, marker, multicam, serialization, OTIO, and graph
-  compilation modules.
+  operation, track-operation, model, media, retime, nesting, marker, multicam, serialization, OTIO,
+  and graph compilation modules.
 - `open/crates/superi-timeline/src/markers.rs`: Implements stable timeline, track, and object marker
   ownership, visible labels, flags, notes, recursively nested ordered metadata, owner-relative range
   resolution, dangling-owner reconciliation, persistent snapping state, exact candidate projection,
@@ -119,7 +123,8 @@ with stable warnings.
   media semantics, exact clip range maps, clip-owned time maps, linked range and playback
   availability context, every foundational editorial object, ordered tracks, timelines, annotation
   integration, multicam source and clip ownership, project-wide multicam reconciliation and
-  validation, validated project snapshots, atomic revision-checked editing, and
+  validation, checked track insertion, deletion, ordering, naming, and control changes, validated
+  project snapshots, atomic revision-checked editing, and
   `TimelineColorMetadata`, which retains exact graph color metadata through compilation.
 - `open/crates/superi-timeline/src/multicam.rs`: Implements synchronization provenance, ordered
   angle metadata and source membership, clip-local gapless switching, explicit audio policies,
@@ -137,9 +142,13 @@ with stable warnings.
   retime slicing, clock replacement, and source translation.
 - `open/crates/superi-timeline/src/serialize.rs`: Implements the strict revisioned timeline state
   envelope, complete wire model, stable collection canonicalization, primitive revision check,
-  SHA-256 integrity, revision 0 migration, checked reconstruction, canonical load output, and
-  classified recovery failures without file I/O. It also implements strict lossless Serde for
+  SHA-256 integrity, explicit revision 1 and revision 0 migration, checked reconstruction,
+  canonical load output, and classified recovery failures without file I/O. It also implements
+  strict lossless Serde for
   every `TimelineGraphValue` variant by reusing checked timeline-owned wire conversions.
+- `open/crates/superi-timeline/src/track_ops.rs`: Implements one revision-checked atomic batch for
+  track creation, deletion, naming, height, order, targeting, locks, sync locks, audio mute and
+  solo, and output enable, with deterministic four-kind creation templates and typed outcomes.
 - `open/crates/superi-timeline/tests/edit_state_contract.rs`: Proves linked and grouped selection,
   direct member control, target and sync-lock ordering, link and group independence, state
   reconciliation, identity and timing retention, revision conflicts, and atomic rollback.
@@ -189,10 +198,13 @@ with stable warnings.
   identity resize compatibility, linked intent, and retime preservation through edit splitting.
 - `open/crates/superi-timeline/tests/track_semantics_contract.rs`: Proves all four track kinds,
   exact clocks, channel routing, linked audio reshaping, continuity, and bounded validation.
+- `open/crates/superi-timeline/tests/track_management_contract.rs`: Proves all eleven track
+  operations in one atomic batch, stable survivor state, lock enforcement, explicit unlock and
+  delete, audio-only controls, bounded heights, authored-item rejection, and rollback.
 - `open/crates/superi-timeline/tests/serialization_contract.rs`: Proves deterministic complete
-  state round trips, revision 0 migration, canonical current output, corruption and interruption
-  rejection, strict unknown and future state handling, multicam recovery, and continued direct
-  editing after load.
+  state round trips, revision 1 and revision 0 migration, canonical current output, corruption and
+  interruption rejection, strict unknown and future state handling, multicam recovery, and
+  continued direct editing after load.
 
 ## Public surface
 
@@ -246,14 +258,18 @@ The timeline edit-state surface includes:
 
 - `SelectionUpdate` for replace, add, and remove intent, plus `SelectionExpansion` for ordinary
   relationship following or exact direct-object control.
-- `TrackEditState` for one stable track's targeted and sync-locked flags.
+- `TrackEditState` for one stable track's bounded height, targeted, locked, sync-locked, muted,
+  solo, and enabled intent.
 - `ClipRelation`, a deterministic set of stable `ClipId` members directly addressable through any
   member, without inventing a second clip or group identity domain.
 - `TimelineEditState` for selected objects, track controls, the linked-selection toggle, clip link
   components, and clip groups.
 - `Timeline` operations to select objects, link and unlink clips, group and ungroup clips, set track
-  intent, enumerate targeted tracks by timeline order and media kind, and resolve sync-affected
-  tracks for later insert and ripple commands.
+  intent, insert, delete, reorder, and control tracks, enumerate targeted tracks by timeline order
+  and media kind, and resolve sync-affected tracks for later insert and ripple commands.
+- `TrackCreationKind`, `TrackMutation`, `TrackMutationKind`, `TrackMutationOutcome`, and
+  `TrackMutationBatchResult` for explicit video, audio, caption, and data creation plus all eleven
+  track gestures through one atomic project revision.
 
 The annotation and snapping surface includes:
 
@@ -428,9 +444,10 @@ the published media map and current relink state.
 relink commands retain existing editable timeline graphs, then regenerate only checked compilation
 provenance around the new editorial revision because path availability is nonprocessing state.
 
-Each `Timeline` constructs one edit state beside its ordered tracks. New tracks begin untargeted
-with sync lock enabled, linked selection begins enabled, and selection and relationships begin
-empty. State mutations resolve only IDs present in that timeline. Related selection walks clip
+Each `Timeline` constructs one edit state beside its ordered tracks. New tracks begin at 72 pixels,
+untargeted, unlocked, sync locked, unmuted, unsoloed, and enabled. Linked selection begins enabled,
+and selection and relationships begin empty. State mutations resolve only IDs present in that
+timeline. Related selection walks clip
 groups and, when linked selection is enabled, link components to a fixed point; direct selection
 addresses the exact requested object even inside a group. Link and group components remain disjoint
 within their own relationship class but may overlap each other. Grouping includes complete linked
@@ -443,6 +460,14 @@ selection, track controls, links, and groups for every surviving identity, initi
 new tracks, removes references to deleted objects, and dissolves relationship components with fewer
 than two surviving clips. The reconciled state and all clip source and record data publish in the
 same project revision or roll back together.
+
+`apply_track_mutation_batch` executes an ordered nonempty batch inside one `EditorialProject::edit`
+closure. Creation validates caller identity, canonical position, bounded height, and deterministic
+kind semantics. Deletion requires an unlocked target and reconciles contained object identity,
+annotations, links, groups, selections, and multicam state. Rename, height, reorder, targeting,
+locks, sync locks, mute, solo, and enable preserve every unaffected track and item exactly. Mute and
+solo accept active intent only for audio tracks, while neutral false values remain valid for legacy
+and generic reconstruction.
 
 Each `Timeline` also constructs annotation state in the same snapshot. Marker insertion validates
 that the explicit owner exists and that authored timing uses the owner's exact record clock.
@@ -535,9 +560,9 @@ Timeline compilation consumes the validated result without changing authoring st
    deterministic track and item order.
 2. One timeline output node, one node per track, and one node per editorial object retain complete
    typed IDs, names, sources, ranges, time maps, semantics, authored order, transition intent,
-   generator parameters, caption data, multicam source catalogs, synchronization provenance,
-   switch partitions, and audio policy. Every native value enters `GraphValue::Domain` without
-   conversion.
+   output enable, audio mute and solo, generator parameters, caption data, multicam source catalogs,
+   synchronization provenance, switch partitions, and audio policy. Every native value enters
+   `GraphValue::Domain` without conversion.
 3. Typed video, audio, caption, and data ports connect items to tracks and tracks to timeline
    outputs. Transition endpoints and nested child outputs remain explicit graph edges.
 4. Graph, node, port, parameter, and edge identities use length-framed domain-separated SHA-256
@@ -547,8 +572,8 @@ Timeline compilation consumes the validated result without changing authoring st
    Graph validation rejects duplicate IDs, incompatible ports, invalid cardinality, or cycles
    before any compiled state is returned.
 6. The bidirectional index resolves every reachable timeline, track, and object to its node and
-   every compiled node back to its editorial owner. UI-only selection, targeting, sync locks,
-   links, groups, annotations, and caches do not become hidden processing inputs.
+   every compiled node back to its editorial owner. Height, selection, targeting, locks, sync
+   locks, links, groups, annotations, and caches do not become hidden processing inputs.
 7. A higher-tier catalog may add shared processing nodes and typed values through ordinary checked
    graph transactions. The timeline crate neither imports that catalog nor interprets its values,
    and existing native state remains editable under the same stable identities.
@@ -581,12 +606,12 @@ Timeline document flow preserves those owners without becoming a project contain
 1. Serialization projects the immutable `EditorialProject` into an explicit wire model and
    canonicalizes only identity-addressed sets and maps. Authored track, item, angle, source-clip,
    switch, predicate, and retime order remains intact.
-2. Revision 1 records the `superi.timeline` format, component revision, stable core primitive
+2. Revision 2 records the `superi.timeline` format, component revision, stable core primitive
    revision, lowercase SHA-256 payload digest, and complete payload. Wide project revisions,
    playback ratios, and metadata integers use canonical decimal strings.
-3. Loading first inspects the minimal header. It strictly decodes revision 1 or the supported
-   revision 0 envelope, rejects unknown fields and future revisions, and verifies the digest before
-   interpreting current payload meaning.
+3. Loading first inspects the minimal header. It strictly decodes revision 2, revision 1, or the
+   supported revision 0 envelope, rejects unknown fields and future revisions, and verifies the
+   applicable digest before interpreting current payload meaning.
 4. Reconstruction creates metadata keys, labels, notes, language tags, data schemas, audio routes,
    clips, time maps, markers, relationships, multicam sources, switch programs, media libraries,
    and the complete project through their checked constructors and mutation APIs. Duplicate set
@@ -671,8 +696,8 @@ Timeline document flow preserves those owners without becoming a project contain
 - Snapping never rounds a candidate. The request coordinate and tolerance use one clock, inexact
   cross-clock candidates are skipped, exclusions are explicit, and stable target order breaks ties.
 - Timeline edit state references only tracks and objects owned by that timeline. Surviving stable
-  identities retain their selection, targeting, synchronization, link, and group intent through
-  structural project edits.
+  identities retain their selection, height, targeting, lock, synchronization, output, link, and
+  group intent through structural project edits.
 - Link components and group components are each disjoint canonical sets with at least two clips.
   They intentionally share core `ClipId` members rather than introducing relationship IDs. Groups
   include the complete linked components they contain, while unlinking does not silently ungroup.
@@ -680,6 +705,9 @@ Timeline document flow preserves those owners without becoming a project contain
   bypasses both relationships so one linked or grouped clip remains individually controllable.
 - Track targeting is independent of sync lock. Target iteration follows timeline layer order, and
   an explicitly edited track participates in sync-sensitive work even when its own sync lock is off.
+- Track heights are inclusive integers from 48 through 320 pixels. Active mute and solo intent is
+  audio-only. Enable applies to every kind. A locked track must be unlocked before contained items
+  change or the track is deleted; control mutations remain available so that unlock is explicit.
 - Names, linked-media locators, caption text, generator kinds, and parameter keys must be nonblank.
 - Every track owns one exact edit clock. Record ranges use that clock, remain nonnegative, and form
   contiguous content. Empty time is represented by an explicit gap.
@@ -725,21 +753,22 @@ Timeline document flow preserves those owners without becoming a project contain
 - Compilation includes only the selected root and reachable nested timelines. Each reachable
   timeline, track, and editorial object appears exactly once, every object remains independently
   indexed, and nested child outputs feed every parent clip instance through exact typed ports.
-- Mutable names, ranges, time maps, order, semantics, and parameters change typed graph payloads
-  without changing stable graph addresses. Selection, targeting, synchronization locks, links,
-  groups, annotations, cache state, and revision history are not processing inputs.
+- Mutable names, ranges, time maps, order, semantics, output enable, mute, solo, and parameters
+  change typed graph payloads without changing stable graph addresses. Height, selection,
+  targeting, authored-item locks, synchronization locks, links, groups, annotations, cache state,
+  and revision history are not processing inputs.
 - Compilation publishes one complete graph transaction or no graph. All identifiers are
   domain-separated, every hash part is length-framed, and any derived-ID collision fails closed.
-- Timeline state revision 1 is strict and integrity-protected. Unknown fields, wrong formats,
+- Timeline state revision 2 is strict and integrity-protected. Unknown fields, wrong formats,
   unsupported component or primitive revisions, malformed canonical integers, invalid typed IDs,
   oversized documents, and SHA-256 mismatches never produce a partial project.
 - Timeline document canonicalization sorts identity-addressed media, timelines, bins, saved
   collections, markers, metadata keys and owners, edit sets, relationship components, and multicam
   target clips. It preserves authored track, item, predicate, angle, source membership, switch, and
   retime order.
-- Revision 0 migration is in-memory and lossless. Loaded state must pass the same media, timeline,
-  nesting, retime, annotation, edit-state, and multicam validation as newly authored state before
-  canonical revision 1 bytes are exposed.
+- Revision 1 and revision 0 migration is in-memory and lossless. Loaded state must pass the same
+  media, timeline, nesting, retime, annotation, edit-state, and multicam validation as newly
+  authored state before canonical revision 2 bytes are exposed.
 - The codec is a state component rather than a `.superi` file format. It performs no filesystem,
   database, journal, autosave, replacement, network, device, process, or GPU operation.
 - A transition names the timed item immediately before and after it. Its offsets use the track edit
@@ -759,6 +788,9 @@ Timeline document flow preserves those owners without becoming a project contain
 - Insert and extract address only their named tracks. Advanced ripple refuses to leave another
   sync-locked track unchanged and requires one deterministic companion adjustment per affected
   track in stable timeline order.
+- A track mutation batch is nonempty, revision-fenced, ordered, and atomic. Positions use canonical
+  bottom-to-top order, caller-supplied identities never alias existing tracks, and a late invalid
+  control or deletion rolls the complete batch back.
 - Overwrite and replace preserve track duration. Lift makes empty time explicit with a named gap.
   Append and insert report exact extension, while extract reports exact shortening.
 - A transition is never silently redirected. It survives only with its original adjacent endpoints
@@ -778,8 +810,7 @@ Timeline document flow preserves those owners without becoming a project contain
   structured variants before a graph can be published.
 - Fit-to-fill, arbitrary vendor-effect interpretation, graph evaluation, direct history ownership,
   multicam playback and mixing, and higher-level editorial commands remain outside this state.
-  Engine may restore this state as part of a full project snapshot, but timeline edits are not yet
-  adapted to the project-history mutation vocabulary.
+  Engine adapts both item edits and track batches to whole-project snapshot history.
 - The timeline color seam preserves exact graph metadata and performs no transform, inference,
   normalization, or reordering.
 
@@ -862,13 +893,14 @@ source clip, range switching, movable cuts, fixed and all-angle audio intent, ta
 fragment inheritance, target and source replacement inheritance, missing coverage and disabled
 angle rejection, stale revisions, and complete atomic rollback.
 
-Ten compilation tests prove identical graph snapshots from identical project state, one atomic
+Eleven compilation tests prove identical graph snapshots from identical project state, one atomic
 revision with twelve typed nodes and fourteen checked edges, two instances sharing one nested
 timeline output, explicit transition routing, retained bottom-to-top track order, caption parameter
 inspection, bidirectional provenance, stable graph and node addresses across a source-range edit,
 identical graph state after a selection-only project revision, directly editable graph parameters,
 one linked shared scalar processing node beside native domain values, typed multicam source,
-  switching, and audio intent, preservation of nonconflicting direct parameters plus custom nodes
+  switching, audio intent, typed track output state distinct from authoring-only controls,
+  preservation of nonconflicting direct parameters plus custom nodes
   and edges across editorial recompilation, overlapping parameter and connection-removal conflict
   rejection, and classified missing-root failure.
 
@@ -878,12 +910,17 @@ and live AV1 decoder, resolves the persistent project target through the project
 proves exact timing, precision, metadata, color, alpha, missing-state, and identity semantics without
 copying timeline graph or media identity into another owner.
 
-Four serialization tests prove deterministic complete project equality, revision 1 envelope and
-primitive revision identity, SHA-256 integrity, revision 0 migration, canonical current output,
-truncated and tampered recovery rejection, strict unknown and future state handling, invalid link
-rejection, exact multicam resolution after load, continued revision-checked editing, and a complete
-compiled multicam graph round trip through the public graph codec with unknown graph-value fields
-and tags rejected.
+Four serialization tests prove deterministic complete project equality, revision 2 envelope and
+primitive revision identity, SHA-256 integrity, revision 1 and revision 0 migration, canonical
+current output, truncated and tampered recovery rejection, strict unknown and future state
+handling, invalid link rejection, exact multicam resolution after load, continued revision-checked
+editing, and a complete compiled multicam graph round trip through the public graph codec with
+unknown graph-value fields and tags rejected.
+
+Five track-management tests prove all eleven gestures, explicit canonical creation semantics for
+video, audio, caption, and data tracks, exact survivor and relationship state, one revision per
+batch, locked deletion rollback, explicit unlock and deletion, bounded height, audio-only mute and
+solo, and locked authored-item rejection.
 
 Workspace tests, warnings-denied Clippy, formatting, dependency direction, the offline boundary
 scan, and codebase-map validation are required delivery gates.
@@ -891,27 +928,29 @@ scan, and codebase-map validation are required delivery gates.
 ## Current status and risks
 
 The foundational project model, rational range mapping, linked availability context, manual media
-organization, saved smart collections, explicit relink state, typed track semantics, authoritative
-timeline edit state, markers, deterministic metadata, exact snapping,
+organization, saved smart collections, explicit relink state, typed track semantics, atomic track
+management and output intent, authoritative timeline edit state, markers, deterministic metadata,
+exact snapping,
 exact clip retiming, six primary operations, nine advanced edit families, nested placement,
 compound creation, shared child editing, recursive inspection, and native multicam angle,
 synchronization, switching, audio-intent, structural inheritance, and exact resolution are
 substantive and test-backed. Deterministic graph compilation with lossless native domain values and
 shared processing-value coexistence, plus production OTIO 0.18.1 reading,
 writing, opaque preservation, stable diagnostics, and a headless consumer are also test-backed.
-Strict canonical timeline documents, revision 0 migration, checked recovery, continued editing
+Strict canonical timeline documents, revision 1 and revision 0 migration, checked recovery,
+continued editing
 after load, and strict compiled graph-value round trips are test-backed. `superi-project` now stores
 canonical timeline and compiled graph components in stable SQLite schema 3 and atomically publishes
 complete save, save-as, copy, and backup files. Effects has compatible
 graph-native transition authoring and a bounded oracle, but the production binder from this
 timeline-owned state to those visual schemas is absent. Graph evaluation, fit-to-fill,
-grouped-source compound synthesis, timeline-specific typed public adaptation, multicam mixing
-and runtime playback, timeline-driven autosave scheduling, recovery orchestration, and API
-mutation integration remain absent. Generic editor-state inspection and the public API preserve the
-canonical timeline document, and the production editing workspace now renders it through a strict
-read-only projection with transient navigation state, exact target snapping, visible session rule
-and consequence state, reversible pointer gestures, and supplemental clip detail that does not
-reparse geometry or mutate editorial state. Engine
+grouped-source compound synthesis, multicam mixing and runtime playback, timeline-driven autosave
+scheduling, and recovery orchestration remain absent. Generic editor-state inspection and the
+public API preserve the canonical timeline document and expose typed track mutation through durable
+project commands. The production editing workspace renders the strict projection with transient
+navigation and shared-selection state, exact target snapping, visible session rule and consequence
+state, reversible pointer gestures, and supplemental clip detail that does not reparse geometry.
+Track gestures return through the durable project command owner. Engine
 preparation integration now consumes and retains the compiled graph, and engine transport consumes
 the standalone signed rate value, but no
 owner yet binds that prepared native timeline graph to decoded playback, multicam mixing, or render
@@ -949,7 +988,8 @@ yet.
 
 ## Maintenance notes
 
-Treat track clocks and semantics, object identity, media identity, bin hierarchy, smart query
+Treat track clocks, semantics, height, target, lock, sync lock, mute, solo, enable, mutation order,
+object identity, media identity, bin hierarchy, smart query
 derivation, relink evidence, continuity, physical-time equality, source-aware
 and retime-aware fragmentation, exact time-map seams, explicit transport resolution, explicit
 transition invalidation, result reporting, marker ownership, exact snapping, metadata ordering,
@@ -962,7 +1002,7 @@ route filesystem interpretation through `superi-project` without moving or dupli
 Treat the timeline document format, primitive revision gate, field names, enum codes, decimal
 integer forms, canonical collection rules, checksum scope, migration behavior, and checked
 reconstruction as the same class of public contract. Add a new component revision and explicit
-migration for incompatible changes instead of changing revision 1 in place.
+migration for incompatible changes instead of changing revision 2 in place.
 Extend tests before changing them. Later
 higher-level and grouped-source compound operations must consume `tracks_affected_by_sync`, exact
 selection state, and clip-owned time maps instead of recreating those policies. Add higher-level

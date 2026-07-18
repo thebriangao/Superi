@@ -140,7 +140,8 @@ type JsonRecord = Record<string, unknown>;
 
 const TIMELINE_FORMAT = "superi.timeline";
 const GRAPH_FORMAT = "superi.graph";
-const FORMAT_REVISION = 1;
+const TIMELINE_FORMAT_REVISION = 2;
+const GRAPH_FORMAT_REVISION = 1;
 const SIGNED_DECIMAL = /^(?:0|-[1-9][0-9]*|[1-9][0-9]*)$/;
 const UNSIGNED_DECIMAL = /^(?:0|[1-9][0-9]*)$/;
 const UNAVAILABLE_REASON =
@@ -227,7 +228,11 @@ function projectTimelineClipDetailsChecked(
   }
 
   const document = record(record(snapshot.timeline).document);
-  const envelope = currentEnvelope(document.content, TIMELINE_FORMAT);
+  const envelope = currentEnvelope(
+    document.content,
+    TIMELINE_FORMAT,
+    TIMELINE_FORMAT_REVISION,
+  );
   const payload = record(envelope.payload);
   const timelines = array(payload.timelines).map(record);
   const rootMatches = timelines.filter(
@@ -503,12 +508,16 @@ function effectMap(
     const graphDocument = record(matching[0]?.document);
     if (
       graphDocument.format !== GRAPH_FORMAT ||
-      graphDocument.format_revision !== FORMAT_REVISION
+      graphDocument.format_revision !== GRAPH_FORMAT_REVISION
     ) {
       return new Map();
     }
     const payload = record(
-      currentEnvelope(graphDocument.content, GRAPH_FORMAT).payload,
+      currentEnvelope(
+        graphDocument.content,
+        GRAPH_FORMAT,
+        GRAPH_FORMAT_REVISION,
+      ).payload,
     );
     const nodes = array(payload.nodes).map(record);
     const nodeTypeById = new Map<string, string>();
@@ -673,11 +682,15 @@ function automationMode(
   throw new Error("unsupported automation mode");
 }
 
-function currentEnvelope(value: unknown, format: string): JsonRecord {
+function currentEnvelope(
+  value: unknown,
+  format: string,
+  formatRevision: number,
+): JsonRecord {
   const envelope = record(value);
   if (
     envelope.format !== format ||
-    envelope.format_revision !== FORMAT_REVISION ||
+    envelope.format_revision !== formatRevision ||
     envelope.primitive_schema_revision !== 1 ||
     typeof envelope.payload_sha256 !== "string" ||
     !/^[0-9a-f]{64}$/.test(envelope.payload_sha256)

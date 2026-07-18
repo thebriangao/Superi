@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use superi_api::commands::ApiCommand;
 use superi_api::commands::{
-    ExecuteProjectSettingsTransaction, GetProjectRecovery, GetProjectSettings,
-    RestoreProjectRecovery,
+    ExecuteProjectSettingsTransaction, GetEditorState, GetEditorStateResult, GetProjectRecovery,
+    GetProjectSettings, RestoreProjectRecovery,
 };
 use superi_api::editor::{
     EditorImportedMedia, EditorImportedMediaKind, EditorMediaPath, EditorMediaPathPlatform,
@@ -3570,6 +3570,36 @@ impl LocalProjectBackend {
         DesktopProjectSettings::from_snapshot(response.snapshot())
     }
 
+    fn inspect_editor(
+        &self,
+        path: &Path,
+        request: GetEditorState,
+    ) -> Result<GetEditorStateResult, DesktopProjectFailure> {
+        LocalProjectHost::inspect_editor(path, request)
+            .map_err(|error| safe_failure("inspect_editor", error))
+    }
+
+    fn execute_timeline(
+        &mut self,
+        path: &Path,
+        request: ExecuteProjectCommand,
+    ) -> Result<
+        (
+            LocalProjectExecution<ExecuteProjectCommandResult, ProjectStateChanged>,
+            DesktopProjectIdentity,
+        ),
+        DesktopProjectFailure,
+    > {
+        let execution = LocalProjectHost::execute_timeline(
+            path,
+            request,
+            Arc::new(ApiPermissionContext::default()),
+        )
+        .map_err(|error| safe_failure("execute_timeline", error))?;
+        let identity = Self::validate(path, "execute_timeline")?;
+        Ok((execution, identity))
+    }
+
     fn update_settings(
         &mut self,
         path: &Path,
@@ -3891,6 +3921,32 @@ impl DesktopProjectState {
             .as_ref()
             .ok_or_else(not_initialized)?
             .inspect_settings()
+    }
+
+    pub fn inspect_editor(
+        &self,
+        request: GetEditorState,
+    ) -> Result<GetEditorStateResult, DesktopProjectFailure> {
+        self.lock("inspect_editor")?
+            .as_ref()
+            .ok_or_else(not_initialized)?
+            .inspect_editor(request)
+    }
+
+    pub fn execute_timeline(
+        &self,
+        request: ExecuteProjectCommand,
+    ) -> Result<
+        LocalProjectExecution<ExecuteProjectCommandResult, ProjectStateChanged>,
+        DesktopProjectFailure,
+    > {
+        let execution = self
+            .lock("execute_timeline")?
+            .as_mut()
+            .ok_or_else(not_initialized)?
+            .execute_timeline(request)?;
+        self.sync_active_project_revision(execution.result().state().project_revision())?;
+        Ok(execution)
     }
 
     pub fn update_settings(
@@ -4923,6 +4979,37 @@ impl<B: DesktopProjectBackend> DesktopProjectLifecycle<B> {
 }
 
 impl DesktopProjectLifecycle<LocalProjectBackend> {
+    /// Captures complete replacement state for the active durable project.
+    pub fn inspect_editor(
+        &self,
+        request: GetEditorState,
+    ) -> Result<GetEditorStateResult, DesktopProjectFailure> {
+        let active = self.active_record("inspect_editor")?;
+        self.backend
+            .inspect_editor(Path::new(active.path()), request)
+    }
+
+    /// Applies one revision-fenced timeline command and refreshes lifecycle identity.
+    pub fn execute_timeline(
+        &mut self,
+        request: ExecuteProjectCommand,
+    ) -> Result<
+        LocalProjectExecution<ExecuteProjectCommandResult, ProjectStateChanged>,
+        DesktopProjectFailure,
+    > {
+        let path = self.active_record("execute_timeline")?.path().to_owned();
+        match self.backend.execute_timeline(Path::new(&path), request) {
+            Ok((execution, identity)) => {
+                self.commit(ProjectTransition::RefreshActive { identity })?;
+                Ok(execution)
+            }
+            Err(failure) => {
+                self.record_failure(failure.clone());
+                Err(failure)
+            }
+        }
+    }
+
     /// Inspects settings for the currently active durable project.
     pub fn inspect_settings(&self) -> Result<DesktopProjectSettings, DesktopProjectFailure> {
         let active = self.active_record("inspect_settings")?;

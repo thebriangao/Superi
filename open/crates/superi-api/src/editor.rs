@@ -299,6 +299,10 @@ pub enum ProjectActionEvidence {
         revision: u64,
         operations: Vec<TimelineEditKind>,
     },
+    TracksMutated {
+        revision: u64,
+        mutations: Vec<TimelineTrackMutationKind>,
+    },
     GraphMutated {
         graph_id: String,
         revision: u64,
@@ -2074,24 +2078,65 @@ impl EditorMulticamClip {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EditorTimelineGraphValue {
-    ProjectId { project_id: String },
-    TimelineId { timeline_id: String },
-    TrackId { track_id: String },
-    EditorialObjectId { object_id: EditorialObjectId },
-    Text { value: String },
-    OptionalText { value: Option<String> },
-    Timebase { value: ExactTimebase },
-    RationalTime { value: ExactTime },
-    TimeRange { value: ExactTimeRange },
-    Duration { value: ExactDuration },
-    ClipSource { value: EditorClipSource },
-    ClipTimeMap { value: EditorClipTimeMap },
-    OptionalMulticamSource { value: Option<EditorMulticamSource> },
-    OptionalMulticamClip { value: Option<EditorMulticamClip> },
-    TrackSemantics { value: EditorTrackSemantics },
-    TrackOrder { track_ids: Vec<String> },
-    ObjectOrder { object_ids: Vec<EditorialObjectId> },
-    StringMap { values: BTreeMap<String, String> },
+    ProjectId {
+        project_id: String,
+    },
+    TimelineId {
+        timeline_id: String,
+    },
+    TrackId {
+        track_id: String,
+    },
+    EditorialObjectId {
+        object_id: EditorialObjectId,
+    },
+    Text {
+        value: String,
+    },
+    OptionalText {
+        value: Option<String>,
+    },
+    Timebase {
+        value: ExactTimebase,
+    },
+    RationalTime {
+        value: ExactTime,
+    },
+    TimeRange {
+        value: ExactTimeRange,
+    },
+    Duration {
+        value: ExactDuration,
+    },
+    ClipSource {
+        value: EditorClipSource,
+    },
+    ClipTimeMap {
+        value: EditorClipTimeMap,
+    },
+    OptionalMulticamSource {
+        value: Option<EditorMulticamSource>,
+    },
+    OptionalMulticamClip {
+        value: Option<EditorMulticamClip>,
+    },
+    TrackSemantics {
+        value: EditorTrackSemantics,
+    },
+    TrackOutputState {
+        enabled: bool,
+        muted: bool,
+        solo: bool,
+    },
+    TrackOrder {
+        track_ids: Vec<String>,
+    },
+    ObjectOrder {
+        object_ids: Vec<EditorialObjectId>,
+    },
+    StringMap {
+        values: BTreeMap<String, String>,
+    },
 }
 
 impl EditorTimelineGraphValue {
@@ -2142,6 +2187,13 @@ impl EditorTimelineGraphValue {
             }
             Self::TrackSemantics { value } => Ok(engine::TimelineGraphValue::TrackSemantics(
                 value.into_engine()?,
+            )),
+            Self::TrackOutputState {
+                enabled,
+                muted,
+                solo,
+            } => Ok(engine::TimelineGraphValue::TrackOutputState(
+                engine::TrackOutputState::new(enabled, muted, solo),
             )),
             Self::TrackOrder { track_ids } => Ok(engine::TimelineGraphValue::TrackOrder(
                 track_ids
@@ -3048,6 +3100,222 @@ fn capability_set(values: Vec<String>) -> Result<engine::CapabilitySet> {
     Ok(engine::CapabilitySet::new(values))
 }
 
+/// Semantic template used when creating one empty timeline track.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TimelineTrackCreationKind {
+    Video,
+    Audio,
+    Caption,
+    Data,
+}
+
+impl TimelineTrackCreationKind {
+    const fn into_engine(self) -> engine::TrackCreationKind {
+        match self {
+            Self::Video => engine::TrackCreationKind::Video,
+            Self::Audio => engine::TrackCreationKind::Audio,
+            Self::Caption => engine::TrackCreationKind::Caption,
+            Self::Data => engine::TrackCreationKind::Data,
+        }
+    }
+}
+
+/// Stable category returned for one applied timeline track mutation.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TimelineTrackMutationKind {
+    Create,
+    Delete,
+    Rename,
+    SetHeight,
+    Reorder,
+    SetTargeted,
+    SetLocked,
+    SetSyncLocked,
+    SetMuted,
+    SetSolo,
+    SetEnabled,
+}
+
+/// One strict authored timeline track mutation.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
+pub enum TimelineTrackMutation {
+    Create {
+        timeline_id: String,
+        track_id: String,
+        name: String,
+        kind: TimelineTrackCreationKind,
+        position: u32,
+        height: u16,
+    },
+    Delete {
+        timeline_id: String,
+        track_id: String,
+    },
+    Rename {
+        timeline_id: String,
+        track_id: String,
+        name: String,
+    },
+    SetHeight {
+        timeline_id: String,
+        track_id: String,
+        height: u16,
+    },
+    Reorder {
+        timeline_id: String,
+        track_id: String,
+        position: u32,
+    },
+    SetTargeted {
+        timeline_id: String,
+        track_id: String,
+        targeted: bool,
+    },
+    SetLocked {
+        timeline_id: String,
+        track_id: String,
+        locked: bool,
+    },
+    SetSyncLocked {
+        timeline_id: String,
+        track_id: String,
+        sync_locked: bool,
+    },
+    SetMuted {
+        timeline_id: String,
+        track_id: String,
+        muted: bool,
+    },
+    SetSolo {
+        timeline_id: String,
+        track_id: String,
+        solo: bool,
+    },
+    SetEnabled {
+        timeline_id: String,
+        track_id: String,
+        enabled: bool,
+    },
+}
+
+impl TimelineTrackMutation {
+    fn into_engine(self) -> Result<engine::TrackMutation> {
+        Ok(match self {
+            Self::Create {
+                timeline_id,
+                track_id,
+                name,
+                kind,
+                position,
+                height,
+            } => engine::TrackMutation::Create {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                track_id: parse_id(&track_id, "track_id")?,
+                name,
+                kind: kind.into_engine(),
+                position: usize::try_from(position)
+                    .map_err(|_| invalid("track_position", "track position is unsupported"))?,
+                height,
+            },
+            Self::Delete {
+                timeline_id,
+                track_id,
+            } => engine::TrackMutation::Delete {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                track_id: parse_id(&track_id, "track_id")?,
+            },
+            Self::Rename {
+                timeline_id,
+                track_id,
+                name,
+            } => engine::TrackMutation::Rename {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                track_id: parse_id(&track_id, "track_id")?,
+                name,
+            },
+            Self::SetHeight {
+                timeline_id,
+                track_id,
+                height,
+            } => engine::TrackMutation::SetHeight {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                track_id: parse_id(&track_id, "track_id")?,
+                height,
+            },
+            Self::Reorder {
+                timeline_id,
+                track_id,
+                position,
+            } => engine::TrackMutation::Reorder {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                track_id: parse_id(&track_id, "track_id")?,
+                position: usize::try_from(position)
+                    .map_err(|_| invalid("track_position", "track position is unsupported"))?,
+            },
+            Self::SetTargeted {
+                timeline_id,
+                track_id,
+                targeted,
+            } => engine::TrackMutation::SetTargeted {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                track_id: parse_id(&track_id, "track_id")?,
+                targeted,
+            },
+            Self::SetLocked {
+                timeline_id,
+                track_id,
+                locked,
+            } => engine::TrackMutation::SetLocked {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                track_id: parse_id(&track_id, "track_id")?,
+                locked,
+            },
+            Self::SetSyncLocked {
+                timeline_id,
+                track_id,
+                sync_locked,
+            } => engine::TrackMutation::SetSyncLocked {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                track_id: parse_id(&track_id, "track_id")?,
+                sync_locked,
+            },
+            Self::SetMuted {
+                timeline_id,
+                track_id,
+                muted,
+            } => engine::TrackMutation::SetMuted {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                track_id: parse_id(&track_id, "track_id")?,
+                muted,
+            },
+            Self::SetSolo {
+                timeline_id,
+                track_id,
+                solo,
+            } => engine::TrackMutation::SetSolo {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                track_id: parse_id(&track_id, "track_id")?,
+                solo,
+            },
+            Self::SetEnabled {
+                timeline_id,
+                track_id,
+                enabled,
+            } => engine::TrackMutation::SetEnabled {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                track_id: parse_id(&track_id, "track_id")?,
+                enabled,
+            },
+        })
+    }
+}
+
 /// Every authored action integrated by the production project transaction owner.
 #[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -3058,6 +3326,9 @@ pub enum ProjectAction {
     },
     EditTimeline {
         operations: Vec<TimelineEditOperation>,
+    },
+    MutateTracks {
+        mutations: Vec<TimelineTrackMutation>,
     },
     MutateGraph {
         graph_id: String,
@@ -3103,6 +3374,7 @@ impl ProjectAction {
             }
             Self::SelectRootTimeline { .. }
             | Self::EditTimeline { .. }
+            | Self::MutateTracks { .. }
             | Self::MutateGraph { .. }
             | Self::MutateClipMix { .. } => {}
         }
@@ -3121,6 +3393,12 @@ impl ProjectAction {
                 operations
                     .into_iter()
                     .map(TimelineEditOperation::into_engine)
+                    .collect::<Result<Vec<_>>>()?,
+            )),
+            Self::MutateTracks { mutations } => Ok(engine::CompoundProjectAction::mutate_tracks(
+                mutations
+                    .into_iter()
+                    .map(TimelineTrackMutation::into_engine)
                     .collect::<Result<Vec<_>>>()?,
             )),
             Self::MutateGraph {
@@ -3576,6 +3854,16 @@ fn public_action_evidence(
                     .collect::<Result<Vec<_>>>()?,
             })
         }
+        engine::CompoundProjectActionResult::TracksMutated(result) => {
+            Ok(ProjectActionEvidence::TracksMutated {
+                revision: result.revision(),
+                mutations: result
+                    .outcomes()
+                    .iter()
+                    .map(|outcome| public_track_mutation_kind(outcome.kind()))
+                    .collect(),
+            })
+        }
         engine::CompoundProjectActionResult::GraphMutated { graph_id, revision } => {
             Ok(ProjectActionEvidence::GraphMutated {
                 graph_id: graph_id.to_string(),
@@ -3602,6 +3890,23 @@ fn public_action_evidence(
             public_extension_result(result)
         }
         _ => Err(unexpected_result("compound_action_evidence")),
+    }
+}
+
+fn public_track_mutation_kind(value: engine::TrackMutationKind) -> TimelineTrackMutationKind {
+    match value {
+        engine::TrackMutationKind::Create => TimelineTrackMutationKind::Create,
+        engine::TrackMutationKind::Delete => TimelineTrackMutationKind::Delete,
+        engine::TrackMutationKind::Rename => TimelineTrackMutationKind::Rename,
+        engine::TrackMutationKind::SetHeight => TimelineTrackMutationKind::SetHeight,
+        engine::TrackMutationKind::Reorder => TimelineTrackMutationKind::Reorder,
+        engine::TrackMutationKind::SetTargeted => TimelineTrackMutationKind::SetTargeted,
+        engine::TrackMutationKind::SetLocked => TimelineTrackMutationKind::SetLocked,
+        engine::TrackMutationKind::SetSyncLocked => TimelineTrackMutationKind::SetSyncLocked,
+        engine::TrackMutationKind::SetMuted => TimelineTrackMutationKind::SetMuted,
+        engine::TrackMutationKind::SetSolo => TimelineTrackMutationKind::SetSolo,
+        engine::TrackMutationKind::SetEnabled => TimelineTrackMutationKind::SetEnabled,
+        _ => unreachable!("all public track mutation kinds are covered"),
     }
 }
 

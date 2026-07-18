@@ -24,7 +24,7 @@ export const unavailableAiState = {
 } satisfies EditorAiState;
 
 export const versionNegotiationRequest = {
-  api_schema_versions: ["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0"],
+  api_schema_versions: ["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0"],
   primitive_schema_revisions: [1],
   project: null,
 } satisfies NegotiateApiVersion;

@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 1e30f139e6d077a01b567e4eabed011090d1adbc091ea8ad277382a48e796b24
-source_files: 250
+source_hash: 4533d6517922f2c64d81720953f05a9edf7d07cbbf8c4834ac4d7cd993e9029e
+source_files: 251
 mapped_at_commit: working-tree
 ---
 
@@ -469,13 +469,17 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   exact clip-gain keyframes with clip-relative diamond positions, canonical and shared selection
   state, strict freshness rejection, and reuse of the existing canonical timeline projection
   without another authored owner.
+- `docs/checkpoints/P3.W04.C003.md`: Durable implementation evidence for all eleven canonical track
+  gestures, strict state migration, compiled output intent, project history, removed-clip audio
+  reconciliation, generated public contracts, the real durable native route, and the transport-free
+  professional timeline consumer.
+- `docs/checkpoints/P3.W04.C004.md`: Durable implementation evidence for application-owned timeline
+  selection references, canonical group and link expansion, direct and range selection, geometric
+  lasso, roving keyboard navigation, accessibility state, and authored-state ownership exclusions.
 - `docs/checkpoints/P3.W04.C005.md`: Durable implementation evidence for exact owner-clock timeline,
   playhead, item-edge, and marker-edge targets, stable tie ordering, configurable transient rules,
   visible consequence feedback, Escape reversal, strict malformed-owner failure, and preservation
   of the lower authored-state boundary.
-- `docs/checkpoints/P3.W04.C004.md`: Durable implementation evidence for application-owned timeline
-  selection references, canonical group and link expansion, direct and range selection, geometric
-  lasso, roving keyboard navigation, accessibility state, and authored-state ownership exclusions.
 
 ### Production desktop application
 
@@ -497,7 +501,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/application-context.tsx`: Provides the sole React application/project presentation owner,
   keyboard-to-command registry adapter, asynchronous command execution, one last-valid public editor
   snapshot, stale-response rejection, generated project, audio, and job refresh subscriptions, and
-  classified failure retention above the existing injected generated API.
+  classified failure retention above the existing injected generated API. It also owns unique
+  project transaction identity, the visible project revision fence, durable authored action
+  execution, and replacement-state refresh for timeline consumers.
 - `app/src/editor-project.ts`: Defines the exact five workspace identities, public editor-state
   request construction, immutable presentation contract, and sample-preserving audio projection
   without React, transport, or mutable state ownership.
@@ -505,19 +511,20 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   selection panels from the one application-owned public snapshot, including exact sample rates,
   ordered channels, routes, synchronization observation, continuity evidence, source and program
   editing viewers, one composite viewer, one color viewer, and the canonical timeline canvas. It
-  passes the existing shared selection, dispatch, public schema, and project revision into that
-  canvas and retains the stateful `SourceMonitor` in the editing source slot without moving a new
-  context, reducer, API client, or Tauri access into this workspace file.
-- `app/src/timeline-workspace.ts`: Strictly projects the embedded canonical revision 1 timeline
+  passes the existing shared selection, dispatch, public schema, project revision, and the
+  application-owned project action callback into that canvas and retains the stateful
+  `SourceMonitor` in the editing source slot without moving a new context, reducer, API client, or
+  Tauri access into this workspace file.
+- `app/src/timeline-workspace.ts`: Strictly projects the embedded canonical revision 2 timeline
   document into a deeply frozen canvas model with exact rational source and record ranges, stable
-  identities and relationships, external-global-start display placement, exact owner-clock snap
-  targets, deterministic extent, ruler, time-label, visible-window, and range math, and explicit
-  malformed-document rejection. Its pure snap resolver honors the canonical switch plus transient
-  target rules, exact cross-clock representability, integer frame tolerance, and the lower stable
-  target order without authoring timeline state. Pure selection helpers add reversible
-  timeline-object identity, topmost-first order,
-  canonical fixed-point group and enabled-link expansion, direct selection, contiguous ranges,
-  same-track and nearest-temporal cross-track navigation, and normalized lasso intersection.
+  identities and relationships, bounded track height, lock, mute, solo, and enable state,
+  external-global-start display placement, exact owner-clock snap targets, deterministic extent,
+  ruler, time-label, visible-window, and range math, and explicit malformed-document rejection. Its
+  pure snap resolver honors the canonical switch plus transient target rules, exact cross-clock
+  representability, integer frame tolerance, and the lower stable target order without authoring
+  timeline state. Pure selection helpers add reversible timeline-object identity, topmost-first
+  order, canonical fixed-point group and enabled-link expansion, direct selection, contiguous
+  ranges, same-track and nearest-temporal cross-track navigation, and normalized lasso intersection.
 - `app/src/timeline-clip-presentation.ts`: Supplements the existing frozen canvas model with strict
   read-only clip media names and relink state, exact time maps, markers, metadata, multicam intent,
   clip-scoped graph effects and parameter drivers, and attached clip-gain sample keyframes with
@@ -530,8 +537,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   controls, frame stepping, accessible clip buttons, authored and interaction selection indicators,
   authored state badges, graph effects and automation keys, six session snap rules, exact target
   consequence status, a visible target guide, and Escape or pointer-cancel restoration without
-  taking authored mutation ownership. Honest unavailable state remains visible. It progressively
-  reads one revision-matched media library,
+  taking authored mutation ownership. It adds four-kind creation, inline naming, bounded height,
+  order, target, lock, sync lock, audio mute and solo, enable, guarded delete, pending and failure
+  state, and honest unavailable state. It progressively reads one revision-matched media library,
   deduplicates sources, generates previews sequentially, and accepts only matching media and
   freshness identities before displaying filmstrips, thumbnails, or waveforms.
   It also projects the existing application selection into labeled multiselect options, group and
@@ -600,7 +608,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   dense state badges, range, playhead, controls, interaction selection, authored selection
   evidence, lasso, visible focus, live status, snap rule strip, exact target status and guide, and
   responsive 16:9 native viewer
-  reservations. It also defines compact ready, stale, and empty source-monitor
+  reservations. Timeline rows use canonical variable height, compact two-row track controls,
+  disabled output presentation, and visible command failures. It also defines compact ready, stale,
+  and empty source-monitor
   controls with exact state details and responsive action groups.
 - `app/src/transport.ts`: Implements the concrete generated `SuperiTransport` through one injected
   or Tauri-backed invoke/listen host, generation-scoped request identities, ordered event replay,
@@ -619,18 +629,18 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   one existing application/project owner, exact source, program, composite, and color viewer
   consumers including the composed source monitor, explicit public editor request identity,
   state-free workspace projection, and immutable preservation of sample timing, ordered channels,
-  routes, and continuity evidence.
+  routes, continuity evidence, one application-owned project transaction path, all eleven track
+  operation tags, and the absence of direct transport ownership in the workspace.
 - `app/tests/timeline-workspace.test.ts`: Verifies strict canonical revision handling, exact track,
-  item, source and record range, group, link, selection, target, synchronization, and transition
-  preservation, external global-start placement, deterministic frame-aligned ruler, visible-window,
-  and range math, exact timeline, track, object, item, and playhead snap targets, inexact-clock and
-  object-overscan omission, stable tie ordering, per-kind filtering, persistent and session
-  disablement, invalid-document and marker-owner failures, real React integration, transient
-  navigation and target controls, visible consequence and reversal wiring, selection identity
-  round trips, fixed-point related and
-  direct selection, display-order ranges, directional neighbors, lasso geometry, real React
-  integration, multiselect accessibility, shared selection wiring, transient navigation controls,
-  and the absence of a frontend authored mutation owner.
+  item, source and record range, group, link, selection, target, lock, output, synchronization, and
+  transition preservation, variable height, external global-start placement, deterministic
+  frame-aligned ruler, visible-window, and range math, exact timeline, track, object, item, and
+  playhead snap targets, inexact-clock and object-overscan omission, stable tie ordering, per-kind
+  filtering, persistent and session disablement, invalid-document and marker-owner failures, all
+  eleven durable track gestures, visible consequence and reversal wiring, selection identity round
+  trips, fixed-point related and direct selection, display-order ranges, directional neighbors,
+  lasso geometry, real React integration, multiselect accessibility, shared selection wiring,
+  transient navigation controls, and the absence of a frontend authored mutation owner.
 - `app/tests/timeline-clip-presentation.test.ts`: Verifies supplemental reuse of the exact canvas
   projection, external global-start placement, mixed record clocks, source names and relink state,
   retime, linking, grouping, targeting, synchronization, markers, metadata, multicam intent,
@@ -678,11 +688,18 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   existing integration-validation API contract.
 - `app/src-tauri/src/transport.rs`: Owns the thin bounded desktop command dispatcher above the
   managed `EngineConnection`, generation-scoped request and cancellation state, exact public error
-  conversion, and a 64-record ordered replacement-event replay window without engine semantics.
+  conversion with reviewed canonical contexts, and a 64-record ordered replacement-event replay
+  window without engine semantics. Integration validation remains on the managed engine connection;
+  editor-state reads and project-command writes route through the active durable project state and
+  publish canonical generated replacement events. Cancellation wins before durable work starts,
+  while a completed durable commit and its replacement event win a late cancellation so committed
+  state cannot be hidden from reconciliation.
 - `app/src-tauri/src/project_lifecycle.rs`: Owns the sole serialized desktop project session above
   `LocalProjectHost`, including commit-only active identity, bounded deduplicated recent projects,
   revision-fenced recovery presentation, last-valid state retention, and retryable, degraded,
-  user-correctable, or terminal actionable failures. It projects and atomically updates the
+  user-correctable, or terminal actionable failures. It exposes exact editor inspection and
+  timeline-command execution through the same durable host, refreshing active project revision only
+  after success. It projects and atomically updates the
   project-owned settings snapshot, discovers bounded regular media without following symlinks,
   groups numbered still sequences deterministically at the project frame rate, and delegates one
   permission-checked import transaction without taking project persistence authority. A separate
@@ -753,7 +770,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   C010 generated-preview, C011 content-analysis mutation plus content-search, and C012 atomic batch
   commands, plus the C013 revision-fenced source-scan command and the C014 source monitor snapshot,
   load, seek, mark, and unload commands,
-  initializes the recovery root, emits one ordered Tauri event, records
+  initializes the recovery root, passes managed active-project state into the public dispatcher,
+  emits one ordered Tauri event, records
   nonblocking exit intent, and joins the engine owner after the native application stops.
 - `app/src-tauri/src/main.rs`: Starts the native production desktop host.
 - `app/src-tauri/tests/engine_connection_contract.rs`: Proves dedicated EngineControl ownership,
@@ -817,7 +835,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   through the real local project host.
 - `app/src-tauri/tests/transport_contract.rs`: Proves the bounded transport owner opens exactly one
   ordered connection generation with the stable desktop stream identity and no false replay or
-  resync state.
+  resync state. It also creates a real durable project, routes generated editor inspection and a
+  track command through the active native path, verifies revision and canonical event evidence, and
+  reloads the resulting revision 2 timeline state.
 
 ### Frontend CI contract
 
@@ -833,7 +853,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   typecheck, build, and test commands, and exact TypeScript and Vite development dependencies.
 - `ci/frontend-smoke/src/api-contract.ts`: Imports the committed generated API artifact, constructs
   an exact typed project command, command-log query, unavailable AI state, and API version
-  negotiation request, consumes command-log and negotiation responses plus the extension query,
+  negotiation request through current catalog release `1.5.0`, consumes command-log and negotiation
+  responses plus the extension query,
   lifecycle, event, resource, stable public control reference, typed maps, and transport-neutral
   client constructor used by the browser build.
 - `ci/frontend-smoke/src/main.ts`: Implements a strict typed browser entry that verifies the contract
@@ -874,7 +895,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and response types, strict extension identity, lifecycle, capability, safe failure, feature,
   control, query, event, and resource declarations, generic project import-media request and result
   evidence, and a transport-neutral typed client without owning runtime IPC. The committed artifact
-  is freshly regenerated from the canonical schema `1.2.0` project surface.
+  is freshly regenerated from the canonical schema `1.3.0` project surface and includes strict
+  track mutation, evidence, and track-output graph DTOs.
 - `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 25 local
   workspace packages, registry dependencies, target-support dependency trees, scenario digest
   and process-instrumentation dependency edges, the API introspection and validation contracts'
@@ -1510,15 +1532,18 @@ dispatcher per application generation on a dedicated EngineControl thread and co
 headless-engine participant seam. Tauri manages the fixed-capacity `EngineConnection`, while its
 React lifecycle client consumes only two shell-local asynchronous lifecycle commands. Above that
 unchanged connection, `transport.rs` registers one async Tauri API dispatcher for connect, request,
-cancel, and disconnect control, routes the existing integration-validation method into C002's
-EngineControl owner, converts failures through `PublicApiError`, and emits generated engine
-introspection replacement payloads in a bounded ordered envelope. `app/src/transport.ts` implements
+cancel, and disconnect control, routes the integration-validation method into C002's EngineControl
+owner, and routes editor-state reads plus durable project commands through the managed active
+project state. It converts failures through reviewed `PublicApiError` contexts and emits generated
+engine-introspection and project replacement payloads in a bounded ordered envelope.
+`app/src/transport.ts` implements
 the generated `SuperiTransport`, and `app/src/api.ts` remains the sole `SuperiClient` factory. React
 consumes the injected binding for validation, health, and actionable presentation without owning
 engine commands or project behavior. The editing workspace additionally consumes the canonical
 timeline document already contained by the public editor snapshot. Its strict projection preserves
-exact authored identity, timing, grouping, targeting, and synchronization, while local playhead,
-range, scroll, and zoom remain transient presentation intent and never become another mutation path.
+exact authored identity, timing, grouping, targeting, locks, synchronization, and output intent.
+Track gestures call the application-owned generated project command, while local playhead, range,
+scroll, and zoom remain transient presentation intent and never become another mutation path.
 That projection resolves timeline, item, and owner-clock marker boundaries into exact edit-rate
 targets, skipping inexact cross-clock points and valid object-marker overscan. Pointer gestures query
 those targets through the canonical persistent switch plus explicit session rules, expose the chosen
@@ -1531,7 +1556,8 @@ Shared clip activation remains an application selection reference, not an author
 Beside the engine lifecycle, Tauri manages one serialized `DesktopProjectLifecycle` initialized
 with the application recovery root. Its concrete backend calls only `LocalProjectHost` creation,
 validation, save, save-as, recovery, settings inspection, and atomic settings transaction methods;
-successful durable results alone replace active identity and bounded recent state. The typed React
+it also uses the same host for complete editor inspection and timeline command execution. Successful
+durable results alone replace active identity and bounded recent state. The typed React
 adapter invokes complete project commands and the System panel renders lifecycle state, reviewed
 failure actions, and an editable projection of project settings. The project-identity media store
 owns bins, smart collections, freshness-fenced source inspection, and revision-fenced generic user
@@ -1714,13 +1740,13 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   Retained frontend and Tauri contracts continue to prove generated binding and toolchain
   compatibility without standing in for the product application.
 
-- The focused timeline-canvas proof freezes strict revision 1 parsing, exact source and record
-  ranges, stable grouping, linking, selection, target and synchronization evidence, two-pass
-  transition placement, deterministic ruler and range math, real editing-workspace composition,
-  reversible shared selection identities, canonical fixed-point group and link expansion, direct
-  and range selection, directional neighbors, lasso geometry, multiselect semantics, roving focus,
-  keyboard coverage, live status, transient navigation controls, and the exclusion of any frontend
-  authored mutation owner.
+- The focused timeline-canvas proof freezes strict revision 2 parsing, exact source and record
+  ranges, stable grouping, linking, selection, complete track control state, two-pass transition
+  placement, deterministic ruler and range math, real editing-workspace composition, all eleven
+  durable track gestures, reversible shared selection identities, canonical fixed-point group and
+  link expansion, direct and range selection, directional neighbors, lasso geometry, multiselect
+  semantics, roving focus, keyboard coverage, live status, transient navigation controls, and the
+  exclusion of any frontend authored mutation owner.
 
 - The focused timeline-clip proof freezes reuse of that canvas model, exact source and record
   evidence, mixed clocks, stable media and relationship identity, relink, retime, marker, metadata,
@@ -2032,19 +2058,24 @@ integration-validation result over a bounded nonblocking Rust connection, and pe
 dispatcher shutdown before lifecycle acknowledgement. Internal subsystem readiness remains truthful;
 the production React bootstrap now consumes the complete generated TypeScript contract through a
 transport-injected `SuperiClient` provider with identical request and automation behavior. One thin
-native dispatcher now forwards integration validation through the retained EngineControl owner,
-emits ordered generated introspection replacement events, and exposes bounded replay, reconnect,
-cancellation, and all four public recoverability conditions through the concrete frontend transport.
+native dispatcher forwards integration validation through the retained EngineControl owner and
+routes generated editor reads plus durable project commands through the active project lifecycle. It
+emits ordered generated introspection and project replacement events and exposes bounded replay,
+reconnect, cancellation, and all four public recoverability conditions through the concrete
+frontend transport.
 Above that unchanged transport, `application.ts` owns deterministic route, panel, and command
 registries plus transient panel layout and one immutable typed public-resource selection.
 `ApplicationProvider` composes the framework above `SuperiApiProvider` and remains the single owner
 of transient application state plus one last-valid public editor snapshot. The React shell registers
 editing, compositing, color, audio, delivery, and system routes; the professional views project the
 same snapshot, preserve exact audio sample, channel, route, synchronization, and continuity fields,
-and retain classified degraded state when the native bridge reports editor methods as unrouted.
+and retain classified degraded state when the native bridge or durable project owner rejects work.
 The editing view now also parses the snapshot's canonical timeline document into a frozen
 identity-preserving canvas with sticky headers, an adaptive ruler, record-positioned tracks and
-items, a frame-snapped playhead, an explicit range, native scrolling, and pointer-anchored zoom.
+items, a frame-snapped playhead, an explicit range, native scrolling, pointer-anchored zoom, and
+canonical variable lane height. Track creation, deletion, inline naming, height, order, target,
+lock, sync lock, mute, solo, and enable gestures enter the application-owned generated command and
+refresh from the durable replacement snapshot.
 The same canvas projects exact timeline, item-edge, and timeline, track, or object marker-edge
 targets, exposes a session master plus six target-kind rules, reports every accepted coordinate,
 draws the active or last guide, and reverses an active gesture through its captured origin.
@@ -2109,7 +2140,7 @@ Its `superi-api` package record now includes one test-only concurrency edge for 
 introspection ownership contract without changing the production runtime graph.
 The API now owns a nonserializable host permission context, typed lexical filesystem and plugin
 scopes, explicit destructive operations, deny precedence, payload-derived requirements, and schema
-`1.4.0` discovery metadata. It also projects one bounded engine-owned extension registry through
+`1.5.0` discovery metadata. It also projects one bounded engine-owned extension registry through
 strict exact identity, lifecycle, capability, feature, safe failure, stable control, query, event,
 and replacement resource contracts. Its bounded `superi-json` runtime uses already resolved JSON and
 packages, adds the typed command-log query step, and preserves the same nested authorization and
@@ -2147,8 +2178,8 @@ and transport-catalog database adaptation remain incomplete. The API-owned local
 CLI now compose existing database open, publication, recovery, and validation authorities without a
 direct CLI dependency on the project crate.
 The engine now owns a production Rust compound project command and history boundary around that
-aggregate. It applies bounded ordered timeline, graph, media, authored audio, extension, and root
-actions inside
+aggregate. It applies bounded ordered timeline item, track, graph, media, authored audio, extension,
+and root actions inside
 one outer project edit, preserves nonconflicting retained graph work through a three-way recompile,
 records one immutable before-and-after unit, restores undo and redo targets with fresh monotonic
 revisions, persists only the selected snapshot through the existing database, and exposes one
@@ -2337,7 +2368,7 @@ The largest current risk is cross-document drift:
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
 `db23c0a1392ad26040e6bcb469bf0a4fda3c4b59` when this checkpoint began. Its hash describes the exact
-250 discovered source files, including generated binary payloads, layered on the integrated
+251 discovered source files, including generated binary payloads, layered on the integrated
 revision.
 
 ## Maintenance notes

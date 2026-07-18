@@ -27,6 +27,10 @@ import {
   type EditorProjectPresentation,
 } from "./editor-project.ts";
 import { classifyDesktopTransportError } from "./transport.ts";
+import type {
+  ExecuteProjectCommandResult,
+  ProjectAction,
+} from "./api.ts";
 
 export type ApplicationPanelRenderer = ComponentType;
 
@@ -44,6 +48,9 @@ export interface ApplicationContextValue {
   readonly commandFailure: string | null;
   readonly editorProject: EditorProjectPresentation;
   readonly refreshEditorProject: () => Promise<void>;
+  readonly executeProjectActions: (
+    actions: readonly ProjectAction[],
+  ) => Promise<ExecuteProjectCommandResult>;
 }
 
 const ApplicationContext = createContext<ApplicationContextValue | null>(null);
@@ -71,7 +78,10 @@ export function ApplicationProvider({
   );
   const editorRequestRevision = useRef(0);
   const editorTransactionRevision = useRef(0);
+  const projectCommandRevision = useRef(0);
+  const editorProjectRef = useRef(editorProject);
   stateRef.current = state;
+  editorProjectRef.current = editorProject;
 
   const refreshEditorProject = useCallback(async (): Promise<void> => {
     const requestRevision = editorRequestRevision.current + 1;
@@ -126,6 +136,42 @@ export function ApplicationProvider({
       }));
     }
   }, [api]);
+
+  const executeProjectActions = useCallback(
+    async (
+      actions: readonly ProjectAction[],
+    ): Promise<ExecuteProjectCommandResult> => {
+      const snapshot = editorProjectRef.current.snapshot;
+      if (api === null || snapshot === null) {
+        throw new Error("A durable project must be open before editing tracks.");
+      }
+      if (actions.length === 0) {
+        throw new Error("A project command must contain at least one action.");
+      }
+      const commandRevision = projectCommandRevision.current + 1;
+      projectCommandRevision.current = commandRevision;
+      const transactionId = `superi.desktop.project-command.${commandRevision}`;
+      try {
+        const result = await api.request("superi.project.command.execute", {
+          transaction_id: transactionId,
+          expected_project_revision: snapshot.project.project_revision,
+          command: {
+            command: "apply",
+            actions: [...actions],
+          },
+        });
+        if (result.transaction_id !== transactionId) {
+          throw new Error("project command response transaction identity changed");
+        }
+        await refreshEditorProject();
+        return result;
+      } catch (error: unknown) {
+        const failure = classifyDesktopTransportError(error);
+        throw new Error(`${failure.title} ${failure.action}`);
+      }
+    },
+    [api, refreshEditorProject],
+  );
 
   const executeCommand = useCallback(
     async (commandId: string): Promise<ApplicationCommandResult> => {
@@ -200,6 +246,7 @@ export function ApplicationProvider({
         commandFailure,
         editorProject,
         refreshEditorProject,
+        executeProjectActions,
       }}
     >
       {children}

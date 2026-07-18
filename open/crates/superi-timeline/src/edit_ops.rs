@@ -912,6 +912,7 @@ pub(crate) fn apply_operation(
     let timeline_id = operation.timeline_id();
     let track_id = operation.track_id();
     let timeline = draft.timeline_mut(timeline_id)?;
+    require_unlocked_track(timeline, track_id)?;
     if let EditOperation::Ripple {
         target_id,
         side,
@@ -1120,6 +1121,9 @@ fn apply_synchronized_ripple(
     to: RationalTime,
     sync_adjustments: &[RippleSyncAdjustment],
 ) -> Result<EditOutcome> {
+    for adjustment in sync_adjustments {
+        require_unlocked_track(timeline, adjustment.track_id())?;
+    }
     let expected: Vec<_> = timeline
         .tracks_affected_by_sync([track_id])?
         .into_iter()
@@ -2716,6 +2720,25 @@ fn invalid_edit(operation: &'static str, message: &'static str) -> Error {
         message,
     )
     .with_context(ErrorContext::new("superi-timeline.edit_ops", operation))
+}
+
+fn require_unlocked_track(timeline: &Timeline, track_id: TrackId) -> Result<()> {
+    let state = timeline
+        .edit_state()
+        .track_state(track_id)
+        .ok_or_else(|| not_found_edit("edit_locked_track", "editorial track was not found"))?;
+    if state.locked() {
+        return Err(Error::new(
+            ErrorCategory::Conflict,
+            Recoverability::UserCorrectable,
+            "locked tracks must be unlocked before authored item changes",
+        )
+        .with_context(
+            ErrorContext::new("superi-timeline.edit_ops", "edit_locked_track")
+                .with_field("track", track_id.to_string()),
+        ));
+    }
+    Ok(())
 }
 
 fn not_found_edit(operation: &'static str, message: &'static str) -> Error {

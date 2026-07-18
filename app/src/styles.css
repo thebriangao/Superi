@@ -1384,6 +1384,20 @@ kbd {
   gap: 5px;
 }
 
+.timeline-add-track {
+  display: flex;
+  gap: 3px;
+}
+
+.timeline-command-failure {
+  margin: 0;
+  padding: 7px 12px;
+  border-bottom: 1px solid #503b37;
+  color: #e0aaa0;
+  background: #211817;
+  font-size: 10px;
+}
+
 button.timeline-compact-button,
 button.timeline-icon-button {
   min-height: 28px;
@@ -1609,7 +1623,6 @@ button.timeline-snap-rule[aria-pressed="true"] {
 
 .timeline-track-header,
 .timeline-lane {
-  height: 72px;
   border-bottom: 1px solid #252c2f;
 }
 
@@ -1618,11 +1631,14 @@ button.timeline-snap-rule[aria-pressed="true"] {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 9px 8px 11px;
+  min-height: 48px;
+  padding: 4px 6px 4px 9px;
+  overflow: hidden;
 }
 
-.timeline-track-header > div:first-child {
+.timeline-track-identity {
   display: grid;
+  width: 94px;
   min-width: 0;
   gap: 2px;
 }
@@ -1638,12 +1654,25 @@ button.timeline-snap-rule[aria-pressed="true"] {
   white-space: nowrap;
 }
 
-.timeline-track-header strong {
-  overflow: hidden;
+.timeline-track-identity input {
+  width: 100%;
+  min-width: 0;
+  height: 20px;
+  padding: 1px 4px;
+  border: 1px solid transparent;
+  border-radius: 3px;
   color: #d2dad6;
+  background: transparent;
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.timeline-track-identity input:hover,
+.timeline-track-identity input:focus {
+  border-color: #3b494f;
+  background: #101719;
+  outline: none;
 }
 
 .timeline-track-header code {
@@ -1653,20 +1682,42 @@ button.timeline-snap-rule[aria-pressed="true"] {
   text-transform: none;
 }
 
-.timeline-track-state {
+.timeline-track-controls {
   display: grid;
+  grid-template-columns: repeat(6, 19px);
   flex: 0 0 auto;
-  gap: 3px;
+  gap: 2px;
 }
 
-.timeline-track-state span {
-  padding: 2px 4px;
-  border: 1px solid #43535a;
+.timeline-track-controls button {
+  width: 19px;
+  min-width: 19px;
+  min-height: 19px;
+  padding: 0;
+  border: 1px solid #384247;
   border-radius: 3px;
-  color: #b8d7e6;
-  background: #1c2930;
-  font-size: 7px;
+  color: #899497;
+  background: #111719;
+  font-size: 8px;
+  font-weight: 700;
   text-align: center;
+}
+
+.timeline-track-controls button:hover:not(:disabled) {
+  border-color: #60727a;
+  color: #d6e0dc;
+}
+
+.timeline-track-controls button[data-active="true"] {
+  border-color: #557482;
+  color: #c8e6f2;
+  background: #20333b;
+}
+
+.timeline-track-controls button.timeline-track-delete-armed {
+  border-color: #98635b;
+  color: #ffd1c8;
+  background: #482b27;
 }
 
 .timeline-lane {
@@ -1680,6 +1731,10 @@ button.timeline-snap-rule[aria-pressed="true"] {
   cursor: crosshair;
 }
 
+.timeline-lane-disabled {
+  opacity: 0.48;
+}
+
 .timeline-lane-audio {
   background-color: #0e1414;
 }
@@ -1691,12 +1746,13 @@ button.timeline-snap-rule[aria-pressed="true"] {
 
 .timeline-empty-lane {
   position: absolute;
-  top: 27px;
+  top: 50%;
   left: 12px;
   color: #566164;
   font-size: 9px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  transform: translateY(-50%);
 }
 
 .timeline-item {
@@ -1705,7 +1761,7 @@ button.timeline-snap-rule[aria-pressed="true"] {
   z-index: 3;
   display: grid;
   min-width: 2px;
-  height: 58px;
+  height: calc(100% - 14px);
   align-content: start;
   gap: 1px;
   overflow: hidden;

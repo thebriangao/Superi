@@ -7,7 +7,7 @@ use superi_api::editor::{
     EditorChannelMap, EditorChannelPosition, EditorClipMixControls, EditorClipMixMutation,
     EditorExtensionMutation, EditorGraphMutation, EditorMediaMutation, ExecuteProjectCommand,
     GetProjectCommandLog, GetProjectCommandLogResult, ProjectAction, ProjectCommand,
-    ProjectCommandEvidence, ProjectCommandLogDetail, TimelineEditOperation,
+    ProjectCommandEvidence, ProjectCommandLogDetail, TimelineEditOperation, TimelineTrackMutation,
 };
 use superi_api::events::{ApiEvent, ProjectStateChanged};
 use superi_api::permissions::{
@@ -413,9 +413,40 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
         ]
     );
 
+    let track_operations = vec![
+        json!({"operation":"create","timeline_id":ROOT.to_string(),"track_id":"track:0000000000000000000000000000e010","name":"V2","kind":"video","position":1,"height":72}),
+        json!({"operation":"delete","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string()}),
+        json!({"operation":"rename","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"name":"Picture"}),
+        json!({"operation":"set_height","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"height":96}),
+        json!({"operation":"reorder","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"position":0}),
+        json!({"operation":"set_targeted","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"targeted":true}),
+        json!({"operation":"set_locked","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"locked":true}),
+        json!({"operation":"set_sync_locked","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"sync_locked":false}),
+        json!({"operation":"set_muted","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"muted":true}),
+        json!({"operation":"set_solo","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"solo":true}),
+        json!({"operation":"set_enabled","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"enabled":false}),
+    ];
+    assert_eq!(
+        operation_tags::<TimelineTrackMutation>(track_operations, "operation"),
+        [
+            "create",
+            "delete",
+            "rename",
+            "set_height",
+            "reorder",
+            "set_targeted",
+            "set_locked",
+            "set_sync_locked",
+            "set_muted",
+            "set_solo",
+            "set_enabled"
+        ]
+    );
+
     let project_actions = vec![
         json!({"action":"select_root_timeline","timeline_id":ROOT.to_string()}),
         json!({"action":"edit_timeline","operations":[{"operation":"append","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"material":gap_item()}]}),
+        json!({"action":"mutate_tracks","mutations":[{"operation":"rename","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"name":"Picture"}]}),
         json!({"action":"mutate_graph","graph_id":"graph:00000000000000000000000000000047","mutations":[{"operation":"reorder","node_id":node_id,"position":0}]}),
         json!({"action":"mutate_media","mutation":{"operation":"mark_missing","media_id":MEDIA.to_string()}}),
         json!({"action":"mutate_clip_mix","mutations":[{"operation":"remove","clip_id":CLIP.to_string()}]}),
@@ -426,6 +457,7 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
         [
             "select_root_timeline",
             "edit_timeline",
+            "mutate_tracks",
             "mutate_graph",
             "mutate_media",
             "mutate_clip_mix",
@@ -441,6 +473,73 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
         "operation": "unsupported"
     }))
     .is_err());
+}
+
+#[test]
+fn public_track_command_is_revision_fenced_evidenced_and_undoable() {
+    let _domain = ExecutionDomain::EngineControl
+        .enter_current()
+        .expect("test owns engine control");
+    let mut api = project_api();
+    let request: ExecuteProjectCommand = serde_json::from_value(json!({
+        "transaction_id": "public-track-controls",
+        "expected_project_revision": 0,
+        "command": {
+            "command": "apply",
+            "actions": [{
+                "action": "mutate_tracks",
+                "mutations": [
+                    {"operation":"rename","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"name":"Picture"},
+                    {"operation":"set_height","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"height":104},
+                    {"operation":"set_targeted","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"targeted":true},
+                    {"operation":"set_sync_locked","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"sync_locked":false},
+                    {"operation":"set_enabled","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"enabled":false}
+                ]
+            }]
+        }
+    }))
+    .unwrap();
+
+    let applied = api.execute(request).unwrap();
+    assert_eq!(applied.state().project_revision(), 1);
+    let ProjectCommandEvidence::Applied { actions } = applied.evidence() else {
+        panic!("track mutation command must retain evidence");
+    };
+    assert_eq!(
+        serde_json::to_value(&actions[0]).unwrap(),
+        json!({
+            "result":"tracks_mutated",
+            "revision":1,
+            "mutations":["rename","set_height","set_targeted","set_sync_locked","set_enabled"]
+        })
+    );
+    let snapshot = api.project_snapshot().unwrap();
+    let timeline = snapshot.editorial_project().timeline(ROOT).unwrap();
+    assert_eq!(timeline.track(TRACK).unwrap().name(), "Picture");
+    let state = timeline.edit_state().track_state(TRACK).unwrap();
+    assert_eq!(state.height(), 104);
+    assert!(state.targeted());
+    assert!(!state.sync_locked());
+    assert!(!state.enabled());
+    assert_eq!(api.drain_events().unwrap().len(), 1);
+
+    api.execute(ExecuteProjectCommand::new(
+        "undo-track-controls",
+        1,
+        ProjectCommand::Undo {},
+    ))
+    .unwrap();
+    assert_eq!(
+        api.project_snapshot()
+            .unwrap()
+            .editorial_project()
+            .timeline(ROOT)
+            .unwrap()
+            .track(TRACK)
+            .unwrap()
+            .name(),
+        "V1"
+    );
 }
 
 #[test]

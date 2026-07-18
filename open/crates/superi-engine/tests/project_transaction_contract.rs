@@ -31,6 +31,7 @@ use superi_timeline::model::{
     Clip, ClipSource, EditorialObjectId, EditorialProject, LinkedMediaReference, Timeline, Track,
     TrackItem, TrackSemantics, VideoCompositing, VideoTrackSemantics,
 };
+use superi_timeline::track_ops::TrackMutation;
 
 const PROJECT: ProjectId = ProjectId::from_raw(0xd000);
 const MEDIA: MediaId = MediaId::from_raw(0xd001);
@@ -352,6 +353,134 @@ fn one_history_command_publishes_and_restores_every_authored_subsystem() {
         Some(&controls())
     );
     assert_eq!(redone.state().snapshot().extension_records().len(), 3);
+}
+
+#[test]
+fn track_mutations_publish_once_recompile_and_round_trip_through_history() {
+    let mut history = ProjectCommandHistory::new(document());
+    let transaction = CompoundProjectTransaction::new([CompoundProjectAction::mutate_tracks([
+        TrackMutation::Rename {
+            timeline_id: ROOT,
+            track_id: TRACK,
+            name: "Picture".to_owned(),
+        },
+        TrackMutation::SetHeight {
+            timeline_id: ROOT,
+            track_id: TRACK,
+            height: 104,
+        },
+        TrackMutation::SetEnabled {
+            timeline_id: ROOT,
+            track_id: TRACK,
+            enabled: false,
+        },
+    ])])
+    .unwrap();
+
+    let applied = history
+        .execute(ProjectHistoryCommand::apply(
+            0,
+            ProjectMutation::compound(transaction),
+        ))
+        .unwrap();
+    let ProjectHistoryActionResult::AppliedCompound { actions } = applied.action_result().unwrap()
+    else {
+        panic!("track command must retain compound action evidence");
+    };
+    assert!(matches!(
+        actions.as_slice(),
+        [CompoundProjectActionResult::TracksMutated(result)] if result.outcomes().len() == 3
+    ));
+    let published = applied.state().snapshot();
+    let timeline = published.editorial_project().timeline(ROOT).unwrap();
+    assert_eq!(timeline.track(TRACK).unwrap().name(), "Picture");
+    let state = timeline.edit_state().track_state(TRACK).unwrap();
+    assert_eq!(state.height(), 104);
+    assert!(!state.enabled());
+    let undone = history.execute(ProjectHistoryCommand::undo(1)).unwrap();
+    assert_eq!(
+        undone
+            .state()
+            .snapshot()
+            .editorial_project()
+            .timeline(ROOT)
+            .unwrap()
+            .track(TRACK)
+            .unwrap()
+            .name(),
+        "V1"
+    );
+    let redone = history.execute(ProjectHistoryCommand::redo(2)).unwrap();
+    assert_eq!(
+        redone
+            .state()
+            .snapshot()
+            .editorial_project()
+            .timeline(ROOT)
+            .unwrap()
+            .track(TRACK)
+            .unwrap()
+            .name(),
+        "Picture"
+    );
+}
+
+#[test]
+fn deleting_a_populated_track_releases_clip_mix_intent_and_restores_it_with_history() {
+    let mut history = ProjectCommandHistory::new(document());
+    let mix = CompoundProjectTransaction::new([CompoundProjectAction::mutate_clip_mix([
+        ClipMixMutation::set(CLIP, controls()),
+    ])])
+    .unwrap();
+    history
+        .execute(ProjectHistoryCommand::apply(
+            0,
+            ProjectMutation::compound(mix),
+        ))
+        .unwrap();
+
+    let delete = CompoundProjectTransaction::new([CompoundProjectAction::mutate_tracks([
+        TrackMutation::Delete {
+            timeline_id: ROOT,
+            track_id: TRACK,
+        },
+    ])])
+    .unwrap();
+    let deleted = history
+        .execute(ProjectHistoryCommand::apply(
+            1,
+            ProjectMutation::compound(delete),
+        ))
+        .unwrap();
+    let deleted_snapshot = deleted.state().snapshot();
+    assert!(deleted_snapshot
+        .editorial_project()
+        .timeline(ROOT)
+        .unwrap()
+        .track(TRACK)
+        .is_none());
+    assert!(deleted_snapshot.clip_mix_state().controls(CLIP).is_none());
+
+    let restored = history.execute(ProjectHistoryCommand::undo(2)).unwrap();
+    let restored_snapshot = restored.state().snapshot();
+    assert!(restored_snapshot
+        .editorial_project()
+        .timeline(ROOT)
+        .unwrap()
+        .track(TRACK)
+        .is_some());
+    assert_eq!(
+        restored_snapshot.clip_mix_state().controls(CLIP),
+        Some(&controls())
+    );
+
+    let redone = history.execute(ProjectHistoryCommand::redo(3)).unwrap();
+    assert!(redone
+        .state()
+        .snapshot()
+        .clip_mix_state()
+        .controls(CLIP)
+        .is_none());
 }
 
 #[test]

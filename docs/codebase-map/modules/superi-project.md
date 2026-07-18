@@ -2,7 +2,7 @@
 module_id: superi-project
 source_paths:
   - open/crates/superi-project
-source_hash: 14a1cec3c4761a1320961c5358baa8556ef1c12d61ca354578e9daafd6b0410c
+source_hash: 0c46b450c050fa2a45d59937ed03b73f1c0451aab355d2eaf2aa8716a301e0c4
 source_files: 28
 mapped_at_commit: working-tree
 ---
@@ -179,7 +179,8 @@ project authority.
   source failure handling, byte nonmutation, and continued authority-project use after inspection.
 - `open/crates/superi-project/tests/migration_contract.rs`: Proves public supported legacy open,
   legacy timeline and graph component migration, exact editable-state preservation, canonical
-  current reopen, continued editing and replacement, save, save-as, copy, and backup after migration,
+  current component revisions and reopen, continued editing and replacement, save, save-as, copy,
+  and backup after migration,
   source-revision preservation, current byte stability, read-only legacy refusal, future
   nonmutation, and malformed legacy rollback.
 - `open/crates/superi-project/tests/media_reference_contract.rs`: Proves portable path grammar,

@@ -36,6 +36,41 @@ use crate::retime::ClipTimeMap;
 const COMPONENT: &str = "superi-timeline.compile";
 const HASH_NAMESPACE: &[u8] = b"superi.timeline.compile.v1";
 
+/// Processing intent compiled from one canonical track's output controls.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TrackOutputState {
+    enabled: bool,
+    muted: bool,
+    solo: bool,
+}
+
+impl TrackOutputState {
+    /// Creates explicit output intent.
+    #[must_use]
+    pub const fn new(enabled: bool, muted: bool, solo: bool) -> Self {
+        Self {
+            enabled,
+            muted,
+            solo,
+        }
+    }
+
+    #[must_use]
+    pub const fn enabled(self) -> bool {
+        self.enabled
+    }
+
+    #[must_use]
+    pub const fn muted(self) -> bool {
+        self.muted
+    }
+
+    #[must_use]
+    pub const fn solo(self) -> bool {
+        self.solo
+    }
+}
+
 /// One typed editable value retained by a compiled timeline graph.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -70,6 +105,8 @@ pub enum TimelineGraphValue {
     OptionalMulticamClip(Option<MulticamClip>),
     /// Complete typed track behavior.
     TrackSemantics(TrackSemantics),
+    /// Output enable, mute, and solo intent.
+    TrackOutputState(TrackOutputState),
     /// Bottom-to-top authored track order retained independently of edge order.
     TrackOrder(Vec<TrackId>),
     /// Authored object order retained independently of graph adjacency order.
@@ -96,6 +133,7 @@ impl TimelineGraphValue {
             Self::OptionalMulticamSource(_) => "superi.value.timeline.optional-multicam-source",
             Self::OptionalMulticamClip(_) => "superi.value.timeline.optional-multicam-clip",
             Self::TrackSemantics(_) => "superi.value.timeline.track-semantics",
+            Self::TrackOutputState(_) => "superi.value.timeline.track-output-state",
             Self::TrackOrder(_) => "superi.value.timeline.track-order",
             Self::ObjectOrder(_) => "superi.value.timeline.object-order",
             Self::StringMap(_) => "superi.value.timeline.string-map",
@@ -714,7 +752,18 @@ impl<'a> Compiler<'a> {
             let track_id = track_node_id(self.project.id(), track.id());
             self.index
                 .insert(TimelineGraphOrigin::Track(track.id()), track_id)?;
-            self.add_node(track_id, track_node(track, track_id)?);
+            let state = timeline
+                .edit_state()
+                .track_state(track.id())
+                .expect("validated timeline has track edit state");
+            self.add_node(
+                track_id,
+                track_node(
+                    track,
+                    TrackOutputState::new(state.enabled(), state.muted(), state.solo()),
+                    track_id,
+                )?,
+            );
             for item in track.items() {
                 let origin = TimelineGraphOrigin::Object(item.id());
                 let item_node_id = object_node_id(self.project.id(), item.id());
@@ -874,7 +923,11 @@ fn timeline_output_node(
     )
 }
 
-fn track_node(track: &Track, node_id: NodeId) -> Result<EditableNode<CompiledTimelineGraphValue>> {
+fn track_node(
+    track: &Track,
+    output_state: TrackOutputState,
+    node_id: NodeId,
+) -> Result<EditableNode<CompiledTimelineGraphValue>> {
     editable_node(
         node_id,
         &format!("superi.timeline.{}.track", kind_code(track.kind())),
@@ -894,6 +947,10 @@ fn track_node(track: &Track, node_id: NodeId) -> Result<EditableNode<CompiledTim
             parameter(
                 "semantics",
                 TimelineGraphValue::TrackSemantics(track.semantics().clone()),
+            ),
+            parameter(
+                "track-output-state",
+                TimelineGraphValue::TrackOutputState(output_state),
             ),
             parameter(
                 "item-order",

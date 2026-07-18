@@ -41,7 +41,7 @@ const range = (
 function completeSnapshot(): EditorStateSnapshot {
   const timelineEnvelope = {
     format: "superi.timeline",
-    format_revision: 1,
+    format_revision: 2,
     primitive_schema_revision: 1,
     payload_sha256: "a".repeat(64),
     payload: {
@@ -161,8 +161,26 @@ function completeSnapshot(): EditorStateSnapshot {
           edit_state: {
             selected_objects: [{ kind: "clip", id: "clip.video" }],
             track_states: [
-              { track_id: "track.video", targeted: true, sync_locked: true },
-              { track_id: "track.audio", targeted: false, sync_locked: false },
+              {
+                track_id: "track.video",
+                height: 72,
+                targeted: true,
+                locked: false,
+                sync_locked: true,
+                muted: false,
+                solo: false,
+                enabled: true,
+              },
+              {
+                track_id: "track.audio",
+                height: 72,
+                targeted: false,
+                locked: false,
+                sync_locked: false,
+                muted: false,
+                solo: false,
+                enabled: true,
+              },
             ],
             linked_selection_enabled: true,
             links: [["clip.video", "clip.audio"]],
@@ -350,7 +368,7 @@ function completeSnapshot(): EditorStateSnapshot {
       document: {
         resource: "superi.editor.state.timeline",
         format: "superi.timeline",
-        format_revision: 1,
+        format_revision: 2,
         byte_length: 1,
         sha256: "c".repeat(64),
         content: timelineEnvelope,

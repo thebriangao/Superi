@@ -21,6 +21,7 @@ use superi_graph::node::{
 use superi_graph::value::GraphValue;
 use superi_timeline::compile::{
     compile_timeline, recompile_timeline_preserving_edits, TimelineGraphOrigin, TimelineGraphValue,
+    TrackOutputState,
 };
 use superi_timeline::edit_state::{SelectionExpansion, SelectionUpdate};
 use superi_timeline::model::{
@@ -356,6 +357,43 @@ fn nonprocessing_authoring_state_does_not_change_compiled_graph_state() {
     assert_eq!(after.project_revision(), 1);
     assert_eq!(before.index(), after.index());
     assert_eq!(before.snapshot(), after.snapshot());
+}
+
+#[test]
+fn output_controls_compile_separately_from_nonprocessing_track_intent() {
+    let mut project = project_fixture();
+    let before = compile_timeline(&project, ROOT).unwrap();
+    assert_eq!(
+        parameter_value(
+            &before,
+            TimelineGraphOrigin::Track(VIDEO_TRACK),
+            "track-output-state",
+        ),
+        TimelineGraphValue::TrackOutputState(TrackOutputState::new(true, false, false))
+    );
+
+    project
+        .edit(0, |draft| {
+            let timeline = draft.timeline_mut(CHILD)?;
+            timeline.set_track_height(VIDEO_TRACK, 120)?;
+            timeline.set_track_targeted(VIDEO_TRACK, true)?;
+            timeline.set_track_locked(VIDEO_TRACK, true)?;
+            timeline.set_track_sync_locked(VIDEO_TRACK, false)?;
+            timeline.set_track_enabled(VIDEO_TRACK, false)
+        })
+        .unwrap();
+    let after = compile_timeline(&project, ROOT).unwrap();
+
+    assert_eq!(before.index(), after.index());
+    assert_eq!(before.snapshot().graph_id(), after.snapshot().graph_id());
+    assert_eq!(
+        parameter_value(
+            &after,
+            TimelineGraphOrigin::Track(VIDEO_TRACK),
+            "track-output-state",
+        ),
+        TimelineGraphValue::TrackOutputState(TrackOutputState::new(false, false, false))
+    );
 }
 
 #[test]

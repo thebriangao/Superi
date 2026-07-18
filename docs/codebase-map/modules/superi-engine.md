@@ -2,7 +2,7 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 978d3608c992a07255139b50b9e79cb3f60724e457ad67980f6e04cd297077e4
+source_hash: 13fa13a0d3135417ef8acfe928e30f381d95eeda22e862a34e172226d028c5ef
 source_files: 70
 mapped_at_commit: working-tree
 ---
@@ -23,9 +23,10 @@ validation, checkpoint recovery and quarantine, per-node durable state records, 
 timing-matched audio fallback, deterministic project, device, sleep, wake, shutdown, and restart lifecycle,
 bounded logical export job orchestration, classified cross-subsystem failure propagation
 and recovery, shared finite-resource arbitration across decode, GPU, cache, audio, AI, and export
-work, atomic timeline plus clip-mix edits, typed resolution of durable project settings, bounded
-compound project transactions across authored timeline, graph, media, audio, extension, and root
-state, revisioned authored audio automation, bounded process-lifetime extension registration and
+work, atomic timeline plus clip-mix edits, atomic track management with removed-clip audio
+reconciliation, typed resolution of durable project settings, bounded compound project transactions
+across authored timeline, track, graph, media, audio, extension, and root state, revisioned authored
+audio automation, bounded process-lifetime extension registration and
 capability discovery, and
 engine-owned command history over that project surface. An engine-wide typed command dispatcher
 coordinates canonical scenario transactions, lifecycle state changes, failure and recovery control,
@@ -62,7 +63,9 @@ through the existing dispatcher.
   quarantine recovery, prepared process-bridge construction, and per-node project extension records.
 - `open/crates/superi-engine/src/audio_mix.rs`: Applies timeline edit batches and audio clip-mix
   identity reconciliation against cloned subsystem states, publishing both only after timeline and
-  mix revisions, fragment inheritance, replacement transfer, and removal all validate.
+  mix revisions, fragment inheritance, replacement transfer, and removal all validate. It also
+  compares complete clip identity around track batches and releases only controls whose clips
+  disappeared from the project.
 - `open/crates/superi-engine/src/av_sync.rs`: Composes the shared playback clock and A/V scheduler
   into one playback-domain engine owner with an explicit interactive policy, immutable frame
   timing, caller-owned drop readiness, nonblocking hold, present, drop, and recovery outcomes,
@@ -172,9 +175,10 @@ through the existing dispatcher.
   file-backed active database and project recovery catalog, prepare-before-publish restoration, and
   infallible postpublication history replacement.
 - `open/crates/superi-engine/src/project_transaction.rs`: Implements the bounded whole-project
-  transaction vocabulary, one outer project publication, ordered action results, timeline and
-  clip-mix reconciliation, atomic linked-media batch import, extension commands, three-way retained
-  graph preservation, per-action aggregate validation, and complete rollback on any late failure.
+  transaction vocabulary, one outer project publication, ordered action results, timeline edit and
+  track mutation batches, clip-mix reconciliation, atomic linked-media batch import, extension
+  commands, three-way retained graph preservation, per-action aggregate validation, and complete
+  rollback on any late failure.
 - `open/crates/superi-engine/src/proxy_substitution.rs`: Validates exact proxy purpose, source
   fingerprint, source revision, packet integrity, and stream metadata; translates cache quality to
   scheduler quality; consumes deterministic derived selection; lazily opens verified original
@@ -344,8 +348,8 @@ through the existing dispatcher.
 - `open/crates/superi-engine/tests/project_transaction_contract.rs`: Proves one compound transaction
   across root, timeline, graph, media, authored audio, and plugin, effect, and AI extension state,
   one project revision and history entry, retained graph edits, exact save and reopen of authored
-  audio and extensions, adjacent-block audible continuity, undo and redo, late failure rollback,
-  and action bounds.
+  audio and extensions, adjacent-block audible continuity, track controls, populated-track
+  clip-mix cleanup, exact undo and redo restoration, late failure rollback, and action bounds.
 - `open/crates/superi-engine/tests/scenario_contract.rs`: Exact canonical state, atomicity, bounds,
   operation log, reversal proof, bounded oldest-entry eviction, and redo clearing after a successful
   post-undo branch.
@@ -598,15 +602,17 @@ rational arithmetic, and protects seek, scrub, step, resume, and loop-boundary f
 
 `audio_mix` exposes `apply_edit_batch_with_clip_mix` for caller-owned `EditorialProject` and
 `ClipMixState` values, and the narrower `reconcile_clip_mix_edit_batch` for an already validated
-`EditBatchResult`. The combined operation returns the ordinary timeline result only after both
-cloned states validate and publish.
+`EditBatchResult`. `reconcile_removed_track_clip_mix` compares the complete editorial project before
+and after a track batch and removes controls only for clip identities that disappeared. The combined
+operations return only after every participating state validates.
 
 `project_transaction` exposes `CompoundProjectAction`, `CompoundProjectTransaction`,
 `CompoundProjectActionResult`, `CompoundProjectTransactionOutcome`,
 `MAX_COMPOUND_PROJECT_ACTIONS`, and `execute_compound_project_transaction`. One nonempty sequence of
 at most 64 actions can select the root, edit the timeline, mutate a retained graph, execute a media
-or extension command, or mutate authored clip-mix state. Every action validates the unpublished
-aggregate, and the complete sequence publishes exactly once or leaves the document unchanged.
+or extension command, mutate canonical tracks, or mutate authored clip-mix state. Track action
+results retain the exact ordered mutation outcomes. Every action validates the unpublished aggregate,
+and the complete sequence publishes exactly once or leaves the document unchanged.
 
 `lifecycle` exposes `EngineLifecycle` as the single EngineControl owner. Canonical
 `EngineSubsystem` values describe shared state, projects, devices, playback, rendering, and export.
@@ -677,8 +683,9 @@ schema, but never serializes undo or redo stacks or capacity.
 The authored project mutation vocabulary contains all three real project media commands, every
 project extension command, and the compound transaction. The same history owner also records
 project settings transactions as `ProjectSettings` changes through the project-owned validation
-path. Timeline, graph, media, extension, root selection, authored clip-mix, and settings changes all
-enter this history surface and gain no implicit undo stack in their domain crates.
+path. Timeline item edits, track batches, graph, media, extension, root selection, authored
+clip-mix, and settings changes all enter this history surface and gain no implicit undo stack in
+their domain crates.
 
 ### Compound whole-project transactions
 
@@ -688,6 +695,12 @@ batches use `apply_edit_batch_with_clip_mix` so clip identity inheritance, trans
 atomic with editorial changes. Every retained timeline graph is then reconciled with the new
 canonical compilation through the old canonical graph as a three-way merge base, preserving
 nonconflicting parameters and custom topology while rejecting overlaps.
+
+Track batches use the timeline-owned atomic mutation surface. The engine compares the old and new
+project-wide clip sets before aggregate validation and removes only mix controls for clips deleted
+with their containing tracks. Retained graphs use the same three-way reconciliation path, so track
+structure and typed output intent publish with direct graph edits, audio state, history, and the
+outer document revision or all roll back together.
 
 Graph batches use the ordinary checked `GraphTransaction`, media and extension actions reuse their
 project draft command seams, clip-mix batches use the audio-owned revisioned state, and root
@@ -1225,6 +1238,11 @@ delete them. The same mutation batch is revision checked by `superi-audio`; only
 engine replace both caller-owned states. Stable-identity trims, moves, slips, and rolls require no
 audio mutation, so their user intent remains attached without synthesis.
 
+Track deletion reconciles the same audio owner at the aggregate boundary. Only controls whose clip
+identities were present before the track batch and absent from the complete resulting project are
+removed. Surviving clips on every timeline retain exact controls, and project snapshot undo restores
+both the populated track and its authored mix intent.
+
 ## Dependencies and consumers
 
 - `superi-core` supplies errors, identifiers, geometry, exact time and timecode, shared settings,
@@ -1322,8 +1340,8 @@ audio mutation, so their user intent remains attached without synthesis.
   branches exactly.
 - Compound project transactions contain one to 64 ordered nonempty actions, validate after each
   action, publish one project revision and one history entry, and retain no partial action evidence
-  on failure. Timeline reconciliation preserves nonconflicting direct graph edits and rejects
-  overlapping canonical and retained changes.
+  on failure. Timeline edit and track reconciliation preserves nonconflicting direct graph edits and
+  rejects overlapping canonical and retained changes.
 - Extension mutations always delegate to the project-owned revisioned command surface. History,
   compound transactions, dispatch, undo, redo, persistence, and autosave preserve the complete
   opaque record; engine does not reinterpret payload bytes, expand capability grants, infer runtime
@@ -1563,10 +1581,10 @@ audio mutation, so their user intent remains attached without synthesis.
 - Dropping changes scheduling only. It cannot alter graph evaluation, cache identity, decoded
   provenance, color or alpha meaning, authored state, or later render and export inputs.
 - GPU ownership and pool lifetime remain tied to the originating device.
-- Timeline and clip-mix publication is all-or-nothing across both expected revisions and typed edit
-  outcomes. The engine dispatcher can route this kind of future command, but the current public
-  scenario transaction does not make independent project, graph, cache, persistence, and output
-  owners one atomic commit.
+- Timeline item edits, track batches, retained graph reconciliation, and clip-mix publication are
+  all-or-nothing across expected revisions and typed outcomes. Deleting a populated track cannot
+  leave orphaned clip controls, and undo restores the complete project snapshot. Independent cache,
+  runtime playback, and output owners remain outside this authored commit.
 - Lifecycle mutation and publication require EngineControl, while subsystem acquisition and
   teardown occur outside the controller through exact immutable actions. Sleep quiescence and wake
   revalidation follow the same rule.
@@ -1692,11 +1710,12 @@ also prove settings changes enter the shared project history, undo and redo rest
 settings without authored-audio drift, and scenario-only history attachment cannot invoke the
 full-dispatcher settings surface.
 
-Three project-transaction contracts execute timeline, graph, media, clip-mix, plugin, effect, AI
-artifact metadata, and root actions through the real aggregate. They prove one outer revision and
-history unit, retained direct graph parameters, exact authored-audio and extension save and reopen,
-prepared adjacent-block audible continuity, exact undo and redo, late invalid-action rollback with
-unchanged history, and action bounds.
+Five project-transaction contracts execute timeline edits, track batches, graph, media, clip-mix,
+plugin, effect, AI artifact metadata, and root actions through the real aggregate. They prove one
+outer revision and history unit, retained direct graph parameters, exact authored-audio and extension
+save and reopen, prepared adjacent-block audible continuity, track state evidence, populated-track
+mix cleanup, exact undo and redo, late invalid-action rollback with unchanged history, and action
+bounds.
 
 Three editor-state contracts use the full dispatcher to prove missing-project classification, one
 coherent eventless selected revision, unchanged history and event state, explicit recovery,
@@ -1907,8 +1926,9 @@ Its editor-state command captures the same selected project plus cached optional
 observations in one eventless replacement aggregate without polling or bulk runtime payloads. The
 production editing workspace now consumes its canonical timeline document through a strict
 read-only canvas projection and supplements clips from the same aggregate's graph and automation
-owners; all canvas navigation, preview, and shared-selection state is transient and no authored
-mutation returns through this observation path.
+owners; all canvas navigation, preview, and shared-selection state is transient, while authored
+track gestures return through the generic project command, compound transaction, and history
+owners.
 Playback crosses
 one bounded nonblocking bridge to its real domain owner. Logical export state remains in the
 canonical queue behind a type-erased dispatcher controller, while prepared executors receive fresh
@@ -1981,9 +2001,9 @@ runtime bindings. The stable API can inspect and control retained queue state, b
 surface submits prepared work, polls the host runtime, waits, retrieves typed artifacts, or publishes
 files. The derived-media driver
 and resolver are synchronous and caller-owned, and no application or API path invokes them yet.
-Clip-mix reconciliation, extension mutation, and compound project mutation are substantive and now
-entered by the generic public API, its bounded local scripting consumer, and Rust callers, but not
-by the playback controller.
+Track management, clip-mix reconciliation, extension mutation, and compound project mutation are
+substantive and now entered by the generic public API, its durable desktop consumer, bounded local
+scripting consumer, and Rust callers, but not by the playback controller.
 Lifecycle is a production control-plane contract that now names project
 and device boundaries across sleep and wake, but later platform callbacks, additional typed project
 mutation adapters, native device owners, render submission, export
@@ -2023,7 +2043,9 @@ single candidate-history recorded path. Preflight dispatcher event capacity befo
 append exactly one durable record and event for every successful public apply, undo, redo, inspect,
 or no-op, preserve both branches and the log on failure, and restore only through the project-owned
 revision-fenced monotonic seam. Keep compound actions bounded, ordered, validated after each step,
-and published by one outer project edit. Keep extension payloads opaque, preserve project-owned
+and published by one outer project edit. Route track batches through the timeline owner, retained
+graph recompilation through the three-way merge, and removed clip controls through the audio owner
+inside that same candidate. Keep extension payloads opaque, preserve project-owned
 capability, lifecycle, and failure meaning exactly, and never persist derived supervisor readiness
 into authored extension state. Add later command adapters without placing history stacks
 in project, timeline, graph, audio, API, or CLI owners.

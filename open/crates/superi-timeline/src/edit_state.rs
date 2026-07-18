@@ -5,7 +5,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_core::ids::{ClipId, TrackId};
 
-use crate::model::{EditorialObjectId, Track};
+use crate::model::{EditorialObjectId, Track, TrackKind};
+
+/// Default editor lane height used by new and migrated track state.
+pub const DEFAULT_TRACK_HEIGHT: u16 = 72;
+/// Smallest usable editor lane height.
+pub const MIN_TRACK_HEIGHT: u16 = 48;
+/// Largest bounded editor lane height.
+pub const MAX_TRACK_HEIGHT: u16 = 320;
 
 /// How one selection command changes the current selected object set.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -33,16 +40,26 @@ pub enum SelectionExpansion {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TrackEditState {
     track_id: TrackId,
+    height: u16,
     targeted: bool,
+    locked: bool,
     sync_locked: bool,
+    muted: bool,
+    solo: bool,
+    enabled: bool,
 }
 
 impl TrackEditState {
     fn new(track_id: TrackId) -> Self {
         Self {
             track_id,
+            height: DEFAULT_TRACK_HEIGHT,
             targeted: false,
+            locked: false,
             sync_locked: true,
+            muted: false,
+            solo: false,
+            enabled: true,
         }
     }
 
@@ -52,16 +69,46 @@ impl TrackEditState {
         self.track_id
     }
 
+    /// Returns the bounded editor lane height in logical pixels.
+    #[must_use]
+    pub const fn height(self) -> u16 {
+        self.height
+    }
+
     /// Returns whether commands currently target this track.
     #[must_use]
     pub const fn targeted(self) -> bool {
         self.targeted
     }
 
+    /// Returns whether authored item changes are prevented on this track.
+    #[must_use]
+    pub const fn locked(self) -> bool {
+        self.locked
+    }
+
     /// Returns whether ripple-style changes on other tracks keep this track synchronized.
     #[must_use]
     pub const fn sync_locked(self) -> bool {
         self.sync_locked
+    }
+
+    /// Returns whether this audio track is suppressed from output.
+    #[must_use]
+    pub const fn muted(self) -> bool {
+        self.muted
+    }
+
+    /// Returns whether this audio track is isolated from nonsolo audio tracks.
+    #[must_use]
+    pub const fn solo(self) -> bool {
+        self.solo
+    }
+
+    /// Returns whether this track contributes to timeline output.
+    #[must_use]
+    pub const fn enabled(self) -> bool {
+        self.enabled
     }
 }
 
@@ -168,6 +215,26 @@ impl TimelineEditState {
         Ok(())
     }
 
+    pub(crate) fn set_track_height(&mut self, track_id: TrackId, height: u16) -> Result<()> {
+        if !(MIN_TRACK_HEIGHT..=MAX_TRACK_HEIGHT).contains(&height) {
+            return Err(invalid(
+                "set_track_height",
+                format!(
+                    "track height must be between {MIN_TRACK_HEIGHT} and {MAX_TRACK_HEIGHT} logical pixels"
+                ),
+            ));
+        }
+        let state = self.track_state_mut("set_track_height", track_id)?;
+        state.height = height;
+        Ok(())
+    }
+
+    pub(crate) fn set_track_locked(&mut self, track_id: TrackId, locked: bool) -> Result<()> {
+        let state = self.track_state_mut("set_track_locked", track_id)?;
+        state.locked = locked;
+        Ok(())
+    }
+
     pub(crate) fn set_track_sync_locked(
         &mut self,
         track_id: TrackId,
@@ -183,6 +250,39 @@ impl TimelineEditState {
         })?;
         state.sync_locked = sync_locked;
         Ok(())
+    }
+
+    pub(crate) fn set_track_muted(&mut self, track_id: TrackId, muted: bool) -> Result<()> {
+        let state = self.track_state_mut("set_track_muted", track_id)?;
+        state.muted = muted;
+        Ok(())
+    }
+
+    pub(crate) fn set_track_solo(&mut self, track_id: TrackId, solo: bool) -> Result<()> {
+        let state = self.track_state_mut("set_track_solo", track_id)?;
+        state.solo = solo;
+        Ok(())
+    }
+
+    pub(crate) fn set_track_enabled(&mut self, track_id: TrackId, enabled: bool) -> Result<()> {
+        let state = self.track_state_mut("set_track_enabled", track_id)?;
+        state.enabled = enabled;
+        Ok(())
+    }
+
+    fn track_state_mut(
+        &mut self,
+        operation: &'static str,
+        track_id: TrackId,
+    ) -> Result<&mut TrackEditState> {
+        self.track_states.get_mut(&track_id).ok_or_else(|| {
+            not_found(
+                operation,
+                "editorial track was not found",
+                "track",
+                track_id,
+            )
+        })
     }
 
     pub(crate) fn update_selection<I>(
@@ -308,6 +408,24 @@ impl TimelineEditState {
                 "validate_edit_state",
                 "track edit state must cover every timeline track exactly once",
             ));
+        }
+        for track in tracks {
+            let state = self
+                .track_states
+                .get(&track.id())
+                .expect("track-state coverage checked");
+            if !(MIN_TRACK_HEIGHT..=MAX_TRACK_HEIGHT).contains(&state.height) {
+                return Err(invalid(
+                    "validate_edit_state",
+                    "track height is outside the supported editor lane bounds",
+                ));
+            }
+            if track.kind() != TrackKind::Audio && (state.muted || state.solo) {
+                return Err(invalid(
+                    "validate_edit_state",
+                    "mute and solo state is supported only for audio tracks",
+                ));
+            }
         }
         if self
             .selected_objects

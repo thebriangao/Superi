@@ -1,4 +1,5 @@
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use superi_core::diagnostics::FiniteF64;
 use superi_core::error::ErrorCategory;
 use superi_core::ids::{
@@ -42,6 +43,16 @@ const SOURCE_CLIP_B: ClipId = ClipId::from_raw(31);
 const TARGET_CLIP: ClipId = ClipId::from_raw(32);
 const ANGLE_A: MulticamAngleId = MulticamAngleId::from_raw(40);
 const ANGLE_B: MulticamAngleId = MulticamAngleId::from_raw(41);
+
+fn previous_payload_json(project: &EditorialProject) -> String {
+    let current = String::from_utf8(serialize_timeline_state(project).unwrap()).unwrap();
+    let payload_start = current.find("\"payload\":").unwrap() + "\"payload\":".len();
+    let payload = &current[payload_start..current.len() - 1];
+    payload
+        .replace(",\"height\":72", "")
+        .replace(",\"locked\":false", "")
+        .replace(",\"muted\":false,\"solo\":false,\"enabled\":true", "")
+}
 
 fn record_rate() -> Timebase {
     FrameRate::FPS_24.timebase()
@@ -284,16 +295,22 @@ fn current_document_is_canonical_and_round_trips_complete_editable_state() {
 #[test]
 fn supported_legacy_state_migrates_without_losing_edit_or_multicam_intent() {
     let project = complete_project();
-    let current = serialize_timeline_state(&project).unwrap();
-    let current: Value = serde_json::from_slice(&current).unwrap();
-    let legacy = serde_json::to_vec(&json!({
-        "format": "superi.timeline",
-        "format_revision": 0,
-        "timeline_state": current["payload"].clone(),
-    }))
-    .unwrap();
+    let previous_payload = previous_payload_json(&project);
+    let digest = format!("{:x}", Sha256::digest(previous_payload.as_bytes()));
+    let previous = format!(
+        "{{\"format\":\"superi.timeline\",\"format_revision\":1,\"primitive_schema_revision\":{},\"payload_sha256\":\"{}\",\"payload\":{}}}",
+        STABLE_PRIMITIVE_SCHEMA_REVISION, digest, previous_payload
+    );
+    let previous = deserialize_timeline_state(previous.as_bytes()).unwrap();
+    assert_eq!(previous.source_format_revision(), 1);
+    assert!(previous.was_migrated());
+    assert_eq!(previous.project(), &project);
 
-    let loaded = deserialize_timeline_state(&legacy).unwrap();
+    let legacy = format!(
+        "{{\"format\":\"superi.timeline\",\"format_revision\":0,\"timeline_state\":{previous_payload}}}"
+    );
+
+    let loaded = deserialize_timeline_state(legacy.as_bytes()).unwrap();
     assert_eq!(loaded.source_format_revision(), 0);
     assert!(loaded.was_migrated());
     assert_eq!(loaded.project(), &project);
@@ -352,8 +369,8 @@ fn interrupted_tampered_future_and_semantically_invalid_state_is_rejected() {
     let future = deserialize_timeline_state(&serde_json::to_vec(&future).unwrap()).unwrap_err();
     assert_eq!(future.category(), ErrorCategory::Unsupported);
 
-    let current: Value = serde_json::from_slice(&current).unwrap();
-    let mut legacy_payload = current["payload"].clone();
+    let previous_payload = previous_payload_json(&project);
+    let mut legacy_payload: Value = serde_json::from_str(&previous_payload).unwrap();
     legacy_payload["timelines"][1]["multicam_clips"][0]["clip_id"] =
         json!(ClipId::from_raw(0x00ff_ffff).to_string());
     let invalid = serde_json::to_vec(&json!({

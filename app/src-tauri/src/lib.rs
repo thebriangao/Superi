@@ -69,13 +69,16 @@ async fn desktop_api_dispatch<R: Runtime>(
     command: DesktopTransportCommand,
     transport: State<'_, DesktopTransportState>,
     engine: State<'_, EngineConnection>,
+    projects: State<'_, DesktopProjectState>,
 ) -> Result<DesktopTransportReply, superi_api::schema::PublicApiError> {
     let transport = transport.inner().clone();
     let engine = engine.inner().clone();
-    let outcome =
-        tauri::async_runtime::spawn_blocking(move || transport.dispatch_blocking(&engine, command))
-            .await
-            .map_err(|_| transport_task_error("join_dispatch"))??;
+    let projects = projects.inner().clone();
+    let outcome = tauri::async_runtime::spawn_blocking(move || {
+        transport.dispatch_blocking(&engine, &projects, command)
+    })
+    .await
+    .map_err(|_| transport_task_error("join_dispatch"))??;
     let (reply, event) = outcome.into_parts();
     if let Some(event) = event {
         app.emit(DESKTOP_API_EVENT, event)

@@ -11,6 +11,7 @@ import {
   type PointerEvent,
   type RefCallback,
   type WheelEvent,
+  type FocusEvent,
 } from "react";
 
 import type {
@@ -23,6 +24,7 @@ import type {
   EditorRationalTime,
   EditorStateSnapshot,
   EditorTimeRange,
+  TimelineTrackMutation,
 } from "./api.ts";
 import {
   generateProjectMediaPreview,
@@ -56,15 +58,19 @@ import {
   timelineSelectionNeighbor,
   timelineSelectionRange,
   timelineSelectionTargets,
+  MAX_TRACK_HEIGHT,
+  MIN_TRACK_HEIGHT,
   type TimelineCanvasItem,
   type TimelineCanvasModel,
+  type TimelineCanvasTrack,
   type TimelineSnapMatch,
   type TimelineSnapRules,
   type TimelineRectangle,
   type TimelineSelectionDirection,
+  type TimelineTrackKind,
 } from "./timeline-workspace.ts";
 
-const HEADER_WIDTH = 184;
+const HEADER_WIDTH = 268;
 const MIN_PIXELS_PER_SECOND = 0.2;
 const MAX_PIXELS_PER_SECOND = 1_600;
 const DEFAULT_PIXELS_PER_SECOND = 96;
@@ -114,6 +120,9 @@ export interface TimelineWorkspaceProps {
   readonly dispatchSelection: (action: ApplicationAction) => void;
   readonly selectionSchemaVersion: string;
   readonly selectionRevision: number;
+  readonly mutateTracks: (
+    mutations: readonly TimelineTrackMutation[],
+  ) => Promise<void>;
 }
 
 export function TimelineWorkspace({
@@ -125,6 +134,7 @@ export function TimelineWorkspace({
   dispatchSelection,
   selectionSchemaVersion,
   selectionRevision,
+  mutateTracks,
 }: TimelineWorkspaceProps) {
   const projection = useMemo(() => {
     try {
@@ -188,6 +198,9 @@ export function TimelineWorkspace({
   const itemRefs = useRef(new Map<string, HTMLElement>());
   const lassoRef = useRef<TimelineLasso | null>(null);
   const lassoPreviewKeysRef = useRef<readonly string[] | null>(null);
+  const [pendingTrackAction, setPendingTrackAction] = useState<string | null>(null);
+  const [trackFailure, setTrackFailure] = useState<string | null>(null);
+  const trackActionPendingRef = useRef(false);
   const pendingScrollRef = useRef<number | null>(null);
   const autoFitIdentityRef = useRef<string | null>(null);
   const viewIdentityRef = useRef(
@@ -296,6 +309,28 @@ export function TimelineWorkspace({
       scrollRef.current.releasePointerCapture(pointerId);
     }
   }, [model?.id, model?.projectId, model?.projectRevision, selectionRevision]);
+
+  const executeTrackMutations = useCallback(
+    async (identity: string, mutations: readonly TimelineTrackMutation[]) => {
+      if (trackActionPendingRef.current) return;
+      trackActionPendingRef.current = true;
+      setPendingTrackAction(identity);
+      setTrackFailure(null);
+      try {
+        await mutateTracks(mutations);
+      } catch (error: unknown) {
+        setTrackFailure(
+          error instanceof Error
+            ? error.message
+            : "The track command could not be completed.",
+        );
+      } finally {
+        trackActionPendingRef.current = false;
+        setPendingTrackAction(null);
+      }
+    },
+    [mutateTracks],
+  );
 
   useLayoutEffect(() => {
     const viewport = scrollRef.current;
@@ -1014,6 +1049,33 @@ export function TimelineWorkspace({
     setSnapMatch(null);
   }, []);
 
+  const addTrack = useCallback(
+    (kind: TimelineTrackKind) => {
+      if (!model) return;
+      const count = model.tracks.filter((track) => track.kind === kind).length + 1;
+      const prefix =
+        kind === "video"
+          ? "V"
+          : kind === "audio"
+            ? "A"
+            : kind === "caption"
+              ? "C"
+              : "D";
+      void executeTrackMutations(`create:${kind}`, [
+        {
+          operation: "create",
+          timeline_id: model.id,
+          track_id: createTrackId(),
+          name: `${prefix}${count}`,
+          kind,
+          position: model.tracks.length,
+          height: 72,
+        },
+      ]);
+    },
+    [executeTrackMutations, model],
+  );
+
   if (!model) {
     return (
       <section className="timeline-workspace timeline-workspace-failed">
@@ -1115,6 +1177,21 @@ export function TimelineWorkspace({
           />
         </div>
         <div className="timeline-toolbar-actions">
+          <div className="timeline-add-track" aria-label="Add timeline track">
+            {(["video", "audio", "caption", "data"] as const).map((kind) => (
+              <button
+                className="secondary timeline-compact-button"
+                type="button"
+                key={kind}
+                disabled={pendingTrackAction !== null}
+                title={`Add ${kind} track`}
+                onClick={() => addTrack(kind)}
+              >
+                +{kind[0]?.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <span className="timeline-toolbar-divider" aria-hidden="true" />
           <button
             className="secondary timeline-compact-button"
             type="button"
@@ -1237,6 +1314,11 @@ export function TimelineWorkspace({
           {clipProjection.reason}
         </p>
       ) : null}
+      {trackFailure ? (
+        <p className="timeline-command-failure" role="alert">
+          {trackFailure}
+        </p>
+      ) : null}
       <div
         className={
           `timeline-scroll${gesture ? " timeline-scroll-gesturing" : ""}` +
@@ -1334,20 +1416,29 @@ export function TimelineWorkspace({
           </div>
           {renderedTracks.map(({ track, visibleItems }) => (
             <Fragment key={track.id}>
-              <header className="timeline-track-header">
-                <div>
-                  <span>{track.kind}</span>
-                  <strong title={track.name}>{track.name}</strong>
-                  <code title={track.id}>{track.id}</code>
-                </div>
-                <div className="timeline-track-state">
-                  {track.targeted ? <span>Target</span> : null}
-                  {track.syncLocked ? <span>Sync</span> : null}
-                </div>
-              </header>
+              <TimelineTrackHeader
+                track={track}
+                timelineId={model.id}
+                canonicalPosition={model.tracks.findIndex(
+                  (candidate) => candidate.id === track.id,
+                )}
+                trackCount={model.tracks.length}
+                pending={pendingTrackAction !== null}
+                execute={executeTrackMutations}
+              />
               <div
-                className={`timeline-lane timeline-lane-${track.kind}`}
+                className={
+                  `timeline-lane timeline-lane-${track.kind}` +
+                  (track.enabled ? "" : " timeline-lane-disabled")
+                }
                 data-track-id={track.id}
+                data-targeted={track.targeted}
+                data-locked={track.locked}
+                data-sync-locked={track.syncLocked}
+                data-muted={track.muted}
+                data-solo={track.solo}
+                data-enabled={track.enabled}
+                style={{ height: track.height }}
                 onPointerDown={beginLasso}
               >
                 {track.items.length === 0 ? (
@@ -1411,6 +1502,298 @@ export function TimelineWorkspace({
         </div>
       </div>
     </section>
+  );
+}
+
+function TimelineTrackHeader({
+  track,
+  timelineId,
+  canonicalPosition,
+  trackCount,
+  pending,
+  execute,
+}: {
+  readonly track: TimelineCanvasTrack;
+  readonly timelineId: string;
+  readonly canonicalPosition: number;
+  readonly trackCount: number;
+  readonly pending: boolean;
+  readonly execute: (
+    identity: string,
+    mutations: readonly TimelineTrackMutation[],
+  ) => Promise<void>;
+}) {
+  const [name, setName] = useState(track.name);
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const cancelNameCommitRef = useRef(false);
+  useEffect(() => setName(track.name), [track.name]);
+
+  const mutate = (suffix: string, mutation: TimelineTrackMutation) => {
+    void execute(`${track.id}:${suffix}`, [mutation]);
+  };
+  const commitName = (_event?: FocusEvent<HTMLInputElement>) => {
+    if (cancelNameCommitRef.current) {
+      cancelNameCommitRef.current = false;
+      setName(track.name);
+      return;
+    }
+    const next = name.trim();
+    if (next.length === 0) {
+      setName(track.name);
+      return;
+    }
+    if (next !== track.name) {
+      mutate("rename", {
+        operation: "rename",
+        timeline_id: timelineId,
+        track_id: track.id,
+        name: next,
+      });
+      setName(track.name);
+    }
+  };
+  const resize = (delta: number) => {
+    const height = clampNumber(
+      track.height + delta,
+      MIN_TRACK_HEIGHT,
+      MAX_TRACK_HEIGHT,
+    );
+    if (height !== track.height) {
+      mutate("height", {
+        operation: "set_height",
+        timeline_id: timelineId,
+        track_id: track.id,
+        height,
+      });
+    }
+  };
+
+  return (
+    <header
+      className="timeline-track-header"
+      style={{ height: track.height }}
+      data-track-id={track.id}
+    >
+      <div className="timeline-track-identity">
+        <span>{track.kind}</span>
+        <input
+          aria-label={`Track name ${track.name}`}
+          value={name}
+          disabled={pending}
+          onChange={(event) => {
+            cancelNameCommitRef.current = false;
+            setName(event.currentTarget.value);
+          }}
+          onBlur={commitName}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              event.currentTarget.blur();
+            } else if (event.key === "Escape") {
+              event.preventDefault();
+              cancelNameCommitRef.current = true;
+              setName(track.name);
+              event.currentTarget.blur();
+            }
+          }}
+        />
+        <code title={track.id}>{track.id}</code>
+      </div>
+      <div className="timeline-track-controls">
+        <button
+          type="button"
+          aria-label={`Move ${track.name} up`}
+          title="Move track up"
+          disabled={pending || canonicalPosition >= trackCount - 1}
+          onClick={() =>
+            mutate("up", {
+              operation: "reorder",
+              timeline_id: timelineId,
+              track_id: track.id,
+              position: canonicalPosition + 1,
+            })
+          }
+        >
+          U
+        </button>
+        <button
+          type="button"
+          aria-label={`Move ${track.name} down`}
+          title="Move track down"
+          disabled={pending || canonicalPosition <= 0}
+          onClick={() =>
+            mutate("down", {
+              operation: "reorder",
+              timeline_id: timelineId,
+              track_id: track.id,
+              position: canonicalPosition - 1,
+            })
+          }
+        >
+          D
+        </button>
+        <button
+          type="button"
+          aria-label={`Decrease ${track.name} height`}
+          title="Decrease track height"
+          disabled={pending || track.height <= MIN_TRACK_HEIGHT}
+          onClick={() => resize(-8)}
+        >
+          -
+        </button>
+        <button
+          type="button"
+          aria-label={`Increase ${track.name} height`}
+          title="Increase track height"
+          disabled={pending || track.height >= MAX_TRACK_HEIGHT}
+          onClick={() => resize(8)}
+        >
+          +
+        </button>
+        <TrackToggle
+          label="T"
+          title="Target track"
+          pressed={track.targeted}
+          disabled={pending}
+          onClick={() =>
+            mutate("target", {
+              operation: "set_targeted",
+              timeline_id: timelineId,
+              track_id: track.id,
+              targeted: !track.targeted,
+            })
+          }
+        />
+        <TrackToggle
+          label="L"
+          title="Lock track edits"
+          pressed={track.locked}
+          disabled={pending}
+          onClick={() =>
+            mutate("lock", {
+              operation: "set_locked",
+              timeline_id: timelineId,
+              track_id: track.id,
+              locked: !track.locked,
+            })
+          }
+        />
+        <TrackToggle
+          label="Y"
+          title="Sync lock track"
+          pressed={track.syncLocked}
+          disabled={pending}
+          onClick={() =>
+            mutate("sync", {
+              operation: "set_sync_locked",
+              timeline_id: timelineId,
+              track_id: track.id,
+              sync_locked: !track.syncLocked,
+            })
+          }
+        />
+        {track.kind === "audio" ? (
+          <>
+            <TrackToggle
+              label="M"
+              title="Mute track"
+              pressed={track.muted}
+              disabled={pending}
+              onClick={() =>
+                mutate("mute", {
+                  operation: "set_muted",
+                  timeline_id: timelineId,
+                  track_id: track.id,
+                  muted: !track.muted,
+                })
+              }
+            />
+            <TrackToggle
+              label="S"
+              title="Solo track"
+              pressed={track.solo}
+              disabled={pending}
+              onClick={() =>
+                mutate("solo", {
+                  operation: "set_solo",
+                  timeline_id: timelineId,
+                  track_id: track.id,
+                  solo: !track.solo,
+                })
+              }
+            />
+          </>
+        ) : null}
+        <TrackToggle
+          label="E"
+          title="Enable track output"
+          pressed={track.enabled}
+          disabled={pending}
+          onClick={() =>
+            mutate("enable", {
+              operation: "set_enabled",
+              timeline_id: timelineId,
+              track_id: track.id,
+              enabled: !track.enabled,
+            })
+          }
+        />
+        <button
+          type="button"
+          className={deleteArmed ? "timeline-track-delete-armed" : ""}
+          aria-label={
+            deleteArmed
+              ? `Confirm delete ${track.name}`
+              : `Delete ${track.name}`
+          }
+          title={deleteArmed ? "Confirm track deletion" : "Delete track"}
+          disabled={pending || track.locked}
+          onBlur={() => setDeleteArmed(false)}
+          onClick={() => {
+            if (!deleteArmed) {
+              setDeleteArmed(true);
+              return;
+            }
+            setDeleteArmed(false);
+            mutate("delete", {
+              operation: "delete",
+              timeline_id: timelineId,
+              track_id: track.id,
+            });
+          }}
+        >
+          {deleteArmed ? "?" : "X"}
+        </button>
+      </div>
+    </header>
+  );
+}
+
+function TrackToggle({
+  label,
+  title,
+  pressed,
+  disabled,
+  onClick,
+}: {
+  readonly label: string;
+  readonly title: string;
+  readonly pressed: boolean;
+  readonly disabled: boolean;
+  readonly onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={title}
+      aria-pressed={pressed}
+      title={title}
+      disabled={disabled}
+      data-active={pressed}
+      onClick={onClick}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -1987,4 +2370,9 @@ function formatScale(value: number): string {
   if (value >= 100) return `${Math.round(value)} px/s`;
   if (value >= 10) return `${value.toFixed(1)} px/s`;
   return `${value.toFixed(2)} px/s`;
+}
+
+function createTrackId(): string {
+  const value = globalThis.crypto.randomUUID().replaceAll("-", "");
+  return `track:${value}`;
 }

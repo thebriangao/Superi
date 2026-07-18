@@ -1,5 +1,6 @@
 import { NativeViewport, SourceMonitor } from "./native-viewport.tsx";
-import type { ReactNode } from "react";
+import { useCallback, type ReactNode } from "react";
+import type { TimelineTrackMutation } from "./api.ts";
 
 import { useApplication } from "./application-context.tsx";
 import {
@@ -9,8 +10,22 @@ import {
 import { TimelineWorkspace } from "./timeline-workspace.tsx";
 
 export function EditingWorkspacePanel() {
-  const { editorProject, refreshEditorProject, dispatch, state } = useApplication();
+  const {
+    editorProject,
+    refreshEditorProject,
+    executeProjectActions,
+    dispatch,
+    state,
+  } = useApplication();
   const snapshot = editorProject.snapshot;
+  const mutateTracks = useCallback(
+    async (mutations: readonly TimelineTrackMutation[]) => {
+      await executeProjectActions([
+        { action: "mutate_tracks", mutations: [...mutations] },
+      ]);
+    },
+    [executeProjectActions],
+  );
   return (
     <WorkspaceSurface
       label="Editing"
@@ -32,6 +47,7 @@ export function EditingWorkspacePanel() {
             dispatchSelection={dispatch}
             selectionSchemaVersion={snapshot.schema_version}
             selectionRevision={snapshot.project.project_revision}
+            mutateTracks={mutateTracks}
           />
           <div className="editor-summary-grid">
             <Metric label="Project" value={snapshot.project.project_id} />

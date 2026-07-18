@@ -2,7 +2,7 @@
 module_id: superi-cli
 source_paths:
   - open/crates/superi-cli
-source_hash: d2726167a826fedbbebaa6fd1d03aa5c8e18aa37a36ce87172c99ca8b19aace4
+source_hash: 32ec9e5dd40380a7ee97a80fc8e29362277de45cd574086dd5721fdcac796d94
 source_files: 10
 mapped_at_commit: working-tree
 ---
@@ -145,7 +145,7 @@ file containing a canonical principal and typed rules; omitting it denies all pr
 The policy file cannot use stdin, preventing two consumers from racing the same byte stream.
 
 Schema discovery success prints exactly one strict `PublicApiSchemaSnapshot` JSON value containing
-catalog schema `1.4.0`, stable primitive revision 1, JSON-RPC `2.0`, 16 commands, 14 queries,
+catalog schema `1.5.0`, stable primitive revision 1, JSON-RPC `2.0`, 16 commands, 14 queries,
 nine events, 13 resources, one error schema, one capability schema, and one permission schema in
 canonical order. Every method carries its permission mode and possible kinds. Discovery starts no
 engine, routes no operation, and owns no transport, permission authority, or registry state.
