@@ -40,6 +40,8 @@ use tauri::State;
 
 const MAX_RECENT_PROJECTS: usize = 32;
 const MAX_IMPORT_SOURCES: usize = 4096;
+const MAX_MEDIA_BINS: usize = 1024;
+const MAX_SMART_COLLECTIONS: usize = 256;
 
 const TIMELINE_RATE_NUMERATOR_KEY: &str = "superi.project.timeline.default_rate_numerator";
 const TIMELINE_RATE_DENOMINATOR_KEY: &str = "superi.project.timeline.default_rate_denominator";
@@ -335,6 +337,426 @@ impl DesktopMediaImportResult {
     pub fn automation_method(&self) -> Option<&str> {
         self.automation_method.as_deref()
     }
+}
+
+/// One replaceable thumbnail presentation derived from source identity and freshness.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ThumbnailPresentation {
+    Source {
+        source_path: String,
+        freshness: String,
+    },
+    ThumbnailFallback {
+        thumbnail_fallback: String,
+        freshness: String,
+    },
+}
+
+fn thumbnail_fallback(kind: DesktopImportedMediaKind, freshness: &str) -> ThumbnailPresentation {
+    let kind = match kind {
+        DesktopImportedMediaKind::File => "file",
+        DesktopImportedMediaKind::ImageSequence => "sequence",
+    };
+    ThumbnailPresentation::ThumbnailFallback {
+        thumbnail_fallback: format!(
+            "{kind}:{}",
+            &freshness[freshness.len().saturating_sub(12)..]
+        ),
+        freshness: freshness.to_owned(),
+    }
+}
+
+fn unavailable_thumbnail() -> ThumbnailPresentation {
+    ThumbnailPresentation::ThumbnailFallback {
+        thumbnail_fallback: "media:unavailable".to_owned(),
+        freshness: "unavailable".to_owned(),
+    }
+}
+
+fn thumbnail_presentation(media: &DesktopImportedMedia) -> ThumbnailPresentation {
+    let source = media.source_paths.first();
+    let is_still = source
+        .and_then(|path| Path::new(path).extension())
+        .and_then(|extension| extension.to_str())
+        .map(|extension| {
+            matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "png" | "jpg" | "jpeg" | "tif" | "tiff"
+            )
+        })
+        .unwrap_or(false);
+    if media.kind == DesktopImportedMediaKind::File && is_still {
+        ThumbnailPresentation::Source {
+            source_path: source.expect("still path checked").clone(),
+            freshness: media.content_fingerprint.clone(),
+        }
+    } else {
+        thumbnail_fallback(media.kind, &media.content_fingerprint)
+    }
+}
+
+/// One imported source projected into every media-browser view.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaBrowserItem {
+    media_id: String,
+    name: String,
+    source_paths: Vec<String>,
+    content_fingerprint: String,
+    kind: DesktopImportedMediaKind,
+    source_count: u64,
+    first_frame: Option<i64>,
+    last_frame: Option<i64>,
+    frame_rate_numerator: Option<u32>,
+    frame_rate_denominator: Option<u32>,
+    bin_id: Option<String>,
+    metadata: BTreeMap<String, String>,
+    #[serde(skip, default = "unavailable_thumbnail")]
+    thumbnail: ThumbnailPresentation,
+}
+
+impl MediaBrowserItem {
+    fn from_imported(media: &DesktopImportedMedia) -> Self {
+        let mut metadata = BTreeMap::new();
+        metadata.insert("media_id".to_owned(), media.media_id.clone());
+        metadata.insert("source_count".to_owned(), media.source_count.to_string());
+        metadata.insert("freshness".to_owned(), media.content_fingerprint.clone());
+        if let Some(first) = media.first_frame {
+            metadata.insert("first_frame".to_owned(), first.to_string());
+        }
+        if let Some(last) = media.last_frame {
+            metadata.insert("last_frame".to_owned(), last.to_string());
+        }
+        if let (Some(numerator), Some(denominator)) =
+            (media.frame_rate_numerator, media.frame_rate_denominator)
+        {
+            metadata.insert(
+                "frame_rate".to_owned(),
+                format!("{numerator}/{denominator}"),
+            );
+        }
+        Self {
+            media_id: media.media_id.clone(),
+            name: media.name.clone(),
+            source_paths: media.source_paths.clone(),
+            content_fingerprint: media.content_fingerprint.clone(),
+            kind: media.kind,
+            source_count: media.source_count,
+            first_frame: media.first_frame,
+            last_frame: media.last_frame,
+            frame_rate_numerator: media.frame_rate_numerator,
+            frame_rate_denominator: media.frame_rate_denominator,
+            bin_id: None,
+            metadata,
+            thumbnail: thumbnail_presentation(media),
+        }
+    }
+
+    fn refresh_thumbnail(&mut self) {
+        let media = DesktopImportedMedia {
+            media_id: self.media_id.clone(),
+            name: self.name.clone(),
+            source_paths: self.source_paths.clone(),
+            content_fingerprint: self.content_fingerprint.clone(),
+            kind: self.kind,
+            source_count: self.source_count,
+            first_frame: self.first_frame,
+            last_frame: self.last_frame,
+            frame_rate_numerator: self.frame_rate_numerator,
+            frame_rate_denominator: self.frame_rate_denominator,
+        };
+        self.thumbnail = thumbnail_presentation(&media);
+    }
+}
+
+/// One stable manual bin or sub-bin.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaBinView {
+    bin_id: String,
+    name: String,
+    parent_id: Option<String>,
+}
+
+/// One saved name predicate and its freshly derived stable membership.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SmartCollectionView {
+    collection_id: String,
+    name: String,
+    name_contains: String,
+    #[serde(skip, default)]
+    media_ids: Vec<String>,
+}
+
+/// Complete authoritative media-browser replacement state for one active project identity.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaLibrarySnapshot {
+    revision: u64,
+    project_revision: u64,
+    items: Vec<MediaBrowserItem>,
+    bins: Vec<MediaBinView>,
+    smart_collections: Vec<SmartCollectionView>,
+}
+
+impl MediaLibrarySnapshot {
+    fn empty(project_revision: u64) -> Self {
+        Self {
+            revision: 0,
+            project_revision,
+            items: Vec::new(),
+            bins: Vec::new(),
+            smart_collections: Vec::new(),
+        }
+    }
+
+    fn refresh_derived(&mut self) {
+        for item in &mut self.items {
+            item.refresh_thumbnail();
+        }
+        for collection in &mut self.smart_collections {
+            let needle = collection.name_contains.to_lowercase();
+            collection.media_ids = self
+                .items
+                .iter()
+                .filter(|item| item.name.to_lowercase().contains(&needle))
+                .map(|item| item.media_id.clone())
+                .collect();
+        }
+    }
+
+    fn retain_import(&mut self, result: &DesktopMediaImportResult) {
+        self.project_revision = result.project_revision;
+        for imported in &result.imported {
+            match self
+                .items
+                .binary_search_by(|item| item.media_id.cmp(&imported.media_id))
+            {
+                Ok(index) => {
+                    let bin_id = self.items[index].bin_id.clone();
+                    self.items[index] = MediaBrowserItem::from_imported(imported);
+                    self.items[index].bin_id = bin_id;
+                }
+                Err(index) => self
+                    .items
+                    .insert(index, MediaBrowserItem::from_imported(imported)),
+            }
+        }
+        if !result.imported.is_empty() {
+            self.revision = self.revision.saturating_add(1);
+        }
+        self.refresh_derived();
+    }
+
+    fn apply(&mut self, update: MediaLibraryUpdate) -> Result<(), DesktopProjectFailure> {
+        if update.expected_project_revision != self.project_revision
+            || update.expected_library_revision != self.revision
+        {
+            return Err(user_correctable(
+                "media_library_revision_stale",
+                "Media library changed",
+                "Refresh the media library and try again.",
+            ));
+        }
+        let mut candidate = self.clone();
+        candidate.apply_mutation(update.mutation)?;
+        candidate.validate()?;
+        candidate.revision = candidate.revision.checked_add(1).ok_or_else(|| {
+            DesktopProjectFailure::new(
+                DesktopProjectFailureClass::Terminal,
+                "media_library_revision_exhausted",
+                "Media library cannot continue",
+                "Restart Superi before continuing.",
+            )
+        })?;
+        candidate.refresh_derived();
+        *self = candidate;
+        Ok(())
+    }
+
+    fn apply_mutation(
+        &mut self,
+        mutation: MediaLibraryMutation,
+    ) -> Result<(), DesktopProjectFailure> {
+        match mutation {
+            MediaLibraryMutation::CreateBin {
+                bin_id,
+                name,
+                parent_id,
+            } => {
+                require_media_text("bin_id", &bin_id)?;
+                require_media_text("bin_name", &name)?;
+                if self.bins.len() >= MAX_MEDIA_BINS {
+                    return Err(media_library_invalid("Media bin limit reached"));
+                }
+                if self.bins.iter().any(|bin| bin.bin_id == bin_id) {
+                    return Err(media_library_invalid("Media bin identity already exists"));
+                }
+                if let Some(parent) = &parent_id {
+                    if !self.bins.iter().any(|bin| &bin.bin_id == parent) {
+                        return Err(media_library_invalid("Parent media bin was not found"));
+                    }
+                }
+                self.bins.push(MediaBinView {
+                    bin_id,
+                    name,
+                    parent_id,
+                });
+                self.bins
+                    .sort_by(|left, right| left.bin_id.cmp(&right.bin_id));
+            }
+            MediaLibraryMutation::MoveMedia { media_id, bin_id } => {
+                if let Some(target) = &bin_id {
+                    if !self.bins.iter().any(|bin| &bin.bin_id == target) {
+                        return Err(media_library_invalid("Target media bin was not found"));
+                    }
+                }
+                let item = self
+                    .items
+                    .iter_mut()
+                    .find(|item| item.media_id == media_id)
+                    .ok_or_else(|| media_library_invalid("Imported media was not found"))?;
+                item.bin_id = bin_id;
+            }
+            MediaLibraryMutation::RemoveBin { bin_id } => {
+                if self
+                    .bins
+                    .iter()
+                    .any(|bin| bin.parent_id.as_deref() == Some(&bin_id))
+                {
+                    return Err(media_library_invalid("Remove child bins first"));
+                }
+                let before = self.bins.len();
+                self.bins.retain(|bin| bin.bin_id != bin_id);
+                if self.bins.len() == before {
+                    return Err(media_library_invalid("Media bin was not found"));
+                }
+                for item in &mut self.items {
+                    if item.bin_id.as_deref() == Some(&bin_id) {
+                        item.bin_id = None;
+                    }
+                }
+            }
+            MediaLibraryMutation::UpsertSmartCollection {
+                collection_id,
+                name,
+                name_contains,
+            } => {
+                require_media_text("collection_id", &collection_id)?;
+                require_media_text("collection_name", &name)?;
+                require_media_text("name_contains", &name_contains)?;
+                if let Some(collection) = self
+                    .smart_collections
+                    .iter_mut()
+                    .find(|collection| collection.collection_id == collection_id)
+                {
+                    collection.name = name;
+                    collection.name_contains = name_contains;
+                } else {
+                    if self.smart_collections.len() >= MAX_SMART_COLLECTIONS {
+                        return Err(media_library_invalid("Smart collection limit reached"));
+                    }
+                    self.smart_collections.push(SmartCollectionView {
+                        collection_id,
+                        name,
+                        name_contains,
+                        media_ids: Vec::new(),
+                    });
+                    self.smart_collections
+                        .sort_by(|left, right| left.collection_id.cmp(&right.collection_id));
+                }
+            }
+            MediaLibraryMutation::RemoveSmartCollection { collection_id } => {
+                let before = self.smart_collections.len();
+                self.smart_collections
+                    .retain(|collection| collection.collection_id != collection_id);
+                if self.smart_collections.len() == before {
+                    return Err(media_library_invalid("Smart collection was not found"));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate(&self) -> Result<(), DesktopProjectFailure> {
+        for bin in &self.bins {
+            let mut current = bin.parent_id.as_deref();
+            let mut seen = BTreeSet::from([bin.bin_id.as_str()]);
+            while let Some(parent) = current {
+                if !seen.insert(parent) {
+                    return Err(media_library_invalid(
+                        "Media bin hierarchy contains a cycle",
+                    ));
+                }
+                current = self
+                    .bins
+                    .iter()
+                    .find(|candidate| candidate.bin_id == parent)
+                    .and_then(|candidate| candidate.parent_id.as_deref());
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Every C004 media-library mutation. View mode and selection remain client presentation state.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum MediaLibraryMutation {
+    CreateBin {
+        bin_id: String,
+        name: String,
+        parent_id: Option<String>,
+    },
+    MoveMedia {
+        media_id: String,
+        bin_id: Option<String>,
+    },
+    RemoveBin {
+        bin_id: String,
+    },
+    UpsertSmartCollection {
+        collection_id: String,
+        name: String,
+        name_contains: String,
+    },
+    RemoveSmartCollection {
+        collection_id: String,
+    },
+}
+
+/// Revision-fenced update for the active project's authoritative media-browser snapshot.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaLibraryUpdate {
+    pub expected_project_revision: u64,
+    pub expected_library_revision: u64,
+    pub mutation: MediaLibraryMutation,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MediaLibraryStore {
+    projects: BTreeMap<String, MediaLibrarySnapshot>,
+}
+
+fn require_media_text(field: &'static str, value: &str) -> Result<(), DesktopProjectFailure> {
+    if value.trim().is_empty() || value.chars().any(char::is_control) {
+        return Err(
+            media_library_invalid("Media library text is invalid").with_context("field", field)
+        );
+    }
+    Ok(())
+}
+
+fn media_library_invalid(title: &'static str) -> DesktopProjectFailure {
+    user_correctable(
+        "media_library_invalid",
+        title,
+        "Refresh the media library and try again.",
+    )
 }
 
 /// One opaque recovery candidate projected for user selection.
@@ -1139,8 +1561,22 @@ impl DesktopProjectBackend for LocalProjectBackend {
 }
 
 /// Tauri-managed concrete project lifecycle state.
-#[derive(Clone, Default)]
-pub struct DesktopProjectState(Arc<Mutex<Option<DesktopProjectLifecycle<LocalProjectBackend>>>>);
+#[derive(Clone)]
+pub struct DesktopProjectState {
+    lifecycle: Arc<Mutex<Option<DesktopProjectLifecycle<LocalProjectBackend>>>>,
+    media_libraries: Arc<Mutex<MediaLibraryStore>>,
+    media_library_path: Arc<Mutex<Option<PathBuf>>>,
+}
+
+impl Default for DesktopProjectState {
+    fn default() -> Self {
+        Self {
+            lifecycle: Arc::new(Mutex::new(None)),
+            media_libraries: Arc::new(Mutex::new(MediaLibraryStore::default())),
+            media_library_path: Arc::new(Mutex::new(None)),
+        }
+    }
+}
 
 impl DesktopProjectState {
     pub fn initialize(&self, recovery_root: PathBuf) -> Result<(), DesktopProjectFailure> {
@@ -1155,8 +1591,28 @@ impl DesktopProjectState {
                 ),
             )
         })?;
+        let media_library_path = recovery_root.join("media-library-views.json");
+        let mut store = if media_library_path.exists() {
+            let bytes = std::fs::read(&media_library_path)
+                .map_err(|source| media_library_store_failure("read", source))?;
+            serde_json::from_slice::<MediaLibraryStore>(&bytes).map_err(|_| {
+                DesktopProjectFailure::new(
+                    DesktopProjectFailureClass::Degraded,
+                    "media_library_store_invalid",
+                    "Media library presentation could not be restored",
+                    "Reopen the project and rebuild its media organization.",
+                )
+            })?
+        } else {
+            MediaLibraryStore::default()
+        };
+        for library in store.projects.values_mut() {
+            library.refresh_derived();
+        }
         let lifecycle = DesktopProjectLifecycle::new(LocalProjectBackend::new(recovery_root), 12)?;
         *self.lock("initialize")? = Some(lifecycle);
+        *self.media_library_lock("initialize")? = store;
+        *self.media_library_path_lock("initialize")? = Some(media_library_path);
         Ok(())
     }
 
@@ -1171,10 +1627,13 @@ impl DesktopProjectState {
         &self,
         command: DesktopProjectCommand,
     ) -> Result<DesktopProjectSnapshot, DesktopProjectFailure> {
-        self.lock("execute")?
+        let snapshot = self
+            .lock("execute")?
             .as_mut()
             .ok_or_else(not_initialized)?
-            .execute(command)
+            .execute(command)?;
+        self.activate_media_library(&snapshot)?;
+        Ok(snapshot)
     }
 
     pub fn settings(&self) -> Result<DesktopProjectSettings, DesktopProjectFailure> {
@@ -1188,20 +1647,149 @@ impl DesktopProjectState {
         &self,
         update: DesktopProjectSettingsUpdate,
     ) -> Result<DesktopProjectSettings, DesktopProjectFailure> {
-        self.lock("update_settings")?
+        let settings = self
+            .lock("update_settings")?
             .as_mut()
             .ok_or_else(not_initialized)?
-            .update_settings(update)
+            .update_settings(update)?;
+        self.sync_active_project_revision(settings.project_revision())?;
+        Ok(settings)
     }
 
     pub fn import_media(
         &self,
         request: DesktopMediaImportRequest,
     ) -> Result<DesktopMediaImportResult, DesktopProjectFailure> {
-        self.lock("import_media")?
-            .as_mut()
+        let (result, project_id) = {
+            let mut lifecycle = self.lock("import_media")?;
+            let lifecycle = lifecycle.as_mut().ok_or_else(not_initialized)?;
+            let result = lifecycle.import_media(request)?;
+            let project_id = lifecycle
+                .snapshot()
+                .active()
+                .ok_or_else(not_initialized)?
+                .project_id()
+                .to_owned();
+            (result, project_id)
+        };
+        {
+            let mut store = self.media_library_lock("import_media")?;
+            store
+                .projects
+                .entry(project_id)
+                .or_insert_with(|| MediaLibrarySnapshot::empty(result.project_revision()))
+                .retain_import(&result);
+        }
+        self.persist_media_libraries()?;
+        Ok(result)
+    }
+
+    pub fn media_library(&self) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+        let (project_id, project_revision) = self.active_project_identity("media_library")?;
+        let mut store = self.media_library_lock("media_library")?;
+        let library = store
+            .projects
+            .entry(project_id)
+            .or_insert_with(|| MediaLibrarySnapshot::empty(project_revision));
+        library.project_revision = project_revision;
+        library.refresh_derived();
+        Ok(library.clone())
+    }
+
+    pub fn mutate_media_library(
+        &self,
+        update: MediaLibraryUpdate,
+    ) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+        let (project_id, project_revision) =
+            self.active_project_identity("mutate_media_library")?;
+        let snapshot = {
+            let mut store = self.media_library_lock("mutate_media_library")?;
+            let library = store
+                .projects
+                .entry(project_id)
+                .or_insert_with(|| MediaLibrarySnapshot::empty(project_revision));
+            library.project_revision = project_revision;
+            library.apply(update)?;
+            library.clone()
+        };
+        self.persist_media_libraries()?;
+        Ok(snapshot)
+    }
+
+    fn activate_media_library(
+        &self,
+        snapshot: &DesktopProjectSnapshot,
+    ) -> Result<(), DesktopProjectFailure> {
+        if let Some(active) = snapshot.active() {
+            let mut store = self.media_library_lock("activate_media_library")?;
+            let library = store
+                .projects
+                .entry(active.project_id().to_owned())
+                .or_insert_with(|| MediaLibrarySnapshot::empty(active.project_revision()));
+            library.project_revision = active.project_revision();
+            library.refresh_derived();
+            drop(store);
+            self.persist_media_libraries()?;
+        }
+        Ok(())
+    }
+
+    fn sync_active_project_revision(
+        &self,
+        project_revision: u64,
+    ) -> Result<(), DesktopProjectFailure> {
+        let (project_id, _) = self.active_project_identity("sync_media_library")?;
+        let mut store = self.media_library_lock("sync_media_library")?;
+        store
+            .projects
+            .entry(project_id)
+            .or_insert_with(|| MediaLibrarySnapshot::empty(project_revision))
+            .project_revision = project_revision;
+        drop(store);
+        self.persist_media_libraries()
+    }
+
+    fn active_project_identity(
+        &self,
+        operation: &'static str,
+    ) -> Result<(String, u64), DesktopProjectFailure> {
+        let lifecycle = self.lock(operation)?;
+        let active = lifecycle
+            .as_ref()
             .ok_or_else(not_initialized)?
-            .import_media(request)
+            .snapshot()
+            .active()
+            .ok_or_else(|| {
+                user_correctable(
+                    "project_not_open",
+                    "No project is open",
+                    "Create or open a project before continuing.",
+                )
+            })?;
+        Ok((active.project_id().to_owned(), active.project_revision()))
+    }
+
+    fn persist_media_libraries(&self) -> Result<(), DesktopProjectFailure> {
+        let path = self
+            .media_library_path_lock("persist_media_library")?
+            .clone()
+            .ok_or_else(not_initialized)?;
+        let bytes = {
+            let store = self.media_library_lock("persist_media_library")?;
+            serde_json::to_vec_pretty(&*store).map_err(|_| {
+                DesktopProjectFailure::new(
+                    DesktopProjectFailureClass::Terminal,
+                    "media_library_store_serialize_failed",
+                    "Media library could not be saved",
+                    "Restart Superi before continuing.",
+                )
+            })?
+        };
+        let temporary = path.with_extension("json.tmp");
+        std::fs::write(&temporary, bytes)
+            .map_err(|source| media_library_store_failure("write", source))?;
+        std::fs::rename(&temporary, &path)
+            .map_err(|source| media_library_store_failure("publish", source))
     }
 
     fn lock(
@@ -1211,7 +1799,7 @@ impl DesktopProjectState {
         std::sync::MutexGuard<'_, Option<DesktopProjectLifecycle<LocalProjectBackend>>>,
         DesktopProjectFailure,
     > {
-        self.0.lock().map_err(|_| {
+        self.lifecycle.lock().map_err(|_| {
             DesktopProjectFailure::new(
                 DesktopProjectFailureClass::Terminal,
                 "project_lifecycle_poisoned",
@@ -1221,6 +1809,51 @@ impl DesktopProjectState {
             .with_context("operation", operation)
         })
     }
+
+    fn media_library_lock(
+        &self,
+        operation: &'static str,
+    ) -> Result<std::sync::MutexGuard<'_, MediaLibraryStore>, DesktopProjectFailure> {
+        self.media_libraries.lock().map_err(|_| {
+            DesktopProjectFailure::new(
+                DesktopProjectFailureClass::Terminal,
+                "media_library_poisoned",
+                "Media library cannot continue",
+                "Restart Superi before continuing.",
+            )
+            .with_context("operation", operation)
+        })
+    }
+
+    fn media_library_path_lock(
+        &self,
+        operation: &'static str,
+    ) -> Result<std::sync::MutexGuard<'_, Option<PathBuf>>, DesktopProjectFailure> {
+        self.media_library_path.lock().map_err(|_| {
+            DesktopProjectFailure::new(
+                DesktopProjectFailureClass::Terminal,
+                "media_library_path_poisoned",
+                "Media library cannot continue",
+                "Restart Superi before continuing.",
+            )
+            .with_context("operation", operation)
+        })
+    }
+}
+
+fn media_library_store_failure(
+    operation: &'static str,
+    source: std::io::Error,
+) -> DesktopProjectFailure {
+    safe_failure(
+        operation,
+        Error::with_source(
+            ErrorCategory::Unavailable,
+            Recoverability::Retryable,
+            "media library presentation could not be saved",
+            source,
+        ),
+    )
 }
 
 #[tauri::command]
@@ -1279,6 +1912,27 @@ pub async fn desktop_project_media_import(
     tauri::async_runtime::spawn_blocking(move || state.import_media(request))
         .await
         .map_err(|_| project_task_failed("import_media"))?
+}
+
+#[tauri::command]
+pub async fn project_media_library(
+    state: State<'_, DesktopProjectState>,
+) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.media_library())
+        .await
+        .map_err(|_| project_task_failed("media_library"))?
+}
+
+#[tauri::command]
+pub async fn mutate_project_media_library(
+    update: MediaLibraryUpdate,
+    state: State<'_, DesktopProjectState>,
+) -> Result<MediaLibrarySnapshot, DesktopProjectFailure> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.mutate_media_library(update))
+        .await
+        .map_err(|_| project_task_failed("mutate_media_library"))?
 }
 
 /// Closed desktop command set for project lifecycle behavior only.

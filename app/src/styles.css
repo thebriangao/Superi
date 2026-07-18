@@ -385,6 +385,150 @@ kbd {
   color: #a78e88;
 }
 
+.media-browser {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
+  border-radius: 0.8rem;
+  background: color-mix(in srgb, var(--surface) 92%, var(--ink));
+}
+
+.media-browser-header,
+.media-view-switch,
+.media-browser-layout {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.media-browser-header {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.media-browser-layout {
+  align-items: stretch;
+  margin-top: 0.8rem;
+  min-height: 19rem;
+}
+
+.media-browser-navigation,
+.media-metadata {
+  display: grid;
+  align-content: start;
+  gap: 0.5rem;
+  width: min(15rem, 28%);
+  padding: 0.75rem;
+  border-radius: 0.65rem;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+}
+
+.media-scope {
+  width: 100%;
+  text-align: left;
+}
+
+.media-items {
+  flex: 1;
+  min-width: 0;
+  padding: 0.25rem;
+}
+
+.media-items-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  align-content: start;
+  gap: 0.65rem;
+}
+
+.media-items-list {
+  display: grid;
+  align-content: start;
+  gap: 0.45rem;
+}
+
+.media-item {
+  display: flex;
+  min-width: 0;
+  gap: 0.55rem;
+  padding: 0.55rem;
+  text-align: left;
+}
+
+.media-items-grid .media-item {
+  flex-direction: column;
+}
+
+.media-thumbnail {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
+}
+
+.media-items-list .media-thumbnail {
+  width: 5rem;
+  flex: 0 0 5rem;
+}
+
+.media-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumbnail_fallback {
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  opacity: 0.72;
+}
+
+.media-item-copy {
+  display: grid;
+  min-width: 0;
+}
+
+.media-item-copy strong,
+.media-item-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-metadata dl {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+}
+
+.media-metadata dl div {
+  min-width: 0;
+}
+
+.media-metadata dt {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.media-metadata dd {
+  overflow-wrap: anywhere;
+  margin: 0.1rem 0 0;
+}
+
+@media (max-width: 920px) {
+  .media-browser-layout {
+    flex-direction: column;
+  }
+
+  .media-browser-navigation,
+  .media-metadata {
+    width: auto;
+  }
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

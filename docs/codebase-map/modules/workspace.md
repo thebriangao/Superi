@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 3e67a387d287880c3b15207d24171ad59ad666cf90701721b9e8d8cc0c9e84e7
-source_files: 216
+source_hash: 857ccbb3fe41455defabc0703eb468e0e6a960ac162011eb2c65a7bf1728e54b
+source_files: 218
 mapped_at_commit: working-tree
 ---
 
@@ -423,6 +423,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W03.C003.md`: Durable implementation evidence for atomic media import,
   deterministic folder and image-sequence discovery, picker and drag/drop consumers, stable public
   command/event/automation parity, durable reopen, and duplicate no-op behavior.
+- `docs/checkpoints/P3.W03.C004.md`: Durable implementation evidence for project-identity bins,
+  sub-bins, list and grid browsing, transparent derived thumbnails, read-only metadata, and saved
+  smart collections without absorbing later relink, proxy, metadata-editing, or search ownership.
 
 ### Production desktop application
 
@@ -459,18 +462,21 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   application framework while retaining the system shell, shared selection, lifecycle controls,
   generated validation request, engine-introspection state, and the production project lifecycle
   consumer for create, open, close, save, save-as, recent, recovery, compact project-settings
-  editing, native media picking, recursive folder selection, and native drag/drop import.
+  editing, native media picking, recursive folder selection, native drag/drop import, hierarchical
+  bins, smart collections, list and grid browsing, deterministic thumbnail fallback, and read-only
+  media metadata inspection.
 - `app/src/lifecycle.ts`: Defines the exact shell-local serialized lifecycle contract and typed
   asynchronous wrappers for the two Tauri lifecycle commands without importing engine bindings.
-- `app/src/project-lifecycle.ts`: Defines strict shell-local project lifecycle, settings, and media
-  import DTOs plus typed wrappers for the five Tauri project commands.
+- `app/src/project-lifecycle.ts`: Defines strict shell-local project lifecycle, settings, media
+  import, media-library snapshot, derived-thumbnail, bin, and smart-collection DTOs plus typed
+  wrappers for the lifecycle and media-library Tauri commands.
 - `app/src/main.tsx`: Constructs one process-lifetime `DesktopSuperiTransport`, injects it through
   the generated API provider, disposes it at unload, and mounts the React application under strict
   mode.
 - `app/src/styles.css`: Defines the responsive, accessible application frame, route rail, panel
   surfaces, professional workspace data views, exact audio route and continuity presentation,
-  shared selection, lifecycle controls, engine API status presentation, and responsive 16:9 native
-  viewer reservations.
+  shared selection, lifecycle controls, media-browser list and grid layouts, thumbnail fallbacks,
+  metadata details, engine API status presentation, and responsive 16:9 native viewer reservations.
 - `app/src/transport.ts`: Implements the concrete generated `SuperiTransport` through one injected
   or Tauri-backed invoke/listen host, generation-scoped request identities, ordered event replay,
   stale and duplicate rejection, reconnect, cooperative cancellation, and exact
@@ -535,12 +541,16 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   user-correctable, or terminal actionable failures. It projects and atomically updates the
   project-owned settings snapshot, discovers bounded regular media without following symlinks,
   groups numbered still sequences deterministically at the project frame rate, and delegates one
-  permission-checked import transaction without taking persistence authority.
+  permission-checked import transaction without taking project persistence authority. A separate
+  revision-fenced desktop presentation store follows the active project identity, refreshes items
+  from imported media IDs and freshness, persists bin hierarchy and smart definitions atomically,
+  and regenerates transparent thumbnail and smart-membership derivations on read.
 - `app/src-tauri/src/lib.rs`: Configures the mock and native Tauri builders, retains the linked
   engine process, manages its bounded connection and transport state alongside application
   lifecycle and project-session state, registers lifecycle, project, viewport, and API commands,
-  initializes the recovery root, emits one ordered Tauri event, records nonblocking exit intent,
-  and joins the engine owner after the native application stops.
+  including media-library snapshot and mutation commands, initializes the recovery root, emits one
+  ordered Tauri event, records nonblocking exit intent, and joins the engine owner after the native
+  application stops.
 - `app/src-tauri/src/main.rs`: Starts the native production desktop host.
 - `app/src-tauri/tests/engine_connection_contract.rs`: Proves dedicated EngineControl ownership,
   truthful public validation projection, bounded nonblocking admission, stable connection reuse
@@ -554,6 +564,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/tests/media_import_contract.rs`: Proves picker, drag/drop, recursive folder scan,
   deterministic image-sequence grouping, direct API and automation parity, correlated event
   evidence, durable reopen, and duplicate no-op semantics through the real local project host.
+- `app/src-tauri/tests/media_library_views_contract.rs`: Freezes the authoritative snapshot,
+  revision-fenced mutation, typed bridge, production bins and smart-collection consumer, list and
+  grid controls, transparent freshness-aware thumbnails, deterministic fallback, and exclusion of
+  later proxy and search ownership.
 - `app/src-tauri/tests/project_settings_contract.rs`: Proves default inspection, complete atomic
   settings update, lifecycle revision coherence, durable reopen, and stale-revision rejection
   through the real local project host.
@@ -1624,7 +1638,10 @@ The System panel also consumes one Tauri-owned project lifecycle that durably cr
 saves, rebinds through save-as, closes, reopens recent paths, and restores opaque recovery
 candidates while retaining actionable classified failure context beside the last valid state. It
 now inspects and atomically updates frame-rate, resolution, color, audio sample-rate and channel,
-cache, proxy, and working-folder authority through that same lifecycle.
+cache, proxy, and working-folder authority through that same lifecycle. The same direct consumer
+now organizes C003 media identities into durable hierarchical bins and predicate smart collections,
+switches between list and grid presentation, exposes bounded read-only metadata, and derives
+freshness-aware source thumbnails or deterministic fallbacks without persisting derived media.
 Fresh Cargo metadata expands the member globs to 25
 packages: 19 crates under
 `open/crates/` plus the `superi-fixture-tool`, `superi-dependency-check`,

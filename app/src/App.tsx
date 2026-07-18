@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type ComponentType } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open } from "@tauri-apps/plugin-dialog";
 
@@ -23,6 +24,8 @@ import {
   getDesktopProjectSnapshot,
   getDesktopProjectSettings,
   importDesktopMedia,
+  mutateProjectMediaLibrary,
+  readProjectMediaLibrary,
   updateDesktopProjectSettings,
   type DesktopProjectCommand,
   type DesktopProjectFailure,
@@ -31,6 +34,8 @@ import {
   type DesktopProjectSnapshot,
   type DesktopMediaImportOrigin,
   type DesktopMediaImportResult,
+  type MediaLibraryMutation,
+  type MediaLibrarySnapshot,
 } from "./project-lifecycle";
 import { classifyDesktopTransportError } from "./transport";
 import {
@@ -350,6 +355,18 @@ function SystemPanel() {
   const [mediaImportPending, setMediaImportPending] = useState(false);
   const [mediaImportResult, setMediaImportResult] =
     useState<DesktopMediaImportResult | null>(null);
+  const [mediaLibrary, setMediaLibrary] =
+    useState<MediaLibrarySnapshot | null>(null);
+  const [mediaViewMode, setMediaViewMode] = useState<"list" | "grid">("grid");
+  const [activeBinId, setActiveBinId] = useState<string | null>(null);
+  const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null);
+  const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
+  const [newBinName, setNewBinName] = useState("");
+  const [newBinParent, setNewBinParent] = useState<string | null>(null);
+  const [smartName, setSmartName] = useState("");
+  const [smartNeedle, setSmartNeedle] = useState("");
+  const [thumbnailFailures, setThumbnailFailures] =
+    useState<ReadonlySet<string>>(new Set());
 
   const refresh = useCallback(async () => {
     try {
@@ -408,6 +425,33 @@ function SystemPanel() {
       .then((settings) => {
         if (active) {
           setProjectSettings(settings);
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setProjectFailure(projectFailureFrom(error));
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    projectSnapshot?.active?.path,
+    projectSnapshot?.active?.identity.project_revision,
+  ]);
+
+  useEffect(() => {
+    let active = true;
+    if (!projectSnapshot?.active) {
+      setMediaLibrary(null);
+      return () => {
+        active = false;
+      };
+    }
+    void readProjectMediaLibrary()
+      .then((library) => {
+        if (active) {
+          setMediaLibrary(library);
         }
       })
       .catch((error: unknown) => {
@@ -538,6 +582,7 @@ function SystemPanel() {
         const project = await getDesktopProjectSnapshot();
         setProjectSnapshot(project);
         setProjectFailure(project.failure);
+        setMediaLibrary(await readProjectMediaLibrary());
       } catch (error: unknown) {
         setProjectFailure(projectFailureFrom(error));
       } finally {
@@ -578,6 +623,18 @@ function SystemPanel() {
     }
   };
 
+  const mutateMediaLibrary = async (mutation: MediaLibraryMutation) => {
+    if (mediaLibrary === null) {
+      return;
+    }
+    try {
+      setMediaLibrary(await mutateProjectMediaLibrary(mediaLibrary, mutation));
+      setProjectFailure(null);
+    } catch (error: unknown) {
+      setProjectFailure(projectFailureFrom(error));
+    }
+  };
+
   const createProject = () => {
     const identity = crypto.randomUUID();
     void executeProject({
@@ -598,6 +655,19 @@ function SystemPanel() {
   const phase = snapshot
     ? APPLICATION_LABELS[snapshot.application_phase]
     : "Connecting";
+  const activeCollection = mediaLibrary?.smart_collections.find(
+    (collection) => collection.collection_id === activeCollectionId,
+  );
+  const visibleMedia =
+    mediaLibrary?.items.filter((item) => {
+      if (activeCollection) {
+        return activeCollection.media_ids.includes(item.media_id);
+      }
+      return activeBinId === null || item.bin_id === activeBinId;
+    }) ?? [];
+  const selectedMedia = mediaLibrary?.items.find(
+    (item) => item.media_id === selectedMediaId,
+  );
 
   return (
     <div className="panel-content system-panel" aria-live="polite">
@@ -786,6 +856,207 @@ function SystemPanel() {
             {mediaImportResult.skipped.length}. Project revision{" "}
             {mediaImportResult.project_revision}.
           </p>
+        ) : null}
+
+        {projectSnapshot?.active && mediaLibrary ? (
+          <section className="media-browser" data-testid="media-browser">
+            <header className="media-browser-header">
+              <div>
+                <p className="eyebrow">Project media</p>
+                <h4>Media library</h4>
+              </div>
+              <div className="media-view-switch" aria-label="Media view">
+                <button
+                  type="button"
+                  aria-pressed={mediaViewMode === "list"}
+                  onClick={() => setMediaViewMode("list")}
+                >List</button>
+                <button
+                  type="button"
+                  aria-pressed={mediaViewMode === "grid"}
+                  onClick={() => setMediaViewMode("grid")}
+                >Grid</button>
+              </div>
+            </header>
+
+            <div className="media-browser-layout">
+              <aside className="media-browser-navigation">
+                <h5>Bins</h5>
+                <button
+                  type="button"
+                  className="media-scope"
+                  aria-pressed={activeBinId === null && activeCollectionId === null}
+                  onClick={() => {
+                    setActiveBinId(null);
+                    setActiveCollectionId(null);
+                  }}
+                >All media</button>
+                {mediaLibrary.bins.map((bin) => (
+                  <button
+                    type="button"
+                    className="media-scope"
+                    style={{ paddingInlineStart: bin.parent_id ? "1.5rem" : undefined }}
+                    aria-pressed={activeBinId === bin.bin_id}
+                    key={bin.bin_id}
+                    onClick={() => {
+                      setActiveBinId(bin.bin_id);
+                      setActiveCollectionId(null);
+                    }}
+                  >{bin.name}</button>
+                ))}
+                <label>
+                  Bin name
+                  <input
+                    value={newBinName}
+                    onChange={(event) => setNewBinName(event.currentTarget.value)}
+                  />
+                </label>
+                <label>
+                  Parent bin
+                  <select
+                    value={newBinParent ?? ""}
+                    onChange={(event) =>
+                      setNewBinParent(event.currentTarget.value || null)
+                    }
+                  >
+                    <option value="">Root</option>
+                    {mediaLibrary.bins.map((bin) => (
+                      <option value={bin.bin_id} key={bin.bin_id}>{bin.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  disabled={newBinName.trim().length === 0}
+                  onClick={() => {
+                    void mutateMediaLibrary({
+                      kind: "create_bin",
+                      bin_id: crypto.randomUUID(),
+                      name: newBinName.trim(),
+                      parent_id: newBinParent,
+                    });
+                    setNewBinName("");
+                  }}
+                >Add bin</button>
+
+                <h5>Smart collections</h5>
+                {mediaLibrary.smart_collections.map((collection) => (
+                  <button
+                    type="button"
+                    className="media-scope"
+                    aria-pressed={activeCollectionId === collection.collection_id}
+                    key={collection.collection_id}
+                    onClick={() => {
+                      setActiveCollectionId(collection.collection_id);
+                      setActiveBinId(null);
+                    }}
+                  >{collection.name}</button>
+                ))}
+                <label>
+                  Collection name
+                  <input
+                    value={smartName}
+                    onChange={(event) => setSmartName(event.currentTarget.value)}
+                  />
+                </label>
+                <label>
+                  Name contains
+                  <input
+                    value={smartNeedle}
+                    onChange={(event) => setSmartNeedle(event.currentTarget.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={
+                    smartName.trim().length === 0 || smartNeedle.trim().length === 0
+                  }
+                  onClick={() => {
+                    void mutateMediaLibrary({
+                      kind: "upsert_smart_collection",
+                      collection_id: crypto.randomUUID(),
+                      name: smartName.trim(),
+                      name_contains: smartNeedle.trim(),
+                    });
+                    setSmartName("");
+                    setSmartNeedle("");
+                  }}
+                >Save collection</button>
+              </aside>
+
+              <div className={`media-items media-items-${mediaViewMode}`}>
+                {visibleMedia.map((item) => {
+                  const showSource =
+                    item.thumbnail.kind === "source" &&
+                    !thumbnailFailures.has(item.media_id);
+                  return (
+                    <button
+                      type="button"
+                      className="media-item"
+                      aria-pressed={selectedMediaId === item.media_id}
+                      key={item.media_id}
+                      onClick={() => setSelectedMediaId(item.media_id)}
+                    >
+                      <span className="media-thumbnail">
+                        {showSource && item.thumbnail.kind === "source" ? (
+                          <img
+                            alt=""
+                            src={convertFileSrc(item.thumbnail.source_path)}
+                            onError={() =>
+                              setThumbnailFailures((current) =>
+                                new Set(current).add(item.media_id),
+                              )
+                            }
+                          />
+                        ) : (
+                          <span className="thumbnail_fallback" aria-label="Thumbnail unavailable">
+                            {item.kind === "image_sequence" ? "SEQ" : "MEDIA"}
+                          </span>
+                        )}
+                      </span>
+                      <span className="media-item-copy">
+                        <strong>{item.name}</strong>
+                        <small>{item.kind.replace("_", " ")}</small>
+                      </span>
+                    </button>
+                  );
+                })}
+                {visibleMedia.length === 0 ? (
+                  <p className="explanation">No media in this view.</p>
+                ) : null}
+              </div>
+
+              <aside className="media-metadata">
+                <h5>Metadata</h5>
+                {selectedMedia ? (
+                  <>
+                    <strong>{selectedMedia.name}</strong>
+                    <dl>
+                      {Object.entries(selectedMedia.metadata).map(([key, value]) => (
+                        <div key={key}>
+                          <dt>{key.replaceAll("_", " ")}</dt>
+                          <dd>{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                    <button
+                      type="button"
+                      disabled={activeBinId === null}
+                      onClick={() =>
+                        void mutateMediaLibrary({
+                          kind: "move_media",
+                          media_id: selectedMedia.media_id,
+                          bin_id: activeBinId,
+                        })
+                      }
+                    >Move to active bin</button>
+                  </>
+                ) : (
+                  <p className="explanation">Select media to inspect its current identity.</p>
+                )}
+              </aside>
+            </div>
+          </section>
         ) : null}
 
         <label>
