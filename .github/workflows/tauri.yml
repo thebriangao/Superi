@@ -40,7 +40,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: ci/tauri-smoke/src-tauri
+        working-directory: app/src-tauri
 
     steps:
       - name: Check out repository
@@ -48,6 +48,21 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
+
+      - name: Install declared Node.js version
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: app/.node-version
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install locked frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build production frontend
+        working-directory: app
+        run: npm run build
 
       - name: Install Tauri development libraries
         if: runner.os == 'Linux'
@@ -85,4 +100,4 @@ jobs:
         run: cargo clippy --all-targets --locked -- -D warnings
 
       - name: Compile native Tauri host
-        run: cargo build --locked --bin superi-tauri-smoke
+        run: cargo build --locked --bin superi-desktop

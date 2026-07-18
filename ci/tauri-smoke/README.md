@@ -1,8 +1,8 @@
 # Tauri Rust CI smoke host
 
-This directory is an executable CI contract for the locked Tauri 2 desktop boundary. It is not the
-Superi application and contains no editor state or behavior. The production shell remains Phase 3
-work and will replace this smoke host as soon as its real Rust crate exists.
+This directory is a retained compatibility contract for the locked Tauri 2 desktop boundary. It is
+not the Superi application and contains no editor state or behavior. Blocking native CI now builds
+the production shell in `/app`; this fixture remains available for focused toolchain diagnosis.
 
 The host deliberately exercises two different boundaries:
 
@@ -10,7 +10,7 @@ The host deliberately exercises two different boundaries:
   display server or native webview process.
 - `cargo build` compiles the same builder through Tauri's native `wry` runtime on macOS, Windows,
   and Linux. The CI binary constructs the builder without opening a window. This catches target SDK,
-  linker, WebKitGTK, WebView2, and platform API regressions without pretending to be the Phase 3
+  linker, WebKitGTK, WebView2, and platform API regressions without standing in for the production
   application.
 
 Run the local gates from the repository root:

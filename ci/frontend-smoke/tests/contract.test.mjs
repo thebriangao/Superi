@@ -55,7 +55,7 @@ test("frontend consumes the committed generated public API bindings", () => {
   assert.match(bindings, /export type ProjectCommandLogRecord/);
 });
 
-test("workflow installs the lockfile and runs independent frontend gates", () => {
+test("workflow installs the production app lockfile and runs independent frontend gates", () => {
   const workflow = readFileSync(
     resolve(repositoryRoot, ".github/workflows/frontend.yml"),
     "utf8",
@@ -70,8 +70,10 @@ test("workflow installs the lockfile and runs independent frontend gates", () =>
     workflow,
     /actions\/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020/,
   );
-  assert.match(workflow, /working-directory: ci\/frontend-smoke/);
-  assert.match(workflow, /cache-dependency-path: ci\/frontend-smoke\/package-lock\.json/);
+  assert.match(workflow, /working-directory: app/);
+  assert.match(workflow, /node-version-file: app\/\.node-version/);
+  assert.match(workflow, /cache-dependency-path: app\/package-lock\.json/);
+  assert.doesNotMatch(workflow, /working-directory: ci\/frontend-smoke/);
   assert.match(workflow, /run: npm ci/);
   assert.match(workflow, /run: npm run typecheck/);
   assert.match(workflow, /run: npm run build/);

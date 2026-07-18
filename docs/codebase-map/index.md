@@ -38,7 +38,7 @@ against raw source before changing code.
 | `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline fixture validation, generation, and typed golden verification | Implemented validation library, six generators, seven-command CLI, four golden harnesses, and focused contracts |
 | `tool-superi-test-report` | [module map](modules/tool-superi-test-report.md) | `open/tools/superi-test-report` | Offline structured platform-lane evidence generator | Implemented strict schema, deterministic findings, collision-safe CLI, and focused contracts |
 | `tool-superi-api-bindings` | [module map](modules/tool-superi-api-bindings.md) | `open/tools/superi-api-bindings` | Deterministic committed TypeScript API artifact generator and freshness checker | Implemented pure rendering, idempotent generation, nonmutating freshness checks, and focused contracts |
-| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, workspace configuration, fixtures, generated TypeScript artifact, local scripting and command-recording documentation, frontend consumer, and agent workflows | Active control layer: deterministic checkpoint workflow, contract slice, documented bounded local scripting and durable command recording, and generated public API frontend consumption including typed version negotiation, extension discovery, and command-log inspection delivered; focused playback and elementary-stream export runtime paths exist, while the canonical application slice remains absent |
+| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, production React and Tauri shell, workspace configuration, fixtures, generated TypeScript artifact, retained frontend consumer, and agent workflows | Active control layer: deterministic checkpoint workflow, explicit revisioned application and headless-engine lifecycle, shell-local Tauri commands, contract slice, bounded local scripting, durable command recording, and generated public API frontend consumption are delivered; process launch, production API transport, and editor behavior remain absent |
 
 ## Ownership and repository boundaries
 
@@ -118,6 +118,8 @@ superi-gpu -> superi-core
 
 superi-bench -> superi-graph -> superi-core
 superi-api-bindings -> superi-api
+
+superi-desktop -> superi-concurrency -> superi-core
 ```
 
 `superi-core` is the tier-zero semantic contract and has no Superi dependency. Higher modules must
@@ -169,6 +171,21 @@ state directly.
 ## Public control flow
 
 ### Implemented today
+
+The production desktop lifecycle is implemented without creating a second engine behavior path:
+
+1. `ApplicationLifecycle` wraps the shared `LifecycleCoordinator` and records one explicit
+   application intent plus a monotonic headless-engine generation.
+2. `HeadlessEngineLifecycleParticipant` exposes the exact current signal, acknowledgement, and
+   classified failure seam. Every completion is token fenced, so stale work cannot advance a newer
+   restart or recovery generation.
+3. Tauri manages that single owner and exposes only asynchronous shell-local snapshot and lifecycle
+   request commands. Exit requests record orderly shutdown without blocking the main thread.
+4. React renders the serialized application and engine phases, pending acknowledgement, safe failure,
+   and recovery affordances. It does not import generated public API bindings or own engine commands.
+5. The unattached build reports retryable unavailable startup rather than mocked readiness and still
+   acknowledges shutdown. Adjacent checkpoints may attach the process and public transport through
+   the stable participant seam without replacing application lifecycle ownership.
 
 Media registry construction and capability introspection are implemented as follows:
 
@@ -2219,18 +2236,18 @@ evidence rather than hosted workflow behavior.
 
 The frontend workflow runs on pull requests, pushes to `main`, and manual dispatch using a read-only
 Ubuntu 24.04 job. It installs exact Node.js 24.13.0, uses `npm ci` against the committed lockfile,
-runs strict no-emit TypeScript 5.9.3 checking over the committed generated API and its real browser
-consumer, creates a Vite 7.3.6 production bundle, and verifies the API import, typed maps, client,
-workflow contract, and generated hashed JavaScript entry. Its `ci/frontend-smoke/` consumer is an
-isolated contract, not the deferred React application, live IPC integration, or Tauri desktop shell.
+runs strict no-emit TypeScript 5.9.3 checking over the production React lifecycle client, creates a
+Vite 7.3.6 production bundle, and verifies exact pins, lifecycle ownership boundaries, workflow
+routing, and the generated hashed JavaScript entry. The retained `ci/frontend-smoke/` fixture
+separately proves generated public API binding consumption without standing in for the application.
 
 The Tauri Rust workflow runs on pull requests, pushes to `main`, and manual dispatch across macOS 26
-arm64, macOS 15 Intel, Windows 2025, and Ubuntu 24.04. Its pinned CI-only Tauri 2 host uses one
-generic command configuration for a mock-runtime unit test and the real native wry builder. Every
-blocking lane checks formatting, locked tests, strict all-target Clippy, and locked native binary
-compilation; Linux installs WebKitGTK 4.1 and the documented desktop integration prerequisites.
-This proves the native host toolchain boundary, not the deferred Phase 3 application or hardware
-behavior.
+arm64, macOS 15 Intel, Windows 2025, and Ubuntu 24.04. It builds the production frontend, then uses
+the pinned Tauri 2 application configuration for a mock-runtime host test, explicit lifecycle
+contracts, and the real native wry builder. Every blocking lane checks formatting, locked tests,
+strict all-target Clippy, and locked `superi-desktop` compilation; Linux installs WebKitGTK 4.1 and
+the documented desktop integration prerequisites. This proves the production shell and lifecycle
+boundary, not engine process launch, public API transport, editor behavior, or physical hardware.
 
 The dedicated network-isolated workflow prepares locked Cargo artifacts, checksum-pinned libva 2.22
 and libvpx 1.16 runtimes, and nasm on Ubuntu 24.04 while online. It transfers the private libva

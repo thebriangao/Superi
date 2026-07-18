@@ -42,7 +42,10 @@ test("workflow runs every Rust gate on each native desktop family", () => {
 
   assert.match(workflow, /libwebkit2gtk-4\.1-dev/);
   assert.match(workflow, /libayatana-appindicator3-dev/);
-  assert.match(workflow, /working-directory: ci\/tauri-smoke\/src-tauri/);
+  assert.match(workflow, /working-directory: app\/src-tauri/);
+  assert.match(workflow, /node-version-file: app\/\.node-version/);
+  assert.match(workflow, /working-directory: app\n        run: npm ci/);
+  assert.match(workflow, /working-directory: app\n        run: npm run build/);
   assert.match(workflow, /run: cargo fmt -- --check/);
   assert.match(workflow, /run: cargo test --locked/);
   assert.match(
@@ -51,7 +54,8 @@ test("workflow runs every Rust gate on each native desktop family", () => {
   );
   assert.match(
     workflow,
-    /run: cargo build --locked --bin superi-tauri-smoke/,
+    /run: cargo build --locked --bin superi-desktop/,
   );
+  assert.doesNotMatch(workflow, /working-directory: ci\/tauri-smoke\/src-tauri/);
   assert.doesNotMatch(workflow, /continue-on-error|\|\| true|--if-present/);
 });

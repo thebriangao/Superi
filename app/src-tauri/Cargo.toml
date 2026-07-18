@@ -1,0 +1,25 @@
+[package]
+name = "superi-desktop"
+version = "0.0.0"
+description = "Superi desktop editor"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[lib]
+name = "superi_desktop"
+path = "src/lib.rs"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "superi-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "=2.6.3", features = [] }
+
+[dependencies]
+serde = { version = "=1.0.228", features = ["derive"] }
+superi-concurrency = { path = "../../open/crates/superi-concurrency" }
+superi-core = { path = "../../open/crates/superi-core" }
+tauri = { version = "=2.11.5", default-features = false, features = ["test", "wry"] }

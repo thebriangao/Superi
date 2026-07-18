@@ -23,7 +23,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: ci/frontend-smoke
+        working-directory: app
 
     steps:
       - name: Check out repository
@@ -35,9 +35,9 @@ jobs:
       - name: Install declared Node.js version
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version-file: ci/frontend-smoke/.node-version
+          node-version-file: app/.node-version
           cache: npm
-          cache-dependency-path: ci/frontend-smoke/package-lock.json
+          cache-dependency-path: app/package-lock.json
 
       - name: Record frontend toolchain identity
         run: |
@@ -48,11 +48,11 @@ jobs:
       - name: Install locked frontend dependencies
         run: npm ci
 
-      - name: Typecheck frontend contract
+      - name: Typecheck production frontend
         run: npm run typecheck
 
-      - name: Build production frontend contract
+      - name: Build production frontend
         run: npm run build
 
-      - name: Verify frontend CI contract and bundle
+      - name: Verify application contract and bundle
         run: npm test

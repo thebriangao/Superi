@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Superi">
+  <rect width="512" height="512" rx="112" fill="#10191b"/>
+  <path
+    d="M360 142H218c-48 0-86 38-86 86s38 86 86 86h76c18 0 32 14 32 32s-14 32-32 32H152"
+    fill="none"
+    stroke="#aaddff"
+    stroke-linecap="round"
+    stroke-width="48"
+  />
+</svg>

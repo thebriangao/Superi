@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 146556ee12ac67a701abe0949ecfa65c83eacf4cabadda7a3453d11f9d3610ae
-source_files: 153
+source_hash: 7b52483f2f6a9d47b8e5bc75b2556ba0f53067196af77701454edf4bc50e2be9
+source_files: 181
 mapped_at_commit: working-tree
 ---
 
@@ -11,8 +11,9 @@ mapped_at_commit: working-tree
 
 The `workspace` module owns the repository-level product definition, architectural contracts,
 license and codec policy, build sequencing, operating-system test policy, unsafe-boundary audit,
-Cargo workspace configuration, dependency lock, shared test-fixture contract, and repository-owned
-agent workflows. Runtime implementation under `open/crates/*` and repository utilities under
+the production React and Tauri desktop shell, Cargo workspace configuration, dependency lock,
+shared test-fixture contract, and repository-owned agent workflows. Runtime implementation under
+`open/crates/*` and repository utilities under
 `open/tools/*` belong to their own module maps. This map therefore explains the constraints and
 coordination layer around those modules rather than duplicating their internal APIs.
 
@@ -28,7 +29,7 @@ cannot resolve a material question. Multiple checkpoints still use separate
 Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers but obeys an
 explicit positive user concurrency value. The file is ignored by Git and copied into managed
 worktrees through `.worktreeinclude`, so the mapping script does not include it in this module's
-154-file inventory or source hash. It must still be reread independently before repository work.
+181-file inventory or source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
 ratified architecture, while `open/Cargo.toml` and `open/Cargo.lock` expose the dependency graph
@@ -117,14 +118,15 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `.github/workflows/frontend.yml`: Defines the locked frontend typecheck and production-build gate.
   A read-only Ubuntu 24.04 job installs Node.js 24.13.0 from the repository declaration, restores
   only npm's cache, runs `npm ci`, strict TypeScript checking, a Vite production build, and the
-  generated-bundle contract tests from `ci/frontend-smoke/`.
+  production application contract tests from `app/`.
 - `.github/workflows/network-isolated.yml`: Defines a blocking Ubuntu 24.04 job that prepares locked
   Rust dependencies, checksum-pinned libva 2.22 and libvpx 1.16, nasm, and test artifacts online,
   then enters a distinct Linux network namespace and runs workspace tests, fixture validation, and
   the CLI consumer with Cargo forced offline.
 - `.github/workflows/tauri.yml`: Defines the blocking native Tauri Rust matrix for macOS 26 arm64,
   macOS 15 Intel, Windows 2025, and Ubuntu 24.04. It installs Linux WebKitGTK 4.1 prerequisites and
-  runs locked formatting, mock-runtime tests, strict all-target Clippy, and native wry compilation.
+  builds the production frontend before running locked formatting, mock-runtime and lifecycle tests,
+  strict all-target Clippy, and native `superi-desktop` wry compilation from `app/src-tauri/`.
 - `.gitignore`: Excludes Rust and JavaScript build output, editor and macOS files, local agent law,
   checkpoint plans, Python bytecode and cache directories, browser artifacts, frontend `dist/`, and
   Tauri-generated ACL schemas. In particular, `AGENTS.md`, `BASE_INSTRUCTIONS.md`, and `/plans/`
@@ -138,10 +140,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   Chen, and includes the standard permission, notice-retention, and warranty-disclaimer terms.
 - `README.md`: Gives the public project orientation, product split, graph and GPU model, subsystem
   hierarchy, build commands, vertical slice, phases, invariants, open questions, and claimed current
-  status. It now distinguishes the canonical contract runner from missing production behavior and
-  gives the normalized invocation, locked fixture and slice contributor baseline, same-change stub
-  replacement rule, and physical hardware proof boundary, while broader architecture remains
-  aspirational.
+  status. It identifies the production React and Tauri shell, its explicit headless-engine lifecycle
+  ownership, and the adjacent process, binding, and transport work that remains, while broader
+  editor behavior remains aspirational.
 - `closed/README.md`: Defines `closed/` as a notice for the separately maintained proprietary
   Superi Max tier and states the one-way dependency rule: Max may consume open Superi, while open
   Superi must never import, link, or depend on Max.
@@ -190,6 +191,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P1.W07.C005.md`: Durable implementation evidence for native Tauri Rust CI. It
   records the CI-only host boundary, pinned Tauri versions, red-to-green corrections, focused and
   widening proof, delivery context, and the explicitly deferred Phase 3 application.
+- `docs/checkpoints/P3.W01.C001.md`: Durable implementation evidence for the production React and
+  Tauri shell, explicit application and headless-engine lifecycle ownership, exact participant seam,
+  classified failure and recovery behavior, focused red-to-green proof, delivery context, and
+  adjacent process, generated binding, transport, and editor constraints.
 - `docs/checkpoints/P1.W07.C008.md`: Durable implementation evidence for the open-tree boundary
   scanner. It records the dependency-free tool, canonical and malformed-tree contracts, locked
   workflow integration, isolated Rust verification, delivery context, and remaining static-policy
@@ -386,12 +391,57 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   hosted baseline, same-change production replacement rule, and the boundaries owned by
   P1.W07.C017 through P1.W07.C026.
 
+### Production desktop application
+
+- `app/.node-version`: Pins Node.js 24.13.0 for local and hosted production application gates.
+- `app/index.html`: Supplies the production webview document and React module entry.
+- `app/package-lock.json`: Locks React 19.2.7, Tauri API 2.11.1, Tauri CLI 2.11.4, TypeScript 5.9.3,
+  Vite 7.3.6, the React Vite plug-in 5.2.0, and their transitive frontend dependencies.
+- `app/package.json`: Declares the private production application package, exact toolchain and
+  runtime pins, strict typecheck, Vite build, application contract, and Tauri commands.
+- `app/src/App.tsx`: Renders the responsive lifecycle client with explicit application and engine
+  state, safe failure context, and recovery, restart, and orderly quit controls.
+- `app/src/lifecycle.ts`: Defines the exact shell-local serialized lifecycle contract and typed
+  asynchronous wrappers for the two Tauri lifecycle commands without importing engine bindings.
+- `app/src/main.tsx`: Mounts the React application under strict mode.
+- `app/src/styles.css`: Defines the responsive, accessible lifecycle shell presentation.
+- `app/tests/app-contract.test.mjs`: Verifies exact production pins, lifecycle ownership seams,
+  adjacent checkpoint exclusions, production workflow routing, and the hashed React bundle.
+- `app/tsconfig.json`: Enables strict no-emit TypeScript, isolated modules, and bundler resolution.
+- `app/vite.config.ts`: Configures the React Vite build and fixed Tauri development port.
+- `app/src-tauri/Cargo.lock`: Locks the standalone desktop host together with its path dependencies
+  on the shared concurrency and core contracts.
+- `app/src-tauri/Cargo.toml`: Declares the `superi-desktop` library and binary, exact Tauri pins,
+  stable Rust edition, and downward-only lifecycle dependencies.
+- `app/src-tauri/build.rs`: Runs the standard Tauri build integration.
+- `app/src-tauri/rust-toolchain.toml`: Selects stable Rust with rustfmt and Clippy.
+- `app/src-tauri/tauri.conf.json`: Declares the Superi identity, production frontend, bounded main
+  window, disabled packaging, and explicit cross-platform desktop icons.
+- `app/src-tauri/icons/app-icon.svg`: Retains the editable source for the initial application icon.
+- `app/src-tauri/icons/32x32.png`: Supplies the small desktop PNG icon.
+- `app/src-tauri/icons/128x128.png`: Supplies the standard desktop PNG icon.
+- `app/src-tauri/icons/128x128@2x.png`: Supplies the high-density desktop PNG icon.
+- `app/src-tauri/icons/icon.png`: Supplies Tauri's default Unix desktop icon.
+- `app/src-tauri/icons/icon.ico`: Supplies the Windows desktop icon bundle.
+- `app/src-tauri/icons/icon.icns`: Supplies the macOS desktop icon bundle.
+- `app/src-tauri/src/lifecycle.rs`: Owns explicit application intent, serialized application and
+  engine phases, generation changes, classified safe failures, recovery, restart, shutdown, exact
+  acknowledgement tokens, and the stable headless-engine participant seam.
+- `app/src-tauri/src/lib.rs`: Configures the mock and native Tauri builders, registers lifecycle
+  state and commands, records nonblocking exit intent, and waits off the main thread for orderly
+  participant acknowledgement while immediately re-observing a start signal published by restart
+  or recovery acknowledgement.
+- `app/src-tauri/src/main.rs`: Starts the native production desktop host.
+- `app/src-tauri/tests/lifecycle_contract.rs`: Proves exact startup and shutdown acknowledgement,
+  stale-token rejection, ordered restart, classified recovery, terminal failure, and blocking-safe
+  change observation.
+
 ### Frontend CI contract
 
 - `ci/frontend-smoke/.node-version`: Pins Node.js 24.13.0 for local and hosted frontend gates.
-- `ci/frontend-smoke/README.md`: Defines the CI-only boundary, exact local commands, build-before-test
-  ordering, typed version negotiation and extension discovery consumption, and migration requirement
-  when the real Phase 3 application enters the repository.
+- `ci/frontend-smoke/README.md`: Defines the retained generated-binding compatibility boundary,
+  exact local commands, build-before-test ordering, and the production application's ownership of
+  blocking frontend CI.
 - `ci/frontend-smoke/index.html`: Supplies the minimal browser document and module entry consumed by
   the Vite production build.
 - `ci/frontend-smoke/package-lock.json`: Lockfile version 3 resolution for exact TypeScript 5.9.3,
@@ -407,16 +457,17 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   root, consumes generated command, command-log, negotiation, and AI state examples, and renders the declared
   product, readiness, and independent frontend gates.
 - `ci/frontend-smoke/tests/contract.test.mjs`: Verifies exact scripts and versions, strict compiler
-  settings, immutable and least-privilege workflow wiring, locked installation, mandatory gates,
+  settings, production application workflow routing, locked installation, mandatory gates,
   generated API import, command-log, negotiation, and extension discovery contracts, typed maps,
-  client surface, and the hashed JavaScript entry in the production bundle.
+  client surface, and the hashed JavaScript entry in the retained bundle.
 - `ci/frontend-smoke/tsconfig.json`: Defines strict no-emit TypeScript checking for the browser entry
   with ES2022, DOM, bundler-resolution, isolated-module, and forced-module semantics.
 
 ### Tauri Rust CI contract
 
-- `ci/tauri-smoke/README.md`: Defines the CI-only desktop-host boundary, mock and native runtime
-  proof split, exact local commands, and migration to the future Phase 3 application.
+- `ci/tauri-smoke/README.md`: Defines the retained native toolchain compatibility boundary, mock and
+  native runtime proof split, exact local commands, and the production application's ownership of
+  blocking native CI.
 - `ci/tauri-smoke/frontend/index.html`: Supplies the static asset consumed by Tauri build metadata.
 - `ci/tauri-smoke/src-tauri/Cargo.toml`: Declares exact Tauri 2.11.5 and Tauri Build 2.6.3 versions
   with only the required `test` and `wry` features.
@@ -429,7 +480,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `ci/tauri-smoke/src-tauri/tauri.conf.json`: Declares bounded CI identity, assets, window metadata,
   and disabled bundle generation.
 - `ci/tauri-smoke/tests/contract.test.mjs`: Verifies pins, builder surfaces, workflow security,
-  native runners, Linux prerequisites, and all four mandatory Rust gates.
+  native runners, Linux prerequisites, production application routing, frontend prerequisite, and
+  all four mandatory Rust gates.
 
 ### Cargo workspace and repository configuration
 
@@ -701,20 +753,23 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
   `os-codecs` CLI configuration.
 - `.github/workflows/dependency-policy.yml` is the separate dependency license and source policy
   surface.
-- `.github/workflows/frontend.yml` and `ci/frontend-smoke/` form a third CI surface for locked npm
-  installation, strict TypeScript checking of the committed public API artifact and its real
-  browser consumer, Vite production bundling, and bundle-contract proof. This surface is
-  intentionally not the absent React application or Tauri desktop shell.
+- `.github/workflows/frontend.yml` and `app/` form a third CI surface for locked npm installation,
+  strict TypeScript checking of the production lifecycle client, Vite production bundling, and
+  application-contract proof. `ci/frontend-smoke/` remains a focused generated public API binding
+  consumer rather than application coverage.
 - `.github/workflows/network-isolated.yml` and `open/ci/` form a fourth CI surface. It prepares
   artifacts before isolation, then proves current workspace tests, fixture validation, and the CLI
   consumer run with no non-loopback interface, no IPv4 route, and Cargo offline mode.
 
 Together the five workflows enforce the open-tree boundary, locked hosted Rust builds, dependency
-policy, a locked frontend toolchain contract, and one network-isolated core path. They do not yet
-implement the complete documented feature, malformed-input, GPU, audio, shell, UI, or slice suites.
+policy, the production frontend and native shell gates, and one network-isolated core path. They do
+not yet implement the complete documented feature, malformed-input, GPU, audio, editor UI, or slice
+suites.
 
 The stable public automation protocol described by Phase 0 is owned in `superi-api`, not here. The
-workspace owns only its committed generated TypeScript projection and frontend contract consumer.
+workspace owns the desktop lifecycle shell, its shell-local Tauri commands, the committed generated
+TypeScript projection, and a retained frontend contract consumer. Engine methods and events remain
+public API contracts rather than application-owned behavior.
 Likewise, codec, graph, image, engine, project, timeline, and CLI Rust interfaces live in their crate
 modules even when workspace documents define constraints on them.
 
@@ -886,18 +941,17 @@ the platform crate's required version.
 
 The frontend CI path begins on pull requests, pushes to `main`, or manual dispatch. Its isolated
 Ubuntu 24.04 job installs the exact Node.js 24.13.0 declaration, performs a lockfile-only `npm ci`,
-runs strict no-emit TypeScript checking over the committed API artifact and its browser consumer,
-builds the minimal browser entry with Vite 7.3.6, and then tests workflow wiring, exact binding
-imports and maps, and the generated hashed bundle. It proves the locked frontend toolchain and one
-real generated-contract consumer without creating a second application architecture or claiming
-React, Tauri, live IPC, editorial behavior, native viewport integration, or product UI coverage.
+runs strict no-emit TypeScript checking over the React lifecycle client, builds the production entry
+with Vite 7.3.6, and then tests workflow wiring, lifecycle ownership boundaries, exact pins, and the
+generated hashed bundle. The retained frontend fixture separately proves generated public API
+binding consumption without moving that adjacent integration into the lifecycle shell.
 
 The Tauri Rust CI path begins on pull requests, pushes to `main`, or manual dispatch. Its blocking
-matrix compiles the pinned CI-only host on macOS 26 arm64, macOS 15 Intel, Windows 2025, and Ubuntu
-24.04. Every lane checks formatting, runs the mock-runtime unit test, denies Clippy warnings, and
-compiles the real native wry binary from the lockfile. The binary constructs the command builder
-without launching a window, so the gate proves native SDK and linker compatibility without claiming
-the absent Phase 3 application.
+matrix builds the production frontend and compiles the pinned application host on macOS 26 arm64,
+macOS 15 Intel, Windows 2025, and Ubuntu 24.04. Every lane checks formatting, runs the mock-runtime
+and lifecycle tests, denies Clippy warnings, and compiles the real `superi-desktop` native wry binary
+from the lockfile. The shell owns explicit application and engine lifecycle state while process
+launch, public engine transport, generated binding integration, and editor behavior remain separate.
 
 The network-isolated path begins on pull requests, pushes to `main`, or manual dispatch. It pins
 checkout, disables persisted credentials, installs stable Rust, runs the shared checksum-pinned
@@ -997,7 +1051,8 @@ The workspace module depends on Git for source discovery, change selection, and 
 Python 3 for maps and deterministic checkpoint verification, Cargo and stable Rust for the open
 workspace, Bash and `grep` for the executable policy contract, cargo-deny plus GitHub Actions for
 dependency policy, GitHub-hosted macOS, Windows, and Ubuntu runners for build portability, Node.js
-24.13.0 with npm for the frontend contract, Tauri 2 with native desktop SDKs for the shell contract,
+24.13.0 with npm for the production React application, Tauri 2 with native desktop SDKs for the
+production shell,
 and the Google Docs plus Codex environment described by repository law for checkpoint coordination.
 Project Codex configuration requires GPT-5.6 Sol with max reasoning and defines no custom agent
 profile or project-level agent concurrency settings. The mapping and verification scripts use only the Python standard library; the
@@ -1023,6 +1078,12 @@ edge and enter the EngineControl domain to prove the real dispatcher seam. The s
 uses the engine's narrow feature-gated helper to prove real persistence, integrity, media, autosave,
 and recovery behavior without a direct project dependency. Production API code does not import the
 project owner directly, and no runtime ownership moves into the workspace layer.
+
+The production Tauri host consumes `superi-concurrency::LifecycleCoordinator` and core-owned error
+classification through explicit downward path dependencies. Its React client consumes only two
+shell-local asynchronous lifecycle commands. The exact headless-engine participant is the stable
+consumer seam for the adjacent process owner; no process handle, generated public API binding, engine
+transport, or editor state is owned by this checkpoint.
 
 The documents deliberately point into other modules:
 
@@ -1143,6 +1204,14 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   applicable repository contracts from paths and file kinds. Broad or uncertain work uses `--full`.
   Hosted CI status is not a general completion gate unless the assigned checkpoint explicitly
   requires hosted CI behavior.
+
+- The production application gate installs the exact npm lockfile, reports dependency audit state,
+  runs strict TypeScript checking, builds the hashed React bundle, and verifies pins, workflow
+  routing, and ownership exclusions. The native gate checks Rust formatting, builds the Tauri mock
+  host, and proves startup, exact acknowledgement, shutdown, restart, generation fencing, classified
+  failure, immediate placeholder recovery, terminal behavior, and blocking-safe observation.
+  Retained frontend and Tauri contracts continue to prove generated binding and toolchain
+  compatibility without standing in for the product application.
 
 - Fresh local configuration proof parses `.codex/config.toml` with Python `tomllib`, confirms the
   exact Sol and max values plus the absence of an agent stanza, verifies that no project agent
@@ -1386,8 +1455,14 @@ lane, an unimplemented suite is a gap, and a retry retains its original failure 
 
 ## Current status and risks
 
-The workspace is beyond the original empty scaffold even though the public orientation has not been
-updated consistently. Fresh Cargo metadata expands the member globs to 25 packages: 19 crates under
+The workspace is beyond the original empty scaffold and the public orientation now identifies the
+first production desktop shell. `app/` contains a locked React 19 and Tauri 2 application whose
+single lifecycle owner projects explicit application and headless-engine phases, intent, revision,
+generation, pending acknowledgement, and classified safe failure. The current unattached participant
+truthfully reports a retryable unavailable startup and acknowledges orderly shutdown; engine process
+ownership, generated API binding integration, engine command transport, and editor semantics remain
+adjacent work rather than mocked success. Fresh Cargo metadata expands the member globs to 25
+packages: 19 crates under
 `open/crates/` plus the `superi-fixture-tool`, `superi-dependency-check`,
 `superi-boundary-tool`, `superi-bench`, `superi-test-report`, and `superi-api-bindings` repository
 utilities. The
