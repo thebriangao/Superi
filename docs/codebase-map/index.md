@@ -38,7 +38,7 @@ against raw source before changing code.
 | `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline fixture validation, generation, and typed golden verification | Implemented validation library, six generators, seven-command CLI, four golden harnesses, and focused contracts |
 | `tool-superi-test-report` | [module map](modules/tool-superi-test-report.md) | `open/tools/superi-test-report` | Offline structured platform-lane evidence generator | Implemented strict schema, deterministic findings, collision-safe CLI, and focused contracts |
 | `tool-superi-api-bindings` | [module map](modules/tool-superi-api-bindings.md) | `open/tools/superi-api-bindings` | Deterministic committed TypeScript API artifact generator and freshness checker | Implemented pure rendering, idempotent generation, nonmutating freshness checks, and focused contracts |
-| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, production React and Tauri shell, workspace configuration, fixtures, generated TypeScript artifact, retained frontend consumer, and agent workflows | Active control layer: deterministic checkpoint workflow, explicit revisioned application and headless-engine lifecycle, a linked EngineControl dispatcher, bounded native validation connection, shell-local lifecycle and control-only viewport commands, injected generated `SuperiClient`, thin command/event transport, ordered replay and reconnect, cooperative cancellation, classified public failures, deterministic application routing, transient workspace layout, panel and command registries, immutable shared selection, one public editor-snapshot presentation owner, five professional workspaces, and one direct native GPU editing viewport are delivered; the viewport placement rejects unknown media fields and the React seam excludes encoded-image or readback fallbacks, while broader generated method routing and viewer-specific sources remain separate |
+| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, production React and Tauri shell, workspace configuration, fixtures, generated TypeScript artifact, retained frontend consumer, and agent workflows | Active control layer: deterministic checkpoint workflow, explicit revisioned application and headless-engine lifecycle, a linked EngineControl dispatcher, bounded native validation connection, shell-local lifecycle and control-only viewport commands, injected generated `SuperiClient`, thin command/event transport, ordered replay and reconnect, cooperative cancellation, classified public failures, deterministic application routing, transient workspace layout, panel and command registries, immutable shared selection, one public editor-snapshot presentation owner, five professional workspaces, and source, program, composite, and color native GPU viewers are delivered; one GPU submission owner presents role-addressed canonical RGBA16F results through immutable ACEScg-to-sRGB intent, while strict placement rejects unknown media fields and React excludes encoded-image or readback fallbacks |
 
 ## Ownership and repository boundaries
 
@@ -208,12 +208,13 @@ The production desktop lifecycle is implemented without creating a second engine
 11. The same `ApplicationProvider` retains one last-valid `EditorStateSnapshot` for presentation,
     refreshes it through generated project, audio, and job events, and projects it across five
     registry-backed professional workspaces without taking engine or transport ownership.
-12. The editing workspace reserves one persistent native rectangle and publishes only geometry,
-    scale, visibility, and status through a shell-local command. Tauri owns the native child window,
-    while the sole GPU submission domain configures its surface and presents a managed canonical
-    `Rgba16Float` texture through the reference-derived sRGB presenter without readback. The
-    placement DTO rejects every unknown field, and a focused consumer contract keeps frame bytes,
-    image conversion, blob URLs, pixel readback, and texture handles outside this IPC seam.
+12. Editing reserves source and program native rectangles, compositing reserves composite, and color
+    reserves color; React publishes only role, geometry, scale, visibility, and status through the
+    shell-local command. Tauri owns all four child windows, while the sole GPU submission domain
+    configures their surfaces and presents managed canonical `Rgba16Float` results through one
+    immutable ACEScg-to-sRGB intent without readback. The placement DTO rejects every unknown field,
+    and focused contracts keep frame bytes, image conversion, blob URLs, pixel readback, and texture
+    handles outside this IPC seam while fixing precision, alpha, transform order, and display intent.
 
 Media registry construction and capability introspection are implemented as follows:
 

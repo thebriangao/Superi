@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 7be1eb8a6cb44f76d2888e2f183c343502923a8431e7a8bba07d1556499acebd
-source_files: 206
+source_hash: c0af23cbd2d5f8339f96bef4c8d8a93fa4d82c98a49990ba3fe1a278ce188a27
+source_files: 208
 mapped_at_commit: working-tree
 ---
 
@@ -29,7 +29,7 @@ cannot resolve a material question. Multiple checkpoints still use separate
 Codex-managed worktree tasks. Multi-checkpoint dispatch defaults to three active workers but obeys an
 explicit positive user concurrency value. The file is ignored by Git and copied into managed
 worktrees through `.worktreeinclude`, so the mapping script does not include it in this module's
-206-file inventory or source hash. It must still be reread independently before repository work.
+208-file inventory or source hash. It must still be reread independently before repository work.
 
 The workspace is both policy and live build configuration. The documents define the intended and
 ratified architecture, while `open/Cargo.toml` and `open/Cargo.lock` expose the dependency graph
@@ -413,6 +413,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W02.C002.md`: Durable implementation evidence for the strict control-only
   viewport placement payload, direct native presentation boundary, focused command-seam contract,
   and explicit exclusion of media handles and webview image fallbacks.
+- `docs/checkpoints/P3.W02.C003.md`: Durable implementation evidence for the four native viewer
+  roles, canonical scene-to-display intent, role-aware workspace consumers, and focused proof.
 
 ### Production desktop application
 
@@ -439,11 +441,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   without React, transport, or mutable state ownership.
 - `app/src/editor-workspaces.tsx`: Renders editing, compositing, color, audio, delivery, and shared
   selection panels from the one application-owned public snapshot, including exact sample rates,
-  ordered channels, routes, synchronization observation, continuity evidence, and the one
-  persistent native editing viewport.
-- `app/src/native-viewport.tsx`: Reserves the native output rectangle and publishes only geometry,
-  scale, visibility, and returned status to the shell-local viewport command; it never constructs
-  an encoded image, blob URL, pixel readback, or webview frame path.
+  ordered channels, routes, synchronization observation, continuity evidence, source and program
+  editing viewers, one composite viewer, and one color viewer.
+- `app/src/native-viewport.tsx`: Reserves a role-addressed native output rectangle and publishes only
+  role, geometry, scale, visibility, and returned status to the shell-local viewport command; it
+  never constructs an encoded image, blob URL, pixel readback, or webview frame path.
 - `app/src/App.tsx`: Registers the five professional workspace routes and panels above the delivered
   application framework while retaining the system shell, shared selection, lifecycle controls,
   generated validation request, and engine-introspection state.
@@ -454,8 +456,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   mode.
 - `app/src/styles.css`: Defines the responsive, accessible application frame, route rail, panel
   surfaces, professional workspace data views, exact audio route and continuity presentation,
-  shared selection, lifecycle controls, engine API status presentation, and the 16:9 native
-  viewport reservation.
+  shared selection, lifecycle controls, engine API status presentation, and responsive 16:9 native
+  viewer reservations.
 - `app/src/transport.ts`: Implements the concrete generated `SuperiTransport` through one injected
   or Tauri-backed invoke/listen host, generation-scoped request identities, ordered event replay,
   stale and duplicate rejection, reconnect, cooperative cancellation, and exact
@@ -470,8 +472,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   routing and panel reconciliation, exact public-resource selection, local-first asynchronous API
   command delegation, shortcut normalization, and editable-target safety.
 - `app/tests/editor-workspaces.test.ts`: Verifies exactly five registry-backed professional routes,
-  one existing application/project owner, explicit public editor request identity, and immutable
-  preservation of sample timing, ordered channels, routes, and continuity evidence.
+  one existing application/project owner, exact source, program, composite, and color viewer
+  consumers, explicit public editor request identity, and immutable preservation of sample timing,
+  ordered channels, routes, and continuity evidence.
 - `app/tests/api-bindings.test.mjs`: Verifies the canonical generated re-export, complete typed map
   boundary, concrete provider/bootstrap injection, and real request/subscription forwarding without
   duplicating generated client policy.
@@ -482,10 +485,14 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/vite.config.ts`: Configures the React Vite build and fixed Tauri development port.
 - `app/src-tauri/Cargo.lock`: Locks the standalone desktop host together with its path dependencies
   on the public API, engine, shared concurrency, and core contracts.
-- `app/src-tauri/src/viewport.rs`: Owns the native child window, checked CSS-to-physical placement,
-  shell-local status, dedicated GPU submission thread, managed cleared canonical source texture,
-  direct presentation, and join-before-host-drop lifetime. Its Tauri placement DTO denies unknown
-  fields, so frame payloads, image data, and texture handles cannot enter the native presenter.
+- `app/src-tauri/src/viewport.rs`: Owns four role-addressed native child windows, checked
+  CSS-to-physical placement, per-role status, one dedicated GPU submission thread, managed canonical
+  RGBA16F results, immutable ACEScg-to-sRGB display intent, direct presentation, and
+  join-before-host-drop lifetime. Its Tauri placement DTO denies unknown fields, so frame payloads,
+  image data, and texture handles cannot enter the native presenter.
+- `app/src-tauri/tests/viewer_presentation_contract.rs`: Freezes source, program, composite, and
+  color role order plus canonical precision, alpha, scene meaning, terminal display meaning,
+  transform order, deterministic intent, arbitrary 8K extent, and invalid zero-extent behavior.
 - `app/src-tauri/Cargo.toml`: Declares the `superi-desktop` library and binary, exact Tauri and
   serialization pins, stable Rust edition, and downward-only lifecycle, engine, and public API
   dependencies.

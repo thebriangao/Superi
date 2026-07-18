@@ -28,4 +28,5 @@ superi-concurrency = { path = "../../open/crates/superi-concurrency" }
 superi-core = { path = "../../open/crates/superi-core" }
 superi-engine = { path = "../../open/crates/superi-engine" }
 superi-gpu = { path = "../../open/crates/superi-gpu" }
+superi-image = { path = "../../open/crates/superi-image" }
 tauri = { version = "=2.11.5", default-features = false, features = ["test", "unstable", "wry"] }

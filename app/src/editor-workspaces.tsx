@@ -16,7 +16,10 @@ export function EditingWorkspacePanel() {
       project={editorProject}
       refresh={refreshEditorProject}
     >
-      <NativeViewport />
+      <div className="native-viewer-grid native-viewer-grid-dual">
+        <NativeViewport role="source" label="Source" />
+        <NativeViewport role="program" label="Program" />
+      </div>
       {snapshot ? (
         <>
           <div className="editor-summary-grid">
@@ -100,6 +103,7 @@ export function CompositingWorkspacePanel() {
       project={editorProject}
       refresh={refreshEditorProject}
     >
+      <NativeViewport role="composite" label="Composite" />
       {snapshot ? (
         <>
           <div className="editor-summary-grid">
@@ -150,6 +154,7 @@ export function ColorWorkspacePanel() {
       project={editorProject}
       refresh={refreshEditorProject}
     >
+      <NativeViewport role="color" label="Color" />
       {snapshot ? (
         <>
           <div className="editor-summary-grid">

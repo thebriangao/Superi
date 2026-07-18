@@ -4152,6 +4152,7 @@ dependencies = [
  "superi-core",
  "superi-engine",
  "superi-gpu",
+ "superi-image",
  "tauri",
  "tauri-build",
 ]

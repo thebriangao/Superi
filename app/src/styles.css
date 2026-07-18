@@ -695,6 +695,15 @@ kbd {
   margin-top: 12px;
 }
 
+.native-viewer-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.native-viewer-grid-dual {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .native-viewport {
   width: 100%;
   min-height: 240px;
@@ -772,6 +781,10 @@ kbd {
   .editor-detail-list,
   .audio-route-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .native-viewer-grid-dual {
+    grid-template-columns: 1fr;
   }
 }
 

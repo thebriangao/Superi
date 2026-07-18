@@ -45,6 +45,11 @@ test("five professional workspaces are exact views over the existing application
     workspaces,
     /createContext|useReducer|useState|useSuperiApi|DesktopSuperiTransport|@tauri-apps/,
   );
+  assert.equal((workspaces.match(/<NativeViewport\b/g) ?? []).length, 4);
+  assert.match(workspaces, /<NativeViewport role="source" label="Source" \/>/);
+  assert.match(workspaces, /<NativeViewport role="program" label="Program" \/>/);
+  assert.match(workspaces, /<NativeViewport role="composite" label="Composite" \/>/);
+  assert.match(workspaces, /<NativeViewport role="color" label="Color" \/>/);
   assert.match(packageJson.scripts.test, /editor-workspaces\.test\.ts/);
 });
 

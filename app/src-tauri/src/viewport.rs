@@ -9,21 +9,243 @@ use superi_color::working_space::WorkingSpace;
 use superi_concurrency::threads::{ExecutionDomain, ExecutionDomainThread};
 use superi_core::color_space::ColorSpace;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
+use superi_core::pixel::AlphaMode;
 use superi_gpu::device::{AdapterSelection, DeviceRequest, GpuInstance, InstanceOptions};
 use superi_gpu::resource::GpuResources;
 use superi_gpu::submission::GpuSubmissionQueue;
 use superi_gpu::surface::{NativeViewportSurface, ViewportExtent};
 use superi_gpu::wgpu;
+use superi_image::metadata::{
+    ColorPipelineMetadata, ColorTransformStage, ColorTransformStageKind, ImageColorTags,
+};
 use tauri::window::WindowBuilder;
 use tauri::{App, Manager, PhysicalPosition, PhysicalSize, State, Window, Wry};
 
-const VIEWPORT_LABEL: &str = "native-media-viewport";
 const COMPONENT: &str = "superi-desktop.viewport";
+const DISPLAY_TRANSFORM_ID: &str = "superi.viewport.acescg-to-srgb.v1";
+const TRANSFORM_ORDER: [&str; 6] = [
+    "alpha_unassociate",
+    "scene_to_display_primaries",
+    "gamut_mapping",
+    "tone_mapping",
+    "transfer_encoding",
+    "alpha_reassociate",
+];
+
+/// Stable application roles for native GPU media presentation.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DesktopViewerRole {
+    Source,
+    Program,
+    Composite,
+    Color,
+}
+
+impl DesktopViewerRole {
+    pub const ALL: &'static [Self] = &[Self::Source, Self::Program, Self::Composite, Self::Color];
+
+    #[must_use]
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Source => "source",
+            Self::Program => "program",
+            Self::Composite => "composite",
+            Self::Color => "color",
+        }
+    }
+
+    const fn window_label(self) -> &'static str {
+        match self {
+            Self::Source => "native-source-viewport",
+            Self::Program => "native-program-viewport",
+            Self::Composite => "native-composite-viewport",
+            Self::Color => "native-color-viewport",
+        }
+    }
+
+    const fn source_label(self) -> &'static str {
+        match self {
+            Self::Source => "source viewer canonical render result",
+            Self::Program => "program viewer canonical render result",
+            Self::Composite => "composite viewer canonical render result",
+            Self::Color => "color viewer canonical render result",
+        }
+    }
+
+    const fn clear_color(self) -> wgpu::Color {
+        match self {
+            Self::Source => wgpu::Color {
+                r: 0.05,
+                g: 0.12,
+                b: 0.24,
+                a: 1.0,
+            },
+            Self::Program => wgpu::Color {
+                r: 0.18,
+                g: 0.035,
+                b: 0.012,
+                a: 1.0,
+            },
+            Self::Composite => wgpu::Color {
+                r: 0.035,
+                g: 0.16,
+                b: 0.08,
+                a: 1.0,
+            },
+            Self::Color => wgpu::Color {
+                r: 0.2,
+                g: 0.07,
+                b: 0.2,
+                a: 1.0,
+            },
+        }
+    }
+}
+
+/// Immutable scene and display meaning for one GPU-resident viewer result.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ViewerPresentationIntent {
+    role: DesktopViewerRole,
+    source_extent: wgpu::Extent3d,
+    scene_pipeline: ColorPipelineMetadata,
+    display_pipeline: ColorPipelineMetadata,
+    display_transform: OutputColorTransform,
+}
+
+impl ViewerPresentationIntent {
+    /// Creates the canonical ACEScg-to-sRGB display intent without rewriting scene metadata.
+    pub fn canonical(role: DesktopViewerRole, source_extent: wgpu::Extent3d) -> Result<Self> {
+        if source_extent.width == 0
+            || source_extent.height == 0
+            || source_extent.depth_or_array_layers != 1
+        {
+            return Err(invalid(
+                "create_viewer_presentation_intent",
+                "viewer source extents must be nonzero single-layer 2D images",
+            ));
+        }
+        let scene_pipeline = ColorPipelineMetadata::new(ImageColorTags::new(ColorSpace::ACESCG))?;
+        let display_stage = ColorTransformStage::new(
+            ColorTransformStageKind::Display,
+            DISPLAY_TRANSFORM_ID,
+            ColorSpace::ACESCG,
+            ColorSpace::SRGB,
+        )?;
+        let display_pipeline = scene_pipeline.clone().with_stage(display_stage)?;
+        let display_transform = OutputColorTransform::new(
+            OutputTargetKind::Display,
+            WorkingSpace::ACESCG,
+            ColorSpace::SRGB,
+            OutputTransformOptions::new(),
+        )?;
+        Ok(Self {
+            role,
+            source_extent,
+            scene_pipeline,
+            display_pipeline,
+            display_transform,
+        })
+    }
+
+    #[must_use]
+    pub const fn role(&self) -> DesktopViewerRole {
+        self.role
+    }
+
+    #[must_use]
+    pub const fn source_extent(&self) -> wgpu::Extent3d {
+        self.source_extent
+    }
+
+    #[must_use]
+    pub const fn source_format(&self) -> wgpu::TextureFormat {
+        wgpu::TextureFormat::Rgba16Float
+    }
+
+    #[must_use]
+    pub const fn alpha_mode(&self) -> AlphaMode {
+        AlphaMode::Premultiplied
+    }
+
+    #[must_use]
+    pub const fn scene_space(&self) -> ColorSpace {
+        self.scene_pipeline.current_space()
+    }
+
+    #[must_use]
+    pub const fn display_space(&self) -> ColorSpace {
+        self.display_pipeline.current_space()
+    }
+
+    #[must_use]
+    pub const fn display_target(&self) -> &'static str {
+        "display"
+    }
+
+    #[must_use]
+    pub const fn transform_order(&self) -> &'static [&'static str] {
+        &TRANSFORM_ORDER
+    }
+
+    #[must_use]
+    pub fn scene_stage_count(&self) -> usize {
+        self.scene_pipeline.stages().len()
+    }
+
+    #[must_use]
+    pub fn display_stage_kind(&self) -> &'static str {
+        self.display_pipeline
+            .stages()
+            .last()
+            .map_or("", |stage| stage.kind().code())
+    }
+
+    #[must_use]
+    pub fn display_transform_id(&self) -> &str {
+        self.display_pipeline
+            .stages()
+            .last()
+            .map_or("", ColorTransformStage::transform_id)
+    }
+
+    const fn display_transform(&self) -> OutputColorTransform {
+        self.display_transform
+    }
+}
+
+struct ViewerGpuRenderResult {
+    intent: ViewerPresentationIntent,
+    texture: superi_gpu::texture::GpuTexture,
+}
+
+impl ViewerGpuRenderResult {
+    fn new(
+        intent: ViewerPresentationIntent,
+        texture: superi_gpu::texture::GpuTexture,
+    ) -> Result<Self> {
+        let info = texture.info();
+        if info.size() != intent.source_extent()
+            || info.format() != intent.source_format()
+            || info.dimension() != wgpu::TextureDimension::D2
+            || info.mip_level_count() != 1
+            || info.sample_count() != 1
+            || !info.usage().contains(wgpu::TextureUsages::TEXTURE_BINDING)
+        {
+            return Err(invalid(
+                "bind_viewer_render_result",
+                "viewer render results must retain the canonical managed RGBA16F descriptor",
+            ));
+        }
+        Ok(Self { intent, texture })
+    }
+}
 
 /// Geometry and visibility published by the React workspace shell.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DesktopViewportPlacement {
+    role: DesktopViewerRole,
     x: f64,
     y: f64,
     width: f64,
@@ -36,24 +258,28 @@ pub struct DesktopViewportPlacement {
 #[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopViewportSnapshot {
+    role: DesktopViewerRole,
     revision: u64,
     phase: String,
     physical_width: u32,
     physical_height: u32,
     surface_generation: u64,
     frame_sequence: u64,
+    display_intent: String,
     summary: Option<String>,
 }
 
-impl Default for DesktopViewportSnapshot {
-    fn default() -> Self {
+impl DesktopViewportSnapshot {
+    fn for_role(role: DesktopViewerRole) -> Self {
         Self {
+            role,
             revision: 0,
             phase: "uninitialized".to_owned(),
             physical_width: 0,
             physical_height: 0,
             surface_generation: 0,
             frame_sequence: 0,
+            display_intent: "scene-linear ACEScg to sRGB display".to_owned(),
             summary: None,
         }
     }
@@ -79,10 +305,12 @@ impl From<Error> for DesktopViewportCommandError {
 
 enum GpuCommand {
     Present {
+        role: DesktopViewerRole,
         extent: ViewportExtent,
         revision: u64,
     },
     Hidden {
+        role: DesktopViewerRole,
         revision: u64,
     },
     Shutdown,
@@ -90,7 +318,7 @@ enum GpuCommand {
 
 struct NativeControl {
     main: Option<Window<Wry>>,
-    child: Option<Window<Wry>>,
+    children: Vec<(DesktopViewerRole, Window<Wry>)>,
     sender: Option<mpsc::Sender<GpuCommand>>,
     worker: Option<ExecutionDomainThread<()>>,
 }
@@ -98,7 +326,7 @@ struct NativeControl {
 /// Application-owned native viewport lifetime.
 pub struct DesktopViewportState {
     control: Mutex<NativeControl>,
-    snapshot: Arc<Mutex<DesktopViewportSnapshot>>,
+    snapshots: Arc<Mutex<Vec<DesktopViewportSnapshot>>>,
 }
 
 impl Default for DesktopViewportState {
@@ -106,11 +334,17 @@ impl Default for DesktopViewportState {
         Self {
             control: Mutex::new(NativeControl {
                 main: None,
-                child: None,
+                children: Vec::new(),
                 sender: None,
                 worker: None,
             }),
-            snapshot: Arc::new(Mutex::new(DesktopViewportSnapshot::default())),
+            snapshots: Arc::new(Mutex::new(
+                DesktopViewerRole::ALL
+                    .iter()
+                    .copied()
+                    .map(DesktopViewportSnapshot::for_role)
+                    .collect(),
+            )),
         }
     }
 }
@@ -127,33 +361,41 @@ impl DesktopViewportState {
                     "the main application window is unavailable",
                 )
             })?;
-        let child = WindowBuilder::new(app, VIEWPORT_LABEL)
-            .title("Superi native media viewport")
-            .inner_size(1.0, 1.0)
-            .visible(false)
-            .decorations(false)
-            .resizable(false)
-            .focusable(false)
-            .skip_taskbar(true)
-            .parent(&main)
-            .map_err(|source| native_error("parent_native_viewport", source))?
-            .build()
-            .map_err(|source| native_error("create_native_viewport", source))?;
-        child
-            .set_ignore_cursor_events(true)
-            .map_err(|source| native_error("ignore_native_viewport_input", source))?;
-
         let instance = GpuInstance::new(InstanceOptions::default())?;
-        let surface = NativeViewportSurface::create(&instance, Arc::new(child.clone()))?;
-        let snapshot = Arc::clone(&self.snapshot);
+        let mut children = Vec::with_capacity(DesktopViewerRole::ALL.len());
+        let mut surfaces = Vec::with_capacity(DesktopViewerRole::ALL.len());
+        for role in DesktopViewerRole::ALL {
+            let child = WindowBuilder::new(app, role.window_label())
+                .title(format!("Superi {} viewer", role.code()))
+                .inner_size(1.0, 1.0)
+                .visible(false)
+                .decorations(false)
+                .resizable(false)
+                .focusable(false)
+                .skip_taskbar(true)
+                .parent(&main)
+                .map_err(|source| native_error("parent_native_viewport", source))?
+                .build()
+                .map_err(|source| native_error("create_native_viewport", source))?;
+            child
+                .set_ignore_cursor_events(true)
+                .map_err(|source| native_error("ignore_native_viewport_input", source))?;
+            let surface = NativeViewportSurface::create(&instance, Arc::new(child.clone()))?;
+            children.push((*role, child));
+            surfaces.push((*role, surface));
+        }
+
+        let snapshots = Arc::clone(&self.snapshots);
         let (sender, receiver) = mpsc::channel();
         let worker = ExecutionDomain::GpuSubmission.spawn(move |_| {
-            let result = gpu_loop(instance, surface, receiver, &snapshot);
+            let result = gpu_loop(instance, surfaces, receiver, &snapshots);
             if let Err(error) = &result {
-                update_snapshot(&snapshot, |state| {
-                    state.phase = "failed".to_owned();
-                    state.summary = Some(error.message().to_owned());
-                });
+                for role in DesktopViewerRole::ALL {
+                    update_snapshot(&snapshots, *role, |state| {
+                        state.phase = "failed".to_owned();
+                        state.summary = Some(error.message().to_owned());
+                    });
+                }
             }
             result
         })?;
@@ -166,18 +408,21 @@ impl DesktopViewportState {
             ));
         }
         control.main = Some(main);
-        control.child = Some(child);
+        control.children = children;
         control.sender = Some(sender);
         control.worker = Some(worker);
         drop(control);
-        update_snapshot(&self.snapshot, |state| {
-            state.phase = "initializing".to_owned();
-        });
+        for role in DesktopViewerRole::ALL {
+            update_snapshot(&self.snapshots, *role, |state| {
+                state.phase = "initializing".to_owned();
+            });
+        }
         Ok(())
     }
 
     fn update(&self, placement: DesktopViewportPlacement) -> Result<DesktopViewportSnapshot> {
         let geometry = PhysicalViewportGeometry::from_placement(placement)?;
+        let role = placement.role;
         let control = self.lock_control("update_native_viewport")?;
         let main = control.main.as_ref().ok_or_else(|| {
             unavailable(
@@ -185,12 +430,16 @@ impl DesktopViewportState {
                 "the native viewport has not initialized",
             )
         })?;
-        let child = control.child.as_ref().ok_or_else(|| {
-            unavailable(
-                "update_native_viewport",
-                "the native viewport window is unavailable",
-            )
-        })?;
+        let child = control
+            .children
+            .iter()
+            .find_map(|(candidate, child)| (*candidate == role).then_some(child))
+            .ok_or_else(|| {
+                unavailable(
+                    "update_native_viewport",
+                    "the native viewport window is unavailable",
+                )
+            })?;
         let sender = control.sender.as_ref().ok_or_else(|| {
             unavailable(
                 "update_native_viewport",
@@ -199,7 +448,16 @@ impl DesktopViewportState {
         })?;
 
         let revision = {
-            let mut snapshot = lock_snapshot(&self.snapshot, "update_native_viewport")?;
+            let mut snapshots = lock_snapshots(&self.snapshots, "update_native_viewport")?;
+            let snapshot = snapshots
+                .iter_mut()
+                .find(|snapshot| snapshot.role == role)
+                .ok_or_else(|| {
+                    unavailable(
+                        "update_native_viewport",
+                        "the native viewer snapshot is unavailable",
+                    )
+                })?;
             snapshot.revision = snapshot.revision.checked_add(1).ok_or_else(|| {
                 conflict(
                     "update_native_viewport",
@@ -230,6 +488,7 @@ impl DesktopViewportState {
                 .map_err(|source| native_error("show_native_viewport", source))?;
             sender
                 .send(GpuCommand::Present {
+                    role,
                     extent: ViewportExtent::new(
                         geometry.width,
                         geometry.height,
@@ -243,26 +502,34 @@ impl DesktopViewportState {
                         "the GPU viewport owner stopped",
                     )
                 })?;
-            update_snapshot(&self.snapshot, |state| {
+            update_snapshot(&self.snapshots, role, |state| {
                 state.phase = "queued".to_owned();
             });
         } else {
             child
                 .hide()
                 .map_err(|source| native_error("hide_native_viewport", source))?;
-            sender.send(GpuCommand::Hidden { revision }).map_err(|_| {
-                unavailable("hide_native_viewport", "the GPU viewport owner stopped")
-            })?;
-            update_snapshot(&self.snapshot, |state| {
+            sender
+                .send(GpuCommand::Hidden { role, revision })
+                .map_err(|_| {
+                    unavailable("hide_native_viewport", "the GPU viewport owner stopped")
+                })?;
+            update_snapshot(&self.snapshots, role, |state| {
                 state.phase = "hidden".to_owned();
             });
         }
         drop(control);
-        self.snapshot()
+        self.snapshot(role)
     }
 
-    fn snapshot(&self) -> Result<DesktopViewportSnapshot> {
-        Ok(lock_snapshot(&self.snapshot, "read_native_viewport")?.clone())
+    fn snapshot(&self, role: DesktopViewerRole) -> Result<DesktopViewportSnapshot> {
+        lock_snapshots(&self.snapshots, "read_native_viewport")?
+            .iter()
+            .find(|snapshot| snapshot.role == role)
+            .cloned()
+            .ok_or_else(|| {
+                unavailable("read_native_viewport", "the viewer snapshot is unavailable")
+            })
     }
 
     fn lock_control(&self, operation: &'static str) -> Result<MutexGuard<'_, NativeControl>> {
@@ -279,19 +546,19 @@ impl DesktopViewportState {
 
 impl Drop for DesktopViewportState {
     fn drop(&mut self) {
-        let (worker, child) = match self.control.get_mut() {
+        let (worker, children) = match self.control.get_mut() {
             Ok(control) => {
                 if let Some(sender) = control.sender.take() {
                     let _ = sender.send(GpuCommand::Shutdown);
                 }
-                (control.worker.take(), control.child.take())
+                (control.worker.take(), std::mem::take(&mut control.children))
             }
-            Err(_) => (None, None),
+            Err(_) => (None, Vec::new()),
         };
         if let Some(worker) = worker {
             let _ = worker.join();
         }
-        drop(child);
+        drop(children);
     }
 }
 
@@ -358,11 +625,18 @@ impl PhysicalViewportGeometry {
 
 fn gpu_loop(
     instance: GpuInstance,
-    mut surface: NativeViewportSurface,
+    mut surfaces: Vec<(DesktopViewerRole, NativeViewportSurface)>,
     receiver: mpsc::Receiver<GpuCommand>,
-    snapshot: &Arc<Mutex<DesktopViewportSnapshot>>,
+    snapshots: &Arc<Mutex<Vec<DesktopViewportSnapshot>>>,
 ) -> Result<()> {
-    let adapter = surface
+    let first_surface = surfaces.first().ok_or_else(|| {
+        unavailable(
+            "initialize_native_viewers",
+            "at least one native viewer surface is required",
+        )
+    })?;
+    let adapter = first_surface
+        .1
         .compatible_adapters(&instance)?
         .select(&AdapterSelection::default())?;
     let device = pollster::block_on(
@@ -370,37 +644,44 @@ fn gpu_loop(
     )?;
     let resources = GpuResources::new(&device)?;
     let submissions = GpuSubmissionQueue::new(&device)?;
-    let source = resources.create_texture(&wgpu::TextureDescriptor {
-        label: Some("native viewport canonical source"),
-        size: wgpu::Extent3d {
-            width: 16,
-            height: 9,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba16Float,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
-        view_formats: &[],
-    })?;
-    clear_source(&resources, &submissions, &source)?;
-    update_snapshot(snapshot, |state| {
-        state.phase = "ready".to_owned();
-    });
+    let render_results = create_initial_render_results(&resources, &submissions)?;
+    for role in DesktopViewerRole::ALL {
+        update_snapshot(snapshots, *role, |state| {
+            state.phase = "ready".to_owned();
+        });
+    }
 
     while let Ok(command) = receiver.recv() {
         match command {
-            GpuCommand::Present { extent, revision } => {
+            GpuCommand::Present {
+                role,
+                extent,
+                revision,
+            } => {
+                let surface = surfaces
+                    .iter_mut()
+                    .find_map(|(candidate, surface)| (*candidate == role).then_some(surface))
+                    .ok_or_else(|| {
+                        unavailable("present_native_viewer", "the viewer surface is unavailable")
+                    })?;
+                let render_result = render_results
+                    .iter()
+                    .find(|result| result.intent.role() == role)
+                    .ok_or_else(|| {
+                        unavailable(
+                            "present_native_viewer",
+                            "the GPU render result is unavailable",
+                        )
+                    })?;
                 let (generation, sequence) = present_once(
-                    &mut surface,
+                    surface,
                     &device,
                     &resources,
                     &submissions,
-                    &source,
+                    render_result,
                     extent,
                 )?;
-                update_snapshot(snapshot, |state| {
+                update_snapshot(snapshots, role, |state| {
                     state.revision = state.revision.max(revision);
                     state.phase = "presenting".to_owned();
                     state.surface_generation = generation;
@@ -408,8 +689,8 @@ fn gpu_loop(
                     state.summary = None;
                 });
             }
-            GpuCommand::Hidden { revision } => {
-                update_snapshot(snapshot, |state| {
+            GpuCommand::Hidden { role, revision } => {
+                update_snapshot(snapshots, role, |state| {
                     state.revision = state.revision.max(revision);
                     state.phase = "hidden".to_owned();
                 });
@@ -420,10 +701,41 @@ fn gpu_loop(
     Ok(())
 }
 
+fn create_initial_render_results(
+    resources: &GpuResources<'_>,
+    submissions: &GpuSubmissionQueue<'_>,
+) -> Result<Vec<ViewerGpuRenderResult>> {
+    let extent = wgpu::Extent3d {
+        width: 16,
+        height: 9,
+        depth_or_array_layers: 1,
+    };
+    let mut results = Vec::with_capacity(DesktopViewerRole::ALL.len());
+    for role in DesktopViewerRole::ALL {
+        let texture = resources.create_texture(&wgpu::TextureDescriptor {
+            label: Some(role.source_label()),
+            size: extent,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        })?;
+        clear_source(resources, submissions, &texture, role.clear_color())?;
+        results.push(ViewerGpuRenderResult::new(
+            ViewerPresentationIntent::canonical(*role, extent)?,
+            texture,
+        )?);
+    }
+    Ok(results)
+}
+
 fn clear_source(
     resources: &GpuResources<'_>,
     submissions: &GpuSubmissionQueue<'_>,
     source: &superi_gpu::texture::GpuTexture,
+    color: wgpu::Color,
 ) -> Result<()> {
     let view = source
         .raw()
@@ -442,12 +754,7 @@ fn clear_source(
                 view: &view,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.18,
-                        g: 0.035,
-                        b: 0.012,
-                        a: 1.0,
-                    }),
+                    load: wgpu::LoadOp::Clear(color),
                     store: wgpu::StoreOp::Store,
                 },
             })],
@@ -468,18 +775,16 @@ fn present_once<'device>(
     device: &'device superi_gpu::device::GpuDevice,
     resources: &GpuResources<'device>,
     submissions: &GpuSubmissionQueue<'device>,
-    source: &superi_gpu::texture::GpuTexture,
+    render_result: &ViewerGpuRenderResult,
     extent: ViewportExtent,
 ) -> Result<(u64, u64)> {
     let configuration = surface.configure(device, extent)?.clone();
-    let reference = OutputColorTransform::new(
-        OutputTargetKind::Display,
-        WorkingSpace::ACESCG,
-        ColorSpace::SRGB,
-        OutputTransformOptions::new(),
+    let presenter = GpuDisplayPresenter::new(
+        resources,
+        render_result.intent.display_transform(),
+        configuration.format,
     )?;
-    let presenter = GpuDisplayPresenter::new(resources, reference, configuration.format)?;
-    let prepared = presenter.prepare_source(source.clone())?;
+    let prepared = presenter.prepare_source(render_result.texture.clone())?;
     let frame = surface.acquire_frame(device)?;
     let generation = frame.generation();
     let sequence = frame.sequence();
@@ -501,19 +806,22 @@ fn present_once<'device>(
 }
 
 fn update_snapshot(
-    snapshot: &Arc<Mutex<DesktopViewportSnapshot>>,
+    snapshots: &Arc<Mutex<Vec<DesktopViewportSnapshot>>>,
+    role: DesktopViewerRole,
     update: impl FnOnce(&mut DesktopViewportSnapshot),
 ) {
-    if let Ok(mut snapshot) = snapshot.lock() {
-        update(&mut snapshot);
+    if let Ok(mut snapshots) = snapshots.lock() {
+        if let Some(snapshot) = snapshots.iter_mut().find(|snapshot| snapshot.role == role) {
+            update(snapshot);
+        }
     }
 }
 
-fn lock_snapshot<'a>(
-    snapshot: &'a Arc<Mutex<DesktopViewportSnapshot>>,
+fn lock_snapshots<'a>(
+    snapshots: &'a Arc<Mutex<Vec<DesktopViewportSnapshot>>>,
     operation: &'static str,
-) -> Result<MutexGuard<'a, DesktopViewportSnapshot>> {
-    snapshot.lock().map_err(|_| {
+) -> Result<MutexGuard<'a, Vec<DesktopViewportSnapshot>>> {
+    snapshots.lock().map_err(|_| {
         Error::new(
             ErrorCategory::Internal,
             Recoverability::Terminal,
@@ -584,11 +892,12 @@ fn native_error(operation: &'static str, source: tauri::Error) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use super::{DesktopViewportPlacement, PhysicalViewportGeometry};
+    use super::{DesktopViewerRole, DesktopViewportPlacement, PhysicalViewportGeometry};
 
     #[test]
     fn placement_converts_css_geometry_to_physical_pixels() {
         let geometry = PhysicalViewportGeometry::from_placement(DesktopViewportPlacement {
+            role: DesktopViewerRole::Program,
             x: 10.25,
             y: 20.5,
             width: 960.0,
@@ -607,6 +916,7 @@ mod tests {
     #[test]
     fn hidden_placement_accepts_zero_extent_without_surface_configuration() {
         let geometry = PhysicalViewportGeometry::from_placement(DesktopViewportPlacement {
+            role: DesktopViewerRole::Program,
             x: 0.0,
             y: 0.0,
             width: 0.0,

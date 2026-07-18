@@ -2,15 +2,25 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 
 type ViewportSnapshot = {
+  role: NativeViewerRole;
   phase: string;
   physicalWidth: number;
   physicalHeight: number;
   surfaceGeneration: number;
   frameSequence: number;
+  displayIntent: string;
   summary: string | null;
 };
 
-export function NativeViewport() {
+export type NativeViewerRole = "source" | "program" | "composite" | "color";
+
+export function NativeViewport({
+  role,
+  label,
+}: {
+  readonly role: NativeViewerRole;
+  readonly label: string;
+}) {
   const host = useRef<HTMLElement>(null);
   const [snapshot, setSnapshot] = useState<ViewportSnapshot | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
@@ -30,6 +40,7 @@ export function NativeViewport() {
         const bounds = element.getBoundingClientRect();
         void invoke<ViewportSnapshot>("desktop_viewport_update", {
           placement: {
+            role,
             x: bounds.x,
             y: bounds.y,
             width: bounds.width,
@@ -70,6 +81,7 @@ export function NativeViewport() {
       const bounds = element.getBoundingClientRect();
       void invoke("desktop_viewport_update", {
         placement: {
+          role,
           x: Math.max(0, bounds.x),
           y: Math.max(0, bounds.y),
           width: 0,
@@ -79,17 +91,22 @@ export function NativeViewport() {
         },
       });
     };
-  }, []);
+  }, [role]);
 
   const status = summary
     ? summary
     : snapshot
-      ? `${snapshot.phase} · ${snapshot.physicalWidth}×${snapshot.physicalHeight} · frame ${snapshot.frameSequence}`
+      ? `${label} · ${snapshot.displayIntent} · ${snapshot.phase} · ${snapshot.physicalWidth}×${snapshot.physicalHeight} · frame ${snapshot.frameSequence}`
       : "Starting native GPU output";
 
   return (
     <div className="native-viewport-shell">
-      <section className="native-viewport" ref={host} aria-label="Native GPU media viewport" />
+      <section
+        className="native-viewport"
+        ref={host}
+        aria-label={`${label} native GPU media viewer`}
+        data-viewer-role={role}
+      />
       <span className="native-viewport__status" role="status" aria-live="polite">
         {status}
       </span>
