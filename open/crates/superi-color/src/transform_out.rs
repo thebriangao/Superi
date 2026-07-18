@@ -290,6 +290,12 @@ impl OutputColorTransform {
         self.options
     }
 
+    /// Returns the validated scene-linear primary and gamut conversion.
+    #[must_use]
+    pub const fn gamut_transform(self) -> WideGamutTransform {
+        self.gamut
+    }
+
     /// Applies this transform to canonical binary16 working storage.
     pub fn apply(self, source: &WorkingImage) -> Result<Image> {
         if source.space() != self.source {

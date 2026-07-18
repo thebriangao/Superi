@@ -196,7 +196,9 @@ impl<'device> GpuResources<'device> {
         self.device.wgpu_device()
     }
 
-    pub(crate) const fn device(&self) -> &GpuDevice {
+    /// Returns the device lifetime owned by this resource manager.
+    #[must_use]
+    pub const fn device(&self) -> &GpuDevice {
         self.device
     }
 

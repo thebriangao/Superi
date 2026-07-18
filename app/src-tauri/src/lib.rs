@@ -5,6 +5,7 @@
 pub mod engine;
 pub mod lifecycle;
 pub mod transport;
+pub mod viewport;
 
 use std::thread;
 use std::time::Duration;
@@ -16,7 +17,7 @@ use lifecycle::{
 };
 use serde::Serialize;
 use superi_core::error::Error;
-use tauri::{AppHandle, Builder, Emitter, RunEvent, Runtime, State};
+use tauri::{AppHandle, Builder, Emitter, Manager, RunEvent, Runtime, State};
 use transport::{
     event_emission_error, transport_task_error, DesktopTransportCommand, DesktopTransportReply,
     DesktopTransportState, DESKTOP_API_EVENT,
@@ -89,10 +90,12 @@ pub fn configure<R: Runtime>(builder: Builder<R>, lifecycle: ApplicationLifecycl
     builder
         .manage(ManagedLifecycle(lifecycle))
         .manage(DesktopTransportState::new())
+        .manage(viewport::DesktopViewportState::default())
         .invoke_handler(tauri::generate_handler![
             desktop_lifecycle_snapshot,
             desktop_lifecycle_request,
-            desktop_api_dispatch
+            desktop_api_dispatch,
+            viewport::desktop_viewport_update
         ])
 }
 
@@ -114,6 +117,8 @@ pub fn run() {
     let app = configure(tauri::Builder::default(), lifecycle)
         .manage(engine.connection())
         .setup(move |app| {
+            app.state::<viewport::DesktopViewportState>()
+                .initialize(app)?;
             spawn_exit_monitor(app.handle().clone(), setup_lifecycle.clone());
             Ok(())
         })

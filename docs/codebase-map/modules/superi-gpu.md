@@ -2,7 +2,7 @@
 module_id: superi-gpu
 source_paths:
   - open/crates/superi-gpu
-source_hash: 0c34f01a4c5a5346a2f7221c2b2476cd777adf1376515952c1373c1997f2d4ec
+source_hash: 3ccd5b7e2cf881c46a02f4a6878ee0cfcb72f6cd0e7342d05b6178179ed21d44
 source_files: 34
 mapped_at_commit: 217e9d48703bcfd4736d949aea510c94505071bc
 ---
@@ -49,7 +49,8 @@ which must be performed by `superi-color`.
   selection, multi-adapter creation, device identity, capabilities, loss state, the private queue,
   error-scope serialization, and recreation of a lost device generation.
 - `open/crates/superi-gpu/src/resource.rs`: Implements device-scoped resource managers, process-local
-  resource IDs, live counts, ownership checks, and the RAII lease used by managed handles.
+  resource IDs, live counts, ownership checks, the RAII lease used by managed handles, and a
+  borrowed device accessor that keeps render encoding inside the same managed lifetime.
 - `open/crates/superi-gpu/src/buffer.rs`: Wraps raw buffers with immutable creation metadata,
   resource leases, optional memory reservations, and portable creation validation.
 - `open/crates/superi-gpu/src/texture.rs`: Wraps textures and views, retains parent allocations,
@@ -362,9 +363,15 @@ which must be performed by `superi-color`.
 - `superi-color/src/gpu_transform.rs` uses managed textures, shader caching, explicit binding and
   pipeline layouts, compute-pass batches, the exclusive submission queue, and fence-scoped retained
   owners to execute wide-gamut color transforms without an ordinary CPU pixel path.
+- `superi-color/src/gpu_display.rs` uses the same managed texture, device, native frame, queue, and
+  fence-retention contracts to render a canonical working texture directly into a display
+  attachment without readback.
 - `superi-color/src/view.rs` wraps `NativeViewportSurface` with immutable monitor and ICC evidence.
   It delegates adapter filtering, configuration, acquisition, and submit-before-present to this
   crate, but rejects presentation if monitor/profile evidence changed after acquisition.
+- `app/src-tauri/src/viewport.rs` creates the production native host on the UI thread, moves its
+  surface into the sole GPU submission domain, and waits for retained presentation work before
+  source or host teardown.
 - `superi-concurrency` defines a blocking-capable `GpuSubmission` execution domain. Its integration
   contract constructs the real non-Send `GpuSubmissionQueue`, submits, and waits inside that owned
   thread. The GPU crate documents this placement but does not itself enforce the execution-domain

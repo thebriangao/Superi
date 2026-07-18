@@ -3067,6 +3067,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "pollster"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3"
+
+[[package]]
 name = "portable-atomic"
 version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4137,12 +4143,15 @@ dependencies = [
 name = "superi-desktop"
 version = "0.0.0"
 dependencies = [
+ "pollster",
  "serde",
  "serde_json",
  "superi-api",
+ "superi-color",
  "superi-concurrency",
  "superi-core",
  "superi-engine",
+ "superi-gpu",
  "tauri",
  "tauri-build",
 ]

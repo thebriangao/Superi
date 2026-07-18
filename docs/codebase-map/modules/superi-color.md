@@ -2,8 +2,8 @@
 module_id: superi-color
 source_paths:
   - open/crates/superi-color
-source_hash: 38d1f77bb71994c848cef7875a8f5a300fa79d1531abf6787b052b7252361bc1
-source_files: 25
+source_hash: d97f144ddbd37791298aa237f1f4dae60d86bd30cf0b0bdfe8db29b7908fbf7c
+source_files: 27
 mapped_at_commit: working-tree
 ---
 
@@ -20,12 +20,12 @@ CPU image artifacts from `superi-image`, and GPU frame and presentation ownershi
 Implemented ownership is narrower than the full color architecture described by
 `docs/phase-0-build-contracts.md`. Input and output transforms, transfer functions, primary
 conversion, working-space storage, LUTs, ICC validation and discovery, and stale-profile
-presentation checks are implemented. A managed GPU wide-gamut transform is implemented for
-canonical `Rgba16Float` textures. Engine foreground playback now consumes the CPU output transform
+presentation checks are implemented. Managed GPU wide-gamut and native display transforms are
+implemented for canonical `Rgba16Float` textures. Engine foreground playback now consumes the CPU output transform
 for an explicit display branch. Engine render-export now invokes a separate caller-owned delivery
 stage and validates its color history, but no concrete export transform in this crate is wired.
-Executable ICC evaluation, native GPU display conversion, concrete export conversion, and shell
-integration remain absent.
+Executable ICC evaluation and concrete export conversion remain absent. The production shell now
+consumes the GPU display presenter through one native editing viewport.
 
 The crate owns color interpretation, transform policy, and explicit legal-range RGB normalization,
 but it does not own YUV matrix conversion, media decoding, image storage primitives, GPU device
@@ -47,6 +47,9 @@ selection, and invalidation only.
 - `open/crates/superi-color/src/gpu_transform.rs`: managed compute-pipeline construction for
   reference-derived wide-gamut transforms, canonical texture validation, GPU-resident output
   allocation, pass encoding, submission, and fence-scoped ownership.
+- `open/crates/superi-color/src/gpu_display.rs`: direct canonical-texture sampling into native or
+  managed display attachments, shader constants derived from one `OutputColorTransform`, checked
+  aspect fitting, sRGB attachment handling, and fence-scoped source retention.
 - `open/crates/superi-color/src/hdr.rs`: validated relative-light, encoded-signal, normalized PQ,
   and nit value types; SDR, PQ, and HLG transfer functions; and complete reference HLG display
   rendering.
@@ -85,6 +88,8 @@ selection, and invalidation only.
 - `open/crates/superi-color/tests/gpu_transform_contract.rs`: constructor and validation contracts
   plus native upload, compute, submission, fence, explicit export readback, and binary64 CPU parity
   proof for canonical `Rgba16Float` frames.
+- `open/crates/superi-color/tests/gpu_display_contract.rs`: frozen display metadata and
+  resolution-independent aspect-fit contract for the native presentation seam.
 - `open/crates/superi-color/tests/icc_contract.rs`: ICC structure and tag validation, atomic
   discovery, monitor binding and viewport state, native provider behavior, macOS discovery, and
   unsafe-boundary inventory checks.
@@ -109,7 +114,7 @@ selection, and invalidation only.
 
 ## Public surface
 
-`open/crates/superi-color/src/lib.rs` exposes eleven public modules: `config`, `gamut`, `gpu_transform`, `hdr`, `icc`,
+`open/crates/superi-color/src/lib.rs` exposes twelve public modules: `config`, `gamut`, `gpu_display`, `gpu_transform`, `hdr`, `icc`,
 `lut`, `rules`, `transform_in`, `transform_out`, `view`, and `working_space`. It does not re-export their
 members at the crate root.
 
@@ -135,6 +140,12 @@ binary64 CPU reference transform. Encoding validates canonical source texture sh
 allocates a canonical output texture, and returns an owned managed pass batch. Submission retains
 the source, output, bindings, pipeline, and pass resources through the returned fence without an
 ordinary CPU pixel path.
+
+The GPU display surface consists of `GpuDisplayPresenter`, `GpuDisplaySource`,
+`EncodedGpuDisplayFrame`, and `DisplayViewport`. Construction binds one explicit display
+transform and attachment format to the managed device lifetime. Encoding samples a canonical
+managed `Rgba16Float` texture directly, applies reference-derived gamut and sRGB operations,
+aspect-fits arbitrary extents, and retains the sampled source until its presentation fence retires.
 
 The transfer surface consists of `RelativeLight`, `EncodedSignal`, `NormalizedSignal`, `Nits`, and
 `HlgDisplayParameters`, plus `decode_relative_transfer`, `encode_relative_transfer`,
@@ -345,7 +356,7 @@ runtime dependency on the repository fixture generator.
 
 ## Tests and verification
 
-The ten integration suites cover the implemented CPU and presentation-state contracts:
+The eleven integration suites cover the implemented CPU, GPU display, and presentation-state contracts:
 
 - `open/crates/superi-color/tests/color_fixture_contract.rs` checks all eight canonical SDR,
   wide-gamut, PQ, HLG, alpha, f16, and f32 images through explicit input and output intent. It also
@@ -366,6 +377,9 @@ The ten integration suites cover the implemented CPU and presentation-state cont
 - `open/crates/superi-color/tests/gpu_transform_contract.rs` checks constructor metadata, fail-closed
   source validation, native compute submission and fence ordering, explicit export readback, and
   per-channel parity with the binary64 CPU reference after source half quantization.
+- `open/crates/superi-color/tests/gpu_display_contract.rs` checks centered 8K aspect fitting,
+  zero-extent rejection, canonical GPU source format, the exact display reference, and the explicit
+  sRGB target format.
 - `open/crates/superi-color/tests/input_transform_contract.rs` proves source-family distinctions,
   decode-before-primary-conversion order, explicit PQ reference white, canonical output, and
   binary16 overflow rejection.
@@ -385,8 +399,9 @@ The ten integration suites cover the implemented CPU and presentation-state cont
 The engine playback contract constructs decoded provenance, a canonical working image, one CPU
 display transform, and a bounded viewport payload. The engine render-export contract separately
 proves delivery-pipeline and alpha validation through a caller-owned test stage, but it does not
-exercise this crate's output transform. There is still no project-configured look, ICC evaluation,
-native GPU viewport presentation, or concrete color-to-export test.
+exercise this crate's output transform. The desktop application now exercises native GPU viewport
+presentation, while project-configured looks, ICC evaluation, and concrete color-to-export proof
+remain absent.
 
 ## Current status and risks
 
@@ -399,14 +414,14 @@ contracts are implemented and extensively tested. The module is not yet a comple
 - Output transforms and rule evaluation remain CPU implementations that emit RGBA binary32
   artifacts. Engine foreground playback is a concrete display consumer, but executable ICC profile
   evaluation, project-configured rule persistence, concrete integer or YUV encoding, complete
-  display and delivery GPU output transforms, native viewport submission, and concrete export
-  conversion remain absent.
+  complete HDR display and delivery GPU output transforms and concrete export conversion remain
+  absent. The implemented native presenter intentionally supports the current sRGB display slice.
 - ICC profiles are validated and bound to presentation, but their matrix/TRC or LUT payloads are
   not evaluated. `MonitorAwareViewport` prevents stale profile use but does not color-convert the
   rendered texture by itself.
-- Engine foreground playback is a live CPU output-transform consumer. Engine export has only a
-  generic delivery seam, not a live transform from this crate. There is no shell, native viewport,
-  concrete export-transform, or public API consumer.
+- Engine foreground playback is a live CPU output-transform consumer. The desktop editing panel is
+  the native GPU display consumer. Engine export has only a generic delivery seam, not a live
+  transform from this crate, and viewer-specific render-result binding remains separate.
 - `superi-graph` is an unused manifest dependency. No color node catalog or graph-visible transform
   integration exists in this crate.
 - CPU input, gamut, and LUT application allocate replacement sample vectors and iterate pixels on

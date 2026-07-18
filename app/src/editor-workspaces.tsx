@@ -1,3 +1,4 @@
+import { NativeViewport } from "./native-viewport.tsx";
 import type { ReactNode } from "react";
 
 import { useApplication } from "./application-context.tsx";
@@ -15,6 +16,7 @@ export function EditingWorkspacePanel() {
       project={editorProject}
       refresh={refreshEditorProject}
     >
+      <NativeViewport />
       {snapshot ? (
         <>
           <div className="editor-summary-grid">
@@ -410,7 +412,7 @@ function WorkspaceSurface({
           {project.failure.code} / {project.failure.condition}
         </p>
       ) : null}
-      {hasSnapshot ? children : null}
+      {children}
     </div>
   );
 }

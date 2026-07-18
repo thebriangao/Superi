@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 03aabe0bc86b0ed9852894fde4993912dfdd7345788b4abbb9f831eff468b447
-source_files: 201
+source_hash: 3d6cb98fdeaf4fb3833edfd6c041de744d8705e177221bfe2798b8141e0e0714
+source_files: 204
 mapped_at_commit: working-tree
 ---
 
@@ -141,8 +141,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `README.md`: Gives the public project orientation, product split, graph and GPU model, subsystem
   hierarchy, build commands, vertical slice, phases, invariants, open questions, and claimed current
   status. It identifies the production React and Tauri shell, its explicit headless-engine lifecycle,
-  reliable generated transport, single application/project presentation owner, and five
-  professional workspace views while retaining honest runtime method-routing limits.
+  reliable generated transport, single application/project presentation owner, five professional
+  workspace views, and one native GPU editing viewport while retaining honest runtime
+  method-routing and viewer-binding limits.
 - `closed/README.md`: Defines `closed/` as a notice for the separately maintained proprietary
   Superi Max tier and states the one-way dependency rule: Max may consume open Superi, while open
   Superi must never import, link, or depend on Max.
@@ -407,6 +408,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   hosted baseline, same-change production replacement rule, and the boundaries owned by
   P1.W07.C017 through P1.W07.C026.
 
+- `docs/checkpoints/P3.W02.C001.md`: Durable implementation evidence for the managed GPU display
+  presenter, native Tauri viewport owner, and persistent editing-panel geometry and status bridge.
+
 ### Production desktop application
 
 - `app/.node-version`: Pins Node.js 24.13.0 for local and hosted production application gates.
@@ -432,7 +436,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   without React, transport, or mutable state ownership.
 - `app/src/editor-workspaces.tsx`: Renders editing, compositing, color, audio, delivery, and shared
   selection panels from the one application-owned public snapshot, including exact sample rates,
-  ordered channels, routes, synchronization observation, and continuity evidence.
+  ordered channels, routes, synchronization observation, continuity evidence, and the one
+  persistent native editing viewport.
+- `app/src/native-viewport.tsx`: Reserves the native output rectangle and publishes only geometry,
+  scale, visibility, and returned status to the shell-local viewport command.
 - `app/src/App.tsx`: Registers the five professional workspace routes and panels above the delivered
   application framework while retaining the system shell, shared selection, lifecycle controls,
   generated validation request, and engine-introspection state.
@@ -443,7 +450,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   mode.
 - `app/src/styles.css`: Defines the responsive, accessible application frame, route rail, panel
   surfaces, professional workspace data views, exact audio route and continuity presentation,
-  shared selection, lifecycle controls, and engine API status presentation.
+  shared selection, lifecycle controls, engine API status presentation, and the 16:9 native
+  viewport reservation.
 - `app/src/transport.ts`: Implements the concrete generated `SuperiTransport` through one injected
   or Tauri-backed invoke/listen host, generation-scoped request identities, ordered event replay,
   stale and duplicate rejection, reconnect, cooperative cancellation, and exact
@@ -467,6 +475,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/vite.config.ts`: Configures the React Vite build and fixed Tauri development port.
 - `app/src-tauri/Cargo.lock`: Locks the standalone desktop host together with its path dependencies
   on the public API, engine, shared concurrency, and core contracts.
+- `app/src-tauri/src/viewport.rs`: Owns the native child window, checked CSS-to-physical placement,
+  shell-local status, dedicated GPU submission thread, managed cleared canonical source texture,
+  direct presentation, and join-before-host-drop lifetime.
 - `app/src-tauri/Cargo.toml`: Declares the `superi-desktop` library and binary, exact Tauri and
   serialization pins, stable Rust edition, and downward-only lifecycle, engine, and public API
   dependencies.
