@@ -15,8 +15,11 @@ utility, not a runtime crate, transport, application shell, or state owner.
 The current artifact includes the strict extension registry query, full replacement event and
 resource, exact identities, lifecycle, capabilities, safe failure, features, stable public control
 reference, all eleven track mutation tags, all six marker mutation tags with complete create state,
-track and marker action evidence, typed track output graph state, project editor schema `1.4.0`,
-and the additive exact `set_transition` timeline operation used by the desktop transition inspector.
+track and marker action evidence, typed track output graph state, project editor schema `1.5.0`,
+the additive exact `set_transition` and `retime` timeline operations used by the desktop timeline
+inspectors, and strict existing-child placement and selection-derived
+compound request and per-track identity DTOs, their project action variants, and typed placement and
+compound result evidence for the desktop nesting consumer.
 
 ## Source inventory
 
@@ -103,8 +106,10 @@ required project, command-log, AI, extension, and track declarations, determinis
 absence of timestamps and checkout paths. The generated artifact includes the command-log query and
 result union, record types, script step, track action union, semantic evidence, graph output state,
 event correlation sequence, method map, resource map, and timeline edit union. That union includes
-`set_transition` with stable timeline, track, transition, and exact duration fields. Frontend proof
-belongs to the workspace consumer and is not inferred from this tool's Rust tests.
+`set_transition` with stable timeline, track, transition, and exact duration fields, while the
+project action union includes `place_nested_sequence` and `create_compound_clip` with every nested
+DTO and evidence variant. Frontend proof belongs to the workspace consumer and is not inferred from
+this tool's Rust tests.
 
 ## Current status and risks
 
@@ -112,8 +117,9 @@ The generator and drift check are implemented for the complete current catalog. 
 one file and intentionally provides no watch mode, automatic application binding, transport adapter,
 or package publication. Specta is a generator-only dependency selected through the API feature; the
 default runtime API and engine graph remain unchanged.
-Extension and track declarations remain compile-time contracts only. The production application
-supplies the separate generated-client and durable native-route consumer proof.
+Extension, track, nesting, and compound declarations remain compile-time contracts only. The
+production application supplies the separate generated-client and durable native-route consumer
+proof.
 
 Direct filesystem writes can still fail because of permissions, storage exhaustion, or concurrent
 external modification. Such failures are explicit and never reported as current. The generated
@@ -126,5 +132,5 @@ and exact byte comparison stable. Add schema intelligence only to `superi-api`, 
 After any owned source change, recompute this map hash and file count, rerun focused tests and the
 locked `check`, and verify the frontend consumer against the regenerated committed artifact. Keep
 extension method, event, resource, identity, lifecycle, capability, safe failure, feature, and
-control declarations, plus track actions and evidence, generated from the canonical API rather than
-hand-maintained here.
+control declarations, plus track, nested placement, compound actions, DTOs, and evidence, generated
+from the canonical API rather than hand-maintained here.

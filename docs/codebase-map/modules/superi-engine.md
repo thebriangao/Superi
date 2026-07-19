@@ -2,7 +2,7 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 7ef27b34036f8ae61573fceaf7fe7eff8bf6d2a63361c8094c7787758fb9348c
+source_hash: 8ee2b5a53fe75f287743667e93c74d2286771fba04ef20dd17204280ab5bb23e
 source_files: 70
 mapped_at_commit: working-tree
 ---
@@ -176,9 +176,10 @@ through the existing dispatcher.
   infallible postpublication history replacement.
 - `open/crates/superi-engine/src/project_transaction.rs`: Implements the bounded whole-project
   transaction vocabulary, one outer project publication, ordered action results, timeline edit,
-  track mutation, and marker mutation batches, clip-mix reconciliation, atomic linked-media batch import, extension
-  commands, three-way retained graph preservation, per-action aggregate validation, and complete
-  rollback on any late failure.
+  track mutation, and marker mutation batches, existing-child nested placement, selection-derived
+  compound creation, clip-mix reconciliation, atomic linked-media batch import, extension commands,
+  three-way retained graph preservation, per-action aggregate validation, and complete rollback on
+  any late failure.
 - `open/crates/superi-engine/src/proxy_substitution.rs`: Validates exact proxy purpose, source
   fingerprint, source revision, packet integrity, and stream metadata; translates cache quality to
   scheduler quality; consumes deterministic derived selection; lazily opens verified original
@@ -349,8 +350,10 @@ through the existing dispatcher.
   across root, timeline, graph, media, authored audio, and plugin, effect, and AI extension state,
   one project revision and history entry, retained graph edits, exact save and reopen of authored
   audio and extensions, adjacent-block audible continuity, track controls, atomic marker controls,
-  marker graph preservation, populated-track clip-mix cleanup, exact undo and redo restoration,
-  late failure rollback, empty subsystem rejection, and action bounds.
+  marker graph preservation, populated-track clip-mix cleanup, existing-child nested placement and
+  selection-derived compound creation with retained-graph recompilation and stable moved-clip mix,
+  exact undo and redo restoration, late failure rollback, empty subsystem rejection, and action
+  bounds.
 - `open/crates/superi-engine/tests/scenario_contract.rs`: Exact canonical state, atomicity, bounds,
   operation log, reversal proof, bounded oldest-entry eviction, and redo clearing after a successful
   post-undo branch.
@@ -611,9 +614,11 @@ operations return only after every participating state validates.
 `CompoundProjectActionResult`, `CompoundProjectTransactionOutcome`,
 `MAX_COMPOUND_PROJECT_ACTIONS`, and `execute_compound_project_transaction`. One nonempty sequence of
 at most 64 actions can select the root, edit the timeline, mutate a retained graph, execute a media
-or extension command, mutate canonical tracks, or mutate authored clip-mix state. Track action
-results retain the exact ordered mutation outcomes. Every action validates the unpublished aggregate,
-and the complete sequence publishes exactly once or leaves the document unchanged.
+or extension command, mutate canonical tracks, mutate authored clip-mix state, place an existing
+child timeline, or derive a compound timeline from an exact selection. Track, nested-placement, and
+compound-creation action results retain their exact typed lower-domain outcomes. Every action
+validates the unpublished aggregate, and the complete sequence publishes exactly once or leaves the
+document unchanged.
 
 `lifecycle` exposes `EngineLifecycle` as the single EngineControl owner. Canonical
 `EngineSubsystem` values describe shared state, projects, devices, playback, rendering, and export.
@@ -708,6 +713,12 @@ kinds as compound action evidence. Retained timeline graphs recompile through th
 preservation path, so authored annotations publish with direct graph edits, project history, and the
 outer document revision or all roll back together. One batch becomes one history unit and complete
 snapshot restoration provides exact undo and redo.
+
+Nested placement and selection-derived compound actions clone the prior editorial project before
+calling the timeline-owned mutation. They reconcile authored clip-mix state against the resulting
+stable clip identities, then recompile every retained graph through the same old-canonical,
+retained, next-canonical merge. The moved source clips therefore keep their existing mix controls,
+new nested instances enter canonical compilation, and one failure restores the untouched draft.
 
 Graph batches use the ordinary checked `GraphTransaction`, media and extension actions reuse their
 project draft command seams, clip-mix batches use the audio-owned revisioned state, and root
@@ -1938,10 +1949,11 @@ observations in one eventless replacement aggregate without polling or bulk runt
 production editing workspace consumes its canonical timeline document through a strict canvas
 projection and supplements clips and transition presentation from the same aggregate's graph and
 automation owners. Authored track and marker gestures plus insert, overwrite, append, replace,
-lift, extract, backspace, undo, redo, transition timing, and graph parameter changes return through
+lift, extract, backspace, undo, redo, transition timing, exact retime replacement, existing-child
+nested placement, selection-derived compound creation, and graph parameter changes return through
 the existing generic project command, compound transaction, and history owners. Canvas navigation,
-preview, source, target, status, snapping, draft input, marker navigation, and shared selection
-remain transient, and every published result returns through a fresh observation.
+nested open paths, preview, source, target, status, snapping, draft input, marker navigation, and
+shared selection remain transient, and every published result returns through a fresh observation.
 Playback crosses
 one bounded nonblocking bridge to its real domain owner. Logical export state remains in the
 canonical queue behind a type-erased dispatcher controller, while prepared executors receive fresh

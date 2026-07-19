@@ -7,9 +7,11 @@ import { fileURLToPath } from "node:url";
 import type { EditorStateSnapshot } from "../src/api.ts";
 import {
   formatTimelineClipTiming,
+  projectTimelineClipDetails,
   projectTimelineClips,
   timelineClipAutomationKeyPercent,
 } from "../src/timeline-clip-presentation.ts";
+import { projectTimelineDocument } from "../src/timeline-workspace.ts";
 
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -530,6 +532,86 @@ test("enriches the existing exact canvas projection with clip detail", () => {
   assert.throws(() => {
     (video.linkedClipIds as string[]).push("clip.forbidden");
   }, TypeError);
+});
+
+test("projects clip details for an opened child timeline without changing the project root", () => {
+  const snapshot = completeSnapshot();
+  const document = snapshot.timeline.document;
+  const content = document.content as Record<string, unknown>;
+  const payload = (content.payload as Record<string, unknown>);
+  const timelines = payload.timelines as Array<Record<string, unknown>>;
+  timelines.push({
+    id: "timeline.child",
+    name: "Opened child",
+    edit_rate: rate(24),
+    global_start: point("0", 24),
+    tracks: [
+      {
+        id: "track.child.video",
+        name: "Child V1",
+        semantics: {
+          kind: "video",
+          frame_rate: rate(24),
+          compositing: "over",
+        },
+        items: [
+          {
+            kind: "clip",
+            id: "clip.child.video",
+            name: "Child picture",
+            source: { kind: "media", id: "media.video" },
+            source_range: range("72", "24", 24),
+            record_range: range("0", "24", 24),
+            time_map: {
+              record_duration: duration("24", 24),
+              source_timebase: rate(24),
+              segments: [
+                {
+                  record_range: range("0", "24", 24),
+                  source_start: point("72", 24),
+                  rate_numerator: "1",
+                  rate_denominator: "1",
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+    edit_state: {
+      selected_objects: [{ kind: "clip", id: "clip.child.video" }],
+      track_states: [
+        {
+          track_id: "track.child.video",
+          height: 72,
+          targeted: true,
+          locked: false,
+          sync_locked: true,
+          muted: false,
+          solo: false,
+          enabled: true,
+        },
+      ],
+      linked_selection_enabled: true,
+      links: [],
+      groups: [],
+    },
+    snapping_enabled: true,
+    markers: [],
+    metadata: [],
+    multicam_source: null,
+    multicam_clips: [],
+  });
+  const model = projectTimelineDocument(document, "timeline.child");
+  const projection = projectTimelineClipDetails(snapshot, model);
+
+  assert.equal(snapshot.project.root_timeline_id, "timeline.main");
+  assert.equal(projection.status, "ready");
+  if (projection.status !== "ready") return;
+  assert.equal(projection.timelineId, "timeline.child");
+  assert.equal(projection.clips[0]?.id, "clip.child.video");
+  assert.equal(projection.clips[0]?.source.name, "Arrival A");
+  assert.deepEqual(projection.clips[0]?.effects, []);
 });
 
 test("keeps malformed supplemental or unsafe canonical state unavailable", () => {

@@ -15,6 +15,10 @@ use superi_timeline::marker_ops::{
     apply_marker_mutation_batch, MarkerMutation, MarkerMutationBatchResult,
 };
 use superi_timeline::model::LinkedMediaReference;
+use superi_timeline::nested::{
+    create_compound_clip_from_selection, place_nested_sequence, CompoundClipRequest,
+    CompoundClipResult, NestedSequenceRequest, NestedSequenceResult,
+};
 use superi_timeline::track_ops::{
     apply_track_mutation_batch, TrackMutation, TrackMutationBatchResult,
 };
@@ -38,6 +42,15 @@ pub enum CompoundProjectAction {
     MutateTracks(Vec<TrackMutation>),
     /// Apply a nonempty atomic marker mutation batch.
     MutateMarkers(Vec<MarkerMutation>),
+    /// Place an existing child timeline on one parent track.
+    PlaceNestedSequence {
+        /// Stable child timeline identity.
+        source_timeline_id: TimelineId,
+        /// Complete parent placement intent.
+        request: NestedSequenceRequest,
+    },
+    /// Move exact parent selection into a new compound timeline.
+    CreateCompoundClip(CompoundClipRequest),
     /// Apply a nonempty ordered mutation batch to one retained graph.
     MutateGraph {
         /// Stable retained graph identity.
@@ -110,6 +123,8 @@ impl CompoundProjectAction {
             Self::EditTimeline(_) => "edit_timeline",
             Self::MutateTracks(_) => "mutate_tracks",
             Self::MutateMarkers(_) => "mutate_markers",
+            Self::PlaceNestedSequence { .. } => "place_nested_sequence",
+            Self::CreateCompoundClip(_) => "create_compound_clip",
             Self::MutateGraph { .. } => "mutate_graph",
             Self::MutateMedia(_) => "mutate_media",
             Self::ImportMedia(_) => "import_media",
@@ -193,6 +208,10 @@ pub enum CompoundProjectActionResult {
     TracksMutated(TrackMutationBatchResult),
     /// Marker mutations and graph reconciliation were published.
     MarkersMutated(MarkerMutationBatchResult),
+    /// One existing child timeline was placed and graphs were reconciled.
+    NestedSequencePlaced(NestedSequenceResult),
+    /// One selection-based compound timeline was created and graphs were reconciled.
+    CompoundClipCreated(CompoundClipResult),
     /// A retained graph published one new graph revision.
     GraphMutated {
         /// Stable retained graph identity.
@@ -307,6 +326,56 @@ pub fn execute_compound_project_transaction(
                         draft.replace_timeline_compilation(reconciled)?;
                     }
                     CompoundProjectActionResult::MarkersMutated(result)
+                }
+                CompoundProjectAction::PlaceNestedSequence {
+                    source_timeline_id,
+                    request,
+                } => {
+                    let old_project = draft.editorial_project().clone();
+                    let retained = draft
+                        .graphs()
+                        .filter_map(|graph| graph.as_timeline().cloned())
+                        .collect::<Vec<_>>();
+                    let (editorial, mix_state) = draft.editorial_and_clip_mix_mut();
+                    let result = place_nested_sequence(
+                        editorial,
+                        editorial.revision(),
+                        *source_timeline_id,
+                        request.clone(),
+                    )?;
+                    reconcile_removed_track_clip_mix(&old_project, editorial, mix_state)?;
+                    for compilation in retained {
+                        let reconciled = recompile_timeline_preserving_edits(
+                            &old_project,
+                            &compilation,
+                            draft.editorial_project(),
+                        )?;
+                        draft.replace_timeline_compilation(reconciled)?;
+                    }
+                    CompoundProjectActionResult::NestedSequencePlaced(result)
+                }
+                CompoundProjectAction::CreateCompoundClip(request) => {
+                    let old_project = draft.editorial_project().clone();
+                    let retained = draft
+                        .graphs()
+                        .filter_map(|graph| graph.as_timeline().cloned())
+                        .collect::<Vec<_>>();
+                    let (editorial, mix_state) = draft.editorial_and_clip_mix_mut();
+                    let result = create_compound_clip_from_selection(
+                        editorial,
+                        editorial.revision(),
+                        request.clone(),
+                    )?;
+                    reconcile_removed_track_clip_mix(&old_project, editorial, mix_state)?;
+                    for compilation in retained {
+                        let reconciled = recompile_timeline_preserving_edits(
+                            &old_project,
+                            &compilation,
+                            draft.editorial_project(),
+                        )?;
+                        draft.replace_timeline_compilation(reconciled)?;
+                    }
+                    CompoundProjectActionResult::CompoundClipCreated(result)
                 }
                 CompoundProjectAction::MutateGraph {
                     graph_id,

@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: f9fb81ad06bcca4849b3b476ad71a08db9dbdd88bef304c0df5611743f25c923
-source_files: 261
+source_hash: d43159bd64f6f2c59d23607e8c0cb64ba3ab0d2a8896d33f6023c9b73c5bf777
+source_files: 263
 mapped_at_commit: working-tree
 ---
 
@@ -502,8 +502,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   dependencies.
 - `app/package.json`: Declares the private production application package, exact toolchain and
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
-  framework, editor-workspace, timeline-canvas, timeline-clip, and timeline-transition contracts,
-  and Tauri commands.
+  framework, editor-workspace, timeline-canvas, timeline-nesting, timeline-clip, and
+  timeline-transition contracts, and Tauri commands.
 - `app/src/api.ts`: Re-exports the complete canonical generated TypeScript contract and constructs
   one frozen `SuperiApiBindings` surface around an injected `SuperiTransport` and `SuperiClient`.
 - `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
@@ -561,15 +561,23 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/timeline-clip-presentation.ts`: Supplements the existing frozen canvas model with strict
   read-only clip media names and relink state, exact time maps, markers, metadata, multicam intent,
   clip-scoped graph effects and parameter drivers, and attached clip-gain sample keyframes with
-  exact clip-relative positions. It leaves geometry with `projectTimelineDocument`, stops effect
-  traversal at timeline-owned nodes, rejects malformed detail, and never infers unsupported visual
-  animation curves.
+  exact clip-relative positions for any active timeline in the same canonical project revision. It
+  requires the root exactly once, scopes raw clip, marker, metadata, multicam, effect, and automation
+  lookup to the active model, leaves geometry with `projectTimelineDocument`, stops effect traversal
+  at timeline-owned nodes, rejects malformed detail, and never infers unsupported visual animation
+  curves.
+- `app/src/timeline-nesting.ts`: Strictly projects every canonical timeline into an immutable
+  catalog, derives exact mixed-clock timeline duration and direct child dependencies, filters
+  cycle-safe placement candidates, reconciles root-anchored transient open paths, and builds exact
+  append or equal-duration replace nested actions plus selection-derived compound actions in
+  canonical track and object order without owning mutation state.
 - `app/src/timeline-transition-presentation.ts`: Joins exact canvas transition timing with the one
-  root-timeline graph document, derives stable endpoint and graph identity, adjacent-handle limits,
-  duration and alignment, downstream processing nodes, animatability, drivers, host restrictions,
-  canonical floating-point bit values, and editable scalar, Boolean, and choice intent. It builds
-  strict `set_transition` and `set_parameter` project actions while keeping malformed optional
-  graph detail separate from proven canonical timing.
+  project-root compiled graph document, including when the active canvas is a child timeline. It
+  derives stable endpoint and graph identity, adjacent-handle limits, duration and alignment,
+  downstream processing nodes, animatability, drivers, host restrictions, canonical floating-point
+  bit values, and editable scalar, Boolean, and choice intent. It builds strict `set_transition`
+  and `set_parameter` project actions while keeping malformed optional graph detail separate from
+  proven canonical timing.
 - `app/src/timeline-retime.ts`: Owns presentation-only exact retime drafts and command planning over
   one canonical clip. It classifies identity, speed, reverse, freeze, and multi-segment maps; uses
   BigInt to reduce rational rates and derive exact source seams; splits and removes record-curve
@@ -596,8 +604,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   drafts, one-frame nudges, visible affected-object previews, and one shared pending exclusion before
   publishing the entire operation batch through the injected application action executor. Exact
   speed, reverse, freeze, and time-remap authoring use that same application-owned command and
-  history path. It also
-  provides a dedicated marker panel with complete marker listing,
+  history path. The same component projects root-anchored nested breadcrumbs, back and explicit
+  selected-clip open controls, nested-clip double-click navigation, cycle-safe child and
+  target-track selectors, append or equal-duration replace placement, and selection-derived
+  compound creation with visible pending, success, and failure evidence. Open paths remain
+  transient while authored placement and compound actions publish through the same injected
+  application action executor. It also provides a dedicated marker panel with complete marker listing,
   exact previous and next navigation, timeline-owned create at playhead, range, label, flag, and note
   editing, removal, pending and error state, and revision-fenced typed inverse reversal. It
   progressively reads one revision-matched media library,
@@ -718,7 +730,13 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   inclusive source-mark conversion, all four three-point placements, equal-duration four-point
   execution, explicit fit-to-fill rejection, selection override, replace conformance, history
   requests, visible consequences, failure fences, exact transition offsets, production
-  transition-inspector wiring, and the absence of a second frontend authored mutation owner.
+  transition-inspector wiring, nested catalog and path consumption, visible open, placement, and
+  compound controls, double-click nesting, publication through the shared callback, and the absence
+  of a second frontend authored mutation owner.
+- `app/tests/timeline-nesting.test.ts`: Verifies exact mixed-clock duration projection, direct child
+  dependencies, cycle-safe candidates, root-anchored path opening and stale-path reconciliation,
+  append and equal-duration replace action payloads, strict locked and incompatible rejection, and
+  deterministic compound object and affected-track identity ordering.
 - `app/tests/timeline-editing.test.ts`: Verifies the complete timing-tool catalog, exact 24 fps,
   24000/1001, 48 kHz, and inexact 44.1 kHz behavior, typed fragment and gap identities, canonical
   sync-track ordering, direct and ripple extend modes, ripple-delete and gap batches, lower-matched
@@ -728,8 +746,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   projection, external global-start placement, mixed record clocks, source names and relink state,
   retime, linking, grouping, targeting, synchronization, markers, metadata, multicam intent,
   clip-scoped effects and drivers, exact clip-gain sample keys and positions, deep immutability,
-  malformed-state rejection, real preview-command composition, stale freshness rejection, and
-  application-owned selection integration.
+  malformed-state rejection, exact child-timeline detail scoping, real preview-command composition,
+  stale freshness rejection, and application-owned selection integration.
 - `app/tests/timeline-transition-presentation.test.ts`: Verifies exact handles and opposite-edge
   limits, duration and alignment derivation, strict no-op and unsafe input rejection, canonical
   scalar-bit decoding, downstream graph traversal, host and driver restrictions, immutable output,
@@ -740,8 +758,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   failures, plus production mounting, accessibility, shared pending and history ownership, styling,
   and exclusion of direct Tauri mutation.
 - `app/tests/api-bindings.test.mjs`: Verifies the canonical generated re-export, complete typed map
-  boundary, concrete provider/bootstrap injection, and real request/subscription forwarding without
-  duplicating generated client policy.
+  boundary including nested placement and compound DTO, action, and result discriminants, concrete
+  provider/bootstrap injection, and real request/subscription forwarding without duplicating
+  generated client policy.
 - `app/tests/transport.test.mjs`: Verifies the one native dispatcher call, generated request
   identity, ordered replay, stale and duplicate event rejection, reconnect cursor, abort-driven
   cancellation, and exact classified public error preservation through an injected headless host.
@@ -957,7 +976,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   typecheck, build, and test commands, and exact TypeScript and Vite development dependencies.
 - `ci/frontend-smoke/src/api-contract.ts`: Imports the committed generated API artifact, constructs
   an exact typed project command, command-log query, unavailable AI state, and API version
-  negotiation request through current catalog release `1.6.0`, consumes command-log and negotiation
+  negotiation request through current catalog release `1.7.0`, consumes command-log and negotiation
   responses plus the extension query,
   lifecycle, event, resource, stable public control reference, typed maps, and transport-neutral
   client constructor used by the browser build.
@@ -999,10 +1018,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and response types, strict extension identity, lifecycle, capability, safe failure, feature,
   control, query, event, and resource declarations, generic project import-media request and result
   evidence, and a transport-neutral typed client without owning runtime IPC. The committed artifact
-  is freshly regenerated from the canonical schema `1.4.0` project surface and includes strict
-  track and marker mutation, exact retime map and evidence, metadata, track-output graph DTOs, and
-  the additive exact
-  `set_transition` timeline operation.
+  is freshly regenerated from the canonical schema `1.5.0` project surface and includes strict
+  track and marker mutation, exact retime map and evidence, metadata, track-output graph DTOs, the
+  additive exact `set_transition` timeline operation, and complete nested placement and
+  selection-derived compound request, action, and evidence unions.
 - `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 25 local
   workspace packages, registry dependencies, target-support dependency trees, scenario digest
   and process-instrumentation dependency edges, the API introspection and validation contracts'
@@ -1492,8 +1511,9 @@ runs strict no-emit TypeScript checking over the React application and generated
 builds the production entry with Vite 7.3.6, and then tests workflow wiring, lifecycle, generated
 client and transport ownership boundaries, deterministic application framework behavior, five
 professional workspace projections, exact audio semantics, canonical timeline projection,
-navigation, exact snap-target resolution, visible rule and reversal wiring, exact pins, runtime
-transport forwarding, and the generated hashed bundle. The retained frontend fixture
+navigation including nested open paths, exact nested placement and compound action construction,
+exact snap-target resolution, visible rule and reversal wiring, exact pins, runtime transport
+forwarding, and the generated hashed bundle. The retained frontend fixture
 separately proves checkout-independent generated contract compatibility without standing in for the
 production application.
 
@@ -1543,6 +1563,18 @@ returns deterministic revision, semantic hash, conflict, and committed-prefix ev
 composes durable project, command-log, media, timeline, render settings, recovery, validation, and bounded
 JSON-RPC automation through the API-owned local host, including exact-source script execution.
 Subscription hosting, dedicated script path loading, and autosave scheduling remain later work.
+
+The production nesting UI starts from the one canonical editor-state timeline document. A pure
+projection builds an immutable catalog for every timeline, computes exact duration in each primary
+edit clock, and records direct child dependencies. The React owner reconciles one transient path
+from the selected root through currently valid nested clip edges, scopes the canvas and supplemental
+clip detail to that active timeline, and exposes breadcrumbs, back, explicit open, and double-click
+open behavior without authoring state. Placement filters the catalog against the target's recursive
+dependency closure and publishes only append or physically equal replace requests; compound
+creation maps the visible complete selection into deterministic per-track identities. Both authored
+flows use the existing application action callback, engine compound transaction, timeline domain,
+history, persistence, evidence, and snapshot refresh path.
+
 Durable extension lifecycle remains user-controlled project state, while one bounded engine-owned
 declarative registry now synchronizes exact OpenFX and native audio supervisor status into canonical
 identity, capability, lifecycle, safe failure, and control discovery. The API projects that state
@@ -1766,6 +1798,12 @@ of open runtime behavior.
   require physically equal source and record durations until timeline-owned fit-to-fill retiming is
   available. Every successful operation uses the retained generated project-command route and the
   single engine history owner.
+- Nested open paths are root-anchored transient presentation state and may advance only through a
+  currently visible clip whose source is the next timeline. Candidate placement rejects self or
+  recursive dependency cycles, exact duration conversion gates replacement, and compound action
+  construction preserves canonical object and track order. React never moves, rebases, links,
+  groups, validates, or persists editorial objects; those policies remain in the timeline domain
+  behind the existing project command and history owner.
 - Project extension records use open namespaced kinds, bounded strict metadata, and exact opaque
   payload bytes. Capability grants remain a user-controlled subset, lifecycle and structured
   failure state remain durable and scriptable, unknown kinds survive unchanged, and engine runtime
@@ -2126,6 +2164,12 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   and absence of timestamps or checkout paths. `cargo test -p superi-api-bindings` proves
   idempotent generation plus nonmutating missing and stale checks, and `cargo run --locked -p
   superi-api-bindings -- check` proves the committed artifact is current.
+- The production application contracts now include four pure nesting tests for exact mixed-clock
+  catalog projection, cycle-safe path and candidate behavior, strict placement, and deterministic
+  compound action construction. The expanded workspace, clip-detail, and binding contracts prove
+  visible nested navigation and command wiring, child-timeline detail scoping, and generated DTO
+  parity. Fresh strict typecheck, production build, and the complete 54-test frontend command passed
+  for this checkpoint.
 - `.github/workflows/tauri.yml` runs the four blocking Rust gates across two macOS architectures,
   Windows, and Ubuntu. Fresh local proof passed both workflow contracts, formatting, the Tauri mock
   runtime test, strict all-target Clippy, and native macOS wry compilation from the checkpoint target.
@@ -2271,6 +2315,15 @@ One directly selected clip also exposes exact speed, reverse, freeze, and multi-
 controls with an inspectable curve, source traversal, target, and consequence. Applying a retime
 uses the same generated command and history path, while reset, undo, and redo preserve the existing
 application ownership boundary.
+
+The timeline now projects every canonical sequence into one cycle-aware catalog and reconciles a
+root-anchored transient open path through actual nested clip edges. Breadcrumb, back, selected-clip,
+and double-click navigation retarget the same canvas and supplemental inspector to child timelines.
+Cycle-safe source and target selectors publish exact append or equal-duration replace nested actions,
+while selected objects publish one deterministic selection-derived compound action with fresh child
+timeline, child-track, and parent-instance identities. Pending, success, and failure intent remains
+visible, authored results refresh from the canonical snapshot, and neither navigation nor React
+creates a competing editorial or history owner.
 No view takes engine or transport ownership, and unavailable runtime behavior remains honest.
 The System panel also consumes one Tauri-owned project lifecycle that durably creates, validates,
 saves, rebinds through save-as, closes, reopens recent paths, and restores opaque recovery
@@ -2325,7 +2378,7 @@ Its `superi-api` package record now includes one test-only concurrency edge for 
 introspection ownership contract without changing the production runtime graph.
 The API now owns a nonserializable host permission context, typed lexical filesystem and plugin
 scopes, explicit destructive operations, deny precedence, payload-derived requirements, and schema
-`1.6.0` discovery metadata. It also projects one bounded engine-owned extension registry through
+`1.7.0` discovery metadata. It also projects one bounded engine-owned extension registry through
 strict exact identity, lifecycle, capability, feature, safe failure, stable control, query, event,
 and replacement resource contracts. Its bounded `superi-json` runtime uses already resolved JSON and
 packages, adds the typed command-log query step, and preserves the same nested authorization and
@@ -2364,7 +2417,7 @@ CLI now compose existing database open, publication, recovery, and validation au
 direct CLI dependency on the project crate.
 The engine now owns a production Rust compound project command and history boundary around that
 aggregate. It applies bounded ordered timeline item, track, graph, media, authored audio, extension,
-and root actions inside
+root, existing-child nested placement, and selection-derived compound actions inside
 one outer project edit, preserves nonconflicting retained graph work through a three-way recompile,
 records one immutable before-and-after unit, restores undo and redo targets with fresh monotonic
 revisions, persists only the selected snapshot through the existing database, and exposes one
@@ -2605,6 +2658,11 @@ expansion unconditional, keep link expansion behind the canonical flag, and reta
 selection. View navigation, lasso geometry, focus, and interaction selection may remain local, but
 authored selection, relationships, and edits must route through the existing project, engine, and
 public command owners.
+Keep nested catalog projection complete across every timeline in the canonical document. Open paths
+must remain root-anchored, clip-edge validated, transient, and self-healing after authored changes.
+Keep candidate filtering cycle-safe and duration conversion exact; keep compound mapping canonical
+and caller-identified. Every placement or compound mutation must use generated DTOs and the existing
+application command callback, never a React-owned mutation, history, or persistence path.
 Keep snap candidates exact in the timeline edit clock, preserve the lower target class and stable tie
 order, skip inexact cross-clock coordinates, resolve object markers relative to their owner, and keep
 session switches, rule filters, visible consequences, and gesture origins transient. Later authored

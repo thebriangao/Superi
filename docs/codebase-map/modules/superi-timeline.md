@@ -2,7 +2,7 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: d3b5837c40c8d208cabda26f68f65a1409971dbde3de09e0736ec77148440b70
+source_hash: 03cb51d87cea95eb0537f796062671d3678033fd8b0575eeb9b86ec4e0808d56
 source_files: 34
 mapped_at_commit: working-tree
 ---
@@ -41,10 +41,16 @@ fingerprint-mismatch relink evidence. The media library shares the project draft
 organization and relink changes preserve stable `MediaId` source links, exact timing, synchronization,
 nested relationships, and subsequent direct edits.
 
-Nested-sequence operations place an existing child timeline or create a new compound timeline and
-its parent clip in the same project revision. They reuse foundational insert, overwrite, append,
-and replace semantics, expose exact parent-to-child links and recursive nesting, and edit a shared
-child through any stable instance while reporting every current instance.
+Nested-sequence operations place an existing child timeline, add a prepared compound timeline, or
+derive a compound timeline directly from a complete object selection in one project revision. The
+selection path preserves original object identity, source, record duration, time maps, annotations,
+metadata, links, groups, transitions, track semantics, and edit intent while rebasing the selected
+record span to child zero. It leaves implicit internal gaps explicit, replaces each affected parent
+track with one linked and grouped nested instance in canonical track order, and rejects relation or
+transition boundaries that would make the selection incomplete. Placement reuses foundational
+insert, overwrite, append, and replace semantics, exposes exact parent-to-child links and recursive
+nesting, and edits a shared child through any stable instance while reporting every current
+instance.
 
 Native multicam state keeps ordered camera-angle metadata and synchronization provenance on one
 ordinary source timeline while each ordinary nested target clip owns an independent gapless switch
@@ -137,9 +143,10 @@ with stable warnings.
 - `open/crates/superi-timeline/src/multicam.rs`: Implements synchronization provenance, ordered
   angle metadata and source membership, clip-local gapless switching, explicit audio policies,
   movable cuts, exact nested and retimed source resolution, and structured multicam errors.
-- `open/crates/superi-timeline/src/nested.rs`: Implements exact nested placement, atomic compound
-  timeline creation, direct child editing by stable instance identity, shared-instance inspection,
-  recursive nesting inspection, and typed outcomes over the foundational edit owner.
+- `open/crates/superi-timeline/src/nested.rs`: Implements exact nested placement, atomic prepared
+  compound creation, selection-derived multi-track compound creation with complete identity and
+  relationship preservation, direct child editing by stable instance identity, shared-instance
+  inspection, recursive nesting inspection, and typed outcomes over the foundational edit owner.
 - `open/crates/superi-timeline/src/otio.rs`: Implements dependency-light OTIO 0.18.1 JSON import
   and export, exact time conversion, deterministic native identity allocation, explicit audio
   defaults, supported object mapping, complete source-template preservation, stable unsupported
@@ -168,8 +175,10 @@ with stable warnings.
   all-angle audio policy, source and target fragment inheritance, replacement inheritance,
   disabled-angle rejection, stale revisions, and atomic rollback.
 - `open/crates/superi-timeline/tests/nested_contract.rs`: Proves exact cross-clock nested placement,
-  retained child object and command state, compound creation, shared instances, recursive nesting,
-  direct child edits, stale revisions, and atomic range, identity, source, and cycle rejection.
+  retained child object and command state, prepared and selection-derived compound creation, exact
+  mixed-clock rebasing, track intent, transitions, annotations, metadata, links and groups, shared
+  instances, recursive nesting, direct child edits, stale revisions, and atomic boundary, range,
+  identity, source, and cycle rejection.
 - `open/crates/superi-timeline/tests/edit_ops_contract.rs`: Proves all six foundational operations,
   exact cross-rate source slicing, nested source preservation, typed fragment identities, explicit
   transition removal and dual-handle replacement, lift gaps, synchronized multi-track publication,
@@ -371,6 +380,11 @@ The nested operation surface includes:
 - `place_nested_sequence`, which instances an existing child timeline through the foundational
   edit engine, and `create_compound_clip`, which adds a caller-authored child timeline and its
   parent clip atomically without replacing an existing timeline identity.
+- `CompoundClipTrackRequest`, `CompoundClipRequest`, and `CompoundClipResult`, plus
+  `create_compound_clip_from_selection`, which derive one child track per affected parent track,
+  move a complete selected object set and its owned annotations into the child, preserve authored
+  relationships and track intent, and replace each selected parent span with one related nested
+  instance in a single checked project edit.
 - `edit_nested_sequence`, which resolves a child through any stable parent clip, publishes one
   validated child edit, and reports all current parent instances.
 - `nested_sequence_instances`, `nested_sequence_tree`, and `NestedSequenceLink`, which expose exact
@@ -551,13 +565,20 @@ Nested operation flow composes those same owners:
    source range, and one foundational placement mode.
 2. Placement resolves the child and parent inside the unpublished draft, requires the source range
    to use the child edit rate, and converts its duration to the parent track clock only when exact.
-3. Existing nested placement calls the shared single-operation executor. Compound creation first
-   adds one caller-authored child timeline after rejecting identity collisions, then places its
-   clip in the same private draft.
-4. The child timeline retains its own tracks, objects, selection, links, groups, targets, and sync
+3. Existing nested placement calls the shared single-operation executor. Prepared compound creation
+   first adds one caller-authored child timeline after rejecting identity collisions, then places
+   its clip in the same private draft.
+4. Selection-derived compound creation validates complete selected relationship and transition
+   boundaries, computes one exact parent span at the timeline edit rate, and converts every affected
+   track span exactly into its local clock. It moves selected objects, object annotations, metadata,
+   transitions, and relation state into caller-identified child tracks, preserves internal gaps,
+   rebases record positions to child zero, and inserts caller-identified parent instances in
+   canonical track order. Every parent instance links and groups together when more than one track
+   participates.
+5. The child timeline retains its own tracks, objects, selection, links, groups, targets, and sync
    locks. Direct child editing resolves the source through a stable parent clip, while final project
    validation checks every shared instance before publication.
-5. Instance and recursive-tree inspection walk the validated project in deterministic timeline,
+6. Instance and recursive-tree inspection walk the validated project in deterministic timeline,
    track, and item order and return every typed source and record relationship without flattening.
 
 Multicam flow composes ordinary timelines, clips, and edit transactions rather than defining a
@@ -776,6 +797,10 @@ Timeline document flow preserves those owners without becoming a project contain
   foundational edit outcome, fragment, transition, and rollback rules.
 - Compound creation never replaces an existing timeline identity. The caller-authored child and
   parent clip publish together or neither publishes.
+- Selection-derived compounds require complete objects and complete link, group, and transition
+  boundaries. They preserve every selected object's stable identity, source and time map, rebase
+  only record placement, retain internal empty time, and publish all child tracks and parent
+  instances in deterministic order or roll back the whole project edit.
 - A shared child edit validates every current instance before publication. Instance and recursive
   inspection preserve parent, track, clip, child, source-range, record-range, and depth identity.
 - Multicam source state belongs to an ordinary timeline. Every angle retains stable identity,
@@ -901,11 +926,13 @@ reports, synchronized two-track batches, stale revisions, wrong clocks, zero and
 overlong handles, transition material, overwrite bounds, and complete rollback after a later
 command fails.
 
-Five nested-operation tests prove existing child placement, atomic compound creation, preservation
-of child objects and selection, links, groups, targeting, and sync-lock state, exact 48-to-24 clock
-mapping, shared-instance reporting, direct child edits, recursive depth, caller-owned fragments,
-missing and duplicate identity rejection, stale revisions, source shrink rollback, inexact clock
-rejection, and cycle rollback.
+Eight nested-operation tests prove existing child placement, prepared and selection-derived atomic
+compound creation, preservation of child objects and selection, links, groups, targeting,
+sync-lock state, annotations, metadata, transitions, exact mixed-clock span rebasing, internal gaps,
+stable source and time-map identity, shared-instance reporting, direct child edits, recursive depth,
+caller-owned fragments, incomplete relation and transition boundary rejection, missing and
+duplicate identity rejection, stale revisions, source shrink rollback, inexact clock rejection,
+and cycle rollback.
 
 Four range tests prove exact cross-clock point and subrange translation, half-open and inexact
 failure paths, atomic direct replacement, all four availability classifications, editable media
@@ -986,7 +1013,8 @@ organization, saved smart collections, explicit relink state, typed track semant
 management and output intent, authoritative timeline edit state, atomic marker management, deterministic metadata,
 exact snapping,
 exact clip retiming, six primary operations, nine advanced edit families, nested placement,
-compound creation, shared child editing, recursive inspection, and native multicam angle,
+prepared and selection-derived multi-track compound creation, shared child editing, recursive
+inspection, and native multicam angle,
 synchronization, switching, audio-intent, structural inheritance, and exact resolution are
 substantive and test-backed. Deterministic graph compilation with lossless native domain values and
 shared processing-value coexistence, plus production OTIO 0.18.1 reading,
@@ -998,7 +1026,7 @@ canonical timeline and compiled graph components in stable SQLite schema 3 and a
 complete save, save-as, copy, and backup files. Effects has compatible
 graph-native transition authoring and a bounded oracle, but the production binder from this
 timeline-owned state to those visual schemas is absent. Graph evaluation, fit-to-fill,
-grouped-source compound synthesis, multicam mixing and runtime playback, timeline-driven autosave
+multicam mixing and runtime playback, timeline-driven autosave
 scheduling, and recovery orchestration remain absent. Generic editor-state inspection and the
 public API preserve the canonical timeline document and expose typed track mutation through durable
 project commands, including strict marker mutation and evidence. The production editing workspace renders the strict projection with transient
@@ -1062,8 +1090,8 @@ integer forms, canonical collection rules, checksum scope, migration behavior, a
 reconstruction as the same class of public contract. Add a new component revision and explicit
 migration for incompatible changes instead of changing revision 2 in place.
 Extend tests before changing them. Later
-higher-level and grouped-source compound operations must consume `tracks_affected_by_sync`, exact
-selection state, and clip-owned time maps instead of recreating those policies. Add higher-level
+higher-level compound operations must consume `tracks_affected_by_sync`, exact selection state,
+and clip-owned time maps instead of recreating those policies. Add higher-level
 edit commands and graph evaluation only through their owning modules, and update project, engine,
 API, CLI, persistence, and fixture maps when those paths begin consuming native timeline state.
 Keep the production workspace projection strict against the canonical document revision and retain

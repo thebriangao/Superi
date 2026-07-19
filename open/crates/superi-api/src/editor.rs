@@ -307,6 +307,16 @@ pub enum ProjectActionEvidence {
         revision: u64,
         mutations: Vec<TimelineMarkerMutationKind>,
     },
+    NestedSequencePlaced {
+        revision: u64,
+        source_timeline_id: String,
+        clip_ids: Vec<String>,
+    },
+    CompoundClipCreated {
+        revision: u64,
+        compound_timeline_id: String,
+        clip_ids: Vec<String>,
+    },
     GraphMutated {
         graph_id: String,
         revision: u64,
@@ -682,6 +692,117 @@ impl EditorialObjectId {
                 "caption_id",
             )?)),
         }
+    }
+}
+
+/// Exact parent-track behavior for one public nested sequence placement.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "placement", rename_all = "snake_case", deny_unknown_fields)]
+pub enum EditorNestedSequencePlacement {
+    Insert {
+        at: ExactTime,
+        fragment_ids: Vec<EditorialObjectId>,
+    },
+    Overwrite {
+        at: ExactTime,
+        fragment_ids: Vec<EditorialObjectId>,
+    },
+    Append {},
+    Replace {
+        target_id: EditorialObjectId,
+    },
+}
+
+impl EditorNestedSequencePlacement {
+    fn into_engine(self) -> Result<engine::NestedSequencePlacement> {
+        match self {
+            Self::Insert { at, fragment_ids } => Ok(engine::NestedSequencePlacement::insert(
+                at.into_engine()?,
+                object_ids(fragment_ids)?,
+            )),
+            Self::Overwrite { at, fragment_ids } => Ok(engine::NestedSequencePlacement::overwrite(
+                at.into_engine()?,
+                object_ids(fragment_ids)?,
+            )),
+            Self::Append {} => Ok(engine::NestedSequencePlacement::append()),
+            Self::Replace { target_id } => Ok(engine::NestedSequencePlacement::replace(
+                target_id.into_engine()?,
+            )),
+        }
+    }
+}
+
+/// Complete strict public request for placing one existing child timeline.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EditorNestedSequenceRequest {
+    pub parent_timeline_id: String,
+    pub parent_track_id: String,
+    pub clip_id: String,
+    pub name: String,
+    pub source_range: ExactTimeRange,
+    pub placement: EditorNestedSequencePlacement,
+}
+
+impl EditorNestedSequenceRequest {
+    fn into_engine(self) -> Result<engine::NestedSequenceRequest> {
+        Ok(engine::NestedSequenceRequest::new(
+            parse_id(&self.parent_timeline_id, "timeline_id")?,
+            parse_id(&self.parent_track_id, "track_id")?,
+            parse_id(&self.clip_id, "clip_id")?,
+            self.name,
+            self.source_range.into_engine()?,
+            self.placement.into_engine()?,
+        ))
+    }
+}
+
+/// Stable identities for one affected parent track in a compound request.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EditorCompoundClipTrack {
+    pub parent_track_id: String,
+    pub compound_track_id: String,
+    pub clip_id: String,
+}
+
+impl EditorCompoundClipTrack {
+    fn into_engine(self) -> Result<engine::CompoundClipTrackRequest> {
+        Ok(engine::CompoundClipTrackRequest::new(
+            parse_id(&self.parent_track_id, "track_id")?,
+            parse_id(&self.compound_track_id, "track_id")?,
+            parse_id(&self.clip_id, "clip_id")?,
+        ))
+    }
+}
+
+/// Complete strict public request for moving parent selection into a compound timeline.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EditorCompoundClipRequest {
+    pub parent_timeline_id: String,
+    pub compound_timeline_id: String,
+    pub name: String,
+    pub selected_objects: Vec<EditorialObjectId>,
+    pub tracks: Vec<EditorCompoundClipTrack>,
+}
+
+impl EditorCompoundClipRequest {
+    fn into_engine(self) -> Result<engine::CompoundClipRequest> {
+        Ok(engine::CompoundClipRequest::new(
+            parse_id(&self.parent_timeline_id, "timeline_id")?,
+            parse_id(&self.compound_timeline_id, "timeline_id")?,
+            self.name,
+            object_ids(self.selected_objects)?,
+            self.tracks
+                .into_iter()
+                .map(EditorCompoundClipTrack::into_engine)
+                .collect::<Result<Vec<_>>>()?,
+        ))
     }
 }
 
@@ -3562,6 +3683,13 @@ pub enum ProjectAction {
     MutateMarkers {
         mutations: Vec<TimelineMarkerMutation>,
     },
+    PlaceNestedSequence {
+        source_timeline_id: String,
+        request: EditorNestedSequenceRequest,
+    },
+    CreateCompoundClip {
+        request: EditorCompoundClipRequest,
+    },
     MutateGraph {
         graph_id: String,
         mutations: Vec<EditorGraphMutation>,
@@ -3608,6 +3736,8 @@ impl ProjectAction {
             | Self::EditTimeline { .. }
             | Self::MutateTracks { .. }
             | Self::MutateMarkers { .. }
+            | Self::PlaceNestedSequence { .. }
+            | Self::CreateCompoundClip { .. }
             | Self::MutateGraph { .. }
             | Self::MutateClipMix { .. } => {}
         }
@@ -3640,6 +3770,16 @@ impl ProjectAction {
                     .map(TimelineMarkerMutation::into_engine)
                     .collect::<Result<Vec<_>>>()?,
             )),
+            Self::PlaceNestedSequence {
+                source_timeline_id,
+                request,
+            } => Ok(engine::CompoundProjectAction::PlaceNestedSequence {
+                source_timeline_id: parse_id(&source_timeline_id, "timeline_id")?,
+                request: request.into_engine()?,
+            }),
+            Self::CreateCompoundClip { request } => Ok(
+                engine::CompoundProjectAction::CreateCompoundClip(request.into_engine()?),
+            ),
             Self::MutateGraph {
                 graph_id,
                 mutations,
@@ -4111,6 +4251,28 @@ fn public_action_evidence(
                     .iter()
                     .map(|outcome| public_marker_mutation_kind(outcome.kind()))
                     .collect(),
+            })
+        }
+        engine::CompoundProjectActionResult::NestedSequencePlaced(result) => {
+            Ok(ProjectActionEvidence::NestedSequencePlaced {
+                revision: result.revision(),
+                source_timeline_id: result.source_timeline_id().to_string(),
+                clip_ids: result
+                    .outcome()
+                    .inserted_ids()
+                    .iter()
+                    .filter_map(|object| match object {
+                        engine::EditorialObjectId::Clip(clip_id) => Some(clip_id.to_string()),
+                        _ => None,
+                    })
+                    .collect(),
+            })
+        }
+        engine::CompoundProjectActionResult::CompoundClipCreated(result) => {
+            Ok(ProjectActionEvidence::CompoundClipCreated {
+                revision: result.revision(),
+                compound_timeline_id: result.compound_timeline_id().to_string(),
+                clip_ids: result.clip_ids().iter().map(ToString::to_string).collect(),
             })
         }
         engine::CompoundProjectActionResult::GraphMutated { graph_id, revision } => {

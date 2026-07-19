@@ -296,7 +296,7 @@ fn editor_contract_has_permanent_names_and_strict_project_commands() {
     );
     assert_eq!(PROJECT_STATE_CHANGED_EVENT, "superi.project.state.changed");
     assert_eq!(PROJECT_HISTORY_RESOURCE, "superi.project.history");
-    assert_eq!(PROJECT_EDITOR_SCHEMA_VERSION.to_string(), "1.4.0");
+    assert_eq!(PROJECT_EDITOR_SCHEMA_VERSION.to_string(), "1.5.0");
     assert_eq!(
         ExecuteProjectCommand::METHOD,
         EXECUTE_PROJECT_COMMAND_METHOD
@@ -534,6 +534,8 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
         json!({"action":"edit_timeline","operations":[{"operation":"append","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"material":gap_item()}]}),
         json!({"action":"mutate_tracks","mutations":[{"operation":"rename","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"name":"Picture"}]}),
         json!({"action":"mutate_markers","mutations":[{"operation":"set_label","timeline_id":ROOT.to_string(),"marker_id":MARKER.to_string(),"label":"Review"}]}),
+        json!({"action":"place_nested_sequence","source_timeline_id":"timeline:0000000000000000000000000000e020","request":{"parent_timeline_id":ROOT.to_string(),"parent_track_id":TRACK.to_string(),"clip_id":"clip:0000000000000000000000000000e022","name":"Nested scene","source_range":exact_range(0,72,24),"placement":{"placement":"replace","target_id":object_id("clip",&CLIP.to_string())}}}),
+        json!({"action":"create_compound_clip","request":{"parent_timeline_id":ROOT.to_string(),"compound_timeline_id":"timeline:0000000000000000000000000000e020","name":"Nested scene","selected_objects":[object_id("clip",&CLIP.to_string()),object_id("clip",&SECOND_CLIP.to_string())],"tracks":[{"parent_track_id":TRACK.to_string(),"compound_track_id":"track:0000000000000000000000000000e021","clip_id":"clip:0000000000000000000000000000e022"}]}}),
         json!({"action":"mutate_graph","graph_id":"graph:00000000000000000000000000000047","mutations":[{"operation":"reorder","node_id":node_id,"position":0}]}),
         json!({"action":"mutate_media","mutation":{"operation":"mark_missing","media_id":MEDIA.to_string()}}),
         json!({"action":"mutate_clip_mix","mutations":[{"operation":"remove","clip_id":CLIP.to_string()}]}),
@@ -546,6 +548,8 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
             "edit_timeline",
             "mutate_tracks",
             "mutate_markers",
+            "place_nested_sequence",
+            "create_compound_clip",
             "mutate_graph",
             "mutate_media",
             "mutate_clip_mix",
@@ -670,6 +674,137 @@ fn public_marker_command_is_exact_visible_evidenced_and_undoable() {
         .unwrap()
         .marker(MARKER)
         .is_none());
+}
+
+#[test]
+fn public_nested_and_compound_actions_are_strict_evidenced_and_undoable() {
+    let _domain = ExecutionDomain::EngineControl
+        .enter_current()
+        .expect("test owns engine control");
+    let mut api = project_api();
+    let child_timeline = engine::TimelineId::from_raw(0xe020);
+    let child_track = engine::TrackId::from_raw(0xe021);
+    let compound_instance = engine::ClipId::from_raw(0xe022);
+    let replacement_instance = engine::ClipId::from_raw(0xe023);
+    let compound: ExecuteProjectCommand = serde_json::from_value(json!({
+        "transaction_id": "public-create-compound",
+        "expected_project_revision": 0,
+        "command": {
+            "command": "apply",
+            "actions": [{
+                "action": "create_compound_clip",
+                "request": {
+                    "parent_timeline_id": ROOT.to_string(),
+                    "compound_timeline_id": child_timeline.to_string(),
+                    "name": "Nested scene",
+                    "selected_objects": [
+                        object_id("clip", &CLIP.to_string()),
+                        object_id("clip", &SECOND_CLIP.to_string())
+                    ],
+                    "tracks": [{
+                        "parent_track_id": TRACK.to_string(),
+                        "compound_track_id": child_track.to_string(),
+                        "clip_id": compound_instance.to_string()
+                    }]
+                }
+            }]
+        }
+    }))
+    .unwrap();
+    let serialized = serde_json::to_value(&compound).unwrap();
+    let mut unknown = serialized.clone();
+    unknown["command"]["actions"][0]["request"]["guessed"] = json!(true);
+    assert!(serde_json::from_value::<ExecuteProjectCommand>(unknown).is_err());
+
+    let applied = api.execute(compound).unwrap();
+    assert_eq!(applied.state().project_revision(), 1);
+    let ProjectCommandEvidence::Applied { actions } = applied.evidence() else {
+        panic!("compound command must retain action evidence");
+    };
+    assert_eq!(
+        serde_json::to_value(&actions[0]).unwrap(),
+        json!({
+            "result": "compound_clip_created",
+            "revision": 1,
+            "compound_timeline_id": child_timeline.to_string(),
+            "clip_ids": [compound_instance.to_string()]
+        })
+    );
+    let snapshot = api.project_snapshot().unwrap();
+    assert!(snapshot
+        .editorial_project()
+        .timeline(child_timeline)
+        .unwrap()
+        .track(child_track)
+        .unwrap()
+        .item(engine::EditorialObjectId::Clip(CLIP))
+        .is_some());
+    assert_eq!(api.drain_events().unwrap().len(), 1);
+
+    let place: ExecuteProjectCommand = serde_json::from_value(json!({
+        "transaction_id": "public-place-nested",
+        "expected_project_revision": 1,
+        "command": {
+            "command": "apply",
+            "actions": [{
+                "action": "place_nested_sequence",
+                "source_timeline_id": child_timeline.to_string(),
+                "request": {
+                    "parent_timeline_id": ROOT.to_string(),
+                    "parent_track_id": TRACK.to_string(),
+                    "clip_id": replacement_instance.to_string(),
+                    "name": "Nested scene replacement",
+                    "source_range": exact_range(0, 72, 24),
+                    "placement": {
+                        "placement": "replace",
+                        "target_id": object_id("clip", &compound_instance.to_string())
+                    }
+                }
+            }]
+        }
+    }))
+    .unwrap();
+    let placed = api.execute(place).unwrap();
+    let ProjectCommandEvidence::Applied { actions } = placed.evidence() else {
+        panic!("nested placement must retain action evidence");
+    };
+    assert_eq!(
+        serde_json::to_value(&actions[0]).unwrap(),
+        json!({
+            "result": "nested_sequence_placed",
+            "revision": 2,
+            "source_timeline_id": child_timeline.to_string(),
+            "clip_ids": [replacement_instance.to_string()]
+        })
+    );
+    assert!(api
+        .project_snapshot()
+        .unwrap()
+        .editorial_project()
+        .timeline(ROOT)
+        .unwrap()
+        .track(TRACK)
+        .unwrap()
+        .item(engine::EditorialObjectId::Clip(replacement_instance))
+        .is_some());
+    assert_eq!(api.drain_events().unwrap().len(), 1);
+
+    api.execute(ExecuteProjectCommand::new(
+        "undo-public-place-nested",
+        2,
+        ProjectCommand::Undo {},
+    ))
+    .unwrap();
+    assert!(api
+        .project_snapshot()
+        .unwrap()
+        .editorial_project()
+        .timeline(ROOT)
+        .unwrap()
+        .track(TRACK)
+        .unwrap()
+        .item(engine::EditorialObjectId::Clip(compound_instance))
+        .is_some());
 }
 
 #[test]

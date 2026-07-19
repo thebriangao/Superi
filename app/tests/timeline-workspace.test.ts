@@ -841,6 +841,17 @@ test("timeline surface is integrated without a second authored mutation owner", 
   assert.match(timeline, /buildSetTransitionAction/);
   assert.match(timeline, /buildTransitionParameterAction/);
   assert.match(timeline, /executeProjectActions/);
+  assert.match(timeline, /projectTimelineCatalog/);
+  assert.match(timeline, /reconcileTimelinePath/);
+  assert.match(timeline, /openNestedTimelinePath/);
+  assert.match(timeline, /aria-label="Open timeline path"/);
+  assert.match(timeline, /Open selected nested clip/);
+  assert.match(timeline, /Double-click a nested clip/);
+  assert.match(timeline, /buildNestedSequenceAction/);
+  assert.match(timeline, /Place nested sequence/);
+  assert.match(timeline, /buildCompoundClipAction/);
+  assert.match(timeline, /Create compound clip/);
+  assert.match(timeline, /onDoubleClick={onDoubleClick}/);
   assert.match(styles, /\.timeline-transition-inspector/);
   assert.match(styles, /\.timeline-transition-handles/);
   assert.match(timeline, /role="listbox"/);

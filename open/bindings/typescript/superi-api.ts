@@ -333,6 +333,16 @@ export type EditorColorSpace = { primaries: string; transfer: string; matrix: st
 export type EditorColorState = { settings_resource: string; project_revision: number; management: EditorColorManagement; render_target: EditorRenderColorTarget; render_settings_fingerprint: string; graph_resources: string[] };
 
 /**
+ * Complete strict public request for moving parent selection into a compound timeline.
+ */
+export type EditorCompoundClipRequest = { parent_timeline_id: string; compound_timeline_id: string; name: string; selected_objects: EditorialObjectId[]; tracks: EditorCompoundClipTrack[] };
+
+/**
+ * Stable identities for one affected parent track in a compound request.
+ */
+export type EditorCompoundClipTrack = { parent_track_id: string; compound_track_id: string; clip_id: string };
+
+/**
  * Graph determinism declaration.
  */
 export type EditorDeterminism = "deterministic" | "seeded" | "non_deterministic";
@@ -531,6 +541,16 @@ export type EditorMulticamSwitch = { source_range: ExactTimeRange; angle_id: str
  * Multicam synchronization provenance.
  */
 export type EditorMulticamSyncMethod = { kind: "manual" } | { kind: "timecode" } | { kind: "in_points" } | { kind: "out_points" } | { kind: "clip_marker"; name: string } | { kind: "audio" };
+
+/**
+ * Exact parent-track behavior for one public nested sequence placement.
+ */
+export type EditorNestedSequencePlacement = { placement: "insert"; at: ExactTime; fragment_ids: EditorialObjectId[] } | { placement: "overwrite"; at: ExactTime; fragment_ids: EditorialObjectId[] } | { placement: "append" } | { placement: "replace"; target_id: EditorialObjectId };
+
+/**
+ * Complete strict public request for placing one existing child timeline.
+ */
+export type EditorNestedSequenceRequest = { parent_timeline_id: string; parent_track_id: string; clip_id: string; name: string; source_range: ExactTimeRange; placement: EditorNestedSequencePlacement };
 
 /**
  * Complete graph node behavior declaration.
@@ -1215,12 +1235,12 @@ export type PollEventsResult = { status: "events"; result: EventBatch } | { stat
 /**
  * Every authored action integrated by the production project transaction owner.
  */
-export type ProjectAction = { action: "select_root_timeline"; timeline_id: string } | { action: "edit_timeline"; operations: TimelineEditOperation[] } | { action: "mutate_tracks"; mutations: TimelineTrackMutation[] } | { action: "mutate_markers"; mutations: TimelineMarkerMutation[] } | { action: "mutate_graph"; graph_id: string; mutations: EditorGraphMutation[] } | { action: "mutate_media"; mutation: EditorMediaMutation } | { action: "import_media"; media: EditorImportedMedia[] } | { action: "mutate_clip_mix"; mutations: EditorClipMixMutation[] } | { action: "mutate_extension"; mutation: EditorExtensionMutation };
+export type ProjectAction = { action: "select_root_timeline"; timeline_id: string } | { action: "edit_timeline"; operations: TimelineEditOperation[] } | { action: "mutate_tracks"; mutations: TimelineTrackMutation[] } | { action: "mutate_markers"; mutations: TimelineMarkerMutation[] } | { action: "place_nested_sequence"; source_timeline_id: string; request: EditorNestedSequenceRequest } | { action: "create_compound_clip"; request: EditorCompoundClipRequest } | { action: "mutate_graph"; graph_id: string; mutations: EditorGraphMutation[] } | { action: "mutate_media"; mutation: EditorMediaMutation } | { action: "import_media"; media: EditorImportedMedia[] } | { action: "mutate_clip_mix"; mutations: EditorClipMixMutation[] } | { action: "mutate_extension"; mutation: EditorExtensionMutation };
 
 /**
  * One action result inside an applied compound command.
  */
-export type ProjectActionEvidence = { result: "root_timeline_selected"; timeline_id: string } | { result: "timeline_edited"; revision: number; operations: TimelineEditKind[] } | { result: "tracks_mutated"; revision: number; mutations: TimelineTrackMutationKind[] } | { result: "markers_mutated"; revision: number; mutations: TimelineMarkerMutationKind[] } | { result: "graph_mutated"; graph_id: string; revision: number } | { result: "media_mutated"; outcome: MediaMutationResult } | { result: "media_imported"; media_ids: string[]; skipped_media_ids: string[] } | { result: "clip_mix_mutated"; revision: number } | { result: "extension_mutated"; outcome: ExtensionMutationResultKind; extension_id: string; record_id: string; replaced: boolean | null };
+export type ProjectActionEvidence = { result: "root_timeline_selected"; timeline_id: string } | { result: "timeline_edited"; revision: number; operations: TimelineEditKind[] } | { result: "tracks_mutated"; revision: number; mutations: TimelineTrackMutationKind[] } | { result: "markers_mutated"; revision: number; mutations: TimelineMarkerMutationKind[] } | { result: "nested_sequence_placed"; revision: number; source_timeline_id: string; clip_ids: string[] } | { result: "compound_clip_created"; revision: number; compound_timeline_id: string; clip_ids: string[] } | { result: "graph_mutated"; graph_id: string; revision: number } | { result: "media_mutated"; outcome: MediaMutationResult } | { result: "media_imported"; media_ids: string[]; skipped_media_ids: string[] } | { result: "clip_mix_mutated"; revision: number } | { result: "extension_mutated"; outcome: ExtensionMutationResultKind; extension_id: string; record_id: string; replaced: boolean | null };
 
 /**
  * One generic project command on the stable public surface.

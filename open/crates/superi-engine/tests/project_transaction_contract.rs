@@ -33,6 +33,7 @@ use superi_timeline::model::{
     Clip, ClipSource, EditorialObjectId, EditorialProject, LinkedMediaReference, Timeline, Track,
     TrackItem, TrackSemantics, VideoCompositing, VideoTrackSemantics,
 };
+use superi_timeline::nested::{CompoundClipRequest, CompoundClipTrackRequest};
 use superi_timeline::track_ops::TrackMutation;
 
 const PROJECT: ProjectId = ProjectId::from_raw(0xd000);
@@ -493,6 +494,103 @@ fn marker_mutations_publish_once_recompile_and_round_trip_through_history() {
         range(12, 4, edit_rate)
     );
     assert_eq!(graph_name(redone.state().snapshot()), "original name");
+}
+
+#[test]
+fn compound_clip_action_recompiles_preserves_mix_and_round_trips_through_history() {
+    let child_timeline = TimelineId::from_raw(0xd020);
+    let child_track = TrackId::from_raw(0xd021);
+    let instance = ClipId::from_raw(0xd022);
+    let request = CompoundClipRequest::new(
+        ROOT,
+        child_timeline,
+        "Nested scene",
+        [EditorialObjectId::Clip(CLIP)],
+        [CompoundClipTrackRequest::new(TRACK, child_track, instance)],
+    );
+    let transaction = CompoundProjectTransaction::new([
+        CompoundProjectAction::mutate_clip_mix([ClipMixMutation::set(CLIP, controls())]),
+        CompoundProjectAction::CreateCompoundClip(request),
+    ])
+    .unwrap();
+    let mut history = ProjectCommandHistory::new(document());
+
+    let applied = history
+        .execute(ProjectHistoryCommand::apply(
+            0,
+            ProjectMutation::compound(transaction),
+        ))
+        .unwrap();
+
+    let ProjectHistoryActionResult::AppliedCompound { actions } = applied.action_result().unwrap()
+    else {
+        panic!("compound creation must retain action evidence");
+    };
+    assert!(matches!(
+        actions.as_slice(),
+        [
+            CompoundProjectActionResult::ClipMixMutated(_),
+            CompoundProjectActionResult::CompoundClipCreated(result)
+        ] if result.clip_ids() == [instance]
+    ));
+    let snapshot = applied.state().snapshot();
+    assert!(snapshot
+        .editorial_project()
+        .timeline(child_timeline)
+        .unwrap()
+        .track(child_track)
+        .unwrap()
+        .item(EditorialObjectId::Clip(CLIP))
+        .is_some());
+    assert_eq!(snapshot.clip_mix_state().controls(CLIP), Some(&controls()));
+    let root = snapshot.editorial_project().timeline(ROOT).unwrap();
+    assert_eq!(
+        root.track(TRACK)
+            .unwrap()
+            .item(EditorialObjectId::Clip(instance))
+            .unwrap()
+            .as_clip()
+            .unwrap()
+            .source(),
+        ClipSource::Timeline(child_timeline)
+    );
+    assert!(snapshot
+        .timeline_graph(ROOT)
+        .unwrap()
+        .index()
+        .node(TimelineGraphOrigin::Object(EditorialObjectId::Clip(
+            instance
+        )))
+        .is_some());
+
+    let undone = history.execute(ProjectHistoryCommand::undo(1)).unwrap();
+    assert!(undone
+        .state()
+        .snapshot()
+        .editorial_project()
+        .timeline(child_timeline)
+        .is_none());
+    assert!(undone
+        .state()
+        .snapshot()
+        .editorial_project()
+        .timeline(ROOT)
+        .unwrap()
+        .track(TRACK)
+        .unwrap()
+        .item(EditorialObjectId::Clip(CLIP))
+        .is_some());
+    let redone = history.execute(ProjectHistoryCommand::redo(2)).unwrap();
+    assert!(redone
+        .state()
+        .snapshot()
+        .editorial_project()
+        .timeline(child_timeline)
+        .is_some());
+    assert_eq!(
+        redone.state().snapshot().clip_mix_state().controls(CLIP),
+        Some(&controls())
+    );
 }
 
 #[test]

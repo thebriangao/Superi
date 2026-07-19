@@ -49,6 +49,12 @@ test("canonical artifact retains typed methods, events, resources, scripts, and 
   assert.match(generated, /export interface SuperiTransport/);
   assert.match(generated, /export class SuperiClient/);
   assert.match(generated, /public subscribe<E extends keyof SuperiEventMap>/);
+  assert.match(generated, /export type EditorNestedSequenceRequest/);
+  assert.match(generated, /export type EditorCompoundClipRequest/);
+  assert.match(generated, /action: "place_nested_sequence"/);
+  assert.match(generated, /action: "create_compound_clip"/);
+  assert.match(generated, /result: "nested_sequence_placed"/);
+  assert.match(generated, /result: "compound_clip_created"/);
 });
 
 test("binding factory forwards request and subscription behavior without transport policy", () => {

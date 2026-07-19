@@ -77,6 +77,10 @@ pub use superi_timeline::multicam::{
     MulticamAngle, MulticamAudioPolicy, MulticamClip, MulticamSource, MulticamSwitch,
     MulticamSyncMethod,
 };
+pub use superi_timeline::nested::{
+    CompoundClipRequest, CompoundClipResult, CompoundClipTrackRequest, NestedSequencePlacement,
+    NestedSequenceRequest, NestedSequenceResult,
+};
 pub use superi_timeline::retime::{ClipTimeMap, PlaybackRate, RetimeSegment};
 pub use superi_timeline::track_ops::{
     TrackCreationKind, TrackMutation, TrackMutationBatchResult, TrackMutationKind,

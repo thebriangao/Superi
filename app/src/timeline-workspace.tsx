@@ -70,8 +70,15 @@ import {
   type TimelineTransitionPresentation,
 } from "./timeline-transition-presentation.ts";
 import {
+  buildCompoundClipAction,
+  buildNestedSequenceAction,
+  nestedTimelineCandidates,
+  openNestedTimelinePath,
+  projectTimelineCatalog,
+  reconcileTimelinePath,
+} from "./timeline-nesting.ts";
+import {
   TIMELINE_DEFAULT_SNAP_RULES,
-  TimelineProjectionError,
   buildTimelineEditCommand,
   buildTimelineHistoryCommand,
   buildTimelineRulerTicks,
@@ -80,7 +87,6 @@ import {
   expandTimelineSelection,
   formatTimelineTime,
   parseTimelineSelectionIdentity,
-  projectTimelineDocument,
   resolveTimelineSnap,
   projectSourceMonitorForTimelineEdit,
   snapTimelineTime,
@@ -258,23 +264,44 @@ export function TimelineWorkspace({
   onExecuteProjectCommand,
   mutateMarkers,
 }: TimelineWorkspaceProps) {
-  const projection = useMemo(() => {
+  const [requestedTimelinePath, setRequestedTimelinePath] = useState<readonly string[]>(
+    () => [rootTimelineId],
+  );
+  const catalogProjection = useMemo(() => {
     try {
+      const catalog = projectTimelineCatalog(document);
+      if (!catalog.byId.has(rootTimelineId)) {
+        throw new Error(`Root timeline ${rootTimelineId} is absent.`);
+      }
       return {
-        model: projectTimelineDocument(document, rootTimelineId),
+        catalog,
         failure: null,
       };
     } catch (error) {
       return {
-        model: null,
+        catalog: null,
         failure:
-          error instanceof TimelineProjectionError
+          error instanceof Error
             ? error.message
             : "The canonical timeline document could not be projected.",
       };
     }
   }, [document, rootTimelineId]);
-  const model = projection.model;
+  const catalog = catalogProjection.catalog;
+  const timelinePath = useMemo(
+    () =>
+      catalog
+        ? reconcileTimelinePath(catalog, rootTimelineId, requestedTimelinePath)
+        : Object.freeze([rootTimelineId]),
+    [catalog, requestedTimelinePath, rootTimelineId],
+  );
+  useEffect(() => {
+    if (!sameTimelinePath(requestedTimelinePath, timelinePath)) {
+      setRequestedTimelinePath(timelinePath);
+    }
+  }, [requestedTimelinePath, timelinePath]);
+  const activeTimelineId = timelinePath[timelinePath.length - 1] ?? rootTimelineId;
+  const model = catalog?.byId.get(activeTimelineId)?.model ?? null;
   const clipProjection = useMemo(
     () => (model ? projectTimelineClipDetails(snapshot, model) : null),
     [model, snapshot],
@@ -423,6 +450,14 @@ export function TimelineWorkspace({
     () => new Set(visibleSelectionKeys),
     [visibleSelectionKeys],
   );
+  const visibleSelectionTargets = useMemo(
+    () =>
+      visibleSelectionKeys.flatMap((key) => {
+        const target = selectionTargetsByKey.get(key);
+        return target ? [target] : [];
+      }),
+    [selectionTargetsByKey, visibleSelectionKeys],
+  );
   const selectedTransition = useMemo(() => {
     if (visibleSelectionKeys.length !== 1 || transitionProjection === null) {
       return null;
@@ -512,6 +547,42 @@ export function TimelineWorkspace({
     "Choose an exact target and editorial gesture.",
   );
   const transactionSequenceRef = useRef(0);
+  const nestedCandidates = useMemo(
+    () =>
+      catalog && model
+        ? nestedTimelineCandidates(catalog, model.id)
+        : Object.freeze([]),
+    [catalog, model],
+  );
+  const [nestedSourceTimelineId, setNestedSourceTimelineId] = useState("");
+  const [nestedPlacement, setNestedPlacement] = useState<"append" | "replace">(
+    "append",
+  );
+  const [compoundName, setCompoundName] = useState("Compound clip");
+  const [nestingPending, setNestingPending] = useState(false);
+  const [nestingStatus, setNestingStatus] = useState(
+    "Open a nested clip, place a sequence, or compound the visible selection.",
+  );
+  const selectedNestedClip =
+    visibleSelectionTargets.length === 1 &&
+    visibleSelectionTargets[0]?.item.kind === "clip" &&
+    visibleSelectionTargets[0].item.source?.kind === "timeline"
+      ? visibleSelectionTargets[0].item
+      : null;
+  const selectedReplaceTarget =
+    visibleSelectionTargets.length === 1 &&
+    visibleSelectionTargets[0]?.trackId === targetTrackId &&
+    visibleSelectionTargets[0].item.kind !== "transition"
+      ? visibleSelectionTargets[0]
+      : null;
+
+  useEffect(() => {
+    setNestedSourceTimelineId((current) =>
+      nestedCandidates.some((candidate) => candidate.id === current)
+        ? current
+        : nestedCandidates[0]?.id ?? "",
+    );
+  }, [nestedCandidates]);
 
   useEffect(() => {
     setTargetTrackId((current) =>
@@ -620,6 +691,107 @@ export function TimelineWorkspace({
     () => nextTransactionId("retime"),
     [nextTransactionId],
   );
+
+  const openNestedClip = useCallback(
+    (clipId: string) => {
+      if (!catalog) return;
+      try {
+        const nextPath = openNestedTimelinePath(catalog, timelinePath, clipId);
+        const childId = nextPath[nextPath.length - 1];
+        setRequestedTimelinePath(nextPath);
+        setNestingStatus(
+          `Opened ${catalog.byId.get(childId)?.name ?? childId} without changing authored project state.`,
+        );
+      } catch (error: unknown) {
+        setNestingStatus(timelineNestingFailure(error));
+      }
+    },
+    [catalog, timelinePath],
+  );
+
+  const executeNestedPlacement = useCallback(async () => {
+    if (!catalog || !model || commandPendingRef.current) return;
+    try {
+      if (nestedSourceTimelineId.length === 0) {
+        throw new Error("Choose a source timeline before placing a nested sequence.");
+      }
+      if (targetTrackId.length === 0) {
+        throw new Error("Choose an exact target track before placing a nested sequence.");
+      }
+      if (nestedPlacement === "replace" && !selectedReplaceTarget) {
+        throw new Error(
+          "Replace requires exactly one non-transition object selected on the target track.",
+        );
+      }
+      const sourceName = catalog.byId.get(nestedSourceTimelineId)?.name;
+      const action = buildNestedSequenceAction({
+        catalog,
+        parentTimelineId: model.id,
+        parentTrackId: targetTrackId,
+        sourceTimelineId: nestedSourceTimelineId,
+        clipId: randomTypedId("clip"),
+        name: sourceName ?? "Nested sequence",
+        placement:
+          nestedPlacement === "append"
+            ? { placement: "append" }
+            : { placement: "replace", target: selectedReplaceTarget! },
+      });
+      commandPendingRef.current = true;
+      setCommandPending(true);
+      setNestingPending(true);
+      setNestingStatus(
+        `${nestedPlacement === "append" ? "Appending" : "Replacing with"} ${sourceName ?? nestedSourceTimelineId} through project history.`,
+      );
+      const result = await executeProjectActions([action]);
+      setNestingStatus(
+        `${sourceName ?? nestedSourceTimelineId} placed at project revision ${result.state.project_revision}. Undo is available immediately.`,
+      );
+    } catch (error: unknown) {
+      setNestingStatus(timelineNestingFailure(error));
+    } finally {
+      commandPendingRef.current = false;
+      setCommandPending(false);
+      setNestingPending(false);
+    }
+  }, [
+    catalog,
+    executeProjectActions,
+    model,
+    nestedPlacement,
+    nestedSourceTimelineId,
+    selectedReplaceTarget,
+    targetTrackId,
+  ]);
+
+  const executeCompoundClip = useCallback(async () => {
+    if (!model || commandPendingRef.current) return;
+    try {
+      const action = buildCompoundClipAction({
+        model,
+        selectedTargets: visibleSelectionTargets,
+        compoundTimelineId: randomTypedId("timeline"),
+        name: compoundName,
+        createTrackId: () => randomTypedId("track"),
+        createClipId: () => randomTypedId("clip"),
+      });
+      commandPendingRef.current = true;
+      setCommandPending(true);
+      setNestingPending(true);
+      setNestingStatus(
+        `Creating ${action.request.name} from ${action.request.selected_objects.length} exact objects.`,
+      );
+      const result = await executeProjectActions([action]);
+      setNestingStatus(
+        `${action.request.name} created at project revision ${result.state.project_revision}. Its parent instances retain the moved selection and undo is available immediately.`,
+      );
+    } catch (error: unknown) {
+      setNestingStatus(timelineNestingFailure(error));
+    } finally {
+      commandPendingRef.current = false;
+      setCommandPending(false);
+      setNestingPending(false);
+    }
+  }, [compoundName, executeProjectActions, model, visibleSelectionTargets]);
 
   const executeEdit = useCallback(
     async (edit: TimelineEditGesture) => {
@@ -1984,7 +2156,7 @@ export function TimelineWorkspace({
           </div>
           <span>Unavailable</span>
         </header>
-        <p role="alert">{projection.failure}</p>
+        <p role="alert">{catalogProjection.failure}</p>
       </section>
     );
   }
@@ -2175,6 +2347,151 @@ export function TimelineWorkspace({
         onSeek={setPlayhead}
         playhead={playhead}
       />
+      <section
+        className="timeline-edit-console"
+        aria-label="Nested sequence and compound clip controls"
+      >
+        <header>
+          <div>
+            <p className="section-kicker">Timeline hierarchy</p>
+            <h5>Open, place, and compound without losing editorial intent</h5>
+          </div>
+          <nav className="timeline-history-actions" aria-label="Open timeline path">
+            {timelinePath.map((timelineId, index) => (
+              <button
+                type="button"
+                className="secondary timeline-compact-button"
+                aria-current={index === timelinePath.length - 1 ? "page" : undefined}
+                disabled={nestingPending}
+                key={timelineId}
+                onClick={() => {
+                  const nextPath = Object.freeze(timelinePath.slice(0, index + 1));
+                  setRequestedTimelinePath(nextPath);
+                  setNestingStatus(
+                    `Opened ${catalog?.byId.get(timelineId)?.name ?? timelineId} from the retained timeline path.`,
+                  );
+                }}
+              >
+                {catalog?.byId.get(timelineId)?.name ?? timelineId}
+              </button>
+            ))}
+          </nav>
+        </header>
+        <div className="timeline-edit-actions">
+          <button
+            type="button"
+            className="secondary"
+            disabled={timelinePath.length === 1 || nestingPending}
+            onClick={() => {
+              const nextPath = Object.freeze(timelinePath.slice(0, -1));
+              setRequestedTimelinePath(nextPath);
+              const parentId = nextPath[nextPath.length - 1];
+              setNestingStatus(
+                `Returned to ${catalog?.byId.get(parentId)?.name ?? parentId}.`,
+              );
+            }}
+          >
+            Back to parent
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            disabled={!selectedNestedClip || nestingPending}
+            onClick={() => {
+              if (selectedNestedClip) openNestedClip(selectedNestedClip.id);
+            }}
+          >
+            Open selected nested clip
+          </button>
+          <label>
+            <span>Source sequence</span>
+            <select
+              aria-label="Nested sequence source"
+              value={nestedSourceTimelineId}
+              disabled={nestedCandidates.length === 0 || nestingPending}
+              onChange={(event) => setNestedSourceTimelineId(event.currentTarget.value)}
+            >
+              {nestedCandidates.length === 0 ? (
+                <option value="">No cycle-safe sequence</option>
+              ) : null}
+              {nestedCandidates.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Target track</span>
+            <select
+              aria-label="Nested sequence target track"
+              value={targetTrackId}
+              disabled={model.tracks.length === 0 || nestingPending}
+              onChange={(event) => setTargetTrackId(event.currentTarget.value)}
+            >
+              {model.tracks.map((track) => (
+                <option key={track.id} value={track.id} disabled={track.locked}>
+                  {track.name} ({track.kind}){track.locked ? " locked" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Placement</span>
+            <select
+              aria-label="Nested sequence placement"
+              value={nestedPlacement}
+              disabled={nestingPending}
+              onChange={(event) =>
+                setNestedPlacement(event.currentTarget.value as "append" | "replace")
+              }
+            >
+              <option value="append">Append to target</option>
+              <option value="replace">Replace equal-duration selection</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={
+              nestingPending ||
+              nestedSourceTimelineId.length === 0 ||
+              targetTrackId.length === 0 ||
+              (nestedPlacement === "replace" && selectedReplaceTarget === null)
+            }
+            onClick={() => void executeNestedPlacement()}
+          >
+            Place nested sequence
+          </button>
+          <label>
+            <span>Compound name</span>
+            <input
+              type="text"
+              value={compoundName}
+              disabled={nestingPending}
+              onChange={(event) => setCompoundName(event.currentTarget.value)}
+            />
+          </label>
+          <button
+            type="button"
+            disabled={nestingPending || visibleSelectionTargets.length === 0}
+            onClick={() => void executeCompoundClip()}
+          >
+            Create compound clip
+          </button>
+        </div>
+        <output
+          className="timeline-command-status"
+          data-pending={nestingPending}
+          aria-live="polite"
+        >
+          {nestingStatus}
+        </output>
+        <p className="timeline-edit-shortcuts">
+          Double-click a nested clip to open its child timeline. Breadcrumb and back
+          navigation are transient, while placement and compounding publish through the
+          canonical project history with immediate undo.
+        </p>
+      </section>
       <section
         className="timeline-edit-controls"
         aria-label="Timeline editing tools"
@@ -2680,6 +2997,11 @@ export function TimelineWorkspace({
                         onFocus={() => {
                           setFocusedKey(key);
                           activateEditTarget(track.id, item);
+                        }}
+                        onDoubleClick={() => {
+                          if (item.kind === "clip" && item.source?.kind === "timeline") {
+                            openNestedClip(item.id);
+                          }
                         }}
                         onKeyDown={(event) => itemKeyDown(event, key)}
                         onPointerDown={(event) => {
@@ -3614,6 +3936,12 @@ function randomEditorialId(
   return `${kind}:${identity}`;
 }
 
+function randomTypedId(kind: "timeline" | "track" | "clip"): string {
+  let identity = randomHex(16);
+  while (/^0+$/.test(identity)) identity = randomHex(16);
+  return `${kind}:${identity}`;
+}
+
 function randomHex(byteLength: number): string {
   if (!globalThis.crypto?.getRandomValues) {
     throw new Error("Secure editorial identity generation is unavailable.");
@@ -3651,6 +3979,21 @@ function timelineCommandFailure(error: unknown): string {
   return "The timeline command could not be completed.";
 }
 
+function timelineNestingFailure(error: unknown): string {
+  if (error instanceof Error && error.message.length > 0) return error.message;
+  return "The timeline hierarchy command could not be completed.";
+}
+
+function sameTimelinePath(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((timelineId, index) => timelineId === right[index])
+  );
+}
+
 function isEditableTimelineTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return (
@@ -3675,6 +4018,7 @@ function TimelineItem({
   item,
   itemRef,
   model,
+  onDoubleClick,
   onFocus,
   onKeyDown,
   onPointerDown,
@@ -3691,6 +4035,7 @@ function TimelineItem({
   readonly item: TimelineCanvasItem;
   readonly itemRef: RefCallback<HTMLElement>;
   readonly model: TimelineCanvasModel;
+  readonly onDoubleClick: () => void;
   readonly onFocus: () => void;
   readonly onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
   readonly onPointerDown: (event: PointerEvent<HTMLElement>) => void;
@@ -3876,6 +4221,7 @@ function TimelineItem({
         aria-label={label}
         aria-selected={interactionSelected}
         className={className}
+        onDoubleClick={onDoubleClick}
         onFocus={onFocus}
         onKeyDown={onKeyDown}
         onPointerDown={onPointerDown}
@@ -4669,6 +5015,5 @@ function formatScale(value: number): string {
 }
 
 function createTrackId(): string {
-  const value = globalThis.crypto.randomUUID().replaceAll("-", "");
-  return `track:${value}`;
+  return randomTypedId("track");
 }

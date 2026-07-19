@@ -1,14 +1,23 @@
 use superi_core::error::ErrorCategory;
-use superi_core::ids::{ClipId, GapId, MediaId, ProjectId, TimelineId, TrackId};
+use superi_core::ids::{
+    ClipId, GapId, MarkerId, MediaId, ProjectId, TimelineId, TrackId, TransitionId,
+};
+use superi_core::pixel::{ChannelLayout, ChannelPosition};
 use superi_core::time::{Duration, FrameRate, RationalTime, TimeRange, Timebase};
 use superi_timeline::edit_state::{SelectionExpansion, SelectionUpdate};
+use superi_timeline::markers::{
+    Marker, MarkerOwner, MetadataKey, MetadataOwner, MetadataValue, TimelineMetadata,
+};
 use superi_timeline::model::{
-    Clip, ClipSource, EditorialObjectId, EditorialProject, Gap, LinkedMediaReference, Timeline,
-    Track, TrackItem, TrackSemantics, VideoCompositing, VideoTrackSemantics,
+    AudioChannelRoute, AudioChannelTarget, AudioRouteDestination, AudioRouting,
+    AudioTrackSemantics, Clip, ClipSource, EditorialObjectId, EditorialProject, Gap,
+    LinkedMediaReference, Timeline, Track, TrackItem, TrackSemantics, Transition, VideoCompositing,
+    VideoTrackSemantics,
 };
 use superi_timeline::nested::{
-    create_compound_clip, edit_nested_sequence, nested_sequence_instances, nested_sequence_tree,
-    place_nested_sequence, NestedSequencePlacement, NestedSequenceRequest,
+    create_compound_clip, create_compound_clip_from_selection, edit_nested_sequence,
+    nested_sequence_instances, nested_sequence_tree, place_nested_sequence, CompoundClipRequest,
+    CompoundClipTrackRequest, NestedSequencePlacement, NestedSequenceRequest,
 };
 
 const MEDIA: MediaId = MediaId::from_raw(1);
@@ -31,6 +40,26 @@ fn range(start: i64, duration: u64, timebase: Timebase) -> TimeRange {
 
 fn video_semantics(frame_rate: FrameRate) -> TrackSemantics {
     TrackSemantics::Video(VideoTrackSemantics::new(frame_rate, VideoCompositing::Over))
+}
+
+fn audio_semantics() -> TrackSemantics {
+    let layout = ChannelLayout::stereo();
+    let routing = AudioRouting::new(
+        AudioRouteDestination::Main,
+        layout.clone(),
+        [
+            AudioChannelRoute::new(
+                ChannelPosition::FrontLeft,
+                AudioChannelTarget::Channel(ChannelPosition::FrontLeft),
+            ),
+            AudioChannelRoute::new(
+                ChannelPosition::FrontRight,
+                AudioChannelTarget::Channel(ChannelPosition::FrontRight),
+            ),
+        ],
+    )
+    .unwrap();
+    TrackSemantics::Audio(AudioTrackSemantics::new(48_000, layout, routing).unwrap())
 }
 
 fn media() -> LinkedMediaReference {
@@ -271,6 +300,363 @@ fn compound_creation_preserves_child_objects_relationships_and_command_state() {
     assert_eq!(instance.clip_id(), compound_id);
     assert_eq!(instance.source_range(), range(0, 24, rate));
     assert_eq!(instance.record_range(), range(0, 24, rate));
+}
+
+#[test]
+fn selection_compound_moves_authored_identity_into_one_exact_nested_instance() {
+    let rate = FrameRate::FPS_24.timebase();
+    let left = ClipId::from_raw(54);
+    let right = ClipId::from_raw(55);
+    let compound_instance = ClipId::from_raw(56);
+    let compound_timeline = TimelineId::from_raw(14);
+    let compound_track = TrackId::from_raw(24);
+    let mut parent = Timeline::new(
+        PARENT,
+        "selection parent",
+        rate,
+        RationalTime::zero(rate),
+        vec![Track::new(
+            PARENT_TRACK,
+            "V1",
+            video_semantics(FrameRate::FPS_24),
+            vec![
+                media_clip(left, range(0, 12, rate)),
+                media_clip(right, range(12, 12, rate)),
+            ],
+        )],
+    );
+    parent.link_clips([left, right]).unwrap();
+    parent.group_clips([left, right]).unwrap();
+    parent
+        .update_selection(
+            [
+                EditorialObjectId::Clip(left),
+                EditorialObjectId::Clip(right),
+            ],
+            SelectionUpdate::Replace,
+            SelectionExpansion::Related,
+        )
+        .unwrap();
+    let mut project = EditorialProject::new(
+        ProjectId::from_raw(106),
+        "selection compound",
+        [media()],
+        [parent],
+    )
+    .unwrap();
+    let request = CompoundClipRequest::new(
+        PARENT,
+        compound_timeline,
+        "compound source",
+        [
+            EditorialObjectId::Clip(left),
+            EditorialObjectId::Clip(right),
+        ],
+        [CompoundClipTrackRequest::new(
+            PARENT_TRACK,
+            compound_track,
+            compound_instance,
+        )],
+    );
+
+    let result = create_compound_clip_from_selection(&mut project, 0, request).unwrap();
+
+    assert_eq!(result.revision(), 1);
+    assert_eq!(result.compound_timeline_id(), compound_timeline);
+    assert_eq!(result.clip_ids(), &[compound_instance]);
+    assert_eq!(result.outcomes().len(), 1);
+    let child = project.timeline(compound_timeline).unwrap();
+    let child_track = child.track(compound_track).unwrap();
+    for (clip_id, start) in [(left, 0), (right, 12)] {
+        let clip = child_track
+            .item(EditorialObjectId::Clip(clip_id))
+            .unwrap()
+            .as_clip()
+            .unwrap();
+        assert_eq!(clip.source(), ClipSource::Media(MEDIA));
+        assert_eq!(clip.record_range(), range(start, 12, rate));
+    }
+    assert_eq!(
+        child
+            .edit_state()
+            .link_for(left)
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        vec![left, right]
+    );
+    assert_eq!(
+        child
+            .edit_state()
+            .group_for(right)
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        vec![left, right]
+    );
+    let parent = project.timeline(PARENT).unwrap();
+    let instance = parent
+        .track(PARENT_TRACK)
+        .unwrap()
+        .item(EditorialObjectId::Clip(compound_instance))
+        .unwrap()
+        .as_clip()
+        .unwrap();
+    assert_eq!(instance.source(), ClipSource::Timeline(compound_timeline));
+    assert_eq!(instance.source_range(), range(0, 24, rate));
+    assert_eq!(instance.record_range(), range(0, 24, rate));
+    assert_eq!(
+        parent.edit_state().selected_objects().collect::<Vec<_>>(),
+        vec![EditorialObjectId::Clip(compound_instance)]
+    );
+}
+
+#[test]
+fn selection_compound_preserves_mixed_clocks_transitions_annotations_and_track_intent() {
+    let video_rate = FrameRate::FPS_24.timebase();
+    let audio_rate = Timebase::integer(48_000).unwrap();
+    let video_left = ClipId::from_raw(90);
+    let video_right = ClipId::from_raw(91);
+    let audio_left = ClipId::from_raw(92);
+    let audio_right = ClipId::from_raw(93);
+    let transition = TransitionId::from_raw(94);
+    let audio_track = TrackId::from_raw(25);
+    let compound_timeline = TimelineId::from_raw(15);
+    let child_video = TrackId::from_raw(26);
+    let child_audio = TrackId::from_raw(27);
+    let parent_video_instance = ClipId::from_raw(95);
+    let parent_audio_instance = ClipId::from_raw(96);
+    let selected = [
+        EditorialObjectId::Clip(video_left),
+        EditorialObjectId::Clip(video_right),
+        EditorialObjectId::Clip(audio_left),
+        EditorialObjectId::Clip(audio_right),
+    ];
+    let mut parent = Timeline::new(
+        PARENT,
+        "mixed-clock parent",
+        video_rate,
+        RationalTime::zero(video_rate),
+        vec![
+            Track::new(
+                PARENT_TRACK,
+                "V1",
+                video_semantics(FrameRate::FPS_24),
+                vec![
+                    media_clip(video_left, range(0, 12, video_rate)),
+                    TrackItem::Transition(Transition::new(
+                        transition,
+                        "Dissolve",
+                        EditorialObjectId::Clip(video_left),
+                        EditorialObjectId::Clip(video_right),
+                        Duration::new(3, video_rate).unwrap(),
+                        Duration::new(3, video_rate).unwrap(),
+                    )),
+                    media_clip(video_right, range(12, 12, video_rate)),
+                ],
+            ),
+            Track::new(
+                audio_track,
+                "A1",
+                audio_semantics(),
+                vec![
+                    media_clip(audio_left, range(0, 24_000, audio_rate)),
+                    media_clip(audio_right, range(24_000, 24_000, audio_rate)),
+                ],
+            ),
+        ],
+    );
+    parent
+        .link_clips([video_left, video_right, audio_left, audio_right])
+        .unwrap();
+    parent
+        .group_clips([video_left, video_right, audio_left, audio_right])
+        .unwrap();
+    parent.set_track_targeted(audio_track, true).unwrap();
+    parent.set_track_height(audio_track, 96).unwrap();
+    parent.set_track_sync_locked(audio_track, false).unwrap();
+    parent.set_track_muted(audio_track, true).unwrap();
+    parent.set_track_solo(audio_track, true).unwrap();
+    parent.set_track_enabled(audio_track, false).unwrap();
+    parent.set_snapping_enabled(false);
+    parent.set_linked_selection_enabled(false);
+    parent
+        .update_selection(
+            selected,
+            SelectionUpdate::Replace,
+            SelectionExpansion::Direct,
+        )
+        .unwrap();
+    let marker_id = MarkerId::from_raw(97);
+    parent
+        .upsert_marker(
+            Marker::new(
+                marker_id,
+                MarkerOwner::Object(EditorialObjectId::Clip(video_left)),
+                range(1, 1, video_rate),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    let object_metadata = TimelineMetadata::from_entries([(
+        MetadataKey::new("edit.intent").unwrap(),
+        MetadataValue::Text("keep exact".into()),
+    )]);
+    parent
+        .set_metadata(
+            MetadataOwner::Object(EditorialObjectId::Clip(video_left)),
+            object_metadata.clone(),
+        )
+        .unwrap();
+    let track_metadata = TimelineMetadata::from_entries([(
+        MetadataKey::new("mix.role").unwrap(),
+        MetadataValue::Text("dialog".into()),
+    )]);
+    parent
+        .set_metadata(MetadataOwner::Track(audio_track), track_metadata.clone())
+        .unwrap();
+    let mut project = EditorialProject::new(
+        ProjectId::from_raw(107),
+        "mixed compound",
+        [media()],
+        [parent],
+    )
+    .unwrap();
+
+    create_compound_clip_from_selection(
+        &mut project,
+        0,
+        CompoundClipRequest::new(
+            PARENT,
+            compound_timeline,
+            "mixed compound",
+            selected,
+            [
+                CompoundClipTrackRequest::new(PARENT_TRACK, child_video, parent_video_instance),
+                CompoundClipTrackRequest::new(audio_track, child_audio, parent_audio_instance),
+            ],
+        ),
+    )
+    .unwrap();
+
+    let child = project.timeline(compound_timeline).unwrap();
+    assert!(!child.snapping_enabled());
+    assert!(!child.edit_state().linked_selection_enabled());
+    assert!(child
+        .track(child_video)
+        .unwrap()
+        .item(EditorialObjectId::Transition(transition))
+        .is_some());
+    let audio_state = child.edit_state().track_state(child_audio).unwrap();
+    assert_eq!(audio_state.height(), 96);
+    assert!(audio_state.targeted());
+    assert!(!audio_state.sync_locked());
+    assert!(audio_state.muted());
+    assert!(audio_state.solo());
+    assert!(!audio_state.enabled());
+    assert_eq!(child.track(child_audio).unwrap().items().len(), 2);
+    assert_eq!(
+        child
+            .track(child_audio)
+            .unwrap()
+            .items()
+            .last()
+            .unwrap()
+            .record_range()
+            .unwrap()
+            .end_exclusive()
+            .unwrap(),
+        RationalTime::new(48_000, audio_rate)
+    );
+    assert!(child.marker(marker_id).is_some());
+    assert_eq!(
+        child.metadata(MetadataOwner::Object(EditorialObjectId::Clip(video_left))),
+        Some(&object_metadata)
+    );
+    assert_eq!(
+        child.metadata(MetadataOwner::Track(child_audio)),
+        Some(&track_metadata)
+    );
+    let parent = project.timeline(PARENT).unwrap();
+    assert!(parent.marker(marker_id).is_none());
+    assert_eq!(
+        parent
+            .edit_state()
+            .link_for(parent_video_instance)
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        vec![parent_video_instance, parent_audio_instance]
+    );
+    assert_eq!(
+        parent
+            .edit_state()
+            .group_for(parent_audio_instance)
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        vec![parent_video_instance, parent_audio_instance]
+    );
+}
+
+#[test]
+fn selection_compound_rejects_relationship_and_transition_boundary_crossing_atomically() {
+    let rate = FrameRate::FPS_24.timebase();
+    let left = ClipId::from_raw(100);
+    let right = ClipId::from_raw(101);
+    let transition = TransitionId::from_raw(102);
+    let mut parent = Timeline::new(
+        PARENT,
+        "boundary parent",
+        rate,
+        RationalTime::zero(rate),
+        vec![Track::new(
+            PARENT_TRACK,
+            "V1",
+            video_semantics(FrameRate::FPS_24),
+            vec![
+                media_clip(left, range(0, 12, rate)),
+                TrackItem::Transition(Transition::new(
+                    transition,
+                    "Boundary dissolve",
+                    EditorialObjectId::Clip(left),
+                    EditorialObjectId::Clip(right),
+                    Duration::new(3, rate).unwrap(),
+                    Duration::new(3, rate).unwrap(),
+                )),
+                media_clip(right, range(12, 12, rate)),
+            ],
+        )],
+    );
+    parent.link_clips([left, right]).unwrap();
+    let mut project = EditorialProject::new(
+        ProjectId::from_raw(108),
+        "boundary rollback",
+        [media()],
+        [parent],
+    )
+    .unwrap();
+    let before = project.clone();
+
+    let error = create_compound_clip_from_selection(
+        &mut project,
+        0,
+        CompoundClipRequest::new(
+            PARENT,
+            TimelineId::from_raw(16),
+            "invalid boundary",
+            [EditorialObjectId::Clip(left)],
+            [CompoundClipTrackRequest::new(
+                PARENT_TRACK,
+                TrackId::from_raw(28),
+                ClipId::from_raw(103),
+            )],
+        ),
+    )
+    .unwrap_err();
+
+    assert_eq!(error.category(), ErrorCategory::InvalidInput);
+    assert_eq!(project, before);
 }
 
 #[test]

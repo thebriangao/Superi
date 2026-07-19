@@ -2,7 +2,7 @@
 module_id: superi-cli
 source_paths:
   - open/crates/superi-cli
-source_hash: f2eb065c0ffe47634321b2285723d93ad4ed4b43aef14f9eb5f5c71f95fea536
+source_hash: da9f57d7d4f90a97915aea5bef6c253f4f7028539d74ec6b317b047e8df3ca1b
 source_files: 10
 mapped_at_commit: working-tree
 ---
@@ -77,7 +77,8 @@ production owner is explicit in stage diagnostics and the artifact name.
   and detail parsing, domain filtering through the API host, compact one-value output, and
   per-request flushed JSON-RPC automation.
 - `open/crates/superi-cli/tests/api_schema_cli_contract.rs`: Proves deterministic exact schema
-  discovery output, catalog and primitive identity, all seven schema categories, exact current counts
+  discovery output, additive catalog release `1.7.0` and primitive identity, all seven schema
+  categories, exact current counts
   and method names including the generic project, command-log query, and local script commands, asynchronous job query
   and controls, complete editor-state discovery, event subscription open, close, and poll, and API
   and project version negotiation, plus extension discovery and its permission-free classification,
@@ -146,7 +147,7 @@ file containing a canonical principal and typed rules; omitting it denies all pr
 The policy file cannot use stdin, preventing two consumers from racing the same byte stream.
 
 Schema discovery success prints exactly one strict `PublicApiSchemaSnapshot` JSON value containing
-catalog schema `1.6.0`, stable primitive revision 1, JSON-RPC `2.0`, 16 commands, 14 queries,
+catalog schema `1.7.0`, stable primitive revision 1, JSON-RPC `2.0`, 16 commands, 14 queries,
 nine events, 13 resources, one error schema, one capability schema, and one permission schema in
 canonical order. Every method carries its permission mode and possible kinds. Discovery starts no
 engine, routes no operation, and owns no transport, permission authority, or registry state.
@@ -416,7 +417,7 @@ names including the generic editor, `superi.project.command_log.get`, `superi.pr
 `superi.editor.state.get`, `superi.extensions.get`, `superi.extensions.changed`, the extension
 replacement resource, event subscription open, close, and poll, the complete permission vocabulary,
 and exact method permission metadata, plus help coverage and precise invalid usage.
-The version oracle also pins catalog `1.6.0` and project editor `1.4.0`, so the CLI cannot report an
+The version oracle also pins catalog `1.7.0` and project editor `1.5.0`, so the CLI cannot report an
 older schema after strict marker mutation enters the existing generic command.
 They do not prove method routing, wire transport, event delivery, host policy persistence, job
 execution, scripting, or broad CLI parity.

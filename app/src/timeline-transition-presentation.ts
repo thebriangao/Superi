@@ -120,7 +120,7 @@ export function projectTimelineTransitionDetails(
   model: TimelineCanvasModel,
 ): TimelineTransitionProjection {
   const timing = projectTransitionTiming(snapshot, model);
-  const graph = projectTransitionGraphs(snapshot, model.id);
+  const graph = projectTransitionGraphs(snapshot, snapshot.project.root_timeline_id);
   return deepFreeze({
     transitions: timing.map((transition) => ({
       ...transition,

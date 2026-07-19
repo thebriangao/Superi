@@ -220,7 +220,6 @@ function projectTimelineClipDetailsChecked(
   const projectRevision = nonnegativeSafeInteger(project.project_revision);
   const rootTimelineId = nonemptyString(project.root_timeline_id);
   if (
-    rootTimelineId !== model.id ||
     nonemptyString(project.project_id) !== model.projectId ||
     canonicalUnsigned(model.projectRevision) !== BigInt(projectRevision)
   ) {
@@ -239,8 +238,10 @@ function projectTimelineClipDetailsChecked(
     (timeline) => timeline.id === rootTimelineId,
   );
   if (rootMatches.length !== 1) throw new Error("root timeline is not unique");
-  const root = rootMatches[0];
-  if (root === undefined) throw new Error("root timeline is absent");
+  const activeMatches = timelines.filter((timeline) => timeline.id === model.id);
+  if (activeMatches.length !== 1) throw new Error("active timeline is not unique");
+  const active = activeMatches[0];
+  if (active === undefined) throw new Error("active timeline is absent");
 
   const media = mediaMap(payload.media);
   const timelineNames = new Map<string, string>();
@@ -249,10 +250,10 @@ function projectTimelineClipDetailsChecked(
     if (timelineNames.has(id)) throw new Error("duplicate timeline identity");
     timelineNames.set(id, nonemptyString(timeline.name));
   }
-  const rawClips = rawClipMap(root.tracks);
-  const markers = markerMap(root.markers);
-  const metadata = metadataMap(root.metadata);
-  const multicam = multicamMap(root);
+  const rawClips = rawClipMap(active.tracks);
+  const markers = markerMap(active.markers);
+  const metadata = metadataMap(active.metadata);
+  const multicam = multicamMap(active);
   const effects = effectMap(snapshot, rootTimelineId);
   const automation = automationMap(snapshot);
 
