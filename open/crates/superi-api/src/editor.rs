@@ -307,6 +307,10 @@ pub enum ProjectActionEvidence {
         revision: u64,
         mutations: Vec<TimelineMarkerMutationKind>,
     },
+    MulticamMutated {
+        revision: u64,
+        mutations: Vec<TimelineMulticamMutationKind>,
+    },
     NestedSequencePlaced {
         revision: u64,
         source_timeline_id: String,
@@ -3666,6 +3670,132 @@ impl TimelineMarkerMutation {
     }
 }
 
+/// Stable category returned for one applied multicam mutation.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TimelineMulticamMutationKind {
+    SetSource,
+    SetSyncMethod,
+    AttachClip,
+    SwitchAt,
+    MoveCut,
+    SetAudioPolicy,
+    DetachClip,
+}
+
+/// One strict authored multicam source or clip mutation.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
+pub enum TimelineMulticamMutation {
+    SetSource {
+        timeline_id: String,
+        source: EditorMulticamSource,
+    },
+    SetSyncMethod {
+        timeline_id: String,
+        sync_method: EditorMulticamSyncMethod,
+    },
+    AttachClip {
+        timeline_id: String,
+        clip_id: String,
+        initial_angle_id: String,
+        audio_policy: EditorMulticamAudioPolicy,
+    },
+    SwitchAt {
+        timeline_id: String,
+        clip_id: String,
+        record_time: ExactTime,
+        angle_id: String,
+    },
+    MoveCut {
+        timeline_id: String,
+        clip_id: String,
+        at_record_time: ExactTime,
+        to_record_time: ExactTime,
+    },
+    SetAudioPolicy {
+        timeline_id: String,
+        clip_id: String,
+        audio_policy: EditorMulticamAudioPolicy,
+    },
+    DetachClip {
+        timeline_id: String,
+        clip_id: String,
+    },
+}
+
+impl TimelineMulticamMutation {
+    fn into_engine(self) -> Result<engine::MulticamMutation> {
+        Ok(match self {
+            Self::SetSource {
+                timeline_id,
+                source,
+            } => engine::MulticamMutation::SetSource {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                source: source.into_engine()?,
+            },
+            Self::SetSyncMethod {
+                timeline_id,
+                sync_method,
+            } => engine::MulticamMutation::SetSyncMethod {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                sync_method: sync_method.into_engine(),
+            },
+            Self::AttachClip {
+                timeline_id,
+                clip_id,
+                initial_angle_id,
+                audio_policy,
+            } => engine::MulticamMutation::AttachClip {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                clip_id: parse_id(&clip_id, "clip_id")?,
+                initial_angle_id: parse_id(&initial_angle_id, "multicam_angle_id")?,
+                audio_policy: audio_policy.into_engine()?,
+            },
+            Self::SwitchAt {
+                timeline_id,
+                clip_id,
+                record_time,
+                angle_id,
+            } => engine::MulticamMutation::SwitchAt {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                clip_id: parse_id(&clip_id, "clip_id")?,
+                record_time: record_time.into_engine()?,
+                angle_id: parse_id(&angle_id, "multicam_angle_id")?,
+            },
+            Self::MoveCut {
+                timeline_id,
+                clip_id,
+                at_record_time,
+                to_record_time,
+            } => engine::MulticamMutation::MoveCut {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                clip_id: parse_id(&clip_id, "clip_id")?,
+                at_record_time: at_record_time.into_engine()?,
+                to_record_time: to_record_time.into_engine()?,
+            },
+            Self::SetAudioPolicy {
+                timeline_id,
+                clip_id,
+                audio_policy,
+            } => engine::MulticamMutation::SetAudioPolicy {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                clip_id: parse_id(&clip_id, "clip_id")?,
+                audio_policy: audio_policy.into_engine()?,
+            },
+            Self::DetachClip {
+                timeline_id,
+                clip_id,
+            } => engine::MulticamMutation::DetachClip {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                clip_id: parse_id(&clip_id, "clip_id")?,
+            },
+        })
+    }
+}
+
 /// Every authored action integrated by the production project transaction owner.
 #[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -3682,6 +3812,9 @@ pub enum ProjectAction {
     },
     MutateMarkers {
         mutations: Vec<TimelineMarkerMutation>,
+    },
+    MutateMulticam {
+        mutations: Vec<TimelineMulticamMutation>,
     },
     PlaceNestedSequence {
         source_timeline_id: String,
@@ -3736,6 +3869,7 @@ impl ProjectAction {
             | Self::EditTimeline { .. }
             | Self::MutateTracks { .. }
             | Self::MutateMarkers { .. }
+            | Self::MutateMulticam { .. }
             | Self::PlaceNestedSequence { .. }
             | Self::CreateCompoundClip { .. }
             | Self::MutateGraph { .. }
@@ -3770,6 +3904,14 @@ impl ProjectAction {
                     .map(TimelineMarkerMutation::into_engine)
                     .collect::<Result<Vec<_>>>()?,
             )),
+            Self::MutateMulticam { mutations } => {
+                Ok(engine::CompoundProjectAction::mutate_multicam(
+                    mutations
+                        .into_iter()
+                        .map(TimelineMulticamMutation::into_engine)
+                        .collect::<Result<Vec<_>>>()?,
+                ))
+            }
             Self::PlaceNestedSequence {
                 source_timeline_id,
                 request,
@@ -4253,6 +4395,16 @@ fn public_action_evidence(
                     .collect(),
             })
         }
+        engine::CompoundProjectActionResult::MulticamMutated(result) => {
+            Ok(ProjectActionEvidence::MulticamMutated {
+                revision: result.revision(),
+                mutations: result
+                    .outcomes()
+                    .iter()
+                    .map(|outcome| public_multicam_mutation_kind(outcome.kind()))
+                    .collect(),
+            })
+        }
         engine::CompoundProjectActionResult::NestedSequencePlaced(result) => {
             Ok(ProjectActionEvidence::NestedSequencePlaced {
                 revision: result.revision(),
@@ -4330,6 +4482,23 @@ fn public_marker_mutation_kind(value: engine::MarkerMutationKind) -> TimelineMar
         engine::MarkerMutationKind::SetNote => TimelineMarkerMutationKind::SetNote,
         engine::MarkerMutationKind::Remove => TimelineMarkerMutationKind::Remove,
         _ => unreachable!("all public marker mutation kinds are covered"),
+    }
+}
+
+fn public_multicam_mutation_kind(
+    value: engine::MulticamMutationKind,
+) -> TimelineMulticamMutationKind {
+    match value {
+        engine::MulticamMutationKind::SetSource => TimelineMulticamMutationKind::SetSource,
+        engine::MulticamMutationKind::SetSyncMethod => TimelineMulticamMutationKind::SetSyncMethod,
+        engine::MulticamMutationKind::AttachClip => TimelineMulticamMutationKind::AttachClip,
+        engine::MulticamMutationKind::SwitchAt => TimelineMulticamMutationKind::SwitchAt,
+        engine::MulticamMutationKind::MoveCut => TimelineMulticamMutationKind::MoveCut,
+        engine::MulticamMutationKind::SetAudioPolicy => {
+            TimelineMulticamMutationKind::SetAudioPolicy
+        }
+        engine::MulticamMutationKind::DetachClip => TimelineMulticamMutationKind::DetachClip,
+        _ => unreachable!("all public multicam mutation kinds are covered"),
     }
 }
 

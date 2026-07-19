@@ -20,6 +20,8 @@ import type {
 } from "./application.ts";
 import type {
   EditorCanonicalDocument,
+  EditorMulticamAudioPolicy,
+  EditorMulticamSyncMethod,
   EditorPlaybackState,
   ProjectAction,
   EditorRationalTime,
@@ -82,6 +84,17 @@ import {
   projectTimelineCatalog,
   reconcileTimelinePath,
 } from "./timeline-nesting.ts";
+import {
+  buildMulticamAttachAction,
+  buildMulticamAudioAction,
+  buildMulticamCreationAction,
+  buildMulticamDetachAction,
+  buildMulticamMoveCutAction,
+  buildMulticamSwitchAction,
+  buildMulticamSyncAction,
+  projectTimelineMulticam,
+  type TimelineMulticamProjection,
+} from "./timeline-multicam.ts";
 import {
   TIMELINE_DEFAULT_SNAP_RULES,
   buildTimelineEditCommand,
@@ -194,6 +207,18 @@ const TIMELINE_THREE_POINT_MODES = [
   readonly value: TimelineThreePointMode;
   readonly label: string;
   readonly detail: string;
+}[];
+
+const MULTICAM_SYNC_METHODS = [
+  { kind: "timecode", label: "Timecode" },
+  { kind: "audio", label: "Audio" },
+  { kind: "in_points", label: "In points" },
+  { kind: "out_points", label: "Out points" },
+  { kind: "clip_marker", label: "Named clip marker" },
+  { kind: "manual", label: "Manual" },
+] as const satisfies readonly {
+  readonly kind: EditorMulticamSyncMethod["kind"];
+  readonly label: string;
 }[];
 
 type TimelineGesture = "playhead" | "in" | "out";
@@ -620,6 +645,17 @@ export function TimelineWorkspace({
     visibleSelectionTargets[0].item.source?.kind === "timeline"
       ? visibleSelectionTargets[0].item
       : null;
+  const multicamProjection = useMemo(
+    () =>
+      model
+        ? projectTimelineMulticam(document, model, selectedNestedClip, playhead)
+        : null,
+    [document, model, playhead, selectedNestedClip],
+  );
+  const multicamSourceModel =
+    multicamProjection && multicamProjection.status !== "unavailable"
+      ? catalog?.byId.get(multicamProjection.sourceTimelineId)?.model ?? null
+      : null;
   const selectedReplaceTarget =
     visibleSelectionTargets.length === 1 &&
     visibleSelectionTargets[0]?.trackId === targetTrackId &&
@@ -951,6 +987,28 @@ export function TimelineWorkspace({
       snapshot.project.redo_depth,
       snapshot.project.undo_depth,
     ],
+  );
+
+  const executeMulticamAction = useCallback(
+    async (action: ProjectAction): Promise<ExecuteProjectCommandResult> => {
+      if (commandPendingRef.current) {
+        throw new Error("Another timeline command is already publishing.");
+      }
+      commandPendingRef.current = true;
+      setCommandPending(true);
+      setCommandStatus("Publishing one exact multicam transaction.");
+      try {
+        const result = await executeProjectActions([action]);
+        setCommandStatus(
+          `Multicam state published at project revision ${result.state.project_revision}. Undo is available immediately.`,
+        );
+        return result;
+      } finally {
+        commandPendingRef.current = false;
+        setCommandPending(false);
+      }
+    },
+    [executeProjectActions],
   );
 
   const executeRetime = useCallback(
@@ -2543,6 +2601,19 @@ export function TimelineWorkspace({
           canonical project history with immediate undo.
         </p>
       </section>
+      {multicamProjection ? (
+        <TimelineMulticamPanel
+          projection={multicamProjection}
+          model={model}
+          selectedClip={selectedNestedClip}
+          sourceModel={multicamSourceModel}
+          playheadSeconds={playhead}
+          busy={commandPending}
+          undoDepth={snapshot.project.undo_depth}
+          execute={executeMulticamAction}
+          onUndo={() => executeHistory("undo")}
+        />
+      ) : null}
       <section
         className="timeline-edit-controls"
         aria-label="Timeline editing tools"
@@ -3124,6 +3195,426 @@ export function TimelineWorkspace({
           ) : null}
         </div>
       </div>
+    </section>
+  );
+}
+
+type MulticamSyncKind = EditorMulticamSyncMethod["kind"];
+type MulticamAudioKind = EditorMulticamAudioPolicy["kind"];
+
+function multicamSyncMethod(
+  kind: MulticamSyncKind,
+  markerName: string,
+): EditorMulticamSyncMethod {
+  if (kind !== "clip_marker") return { kind };
+  const name = markerName.trim();
+  if (name.length === 0) {
+    throw new Error("Named-marker synchronization requires one marker name.");
+  }
+  return { kind, name };
+}
+
+function TimelineMulticamPanel({
+  projection,
+  model,
+  selectedClip,
+  sourceModel,
+  playheadSeconds,
+  busy,
+  undoDepth,
+  execute,
+  onUndo,
+}: {
+  readonly projection: TimelineMulticamProjection;
+  readonly model: TimelineCanvasModel;
+  readonly selectedClip: TimelineCanvasItem | null;
+  readonly sourceModel: TimelineCanvasModel | null;
+  readonly playheadSeconds: number;
+  readonly busy: boolean;
+  readonly undoDepth: number;
+  readonly execute: (
+    action: ProjectAction,
+  ) => Promise<ExecuteProjectCommandResult>;
+  readonly onUndo: () => Promise<void> | void;
+}) {
+  const [syncKind, setSyncKind] = useState<MulticamSyncKind>("timecode");
+  const [syncMarkerName, setSyncMarkerName] = useState("Sync");
+  const [audioKind, setAudioKind] =
+    useState<MulticamAudioKind>("follow_video");
+  const [fixedAngleId, setFixedAngleId] = useState("");
+  const [status, setStatus] = useState(
+    "Select one nested clip to inspect or create multicam state.",
+  );
+
+  useEffect(() => {
+    if (projection.status !== "ready") {
+      if (projection.status === "setup" && projection.syncMethod !== null) {
+        setSyncKind(projection.syncMethod.kind);
+        if (projection.syncMethod.kind === "clip_marker") {
+          setSyncMarkerName(projection.syncMethod.name);
+        }
+      }
+      setStatus(projection.reason);
+      return;
+    }
+    setSyncKind(projection.syncMethod.kind);
+    if (projection.syncMethod.kind === "clip_marker") {
+      setSyncMarkerName(projection.syncMethod.name);
+    }
+    setAudioKind(projection.audioPolicy.kind);
+    setFixedAngleId((current) => {
+      const authored =
+        projection.audioPolicy.kind === "fixed"
+          ? projection.audioPolicy.angle_id
+          : null;
+      return authored ??
+        (projection.angles.some((angle) => angle.id === current)
+          ? current
+          : projection.activeAngleId ?? projection.angles[0]?.id ?? "");
+    });
+    setStatus(
+      `${projection.angles.length} engine-authored angles and ${projection.cuts.length} refinable cuts are available.`,
+    );
+  }, [projection]);
+
+  const publish = useCallback(
+    async (label: string, build: () => ProjectAction) => {
+      if (busy) return;
+      setStatus(`${label} is publishing through project history.`);
+      try {
+        const result = await execute(build());
+        setStatus(
+          `${label} completed at project revision ${result.state.project_revision}. Undo is available immediately.`,
+        );
+      } catch (error: unknown) {
+        setStatus(timelineCommandFailure(error));
+      }
+    },
+    [busy, execute],
+  );
+
+  const setup = projection.status === "setup" ? projection : null;
+  const ready = projection.status === "ready" ? projection : null;
+  const activeAngle =
+    ready?.angles.find((angle) => angle.id === ready.activeAngleId) ?? null;
+
+  return (
+    <section
+      className="timeline-edit-console timeline-multicam-panel"
+      aria-label="Multicam editing controls"
+      data-multicam-state={projection.status}
+    >
+      <header>
+        <div>
+          <p className="section-kicker">Multicam editor</p>
+          <h5>Create, synchronize, switch, and refine one authored angle program</h5>
+        </div>
+        <div className="timeline-history-actions">
+          <button
+            type="button"
+            className="secondary timeline-compact-button"
+            disabled={busy || undoDepth === 0}
+            onClick={() => void onUndo()}
+          >
+            Undo last project edit
+          </button>
+          {ready ? (
+            <button
+              type="button"
+              className="secondary timeline-compact-button"
+              disabled={busy}
+              onClick={() =>
+                void publish("Detach multicam", () =>
+                  buildMulticamDetachAction(ready),
+                )
+              }
+            >
+              Detach from clip
+            </button>
+          ) : null}
+        </div>
+      </header>
+
+      {projection.status === "unavailable" ? (
+        <p className="timeline-edit-shortcuts">{projection.reason}</p>
+      ) : null}
+
+      {setup ? (
+        <div className="timeline-edit-actions">
+          <label>
+            <span>Synchronization</span>
+            <select
+              aria-label="Multicam creation synchronization"
+              value={syncKind}
+              disabled={busy || setup.sourceAuthored}
+              onChange={(event) =>
+                setSyncKind(event.currentTarget.value as MulticamSyncKind)
+              }
+            >
+              {MULTICAM_SYNC_METHODS.map((method) => (
+                <option value={method.kind} key={method.kind}>
+                  {method.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {syncKind === "clip_marker" ? (
+            <label>
+              <span>Sync marker name</span>
+              <input
+                type="text"
+                aria-label="Multicam sync marker name"
+                value={syncMarkerName}
+                disabled={busy || setup.sourceAuthored}
+                onChange={(event) => setSyncMarkerName(event.currentTarget.value)}
+              />
+            </label>
+          ) : null}
+          <output>
+            {setup.sourceAuthored
+              ? `${setup.angles.length} existing synchronized angles`
+              : `${setup.candidateAngleCount} eligible source video tracks`}
+          </output>
+          <button
+            type="button"
+            disabled={
+              busy ||
+              !setup.canCreate ||
+              selectedClip === null ||
+              sourceModel === null ||
+              (syncKind === "clip_marker" && syncMarkerName.trim().length === 0)
+            }
+            onClick={() =>
+              void publish(
+                setup.sourceAuthored ? "Attach multicam" : "Create multicam",
+                () =>
+                  setup.sourceAuthored
+                    ? buildMulticamAttachAction(setup)
+                    : buildMulticamCreationAction({
+                        targetTimelineId: setup.targetTimelineId,
+                        selectedClip: selectedClip!,
+                        sourceModel: sourceModel!,
+                        syncMethod: multicamSyncMethod(syncKind, syncMarkerName),
+                        createAngleId: () => randomTypedId("multicam-angle"),
+                      }),
+              )
+            }
+          >
+            {setup.sourceAuthored
+              ? "Attach existing multicam source"
+              : "Create synchronized multicam"}
+          </button>
+        </div>
+      ) : null}
+
+      {ready ? (
+        <>
+          <div className="timeline-edit-actions">
+            <label>
+              <span>Synchronization</span>
+              <select
+                aria-label="Multicam synchronization method"
+                value={syncKind}
+                disabled={busy}
+                onChange={(event) =>
+                  setSyncKind(event.currentTarget.value as MulticamSyncKind)
+                }
+              >
+                {MULTICAM_SYNC_METHODS.map((method) => (
+                  <option value={method.kind} key={method.kind}>
+                    {method.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {syncKind === "clip_marker" ? (
+              <label>
+                <span>Sync marker name</span>
+                <input
+                  type="text"
+                  aria-label="Multicam sync marker name"
+                  value={syncMarkerName}
+                  disabled={busy}
+                  onChange={(event) => setSyncMarkerName(event.currentTarget.value)}
+                />
+              </label>
+            ) : null}
+            <button
+              type="button"
+              className="secondary"
+              disabled={
+                busy ||
+                (syncKind === "clip_marker" && syncMarkerName.trim().length === 0)
+              }
+              onClick={() =>
+                void publish("Synchronization method", () =>
+                  buildMulticamSyncAction(
+                    ready,
+                    multicamSyncMethod(syncKind, syncMarkerName),
+                  ),
+                )
+              }
+            >
+              Apply synchronization
+            </button>
+            <output>
+              Active at playhead: {activeAngle?.name ?? "outside clip coverage"}
+            </output>
+          </div>
+
+          <div
+            className="timeline-edit-tool-catalog timeline-multicam-angle-viewer"
+            role="listbox"
+            aria-label="Engine multicam angle viewer"
+          >
+            {ready.angles.map((angle, index) => (
+              <button
+                type="button"
+                role="option"
+                className="secondary timeline-edit-tool"
+                aria-selected={angle.active}
+                aria-label={`Switch to ${angle.name} at playhead`}
+                disabled={busy || !angle.enabled || !angle.available || angle.active}
+                data-multicam-angle={angle.id}
+                data-active={angle.active}
+                key={angle.id}
+                onClick={() =>
+                  void publish(`Switch to ${angle.name}`, () =>
+                    buildMulticamSwitchAction(
+                      ready,
+                      model,
+                      playheadSeconds,
+                      angle.id,
+                    ),
+                  )
+                }
+              >
+                <span>Angle {index + 1}</span>
+                <strong>{angle.name}</strong>
+                <small>
+                  {angle.cameraLabel}, {angle.sourceClipIds.length} source clips
+                </small>
+                <small>
+                  {!angle.enabled
+                    ? "Angle disabled"
+                    : !angle.available
+                      ? "No source at playhead"
+                      : angle.active
+                        ? "Program at playhead"
+                        : "Take at playhead"}
+                </small>
+              </button>
+            ))}
+          </div>
+
+          <div className="timeline-edit-actions">
+            <label>
+              <span>Audio selection</span>
+              <select
+                aria-label="Multicam audio policy"
+                value={audioKind}
+                disabled={busy}
+                onChange={(event) =>
+                  setAudioKind(event.currentTarget.value as MulticamAudioKind)
+                }
+              >
+                <option value="follow_video">Follow video</option>
+                <option value="fixed">Fixed angle</option>
+                <option value="all_angles">All angles</option>
+              </select>
+            </label>
+            {audioKind === "fixed" ? (
+              <label>
+                <span>Fixed audio angle</span>
+                <select
+                  aria-label="Fixed multicam audio angle"
+                  value={fixedAngleId}
+                  disabled={busy}
+                  onChange={(event) => setFixedAngleId(event.currentTarget.value)}
+                >
+                  {ready.angles
+                    .filter((angle) => angle.enabled)
+                    .map((angle) => (
+                      <option value={angle.id} key={angle.id}>
+                        {angle.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            ) : null}
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy || (audioKind === "fixed" && fixedAngleId.length === 0)}
+              onClick={() =>
+                void publish("Multicam audio policy", () =>
+                  buildMulticamAudioAction(
+                    ready,
+                    audioKind === "fixed"
+                      ? { kind: "fixed", angle_id: fixedAngleId }
+                      : { kind: audioKind },
+                  ),
+                )
+              }
+            >
+              Apply audio intent
+            </button>
+          </div>
+
+          <div className="timeline-edit-actions" aria-label="Multicam cut refinement">
+            {ready.cuts.length === 0 ? (
+              <output>No post-switch cuts yet. Take another angle at the playhead.</output>
+            ) : (
+              ready.cuts.map((cut, index) => (
+                <div className="timeline-history-actions" key={`${cut.recordTime.value}:${index}`}>
+                  <output>
+                    Cut {index + 1} at {formatTimelineTime(cut.recordSeconds, model.editRate)}
+                  </output>
+                  <button
+                    type="button"
+                    className="secondary timeline-compact-button"
+                    aria-label={`Move multicam cut ${index + 1} one frame earlier`}
+                    disabled={busy}
+                    onClick={() =>
+                      void publish(`Move cut ${index + 1} earlier`, () =>
+                        buildMulticamMoveCutAction(ready, index, -1),
+                      )
+                    }
+                  >
+                    -1 frame
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary timeline-compact-button"
+                    aria-label={`Move multicam cut ${index + 1} one frame later`}
+                    disabled={busy}
+                    onClick={() =>
+                      void publish(`Move cut ${index + 1} later`, () =>
+                        buildMulticamMoveCutAction(ready, index, 1),
+                      )
+                    }
+                  >
+                    +1 frame
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      ) : null}
+
+      <output
+        className="timeline-command-status"
+        data-pending={busy}
+        aria-live="polite"
+      >
+        {status}
+      </output>
+      <p className="timeline-edit-shortcuts">
+        The child timeline's exact track arrangement is the synchronized source, and the
+        method records its engine provenance. Every setup, take, sync, audio, detach, and
+        frame refinement publishes through the same reversible project history.
+      </p>
     </section>
   );
 }
@@ -3987,7 +4478,9 @@ function randomEditorialId(
   return `${kind}:${identity}`;
 }
 
-function randomTypedId(kind: "timeline" | "track" | "clip"): string {
+function randomTypedId(
+  kind: "timeline" | "track" | "clip" | "multicam-angle",
+): string {
   let identity = randomHex(16);
   while (/^0+$/.test(identity)) identity = randomHex(16);
   return `${kind}:${identity}`;

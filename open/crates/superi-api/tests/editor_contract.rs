@@ -8,7 +8,7 @@ use superi_api::editor::{
     EditorExtensionMutation, EditorGraphMutation, EditorMediaMutation, ExecuteProjectCommand,
     GetProjectCommandLog, GetProjectCommandLogResult, ProjectAction, ProjectCommand,
     ProjectCommandEvidence, ProjectCommandLogDetail, TimelineEditOperation, TimelineMarkerMutation,
-    TimelineTrackMutation,
+    TimelineMulticamMutation, TimelineTrackMutation,
 };
 use superi_api::events::{ApiEvent, ProjectStateChanged};
 use superi_api::permissions::{
@@ -31,6 +31,16 @@ const CLIP: engine::ClipId = engine::ClipId::from_raw(0xe004);
 const SECOND_CLIP: engine::ClipId = engine::ClipId::from_raw(0xe005);
 const TRANSITION: engine::TransitionId = engine::TransitionId::from_raw(0xe006);
 const MARKER: engine::MarkerId = engine::MarkerId::from_raw(0xe007);
+const MULTICAM_SOURCE: engine::TimelineId = engine::TimelineId::from_raw(0xe100);
+const MULTICAM_TARGET: engine::TimelineId = engine::TimelineId::from_raw(0xe101);
+const MULTICAM_SOURCE_TRACK_A: engine::TrackId = engine::TrackId::from_raw(0xe102);
+const MULTICAM_SOURCE_TRACK_B: engine::TrackId = engine::TrackId::from_raw(0xe103);
+const MULTICAM_TARGET_TRACK: engine::TrackId = engine::TrackId::from_raw(0xe104);
+const MULTICAM_SOURCE_CLIP_A: engine::ClipId = engine::ClipId::from_raw(0xe105);
+const MULTICAM_SOURCE_CLIP_B: engine::ClipId = engine::ClipId::from_raw(0xe106);
+const MULTICAM_TARGET_CLIP: engine::ClipId = engine::ClipId::from_raw(0xe107);
+const MULTICAM_ANGLE_A: engine::MulticamAngleId = engine::MulticamAngleId::from_raw(0xe108);
+const MULTICAM_ANGLE_B: engine::MulticamAngleId = engine::MulticamAngleId::from_raw(0xe109);
 
 fn range(start: i64, duration: u64, timebase: engine::Timebase) -> engine::TimeRange {
     engine::TimeRange::new(
@@ -101,6 +111,94 @@ fn project_document() -> engine::ProjectDocument {
 fn project_api() -> superi_api::editor::ProjectEditorApi {
     let mut dispatcher = engine::EngineCommandDispatcher::new().unwrap();
     dispatcher.attach_project(project_document()).unwrap();
+    superi_api::editor::ProjectEditorApi::new(dispatcher).unwrap()
+}
+
+fn multicam_project_api() -> superi_api::editor::ProjectEditorApi {
+    let edit_rate = engine::FrameRate::FPS_24.timebase();
+    let second_media = engine::MediaId::from_raw(0xe110);
+    let semantics = || {
+        engine::TrackSemantics::Video(engine::VideoTrackSemantics::new(
+            engine::FrameRate::FPS_24,
+            engine::VideoCompositing::Over,
+        ))
+    };
+    let source_clip = |id, media| {
+        engine::TrackItem::Clip(
+            engine::Clip::new(
+                id,
+                format!("source {}", id.raw()),
+                engine::ClipSource::Media(media),
+                range(0, 24, edit_rate),
+                range(0, 24, edit_rate),
+            )
+            .unwrap(),
+        )
+    };
+    let source = engine::Timeline::new(
+        MULTICAM_SOURCE,
+        "synchronized source",
+        edit_rate,
+        engine::RationalTime::zero(edit_rate),
+        vec![
+            engine::Track::new(
+                MULTICAM_SOURCE_TRACK_A,
+                "camera a",
+                semantics(),
+                vec![source_clip(MULTICAM_SOURCE_CLIP_A, MEDIA)],
+            ),
+            engine::Track::new(
+                MULTICAM_SOURCE_TRACK_B,
+                "camera b",
+                semantics(),
+                vec![source_clip(MULTICAM_SOURCE_CLIP_B, second_media)],
+            ),
+        ],
+    );
+    let target = engine::Timeline::new(
+        MULTICAM_TARGET,
+        "multicam edit",
+        edit_rate,
+        engine::RationalTime::zero(edit_rate),
+        vec![engine::Track::new(
+            MULTICAM_TARGET_TRACK,
+            "V1",
+            semantics(),
+            vec![engine::TrackItem::Clip(
+                engine::Clip::new(
+                    MULTICAM_TARGET_CLIP,
+                    "multicam target",
+                    engine::ClipSource::Timeline(MULTICAM_SOURCE),
+                    range(0, 24, edit_rate),
+                    range(0, 24, edit_rate),
+                )
+                .unwrap(),
+            )],
+        )],
+    );
+    let editorial = engine::EditorialProject::new(
+        PROJECT,
+        "public multicam project",
+        [
+            engine::LinkedMediaReference::new(
+                MEDIA,
+                "camera a",
+                "urn:camera:a",
+                Some(range(0, 24, edit_rate)),
+            ),
+            engine::LinkedMediaReference::new(
+                second_media,
+                "camera b",
+                "urn:camera:b",
+                Some(range(0, 24, edit_rate)),
+            ),
+        ],
+        [source, target],
+    )
+    .unwrap();
+    let document = engine::ProjectDocument::new(editorial, MULTICAM_TARGET).unwrap();
+    let mut dispatcher = engine::EngineCommandDispatcher::new().unwrap();
+    dispatcher.attach_project(document).unwrap();
     superi_api::editor::ProjectEditorApi::new(dispatcher).unwrap()
 }
 
@@ -296,7 +394,7 @@ fn editor_contract_has_permanent_names_and_strict_project_commands() {
     );
     assert_eq!(PROJECT_STATE_CHANGED_EVENT, "superi.project.state.changed");
     assert_eq!(PROJECT_HISTORY_RESOURCE, "superi.project.history");
-    assert_eq!(PROJECT_EDITOR_SCHEMA_VERSION.to_string(), "1.5.0");
+    assert_eq!(PROJECT_EDITOR_SCHEMA_VERSION.to_string(), "1.6.0");
     assert_eq!(
         ExecuteProjectCommand::METHOD,
         EXECUTE_PROJECT_COMMAND_METHOD
@@ -529,11 +627,41 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
         ]
     );
 
+    let multicam_source = json!({
+        "sync_method":{"kind":"timecode"},
+        "angles":[
+            {"angle_id":MULTICAM_ANGLE_A.to_string(),"name":"Wide","camera_label":"A","enabled":true,"metadata":{},"source_clip_ids":[MULTICAM_SOURCE_CLIP_A.to_string()]},
+            {"angle_id":MULTICAM_ANGLE_B.to_string(),"name":"Close","camera_label":"B","enabled":true,"metadata":{},"source_clip_ids":[MULTICAM_SOURCE_CLIP_B.to_string()]}
+        ]
+    });
+    let multicam_operations = vec![
+        json!({"operation":"set_source","timeline_id":MULTICAM_SOURCE.to_string(),"source":multicam_source}),
+        json!({"operation":"set_sync_method","timeline_id":MULTICAM_SOURCE.to_string(),"sync_method":{"kind":"manual"}}),
+        json!({"operation":"attach_clip","timeline_id":MULTICAM_TARGET.to_string(),"clip_id":MULTICAM_TARGET_CLIP.to_string(),"initial_angle_id":MULTICAM_ANGLE_A.to_string(),"audio_policy":{"kind":"follow_video"}}),
+        json!({"operation":"switch_at","timeline_id":MULTICAM_TARGET.to_string(),"clip_id":MULTICAM_TARGET_CLIP.to_string(),"record_time":exact_time(12,24),"angle_id":MULTICAM_ANGLE_B.to_string()}),
+        json!({"operation":"move_cut","timeline_id":MULTICAM_TARGET.to_string(),"clip_id":MULTICAM_TARGET_CLIP.to_string(),"at_record_time":exact_time(12,24),"to_record_time":exact_time(10,24)}),
+        json!({"operation":"set_audio_policy","timeline_id":MULTICAM_TARGET.to_string(),"clip_id":MULTICAM_TARGET_CLIP.to_string(),"audio_policy":{"kind":"all_angles"}}),
+        json!({"operation":"detach_clip","timeline_id":MULTICAM_TARGET.to_string(),"clip_id":MULTICAM_TARGET_CLIP.to_string()}),
+    ];
+    assert_eq!(
+        operation_tags::<TimelineMulticamMutation>(multicam_operations, "operation"),
+        [
+            "set_source",
+            "set_sync_method",
+            "attach_clip",
+            "switch_at",
+            "move_cut",
+            "set_audio_policy",
+            "detach_clip"
+        ]
+    );
+
     let project_actions = vec![
         json!({"action":"select_root_timeline","timeline_id":ROOT.to_string()}),
         json!({"action":"edit_timeline","operations":[{"operation":"append","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"material":gap_item()}]}),
         json!({"action":"mutate_tracks","mutations":[{"operation":"rename","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"name":"Picture"}]}),
         json!({"action":"mutate_markers","mutations":[{"operation":"set_label","timeline_id":ROOT.to_string(),"marker_id":MARKER.to_string(),"label":"Review"}]}),
+        json!({"action":"mutate_multicam","mutations":[{"operation":"set_sync_method","timeline_id":MULTICAM_SOURCE.to_string(),"sync_method":{"kind":"manual"}}]}),
         json!({"action":"place_nested_sequence","source_timeline_id":"timeline:0000000000000000000000000000e020","request":{"parent_timeline_id":ROOT.to_string(),"parent_track_id":TRACK.to_string(),"clip_id":"clip:0000000000000000000000000000e022","name":"Nested scene","source_range":exact_range(0,72,24),"placement":{"placement":"replace","target_id":object_id("clip",&CLIP.to_string())}}}),
         json!({"action":"create_compound_clip","request":{"parent_timeline_id":ROOT.to_string(),"compound_timeline_id":"timeline:0000000000000000000000000000e020","name":"Nested scene","selected_objects":[object_id("clip",&CLIP.to_string()),object_id("clip",&SECOND_CLIP.to_string())],"tracks":[{"parent_track_id":TRACK.to_string(),"compound_track_id":"track:0000000000000000000000000000e021","clip_id":"clip:0000000000000000000000000000e022"}]}}),
         json!({"action":"mutate_graph","graph_id":"graph:00000000000000000000000000000047","mutations":[{"operation":"reorder","node_id":node_id,"position":0}]}),
@@ -548,6 +676,7 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
             "edit_timeline",
             "mutate_tracks",
             "mutate_markers",
+            "mutate_multicam",
             "place_nested_sequence",
             "create_compound_clip",
             "mutate_graph",
@@ -673,6 +802,108 @@ fn public_marker_command_is_exact_visible_evidenced_and_undoable() {
         .timeline(ROOT)
         .unwrap()
         .marker(MARKER)
+        .is_none());
+}
+
+#[test]
+fn public_multicam_command_is_strict_evidenced_compiled_and_undoable() {
+    let _domain = ExecutionDomain::EngineControl
+        .enter_current()
+        .expect("test owns engine control");
+    let mut api = multicam_project_api();
+    let request: ExecuteProjectCommand = serde_json::from_value(json!({
+        "transaction_id":"public-multicam-controls",
+        "expected_project_revision":0,
+        "command":{
+            "command":"apply",
+            "actions":[{
+                "action":"mutate_multicam",
+                "mutations":[
+                    {
+                        "operation":"set_source",
+                        "timeline_id":MULTICAM_SOURCE.to_string(),
+                        "source":{
+                            "sync_method":{"kind":"timecode"},
+                            "angles":[
+                                {"angle_id":MULTICAM_ANGLE_A.to_string(),"name":"Wide","camera_label":"A","enabled":true,"metadata":{},"source_clip_ids":[MULTICAM_SOURCE_CLIP_A.to_string()]},
+                                {"angle_id":MULTICAM_ANGLE_B.to_string(),"name":"Close","camera_label":"B","enabled":true,"metadata":{},"source_clip_ids":[MULTICAM_SOURCE_CLIP_B.to_string()]}
+                            ]
+                        }
+                    },
+                    {
+                        "operation":"attach_clip",
+                        "timeline_id":MULTICAM_TARGET.to_string(),
+                        "clip_id":MULTICAM_TARGET_CLIP.to_string(),
+                        "initial_angle_id":MULTICAM_ANGLE_A.to_string(),
+                        "audio_policy":{"kind":"follow_video"}
+                    },
+                    {
+                        "operation":"switch_at",
+                        "timeline_id":MULTICAM_TARGET.to_string(),
+                        "clip_id":MULTICAM_TARGET_CLIP.to_string(),
+                        "record_time":exact_time(12,24),
+                        "angle_id":MULTICAM_ANGLE_B.to_string()
+                    },
+                    {
+                        "operation":"set_audio_policy",
+                        "timeline_id":MULTICAM_TARGET.to_string(),
+                        "clip_id":MULTICAM_TARGET_CLIP.to_string(),
+                        "audio_policy":{"kind":"all_angles"}
+                    }
+                ]
+            }]
+        }
+    }))
+    .unwrap();
+
+    let applied = api.execute(request).unwrap();
+    assert_eq!(applied.state().project_revision(), 1);
+    let ProjectCommandEvidence::Applied { actions } = applied.evidence() else {
+        panic!("multicam mutation command must retain evidence");
+    };
+    assert_eq!(
+        serde_json::to_value(&actions[0]).unwrap(),
+        json!({
+            "result":"multicam_mutated",
+            "revision":1,
+            "mutations":["set_source","attach_clip","switch_at","set_audio_policy"]
+        })
+    );
+    let snapshot = api.project_snapshot().unwrap();
+    let source = snapshot
+        .editorial_project()
+        .timeline(MULTICAM_SOURCE)
+        .unwrap()
+        .multicam_source()
+        .unwrap();
+    assert_eq!(source.angles().len(), 2);
+    let clip = snapshot
+        .editorial_project()
+        .timeline(MULTICAM_TARGET)
+        .unwrap()
+        .multicam_clip(MULTICAM_TARGET_CLIP)
+        .unwrap();
+    assert_eq!(clip.switches().len(), 2);
+    assert_eq!(clip.audio_policy(), &engine::MulticamAudioPolicy::AllAngles);
+
+    api.execute(ExecuteProjectCommand::new(
+        "undo-multicam-controls",
+        1,
+        ProjectCommand::Undo {},
+    ))
+    .unwrap();
+    let snapshot = api.project_snapshot().unwrap();
+    assert!(snapshot
+        .editorial_project()
+        .timeline(MULTICAM_SOURCE)
+        .unwrap()
+        .multicam_source()
+        .is_none());
+    assert!(snapshot
+        .editorial_project()
+        .timeline(MULTICAM_TARGET)
+        .unwrap()
+        .multicam_clip(MULTICAM_TARGET_CLIP)
         .is_none());
 }
 

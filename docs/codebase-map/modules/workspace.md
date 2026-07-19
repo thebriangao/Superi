@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 9737338d2f40919255477b41de71c223d42661e8a2c7b791b1b41ac58bc9b9e1
-source_files: 266
+source_hash: 2e6821019ac51b4470a948db8e166a5234adff8be9cf7d642cfbaa4d77dad1e7
+source_files: 268
 mapped_at_commit: working-tree
 ---
 
@@ -506,8 +506,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   dependencies.
 - `app/package.json`: Declares the private production application package, exact toolchain and
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
-  framework, editor-workspace, timeline-canvas, timeline-nesting, timeline-clip, and
-  timeline-transition and editorial-feedback contracts, and Tauri commands.
+  framework, editor-workspace, timeline-canvas, timeline-nesting, timeline-multicam, timeline-clip,
+  timeline-transition, and editorial-feedback contracts, and Tauri commands.
 - `app/src/api.ts`: Re-exports the complete canonical generated TypeScript contract and constructs
   one frozen `SuperiApiBindings` surface around an injected `SuperiTransport` and `SuperiClient`.
 - `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
@@ -583,6 +583,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   cycle-safe placement candidates, reconciles root-anchored transient open paths, and builds exact
   append or equal-duration replace nested actions plus selection-derived compound actions in
   canonical track and object order without owning mutation state.
+- `app/src/timeline-multicam.ts`: Strictly projects a selected nested clip, synchronized source,
+  angle catalog, exact-playhead source availability, switch partition, sync provenance, and audio
+  intent from canonical timeline state.
+  It uses checked BigInt arithmetic to map exact record and source clocks in both directions and
+  builds only generated create, attach, sync, switch, cut-move, audio, and detach actions without
+  owning project state or transport.
 - `app/src/timeline-transition-presentation.ts`: Joins exact canvas transition timing with the one
   project-root compiled graph document, including when the active canvas is a child timeline. It
   derives stable endpoint and graph identity, adjacent-handle limits, duration and alignment,
@@ -621,7 +627,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   target-track selectors, append or equal-duration replace placement, and selection-derived
   compound creation with visible pending, success, and failure evidence. Open paths remain
   transient while authored placement and compound actions publish through the same injected
-  application action executor. It also provides a dedicated marker panel with complete marker listing,
+  application action executor. A multicam panel uses that same selection, exact playhead, pending
+  exclusion, project action callback, refreshed revision, and history owner to create or attach a
+  synchronized source, show engine-authored angle state, take an angle at the playhead, refine cuts
+  one frame at a time, change sync and audio intent, detach, and undo. It does not claim decoded
+  angle frames or mixed multicam audio. It also provides a dedicated marker panel with complete marker listing,
   exact previous and next navigation, timeline-owned create at playhead, range, label, flag, and note
   editing, removal, pending and error state, and revision-fenced typed inverse reversal. It also
   publishes one immutable idle, preview, applying, applied, failed, or unavailable editorial
@@ -757,11 +767,16 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   requests, visible consequences, failure fences, exact transition offsets, production
   transition-inspector wiring, nested catalog and path consumption, visible open, placement, and
   compound controls, double-click nesting, publication through the shared callback, and the absence
-  of a second frontend authored mutation owner.
+  of a second frontend authored mutation owner. It also freezes accessible multicam panel mounting,
+  angle-state viewing, creation, synchronization, switching, exact cut refinement, and history undo wiring.
 - `app/tests/timeline-nesting.test.ts`: Verifies exact mixed-clock duration projection, direct child
   dependencies, cycle-safe candidates, root-anchored path opening and stale-path reconciliation,
   append and equal-duration replace action payloads, strict locked and incompatible rejection, and
   deterministic compound object and affected-track identity ordering.
+- `app/tests/timeline-multicam.test.ts`: Verifies strict setup and authored-state projection,
+  source-track angle derivation, active-angle and source-availability resolution at the exact
+  playhead, unavailable-take rejection, generated atomic creation, live switch, frame cut-move,
+  sync, audio, and detach actions.
 - `app/tests/timeline-editing.test.ts`: Verifies the complete timing-tool catalog, exact 24 fps,
   24000/1001, 48 kHz, and inexact 44.1 kHz behavior, typed fragment and gap identities, canonical
   sync-track ordering, direct and ripple extend modes, ripple-delete and gap batches, lower-matched
@@ -789,7 +804,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   failures, plus production mounting, accessibility, shared pending and history ownership, styling,
   and exclusion of direct Tauri mutation.
 - `app/tests/api-bindings.test.mjs`: Verifies the canonical generated re-export, complete typed map
-  boundary including nested placement and compound DTO, action, and result discriminants, concrete
+  boundary including nested placement, compound, and multicam DTO, action, operation, and result discriminants, concrete
   provider/bootstrap injection, and real request/subscription forwarding without duplicating
   generated client policy.
 - `app/tests/transport.test.mjs`: Verifies the one native dispatcher call, generated request
@@ -1007,7 +1022,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   typecheck, build, and test commands, and exact TypeScript and Vite development dependencies.
 - `ci/frontend-smoke/src/api-contract.ts`: Imports the committed generated API artifact, constructs
   an exact typed project command, command-log query, unavailable AI state, and API version
-  negotiation request through current catalog release `1.7.0`, consumes command-log and negotiation
+  negotiation request through current catalog release `1.8.0`, consumes command-log and negotiation
   responses plus the extension query,
   lifecycle, event, resource, stable public control reference, typed maps, and transport-neutral
   client constructor used by the browser build.
@@ -1049,10 +1064,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and response types, strict extension identity, lifecycle, capability, safe failure, feature,
   control, query, event, and resource declarations, generic project import-media request and result
   evidence, and a transport-neutral typed client without owning runtime IPC. The committed artifact
-  is freshly regenerated from the canonical schema `1.5.0` project surface and includes strict
-  track and marker mutation, exact retime map and evidence, metadata, track-output graph DTOs, the
+  is freshly regenerated from the canonical schema `1.6.0` project surface and includes strict
+  track, marker, and multicam mutation, exact retime map and evidence, metadata, track-output graph DTOs, the
   additive exact `set_transition` timeline operation, and complete nested placement and
-  selection-derived compound request, action, and evidence unions.
+  selection-derived compound request, action, and evidence unions plus all seven multicam
+  operations and ordered mutation evidence.
 - `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 25 local
   workspace packages, registry dependencies, target-support dependency trees, scenario digest
   and process-instrumentation dependency edges, the API introspection and validation contracts'
@@ -1973,7 +1989,10 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   inexact, and overscan
   marker projection, stable exact navigation, non-navigable state, all six command tags, and typed
   inverse reversal through the application owner. It freezes exact transition offset retention and
-  production inspector wiring without introducing a second command path.
+  production inspector wiring without introducing a second command path. The multicam proof adds
+  exact active-angle projection, source-track creation, atomic action shapes, live switching,
+  frame cut refinement, sync and audio intent, detach, accessible production mounting, and reuse of
+  the same pending, command, revision, and history owners.
 
 - The focused timing-tool proof freezes all seven direct tools plus ripple delete and gap work,
   exact mixed-clock conversion, synchronized track ordering, typed allocation, immutable affected
@@ -2387,6 +2406,13 @@ while selected objects publish one deterministic selection-derived compound acti
 timeline, child-track, and parent-instance identities. Pending, success, and failure intent remains
 visible, authored results refresh from the canonical snapshot, and neither navigation nor React
 creates a competing editorial or history owner.
+One selected nested clip now also exposes a strict multicam setup and editing panel. It derives
+eligible source angles from nonempty child video tracks, projects canonical sync provenance,
+switches, active angle, cuts, and audio intent, and publishes create, attach, take, frame refine,
+sync, audio, and detach gestures through the same generated project action callback. Immediate undo
+uses the existing history command. The angle viewer reports engine-authored program state separately
+from source-media availability at the exact playhead and does not claim decoded tiles or runtime
+multicam mixing.
 No view takes engine or transport ownership, and unavailable runtime behavior remains honest.
 The System panel also consumes one Tauri-owned project lifecycle that durably creates, validates,
 saves, rebinds through save-as, closes, reopens recent paths, and restores opaque recovery
@@ -2441,7 +2467,7 @@ Its `superi-api` package record now includes one test-only concurrency edge for 
 introspection ownership contract without changing the production runtime graph.
 The API now owns a nonserializable host permission context, typed lexical filesystem and plugin
 scopes, explicit destructive operations, deny precedence, payload-derived requirements, and schema
-`1.7.0` discovery metadata. It also projects one bounded engine-owned extension registry through
+`1.8.0` discovery metadata. It also projects one bounded engine-owned extension registry through
 strict exact identity, lifecycle, capability, feature, safe failure, stable control, query, event,
 and replacement resource contracts. Its bounded `superi-json` runtime uses already resolved JSON and
 packages, adds the typed command-log query step, and preserves the same nested authorization and
@@ -2673,8 +2699,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`770faf37cf9e2dd08630736c9b707a20debb676b` when this checkpoint began. Its hash describes the exact
-261 discovered source files, including generated binary payloads, layered on the integrated
+`776bb3dedbe2faba4b3b959a4d659d343d699b8d` when this checkpoint began. Its hash describes the exact
+268 discovered source files, including generated binary payloads, layered on the integrated
 revision.
 
 ## Maintenance notes

@@ -12,6 +12,9 @@ use superi_timeline::multicam::{
     resolve_multicam_frame, MulticamAngle, MulticamAudioPolicy, MulticamClip, MulticamSource,
     MulticamSyncMethod,
 };
+use superi_timeline::multicam_ops::{
+    apply_multicam_mutation_batch, MulticamMutation, MulticamMutationKind,
+};
 use superi_timeline::retime::{ClipTimeMap, PlaybackRate};
 
 const CAMERA_A: MediaId = MediaId::from_raw(1);
@@ -456,4 +459,143 @@ fn invalid_multicam_state_and_stale_edits_roll_back_atomically() {
     let stale = project.edit(0, |_| Ok(())).unwrap_err();
     assert_eq!(stale.category(), ErrorCategory::Conflict);
     assert_eq!(project, configured);
+}
+
+#[test]
+fn authored_multicam_mutations_create_switch_refine_and_detach_atomically() {
+    let mut project = project();
+    let source = MulticamSource::new(
+        MulticamSyncMethod::Timecode,
+        [
+            MulticamAngle::new(ANGLE_A, "wide", "A", [SOURCE_CLIP_A]).unwrap(),
+            MulticamAngle::new(ANGLE_B, "close", "B", [SOURCE_CLIP_B]).unwrap(),
+        ],
+    )
+    .unwrap();
+    let created = apply_multicam_mutation_batch(
+        &mut project,
+        0,
+        &[
+            MulticamMutation::SetSource {
+                timeline_id: SOURCE,
+                source,
+            },
+            MulticamMutation::AttachClip {
+                timeline_id: TARGET,
+                clip_id: TARGET_CLIP,
+                initial_angle_id: ANGLE_A,
+                audio_policy: MulticamAudioPolicy::FollowVideo,
+            },
+        ],
+    )
+    .unwrap();
+    assert_eq!(created.revision(), 1);
+    assert_eq!(
+        created
+            .outcomes()
+            .iter()
+            .map(|outcome| outcome.kind())
+            .collect::<Vec<_>>(),
+        vec![
+            MulticamMutationKind::SetSource,
+            MulticamMutationKind::AttachClip,
+        ]
+    );
+
+    let switched = apply_multicam_mutation_batch(
+        &mut project,
+        1,
+        &[
+            MulticamMutation::SwitchAt {
+                timeline_id: TARGET,
+                clip_id: TARGET_CLIP,
+                record_time: RationalTime::new(16, record_rate()),
+                angle_id: ANGLE_B,
+            },
+            MulticamMutation::SwitchAt {
+                timeline_id: TARGET,
+                clip_id: TARGET_CLIP,
+                record_time: RationalTime::new(18, record_rate()),
+                angle_id: ANGLE_B,
+            },
+            MulticamMutation::SwitchAt {
+                timeline_id: TARGET,
+                clip_id: TARGET_CLIP,
+                record_time: RationalTime::new(20, record_rate()),
+                angle_id: ANGLE_A,
+            },
+            MulticamMutation::MoveCut {
+                timeline_id: TARGET,
+                clip_id: TARGET_CLIP,
+                at_record_time: RationalTime::new(20, record_rate()),
+                to_record_time: RationalTime::new(19, record_rate()),
+            },
+            MulticamMutation::SetAudioPolicy {
+                timeline_id: TARGET,
+                clip_id: TARGET_CLIP,
+                audio_policy: MulticamAudioPolicy::AllAngles,
+            },
+            MulticamMutation::SetSyncMethod {
+                timeline_id: SOURCE,
+                sync_method: MulticamSyncMethod::Manual,
+            },
+        ],
+    )
+    .unwrap();
+    assert_eq!(switched.revision(), 2);
+    let source = project.timeline(SOURCE).unwrap().multicam_source().unwrap();
+    assert_eq!(source.sync_method(), &MulticamSyncMethod::Manual);
+    let clip = project
+        .timeline(TARGET)
+        .unwrap()
+        .multicam_clip(TARGET_CLIP)
+        .unwrap();
+    assert_eq!(clip.switches().len(), 3);
+    assert_eq!(
+        clip.switches()[1].source_range(),
+        range(12, 6, record_rate())
+    );
+    assert_eq!(clip.switches()[1].angle_id(), ANGLE_B);
+    assert_eq!(clip.audio_policy(), &MulticamAudioPolicy::AllAngles);
+
+    let before_invalid = project.clone();
+    let invalid = apply_multicam_mutation_batch(
+        &mut project,
+        2,
+        &[
+            MulticamMutation::SetSyncMethod {
+                timeline_id: SOURCE,
+                sync_method: MulticamSyncMethod::Audio,
+            },
+            MulticamMutation::SwitchAt {
+                timeline_id: TARGET,
+                clip_id: TARGET_CLIP,
+                record_time: RationalTime::new(17, record_rate()),
+                angle_id: MulticamAngleId::from_raw(999),
+            },
+        ],
+    )
+    .unwrap_err();
+    assert_eq!(invalid.category(), ErrorCategory::NotFound);
+    assert_eq!(project, before_invalid);
+
+    let detached = apply_multicam_mutation_batch(
+        &mut project,
+        2,
+        &[MulticamMutation::DetachClip {
+            timeline_id: TARGET,
+            clip_id: TARGET_CLIP,
+        }],
+    )
+    .unwrap();
+    assert_eq!(detached.revision(), 3);
+    assert_eq!(
+        detached.outcomes()[0].kind(),
+        MulticamMutationKind::DetachClip
+    );
+    assert!(project
+        .timeline(TARGET)
+        .unwrap()
+        .multicam_clip(TARGET_CLIP)
+        .is_none());
 }

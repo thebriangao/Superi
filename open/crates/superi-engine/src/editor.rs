@@ -77,6 +77,9 @@ pub use superi_timeline::multicam::{
     MulticamAngle, MulticamAudioPolicy, MulticamClip, MulticamSource, MulticamSwitch,
     MulticamSyncMethod,
 };
+pub use superi_timeline::multicam_ops::{
+    MulticamMutation, MulticamMutationBatchResult, MulticamMutationKind, MulticamMutationOutcome,
+};
 pub use superi_timeline::nested::{
     CompoundClipRequest, CompoundClipResult, CompoundClipTrackRequest, NestedSequencePlacement,
     NestedSequenceRequest, NestedSequenceResult,

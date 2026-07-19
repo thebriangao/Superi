@@ -33,6 +33,10 @@ use superi_timeline::model::{
     Clip, ClipSource, EditorialObjectId, EditorialProject, LinkedMediaReference, Timeline, Track,
     TrackItem, TrackSemantics, VideoCompositing, VideoTrackSemantics,
 };
+use superi_timeline::multicam::{
+    MulticamAngle, MulticamAudioPolicy, MulticamSource, MulticamSyncMethod,
+};
+use superi_timeline::multicam_ops::MulticamMutation;
 use superi_timeline::nested::{CompoundClipRequest, CompoundClipTrackRequest};
 use superi_timeline::track_ops::TrackMutation;
 
@@ -42,6 +46,18 @@ const ROOT: TimelineId = TimelineId::from_raw(0xd002);
 const TRACK: TrackId = TrackId::from_raw(0xd003);
 const CLIP: ClipId = ClipId::from_raw(0xd004);
 const MARKER: MarkerId = MarkerId::from_raw(0xd005);
+const MULTICAM_SOURCE: TimelineId = TimelineId::from_raw(0xd100);
+const MULTICAM_TARGET: TimelineId = TimelineId::from_raw(0xd101);
+const MULTICAM_SOURCE_TRACK_A: TrackId = TrackId::from_raw(0xd102);
+const MULTICAM_SOURCE_TRACK_B: TrackId = TrackId::from_raw(0xd103);
+const MULTICAM_TARGET_TRACK: TrackId = TrackId::from_raw(0xd104);
+const MULTICAM_SOURCE_CLIP_A: ClipId = ClipId::from_raw(0xd105);
+const MULTICAM_SOURCE_CLIP_B: ClipId = ClipId::from_raw(0xd106);
+const MULTICAM_TARGET_CLIP: ClipId = ClipId::from_raw(0xd107);
+const MULTICAM_ANGLE_A: superi_timeline::ids::MulticamAngleId =
+    superi_timeline::ids::MulticamAngleId::from_raw(0xd108);
+const MULTICAM_ANGLE_B: superi_timeline::ids::MulticamAngleId =
+    superi_timeline::ids::MulticamAngleId::from_raw(0xd109);
 
 fn range(start: i64, duration: u64, timebase: Timebase) -> TimeRange {
     TimeRange::new(
@@ -86,6 +102,111 @@ fn document() -> ProjectDocument {
     let editorial =
         EditorialProject::new(PROJECT, "compound project", [media], [timeline]).unwrap();
     ProjectDocument::new(editorial, ROOT).unwrap()
+}
+
+fn multicam_document() -> ProjectDocument {
+    let edit_rate = FrameRate::FPS_24.timebase();
+    let source_clip = |id, media| {
+        TrackItem::Clip(
+            Clip::new(
+                id,
+                format!("source {}", id.raw()),
+                ClipSource::Media(media),
+                range(0, 24, edit_rate),
+                range(0, 24, edit_rate),
+            )
+            .unwrap(),
+        )
+    };
+    let semantics = || {
+        TrackSemantics::Video(VideoTrackSemantics::new(
+            FrameRate::FPS_24,
+            VideoCompositing::Over,
+        ))
+    };
+    let source = Timeline::new(
+        MULTICAM_SOURCE,
+        "synchronized source",
+        edit_rate,
+        RationalTime::zero(edit_rate),
+        vec![
+            Track::new(
+                MULTICAM_SOURCE_TRACK_A,
+                "camera a",
+                semantics(),
+                vec![source_clip(MULTICAM_SOURCE_CLIP_A, MEDIA)],
+            ),
+            Track::new(
+                MULTICAM_SOURCE_TRACK_B,
+                "camera b",
+                semantics(),
+                vec![source_clip(
+                    MULTICAM_SOURCE_CLIP_B,
+                    MediaId::from_raw(0xd110),
+                )],
+            ),
+        ],
+    );
+    let target_clip = Clip::new(
+        MULTICAM_TARGET_CLIP,
+        "multicam target",
+        ClipSource::Timeline(MULTICAM_SOURCE),
+        range(0, 24, edit_rate),
+        range(0, 24, edit_rate),
+    )
+    .unwrap();
+    let target = Timeline::new(
+        MULTICAM_TARGET,
+        "multicam edit",
+        edit_rate,
+        RationalTime::zero(edit_rate),
+        vec![Track::new(
+            MULTICAM_TARGET_TRACK,
+            "V1",
+            semantics(),
+            vec![TrackItem::Clip(target_clip)],
+        )],
+    );
+    let editorial = EditorialProject::new(
+        PROJECT,
+        "multicam project",
+        [
+            LinkedMediaReference::new(
+                MEDIA,
+                "camera a",
+                "urn:camera:a",
+                Some(range(0, 24, edit_rate)),
+            ),
+            LinkedMediaReference::new(
+                MediaId::from_raw(0xd110),
+                "camera b",
+                "urn:camera:b",
+                Some(range(0, 24, edit_rate)),
+            ),
+        ],
+        [source, target],
+    )
+    .unwrap();
+    ProjectDocument::new(editorial, MULTICAM_TARGET).unwrap()
+}
+
+fn graph_multicam_attached(snapshot: &ProjectSnapshot) -> bool {
+    let compilation = snapshot.timeline_graph(MULTICAM_TARGET).unwrap();
+    let node_id = compilation
+        .index()
+        .node(TimelineGraphOrigin::Object(EditorialObjectId::Clip(
+            MULTICAM_TARGET_CLIP,
+        )))
+        .unwrap();
+    compilation
+        .snapshot()
+        .node(node_id)
+        .unwrap()
+        .parameters()
+        .values()
+        .find(|parameter| parameter.name().as_str() == "multicam-clip")
+        .and_then(|parameter| parameter.value().payload().as_domain())
+        .is_some_and(|value| matches!(value, TimelineGraphValue::OptionalMulticamClip(Some(_))))
 }
 
 fn controls() -> ClipMixControls {
@@ -494,6 +615,79 @@ fn marker_mutations_publish_once_recompile_and_round_trip_through_history() {
         range(12, 4, edit_rate)
     );
     assert_eq!(graph_name(redone.state().snapshot()), "original name");
+}
+
+#[test]
+fn multicam_mutations_publish_once_recompile_and_round_trip_through_history() {
+    let mut history = ProjectCommandHistory::new(multicam_document());
+    assert!(!graph_multicam_attached(history.state().snapshot()));
+    let source = MulticamSource::new(
+        MulticamSyncMethod::Timecode,
+        [
+            MulticamAngle::new(MULTICAM_ANGLE_A, "wide", "A", [MULTICAM_SOURCE_CLIP_A]).unwrap(),
+            MulticamAngle::new(MULTICAM_ANGLE_B, "close", "B", [MULTICAM_SOURCE_CLIP_B]).unwrap(),
+        ],
+    )
+    .unwrap();
+    let transaction = CompoundProjectTransaction::new([CompoundProjectAction::mutate_multicam([
+        MulticamMutation::SetSource {
+            timeline_id: MULTICAM_SOURCE,
+            source,
+        },
+        MulticamMutation::AttachClip {
+            timeline_id: MULTICAM_TARGET,
+            clip_id: MULTICAM_TARGET_CLIP,
+            initial_angle_id: MULTICAM_ANGLE_A,
+            audio_policy: MulticamAudioPolicy::FollowVideo,
+        },
+    ])])
+    .unwrap();
+
+    let applied = history
+        .execute(ProjectHistoryCommand::apply(
+            0,
+            ProjectMutation::compound(transaction),
+        ))
+        .unwrap();
+    let ProjectHistoryActionResult::AppliedCompound { actions } = applied.action_result().unwrap()
+    else {
+        panic!("multicam command must retain compound action evidence");
+    };
+    assert!(matches!(
+        actions.as_slice(),
+        [CompoundProjectActionResult::MulticamMutated(result)] if result.outcomes().len() == 2
+    ));
+    assert!(graph_multicam_attached(applied.state().snapshot()));
+    assert!(applied
+        .state()
+        .snapshot()
+        .editorial_project()
+        .timeline(MULTICAM_TARGET)
+        .unwrap()
+        .multicam_clip(MULTICAM_TARGET_CLIP)
+        .is_some());
+
+    let undone = history.execute(ProjectHistoryCommand::undo(1)).unwrap();
+    assert!(!graph_multicam_attached(undone.state().snapshot()));
+    assert!(undone
+        .state()
+        .snapshot()
+        .editorial_project()
+        .timeline(MULTICAM_TARGET)
+        .unwrap()
+        .multicam_clip(MULTICAM_TARGET_CLIP)
+        .is_none());
+
+    let redone = history.execute(ProjectHistoryCommand::redo(2)).unwrap();
+    assert!(graph_multicam_attached(redone.state().snapshot()));
+    assert!(redone
+        .state()
+        .snapshot()
+        .editorial_project()
+        .timeline(MULTICAM_TARGET)
+        .unwrap()
+        .multicam_clip(MULTICAM_TARGET_CLIP)
+        .is_some());
 }
 
 #[test]

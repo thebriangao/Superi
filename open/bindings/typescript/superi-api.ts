@@ -1235,12 +1235,12 @@ export type PollEventsResult = { status: "events"; result: EventBatch } | { stat
 /**
  * Every authored action integrated by the production project transaction owner.
  */
-export type ProjectAction = { action: "select_root_timeline"; timeline_id: string } | { action: "edit_timeline"; operations: TimelineEditOperation[] } | { action: "mutate_tracks"; mutations: TimelineTrackMutation[] } | { action: "mutate_markers"; mutations: TimelineMarkerMutation[] } | { action: "place_nested_sequence"; source_timeline_id: string; request: EditorNestedSequenceRequest } | { action: "create_compound_clip"; request: EditorCompoundClipRequest } | { action: "mutate_graph"; graph_id: string; mutations: EditorGraphMutation[] } | { action: "mutate_media"; mutation: EditorMediaMutation } | { action: "import_media"; media: EditorImportedMedia[] } | { action: "mutate_clip_mix"; mutations: EditorClipMixMutation[] } | { action: "mutate_extension"; mutation: EditorExtensionMutation };
+export type ProjectAction = { action: "select_root_timeline"; timeline_id: string } | { action: "edit_timeline"; operations: TimelineEditOperation[] } | { action: "mutate_tracks"; mutations: TimelineTrackMutation[] } | { action: "mutate_markers"; mutations: TimelineMarkerMutation[] } | { action: "mutate_multicam"; mutations: TimelineMulticamMutation[] } | { action: "place_nested_sequence"; source_timeline_id: string; request: EditorNestedSequenceRequest } | { action: "create_compound_clip"; request: EditorCompoundClipRequest } | { action: "mutate_graph"; graph_id: string; mutations: EditorGraphMutation[] } | { action: "mutate_media"; mutation: EditorMediaMutation } | { action: "import_media"; media: EditorImportedMedia[] } | { action: "mutate_clip_mix"; mutations: EditorClipMixMutation[] } | { action: "mutate_extension"; mutation: EditorExtensionMutation };
 
 /**
  * One action result inside an applied compound command.
  */
-export type ProjectActionEvidence = { result: "root_timeline_selected"; timeline_id: string } | { result: "timeline_edited"; revision: number; operations: TimelineEditKind[] } | { result: "tracks_mutated"; revision: number; mutations: TimelineTrackMutationKind[] } | { result: "markers_mutated"; revision: number; mutations: TimelineMarkerMutationKind[] } | { result: "nested_sequence_placed"; revision: number; source_timeline_id: string; clip_ids: string[] } | { result: "compound_clip_created"; revision: number; compound_timeline_id: string; clip_ids: string[] } | { result: "graph_mutated"; graph_id: string; revision: number } | { result: "media_mutated"; outcome: MediaMutationResult } | { result: "media_imported"; media_ids: string[]; skipped_media_ids: string[] } | { result: "clip_mix_mutated"; revision: number } | { result: "extension_mutated"; outcome: ExtensionMutationResultKind; extension_id: string; record_id: string; replaced: boolean | null };
+export type ProjectActionEvidence = { result: "root_timeline_selected"; timeline_id: string } | { result: "timeline_edited"; revision: number; operations: TimelineEditKind[] } | { result: "tracks_mutated"; revision: number; mutations: TimelineTrackMutationKind[] } | { result: "markers_mutated"; revision: number; mutations: TimelineMarkerMutationKind[] } | { result: "multicam_mutated"; revision: number; mutations: TimelineMulticamMutationKind[] } | { result: "nested_sequence_placed"; revision: number; source_timeline_id: string; clip_ids: string[] } | { result: "compound_clip_created"; revision: number; compound_timeline_id: string; clip_ids: string[] } | { result: "graph_mutated"; graph_id: string; revision: number } | { result: "media_mutated"; outcome: MediaMutationResult } | { result: "media_imported"; media_ids: string[]; skipped_media_ids: string[] } | { result: "clip_mix_mutated"; revision: number } | { result: "extension_mutated"; outcome: ExtensionMutationResultKind; extension_id: string; record_id: string; replaced: boolean | null };
 
 /**
  * One generic project command on the stable public surface.
@@ -1646,6 +1646,16 @@ export type TimelineMarkerMutationKind = "create" | "set_range" | "set_label" | 
  * Stable local owner for one public timeline marker.
  */
 export type TimelineMarkerOwner = { kind: "timeline" } | { kind: "track"; track_id: string } | { kind: "object"; object_id: EditorialObjectId };
+
+/**
+ * One strict authored multicam source or clip mutation.
+ */
+export type TimelineMulticamMutation = { operation: "set_source"; timeline_id: string; source: EditorMulticamSource } | { operation: "set_sync_method"; timeline_id: string; sync_method: EditorMulticamSyncMethod } | { operation: "attach_clip"; timeline_id: string; clip_id: string; initial_angle_id: string; audio_policy: EditorMulticamAudioPolicy } | { operation: "switch_at"; timeline_id: string; clip_id: string; record_time: ExactTime; angle_id: string } | { operation: "move_cut"; timeline_id: string; clip_id: string; at_record_time: ExactTime; to_record_time: ExactTime } | { operation: "set_audio_policy"; timeline_id: string; clip_id: string; audio_policy: EditorMulticamAudioPolicy } | { operation: "detach_clip"; timeline_id: string; clip_id: string };
+
+/**
+ * Stable category returned for one applied multicam mutation.
+ */
+export type TimelineMulticamMutationKind = "set_source" | "set_sync_method" | "attach_clip" | "switch_at" | "move_cut" | "set_audio_policy" | "detach_clip";
 
 /**
  * Public canonical timeline state.

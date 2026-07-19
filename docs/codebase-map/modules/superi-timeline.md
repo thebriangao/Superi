@@ -2,8 +2,8 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: 03cb51d87cea95eb0537f796062671d3678033fd8b0575eeb9b86ec4e0808d56
-source_files: 34
+source_hash: ffed65db9ecf35f763ce5d7173773046aa1a06ba495d34d15609979346a2b284
+source_files: 35
 mapped_at_commit: working-tree
 ---
 
@@ -59,6 +59,11 @@ timeline coordinates, selects the active angle, resolves its synchronized source
 that clip's own time map to a directly inspectable media or nested-source coordinate. Fragment and
 replacement operations inherit target switch intent and source-angle membership through the same
 atomic edit path used by selection, links, groups, annotations, nesting, and retiming.
+One revision-checked multicam mutation batch now owns complete source creation or replacement,
+synchronization provenance changes, target attachment, exact record-time switching, exact cut
+movement, audio-policy changes, and detachment. It resolves target gestures through the canonical
+clip time map, preserves later cuts, validates the complete candidate project, and publishes no
+partial state.
 
 Versioned `superi.timeline` component documents preserve that complete editable project state in
 canonical JSON. Revision 2 records the stable core primitive revision, protects the canonical
@@ -121,7 +126,7 @@ with stable warnings.
 - `open/crates/superi-timeline/src/ids.rs`: Re-exports the canonical project, editorial object, and
   multicam angle identities owned by `superi-core`.
 - `open/crates/superi-timeline/src/lib.rs`: Exports the implemented identity, edit-state, edit
-  operation, track-operation, marker-operation, model, media, retime, nesting, marker, multicam, serialization, OTIO,
+  operation, track-operation, marker-operation, multicam-operation, model, media, retime, nesting, marker, multicam, serialization, OTIO,
   and graph compilation modules.
 - `open/crates/superi-timeline/src/marker_ops.rs`: Implements one revision-checked atomic batch for
   complete marker creation, exact range replacement, label, flag, and note replacement, and removal,
@@ -142,7 +147,11 @@ with stable warnings.
   `TimelineColorMetadata`, which retains exact graph color metadata through compilation.
 - `open/crates/superi-timeline/src/multicam.rs`: Implements synchronization provenance, ordered
   angle metadata and source membership, clip-local gapless switching, explicit audio policies,
-  movable cuts, exact nested and retimed source resolution, and structured multicam errors.
+  movable cuts, read-only complete source coverage, exact nested and retimed source resolution, and
+  structured multicam errors.
+- `open/crates/superi-timeline/src/multicam_ops.rs`: Implements one nonempty revision-checked atomic
+  batch for complete source state, sync method changes, nested target attachment, exact target-record
+  switching, exact cut movement, audio intent, and detachment with typed outcomes and rollback.
 - `open/crates/superi-timeline/src/nested.rs`: Implements exact nested placement, atomic prepared
   compound creation, selection-derived multi-track compound creation with complete identity and
   relationship preservation, direct child editing by stable instance identity, shared-instance
@@ -173,7 +182,8 @@ with stable warnings.
 - `open/crates/superi-timeline/tests/multicam_contract.rs`: Proves ordered angle metadata,
   synchronization provenance, exact retimed nested resolution, switch and cut edits, fixed and
   all-angle audio policy, source and target fragment inheritance, replacement inheritance,
-  disabled-angle rejection, stale revisions, and atomic rollback.
+  authored source and target mutation batches, repeated switch coalescing, later-cut preservation,
+  detachment, disabled-angle rejection, stale revisions, and late atomic rollback.
 - `open/crates/superi-timeline/tests/nested_contract.rs`: Proves exact cross-clock nested placement,
   retained child object and command state, prepared and selection-derived compound creation, exact
   mixed-clock rebasing, track intent, transitions, annotations, metadata, links and groups, shared
@@ -336,6 +346,9 @@ The multicam surface includes:
   partition, range switching, movable cut boundaries, and explicit `MulticamAudioPolicy`.
 - `Timeline` methods that attach, inspect, mutate, iterate, and remove source-level or clip-level
   multicam state inside the existing unpublished project draft.
+- `MulticamMutation`, `MulticamMutationKind`, `MulticamMutationOutcome`,
+  `MulticamMutationBatchResult`, and `apply_multicam_mutation_batch`, which publish a nonempty
+  ordered source and target mutation set at one project revision.
 - `resolve_multicam_frame` and `ResolvedMulticamFrame`, which expose the target timeline and clip,
   synchronized source timeline coordinate, selected angle and source clip, direct source
   relationship and time, and active audio angles.
@@ -968,11 +981,12 @@ explicit missing and unverified state, content-mismatch evidence, accepted relin
 stable identity, and unchanged exact retime, link, group, synchronization, and nested sequence
 state through a subsequent real edit batch.
 
-Four multicam tests prove ordered angle identity, labels and deterministic metadata, timecode and
+Five multicam tests prove ordered angle identity, labels and deterministic metadata, timecode and
 audio synchronization provenance, exact resolution through a 2x target time map and a cross-rate
 source clip, range switching, movable cuts, fixed and all-angle audio intent, target and source
 fragment inheritance, target and source replacement inheritance, missing coverage and disabled
-angle rejection, stale revisions, and complete atomic rollback.
+angle rejection, strict authored creation and detachment, repeated take coalescing, later-cut
+preservation, stale revisions, and complete late-batch atomic rollback.
 
 Eleven compilation tests prove identical graph snapshots from identical project state, one atomic
 revision with twelve typed nodes and fourteen checked edges, two instances sharing one nested
@@ -1014,8 +1028,8 @@ management and output intent, authoritative timeline edit state, atomic marker m
 exact snapping,
 exact clip retiming, six primary operations, nine advanced edit families, nested placement,
 prepared and selection-derived multi-track compound creation, shared child editing, recursive
-inspection, and native multicam angle,
-synchronization, switching, audio-intent, structural inheritance, and exact resolution are
+inspection, and native multicam angle, atomic source and target mutation, synchronization,
+switching, cut refinement, audio-intent, structural inheritance, and exact resolution are
 substantive and test-backed. Deterministic graph compilation with lossless native domain values and
 shared processing-value coexistence, plus production OTIO 0.18.1 reading,
 writing, opaque preservation, stable diagnostics, and a headless consumer are also test-backed.
@@ -1033,7 +1047,7 @@ project commands, including strict marker mutation and evidence. The production 
 navigation and shared-selection state, exact target snapping, visible session rule and consequence
 state, reversible pointer gestures, supplemental clip detail that does not reparse geometry, and
 exact advanced timing plans that enter the existing public operation wire as one atomic batch.
-Track and marker gestures return through the durable project command owner. Engine
+Track, marker, and multicam gestures return through the durable project command owner. Engine
 preparation integration now consumes and retains the compiled graph, and engine transport consumes
 the standalone signed rate value, but no
 owner yet binds that prepared native timeline graph to decoded playback, multicam mixing, or render
@@ -1082,7 +1096,8 @@ replacement,
 source-link resolution, selection expansion, track intent, clip relationship partitions,
 reconciliation, transition adjacency, nesting acyclicity, exact nested placement, shared-instance
 reporting, multicam angle identity and metadata, source membership, switch coverage, exact
-resolution, audio intent, structural inheritance, and atomic publication as public contracts.
+record-to-source mapping, later-cut preservation, cut boundaries, audio intent, structural
+inheritance, and atomic publication as public contracts.
 Keep linked media targets opaque here, preserve every relink evidence field in canonical state, and
 route filesystem interpretation through `superi-project` without moving or duplicating `MediaId`.
 Treat the timeline document format, primitive revision gate, field names, enum codes, decimal

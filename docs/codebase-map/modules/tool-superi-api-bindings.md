@@ -15,7 +15,8 @@ utility, not a runtime crate, transport, application shell, or state owner.
 The current artifact includes the strict extension registry query, full replacement event and
 resource, exact identities, lifecycle, capabilities, safe failure, features, stable public control
 reference, all eleven track mutation tags, all six marker mutation tags with complete create state,
-track and marker action evidence, typed track output graph state, project editor schema `1.5.0`,
+all seven multicam mutation tags, track, marker, and multicam action evidence, typed track output
+graph state, project editor schema `1.6.0`,
 the additive exact `set_transition` and `retime` timeline operations used by the desktop timeline
 inspectors, and strict existing-child placement and selection-derived
 compound request and per-track identity DTOs, their project action variants, and typed placement and
@@ -108,8 +109,9 @@ result union, record types, script step, track action union, semantic evidence, 
 event correlation sequence, method map, resource map, and timeline edit union. That union includes
 `set_transition` with stable timeline, track, transition, and exact duration fields, while the
 project action union includes `place_nested_sequence` and `create_compound_clip` with every nested
-DTO and evidence variant. Frontend proof belongs to the workspace consumer and is not inferred from
-this tool's Rust tests.
+DTO and evidence variant. It also includes `mutate_multicam`, complete source, sync, attach, switch,
+cut, audio, and detach DTOs, and `multicam_mutated` evidence. Frontend proof belongs to the workspace
+consumer and is not inferred from this tool's Rust tests.
 
 ## Current status and risks
 
@@ -117,7 +119,7 @@ The generator and drift check are implemented for the complete current catalog. 
 one file and intentionally provides no watch mode, automatic application binding, transport adapter,
 or package publication. Specta is a generator-only dependency selected through the API feature; the
 default runtime API and engine graph remain unchanged.
-Extension, track, nesting, and compound declarations remain compile-time contracts only. The
+Extension, track, multicam, nesting, and compound declarations remain compile-time contracts only. The
 production application supplies the separate generated-client and durable native-route consumer
 proof.
 
@@ -133,4 +135,5 @@ After any owned source change, recompute this map hash and file count, rerun foc
 locked `check`, and verify the frontend consumer against the regenerated committed artifact. Keep
 extension method, event, resource, identity, lifecycle, capability, safe failure, feature, and
 control declarations, plus track, nested placement, compound actions, DTOs, and evidence, generated
-from the canonical API rather than hand-maintained here.
+from the canonical API rather than hand-maintained here. Keep all seven multicam mutations and
+their ordered result evidence on that same generated path.

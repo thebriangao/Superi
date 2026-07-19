@@ -2,7 +2,7 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: d129b8c8ae8d37a0c8c2d53c096a27a4fd47429c4377d12b3e84e3f52b277cea
+source_hash: 5729227f66fcc9cb11794d59f08220988e22781862503af7101058929eba364e
 source_files: 41
 mapped_at_commit: working-tree
 ---
@@ -21,7 +21,7 @@ complete authored project control with durable command-log inspection, determini
 state through one generic revision-fenced facade, process-lifetime extension registration and
 capability discovery, and asynchronous job inspection, progress, cooperative control, and ordered
 completion events over the engine-owned export queue, plus bounded ordered delivery for the complete
-public event vocabulary. The additive schema `1.7.0` catalog classifies all 30 current methods into
+public event vocabulary. The additive schema `1.8.0` catalog classifies all 30 current methods into
 16 commands and 14 queries, describes all nine events and 13 replacement resources, publishes the
 complete error, capability, and permission vocabularies, and defines strict data-only JSON-RPC 2.0
 envelopes. A host-injected nonserializable permission context denies protected filesystem, plugin,
@@ -65,7 +65,7 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   editor state, project settings, project recovery, audio automation, scenario, cancellation,
   removal, restore, and dismissal contracts.
 - `open/crates/superi-api/src/editor.rs`: Owns the strict generic project command, action, timeline
-  item edit, track mutation, marker mutation, nested placement, selection-derived compound
+  item edit, track mutation, marker mutation, multicam mutation, nested placement, selection-derived compound
   creation, graph, media import and mutation, clip-mix, and extension DTOs, checked engine
   conversion, including exact multi-segment clip time-map replacement through the ordinary
   timeline edit union, exact
@@ -151,8 +151,8 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   accessors. It also provides the standalone starting-engine query owner used by the CLI and derives
   standalone construction failures from the shared user-safe projection.
 - `open/crates/superi-api/src/version.rs`: Owns all domain, catalog, and error schema revisions plus
-  permanent method and event names, including catalog revision `1.7.0`, its `1.0.0` through `1.7.0`
-  release table, project editor schema `1.5.0`, command-log schema `1.0.0`, scripting schema `1.0.0`,
+  permanent method and event names, including catalog revision `1.8.0`, its `1.0.0` through `1.8.0`
+  release table, project editor schema `1.6.0`, command-log schema `1.0.0`, scripting schema `1.0.0`,
   `superi.project.command_log.get`, `superi.project.script.run`, the version negotiation
   method, the complete `superi.jobs` vocabulary, the editor-state query, and event subscription
   open, close, and poll methods.
@@ -171,13 +171,13 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   revision fences, strict command and event round trips, ordered full-state publication, one-unit
   undo, inspect behavior, permanent names, and legacy action compatibility.
 - `open/crates/superi-api/tests/editor_contract.rs`: Locks all four generic project commands, every
-  public project action family including marker mutation, nested placement, and compound creation,
-  17 timeline item operations, 11 track mutations, six marker mutations, eight graph mutations,
+  public project action family including marker and multicam mutation, nested placement, and compound creation,
+  17 timeline item operations, 11 track mutations, six marker mutations, seven multicam mutations, eight graph mutations,
   three media mutations, four clip-mix mutations, and six extension mutations; proves strict
-  decoding, pre-dispatch failure atomicity, editor schema `1.5.0`, one real mixed transaction
+  decoding, pre-dispatch failure atomicity, editor schema `1.6.0`, one real mixed transaction
   including exact transition handles, strict nested and compound DTOs, marker metadata
-  preservation, typed result and retime evidence, graph compilation, durable public track, marker,
-  and nesting commands, event and record correlation, cursor-safe log inspection with typed replay,
+  preservation, typed result, retime, and multicam evidence, graph compilation, durable public
+  track, marker, multicam, and nesting commands, event and record correlation, cursor-safe log inspection with typed replay,
   database reload, undo, redo, and atomic inexact-map rejection.
 - `open/crates/superi-api/tests/engine_introspection_contract.rs`: Drives the real engine registry,
   dispatcher, lifecycle, error coordinator, and resource arbiter through strict public query and
@@ -221,8 +221,8 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   invalid catalog rejection, typed JSON-RPC success and failure exclusivity, all recovery classes,
   diagnostic visibility filtering, last-valid resource references, the complete permission
   vocabulary, and exact metadata for every method. Its explicit domain oracle locks the generic
-  authored project command, state event, and history resource to their released schema `1.5.0`, and
-  locks the additive catalog release at `1.7.0`.
+  authored project command, state event, and history resource to their released schema `1.6.0`, and
+  locks the additive catalog release at `1.8.0`.
 - `open/crates/superi-api/tests/scenario_contract.rs`: Covers the strict canonical schema, complete
   state projection, exact undo plus redo evidence, structured last-valid-state failures, and
   negative proof that private paths and raw engine context values never serialize.
@@ -244,7 +244,7 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
 
 ## Public surface
 
-The public schema catalog is schema `1.7.0` at query method `superi.api.schema.get`.
+The public schema catalog is schema `1.8.0` at query method `superi.api.schema.get`.
 `PublicApiSchemaSnapshot` records stable primitive revision 1 and JSON-RPC `2.0`, then separates 16
 mutating commands from 14 read-only queries and lists all nine current replacement events, 13
 current replacement resources, one complete error vocabulary, one capability vocabulary, and one
@@ -368,7 +368,7 @@ every ordered automation mutation. Results and events carry complete determinist
 events include exact engine command, event, caller transaction, and audio automation revision
 correlation.
 
-The generic authored project surface is schema `1.5.0`, with command
+The generic authored project surface is schema `1.6.0`, with command
 `superi.project.command.execute`, event `superi.project.state.changed`, and replacement resource
 `superi.project.history`. `ExecuteProjectCommand` carries one caller transaction identity, an exact
 expected project revision, and apply, undo, redo, or inspect. Apply contains one bounded ordered
@@ -383,6 +383,10 @@ permission, persistence, and undo path as every other authored operation.
 It also carries six strict marker mutations: complete create, exact range, label, flag, note, and
 remove. Complete create retains timeline, track, or object ownership, exact owner-clock range,
 optional visible fields, and recursive metadata, while partial edits preserve unmentioned state.
+Seven strict multicam mutations create or replace a synchronized source, change sync provenance,
+attach a nested target, switch an angle at an exact record point, move an exact cut, set explicit
+audio intent, or detach the target. `multicam_mutated` evidence preserves the ordered mutation
+kinds and resulting project revision through command recording, events, persistence, and history.
 Results and events preserve engine command sequence, command-log sequence, project revision,
 history depths, next action kinds, ordered semantic evidence, and caller correlation. Every
 successful command emits the event, including inspect and semantic no-op commands whose authored
@@ -998,12 +1002,12 @@ plus two redo actions, final revision 8, structured engine context, last-valid-s
 serialized exclusion of a private missing-source path and raw context values.
 
 Four public schema contracts prove the exact 16-command, 14-query, nine-event, and 13-resource
-surface, current domain versions, catalog schema `1.7.0`, error schema `1.0.0`, media schema `2.0.0`,
+surface, current domain versions, catalog schema `1.8.0`, error schema `1.0.0`, media schema `2.0.0`,
 stable primitive revision 1, strict deterministic catalog round trips, invalid identity and
 duplicate rejection, typed JSON-RPC exclusivity, all four recovery classes, user-safe diagnostic
 filtering, last-valid resource identity and revision, the complete permission vocabulary, and exact
 permission metadata for all 30 methods. The domain oracle explicitly matches the released generic
-project schema `1.5.0`, so a catalog bump cannot leave the exhaustive test on an earlier domain
+project schema `1.6.0`, so a catalog bump cannot leave the exhaustive test on an earlier domain
 version. They include local scripting, version negotiation, extension discovery, command-log
 inspection, every public asynchronous job and event
 subscription method and resource, but do not claim a network transport server, dynamic method
@@ -1057,16 +1061,17 @@ conflict rejection, independent monotonic event order with exact originating-com
 complete replacement state, inspect without an event, and compatibility action routing through the
 same dispatcher.
 
-Ten generic editor contracts lock every command and operation discriminant, including all 17
-timeline edits, all 11 track mutations, and all six marker mutations, reject guessed fields and
+Twelve generic editor contracts lock every command and operation discriminant, including all 17
+timeline edits, all 11 track mutations, all six marker mutations, and all seven multicam mutations, reject guessed fields and
 variants, and prove malformed ID, timebase, and
 non-finite conversion atomicity. A real EngineControl fixture executes one six-action project
 transaction across graph, timeline, media, clip mix, extension, and selected root state. A second
 durable fixture executes a revision-fenced track batch and proves typed evidence, one history unit,
 one correlated event and durable record, exact database reload, undo, and redo through the same
 public facade. A marker fixture proves complete metadata, exact visible fields, typed evidence,
-authored state replacement, and long-lived undo through that owner.
-public facade. The retime fixture sends one exact multi-segment map through that same command,
+authored state replacement, and long-lived undo through that owner. A multicam fixture proves
+strict source creation, target attachment, exact live switching, audio intent, typed evidence,
+compiled state, and undo through the same public facade. The retime fixture sends one exact multi-segment map through that same command,
 proves `retime` action evidence and compiled graph state, persists and reloads the result, reconstructs
 the exact replay request, reverses and reapplies it through history, and rejects an inexact source
 seam before any state or event changes.
@@ -1169,11 +1174,13 @@ desktop routes the generated editor-state query and generic project command thro
 EngineControl owner. The application owner uses strict track action and project command types for
 durable revision-fenced commands, while the editing workspace uses editor-state timeline, graph,
 and attached automation data as exact canvas and inspector input. Application-owned typed command
-callbacks route durable track and marker mutations, exact editorial gestures, transition timing,
+callbacks route durable track, marker, and multicam mutations, exact editorial gestures, transition timing,
 retime replacement, nested placement, selection-derived compound creation, and typed graph
 parameter edits through the same generic project command owner. Complete typed inverse marker
-batches provide immediate durable reversal without creating a second command owner, while nested
-open paths remain transient presentation state.
+batches and project-history undo provide immediate durable reversal without creating a second
+command owner, while nested open paths remain transient presentation state. The multicam panel
+projects canonical angle, switch, sync, and audio intent and authors every action through this same
+generated command surface; it does not claim decoded angle frames or mixed audio output.
 Scenario schema 1 remains deliberately narrow and fixed to one canonical edit. Its reference
 state proves transactional control semantics, not production timeline, graph, or media ownership.
 Authored clip-gain automation is a substantive strict transaction and event surface over the engine
@@ -1200,7 +1207,7 @@ not supply transport, endpoint mutation, or background polling.
 
 The separate negotiation, media, engine introspection, integration validation, scenario, event
 stream, catalog, and error schema versions are correct for independent surfaces. The catalog is
-`1.7.0` because the merged typed marker mutation, exact retime authoring, nested placement, and compound
+`1.8.0` because the merged typed multicam mutation, marker mutation, exact retime authoring, nested placement, and compound
 creation are additive beside typed track mutation, extension discovery, command-log inspection,
 local scripting, and negotiation, while individual method and resource
 schemas retain their own versions.
@@ -1271,6 +1278,9 @@ routing, and the production consumer.
 Keep marker identities project-wide unique, owner clocks exact, create payloads complete, partial
 edits field-preserving, metadata recursive and lossless, and all six operation tags exhaustive
 across Rust, generated TypeScript, local-host filtering, native routing, and the production consumer.
+Keep multicam source and target identities explicit, exact record clocks unrounded, mutation order
+stable, and all seven operation tags exhaustive across Rust, generated TypeScript, CLI discovery,
+local-host filtering, native routing, and the production consumer.
 Keep durable command recording on `superi.project.command.execute`. Serialize and validate exact
 typed requests before dispatch, correlate each successful command with one record and event, keep
 metadata free of raw payloads, reauthorize every retained replay request, return no partial batch on

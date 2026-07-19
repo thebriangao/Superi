@@ -15,6 +15,9 @@ use superi_timeline::marker_ops::{
     apply_marker_mutation_batch, MarkerMutation, MarkerMutationBatchResult,
 };
 use superi_timeline::model::LinkedMediaReference;
+use superi_timeline::multicam_ops::{
+    apply_multicam_mutation_batch, MulticamMutation, MulticamMutationBatchResult,
+};
 use superi_timeline::nested::{
     create_compound_clip_from_selection, place_nested_sequence, CompoundClipRequest,
     CompoundClipResult, NestedSequenceRequest, NestedSequenceResult,
@@ -42,6 +45,8 @@ pub enum CompoundProjectAction {
     MutateTracks(Vec<TrackMutation>),
     /// Apply a nonempty atomic marker mutation batch.
     MutateMarkers(Vec<MarkerMutation>),
+    /// Apply a nonempty atomic multicam mutation batch.
+    MutateMulticam(Vec<MulticamMutation>),
     /// Place an existing child timeline on one parent track.
     PlaceNestedSequence {
         /// Stable child timeline identity.
@@ -87,6 +92,12 @@ impl CompoundProjectAction {
         Self::MutateMarkers(mutations.into_iter().collect())
     }
 
+    /// Creates an atomic multicam mutation action.
+    #[must_use]
+    pub fn mutate_multicam(mutations: impl IntoIterator<Item = MulticamMutation>) -> Self {
+        Self::MutateMulticam(mutations.into_iter().collect())
+    }
+
     /// Creates a graph mutation action.
     #[must_use]
     pub fn mutate_graph(
@@ -123,6 +134,7 @@ impl CompoundProjectAction {
             Self::EditTimeline(_) => "edit_timeline",
             Self::MutateTracks(_) => "mutate_tracks",
             Self::MutateMarkers(_) => "mutate_markers",
+            Self::MutateMulticam(_) => "mutate_multicam",
             Self::PlaceNestedSequence { .. } => "place_nested_sequence",
             Self::CreateCompoundClip(_) => "create_compound_clip",
             Self::MutateGraph { .. } => "mutate_graph",
@@ -170,6 +182,9 @@ impl CompoundProjectTransaction {
                 CompoundProjectAction::MutateMarkers(mutations) if mutations.is_empty()
             ) || matches!(
                 action,
+                CompoundProjectAction::MutateMulticam(mutations) if mutations.is_empty()
+            ) || matches!(
+                action,
                 CompoundProjectAction::MutateGraph { mutations, .. } if mutations.is_empty()
             ) || matches!(
                 action,
@@ -208,6 +223,8 @@ pub enum CompoundProjectActionResult {
     TracksMutated(TrackMutationBatchResult),
     /// Marker mutations and graph reconciliation were published.
     MarkersMutated(MarkerMutationBatchResult),
+    /// Multicam mutations and graph reconciliation were published.
+    MulticamMutated(MulticamMutationBatchResult),
     /// One existing child timeline was placed and graphs were reconciled.
     NestedSequencePlaced(NestedSequenceResult),
     /// One selection-based compound timeline was created and graphs were reconciled.
@@ -326,6 +343,25 @@ pub fn execute_compound_project_transaction(
                         draft.replace_timeline_compilation(reconciled)?;
                     }
                     CompoundProjectActionResult::MarkersMutated(result)
+                }
+                CompoundProjectAction::MutateMulticam(mutations) => {
+                    let old_project = draft.editorial_project().clone();
+                    let retained = draft
+                        .graphs()
+                        .filter_map(|graph| graph.as_timeline().cloned())
+                        .collect::<Vec<_>>();
+                    let editorial = draft.editorial_project_mut();
+                    let result =
+                        apply_multicam_mutation_batch(editorial, editorial.revision(), mutations)?;
+                    for compilation in retained {
+                        let reconciled = recompile_timeline_preserving_edits(
+                            &old_project,
+                            &compilation,
+                            draft.editorial_project(),
+                        )?;
+                        draft.replace_timeline_compilation(reconciled)?;
+                    }
+                    CompoundProjectActionResult::MulticamMutated(result)
                 }
                 CompoundProjectAction::PlaceNestedSequence {
                     source_timeline_id,

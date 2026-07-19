@@ -108,7 +108,7 @@ fn current_catalog_is_complete_versioned_sorted_and_deterministic() {
     assert_eq!(snapshot.capability().availability().len(), 4);
     assert_eq!(
         snapshot.permission().schema().version().to_string(),
-        "1.7.0"
+        "1.8.0"
     );
     assert_eq!(snapshot.permission().requirement_modes().len(), 3);
     assert_eq!(snapshot.permission().kinds().len(), 3);
@@ -368,7 +368,7 @@ fn expected_domain_version(name: &str) -> SemanticVersion {
             | "superi.project.state.changed"
             | "superi.project.history"
     ) {
-        SemanticVersion::new(1, 5, 0)
+        SemanticVersion::new(1, 6, 0)
     } else if name == GET_PUBLIC_API_SCHEMA_METHOD {
         PUBLIC_API_SCHEMA_VERSION.clone()
     } else {

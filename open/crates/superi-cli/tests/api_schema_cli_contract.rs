@@ -14,7 +14,7 @@ fn api_schema_is_a_deterministic_complete_public_api_consumer() {
     let first: Value = serde_json::from_slice(&first.stdout).unwrap();
     let second: Value = serde_json::from_slice(&second.stdout).unwrap();
     assert_eq!(first, second);
-    assert_eq!(first["schema_version"], "1.7.0");
+    assert_eq!(first["schema_version"], "1.8.0");
     assert_eq!(first["primitive_schema_revision"], 1);
     assert_eq!(first["json_rpc_version"], "2.0");
     assert_eq!(first["commands"].as_array().unwrap().len(), 16);
@@ -22,7 +22,7 @@ fn api_schema_is_a_deterministic_complete_public_api_consumer() {
     assert_eq!(first["events"].as_array().unwrap().len(), 9);
     assert_eq!(first["resources"].as_array().unwrap().len(), 13);
     assert_eq!(first["error"]["schema"]["version"], "1.0.0");
-    assert_eq!(first["permission"]["schema"]["version"], "1.7.0");
+    assert_eq!(first["permission"]["schema"]["version"], "1.8.0");
     assert_eq!(first["permission"]["kinds"].as_array().unwrap().len(), 3);
     assert_eq!(
         first["permission"]["destructive_operations"]

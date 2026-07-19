@@ -15,6 +15,7 @@ pub mod markers;
 pub mod media;
 pub mod model;
 pub mod multicam;
+pub mod multicam_ops;
 pub mod nested;
 pub mod otio;
 pub mod retime;

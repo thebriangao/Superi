@@ -55,6 +55,11 @@ test("canonical artifact retains typed methods, events, resources, scripts, and 
   assert.match(generated, /action: "create_compound_clip"/);
   assert.match(generated, /result: "nested_sequence_placed"/);
   assert.match(generated, /result: "compound_clip_created"/);
+  assert.match(generated, /export type TimelineMulticamMutation/);
+  assert.match(generated, /operation: "switch_at"/);
+  assert.match(generated, /operation: "move_cut"/);
+  assert.match(generated, /action: "mutate_multicam"/);
+  assert.match(generated, /result: "multicam_mutated"/);
 });
 
 test("binding factory forwards request and subscription behavior without transport policy", () => {

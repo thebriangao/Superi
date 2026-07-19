@@ -851,6 +851,14 @@ test("timeline surface is integrated without a second authored mutation owner", 
   assert.match(timeline, /Place nested sequence/);
   assert.match(timeline, /buildCompoundClipAction/);
   assert.match(timeline, /Create compound clip/);
+  assert.match(timeline, /<TimelineMulticamPanel/);
+  assert.match(timeline, /aria-label="Multicam editing controls"/);
+  assert.match(timeline, /aria-label="Engine multicam angle viewer"/);
+  assert.match(timeline, /Create synchronized multicam/);
+  assert.match(timeline, /Apply synchronization/);
+  assert.match(timeline, /buildMulticamSwitchAction/);
+  assert.match(timeline, /buildMulticamMoveCutAction/);
+  assert.match(timeline, /Undo last project edit/);
   assert.match(timeline, /onDoubleClick={onDoubleClick}/);
   assert.match(styles, /\.timeline-transition-inspector/);
   assert.match(styles, /\.timeline-transition-handles/);

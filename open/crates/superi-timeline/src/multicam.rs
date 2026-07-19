@@ -372,6 +372,12 @@ impl MulticamClip {
         &self.switches
     }
 
+    /// Returns the complete synchronized source extent owned by this switch program.
+    #[must_use]
+    pub fn source_range(&self) -> TimeRange {
+        self.coverage()
+    }
+
     /// Returns explicit audio selection intent.
     #[must_use]
     pub const fn audio_policy(&self) -> &MulticamAudioPolicy {
