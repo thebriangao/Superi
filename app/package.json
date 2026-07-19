@@ -10,7 +10,7 @@
     "dev": "vite",
     "typecheck": "tsc --noEmit",
     "build": "vite build",
-    "test": "node --no-warnings --experimental-transform-types --test tests/app-contract.test.mjs tests/api-bindings.test.mjs tests/transport.test.mjs tests/application-framework.test.ts tests/editor-workspaces.test.ts tests/timeline-workspace.test.ts tests/timeline-editing.test.ts tests/timeline-nesting.test.ts tests/timeline-multicam.test.ts tests/timeline-clip-presentation.test.ts tests/timeline-transition-presentation.test.ts tests/timeline-retime.test.ts tests/timeline-editorial-feedback.test.ts",
+    "test": "node --no-warnings --experimental-transform-types --test tests/app-contract.test.mjs tests/api-bindings.test.mjs tests/transport.test.mjs tests/application-framework.test.ts tests/editor-workspaces.test.ts tests/playback-transport.test.ts tests/timeline-workspace.test.ts tests/timeline-editing.test.ts tests/timeline-nesting.test.ts tests/timeline-multicam.test.ts tests/timeline-clip-presentation.test.ts tests/timeline-transition-presentation.test.ts tests/timeline-retime.test.ts tests/timeline-editorial-feedback.test.ts",
     "tauri": "tauri"
   },
   "dependencies": {

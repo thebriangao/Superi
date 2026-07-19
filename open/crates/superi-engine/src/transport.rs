@@ -121,6 +121,10 @@ pub enum TransportDegradationCode {
     AudioDiscardPending,
     /// Current speed or direction cannot use the untimestamped output admission seam.
     AudioRateUnsupported,
+    /// Exact transport timing is available, but no decoded viewport pixel owner is attached.
+    ViewportOutputUnavailable,
+    /// Exact transport timing is available, but no audio-device output owner is attached.
+    AudioOutputUnavailable,
 }
 
 impl TransportDegradationCode {
@@ -131,6 +135,8 @@ impl TransportDegradationCode {
             Self::PrefetchFailure => 1 << 2,
             Self::AudioDiscardPending => 1 << 3,
             Self::AudioRateUnsupported => 1 << 4,
+            Self::ViewportOutputUnavailable => 1 << 5,
+            Self::AudioOutputUnavailable => 1 << 6,
         }
     }
 }
@@ -140,6 +146,18 @@ impl TransportDegradationCode {
 pub struct TransportDegradation(u8);
 
 impl TransportDegradation {
+    /// Creates one set containing a single stable condition.
+    #[must_use]
+    pub const fn with(code: TransportDegradationCode) -> Self {
+        Self(code.bit())
+    }
+
+    /// Adds one stable condition to this compact set.
+    #[must_use]
+    pub const fn and(self, code: TransportDegradationCode) -> Self {
+        Self(self.0 | code.bit())
+    }
+
     /// Reports whether one stable condition is active.
     #[must_use]
     pub const fn contains(self, code: TransportDegradationCode) -> bool {
@@ -160,6 +178,7 @@ pub struct PlaybackTransportConfig {
     initial_playhead: RationalTime,
     prefetch: PlaybackPrefetchConfig,
     drop_policy: DroppedFramePolicy,
+    baseline_degradation: TransportDegradation,
 }
 
 /// Stable automation command vocabulary for the interactive transport owner.
@@ -176,6 +195,8 @@ pub enum PlaybackTransportCommand {
     Play,
     /// Pause on the exact frame intended at command execution time.
     Pause,
+    /// Pause and return to the exact start of the configured transport range.
+    Stop,
     /// Seek to one exact frame coordinate.
     Seek(RationalTime),
     /// Enter superseding scrub mode.
@@ -189,10 +210,14 @@ pub enum PlaybackTransportCommand {
     },
     /// Enable or disable one exact half-open loop.
     SetLoop(Option<TimeRange>),
+    /// Enable or disable looping over the complete configured transport range.
+    SetLoopToBounds(bool),
     /// Set one exact reduced signed playback rate.
     SetRate(PlaybackRate),
     /// Change traversal direction without changing rate magnitude.
     SetDirection(PlaybackDirection),
+    /// Atomically apply one signed nonzero rate and begin clock-driven playback.
+    Shuttle(PlaybackRate),
     /// Move by an exact signed number of frames and remain paused.
     StepFrames(i64),
 }
@@ -231,7 +256,18 @@ impl PlaybackTransportConfig {
             initial_playhead,
             prefetch,
             drop_policy,
+            baseline_degradation: TransportDegradation::default(),
         })
+    }
+
+    /// Adds persistent degradation owned by the runtime composition boundary.
+    #[must_use]
+    pub const fn with_baseline_degradation(
+        mut self,
+        baseline_degradation: TransportDegradation,
+    ) -> Self {
+        self.baseline_degradation = baseline_degradation;
+        self
     }
 }
 
@@ -405,6 +441,7 @@ pub struct PlaybackTransport<O> {
     viewport_backpressured: bool,
     prefetch_failed: bool,
     latest_prefetch_generation: Option<u64>,
+    baseline_degradation: TransportDegradation,
 }
 
 impl<O: Send + 'static> PlaybackTransport<O> {
@@ -441,6 +478,7 @@ impl<O: Send + 'static> PlaybackTransport<O> {
             viewport_backpressured: false,
             prefetch_failed: false,
             latest_prefetch_generation: None,
+            baseline_degradation: config.baseline_degradation,
         })
     }
 
@@ -478,15 +516,20 @@ impl<O: Send + 'static> PlaybackTransport<O> {
             PlaybackTransportCommand::Inspect => {}
             PlaybackTransportCommand::Play => self.play(now)?,
             PlaybackTransportCommand::Pause => self.pause(now)?,
+            PlaybackTransportCommand::Stop => self.stop(now)?,
             PlaybackTransportCommand::Seek(target) => self.seek(target, now)?,
             PlaybackTransportCommand::BeginScrub => self.begin_scrub(now)?,
             PlaybackTransportCommand::ScrubTo(target) => self.scrub_to(target, now)?,
             PlaybackTransportCommand::EndScrub { resume } => self.end_scrub(resume, now)?,
             PlaybackTransportCommand::SetLoop(range) => self.set_loop(range, now)?,
+            PlaybackTransportCommand::SetLoopToBounds(enabled) => {
+                self.set_loop(enabled.then_some(self.bounds), now)?;
+            }
             PlaybackTransportCommand::SetRate(rate) => self.set_rate(rate, now)?,
             PlaybackTransportCommand::SetDirection(direction) => {
                 self.set_direction(direction, now)?;
             }
+            PlaybackTransportCommand::Shuttle(rate) => self.shuttle(rate, now)?,
             PlaybackTransportCommand::StepFrames(delta) => self.step_frames(delta, now)?,
         }
         Ok(self.snapshot())
@@ -511,6 +554,13 @@ impl<O: Send + 'static> PlaybackTransport<O> {
         let target = self.intended_frame_at(now)?;
         self.mode = PlaybackTransportMode::Paused;
         self.discontinuity_to(target, FrameProtection::Discontinuity, now)
+    }
+
+    /// Pauses and returns to the exact configured range start in one discontinuity.
+    pub fn stop(&mut self, now: Instant) -> Result<()> {
+        self.require_not_scrubbing("stop")?;
+        self.mode = PlaybackTransportMode::Paused;
+        self.discontinuity_to(self.bounds.start(), FrameProtection::Discontinuity, now)
     }
 
     /// Seeks immediately to one exact frame while preserving play or pause state.
@@ -617,6 +667,85 @@ impl<O: Send + 'static> PlaybackTransport<O> {
             .ok_or_else(|| overflow("set_direction", "signed playback rate overflowed"))?;
         let rate = PlaybackRate::new(numerator, self.rate.denominator())?;
         self.set_rate(rate, now)
+    }
+
+    /// Applies one signed nonzero rate and starts playback in one exact discontinuity.
+    pub fn shuttle(&mut self, rate: PlaybackRate, now: Instant) -> Result<()> {
+        self.require_not_scrubbing("shuttle")?;
+        if rate.is_freeze() {
+            return Err(invalid(
+                "shuttle",
+                "shuttle rate must be nonzero; pause represents a stopped shuttle",
+            ));
+        }
+        let target = if self.mode == PlaybackTransportMode::Playing {
+            self.intended_frame_at(now)?
+        } else {
+            self.playhead
+        };
+        self.rate = rate;
+        self.mode = PlaybackTransportMode::Playing;
+        self.discontinuity_to(target, FrameProtection::Discontinuity, now)
+    }
+
+    /// Replaces the exact authored range while preserving legal transport intent.
+    pub fn reconfigure_bounds(&mut self, bounds: TimeRange, now: Instant) -> Result<()> {
+        ExecutionDomain::Playback.require_current()?;
+        if bounds.is_empty() {
+            return Err(invalid(
+                "reconfigure_bounds",
+                "playback transport bounds must be nonempty",
+            ));
+        }
+        if bounds.timebase() != self.bounds.timebase() {
+            return Err(invalid(
+                "reconfigure_bounds",
+                "replacement playback bounds must preserve the exact timebase",
+            ));
+        }
+
+        let intended = if self.mode == PlaybackTransportMode::Playing {
+            self.intended_frame_at(now)?
+        } else {
+            self.playhead
+        };
+        let end_exclusive = bounds.end_exclusive()?;
+        let terminal = RationalTime::new(
+            end_exclusive
+                .value()
+                .checked_sub(1)
+                .ok_or_else(|| overflow("reconfigure_bounds", "terminal frame overflowed"))?,
+            bounds.timebase(),
+        );
+        let target = if intended < bounds.start() {
+            bounds.start()
+        } else if intended >= end_exclusive {
+            terminal
+        } else {
+            intended
+        };
+
+        let loop_followed_bounds = self.loop_range == Some(self.bounds);
+        let mut retained_loop = if loop_followed_bounds {
+            Some(bounds)
+        } else {
+            self.loop_range.filter(|range| {
+                range.timebase() == bounds.timebase()
+                    && !range.is_empty()
+                    && range.start() >= bounds.start()
+                    && range.end_exclusive().is_ok_and(|end| end <= end_exclusive)
+            })
+        };
+        if retained_loop.is_some_and(|range| !range.contains(target).unwrap_or(false)) {
+            retained_loop = None;
+        }
+
+        self.bounds = bounds;
+        self.loop_range = retained_loop;
+        if self.mode == PlaybackTransportMode::Ended && target != terminal {
+            self.mode = PlaybackTransportMode::Paused;
+        }
+        self.discontinuity_to(target, FrameProtection::Discontinuity, now)
     }
 
     /// Moves by an exact signed number of frame coordinates and remains paused.
@@ -1188,7 +1317,7 @@ impl<O: Send + 'static> PlaybackTransport<O> {
         audio_state: TransportAudioState,
         audio_discard_status: OutputDiscardStatus,
     ) -> TransportDegradation {
-        let mut bits = 0;
+        let mut bits = self.baseline_degradation.0;
         if self.frame_failed {
             bits |= TransportDegradationCode::FrameFailure.bit();
         }

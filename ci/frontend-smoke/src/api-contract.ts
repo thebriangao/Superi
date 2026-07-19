@@ -1,6 +1,7 @@
 import {
   SuperiClient,
   type EditorAiState,
+  type ExecutePlaybackTransport,
   type ExecuteProjectCommand,
   type GetExtensions,
   type GetProjectCommandLog,
@@ -16,6 +17,11 @@ export const inspectProjectCommand = {
   expected_project_revision: 0,
   command: { command: "inspect" },
 } satisfies ExecuteProjectCommand;
+
+export const inspectPlaybackTransport = {
+  transaction_id: "frontend-smoke.inspect-playback",
+  command: { action: "inspect" },
+} satisfies ExecutePlaybackTransport;
 
 export const unavailableAiState = {
   runtime_availability: "unavailable",
@@ -49,6 +55,8 @@ export const inspectCommandLog = {
 
 export type InspectProjectResult =
   SuperiMethodMap["superi.project.command.execute"]["response"];
+export type InspectPlaybackResult =
+  SuperiMethodMap["superi.playback.transport.execute"]["response"];
 export type ProjectStateEvent =
   SuperiEventMap["superi.project.state.changed"];
 export type ProjectCommandLogResult =

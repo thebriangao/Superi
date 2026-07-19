@@ -1261,6 +1261,20 @@ impl EngineCommandDispatcher {
         Ok(self.events.drain(..).collect())
     }
 
+    /// Collects completion and removes only playback replacement events from the shared queue.
+    ///
+    /// Public transport and editor-state consumers use this after observing the complete retained
+    /// playback snapshot. Project, lifecycle, recovery, audio, and export events remain ordered.
+    pub fn discard_playback_events(&mut self) -> Result<usize> {
+        self.require_owner()?;
+        self.collect_playback_completion()?;
+        let before = self.events.len();
+        self.events.retain(|envelope| {
+            !matches!(envelope.event(), EngineEvent::PlaybackStateChanged { .. })
+        });
+        Ok(before - self.events.len())
+    }
+
     fn enqueue_playback_command(
         &mut self,
         transaction_id: EngineTransactionId,

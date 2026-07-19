@@ -28,11 +28,12 @@ use superi_engine::playback::{
     PlaybackAudioOutput, PlaybackFrameEvaluator, PlaybackOrchestrator, PlaybackPoll,
     PlaybackPrefetchEvaluator, PlaybackPrefetcher, PlaybackViewportFrame,
 };
+use superi_engine::playback_runtime::PlaybackControlRuntime;
 use superi_engine::render::ViewportColorMetadata;
 use superi_engine::transport::{
     DroppedFramePolicy, PlaybackDirection, PlaybackTransport, PlaybackTransportCommand,
     PlaybackTransportConfig, PlaybackTransportMode, PlaybackTransportSnapshot, TransportAudioState,
-    TransportDegradationCode,
+    TransportDegradation, TransportDegradationCode,
 };
 use superi_graph::node::GraphColorMetadata;
 use superi_image::metadata::{
@@ -267,6 +268,75 @@ fn interactive_transport_preserves_exact_discontinuities_rate_cadence_and_loop_d
 }
 
 #[test]
+fn desktop_transport_commands_are_atomic_exact_and_explicitly_degraded() {
+    let base = Instant::now();
+    let mut harness = Harness::new_with_baseline(
+        RationalTime::new(6, frame_timebase()),
+        TransportDegradation::with(TransportDegradationCode::ViewportOutputUnavailable)
+            .and(TransportDegradationCode::AudioOutputUnavailable),
+        base,
+    );
+    let playback_domain = ExecutionDomain::Playback.enter_current().unwrap();
+
+    let shuttle = harness
+        .transport
+        .execute_command(
+            PlaybackTransportCommand::Shuttle(PlaybackRate::new(-2, 1).unwrap()),
+            base,
+        )
+        .unwrap();
+    assert_eq!(shuttle.mode(), PlaybackTransportMode::Playing);
+    assert_eq!(shuttle.playhead().value(), 6);
+    assert_eq!(shuttle.rate(), PlaybackRate::new(-2, 1).unwrap());
+    assert_eq!(shuttle.direction(), PlaybackDirection::Reverse);
+
+    let stopped = harness
+        .transport
+        .execute_command(PlaybackTransportCommand::Stop, base)
+        .unwrap();
+    assert_eq!(stopped.mode(), PlaybackTransportMode::Paused);
+    assert_eq!(stopped.playhead().value(), 0);
+    assert!(stopped
+        .degradation()
+        .contains(TransportDegradationCode::ViewportOutputUnavailable));
+    assert!(stopped
+        .degradation()
+        .contains(TransportDegradationCode::AudioOutputUnavailable));
+
+    let looped = harness
+        .transport
+        .execute_command(PlaybackTransportCommand::SetLoopToBounds(true), base)
+        .unwrap();
+    assert_eq!(looped.loop_range().unwrap().start().value(), 0);
+    assert_eq!(
+        looped
+            .loop_range()
+            .unwrap()
+            .end_exclusive()
+            .unwrap()
+            .value(),
+        12
+    );
+
+    let replacement = TimeRange::from_start_end(
+        RationalTime::new(3, frame_timebase()),
+        RationalTime::new(8, frame_timebase()),
+    )
+    .unwrap();
+    harness
+        .transport
+        .reconfigure_bounds(replacement, base)
+        .unwrap();
+    let reconfigured = harness.transport.snapshot();
+    assert_eq!(reconfigured.playhead().value(), 3);
+    assert_eq!(reconfigured.loop_range(), Some(replacement));
+    assert_eq!(reconfigured.mode(), PlaybackTransportMode::Paused);
+
+    drop(playback_domain);
+    harness.shutdown();
+}
+
+#[test]
 fn late_drop_policy_is_bounded_and_never_skips_an_exact_seek() {
     let base = Instant::now();
     let mut harness = Harness::new(
@@ -486,6 +556,66 @@ impl Harness {
         )
         .unwrap();
         let transport = PlaybackTransport::new(orchestrator, prefetcher, config, 91, base).unwrap();
+        drop(playback_domain);
+        Self {
+            transport,
+            consumer,
+            viewport,
+            pool,
+        }
+    }
+
+    fn new_with_baseline(
+        initial: RationalTime,
+        baseline_degradation: TransportDegradation,
+        base: Instant,
+    ) -> Self {
+        let (producer, consumer, _telemetry) = create_output_buffer(OutputBufferConfig {
+            channels: 1,
+            sample_rate: 48_000,
+            capacity_frames: 32,
+            initial_sample: 0,
+        })
+        .unwrap();
+        let route = PipelineRoute::new(PipelineStage::Graph, PipelineStage::Viewport).unwrap();
+        let (viewport_sender, viewport) =
+            bounded_handoff(BackpressureConfig::new(route, 32).unwrap());
+        let pool = Arc::new(BoundedWorkerPool::new(WorkerPoolConfig::new(2, 32).unwrap()).unwrap());
+        let audio = PlaybackAudioOutput::new(producer, consumer.clock().clone());
+        let mut orchestrator = PlaybackOrchestrator::audio_master(
+            &pool,
+            Arc::new(ExactFrameEvaluator {
+                color: viewport_color(),
+                fail_frame: None,
+            }),
+            viewport_sender,
+            audio,
+            RationalTime::new(0, clock_timebase()),
+        )
+        .unwrap();
+        let playback_domain = ExecutionDomain::Playback.enter_current().unwrap();
+        orchestrator.fallback_to_playback_at(base).unwrap();
+        let prefetcher = PlaybackPrefetcher::new(
+            &pool,
+            Arc::new(RecordingPrefetch {
+                frames: Arc::new(Mutex::new(Vec::new())),
+                fail_frame: None,
+            }),
+        );
+        let bounds = TimeRange::from_start_end(
+            RationalTime::new(0, frame_timebase()),
+            RationalTime::new(12, frame_timebase()),
+        )
+        .unwrap();
+        let config = PlaybackTransportConfig::new(
+            bounds,
+            initial,
+            PlaybackPrefetchConfig::new(1, 1, 0).unwrap(),
+            DroppedFramePolicy::PreserveEveryFrame,
+        )
+        .unwrap()
+        .with_baseline_degradation(baseline_degradation);
+        let transport = PlaybackTransport::new(orchestrator, prefetcher, config, 92, base).unwrap();
         drop(playback_domain);
         Self {
             transport,
@@ -772,6 +902,69 @@ fn engine_dispatcher_routes_transport_commands_across_domains_with_ordered_state
 
     drop(playback_executor);
     harness.shutdown();
+}
+
+#[test]
+fn production_playback_runtime_executes_the_bounded_bridge_without_claiming_pixels_or_audio() {
+    let base = Instant::now();
+    let pool = Arc::new(BoundedWorkerPool::new(WorkerPoolConfig::new(2, 32).unwrap()).unwrap());
+    let engine_domain = ExecutionDomain::EngineControl.enter_current().unwrap();
+    let (mut dispatcher, executor) = EngineCommandDispatcher::new_with_playback_bridge().unwrap();
+    drive_dispatcher_to_running(&mut dispatcher);
+    dispatcher.drain_events().unwrap();
+    drop(engine_domain);
+
+    let bounds = TimeRange::from_start_end(
+        RationalTime::new(0, frame_timebase()),
+        RationalTime::new(12, frame_timebase()),
+    )
+    .unwrap();
+    let playback_domain = ExecutionDomain::Playback.enter_current().unwrap();
+    let mut runtime = PlaybackControlRuntime::new(&pool, executor, bounds, 93, base).unwrap();
+    drop(playback_domain);
+
+    let engine_domain = ExecutionDomain::EngineControl.enter_current().unwrap();
+    let accepted = dispatcher
+        .dispatch(EngineCommandRequest::new(
+            EngineTransactionId::new("runtime-play").unwrap(),
+            EngineCommand::ExecutePlayback(PlaybackTransportCommand::Play),
+        ))
+        .unwrap();
+    assert!(matches!(
+        accepted.result(),
+        EngineCommandResult::PlaybackAccepted { .. }
+    ));
+    drop(engine_domain);
+
+    let playback_domain = ExecutionDomain::Playback.enter_current().unwrap();
+    let tick = runtime.tick(base).unwrap();
+    assert_eq!(
+        tick.command().unwrap().command_sequence(),
+        accepted.command_sequence()
+    );
+    assert!(tick.audio().underrun);
+    assert!(runtime
+        .snapshot()
+        .degradation()
+        .contains(TransportDegradationCode::ViewportOutputUnavailable));
+    assert!(runtime
+        .snapshot()
+        .degradation()
+        .contains(TransportDegradationCode::AudioOutputUnavailable));
+    drop(playback_domain);
+
+    let engine_domain = ExecutionDomain::EngineControl.enter_current().unwrap();
+    let events = dispatcher.drain_events().unwrap();
+    assert_eq!(events.len(), 1);
+    let EngineEvent::PlaybackStateChanged { snapshot, failure } = events[0].event() else {
+        panic!("runtime command emitted an unexpected event")
+    };
+    assert_eq!(snapshot.mode(), PlaybackTransportMode::Playing);
+    assert!(failure.is_none());
+    drop(engine_domain);
+
+    drop(runtime);
+    Arc::try_unwrap(pool).unwrap().shutdown().unwrap();
 }
 
 fn drive_dispatcher_to_running(dispatcher: &mut EngineCommandDispatcher) {

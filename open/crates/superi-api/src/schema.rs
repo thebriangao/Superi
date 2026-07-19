@@ -42,6 +42,7 @@ use crate::permissions::{
     ApiDestructiveOperation, ApiFilesystemAccess, ApiFilesystemPlatform, ApiPermissionEffect,
     ApiPermissionKind, ApiPermissionRequirementMode, ApiPermissionRequirements, ApiPluginOperation,
 };
+use crate::playback::ExecutePlaybackTransport;
 use crate::project::ProjectSettingsSnapshot;
 use crate::recovery::ProjectRecoverySnapshot;
 use crate::scenario::ScenarioStateSnapshot;
@@ -1492,6 +1493,7 @@ macro_rules! for_each_public_method {
         $callback::<RunProjectScript>($($argument),+)?;
         $callback::<GetAudioAutomation>($($argument),+)?;
         $callback::<GetEditorState>($($argument),+)?;
+        $callback::<ExecutePlaybackTransport>($($argument),+)?;
         $callback::<ExecuteAudioAutomationTransaction>($($argument),+)?;
         $callback::<GetProjectSettings>($($argument),+)?;
         $callback::<ExecuteProjectSettingsTransaction>($($argument),+)?;

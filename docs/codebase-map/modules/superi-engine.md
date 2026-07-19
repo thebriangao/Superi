@@ -2,8 +2,8 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: d4974c772e20a385e0edb90d3542473173b9b4be0411cc712342191e12b8e693
-source_files: 70
+source_hash: 994f2a03685aa1fd75769aeb4f842916ba488582ebbc058b1b3b1e8657f2d115
+source_files: 71
 mapped_at_commit: working-tree
 ---
 
@@ -85,7 +85,8 @@ through the existing dispatcher.
   lifecycle action routing, acknowledged sleep and wake commands, shutdown, restart, coherent work
   admission, exclusive optional project-history attachment, retained latest playback and export
   replacement state, plus a one-command nonblocking bridge from EngineControl to the playback
-  owner. It composes declaration-only media state,
+  owner. Playback-state readers may discard only completed playback replacement events after
+  snapshotting, leaving every unrelated engine event ordered and available. It composes declaration-only media state,
   optional exact resource accounting, and dispatcher-owned lifecycle and recovery state into
   read-only introspection and integration validation snapshots without advancing a command or event
   sequence. It optionally owns one authoritative project document, exposes immutable project
@@ -161,6 +162,12 @@ through the existing dispatcher.
   seam, cancellable distinct-deadline foreground work, bounded audio output and discontinuity
   status, audio-master and monotonic clock continuity, lossless viewport handoff, structured
   degradation, and weak worker-pool lifecycle boundaries.
+- `open/crates/superi-engine/src/playback_runtime.rs`: Owns the production timing-only playback
+  runtime around one real `PlaybackTransport`, the bounded dispatcher bridge executor, a bounded
+  viewport receiver, and the callback-shaped audio consumer. It advances exact transport timing,
+  acknowledges discontinuity discard, drains only available viewport work, reconfigures authored
+  bounds, and explicitly reports unavailable viewport and audio outputs instead of claiming pixels
+  or samples that this owner does not produce.
 - `open/crates/superi-engine/src/plugins.rs`: Implements deterministic recursive OpenFX bundle
   discovery, canonical bundle validation, platform-launcher coordination, per-plugin isolated host
   ownership, exact permission narrowing, classified failure retention, restart and quarantine
@@ -184,7 +191,10 @@ through the existing dispatcher.
   fingerprint, source revision, packet integrity, and stream metadata; translates cache quality to
   scheduler quality; consumes deterministic derived selection; lazily opens verified original
   media; and adapts complete generated packets to the codec-neutral `MediaSource` contract.
-- `open/crates/superi-engine/src/render.rs`: Defines independent viewport and export color metadata branches from cached scene state, requiring correctly classified terminal display or output stages.
+- `open/crates/superi-engine/src/render.rs`: Defines independent viewport and export color metadata
+  branches from cached scene state, requiring correctly classified terminal display or output
+  stages, and constructs the standard truthful ACEScg scene to sRGB monitoring metadata used by
+  the timing-only playback runtime.
 - `open/crates/superi-engine/src/resource_arbitration.rs`: Implements one thread-safe managed-byte
   envelope for decoded buffers, GPU payloads, caches, prepared audio, AI work, and exports with
   complete class configuration, protected floors, exact hard limits, noncloneable reservations,
@@ -200,9 +210,10 @@ through the existing dispatcher.
   snapshot integrity, autosave, comparison, and recovery proof for upper-tier API contract tests,
   without widening dependency direction or exposing a production project edge.
 - `open/crates/superi-engine/src/transport.rs`: Implements playback-domain pause, play, seek,
-  superseding scrub, exact frame step, reduced signed rate, direction, half-open loop, rational
+  stop-to-bound-start, superseding scrub, exact frame step, atomic signed shuttle, reduced signed
+  rate, direction, whole-bounds and explicit half-open loop, exact authored-bounds reconfiguration, rational
   clock cadence, prediction replanning, protected discontinuities, bounded ordinary late-frame
-  dropping, explicit audio degradation, immutable transport observations, and the stable typed
+  dropping, composable baseline and runtime degradation, immutable transport observations, and the stable typed
   command vocabulary consumed by the engine bridge.
 - `open/crates/superi-engine/src/validation.rs`: Projects immutable engine integration validation
   from canonical scenario, lifecycle, recovery, playback, and export state. It exposes precise
@@ -320,11 +331,13 @@ through the existing dispatcher.
   fixed-order cooperative reclaim, classified callback failure, all six semantic fallback classes,
   class-ceiling recovery, concurrent hard limits, and recursive callback rejection.
 - `open/crates/superi-engine/tests/playback_transport_contract.rs`: Proves exact seek and scrub
-  supersession, pause and resume, frame stepping, fractional cadence, reverse looping, stale-work
+  supersession, pause, resume, stop, JKL-style signed shuttle, whole-bounds looping, exact bounds
+  replacement, frame stepping, fractional cadence, reverse looping, stale-work
   exclusion, bounded drops, protected intent, audio discontinuity, foreground and prediction
   degradation, viewport backpressure, recovery through the real playback owners, and bounded
   EngineControl-to-Playback command and event dispatch, plus retained latest playback replacement
-  and failure state after ordered events are drained.
+  and failure state after ordered events are drained. It also proves the production timing-only
+  runtime executes that bridge while explicitly retaining unavailable viewport and audio evidence.
 - `open/crates/superi-engine/tests/project_history_contract.rs`: Proves real project media mutation,
   full-project undo and redo, branch clearing only after a successful authored change, failure and
   no-op preservation, bounded oldest-entry eviction, monotonic revision exhaustion, recorded

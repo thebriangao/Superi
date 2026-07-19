@@ -16,6 +16,7 @@ use crate::permissions::{
     ApiPermissionKind, ApiPermissionRequirement, ApiPermissionRequirementMode,
     ApiPermissionRequirements, ApiPluginOperation,
 };
+use crate::playback::ExecutePlaybackTransport;
 use crate::schema::{ApiResource, PublicMethodKind};
 use crate::scripting::RunProjectScript;
 use crate::version::{
@@ -613,7 +614,7 @@ pub struct ExactTimebase {
 }
 
 impl ExactTimebase {
-    fn into_engine(self) -> Result<engine::Timebase> {
+    pub(crate) fn into_engine(self) -> Result<engine::Timebase> {
         engine::Timebase::new(self.numerator, self.denominator)
     }
 }
@@ -628,7 +629,7 @@ pub struct ExactTime {
 }
 
 impl ExactTime {
-    fn into_engine(self) -> Result<engine::RationalTime> {
+    pub(crate) fn into_engine(self) -> Result<engine::RationalTime> {
         Ok(engine::RationalTime::new(
             self.value,
             self.timebase.into_engine()?,
@@ -3997,6 +3998,14 @@ impl ProjectEditorRequest for GetEditorState {
     }
 }
 
+impl request_sealed::Sealed for ExecutePlaybackTransport {}
+
+impl ProjectEditorRequest for ExecutePlaybackTransport {
+    fn dispatch(self, api: &mut ProjectEditorApi) -> Result<<Self as ApiCommand>::Response> {
+        crate::playback::execute_playback_transport(&mut api.dispatcher, self)
+    }
+}
+
 impl request_sealed::Sealed for RunProjectScript {}
 
 impl ProjectEditorRequest for RunProjectScript {
@@ -4225,22 +4234,28 @@ impl ProjectEditorApi {
         self.dispatcher
             .drain_events()?
             .into_iter()
-            .map(|envelope| {
+            .filter_map(|envelope| {
+                if matches!(
+                    envelope.event(),
+                    superi_engine::dispatcher::EngineEvent::PlaybackStateChanged { .. }
+                ) {
+                    return None;
+                }
                 let engine::EngineEvent::ProjectStateChanged(state) = envelope.event() else {
-                    return Err(unexpected_result("drain_project_events"));
+                    return Some(Err(unexpected_result("drain_project_events")));
                 };
-                let evidence = self
+                let Some(evidence) = self
                     .pending_event_evidence
                     .remove(&envelope.command_sequence())
-                    .ok_or_else(|| {
-                        Error::new(
-                            ErrorCategory::Internal,
-                            Recoverability::Terminal,
-                            "project event is missing its public command evidence",
-                        )
-                        .with_context(ErrorContext::new(COMPONENT, "drain_project_events"))
-                    })?;
-                Ok(ProjectStateChanged::new(
+                else {
+                    return Some(Err(Error::new(
+                        ErrorCategory::Internal,
+                        Recoverability::Terminal,
+                        "project event is missing its public command evidence",
+                    )
+                    .with_context(ErrorContext::new(COMPONENT, "drain_project_events"))));
+                };
+                Some(Ok(ProjectStateChanged::new(
                     envelope.sequence(),
                     envelope.command_sequence(),
                     envelope.transaction_id().as_str().to_owned(),
@@ -4248,7 +4263,7 @@ impl ProjectEditorApi {
                     state.snapshot().command_log().latest_sequence(),
                     public_history_state(state),
                     evidence,
-                ))
+                )))
             })
             .collect()
     }

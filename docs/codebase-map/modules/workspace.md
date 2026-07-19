@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 2e6821019ac51b4470a948db8e166a5234adff8be9cf7d642cfbaa4d77dad1e7
-source_files: 268
+source_hash: d5844436f6a0f6922bcda1721063c29cc9bef6a246edd127bbe038f8db1cd1f4
+source_files: 271
 mapped_at_commit: working-tree
 ---
 
@@ -507,7 +507,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/package.json`: Declares the private production application package, exact toolchain and
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
   framework, editor-workspace, timeline-canvas, timeline-nesting, timeline-multicam, timeline-clip,
-  timeline-transition, and editorial-feedback contracts, and Tauri commands.
+  timeline-transition, editorial-feedback, and exact playback transport helper contracts, and Tauri
+  commands.
 - `app/src/api.ts`: Re-exports the complete canonical generated TypeScript contract and constructs
   one frozen `SuperiApiBindings` surface around an injected `SuperiTransport` and `SuperiClient`.
 - `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
@@ -523,7 +524,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   execution, the current source-monitor snapshot, exact generated project-command submission,
   response correlation, failure classification, a typed generic project-action callback, one
   application-owned cross-sibling editorial feedback replacement, and complete replacement-state
-  refresh for timeline consumers.
+  refresh for timeline consumers. It additionally owns unique playback
+  transaction identities, submits the generated playback command, verifies immediate bounded
+  acceptance, and polls the same editor-state replacement until the playback-domain owner has
+  completed without creating a React transport model.
 - `app/src/editor-project.ts`: Defines the exact five workspace identities, public editor-state
   request construction, immutable presentation contract, and sample-preserving audio projection
   without React, transport, or mutable state ownership.
@@ -535,9 +539,19 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   application-owned project action and generic command callbacks into that canvas for track,
   marker, and timeline edit batches. The editing panel consumes application-owned source and
   program consequence feedback plus one ordered audio routing and continuity rack, and retains the
-  stateful `SourceMonitor` in the editing source slot without moving a new context, reducer, API
+  stateful `SourceMonitor` in the editing source slot with the exact playback control consumer below
+  the dual viewer, without moving a new context, reducer, API
   client, or Tauri access into this workspace file. Shared timeline selection can become an exact
   replace or backspace target without locally mutating canonical timeline state.
+- `app/src/playback-controls.tsx`: Renders play, pause, stop, loop, JKL shuttle, variable exact
+  speed, direction, and single-frame controls through the application-owned generated command. It
+  serializes interactions, inspects exact playback state at a bounded cadence only while playing,
+  ignores editable keyboard targets, and communicates exact playhead and scheduling clocks, rate,
+  direction, loop, continuity, drop, visual, audio, synchronization, comparison, failure, pending,
+  and explicit degraded-output state without importing Tauri or claiming rendered pixels or audio.
+- `app/src/playback-transport.ts`: Defines transport-neutral pure JKL and Space command derivation,
+  exact rational time and rate formatting, fixed variable-rate options, and complete user-facing
+  labels for every engine playback degradation code.
 - `app/src/timeline-workspace.ts`: Strictly projects the embedded canonical revision 2 timeline
   document into a deeply frozen canvas model with exact rational source and record ranges, stable
   identities and relationships, exact transition from and to offsets, bounded track height, lock,
@@ -750,7 +764,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   command wiring, and the absence of direct transport ownership in the workspace. It also verifies
   transition command wiring through the same application-owned callback plus application-owned
   editorial feedback publication, viewer consumption, audio meter rendering, route-state styling,
-  and native IPC isolation.
+  and native IPC isolation. It also freezes the
+  editing playback consumer, application-owned generated route, complete required action set,
+  exact state categories, and absence of direct Tauri or API-client ownership in the component.
+- `app/tests/playback-transport.test.ts`: Proves exact signed JKL rate cycling, K pause, Space
+  play-or-pause intent, rational time and rate formatting, and explicit unavailable-output labels.
 - `app/tests/timeline-workspace.test.ts`: Verifies strict canonical revision handling, exact track,
   item, source and record range, group, link, selection, target, lock, output, synchronization, and
   transition preservation, variable height, external global-start placement, deterministic
@@ -841,20 +859,27 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   engine phases, generation changes, classified safe failures, recovery, restart, shutdown, exact
   acknowledgement tokens, and the stable headless-engine participant seam.
 - `app/src-tauri/src/engine.rs`: Owns one lifecycle-attached `EngineCommandDispatcher` on a dedicated
-  EngineControl thread, a fixed-capacity nonblocking request connection, and projection through the
-  existing integration-validation API contract. The same thread now retains one route-fenced
+  EngineControl thread, one dedicated Playback thread, one shared bounded worker pool, a
+  fixed-capacity nonblocking request connection, and projection through the existing
+  integration-validation API contract. The playback thread retains the timing-only production
+  runtime and one capacity-bounded control connection; it attaches the active project's exact root
+  range, reconfigures that range before durable authored replacement, advances transport, and joins
+  before the shared pool shuts down. The EngineControl thread retains one route-fenced
   `ProjectEditorApi` session for generated editor-state and project-command requests, persists every
   successful selected snapshot through `ProjectDatabase`, preserves session undo and redo, and
-  invalidates any in-memory state that could not be published durably.
+  invalidates any in-memory state that could not be published durably. Its editor API and playback
+  runtime share only the existing bounded dispatcher bridge.
 - `app/src-tauri/src/transport.rs`: Owns the thin bounded desktop command dispatcher above the
   managed `EngineConnection`, generation-scoped request and cancellation state, exact public error
   conversion with reviewed canonical contexts, and a 64-record ordered replacement-event replay
   window without engine semantics. It routes integration validation, complete editor state, and
-  generic project commands through exact generated request and response types on the managed
+  generic project commands plus immediately accepted playback transport through exact generated request and response types on the managed
   EngineControl connection, publishes every correlated project event in order, and advances desktop
   project identity only after durable command completion. Cancellation wins before durable work
   starts, while a completed durable commit and its replacement event win a late cancellation so
-  committed state cannot be hidden from reconciliation.
+  committed state cannot be hidden from reconciliation. The same late-cancellation rule preserves
+  an already accepted playback command, and focused routing proof observes its completion through
+  editor state before a durable edit.
 - `app/src-tauri/src/project_lifecycle.rs`: Owns the sole serialized desktop project session above
   `LocalProjectHost`, including commit-only active identity, bounded deduplicated recent projects,
   revision-fenced recovery presentation, last-valid state retention, and retryable, degraded,
@@ -1021,8 +1046,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `ci/frontend-smoke/package.json`: Declares a private CI package, Node.js 24.13.0, independent
   typecheck, build, and test commands, and exact TypeScript and Vite development dependencies.
 - `ci/frontend-smoke/src/api-contract.ts`: Imports the committed generated API artifact, constructs
-  an exact typed project command, command-log query, unavailable AI state, and API version
-  negotiation request through current catalog release `1.8.0`, consumes command-log and negotiation
+  exact typed project and playback commands, a command-log query, unavailable AI state, and API
+  version negotiation request through current catalog release `1.8.0`, consumes playback,
+  command-log, and negotiation
   responses plus the extension query,
   lifecycle, event, resource, stable public control reference, typed maps, and transport-neutral
   client constructor used by the browser build.
@@ -1061,7 +1087,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `open/bindings/typescript/superi-api.ts`: Deterministic committed TypeScript representation of the
   public API. It contains all named DTOs including version negotiation, exact method, event, and
   resource maps, recursive wire primitives, the bounded local scripting request, program, trace,
-  and response types, strict extension identity, lifecycle, capability, safe failure, feature,
+  and response types, strict exact playback transport actions and acceptance, extension identity, lifecycle, capability, safe failure, feature,
   control, query, event, and resource declarations, generic project import-media request and result
   evidence, and a transport-neutral typed client without owning runtime IPC. The committed artifact
   is freshly regenerated from the canonical schema `1.6.0` project surface and includes strict
@@ -2335,26 +2361,33 @@ The workspace is beyond the original empty scaffold and the public orientation n
 first production desktop shell. `app/` contains a locked React 19 and Tauri 2 application whose
 single lifecycle owner projects explicit application and headless-engine phases, intent, revision,
 generation, pending acknowledgement, and classified safe failure. A linked native process owner now
-retains one real dispatcher per generation on a dedicated EngineControl thread, exposes the existing
+retains one real dispatcher per generation on a dedicated EngineControl thread plus one exact
+transport runtime on a dedicated Playback thread, exposes the existing
 integration-validation result over a bounded nonblocking Rust connection, and performs real orderly
 dispatcher shutdown before lifecycle acknowledgement. Internal subsystem readiness remains truthful;
 the production React bootstrap now consumes the complete generated TypeScript contract through a
 transport-injected `SuperiClient` provider with identical request and automation behavior. One thin
 native dispatcher forwards integration validation through the retained EngineControl owner and
-routes generated editor reads plus durable project commands through the active project lifecycle. It
+routes generated editor reads, exact playback commands, and durable project commands through the active project lifecycle. It
 emits ordered generated introspection and project replacement events and exposes bounded replay,
 reconnect, cancellation, and all four public recoverability conditions through the concrete
 frontend transport.
 Above that unchanged transport, `application.ts` owns deterministic route, panel, and command
 registries plus transient panel layout and one immutable typed public-resource selection.
 `ApplicationProvider` composes the framework above `SuperiApiProvider` and remains the single owner
-of transient application state plus one last-valid public editor snapshot. The React shell registers
+of transient application state plus one last-valid public editor snapshot. It correlates playback
+transactions and observes bounded completion through that same snapshot while leaving timing and
+command execution on the native Playback owner. The React shell registers
 editing, compositing, color, audio, delivery, and system routes; the professional views project the
 same snapshot, preserve exact audio sample, channel, route, synchronization, and continuity fields,
 and retain classified degraded state when the native bridge reports a failed generated request. The
 native bridge now routes complete editor-state and generic project-command methods through a retained
 EngineControl editor session, publishes successful snapshots durably, refreshes desktop project
-identity, and emits exact correlated project events.
+identity, and emits exact correlated project events. The editing viewer adds play, pause, stop,
+loop, JKL shuttle, exact variable speed, direction, and frame-step controls, plus complete exact
+temporal, visual, audio, synchronization, comparison, pending, failure, and degradation readouts.
+The current production runtime is intentionally timing-only and reports unavailable viewport pixels
+and audio output instead of claiming decoded presentation or samples.
 The editing view now also parses the snapshot's canonical timeline document into a frozen
 identity-preserving canvas with sticky headers, an adaptive ruler, record-positioned tracks and
 items, a frame-snapped playhead, an explicit range, native scrolling, pointer-anchored zoom, and
@@ -2682,8 +2715,8 @@ The largest current risk is cross-document drift:
   not record a completed hosted run across the six configured lanes. The current workflow and local
   proof are implementation evidence, not proof that every hosted runner completed at this revision.
 - The frontend workflow validates a deliberately minimal TypeScript and Vite contract. It now has a
-  real compile-time consumer of the generated public API including command-log method and resource
-  maps, but no live transport, React dependency,
+  real compile-time consumer of the generated public API including playback and command-log method
+  and resource maps, but no live transport, React dependency,
   Tauri host, native viewport, or editorial behavior, so a passing frontend lane must not be
   reported as product UI or desktop-shell proof.
 - The frontend lockfile includes many platform-optional esbuild and Rollup packages. Their presence
@@ -2700,7 +2733,7 @@ The largest current risk is cross-document drift:
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
 `776bb3dedbe2faba4b3b959a4d659d343d699b8d` when this checkpoint began. Its hash describes the exact
-268 discovered source files, including generated binary payloads, layered on the integrated
+271 discovered source files, including generated binary payloads, layered on the integrated
 revision.
 
 ## Maintenance notes

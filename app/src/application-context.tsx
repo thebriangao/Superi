@@ -27,8 +27,10 @@ import {
   type EditorProjectPresentation,
 } from "./editor-project.ts";
 import type {
+  ExecutePlaybackTransportResult,
   ExecuteProjectCommand,
   ExecuteProjectCommandResult,
+  PlaybackTransportAction,
   ProjectAction,
 } from "./api.ts";
 import type { SourceMonitorSnapshot } from "./project-lifecycle.ts";
@@ -57,6 +59,9 @@ export interface ApplicationContextValue {
   readonly executeProjectCommand: (
     request: ExecuteProjectCommand,
   ) => Promise<ExecuteProjectCommandResult>;
+  readonly executePlaybackTransport: (
+    action: PlaybackTransportAction,
+  ) => Promise<ExecutePlaybackTransportResult>;
   readonly sourceMonitor: SourceMonitorSnapshot | null;
   readonly setSourceMonitor: (snapshot: SourceMonitorSnapshot | null) => void;
   readonly editorialFeedback: TimelineEditorialFeedback | null;
@@ -96,6 +101,7 @@ export function ApplicationProvider({
   const editorRequestRevision = useRef(0);
   const editorTransactionRevision = useRef(0);
   const projectCommandRevision = useRef(0);
+  const playbackCommandRevision = useRef(0);
   stateRef.current = state;
   editorProjectRef.current = editorProject;
 
@@ -103,23 +109,31 @@ export function ApplicationProvider({
     const requestRevision = editorRequestRevision.current + 1;
     editorRequestRevision.current = requestRevision;
     if (api === null) {
-      setEditorProject((current) => ({
-        ...current,
-        status: "unavailable",
-        failure: null,
-      }));
+      setEditorProject((current) => {
+        const next: EditorProjectPresentation = {
+          ...current,
+          status: "unavailable",
+          failure: null,
+        };
+        editorProjectRef.current = next;
+        return next;
+      });
       return;
     }
 
     const transactionRevision = editorTransactionRevision.current + 1;
     editorTransactionRevision.current = transactionRevision;
     const transactionId = `superi.desktop.project-state.${transactionRevision}`;
-    setEditorProject((current) => ({
-      ...current,
-      status: current.snapshot === null ? "loading" : "refreshing",
-      transactionId,
-      failure: null,
-    }));
+    setEditorProject((current) => {
+      const next: EditorProjectPresentation = {
+        ...current,
+        status: current.snapshot === null ? "loading" : "refreshing",
+        transactionId,
+        failure: null,
+      };
+      editorProjectRef.current = next;
+      return next;
+    });
 
     try {
       const result = await api.request(
@@ -132,24 +146,30 @@ export function ApplicationProvider({
       if (result.transaction_id !== transactionId) {
         throw new Error("editor state response transaction identity changed");
       }
-      setEditorProject({
+      const next: EditorProjectPresentation = {
         status: "ready",
         transactionId,
         commandSequence: result.command_sequence,
         snapshot: result.snapshot,
         failure: null,
-      });
+      };
+      editorProjectRef.current = next;
+      setEditorProject(next);
     } catch (error: unknown) {
       if (editorRequestRevision.current !== requestRevision) {
         return;
       }
       const failure = classifyDesktopTransportError(error);
-      setEditorProject((current) => ({
-        ...current,
-        status: failure.condition === "terminal" ? "failed" : "degraded",
-        transactionId,
-        failure,
-      }));
+      setEditorProject((current) => {
+        const next: EditorProjectPresentation = {
+          ...current,
+          status: failure.condition === "terminal" ? "failed" : "degraded",
+          transactionId,
+          failure,
+        };
+        editorProjectRef.current = next;
+        return next;
+      });
     }
   }, [api]);
 
@@ -241,6 +261,69 @@ export function ApplicationProvider({
     [executeProjectCommand],
   );
 
+  const executePlaybackTransport = useCallback(
+    async (
+      action: PlaybackTransportAction,
+    ): Promise<ExecutePlaybackTransportResult> => {
+      if (api === null) {
+        throw new Error(
+          "Playback transport is available only through the desktop playback owner.",
+        );
+      }
+      const commandRevision = playbackCommandRevision.current + 1;
+      playbackCommandRevision.current = commandRevision;
+      const transactionId = `superi.desktop.playback.${commandRevision}`;
+      try {
+        const result = await api.request("superi.playback.transport.execute", {
+          transaction_id: transactionId,
+          command: action,
+        });
+        if (result.transaction_id !== transactionId) {
+          throw new Error(
+            "playback command response transaction identity changed",
+          );
+        }
+        if (!result.accepted || !result.pending_command) {
+          throw new Error(
+            "playback owner did not acknowledge bounded asynchronous execution",
+          );
+        }
+
+        for (let attempt = 0; attempt < 50; attempt += 1) {
+          if (attempt > 0) {
+            await waitForPlaybackOwner(4);
+          }
+          await refreshEditorProject();
+          const presentation = editorProjectRef.current;
+          if (presentation.failure !== null) {
+            throw new Error(
+              `${presentation.failure.title} ${presentation.failure.action}`,
+            );
+          }
+          const playback = presentation.snapshot?.playback;
+          if (playback?.status === "detached") {
+            throw new Error("The desktop playback owner is detached.");
+          }
+          if (playback?.status === "attached" && !playback.pending_command) {
+            if (playback.latest?.failure !== null && playback.latest?.failure !== undefined) {
+              throw new Error(
+                `Playback command failed with ${playback.latest.failure.category} (${playback.latest.failure.recoverability}).`,
+              );
+            }
+            return result;
+          }
+        }
+        throw new Error(
+          "The desktop playback owner did not complete the accepted command in time.",
+        );
+      } catch (error: unknown) {
+        const failure = classifyDesktopTransportError(error);
+        throw new Error(`${failure.title} ${failure.action}`);
+      }
+    },
+    [api, refreshEditorProject],
+  );
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || isEditableCommandTarget(event.target)) {
@@ -292,6 +375,7 @@ export function ApplicationProvider({
         editorProject,
         refreshEditorProject,
         executeProjectCommand,
+        executePlaybackTransport,
         sourceMonitor,
         setSourceMonitor,
         editorialFeedback,
@@ -301,6 +385,10 @@ export function ApplicationProvider({
       {children}
     </ApplicationContext.Provider>
   );
+}
+
+function waitForPlaybackOwner(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 export function useApplication(): ApplicationContextValue {

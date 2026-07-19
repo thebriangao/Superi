@@ -13,6 +13,7 @@ pub mod jobs;
 pub mod local;
 pub mod negotiation;
 pub mod permissions;
+pub mod playback;
 pub mod project;
 pub mod recovery;
 pub mod scenario;

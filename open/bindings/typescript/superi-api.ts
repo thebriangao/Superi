@@ -863,6 +863,16 @@ export type ExecuteAudioAutomationTransaction = { transaction_id: string; expect
 export type ExecuteAudioAutomationTransactionResult = { transaction_id: string; command_sequence: number; snapshot: AudioAutomationSnapshot };
 
 /**
+ * Caller-correlated strict playback transport request.
+ */
+export type ExecutePlaybackTransport = { transaction_id: string; command: PlaybackTransportAction };
+
+/**
+ * Immediate bounded acceptance of one asynchronous transport command.
+ */
+export type ExecutePlaybackTransportResult = { schema_version: SemanticVersion; transaction_id: string; command_sequence: number; accepted: boolean; pending_command: boolean };
+
+/**
  * Request for one generic public project command.
  */
 export type ExecuteProjectCommand = { transaction_id: string; expected_project_revision: number; command: ProjectCommand };
@@ -1211,6 +1221,16 @@ export type OperationRecord = { operation_id: string; resulting_revision: number
  * Strict command for controlling one retained asynchronous job.
  */
 export type PauseAsyncJob = { transaction_id: string; handle: AsyncJobHandle };
+
+/**
+ * Public signed playback traversal direction.
+ */
+export type PlaybackDirection = "forward" | "reverse";
+
+/**
+ * One strict transport action executed by the playback-domain owner.
+ */
+export type PlaybackTransportAction = { action: "inspect" } | { action: "play" } | { action: "pause" } | { action: "stop" } | { action: "seek"; target: ExactTime } | { action: "begin_scrub" } | { action: "scrub_to"; target: ExactTime } | { action: "end_scrub"; resume: boolean } | { action: "set_loop"; enabled: boolean } | { action: "set_rate"; numerator: number; denominator: number } | { action: "set_direction"; direction: PlaybackDirection } | { action: "shuttle"; numerator: number; denominator: number } | { action: "step_frames"; delta: number };
 
 /**
  * Latest complete playback transport state.
@@ -1722,6 +1742,7 @@ export interface SuperiMethodMap {
   "superi.jobs.resume": { request: ResumeAsyncJob; response: AsyncJobsResult };
   "superi.jobs.retry": { request: RetryAsyncJob; response: AsyncJobsResult };
   "superi.media.capabilities.get": { request: GetMediaCapabilities; response: GetMediaCapabilitiesResult };
+  "superi.playback.transport.execute": { request: ExecutePlaybackTransport; response: ExecutePlaybackTransportResult };
   "superi.project.command.execute": { request: ExecuteProjectCommand; response: ExecuteProjectCommandResult };
   "superi.project.command_log.get": { request: GetProjectCommandLog; response: GetProjectCommandLogResult };
   "superi.project.recovery.compare": { request: CompareProjectRecovery; response: CompareProjectRecoveryResult };

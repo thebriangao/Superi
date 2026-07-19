@@ -2,7 +2,7 @@
 module_id: superi-cli
 source_paths:
   - open/crates/superi-cli
-source_hash: 5c6bb293eb940879deba36aa516bdf67f3d562abd9d38a9089cb9f2b7a74e037
+source_hash: d7903402f90bfaf08a4f1a7fa1bfb1b5a231048e10ee6a87f84457e429d4e354
 source_files: 10
 mapped_at_commit: working-tree
 ---
@@ -79,7 +79,7 @@ production owner is explicit in stage diagnostics and the artifact name.
 - `open/crates/superi-cli/tests/api_schema_cli_contract.rs`: Proves deterministic exact schema
   discovery output, additive catalog release `1.8.0` and primitive identity, all seven schema
   categories, exact current counts
-  and method names including the generic project, command-log query, and local script commands, asynchronous job query
+  and method names including the generic project, playback transport, command-log query, and local script commands, asynchronous job query
   and controls, complete editor-state discovery, event subscription open, close, and poll, and API
   and project version negotiation, plus extension discovery and its permission-free classification,
   the additive multicam project schema release, the permission vocabulary and per-method metadata,
@@ -147,7 +147,7 @@ file containing a canonical principal and typed rules; omitting it denies all pr
 The policy file cannot use stdin, preventing two consumers from racing the same byte stream.
 
 Schema discovery success prints exactly one strict `PublicApiSchemaSnapshot` JSON value containing
-catalog schema `1.8.0`, stable primitive revision 1, JSON-RPC `2.0`, 16 commands, 14 queries,
+catalog schema `1.8.0`, stable primitive revision 1, JSON-RPC `2.0`, 17 commands, 14 queries,
 nine events, 13 resources, one error schema, one capability schema, and one permission schema in
 canonical order. Every method carries its permission mode and possible kinds. Discovery starts no
 engine, routes no operation, and owns no transport, permission authority, or registry state.
@@ -418,7 +418,8 @@ names including the generic editor, `superi.project.command_log.get`, `superi.pr
 replacement resource, event subscription open, close, and poll, the complete permission vocabulary,
 and exact method permission metadata, plus help coverage and precise invalid usage.
 The version oracle also pins catalog `1.8.0` and project editor `1.6.0`, so the CLI cannot report an
-older schema after strict multicam mutation enters the existing generic command.
+older schema after strict multicam mutation enters the generic command and playback transport enters
+the public catalog beside it.
 They do not prove method routing, wire transport, event delivery, host policy persistence, job
 execution, scripting, or broad CLI parity.
 

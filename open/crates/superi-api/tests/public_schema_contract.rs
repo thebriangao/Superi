@@ -24,6 +24,7 @@ const COMMANDS: &[&str] = &[
     "superi.jobs.remove",
     "superi.jobs.resume",
     "superi.jobs.retry",
+    "superi.playback.transport.execute",
     "superi.project.command.execute",
     "superi.project.recovery.dismiss",
     "superi.project.recovery.restore",

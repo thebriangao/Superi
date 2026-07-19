@@ -35,6 +35,7 @@ pub mod lifecycle;
 pub mod media;
 pub mod nodes;
 pub mod playback;
+pub mod playback_runtime;
 pub mod plugins;
 pub mod project_recovery;
 pub mod project_settings;

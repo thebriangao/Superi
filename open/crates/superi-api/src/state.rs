@@ -808,10 +808,12 @@ pub(crate) fn execute_editor_state(
     let EngineCommandResult::EditorState(state) = outcome.result() else {
         return Err(unsupported_engine_value("get_editor_state"));
     };
+    let snapshot = public_snapshot(state)?;
+    dispatcher.discard_playback_events()?;
     Ok(GetEditorStateResult::new(
         outcome.transaction_id().as_str().to_owned(),
         outcome.command_sequence(),
-        public_snapshot(state)?,
+        snapshot,
     ))
 }
 
@@ -1108,6 +1110,14 @@ fn public_playback_snapshot(value: EnginePlaybackSnapshot) -> Result<EditorPlayb
         (
             EngineTransportDegradationCode::AudioRateUnsupported,
             "audio_rate_unsupported",
+        ),
+        (
+            EngineTransportDegradationCode::ViewportOutputUnavailable,
+            "viewport_output_unavailable",
+        ),
+        (
+            EngineTransportDegradationCode::AudioOutputUnavailable,
+            "audio_output_unavailable",
         ),
     ]
     .into_iter()

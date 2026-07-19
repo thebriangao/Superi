@@ -2,7 +2,8 @@
 
 use std::path::Path;
 use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender, TrySendError};
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use superi_api::commands::{
     GetEditorState, GetEditorStateResult, GetEngineIntegrationValidation,
@@ -10,8 +11,10 @@ use superi_api::commands::{
 };
 use superi_api::editor::{ExecuteProjectCommand, ExecuteProjectCommandResult, ProjectEditorApi};
 use superi_api::events::ProjectStateChanged;
+use superi_api::playback::{ExecutePlaybackTransport, ExecutePlaybackTransportResult};
 use superi_api::validation::IntegrationValidationApi;
 use superi_concurrency::lifecycle::LifecyclePhase;
+use superi_concurrency::jobs::{BoundedWorkerPool, WorkerPoolConfig};
 use superi_concurrency::threads::{ExecutionDomain, ExecutionDomainThread};
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability, Result};
 use superi_engine::dispatcher::{
@@ -21,6 +24,8 @@ use superi_engine::dispatcher::{
 use superi_engine::editor::ProjectDatabase;
 use superi_engine::introspection::MediaCapabilities;
 use superi_engine::media::media_backend_registry;
+use superi_engine::playback_runtime::PlaybackControlRuntime;
+use superi_engine::dispatcher::PlaybackCommandExecutor;
 
 use crate::lifecycle::{
     ApplicationLifecycle, ApplicationLifecyclePhase, HeadlessEngineFailure,
@@ -31,6 +36,11 @@ use crate::project_lifecycle::{DesktopProjectEditorRoute, DesktopProjectIdentity
 const COMPONENT: &str = "superi-desktop.engine";
 const REQUEST_CAPACITY: usize = 8;
 const CONTROL_WAIT: Duration = Duration::from_millis(10);
+const PLAYBACK_WAIT: Duration = Duration::from_millis(2);
+const PLAYBACK_CONTROL_TIMEOUT: Duration = Duration::from_secs(2);
+const PLAYBACK_CONTROL_CAPACITY: usize = 2;
+const PLAYBACK_WORK_QUEUE_CAPACITY: usize = 64;
+const PLAYBACK_JOB_NAMESPACE: u64 = 0x5355_5045_5249_5042;
 
 enum EngineRequest {
     IntegrationValidation {
@@ -46,6 +56,54 @@ enum EngineRequest {
         request: ExecuteProjectCommand,
         response: SyncSender<Result<ProjectEditorCommandOutput>>,
     },
+    PlaybackTransport {
+        route: DesktopProjectEditorRoute,
+        request: ExecutePlaybackTransport,
+        response: SyncSender<Result<ExecutePlaybackTransportResult>>,
+    },
+}
+
+enum PlaybackOwnerRequest {
+    Attach {
+        executor: PlaybackCommandExecutor,
+        bounds: superi_engine::editor::TimeRange,
+        response: SyncSender<Result<()>>,
+    },
+    Reconfigure {
+        bounds: superi_engine::editor::TimeRange,
+        response: SyncSender<Result<()>>,
+    },
+}
+
+#[derive(Clone)]
+struct PlaybackOwnerConnection {
+    requests: SyncSender<PlaybackOwnerRequest>,
+}
+
+impl PlaybackOwnerConnection {
+    fn attach(
+        &self,
+        executor: PlaybackCommandExecutor,
+        bounds: superi_engine::editor::TimeRange,
+    ) -> Result<()> {
+        let (response, receiver) = sync_channel(1);
+        self.requests
+            .try_send(PlaybackOwnerRequest::Attach {
+                executor,
+                bounds,
+                response,
+            })
+            .map_err(playback_control_admission_error)?;
+        wait_for_engine_response(receiver, PLAYBACK_CONTROL_TIMEOUT)
+    }
+
+    fn reconfigure(&self, bounds: superi_engine::editor::TimeRange) -> Result<()> {
+        let (response, receiver) = sync_channel(1);
+        self.requests
+            .try_send(PlaybackOwnerRequest::Reconfigure { bounds, response })
+            .map_err(playback_control_admission_error)?;
+        wait_for_engine_response(receiver, PLAYBACK_CONTROL_TIMEOUT)
+    }
 }
 
 /// Cloneable, transport-neutral handle to the engine process owned by the Tauri shell.
@@ -96,6 +154,23 @@ impl EngineConnection {
             })
             .map_err(connection_admission_error)?;
         Ok(PendingProjectCommand { receiver })
+    }
+
+    /// Admits one strict interactive transport command for the active durable project route.
+    pub fn request_playback_transport(
+        &self,
+        route: DesktopProjectEditorRoute,
+        request: ExecutePlaybackTransport,
+    ) -> Result<PendingPlaybackTransport> {
+        let (response, receiver) = sync_channel(1);
+        self.requests
+            .try_send(EngineRequest::PlaybackTransport {
+                route,
+                request,
+                response,
+            })
+            .map_err(connection_admission_error)?;
+        Ok(PendingPlaybackTransport { receiver })
     }
 }
 
@@ -181,11 +256,25 @@ impl PendingProjectCommand {
     }
 }
 
+/// Blocking-safe observation of one immediately admitted playback transport command.
+#[must_use = "the admitted playback response must be observed on a blocking-safe thread"]
+pub struct PendingPlaybackTransport {
+    receiver: Receiver<Result<ExecutePlaybackTransportResult>>,
+}
+
+impl PendingPlaybackTransport {
+    pub fn wait(self, timeout: Duration) -> Result<ExecutePlaybackTransportResult> {
+        wait_for_engine_response(self.receiver, timeout)
+    }
+}
+
 /// Explicit owner of one managed EngineControl thread for the desktop process.
 #[must_use = "retain the linked engine owner until application shutdown is complete"]
 pub struct LinkedEngineProcess {
     connection: EngineConnection,
     worker: ExecutionDomainThread<()>,
+    playback_worker: ExecutionDomainThread<()>,
+    worker_pool: Arc<BoundedWorkerPool>,
 }
 
 impl LinkedEngineProcess {
@@ -193,11 +282,25 @@ impl LinkedEngineProcess {
     pub fn launch(lifecycle: ApplicationLifecycle) -> Result<Self> {
         let participant = lifecycle.headless_engine_participant()?;
         let (requests, receiver) = sync_channel(REQUEST_CAPACITY);
-        let worker = ExecutionDomain::EngineControl
-            .spawn(move |_| run_engine_control(participant, receiver))?;
+        let worker_pool = Arc::new(BoundedWorkerPool::new(WorkerPoolConfig::recommended(
+            PLAYBACK_WORK_QUEUE_CAPACITY,
+        )?)?);
+        let (playback_requests, playback_receiver) =
+            sync_channel(PLAYBACK_CONTROL_CAPACITY);
+        let playback_pool = Arc::clone(&worker_pool);
+        let playback_worker = ExecutionDomain::Playback
+            .spawn(move |_| run_playback_control(playback_pool, playback_receiver))?;
+        let playback = PlaybackOwnerConnection {
+            requests: playback_requests,
+        };
+        let worker = ExecutionDomain::EngineControl.spawn(move |_| {
+            run_engine_control(participant, receiver, playback)
+        })?;
         Ok(Self {
             connection: EngineConnection { requests },
             worker,
+            playback_worker,
+            worker_pool,
         })
     }
 
@@ -215,13 +318,32 @@ impl LinkedEngineProcess {
 
     /// Joins the engine owner after application lifecycle shutdown has completed.
     pub fn join(self) -> Result<()> {
-        self.worker.join()
+        let Self {
+            connection,
+            worker,
+            playback_worker,
+            worker_pool,
+        } = self;
+        worker.join()?;
+        drop(connection);
+        playback_worker.join()?;
+        let worker_pool = Arc::try_unwrap(worker_pool).map_err(|_| {
+            engine_error(
+                ErrorCategory::Internal,
+                Recoverability::Terminal,
+                "the playback worker pool retained an unexpected owner at shutdown",
+                "shutdown_playback_pool",
+            )
+        })?;
+        worker_pool.shutdown()?;
+        Ok(())
     }
 }
 
 fn run_engine_control(
     participant: HeadlessEngineLifecycleParticipant,
     requests: Receiver<EngineRequest>,
+    playback: PlaybackOwnerConnection,
 ) -> Result<()> {
     let signal = participant.signal();
     let mut dispatcher = None;
@@ -271,7 +393,12 @@ fn run_engine_control(
         }
 
         match requests.recv_timeout(CONTROL_WAIT) {
-            Ok(request) => execute_request(request, dispatcher.as_ref(), &mut editor_session),
+            Ok(request) => execute_request(
+                request,
+                dispatcher.as_ref(),
+                &mut editor_session,
+                &playback,
+            ),
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => {
                 let error = engine_error(
@@ -287,10 +414,66 @@ fn run_engine_control(
     }
 }
 
+fn run_playback_control(
+    worker_pool: Arc<BoundedWorkerPool>,
+    requests: Receiver<PlaybackOwnerRequest>,
+) -> Result<()> {
+    let mut runtime: Option<PlaybackControlRuntime> = None;
+    loop {
+        match requests.recv_timeout(PLAYBACK_WAIT) {
+            Ok(PlaybackOwnerRequest::Attach {
+                executor,
+                bounds,
+                response,
+            }) => {
+                let result = PlaybackControlRuntime::new(
+                    &worker_pool,
+                    executor,
+                    bounds,
+                    PLAYBACK_JOB_NAMESPACE,
+                    Instant::now(),
+                );
+                match result {
+                    Ok(owner) => {
+                        runtime = Some(owner);
+                        let _ = response.try_send(Ok(()));
+                    }
+                    Err(error) => {
+                        let _ = response.try_send(Err(error));
+                    }
+                }
+            }
+            Ok(PlaybackOwnerRequest::Reconfigure { bounds, response }) => {
+                let result = runtime
+                    .as_mut()
+                    .ok_or_else(|| {
+                        engine_error(
+                            ErrorCategory::Unavailable,
+                            Recoverability::Retryable,
+                            "the desktop playback owner is not attached",
+                            "reconfigure_playback",
+                        )
+                    })
+                    .and_then(|owner| owner.reconfigure_bounds(bounds, Instant::now()));
+                let _ = response.try_send(result);
+            }
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => return Ok(()),
+        }
+        if runtime
+            .as_mut()
+            .is_some_and(|owner| owner.tick(Instant::now()).is_err())
+        {
+            runtime = None;
+        }
+    }
+}
+
 fn execute_request(
     request: EngineRequest,
     dispatcher: Option<&EngineCommandDispatcher>,
     editor_session: &mut Option<ProjectEditorSession>,
+    playback: &PlaybackOwnerConnection,
 ) {
     match request {
         EngineRequest::IntegrationValidation { response } => {
@@ -312,7 +495,7 @@ fn execute_request(
             response,
         } => {
             let result = require_connected(dispatcher)
-                .and_then(|()| editor_session_for(editor_session, &route))
+                .and_then(|()| editor_session_for(editor_session, &route, playback))
                 .and_then(|session| session.editor_state(&route, request));
             let _ = response.try_send(result);
         }
@@ -322,7 +505,7 @@ fn execute_request(
             response,
         } => {
             let result = require_connected(dispatcher)
-                .and_then(|()| editor_session_for(editor_session, &route))
+                .and_then(|()| editor_session_for(editor_session, &route, playback))
                 .and_then(|session| session.execute_project_command(&route, request));
             if result.is_err()
                 && editor_session
@@ -333,6 +516,16 @@ fn execute_request(
             }
             let _ = response.try_send(result);
         }
+        EngineRequest::PlaybackTransport {
+            route,
+            request,
+            response,
+        } => {
+            let result = require_connected(dispatcher)
+                .and_then(|()| editor_session_for(editor_session, &route, playback))
+                .and_then(|session| session.execute_playback_transport(&route, request));
+            let _ = response.try_send(result);
+        }
     }
 }
 
@@ -340,20 +533,31 @@ struct ProjectEditorSession {
     path: String,
     durable_snapshot: superi_engine::editor::ProjectSnapshot,
     api: ProjectEditorApi,
+    playback: PlaybackOwnerConnection,
+    playback_bounds: superi_engine::editor::TimeRange,
 }
 
 impl ProjectEditorSession {
-    fn load(route: &DesktopProjectEditorRoute) -> Result<Self> {
+    fn load(
+        route: &DesktopProjectEditorRoute,
+        playback: &PlaybackOwnerConnection,
+    ) -> Result<Self> {
         let database = ProjectDatabase::open_read_only(Path::new(route.path()))?;
         let document = database.load()?;
         let snapshot = document.snapshot();
         require_route_snapshot(route, &snapshot)?;
-        let mut dispatcher = EngineCommandDispatcher::new()?;
+        let playback_bounds = project_playback_bounds(&snapshot)?;
+        let (mut dispatcher, executor) = EngineCommandDispatcher::new_with_playback_bridge()?;
         dispatcher.attach_project(document)?;
+        drive_project_dispatcher_to_running(&mut dispatcher)?;
+        dispatcher.drain_events()?;
+        playback.attach(executor, playback_bounds)?;
         Ok(Self {
             path: route.path().to_owned(),
             durable_snapshot: snapshot,
             api: ProjectEditorApi::new(dispatcher)?,
+            playback: playback.clone(),
+            playback_bounds,
         })
     }
 
@@ -382,6 +586,10 @@ impl ProjectEditorSession {
         let result = self.api.execute(request)?;
         let events = self.api.drain_events()?;
         let published = self.api.project_snapshot()?;
+        let playback_bounds = project_playback_bounds(&published)?;
+        if playback_bounds != self.playback_bounds {
+            self.playback.reconfigure(playback_bounds)?;
+        }
         let identity = DesktopProjectIdentity::new(
             published.project_id().to_string(),
             published.revision(),
@@ -406,11 +614,21 @@ impl ProjectEditorSession {
         }
         database.replace(&published)?;
         self.durable_snapshot = published.clone();
+        self.playback_bounds = playback_bounds;
         Ok(ProjectEditorCommandOutput {
             result,
             events,
             identity,
         })
+    }
+
+    fn execute_playback_transport(
+        &mut self,
+        route: &DesktopProjectEditorRoute,
+        request: ExecutePlaybackTransport,
+    ) -> Result<ExecutePlaybackTransportResult> {
+        self.require_durable_match(route)?;
+        self.api.execute(request)
     }
 
     fn require_durable_match(&self, route: &DesktopProjectEditorRoute) -> Result<()> {
@@ -436,12 +654,13 @@ impl ProjectEditorSession {
 fn editor_session_for<'a>(
     session: &'a mut Option<ProjectEditorSession>,
     route: &DesktopProjectEditorRoute,
+    playback: &PlaybackOwnerConnection,
 ) -> Result<&'a mut ProjectEditorSession> {
     if !session
         .as_ref()
         .is_some_and(|current| current.matches_route(route))
     {
-        *session = Some(ProjectEditorSession::load(route)?);
+        *session = Some(ProjectEditorSession::load(route, playback)?);
     }
     session.as_mut().ok_or_else(|| {
         engine_error(
@@ -467,6 +686,63 @@ fn require_route_snapshot(
         "validate_project_route",
         "the active project route no longer matches durable editor state",
     ))
+}
+
+fn project_playback_bounds(
+    snapshot: &superi_engine::editor::ProjectSnapshot,
+) -> Result<superi_engine::editor::TimeRange> {
+    let timeline = snapshot
+        .editorial_project()
+        .timeline(snapshot.root_timeline_id())
+        .ok_or_else(|| {
+            engine_error(
+                ErrorCategory::CorruptData,
+                Recoverability::UserCorrectable,
+                "the project root timeline is unavailable for playback",
+                "playback_bounds",
+            )
+        })?;
+    let duration = timeline.duration()?;
+    let duration = superi_engine::editor::Duration::new(
+        duration.value().max(1),
+        timeline.edit_rate(),
+    )?;
+    superi_engine::editor::TimeRange::new(
+        superi_engine::editor::RationalTime::zero(timeline.edit_rate()),
+        duration,
+    )
+}
+
+fn drive_project_dispatcher_to_running(dispatcher: &mut EngineCommandDispatcher) -> Result<()> {
+    loop {
+        let outcome = dispatcher.dispatch(EngineCommandRequest::new(
+            EngineTransactionId::new("superi-desktop.editor.startup.inspect")?,
+            EngineCommand::InspectLifecycle,
+        ))?;
+        let EngineCommandResult::Lifecycle(snapshot) = outcome.result() else {
+            return Err(engine_error(
+                ErrorCategory::Internal,
+                Recoverability::Terminal,
+                "project dispatcher startup returned an unexpected result",
+                "start_project_dispatcher",
+            ));
+        };
+        if snapshot.phase() == LifecyclePhase::Running {
+            return Ok(());
+        }
+        let action = snapshot.pending_action().ok_or_else(|| {
+            engine_error(
+                ErrorCategory::Internal,
+                Recoverability::Terminal,
+                "project dispatcher startup has no pending action",
+                "start_project_dispatcher",
+            )
+        })?;
+        dispatcher.dispatch(EngineCommandRequest::new(
+            EngineTransactionId::new("superi-desktop.editor.startup.complete")?,
+            EngineCommand::CompleteLifecycleAction(action),
+        ))?;
+    }
 }
 
 fn require_connected(dispatcher: Option<&EngineCommandDispatcher>) -> Result<()> {
@@ -552,6 +828,23 @@ fn connection_admission_error(error: TrySendError<EngineRequest>) -> Error {
             Recoverability::Terminal,
             "the headless engine connection is closed",
             "admit_request",
+        ),
+    }
+}
+
+fn playback_control_admission_error(error: TrySendError<PlaybackOwnerRequest>) -> Error {
+    match error {
+        TrySendError::Full(_) => engine_error(
+            ErrorCategory::ResourceExhausted,
+            Recoverability::Retryable,
+            "the desktop playback control queue is full",
+            "admit_playback_control",
+        ),
+        TrySendError::Disconnected(_) => engine_error(
+            ErrorCategory::Unavailable,
+            Recoverability::Terminal,
+            "the desktop playback control owner is closed",
+            "admit_playback_control",
         ),
     }
 }
@@ -681,7 +974,18 @@ mod tests {
 
     #[test]
     fn retained_editor_session_persists_apply_undo_redo_and_exact_events() {
-        let _domain = ExecutionDomain::EngineControl
+        let worker_pool = Arc::new(
+            BoundedWorkerPool::new(WorkerPoolConfig::new(2, 32).unwrap()).unwrap(),
+        );
+        let (playback_requests, playback_receiver) = sync_channel(PLAYBACK_CONTROL_CAPACITY);
+        let playback = PlaybackOwnerConnection {
+            requests: playback_requests,
+        };
+        let playback_pool = Arc::clone(&worker_pool);
+        let playback_worker = ExecutionDomain::Playback
+            .spawn(move |_| run_playback_control(playback_pool, playback_receiver))
+            .unwrap();
+        let domain = ExecutionDomain::EngineControl
             .enter_current()
             .expect("test owns engine control");
         let temporary = TemporaryProject::new();
@@ -691,7 +995,7 @@ mod tests {
         drop(database);
 
         let route0 = route(&temporary.path, 0);
-        let mut session = ProjectEditorSession::load(&route0).unwrap();
+        let mut session = ProjectEditorSession::load(&route0, &playback).unwrap();
         let state = session
             .editor_state(&route0, GetEditorState::new("desktop-state"))
             .unwrap();
@@ -771,5 +1075,16 @@ mod tests {
                 .category(),
             ErrorCategory::Conflict
         );
+
+        drop(session);
+        drop(domain);
+        drop(playback);
+        playback_worker.join().unwrap();
+        match Arc::try_unwrap(worker_pool) {
+            Ok(pool) => {
+                pool.shutdown().unwrap();
+            }
+            Err(_) => panic!("test playback pool retained an unexpected owner"),
+        }
     }
 }

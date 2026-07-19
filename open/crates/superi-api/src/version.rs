@@ -114,6 +114,12 @@ pub const EDITOR_STATE_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1,
 /// JSON-RPC method for querying complete editor replacement state.
 pub const GET_EDITOR_STATE_METHOD: &str = "superi.editor.state.get";
 
+/// Schema version for strict interactive playback transport control.
+pub const PLAYBACK_TRANSPORT_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
+
+/// JSON-RPC command for the authoritative interactive playback transport.
+pub const EXECUTE_PLAYBACK_TRANSPORT_METHOD: &str = "superi.playback.transport.execute";
+
 /// Schema version for authored audio automation replacement snapshots.
 pub const AUDIO_AUTOMATION_SCHEMA_VERSION: SemanticVersion = SemanticVersion::new(1, 0, 0);
 

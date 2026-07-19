@@ -11,6 +11,7 @@ use serde_json::Value;
 use superi_api::commands::{ApiCommand, GetEditorState, GetEngineIntegrationValidation};
 use superi_api::editor::ExecuteProjectCommand;
 use superi_api::events::{ApiEvent, ProjectStateChanged};
+use superi_api::playback::ExecutePlaybackTransport;
 use superi_api::schema::{PublicApiError, PublicErrorContext};
 use superi_core::diagnostics::TraceValue;
 use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability};
@@ -417,6 +418,21 @@ impl DesktopTransportState {
                     events,
                 })
             }
+            ExecutePlaybackTransport::METHOD => {
+                let request = decode_generated_request::<ExecutePlaybackTransport>(request)?;
+                let lease = project
+                    .begin_editor_request()
+                    .map_err(project_failure_error)?;
+                let route = lease.route().clone();
+                let result = engine
+                    .request_playback_transport(route, request)?
+                    .wait(EDITOR_STATE_RESPONSE_TIMEOUT)?;
+                drop(lease);
+                Ok(RoutedResponse {
+                    response: serialize_generated_response(&result)?,
+                    events: Vec::new(),
+                })
+            }
             _ => Err(engine_transport_error(
                 ErrorCategory::Unsupported,
                 Recoverability::Degraded,
@@ -456,6 +472,7 @@ impl DesktopTransportState {
         if method != GetEngineIntegrationValidation::METHOD
             && method != GetEditorState::METHOD
             && method != ExecuteProjectCommand::METHOD
+            && method != ExecutePlaybackTransport::METHOD
         {
             return Err(transport_error(
                 ErrorCategory::Unsupported,
@@ -589,7 +606,7 @@ impl DesktopTransportState {
 fn cancellation_wins_after_routing(method: &str) -> bool {
     // A durable authored command cannot be abandoned after commit. Its response and
     // replacement event must win a late cancellation so the caller can reconcile.
-    method != ExecuteProjectCommand::METHOD
+    method != ExecuteProjectCommand::METHOD && method != ExecutePlaybackTransport::METHOD
 }
 
 fn cancelled_request_error(generation: u64, request_id: &str, method: &str) -> PublicApiError {
@@ -725,6 +742,9 @@ mod tests {
     use superi_api::editor::{
         EditorTrackItem, ExactDuration, ExactTime, ExactTimeRange, ExecuteProjectCommandResult,
         ProjectAction, ProjectCommand, TimelineEditOperation,
+    };
+    use superi_api::playback::{
+        ExecutePlaybackTransport, ExecutePlaybackTransportResult, PlaybackTransportAction,
     };
     use superi_engine::editor;
     use superi_engine::editor::ProjectDatabase;
@@ -919,6 +939,9 @@ mod tests {
         assert!(!cancellation_wins_after_routing(
             ExecuteProjectCommand::METHOD
         ));
+        assert!(!cancellation_wins_after_routing(
+            ExecutePlaybackTransport::METHOD
+        ));
         assert!(cancellation_wins_after_routing(
             GetEngineIntegrationValidation::METHOD
         ));
@@ -973,6 +996,67 @@ mod tests {
         };
         let state: GetEditorStateResult = serde_json::from_value(response).unwrap();
         assert_eq!(state.snapshot().project().project_revision(), 0);
+
+        let playback_outcome = transport
+            .dispatch_blocking(
+                &connection,
+                &project,
+                DesktopTransportCommand::Request {
+                    generation,
+                    request_id: "play-1".to_owned(),
+                    method: ExecutePlaybackTransport::METHOD.to_owned(),
+                    request: serde_json::to_value(ExecutePlaybackTransport::new(
+                        "play-1",
+                        PlaybackTransportAction::Play {},
+                    ))
+                    .unwrap(),
+                },
+            )
+            .unwrap();
+        assert!(playback_outcome.event().is_none());
+        let DesktopTransportReply::Response { response, .. } = playback_outcome.reply() else {
+            panic!("playback transport returned an unexpected reply")
+        };
+        let accepted: ExecutePlaybackTransportResult =
+            serde_json::from_value(response.clone()).unwrap();
+        assert!(accepted.accepted());
+        assert!(accepted.pending_command());
+
+        let mut observed_playback = None;
+        for attempt in 0..100 {
+            let request_id = format!("state-playback-{attempt}");
+            let outcome = transport
+                .dispatch_blocking(
+                    &connection,
+                    &project,
+                    DesktopTransportCommand::Request {
+                        generation,
+                        request_id: request_id.clone(),
+                        method: GetEditorState::METHOD.to_owned(),
+                        request: serde_json::to_value(GetEditorState::new(request_id)).unwrap(),
+                    },
+                )
+                .unwrap();
+            let DesktopTransportReply::Response { response, .. } = outcome.reply() else {
+                panic!("playback state returned an unexpected reply")
+            };
+            let value = response.clone();
+            if value["snapshot"]["playback"]["pending_command"] == false {
+                observed_playback = Some(value);
+                break;
+            }
+            std::thread::yield_now();
+        }
+        let observed_playback = observed_playback.expect("playback command must complete");
+        assert_eq!(
+            observed_playback["snapshot"]["playback"]["latest"]["mode"],
+            "playing"
+        );
+        assert!(observed_playback["snapshot"]["playback"]["latest"]["degradation"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value == "viewport_output_unavailable"));
 
         let command = ExecuteProjectCommand::new(
             "append-through-transport",

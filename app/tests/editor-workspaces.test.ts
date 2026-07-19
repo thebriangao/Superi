@@ -30,6 +30,9 @@ test("five professional workspaces are exact views over the existing application
     resolve(appRoot, "src/application-context.tsx"),
   );
   const workspaces = read(resolve(appRoot, "src/editor-workspaces.tsx"));
+  const playbackControls = read(
+    resolve(appRoot, "src/playback-controls.tsx"),
+  );
   const packageJson = JSON.parse(read(resolve(appRoot, "package.json")));
 
   for (const workspace of EDITOR_WORKSPACE_IDS) {
@@ -41,6 +44,8 @@ test("five professional workspaces are exact views over the existing application
   assert.match(applicationContext, /superi\.editor\.state\.get/);
   assert.match(applicationContext, /executeProjectActions/);
   assert.match(applicationContext, /superi\.project\.command\.execute/);
+  assert.match(applicationContext, /superi\.playback\.transport\.execute/);
+  assert.match(applicationContext, /executePlaybackTransport/);
   assert.match(applicationContext, /expected_project_revision/);
   assert.match(applicationContext, /superi\.project\.state\.changed/);
   assert.match(applicationContext, /classifyDesktopTransportError/);
@@ -54,10 +59,33 @@ test("five professional workspaces are exact views over the existing application
   assert.match(workspaces, /onExecuteProjectCommand=\{executeProjectCommand\}/);
   assert.match(applicationContext, /superi\.project\.command\.execute/);
   assert.match(workspaces, /role="program"[\s\S]*?label="Program"/);
+  assert.match(workspaces, /<PlaybackControls \/>/);
   assert.match(workspaces, /<NativeViewport role="composite" label="Composite" \/>/);
   assert.match(workspaces, /<NativeViewport role="color" label="Color" \/>/);
   assert.match(workspaces, /executeProjectActions={executeProjectActions}/);
+  for (const action of [
+    "play",
+    "pause",
+    "stop",
+    "set_loop",
+    "set_rate",
+    "set_direction",
+    "step_frames",
+    "inspect",
+  ]) {
+    assert.match(playbackControls, new RegExp(`action: "${action}"`));
+  }
+  assert.match(playbackControls, /playbackActionForKey\("j"/);
+  assert.match(playbackControls, /playbackActionForKey\("l"/);
+  assert.match(playbackControls, /Comparison state/);
+  assert.match(playbackControls, /Audio synchronization/);
+  assert.match(playbackControls, /Degraded behavior/);
+  assert.doesNotMatch(
+    playbackControls,
+    /useSuperiApi|DesktopSuperiTransport|@tauri-apps\/api|\binvoke\b/,
+  );
   assert.match(packageJson.scripts.test, /editor-workspaces\.test\.ts/);
+  assert.match(packageJson.scripts.test, /playback-transport\.test\.ts/);
 });
 
 test("editor requests use one explicit public transaction identity", () => {

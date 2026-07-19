@@ -42,6 +42,7 @@ test("canonical artifact retains typed methods, events, resources, scripts, and 
 
   assert.match(generated, /export interface SuperiMethodMap/);
   assert.match(generated, /"superi\.project\.script\.run"/);
+  assert.match(generated, /"superi\.playback\.transport\.execute"/);
   assert.match(generated, /export interface SuperiEventMap/);
   assert.match(generated, /"superi\.project\.state\.changed"/);
   assert.match(generated, /export interface SuperiResourceMap/);
@@ -60,6 +61,8 @@ test("canonical artifact retains typed methods, events, resources, scripts, and 
   assert.match(generated, /operation: "move_cut"/);
   assert.match(generated, /action: "mutate_multicam"/);
   assert.match(generated, /result: "multicam_mutated"/);
+  assert.match(generated, /export type PlaybackTransportAction/);
+  assert.match(generated, /action: "step_frames"/);
 });
 
 test("binding factory forwards request and subscription behavior without transport policy", () => {

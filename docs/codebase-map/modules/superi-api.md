@@ -2,15 +2,15 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: 5729227f66fcc9cb11794d59f08220988e22781862503af7101058929eba364e
-source_files: 41
+source_hash: 4858a5dfd24f6dc67a2d7a0bb547bd9ff11b43b78a7bb2f2deb67916439cf103
+source_files: 43
 mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
 
 `superi-api` owns the transport-neutral public boundary for UI, scripting, extension, CLI, and
-automation clients. Fourteen public slices are implemented: stateless API and optional project
+automation clients. Fifteen public slices are implemented: stateless API and optional project
 version negotiation, media capability introspection, complete
 engine capability and health introspection for adaptive clients, canonical editorial scenario
 control through revision-fenced typed transactions and ordered full-state events, coherent
@@ -18,11 +18,12 @@ read-only integration validation, durable project settings inspection and optimi
 project crash recovery discovery, semantic comparison, durable restoration, exact dismissal,
 authored audio automation inspection and transaction execution through the full engine dispatcher,
 complete authored project control with durable command-log inspection, deterministic local scripting, complete editor replacement
-state through one generic revision-fenced facade, process-lifetime extension registration and
+state through one generic revision-fenced facade, exact asynchronous playback transport control,
+process-lifetime extension registration and
 capability discovery, and asynchronous job inspection, progress, cooperative control, and ordered
 completion events over the engine-owned export queue, plus bounded ordered delivery for the complete
-public event vocabulary. The additive schema `1.8.0` catalog classifies all 30 current methods into
-16 commands and 14 queries, describes all nine events and 13 replacement resources, publishes the
+public event vocabulary. The additive schema `1.8.0` catalog classifies all 31 current methods into
+17 commands and 14 queries, describes all nine events and 13 replacement resources, publishes the
 complete error, capability, and permission vocabularies, and defines strict data-only JSON-RPC 2.0
 envelopes. A host-injected nonserializable permission context denies protected filesystem, plugin,
 and destructive operations by default, derives exact requirements from complete typed payloads,
@@ -62,12 +63,13 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
 - `open/crates/superi-api/src/commands.rs`: Defines versioned command and query classification on
   `ApiCommand`, mandatory permission mode, possible permission kinds, and exact requirement
   derivation for media, engine introspection, integration validation, asynchronous jobs, complete
-  editor state, project settings, project recovery, audio automation, scenario, cancellation,
+  editor state, project settings, project recovery, audio automation, playback transport, scenario, cancellation,
   removal, restore, and dismissal contracts.
 - `open/crates/superi-api/src/editor.rs`: Owns the strict generic project command, action, timeline
   item edit, track mutation, marker mutation, multicam mutation, nested placement, selection-derived compound
   creation, graph, media import and mutation, clip-mix, and extension DTOs, checked engine
-  conversion, including exact multi-segment clip time-map replacement through the ordinary
+  conversion, including crate-visible exact time conversion shared by playback without exposing an
+  engine type, and exact multi-segment clip time-map replacement through the ordinary
   timeline edit union, exact
   per-source filesystem permission derivation, typed import and history evidence, serialized
   request recording, bounded command-log query and result unions, permission-checked replay detail,
@@ -95,7 +97,7 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   and ordered engine event projection. It exposes result availability only as a Boolean and retains
   runtime executors and typed artifacts below the API boundary.
 - `open/crates/superi-api/src/lib.rs`: Exposes API, audio automation, command, event stream, event,
-  project editor, complete editor state, asynchronous jobs, local project hosting, version
+  project editor, complete editor state, asynchronous jobs, exact playback transport, local project hosting, version
   negotiation, permissions, settings, project recovery, scenario, public schema, local scripting,
   validation, and version modules, plus the feature-gated TypeScript renderer.
 - `open/crates/superi-api/src/local.rs`: Implements strict no-clobber project creation, complete
@@ -114,6 +116,11 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   component-aware project-relative, Unix, Windows drive, and Windows UNC scopes, exact and recursive
   matching, plugin identity and capability delegation ceilings, destructive-operation scopes,
   explicit deny precedence, safe denial errors, and the nonserializable host authority context.
+- `open/crates/superi-api/src/playback.rs`: Owns the strict permission-free
+  `superi.playback.transport.execute` command, caller transaction identity, exact play, pause, stop,
+  seek, scrub, loop, signed rate, direction, shuttle, frame-step, and inspect action union, checked
+  conversion into the existing engine transport command, and immediate bounded acceptance through
+  the one-command dispatcher bridge without creating a second playback state owner.
 - `open/crates/superi-api/src/project.rs`: Implements strict project setting values and mutations,
   complete replacement snapshots, and the caller-owned dispatcher facade for settings inspection,
   optimistic transactions, and ordered event draining.
@@ -130,7 +137,7 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   descriptors, method and resource traits, typed schema discovery query, strict JSON-RPC 2.0
   request and response envelopes, safe structured errors, reviewed contexts, last-valid resource
   references, capability and permission vocabularies, per-method permission metadata, local
-  scripting, command-log query and resource, asynchronous jobs, event subscription, and complete editor-state resource registration
+  scripting, command-log query and resource, asynchronous jobs, playback transport, event subscription, and complete editor-state resource registration
   without dynamic routing or engine state ownership.
 - `open/crates/superi-api/src/scripting.rs`: Implements the bounded `superi-json` language, strict
   duplicate-key and nesting validation, exact-source SHA-256 checks, canonical script identities,
@@ -140,7 +147,10 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
 - `open/crates/superi-api/src/state.rs`: Owns the strict ten-domain complete editor replacement
   snapshot, canonical authored JSON resource envelopes, bounded extension descriptors, exact audio
   routing and continuity projection, public project identity and semantic hash accessors for script
-  traces, and the dispatcher-backed read-only query facade.
+  traces, and the dispatcher-backed read-only query facade. Playback projection names every exact
+  mode, coordinate, scheduled clock, signed rate, direction, loop, epoch, delivery statistic,
+  audio acknowledgement, degradation, and safe failure, then discards only completed playback
+  events after taking the replacement snapshot.
 - `open/crates/superi-api/src/typescript.rs`: Collects every canonical request, response, event,
   resource, and structured error type through Specta; validates exact registry parity; preserves
   reviewed core wire encodings; and renders recursive JSON, strongly typed public maps, JSON-RPC
@@ -154,7 +164,7 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   permanent method and event names, including catalog revision `1.8.0`, its `1.0.0` through `1.8.0`
   release table, project editor schema `1.6.0`, command-log schema `1.0.0`, scripting schema `1.0.0`,
   `superi.project.command_log.get`, `superi.project.script.run`, the version negotiation
-  method, the complete `superi.jobs` vocabulary, the editor-state query, and event subscription
+  method, the complete `superi.jobs` vocabulary, playback transport, the editor-state query, and event subscription
   open, close, and poll methods.
 - `open/crates/superi-api/tests/async_jobs_contract.rs`: Proves strict handles, stable kind and
   weighted priority vocabulary, nonblocking progress and completion, every cooperative transition,
@@ -216,13 +226,17 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   precedence, plugin identity and delegation ceilings, destructive-operation scoping, safe errors,
   deny-all defaults, safe command-log metadata, whole-query replay reauthorization, unchanged
   project and scenario state on denial, and authorized event parity.
+- `open/crates/superi-api/tests/playback_transport_contract.rs`: Proves strict unknown-field
+  rejection and exact JSON shape for every playback action, permanent method and schema identity,
+  immediate bounded acceptance, and completion through the real engine dispatcher, production
+  playback runtime, and complete editor-state observation.
 - `open/crates/superi-api/tests/public_schema_contract.rs`: Covers exact catalog category counts and
   names, domain versions, primitive revision, canonical ordering, deterministic strict round trips,
   invalid catalog rejection, typed JSON-RPC success and failure exclusivity, all recovery classes,
   diagnostic visibility filtering, last-valid resource references, the complete permission
   vocabulary, and exact metadata for every method. Its explicit domain oracle locks the generic
   authored project command, state event, and history resource to their released schema `1.6.0`, and
-  locks the additive catalog release at `1.8.0`.
+  locks the additive catalog release at `1.8.0` and its playback command.
 - `open/crates/superi-api/tests/scenario_contract.rs`: Covers the strict canonical schema, complete
   state projection, exact undo plus redo evidence, structured last-valid-state failures, and
   negative proof that private paths and raw engine context values never serialize.
@@ -245,7 +259,7 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
 ## Public surface
 
 The public schema catalog is schema `1.8.0` at query method `superi.api.schema.get`.
-`PublicApiSchemaSnapshot` records stable primitive revision 1 and JSON-RPC `2.0`, then separates 16
+`PublicApiSchemaSnapshot` records stable primitive revision 1 and JSON-RPC `2.0`, then separates 17
 mutating commands from 14 read-only queries and lists all nine current replacement events, 13
 current replacement resources, one complete error vocabulary, one capability vocabulary, and one
 permission vocabulary in canonical name order. `ApiCommand` declares method kind, schema version,
@@ -1001,12 +1015,12 @@ three-node graph with image ports, exact mirror parameters, four stable operatio
 plus two redo actions, final revision 8, structured engine context, last-valid-state retention, and
 serialized exclusion of a private missing-source path and raw context values.
 
-Four public schema contracts prove the exact 16-command, 14-query, nine-event, and 13-resource
+Four public schema contracts prove the exact 17-command, 14-query, nine-event, and 13-resource
 surface, current domain versions, catalog schema `1.8.0`, error schema `1.0.0`, media schema `2.0.0`,
 stable primitive revision 1, strict deterministic catalog round trips, invalid identity and
 duplicate rejection, typed JSON-RPC exclusivity, all four recovery classes, user-safe diagnostic
 filtering, last-valid resource identity and revision, the complete permission vocabulary, and exact
-permission metadata for all 30 methods. The domain oracle explicitly matches the released generic
+permission metadata for all 31 methods. The domain oracle explicitly matches the released generic
 project schema `1.6.0`, so a catalog bump cannot leave the exhaustive test on an earlier domain
 version. They include local scripting, version negotiation, extension discovery, command-log
 inspection, every public asynchronous job and event
@@ -1207,9 +1221,10 @@ not supply transport, endpoint mutation, or background polling.
 
 The separate negotiation, media, engine introspection, integration validation, scenario, event
 stream, catalog, and error schema versions are correct for independent surfaces. The catalog is
-`1.8.0` because the merged typed multicam mutation, marker mutation, exact retime authoring, nested placement, and compound
-creation are additive beside typed track mutation, extension discovery, command-log inspection,
-local scripting, and negotiation, while individual method and resource
+`1.8.0` because exact playback transport, merged typed multicam mutation, marker mutation, exact
+retime authoring, nested placement, and compound creation are additive beside typed track mutation,
+extension discovery, command-log inspection, local scripting, and negotiation, while individual
+method and resource
 schemas retain their own versions.
 Data-only JSON-RPC framing, bounded retryable polling, and host-injected authorization now exist,
 while network hosting, dynamic routing, authentication, persisted replay, and

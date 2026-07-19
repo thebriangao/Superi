@@ -15,6 +15,7 @@ import {
   type EditorProjectPresentation,
 } from "./editor-project.ts";
 import { TimelineWorkspace } from "./timeline-workspace.tsx";
+import { PlaybackControls } from "./playback-controls.tsx";
 
 export function EditingWorkspacePanel() {
   const {
@@ -65,6 +66,7 @@ export function EditingWorkspacePanel() {
           feedback={editorialFeedback?.program ?? null}
         />
       </div>
+      <PlaybackControls />
       <EditorialAudioMeters feedback={editorialFeedback?.audio ?? null} />
       {snapshot ? (
         <>
