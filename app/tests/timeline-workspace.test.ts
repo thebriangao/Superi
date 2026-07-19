@@ -5,14 +5,18 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import type { EditorCanonicalDocument } from "../src/api.ts";
+import type { SourceMonitorSnapshot } from "../src/project-lifecycle.ts";
 import {
   TIMELINE_DEFAULT_SNAP_RULES,
   TimelineProjectionError,
+  buildTimelineHistoryCommand,
   buildTimelineRulerTicks,
+  buildTimelineEditCommand,
   clampTimelineRange,
   expandTimelineSelection,
   formatTimelineTime,
   parseTimelineSelectionIdentity,
+  projectSourceMonitorForTimelineEdit,
   projectTimelineDocument,
   resolveTimelineSnap,
   timelineRectanglesIntersect,
@@ -21,6 +25,7 @@ import {
   timelineSelectionNeighbor,
   timelineSelectionRange,
   timelineSelectionTargets,
+  type TimelineEditSource,
 } from "../src/timeline-workspace.ts";
 
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -781,6 +786,9 @@ test("timeline surface is integrated without a second authored mutation owner", 
   assert.match(timeline, /Shift-click/);
   assert.match(timeline, /Option-click/);
   assert.match(timeline, /drag empty track space/);
+  assert.match(timeline, /Editorial gestures/);
+  assert.match(timeline, /Backspace extracts/);
+  assert.match(timeline, /onExecuteProjectCommand/);
   assert.match(timeline, /model\?\.tracks\.slice\(\)\.reverse\(\)/);
   assert.match(timeline, /timelineItemsInWindow/);
   assert.match(styles, /\.timeline-ruler \{[\s\S]*?z-index: 9;/);
@@ -798,4 +806,329 @@ test("timeline surface is integrated without a second authored mutation owner", 
     timeline,
     /superi\.project\.command\.execute|superi\.slice|useSuperiApi|DesktopSuperiTransport|@tauri-apps/,
   );
+});
+
+test("timeline edit commands expose exact targets, consequences, and reversible public requests", () => {
+  const model = projectTimelineDocument(canonicalDocument(), "timeline.main");
+  const source: TimelineEditSource = {
+    projectId: "project.test",
+    projectRevision: 9,
+    mediaId: "media.a",
+    mediaName: "Source A",
+    streamKind: "video",
+    sourceRange: {
+      start: {
+        value: 48,
+        timebase: { numerator: 48, denominator: 1 },
+      },
+      duration: {
+        value: 24,
+        timebase: { numerator: 48, denominator: 1 },
+      },
+    },
+  };
+
+  function command(
+    gesture:
+      | "insert"
+      | "overwrite"
+      | "append"
+      | "replace"
+      | "lift"
+      | "extract"
+      | "backspace",
+  ) {
+    const requestedKinds: string[] = [];
+    const result = buildTimelineEditCommand({
+      gesture,
+      model,
+      targetTrackId: "track.video.1",
+      playheadSeconds: gesture === "overwrite" ? 0.5 : 1,
+      inPointSeconds: 0.5,
+      outPointSeconds: 1.5,
+      rangeExplicit: true,
+      source,
+      transactionId: `timeline-${gesture}`,
+      createId(kind) {
+        requestedKinds.push(kind);
+        return `${kind}:${String(requestedKinds.length).padStart(32, "0")}`;
+      },
+    });
+    assert.equal(result.status, "ready");
+    assert.match(result.target, /V1/);
+    assert.ok(result.consequence.length > 12);
+    assert.equal(result.request.transaction_id, `timeline-${gesture}`);
+    assert.equal(result.request.expected_project_revision, 9);
+    assert.equal(result.request.command.command, "apply");
+    assert.equal(result.request.command.actions[0]?.action, "edit_timeline");
+    return { result, requestedKinds };
+  }
+
+  const insert = command("insert");
+  assert.deepEqual(insert.requestedKinds, ["clip", "clip"]);
+  assert.equal(insert.result.operation.operation, "insert");
+  assert.equal(insert.result.operation.at.value, 24);
+  assert.equal(insert.result.operation.fragment_ids.length, 1);
+
+  const overwrite = command("overwrite");
+  assert.deepEqual(overwrite.requestedKinds, ["clip", "clip"]);
+  assert.equal(overwrite.result.operation.operation, "overwrite");
+  assert.equal(overwrite.result.operation.at.value, 12);
+  assert.equal(overwrite.result.operation.fragment_ids.length, 1);
+
+  const append = command("append");
+  assert.deepEqual(append.requestedKinds, ["clip"]);
+  assert.equal(append.result.operation.operation, "append");
+
+  const replace = command("replace");
+  assert.deepEqual(replace.requestedKinds, ["clip"]);
+  assert.equal(replace.result.operation.operation, "replace");
+  assert.deepEqual(replace.result.operation.target_id, {
+    kind: "clip",
+    id: "clip.a",
+  });
+  assert.equal(replace.result.operation.material.record_range.duration.value, 48);
+  assert.equal(
+    replace.result.operation.material.time_map.segments[0]?.rate_numerator,
+    1,
+  );
+  assert.equal(
+    replace.result.operation.material.time_map.segments[0]?.rate_denominator,
+    4,
+  );
+
+  const lift = command("lift");
+  assert.deepEqual(lift.requestedKinds, ["gap", "clip"]);
+  assert.equal(lift.result.operation.operation, "lift");
+  assert.equal(lift.result.operation.range.start.value, 12);
+  assert.equal(lift.result.operation.range.duration.value, 24);
+  assert.equal(lift.result.operation.fragment_ids.length, 1);
+
+  const extract = command("extract");
+  assert.deepEqual(extract.requestedKinds, ["clip"]);
+  assert.equal(extract.result.operation.operation, "extract");
+  assert.equal(extract.result.operation.fragment_ids.length, 1);
+
+  const backspace = command("backspace");
+  assert.deepEqual(backspace.requestedKinds, []);
+  assert.equal(backspace.result.operation.operation, "extract");
+  assert.equal(backspace.result.operation.range.start.value, 0);
+  assert.equal(backspace.result.operation.range.duration.value, 48);
+  assert.match(backspace.result.consequence, /backspace/i);
+
+  assert.deepEqual(buildTimelineHistoryCommand("undo", 9, "timeline-undo"), {
+    transaction_id: "timeline-undo",
+    expected_project_revision: 9,
+    command: { command: "undo" },
+  });
+  assert.deepEqual(buildTimelineHistoryCommand("redo", 10, "timeline-redo"), {
+    transaction_id: "timeline-redo",
+    expected_project_revision: 10,
+    command: { command: "redo" },
+  });
+});
+
+test("timeline edit commands reject stale source and edits outside exact track bounds", () => {
+  const model = projectTimelineDocument(canonicalDocument(), "timeline.main");
+  const source: TimelineEditSource = {
+    projectId: "project.test",
+    projectRevision: 8,
+    mediaId: "media.a",
+    mediaName: "Stale source",
+    streamKind: "video",
+    sourceRange: {
+      start: { value: 0, timebase: { numerator: 24, denominator: 1 } },
+      duration: { value: 24, timebase: { numerator: 24, denominator: 1 } },
+    },
+  };
+  const stale = buildTimelineEditCommand({
+    gesture: "insert",
+    model,
+    targetTrackId: "track.video.1",
+    playheadSeconds: 1,
+    inPointSeconds: 0.5,
+    outPointSeconds: 1.5,
+    rangeExplicit: true,
+    source,
+    transactionId: "stale",
+    createId: (kind) => `${kind}:${"1".padStart(32, "0")}`,
+  });
+  assert.equal(stale.status, "disabled");
+  assert.match(stale.reason, /revision/i);
+
+  const beyond = buildTimelineEditCommand({
+    gesture: "overwrite",
+    model,
+    targetTrackId: "track.video.1",
+    playheadSeconds: 3.75,
+    inPointSeconds: 0.5,
+    outPointSeconds: 1.5,
+    rangeExplicit: true,
+    source: { ...source, projectRevision: 9 },
+    transactionId: "beyond",
+    createId: (kind) => `${kind}:${"2".padStart(32, "0")}`,
+  });
+  assert.equal(beyond.status, "disabled");
+  assert.match(beyond.reason, /track end/i);
+
+  const zeroIdentity = buildTimelineEditCommand({
+    gesture: "insert",
+    model,
+    targetTrackId: "track.video.1",
+    playheadSeconds: 1,
+    inPointSeconds: 0.5,
+    outPointSeconds: 1.5,
+    rangeExplicit: true,
+    source: { ...source, projectRevision: 9 },
+    transactionId: "zero-identity",
+    createId: (kind) => `${kind}:${"0".repeat(32)}`,
+  });
+  assert.equal(zeroIdentity.status, "disabled");
+  assert.match(zeroIdentity.reason, /identity is invalid/i);
+});
+
+test("source monitor projection preserves inclusive marks and rejects stale identity", () => {
+  const model = projectTimelineDocument(canonicalDocument(), "timeline.main");
+  const monitor = {
+    monitor_revision: 7,
+    engine_state: "ready",
+    project_id: "project.test",
+    project_revision: 9,
+    library_revision: 4,
+    media_id: "media.source",
+    media_name: "Marked source",
+    source_fingerprint: "source-fingerprint",
+    opened_fingerprint: "source-fingerprint",
+    backend_id: "test-backend",
+    container_id: "test-container",
+    stream: {
+      stream_id: 0,
+      kind: "video",
+      codec: "test-codec",
+      timebase_numerator: 48,
+      timebase_denominator: 1,
+    },
+    current: {
+      value: 12,
+      timebase_numerator: 48,
+      timebase_denominator: 1,
+    },
+    duration: {
+      value: 96,
+      timebase_numerator: 48,
+      timebase_denominator: 1,
+    },
+    range_start: {
+      value: 0,
+      timebase_numerator: 48,
+      timebase_denominator: 1,
+    },
+    range_end: null,
+    marks: {
+      source_fingerprint: "source-fingerprint",
+      in_mark: {
+        value: 12,
+        timebase_numerator: 48,
+        timebase_denominator: 1,
+      },
+      out_mark: {
+        value: 35,
+        timebase_numerator: 48,
+        timebase_denominator: 1,
+      },
+    },
+    marks_fresh: true,
+    presentation_note: "test source",
+  } satisfies SourceMonitorSnapshot;
+
+  const projected = projectSourceMonitorForTimelineEdit(monitor, model);
+  assert.equal(projected.status, "ready");
+  assert.equal(projected.source.sourceRange.start.value, 12);
+  assert.equal(projected.source.sourceRange.duration.value, 24);
+  assert.deepEqual(projected.source.sourceRange.start.timebase, {
+    numerator: 48,
+    denominator: 1,
+  });
+
+  const stale = projectSourceMonitorForTimelineEdit(
+    { ...monitor, project_revision: 8 },
+    model,
+  );
+  assert.equal(stale.status, "disabled");
+  assert.match(stale.reason, /project revision/i);
+
+  const staleMarks = projectSourceMonitorForTimelineEdit(
+    { ...monitor, marks_fresh: false },
+    model,
+  );
+  assert.equal(staleMarks.status, "disabled");
+  assert.match(staleMarks.reason, /mark is stale/i);
+});
+
+test("workspace selection overrides authored selection for replace and backspace", () => {
+  const model = projectTimelineDocument(canonicalDocument(), "timeline.main");
+  const source: TimelineEditSource = {
+    projectId: "project.test",
+    projectRevision: 9,
+    mediaId: "media.a",
+    mediaName: "Source A",
+    streamKind: "video",
+    sourceRange: {
+      start: { value: 0, timebase: { numerator: 24, denominator: 1 } },
+      duration: { value: 24, timebase: { numerator: 24, denominator: 1 } },
+    },
+  };
+  const replace = buildTimelineEditCommand({
+    gesture: "replace",
+    model,
+    targetTrackId: "track.video.1",
+    playheadSeconds: 0,
+    inPointSeconds: 0,
+    outPointSeconds: 1,
+    rangeExplicit: true,
+    source,
+    selectedItemIds: ["clip.b"],
+    transactionId: "shared-replace",
+    createId: (kind) => `${kind}:${"3".padStart(32, "0")}`,
+  });
+  assert.equal(replace.status, "ready");
+  assert.equal(replace.operation.operation, "replace");
+  assert.deepEqual(replace.operation.target_id, {
+    kind: "clip",
+    id: "clip.b",
+  });
+
+  const backspace = buildTimelineEditCommand({
+    gesture: "backspace",
+    model,
+    targetTrackId: "track.video.1",
+    playheadSeconds: 0,
+    inPointSeconds: 0,
+    outPointSeconds: 1,
+    rangeExplicit: true,
+    source: null,
+    selectedItemIds: ["clip.b"],
+    transactionId: "shared-backspace",
+    createId: (kind) => `${kind}:${"4".padStart(32, "0")}`,
+  });
+  assert.equal(backspace.status, "ready");
+  assert.equal(backspace.operation.operation, "extract");
+  assert.equal(backspace.operation.range.start.value, 48);
+  assert.equal(backspace.operation.range.duration.value, 48);
+
+  const unarmedBackspace = buildTimelineEditCommand({
+    gesture: "backspace",
+    model,
+    targetTrackId: "track.video.1",
+    playheadSeconds: 0,
+    inPointSeconds: 0,
+    outPointSeconds: 4,
+    rangeExplicit: false,
+    source: null,
+    selectedItemIds: ["clip:missing"],
+    transactionId: "unarmed-backspace",
+    createId: (kind) => `${kind}:${"5".padStart(32, "0")}`,
+  });
+  assert.equal(unarmedBackspace.status, "disabled");
+  assert.match(unarmedBackspace.reason, /select one target item|explicit/i);
 });

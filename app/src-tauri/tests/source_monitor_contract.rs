@@ -130,7 +130,9 @@ fn source_monitor_uses_one_retained_engine_session_and_state_free_workspace_proj
     assert!(viewport.contains("export function SourceMonitor"));
     assert!(viewport.contains("Source session"));
     assert!(viewport.contains("native GPU viewer"));
-    assert!(workspaces.contains("<SourceMonitor />"));
+    assert!(workspaces.contains("<SourceMonitor"));
+    assert!(workspaces.contains("projectRevision={snapshot?.project.project_revision ?? null}"));
+    assert!(workspaces.contains("onSnapshotChange={setSourceMonitor}"));
     assert!(!workspaces.contains("useState"));
     assert!(!workspaces.contains("useSuperiApi"));
 }

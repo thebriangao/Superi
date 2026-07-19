@@ -1492,6 +1492,115 @@ button.timeline-snap-rule[aria-pressed="true"] {
   line-height: 1.4;
 }
 
+.timeline-edit-console {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #2b3438;
+  background: #111719;
+}
+
+.timeline-edit-console > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.timeline-edit-console h5,
+.timeline-edit-console .section-kicker {
+  margin: 0;
+}
+
+.timeline-edit-console h5 {
+  margin-top: 3px;
+  color: #d7dfda;
+  font-size: 12px;
+}
+
+.timeline-history-actions,
+.timeline-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.timeline-edit-actions button {
+  min-height: 29px;
+  padding: 0 10px;
+  border-color: #384246;
+  color: #aeb8b5;
+  background: #171d20;
+  font-size: 10px;
+}
+
+.timeline-edit-actions button[aria-pressed="true"] {
+  border-color: #6394aa;
+  color: #d7eef8;
+  background: #1b3039;
+  box-shadow: inset 0 0 0 1px rgb(132 194 220 / 18%);
+}
+
+.timeline-edit-actions button[data-ready="true"] {
+  border-color: #73a883;
+  color: #d8eddd;
+  background: #1b3022;
+}
+
+.timeline-edit-state {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr);
+  gap: 1px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #2d363a;
+  border-radius: 5px;
+  background: #2d363a;
+}
+
+.timeline-edit-state > div {
+  min-width: 0;
+  padding: 7px 9px;
+  background: #121719;
+}
+
+.timeline-edit-state dt {
+  color: #7f8b8e;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.timeline-edit-state dd {
+  margin: 4px 0 0;
+  color: #c6cfca;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.timeline-command-status {
+  display: block;
+  min-height: 16px;
+  padding-left: 8px;
+  border-left: 2px solid #65899a;
+  color: #aebdc0;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.timeline-command-status[data-pending="true"] {
+  border-left-color: #d3b66f;
+  color: #e3cf9a;
+}
+
+.timeline-edit-shortcuts {
+  margin: 0;
+  color: #788487;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
 .timeline-clip-detail-failure {
   margin: 0;
   padding: 6px 12px;
@@ -2261,6 +2370,15 @@ button.timeline-playhead-handle span {
     align-items: flex-start;
     flex-direction: column;
     line-height: 1.55;
+  }
+
+  .timeline-edit-console > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .timeline-edit-state {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -653,15 +653,19 @@ and acquires the exact reachable source and decoder set before one resources pub
   routes extension commands and typed results through the same dispatcher and event owner,
   supplies the real selected history snapshot used by the autosave consumer contract after apply,
   undo, and redo, and exposes eventless `InspectProjectDiagnostics` results from that same attached
-  history snapshot.
+  history snapshot. The production desktop now retains that editor history on EngineControl and
+  uses the curated `ProjectDatabase` re-export to compare and replace the exact active durable
+  snapshot before publishing a successful project command.
 - `superi-api` consumes project settings and recovery only through engine-owned re-exports and
   dispatcher commands. Its local scripting contract uses this crate as a test-only downstream
   proof for SQLite reload, semantic integrity, media identity, autosave discovery, comparison, and
   recovery restoration; production script mutation still reaches project only through engine and
   `ProjectEditorApi`. Its local project host reaches the curated engine re-export seam for database
   open, creation, publication, copy, backup, recovery, and validation, then supplies durable file
-  commands to `superi-cli` without a direct API-to-project dependency. Future adapters must continue
-  to wrap this owner instead of creating another project or database authority.
+  commands to `superi-cli` without a direct API-to-project dependency. The production desktop
+  command route now reuses the same database and immutable snapshot authority for exact durable
+  editor publication. Future adapters must continue to wrap this owner instead of creating another
+  project or database authority.
 - Editor, script, and headless callers can consume the same project-owned integrity report directly.
   No API, CLI, engine, transport, or GUI adapter is added by this checkpoint.
 
@@ -947,7 +951,8 @@ and transport-catalog database adaptation remain absent. The API-owned local hos
 provide durable process workflows through this crate's existing authority. This crate has no script
 interpreter or source loader; the supported API-local runtime above it preserves project meaning
 through the existing engine command, snapshot, persistence, integrity, autosave, and recovery
-owners.
+owners. The production desktop also publishes each successful generic editor command through this
+same active file authority while keeping undo and redo branches session-local in engine.
 Autosave policy is process-local and recovery roots are caller selected; no background timer,
 persistent scheduler, wire adapter, runtime registry, plugin worker, or automatic recovery choice
 is claimed. Exact schemas 0, 1, 2, and 3 are the supported predecessors. Future, older unknown, or

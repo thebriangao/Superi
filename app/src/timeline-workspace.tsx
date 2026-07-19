@@ -25,7 +25,10 @@ import type {
   EditorStateSnapshot,
   EditorTimeRange,
   TimelineTrackMutation,
+  ExecuteProjectCommand,
+  ExecuteProjectCommandResult,
 } from "./api.ts";
+import type { SourceMonitorSnapshot } from "./project-lifecycle.ts";
 import {
   generateProjectMediaPreview,
   readProjectMediaLibrary,
@@ -41,6 +44,8 @@ import {
 import {
   TIMELINE_DEFAULT_SNAP_RULES,
   TimelineProjectionError,
+  buildTimelineEditCommand,
+  buildTimelineHistoryCommand,
   buildTimelineRulerTicks,
   clampNumber,
   clampTimelineRange,
@@ -49,6 +54,7 @@ import {
   parseTimelineSelectionIdentity,
   projectTimelineDocument,
   resolveTimelineSnap,
+  projectSourceMonitorForTimelineEdit,
   snapTimelineTime,
   timelineObjectKey,
   timelineRectanglesIntersect,
@@ -68,6 +74,9 @@ import {
   type TimelineRectangle,
   type TimelineSelectionDirection,
   type TimelineTrackKind,
+  type TimelineEditCommandResult,
+  type TimelineEditGesture,
+  type TimelineEditSource,
 } from "./timeline-workspace.ts";
 
 const HEADER_WIDTH = 268;
@@ -90,6 +99,15 @@ const TIMELINE_SNAP_RULES = [
   readonly key: keyof TimelineSnapRules;
   readonly label: string;
 }[];
+const TIMELINE_EDIT_GESTURES: readonly TimelineEditGesture[] = [
+  "insert",
+  "overwrite",
+  "append",
+  "replace",
+  "lift",
+  "extract",
+  "backspace",
+];
 
 type TimelineGesture = "playhead" | "in" | "out";
 
@@ -123,6 +141,10 @@ export interface TimelineWorkspaceProps {
   readonly mutateTracks: (
     mutations: readonly TimelineTrackMutation[],
   ) => Promise<void>;
+  readonly sourceMonitor: SourceMonitorSnapshot | null;
+  readonly onExecuteProjectCommand: (
+    request: ExecuteProjectCommand,
+  ) => Promise<ExecuteProjectCommandResult>;
 }
 
 export function TimelineWorkspace({
@@ -135,6 +157,8 @@ export function TimelineWorkspace({
   selectionSchemaVersion,
   selectionRevision,
   mutateTracks,
+  sourceMonitor,
+  onExecuteProjectCommand,
 }: TimelineWorkspaceProps) {
   const projection = useMemo(() => {
     try {
@@ -172,6 +196,7 @@ export function TimelineWorkspace({
   const [playhead, setPlayhead] = useState(initial.playhead);
   const [inPoint, setInPoint] = useState(initial.inPoint);
   const [outPoint, setOutPoint] = useState(initial.outPoint);
+  const [rangeExplicit, setRangeExplicit] = useState(false);
   const [pixelsPerSecond, setPixelsPerSecond] = useState(
     DEFAULT_PIXELS_PER_SECOND,
   );
@@ -241,6 +266,14 @@ export function TimelineWorkspace({
     selectionSchemaVersion,
     selectionTargetsByKey,
   ]);
+  const selectedEditItemIds = useMemo(
+    () =>
+      selectedKeys.flatMap((key) => {
+        const target = selectionTargetsByKey.get(key);
+        return target ? [target.item.id] : [];
+      }),
+    [selectedKeys, selectionTargetsByKey],
+  );
   const selectionAnchorKey = useMemo(() => {
     if (!model || selection.anchor === null) return null;
     const reference = selection.anchor;
@@ -331,6 +364,25 @@ export function TimelineWorkspace({
     },
     [mutateTracks],
   );
+  const [targetTrackId, setTargetTrackId] = useState(
+    () => preferredTargetTrackId(model),
+  );
+  const [selectedEdit, setSelectedEdit] =
+    useState<TimelineEditGesture>("insert");
+  const [commandPending, setCommandPending] = useState(false);
+  const commandPendingRef = useRef(false);
+  const [commandStatus, setCommandStatus] = useState(
+    "Choose an exact target and editorial gesture.",
+  );
+  const transactionSequenceRef = useRef(0);
+
+  useEffect(() => {
+    setTargetTrackId((current) =>
+      model?.tracks.some((track) => track.id === current)
+        ? current
+        : preferredTargetTrackId(model),
+    );
+  }, [model]);
 
   useLayoutEffect(() => {
     const viewport = scrollRef.current;
@@ -354,6 +406,7 @@ export function TimelineWorkspace({
       setSessionSnappingEnabled(true);
       setSnapRules({ ...TIMELINE_DEFAULT_SNAP_RULES });
       setSnapMatch(null);
+      setRangeExplicit(false);
       return;
     }
     setPlayhead((value) =>
@@ -370,6 +423,188 @@ export function TimelineWorkspace({
   useEffect(() => {
     setSnapMatch(null);
   }, [model?.documentSha256]);
+
+  const sourceProjection = useMemo(
+    () => (model ? projectSourceMonitorForTimelineEdit(sourceMonitor, model) : null),
+    [model, sourceMonitor],
+  );
+  const editPlan = useMemo<TimelineEditCommandResult | null>(() => {
+    if (!model) return null;
+    let previewSequence = 0;
+    const plan = buildTimelineEditCommand({
+      gesture: selectedEdit,
+      model,
+      targetTrackId,
+      playheadSeconds: playhead,
+      inPointSeconds: inPoint,
+      outPointSeconds: outPoint,
+      rangeExplicit,
+      source:
+        sourceProjection?.status === "ready" ? sourceProjection.source : null,
+      selectedItemIds: selectedEditItemIds,
+      transactionId: "superi.desktop.timeline.preview",
+      createId: (kind) => {
+        previewSequence += 1;
+        return `${kind}:${previewSequence.toString(16).padStart(32, "0")}`;
+      },
+    });
+    if (
+      plan.status === "disabled" &&
+      editGestureUsesSource(selectedEdit) &&
+      sourceProjection?.status === "disabled"
+    ) {
+      return { ...plan, reason: sourceProjection.reason };
+    }
+    return plan;
+  }, [
+    inPoint,
+    model,
+    outPoint,
+    playhead,
+    rangeExplicit,
+    selectedEdit,
+    selectedEditItemIds,
+    sourceProjection,
+    targetTrackId,
+  ]);
+
+  const nextTransactionId = useCallback((kind: string) => {
+    transactionSequenceRef.current += 1;
+    return `superi.desktop.timeline.${kind}.${transactionSequenceRef.current}.${randomHex(8)}`;
+  }, []);
+
+  const executeEdit = useCallback(
+    async (edit: TimelineEditGesture) => {
+      setSelectedEdit(edit);
+      if (!model || commandPendingRef.current) return;
+      if (
+        editGestureUsesSource(edit) &&
+        sourceProjection?.status !== "ready"
+      ) {
+        setCommandStatus(
+          sourceProjection?.reason ?? "Load a compatible source before editing.",
+        );
+        return;
+      }
+      let transactionId: string;
+      try {
+        transactionId = nextTransactionId(edit);
+      } catch (error: unknown) {
+        setCommandStatus(timelineCommandFailure(error));
+        return;
+      }
+      const plan = buildTimelineEditCommand({
+        gesture: edit,
+        model,
+        targetTrackId,
+        playheadSeconds: playhead,
+        inPointSeconds: inPoint,
+        outPointSeconds: outPoint,
+        rangeExplicit,
+        source:
+          sourceProjection?.status === "ready" ? sourceProjection.source : null,
+        selectedItemIds: selectedEditItemIds,
+        transactionId,
+        createId: randomEditorialId,
+      });
+      if (plan.status === "disabled") {
+        setCommandStatus(plan.reason);
+        return;
+      }
+      commandPendingRef.current = true;
+      setCommandPending(true);
+      setCommandStatus(`Applying ${edit} to ${plan.target}.`);
+      try {
+        const result = await onExecuteProjectCommand(plan.request);
+        setCommandStatus(
+          `${capitalize(edit)} completed at project revision ${result.state.project_revision}. Undo is available immediately.`,
+        );
+      } catch (error: unknown) {
+        setCommandStatus(timelineCommandFailure(error));
+      } finally {
+        commandPendingRef.current = false;
+        setCommandPending(false);
+      }
+    },
+    [
+      inPoint,
+      model,
+      nextTransactionId,
+      onExecuteProjectCommand,
+      outPoint,
+      playhead,
+      rangeExplicit,
+      selectedEditItemIds,
+      sourceProjection,
+      targetTrackId,
+    ],
+  );
+
+  const executeHistory = useCallback(
+    async (command: "undo" | "redo") => {
+      if (commandPendingRef.current) return;
+      const available = command === "undo"
+        ? snapshot.project.undo_depth
+        : snapshot.project.redo_depth;
+      if (available === 0) {
+        setCommandStatus(`There is no ${command} step available.`);
+        return;
+      }
+      commandPendingRef.current = true;
+      setCommandPending(true);
+      setCommandStatus(`${capitalize(command)} is in progress.`);
+      try {
+        const result = await onExecuteProjectCommand(
+          buildTimelineHistoryCommand(
+            command,
+            snapshot.project.project_revision,
+            nextTransactionId(command),
+          ),
+        );
+        setCommandStatus(
+          `${capitalize(command)} completed at project revision ${result.state.project_revision}.`,
+        );
+      } catch (error: unknown) {
+        setCommandStatus(timelineCommandFailure(error));
+      } finally {
+        commandPendingRef.current = false;
+        setCommandPending(false);
+      }
+    },
+    [
+      nextTransactionId,
+      onExecuteProjectCommand,
+      snapshot.project.project_revision,
+      snapshot.project.redo_depth,
+      snapshot.project.undo_depth,
+    ],
+  );
+
+  useEffect(() => {
+    const handleEditShortcut = (event: globalThis.KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        isEditableTimelineTarget(event.target)
+      ) {
+        return;
+      }
+      if (event.key === "Backspace" && !event.metaKey && !event.ctrlKey) {
+        event.preventDefault();
+        void executeEdit("backspace");
+        return;
+      }
+      if (
+        event.key.toLowerCase() === "z" &&
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey
+      ) {
+        event.preventDefault();
+        void executeHistory(event.shiftKey ? "redo" : "undo");
+      }
+    };
+    window.addEventListener("keydown", handleEditShortcut, true);
+    return () => window.removeEventListener("keydown", handleEditShortcut, true);
+  }, [executeEdit, executeHistory]);
 
   const visibleContentWidth = Math.max(1, viewportWidth - HEADER_WIDTH);
   const contentWidth = model
@@ -555,9 +790,11 @@ export function TimelineWorkspace({
         return;
       }
       if (kind === "in") {
+        setRangeExplicit(true);
         setInPoint(Math.min(value, outPoint));
         return;
       }
+      setRangeExplicit(true);
       setOutPoint(Math.max(value, inPoint));
     },
     [inPoint, model, outPoint],
@@ -1164,7 +1401,8 @@ export function TimelineWorkspace({
             label="Range"
             value={
               `${formatTimelineTime(range.inPoint, model.editRate)} to ` +
-              formatTimelineTime(range.outPoint, model.editRate)
+              formatTimelineTime(range.outPoint, model.editRate) +
+              (rangeExplicit ? "" : " (not set)")
             }
           />
           <TimelineReadout
@@ -1197,6 +1435,7 @@ export function TimelineWorkspace({
             type="button"
             onClick={() => {
               setSnapMatch(null);
+              setRangeExplicit(true);
               setInPoint(Math.min(playhead, range.outPoint));
             }}
           >
@@ -1207,6 +1446,7 @@ export function TimelineWorkspace({
             type="button"
             onClick={() => {
               setSnapMatch(null);
+              setRangeExplicit(true);
               setOutPoint(Math.max(playhead, range.inPoint));
             }}
           >
@@ -1217,6 +1457,7 @@ export function TimelineWorkspace({
             type="button"
             onClick={() => {
               setSnapMatch(null);
+              setRangeExplicit(true);
               setInPoint(model.startSeconds);
               setOutPoint(model.endSeconds);
             }}
@@ -1309,6 +1550,85 @@ export function TimelineWorkspace({
               } selected`}
         </output>
       </div>
+      <section className="timeline-edit-console" aria-label="Timeline edit controls">
+        <header>
+          <div>
+            <p className="section-kicker">Editorial gestures</p>
+            <h5>Exact target, visible consequence</h5>
+          </div>
+          <div className="timeline-history-actions">
+            <button
+              type="button"
+              className="secondary timeline-compact-button"
+              disabled={commandPending || snapshot.project.undo_depth === 0}
+              title="Command or Control Z"
+              onClick={() => void executeHistory("undo")}
+            >
+              Undo {snapshot.project.undo_depth}
+            </button>
+            <button
+              type="button"
+              className="secondary timeline-compact-button"
+              disabled={commandPending || snapshot.project.redo_depth === 0}
+              title="Command or Control Shift Z"
+              onClick={() => void executeHistory("redo")}
+            >
+              Redo {snapshot.project.redo_depth}
+            </button>
+          </div>
+        </header>
+        <div className="timeline-edit-actions">
+          {TIMELINE_EDIT_GESTURES.map((edit) => (
+            <button
+              type="button"
+              key={edit}
+              disabled={commandPending}
+              aria-pressed={selectedEdit === edit}
+              data-ready={
+                selectedEdit === edit && editPlan?.status === "ready"
+              }
+              onFocus={() => setSelectedEdit(edit)}
+              onPointerEnter={() => setSelectedEdit(edit)}
+              onClick={() => void executeEdit(edit)}
+            >
+              {capitalize(edit)}
+            </button>
+          ))}
+        </div>
+        <dl className="timeline-edit-state">
+          <div>
+            <dt>Target</dt>
+            <dd>{editPlan?.target ?? "No target track"}</dd>
+          </div>
+          <div>
+            <dt>Source</dt>
+            <dd>
+              {sourceProjection?.status === "ready"
+                ? formatTimelineEditSource(sourceProjection.source)
+                : sourceProjection?.reason ?? "No source state"}
+            </dd>
+          </div>
+          <div>
+            <dt>Consequence</dt>
+            <dd>
+              {editPlan?.status === "ready"
+                ? editPlan.consequence
+                : editPlan?.reason ?? "Choose an edit gesture."}
+            </dd>
+          </div>
+        </dl>
+        <output
+          className="timeline-command-status"
+          data-pending={commandPending}
+          aria-live="polite"
+        >
+          {commandStatus}
+        </output>
+        <p className="timeline-edit-shortcuts">
+          Backspace extracts the selected item or active range. Command or Control
+          Z reverses immediately, and Shift adds redo.
+        </p>
+      </section>
       {clipProjection?.status === "unavailable" ? (
         <p className="timeline-clip-detail-failure" role="alert">
           {clipProjection.reason}
@@ -1423,8 +1743,10 @@ export function TimelineWorkspace({
                   (candidate) => candidate.id === track.id,
                 )}
                 trackCount={model.tracks.length}
-                pending={pendingTrackAction !== null}
+                pending={pendingTrackAction !== null || commandPending}
                 execute={executeTrackMutations}
+                editTarget={targetTrackId === track.id}
+                onSelectEditTarget={() => setTargetTrackId(track.id)}
               />
               <div
                 className={
@@ -1459,7 +1781,10 @@ export function TimelineWorkspace({
                         model={model}
                         onFocus={() => setFocusedKey(key)}
                         onKeyDown={(event) => itemKeyDown(event, key)}
-                        onPointerDown={(event) => beginSelection(event, key)}
+                        onPointerDown={(event) => {
+                          setTargetTrackId(track.id);
+                          beginSelection(event, key);
+                        }}
                         pixelsPerSecond={pixelsPerSecond}
                         previews={clipPreviews}
                         selectionKey={key}
@@ -1512,6 +1837,8 @@ function TimelineTrackHeader({
   trackCount,
   pending,
   execute,
+  editTarget,
+  onSelectEditTarget,
 }: {
   readonly track: TimelineCanvasTrack;
   readonly timelineId: string;
@@ -1522,6 +1849,8 @@ function TimelineTrackHeader({
     identity: string,
     mutations: readonly TimelineTrackMutation[],
   ) => Promise<void>;
+  readonly editTarget: boolean;
+  readonly onSelectEditTarget: () => void;
 }) {
   const [name, setName] = useState(track.name);
   const [deleteArmed, setDeleteArmed] = useState(false);
@@ -1600,6 +1929,17 @@ function TimelineTrackHeader({
         <code title={track.id}>{track.id}</code>
       </div>
       <div className="timeline-track-controls">
+        <button
+          type="button"
+          aria-label={`Use ${track.name} as the edit target`}
+          aria-pressed={editTarget}
+          title="Use as edit target"
+          disabled={pending}
+          data-active={editTarget}
+          onClick={onSelectEditTarget}
+        >
+          Edit
+        </button>
         <button
           type="button"
           aria-label={`Move ${track.name} up`}
@@ -1795,6 +2135,80 @@ function TrackToggle({
       {label}
     </button>
   );
+}
+
+function preferredTargetTrackId(model: TimelineCanvasModel | null): string {
+  if (!model) return "";
+  return (
+    model.tracks.find(
+      (track) =>
+        track.targeted && (track.kind === "video" || track.kind === "audio"),
+    ) ??
+    model.tracks.find(
+      (track) => track.kind === "video" || track.kind === "audio",
+    ) ??
+    model.tracks[0]
+  )?.id ?? "";
+}
+
+function editGestureUsesSource(edit: TimelineEditGesture): boolean {
+  return (
+    edit === "insert" ||
+    edit === "overwrite" ||
+    edit === "append" ||
+    edit === "replace"
+  );
+}
+
+function randomEditorialId(
+  kind: "clip" | "gap" | "generator" | "caption",
+): string {
+  let identity = randomHex(16);
+  while (/^0+$/.test(identity)) identity = randomHex(16);
+  return `${kind}:${identity}`;
+}
+
+function randomHex(byteLength: number): string {
+  if (!globalThis.crypto?.getRandomValues) {
+    throw new Error("Secure editorial identity generation is unavailable.");
+  }
+  const bytes = new Uint8Array(byteLength);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+function formatTimelineEditSource(
+  source: TimelineEditSource,
+): string {
+  const range = source.sourceRange;
+  return (
+    `${source.mediaName} (${source.streamKind}) from ${range.start.value} for ` +
+    `${range.duration.value} units at ${range.start.timebase.numerator}/` +
+    `${range.start.timebase.denominator}`
+  );
+}
+
+function timelineCommandFailure(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null) {
+    if ("title" in error) return String(error.title);
+    if ("message" in error) return String(error.message);
+  }
+  return "The timeline command could not be completed.";
+}
+
+function isEditableTimelineTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.isContentEditable ||
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "SELECT"
+  );
+}
+
+function capitalize(value: string): string {
+  return value.length === 0 ? value : value[0].toUpperCase() + value.slice(1);
 }
 
 function TimelineItem({

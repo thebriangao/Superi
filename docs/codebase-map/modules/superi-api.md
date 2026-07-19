@@ -775,12 +775,14 @@ messages, contexts, paths, and source chains never serialize.
 The production React and Tauri application consumes the committed generated contract through one
 injected client and retains the complete public editor snapshot. Its application owner issues
 revision-fenced project commands, while the editing workspace strictly projects the canonical
-timeline document and invokes typed track gestures without adding transport or authored-state
-authority. The same canvas supplements clips from the snapshot's canonical graph documents and
-attached audio automation, showing only real clip-scoped node, driver, and sample-key evidence
-while keeping canonical timeline selection distinct from shared UI selection. Native routing
-covers editor reads and durable project commands but remains closed to unregistered methods. No
-network transport, shell source loader, extension host,
+timeline document and submits typed track gestures, insert, overwrite, append, replace, lift,
+extract, backspace, undo, and redo only through `superi.project.command.execute`. It adds no public
+mutation schema, transport path, or authored-state authority. The same canvas supplements clips
+from canonical graph documents and attached audio automation, showing only real clip-scoped node,
+driver, and sample-key evidence while keeping canonical timeline selection distinct from shared UI
+selection. Native routing remains limited to integration validation, complete editor state, and
+generic project commands, so other unrouted methods retain classified unavailable state. No network
+transport, shell source loader, extension host,
 or closed-tier client is present. The local script interpreter is an in-process public API consumer,
 not a process sandbox or general-purpose language runtime. The local CLI host is a real filesystem
 and JSON-RPC process consumer, and the event stream remains transport-neutral.
@@ -1091,13 +1093,14 @@ one coherent project revision, explicit color policy, optional automation attach
 playback, observed export state, strict unknown-field rejection, and exact JSON round trips without
 bulk runtime payloads or hidden polling.
 
-The production frontend timeline contract is the downstream canonical-document consumer proof. It
-rejects wrong revisions and root identities, preserves exact source and record ranges plus stable
-relationships and track intent, and keeps playhead, range, scroll, and zoom outside API mutation
-ownership. Its supplemental clip contract also proves canonical graph and attached automation
-inspection, exact keyframe samples, shared `superi.editor.state` references, and no new public
-method, resource, or authored transaction. All track gestures route through the application-owned
-generated project command.
+The production frontend timeline contract is the downstream canonical-document and generated-command
+consumer proof. It rejects wrong revisions and root identities, preserves exact source and record
+ranges plus stable relationships, complete track intent, snapping, and shared selection, and keeps
+playhead, range, scroll, zoom, source choice, targeting, status, and consequence preview outside API
+mutation ownership. It proves all eleven track gestures, all seven edit requests, undo, and redo
+reuse the application-owned generic command, while the supplemental clip contract proves canonical
+graph and attached automation inspection, exact keyframe samples, shared `superi.editor.state`
+references, and no new public method, resource, or authored transaction.
 
 ## Current status and risks
 
@@ -1125,9 +1128,11 @@ recovery, and automation operation before dispatch.
 Generated bindings are implemented as a deterministic representation of the current in-process
 public surface and are consumed by the production desktop application. They do not themselves
 provide complete native wire routing, mutation authority, or a second authored-state owner. The
-application owner now uses their strict track action types for durable revision-fenced commands,
-while the editing workspace uses their editor-state timeline, graph, and attached automation state
-as its exact canvas and clip-detail input.
+desktop routes the generated editor-state query and generic project command through its existing
+EngineControl owner. The application owner uses strict track action and project command types for
+durable revision-fenced commands, while the editing workspace uses editor-state timeline, graph,
+and attached automation data as exact canvas input and generated commands as its only authored edit
+path.
 Scenario schema 1 remains deliberately narrow and fixed to one canonical edit. Its reference
 state proves transactional control semantics, not production timeline, graph, or media ownership.
 Authored clip-gain automation is a substantive strict transaction and event surface over the engine

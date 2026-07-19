@@ -167,6 +167,71 @@ fn project_lifecycle_commits_authority_and_preserves_actionable_failure_context(
     let saved = lifecycle.execute(DesktopProjectCommand::Save).unwrap();
     assert_eq!(saved.active().unwrap().project_revision(), 3);
 
+    let editor_identity =
+        DesktopProjectIdentity::new("project-alpha", 4, "timeline-alpha").unwrap();
+    let edited = lifecycle
+        .refresh_active_from_editor(
+            "alpha.superi",
+            "project-alpha",
+            3,
+            "timeline-alpha",
+            editor_identity,
+        )
+        .unwrap();
+    assert_eq!(edited.active().unwrap().project_revision(), 4);
+    let stale = lifecycle
+        .refresh_active_from_editor(
+            "alpha.superi",
+            "project-alpha",
+            3,
+            "timeline-alpha",
+            DesktopProjectIdentity::new("project-alpha", 5, "timeline-alpha").unwrap(),
+        )
+        .unwrap_err();
+    assert_eq!(stale.class(), DesktopProjectFailureClass::UserCorrectable);
+    assert_eq!(lifecycle.snapshot().active().unwrap().project_revision(), 4);
+    let skipped_revision = lifecycle
+        .refresh_active_from_editor(
+            "alpha.superi",
+            "project-alpha",
+            4,
+            "timeline-alpha",
+            DesktopProjectIdentity::new("project-alpha", 6, "timeline-alpha").unwrap(),
+        )
+        .unwrap_err();
+    assert_eq!(
+        skipped_revision.class(),
+        DesktopProjectFailureClass::UserCorrectable
+    );
+    assert_eq!(lifecycle.snapshot().active().unwrap().project_revision(), 4);
+    let unversioned_root_change = lifecycle
+        .refresh_active_from_editor(
+            "alpha.superi",
+            "project-alpha",
+            4,
+            "timeline-alpha",
+            DesktopProjectIdentity::new("project-alpha", 4, "timeline-alpha-alternate").unwrap(),
+        )
+        .unwrap_err();
+    assert_eq!(
+        unversioned_root_change.class(),
+        DesktopProjectFailureClass::UserCorrectable
+    );
+    let changed_root = lifecycle
+        .refresh_active_from_editor(
+            "alpha.superi",
+            "project-alpha",
+            4,
+            "timeline-alpha",
+            DesktopProjectIdentity::new("project-alpha", 5, "timeline-alpha-alternate").unwrap(),
+        )
+        .unwrap();
+    assert_eq!(changed_root.active().unwrap().project_revision(), 5);
+    assert_eq!(
+        changed_root.active().unwrap().root_timeline_id(),
+        "timeline-alpha-alternate"
+    );
+
     let saved_as = lifecycle
         .execute(DesktopProjectCommand::SaveAs {
             destination: "beta.superi".into(),

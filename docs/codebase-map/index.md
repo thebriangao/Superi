@@ -38,7 +38,7 @@ against raw source before changing code.
 | `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline fixture validation, generation, and typed golden verification | Implemented validation library, six generators, seven-command CLI, four golden harnesses, and focused contracts |
 | `tool-superi-test-report` | [module map](modules/tool-superi-test-report.md) | `open/tools/superi-test-report` | Offline structured platform-lane evidence generator | Implemented strict schema, deterministic findings, collision-safe CLI, and focused contracts |
 | `tool-superi-api-bindings` | [module map](modules/tool-superi-api-bindings.md) | `open/tools/superi-api-bindings` | Deterministic committed TypeScript API artifact generator and freshness checker | Implemented pure rendering, idempotent generation, nonmutating freshness checks, and focused contracts |
-| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, production React and Tauri shell, workspace configuration, fixtures, generated TypeScript artifact, retained frontend consumer, and agent workflows | Active control layer: deterministic checkpoint workflow, explicit revisioned application and headless-engine lifecycle, one durable project lifecycle with bounded recents, revision-fenced recovery, atomic project-settings inspection and editing, real media import, durable organization, metadata, annotations, identity, transparent derived-media state, offline recovery, persisted source baselines, removable-volume and changed-file state, explicit relink intent, source-bound editable transcript plus local-content artifacts, deterministic explainable native content search, one ordered atomic batch for rename, organization, generating transcode or proxy evidence, relink, and metadata, bounded on-demand thumbnail, filmstrip, WAVE waveform, and selected-media preview generation, one retained source monitor with exact seek plus fingerprint-bound in and out marks, a linked EngineControl dispatcher, durable native editor read and project command routing, shell-local lifecycle and control-only viewport commands, injected generated `SuperiClient`, thin command and event transport, ordered replay and reconnect, cooperative cancellation, deterministic application routing, transient workspace layout, panel and command registries, immutable shared selection, one public editor-snapshot presentation and command owner, five professional workspaces, source, program, composite, and color native GPU viewers, and a strict canonical timeline canvas with all eleven track controls, exact tracks, ruler, playhead, range, scrolling, zoom, real clip visuals, topology-backed effects, positioned clip-gain keys, badges, group and link aware interaction selection, range and lasso selection, roving keyboard navigation, exact target snapping, six visible session rules, consequence feedback, guides, and immediate reversal are delivered; one GPU submission owner presents role-addressed canonical RGBA16F results through immutable ACEScg-to-sRGB intent, while generated preview artifacts remain ephemeral and CPU-owned and source-monitor state remains separate from decode and presentation |
+| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, production React and Tauri shell, workspace configuration, fixtures, generated TypeScript artifact, retained frontend consumer, and agent workflows | Active control layer: deterministic checkpoint workflow, explicit revisioned application and headless-engine lifecycle, one durable project lifecycle with bounded recents, revision-fenced recovery, atomic project-settings inspection and editing, real media import, durable organization, metadata, annotations, identity, transparent derived-media state, offline recovery, persisted source baselines, removable-volume and changed-file state, explicit relink intent, source-bound editable transcript plus local-content artifacts, deterministic explainable native content search, one ordered atomic batch for rename, organization, generating transcode or proxy evidence, relink, and metadata, bounded on-demand thumbnail, filmstrip, WAVE waveform, and selected-media preview generation, one retained source monitor with exact seek plus fingerprint-bound in and out marks, a linked EngineControl dispatcher with one retained durable project editor session, bounded native validation, editor-state, and project-command routing, shell-local lifecycle and control-only viewport commands, injected generated `SuperiClient`, thin command and event transport, ordered replay and reconnect, cooperative cancellation, deterministic application routing, transient workspace layout, panel and command registries, immutable shared selection, one public editor-snapshot presentation and command owner, five professional workspaces, source, program, composite, and color native GPU viewers, and a strict canonical timeline canvas with all eleven track controls, exact tracks, ruler, playhead, range, scrolling, zoom, real clip visuals, topology-backed effects, positioned clip-gain keys, badges, group and link aware interaction selection, range and lasso selection, roving keyboard navigation, exact target snapping, six visible session rules, all seven exact edit gestures, visible source, target, consequence, pending, and result state, backspace, undo, redo, guides, and immediate reversal are delivered; one GPU submission owner presents role-addressed canonical RGBA16F results through immutable ACEScg-to-sRGB intent, while generated preview artifacts remain ephemeral and CPU-owned and source-monitor state remains separate from decode and presentation |
 
 ## Ownership and repository boundaries
 
@@ -188,14 +188,17 @@ The production desktop lifecycle is implemented without creating a second engine
    asynchronous shell-local lifecycle commands plus one asynchronous generated API dispatcher, and
    joins the process owner after the native host stops. Exit requests record orderly shutdown
    without blocking the main thread.
-5. The connection admits the existing typed integration-validation query with `try_send`; response
-   waiting stays with a blocking-safe caller, restart constructs a fresh dispatcher, and outstanding
-   internal subsystem initialization remains truthfully visible.
-6. The native transport routes integration validation through that managed connection. Generated
-   editor-state reads and project commands route through the managed active project and durable
-   `LocalProjectHost`, then publish canonical project replacement events in the same monotonic
-   envelope stream. The owner retains 64 events for cursor replay and converts only reviewed
-   canonical failure context to `PublicApiError`.
+5. The connection admits typed integration-validation, complete editor-state, and generic project
+   command requests with `try_send`; response waiting stays with a blocking-safe caller, restart
+   constructs a fresh dispatcher, and outstanding internal subsystem initialization remains
+   truthfully visible. One route-fenced `ProjectEditorApi` session stays on EngineControl so command
+   history is retained without moving the non-Send dispatcher across domains.
+6. The native transport routes those three generated methods through that managed connection.
+   Successful authored commands compare and replace the exact active project database, refresh
+   desktop lifecycle identity, and emit every correlated project event in monotonic envelopes.
+   Cancellation wins before durable work begins, while committed commands remain visible after late
+   cancellation. Transport retains 64 events for cursor replay and converts only reviewed failure
+   context to `PublicApiError`.
 7. React renders the serialized application and engine phases, pending acknowledgement, safe failure,
    and recovery affordances through the two shell-local lifecycle commands.
 8. Separately, `app/src/api.ts` re-exports the complete generated public contract and constructs a
@@ -261,6 +264,12 @@ The production desktop lifecycle is implemented without creating a second engine
     operations. Fingerprint-bound in and out marks publish atomically with the media sidecar, while
     React exposes ready, stale, empty, seek, mark, clear, and unload state without treating source
     open as decoded-frame or native GPU presentation.
+17. The editing timeline converts the ready source monitor into one exact half-open source range,
+    chooses an explicit track plus playhead, range, or selected item target, and plans only the
+    fragment identities required by the existing timeline owner. Insert, overwrite, append,
+    replace, lift, extract, and backspace submit one generated project command with visible target
+    and consequence state. Undo and redo submit the existing history commands, and every success
+    refreshes the complete editor snapshot instead of patching React state locally.
 
 Media registry construction and capability introspection are implemented as follows:
 
@@ -2850,11 +2859,14 @@ For common concerns, begin at these owners:
 - Desktop source-monitor loading, exact seek, fingerprint-bound in and out marks, sidecar
   publication, and React engine-state projection: `workspace`, with source registry assembly in
   `superi-engine` and source-open plus exact seek contracts in `superi-media-io`.
-- Production editing timeline, exact target snapping, and clip presentation: `superi-timeline` for canonical editorial
-  identity and timing, `superi-graph` for topology and drivers, `superi-audio` for exact clip-gain
-  keys, `superi-engine` and `superi-api` for one coherent snapshot, then `workspace` for strict
-  read-only projection, exact owner-clock target projection, visible session rules and consequences,
-  reversible pointer gestures, freshness-fenced media visuals, and shared selection.
+- Production editing timeline, exact target snapping, clip presentation, and foundational gestures:
+  `superi-timeline` for
+  canonical editorial identity, timing, and edit semantics, `superi-graph` for topology and drivers,
+  `superi-audio` for exact clip-gain keys, `superi-project` for durable replacement,
+  `superi-engine` for history and events, `superi-api` for generated state and command contracts,
+  then `workspace` for strict projection, source and target planning, freshness-fenced media visuals,
+  exact owner-clock target projection, visible session rules and consequences, all seven gestures,
+  immediate reversal, and shared selection.
 - Shared finite-resource arbitration across decode, GPU, cache, audio, AI, and export workloads:
   `superi-engine`, followed by each lower subsystem owner for its authoritative local allocation and
   release behavior.

@@ -14,7 +14,10 @@ export function EditingWorkspacePanel() {
     editorProject,
     refreshEditorProject,
     executeProjectActions,
+    executeProjectCommand,
     dispatch,
+    sourceMonitor,
+    setSourceMonitor,
     state,
   } = useApplication();
   const snapshot = editorProject.snapshot;
@@ -33,7 +36,10 @@ export function EditingWorkspacePanel() {
       refresh={refreshEditorProject}
     >
       <div className="native-viewer-grid native-viewer-grid-dual">
-        <SourceMonitor />
+        <SourceMonitor
+          projectRevision={snapshot?.project.project_revision ?? null}
+          onSnapshotChange={setSourceMonitor}
+        />
         <NativeViewport role="program" label="Program" />
       </div>
       {snapshot ? (
@@ -48,6 +54,8 @@ export function EditingWorkspacePanel() {
             selectionSchemaVersion={snapshot.schema_version}
             selectionRevision={snapshot.project.project_revision}
             mutateTracks={mutateTracks}
+            sourceMonitor={sourceMonitor}
+            onExecuteProjectCommand={executeProjectCommand}
           />
           <div className="editor-summary-grid">
             <Metric label="Project" value={snapshot.project.project_id} />

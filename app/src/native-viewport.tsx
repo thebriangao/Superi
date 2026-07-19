@@ -1,5 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   loadProjectSourceMonitor,
@@ -27,7 +27,17 @@ type ViewportSnapshot = {
 
 export type NativeViewerRole = "source" | "program" | "composite" | "color";
 
-export function SourceMonitor() {
+export interface SourceMonitorProps {
+  readonly projectRevision: number | null;
+  readonly onSnapshotChange: (
+    snapshot: SourceMonitorSnapshot | null,
+  ) => void;
+}
+
+export function SourceMonitor({
+  projectRevision,
+  onSnapshotChange,
+}: SourceMonitorProps) {
   const [library, setLibrary] = useState<MediaLibrarySnapshot | null>(null);
   const [monitor, setMonitor] = useState<SourceMonitorSnapshot | null>(null);
   const [selectedMediaId, setSelectedMediaId] = useState("");
@@ -35,8 +45,9 @@ export function SourceMonitor() {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     if (!isTauri()) {
+      setMonitor(null);
       setFailure("Source monitor controls are available in the desktop application.");
       return;
     }
@@ -60,11 +71,15 @@ export function SourceMonitor() {
     } finally {
       setBusy(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [projectRevision, refresh]);
+
+  useEffect(() => {
+    onSnapshotChange(monitor);
+  }, [monitor, onSnapshotChange]);
 
   const selectedItem = library?.items.find(
     (item) => item.media_id === selectedMediaId,

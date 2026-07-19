@@ -206,6 +206,46 @@ pub struct DesktopProjectIdentity {
     root_timeline_id: String,
 }
 
+/// Exact active project route admitted to the persistent desktop editor owner.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DesktopProjectEditorRoute {
+    path: String,
+    project_id: String,
+    project_revision: u64,
+    root_timeline_id: String,
+}
+
+impl DesktopProjectEditorRoute {
+    pub(crate) fn new(path: impl Into<String>, identity: &DesktopProjectIdentity) -> Self {
+        Self {
+            path: path.into(),
+            project_id: identity.project_id().to_owned(),
+            project_revision: identity.project_revision(),
+            root_timeline_id: identity.root_timeline_id().to_owned(),
+        }
+    }
+
+    #[must_use]
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    #[must_use]
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+
+    #[must_use]
+    pub const fn project_revision(&self) -> u64 {
+        self.project_revision
+    }
+
+    #[must_use]
+    pub fn root_timeline_id(&self) -> &str {
+        &self.root_timeline_id
+    }
+}
+
 impl DesktopProjectIdentity {
     pub fn new(
         project_id: impl Into<String>,
@@ -3841,6 +3881,49 @@ impl Default for DesktopProjectState {
     }
 }
 
+/// Serialized lease that keeps the active project route stable during one editor request.
+pub(crate) struct DesktopProjectEditorLease<'a> {
+    state: &'a DesktopProjectState,
+    lifecycle: std::sync::MutexGuard<'a, Option<DesktopProjectLifecycle<LocalProjectBackend>>>,
+    route: DesktopProjectEditorRoute,
+}
+
+impl DesktopProjectEditorLease<'_> {
+    #[must_use]
+    pub(crate) const fn route(&self) -> &DesktopProjectEditorRoute {
+        &self.route
+    }
+
+    pub(crate) fn accept(
+        mut self,
+        identity: DesktopProjectIdentity,
+    ) -> Result<DesktopProjectSnapshot, DesktopProjectFailure> {
+        let snapshot = self
+            .lifecycle
+            .as_mut()
+            .ok_or_else(not_initialized)?
+            .refresh_active_from_editor(
+                self.route.path(),
+                self.route.project_id(),
+                self.route.project_revision(),
+                self.route.root_timeline_id(),
+                identity,
+            )?;
+        let revision = snapshot
+            .active()
+            .ok_or_else(not_initialized)?
+            .project_revision();
+        let project_id = snapshot
+            .active()
+            .ok_or_else(not_initialized)?
+            .project_id()
+            .to_owned();
+        self.state.sync_project_revision(&project_id, revision)?;
+        drop(self.lifecycle);
+        Ok(snapshot)
+    }
+}
+
 impl DesktopProjectState {
     pub fn initialize(&self, recovery_root: PathBuf) -> Result<(), DesktopProjectFailure> {
         std::fs::create_dir_all(&recovery_root).map_err(|source| {
@@ -3886,6 +3969,36 @@ impl DesktopProjectState {
             .as_ref()
             .map(|lifecycle| lifecycle.snapshot().clone())
             .ok_or_else(not_initialized)
+    }
+
+    /// Serializes one editor request against the exact selected durable project route.
+    pub(crate) fn begin_editor_request(
+        &self,
+    ) -> Result<DesktopProjectEditorLease<'_>, DesktopProjectFailure> {
+        let lifecycle = self.lock("editor_route")?;
+        let active = lifecycle
+            .as_ref()
+            .ok_or_else(not_initialized)?
+            .snapshot()
+            .active()
+            .ok_or_else(|| {
+                user_correctable(
+                    "project_not_open",
+                    "No project is open",
+                    "Create or open a project before continuing.",
+                )
+            })?;
+        let identity = DesktopProjectIdentity::new(
+            active.project_id(),
+            active.project_revision(),
+            active.root_timeline_id(),
+        )?;
+        let route = DesktopProjectEditorRoute::new(active.path(), &identity);
+        Ok(DesktopProjectEditorLease {
+            state: self,
+            lifecycle,
+            route,
+        })
     }
 
     pub fn execute(
@@ -4323,10 +4436,18 @@ impl DesktopProjectState {
         project_revision: u64,
     ) -> Result<(), DesktopProjectFailure> {
         let (project_id, _) = self.active_project_identity("sync_media_library")?;
+        self.sync_project_revision(&project_id, project_revision)
+    }
+
+    fn sync_project_revision(
+        &self,
+        project_id: &str,
+        project_revision: u64,
+    ) -> Result<(), DesktopProjectFailure> {
         let mut store = self.media_library_lock("sync_media_library")?;
         store
             .projects
-            .entry(project_id)
+            .entry(project_id.to_owned())
             .or_insert_with(|| MediaLibrarySnapshot::empty(project_revision))
             .project_revision = project_revision;
         drop(store);
@@ -4882,6 +5003,39 @@ impl<B: DesktopProjectBackend> DesktopProjectLifecycle<B> {
                 Err(failure)
             }
         }
+    }
+
+    /// Accepts one already durable editor publication only for the exact active route.
+    pub fn refresh_active_from_editor(
+        &mut self,
+        expected_path: &str,
+        expected_project_id: &str,
+        expected_project_revision: u64,
+        expected_root_timeline_id: &str,
+        identity: DesktopProjectIdentity,
+    ) -> Result<DesktopProjectSnapshot, DesktopProjectFailure> {
+        let active = self.active_record("refresh_active_from_editor")?;
+        let route_matches = active.path() == expected_path
+            && active.project_id() == expected_project_id
+            && active.project_revision() == expected_project_revision
+            && active.root_timeline_id() == expected_root_timeline_id;
+        let same_revision = identity.project_revision() == expected_project_revision;
+        let next_revision = expected_project_revision
+            .checked_add(1)
+            .is_some_and(|next| identity.project_revision() == next);
+        let identity_matches = identity.project_id() == expected_project_id
+            && ((same_revision && identity.root_timeline_id() == expected_root_timeline_id)
+                || next_revision);
+        if !route_matches || !identity_matches {
+            return Err(user_correctable(
+                "project_editor_route_stale",
+                "Project edit route is stale",
+                "Refresh the project and apply the edit again.",
+            )
+            .with_context("operation", "refresh_active_from_editor"));
+        }
+        self.commit(ProjectTransition::RefreshActive { identity })?;
+        Ok(self.snapshot.clone())
     }
 
     fn active_record(

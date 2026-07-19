@@ -1315,10 +1315,11 @@ both the populated track and its authored mix intent.
   The API-local `superi-json` runtime interprets only its existing generic project command and
   complete editor-state request through that facade, so scripts retain engine revision fences,
   history, lower-domain validation, event sequencing, and selected snapshot meaning without adding
-  an engine script owner. The production editing workspace is now a downstream read-only consumer
-  of the canonical timeline, graph, and attached audio automation in that editor-state projection;
-  its transient playhead, range, scroll, zoom, preview state, and shared selection do not become
-  engine commands or another authored state owner.
+  an engine script owner. The production desktop is now a downstream consumer of both complete
+  editor state and the existing generic project command. Its retained host session stays on
+  EngineControl, so all seven timeline gestures plus undo and redo use this bounded history and
+  correlated event owner. Transient playhead, range, scroll, zoom, preview, source, target, status,
+  and shared selection state do not become new engine commands or another authored state owner.
 - Cache and GPU retain their own exact local budget enforcement, audio retains its preallocated
   callback-safe queue, media I/O retains decoded value and lifecycle ownership, and export retains
   logical job and publication ownership. The engine arbiter composes a higher shared managed-byte
@@ -1924,11 +1925,12 @@ without adding mutation authority. Its project diagnostics command exposes proje
 hash and component evidence without an event, history entry, or second semantic model.
 Its editor-state command captures the same selected project plus cached optional runtime
 observations in one eventless replacement aggregate without polling or bulk runtime payloads. The
-production editing workspace now consumes its canonical timeline document through a strict
-read-only canvas projection and supplements clips from the same aggregate's graph and automation
-owners; all canvas navigation, preview, and shared-selection state is transient, while authored
-track gestures return through the generic project command, compound transaction, and history
-owners.
+production editing workspace consumes its canonical timeline document through a strict canvas
+projection and supplements clips from the same aggregate's graph and automation owners. Authored
+track gestures plus insert, overwrite, append, replace, lift, extract, backspace, undo, and redo
+return through the existing generic project command, compound transaction, and history owners;
+canvas navigation, preview, source, target, status, snapping, and shared-selection state remains
+transient.
 Playback crosses
 one bounded nonblocking bridge to its real domain owner. Logical export state remains in the
 canonical queue behind a type-erased dispatcher controller, while prepared executors receive fresh

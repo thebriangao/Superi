@@ -79,8 +79,8 @@ async fn desktop_api_dispatch<R: Runtime>(
     })
     .await
     .map_err(|_| transport_task_error("join_dispatch"))??;
-    let (reply, event) = outcome.into_parts();
-    if let Some(event) = event {
+    let (reply, events) = outcome.into_parts();
+    for event in events {
         app.emit(DESKTOP_API_EVENT, event)
             .map_err(|_| event_emission_error())?;
     }

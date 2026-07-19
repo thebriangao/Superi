@@ -1,4 +1,17 @@
-import type { EditorCanonicalDocument } from "./api.ts";
+import type {
+  EditorialObjectId,
+  EditorCanonicalDocument,
+  EditorTrackItem,
+  ExactDuration,
+  ExactTime,
+  ExactTimeRange,
+  ExecuteProjectCommand,
+  TimelineEditOperation,
+} from "./api.ts";
+import type {
+  SourceMonitorSnapshot,
+  SourceMonitorTime,
+} from "./project-lifecycle.ts";
 
 const TIMELINE_FORMAT = "superi.timeline";
 const TIMELINE_FORMAT_REVISION = 2;
@@ -141,6 +154,7 @@ export interface TimelineCanvasTrack {
   readonly id: string;
   readonly name: string;
   readonly kind: TimelineTrackKind;
+  readonly timebase: TimelineRate;
   readonly targeted: boolean;
   readonly height: number;
   readonly locked: boolean;
@@ -247,7 +261,7 @@ interface PendingTrack {
   readonly id: string;
   readonly name: string;
   readonly kind: TimelineTrackKind;
-  readonly recordRate: TimelineRate;
+  readonly timebase: TimelineRate;
   readonly targeted: boolean;
   readonly height: number;
   readonly locked: boolean;
@@ -380,7 +394,7 @@ export function projectTimelineDocument(
       }
       const semantics = asObject(track.semantics, `${path}.semantics`);
       const kind = parseTrackKind(semantics.kind, `${path}.semantics.kind`);
-      const recordRate = parseTrackRecordRate(
+      const timebase = parseTrackTimebase(
         semantics,
         kind,
         `${path}.semantics`,
@@ -405,7 +419,7 @@ export function projectTimelineDocument(
         id,
         name: asString(track.name, `${path}.name`),
         kind,
-        recordRate,
+        timebase,
         targeted: state.targeted,
         height: state.height,
         locked: state.locked,
@@ -458,6 +472,7 @@ export function projectTimelineDocument(
     id: track.id,
     name: track.name,
     kind: track.kind,
+    timebase: track.timebase,
     targeted: track.targeted,
     height: track.height,
     locked: track.locked,
@@ -662,7 +677,7 @@ function buildTimelineSnapTargets({
           `marker owner track ${trackId} does not exist`,
         );
       }
-      ownerRate = track.recordRate;
+      ownerRate = track.timebase;
     } else if (ownerKind === "object") {
       const object = parseObjectReference(owner.id, `${path}.owner.id`);
       const item = directItems.get(objectKey(object));
@@ -1084,6 +1099,456 @@ export function timelineSelectionNeighbor(
   return null;
 }
 
+export type TimelineEditGesture =
+  | "insert"
+  | "overwrite"
+  | "append"
+  | "replace"
+  | "lift"
+  | "extract"
+  | "backspace";
+
+export interface TimelineEditSource {
+  readonly projectId: string;
+  readonly projectRevision: number;
+  readonly mediaId: string;
+  readonly mediaName: string;
+  readonly streamKind: "video" | "audio";
+  readonly sourceRange: ExactTimeRange;
+}
+
+export interface TimelineEditCommandInput {
+  readonly gesture: TimelineEditGesture;
+  readonly model: TimelineCanvasModel;
+  readonly targetTrackId: string;
+  readonly playheadSeconds: number;
+  readonly inPointSeconds: number;
+  readonly outPointSeconds: number;
+  readonly rangeExplicit: boolean;
+  readonly source: TimelineEditSource | null;
+  readonly selectedItemIds?: readonly string[];
+  readonly transactionId: string;
+  readonly createId: (kind: Exclude<TimelineItemKind, "transition">) => string;
+}
+
+export type TimelineEditCommandResult =
+  | {
+      readonly status: "ready";
+      readonly gesture: TimelineEditGesture;
+      readonly target: string;
+      readonly source: string;
+      readonly consequence: string;
+      readonly operation: TimelineEditOperation;
+      readonly request: ExecuteProjectCommand;
+    }
+  | {
+      readonly status: "disabled";
+      readonly gesture: TimelineEditGesture;
+      readonly target: string;
+      readonly source: string;
+      readonly reason: string;
+    };
+
+export type TimelineEditSourceProjection =
+  | { readonly status: "ready"; readonly source: TimelineEditSource }
+  | { readonly status: "disabled"; readonly reason: string };
+
+export function projectSourceMonitorForTimelineEdit(
+  snapshot: SourceMonitorSnapshot | null,
+  model: TimelineCanvasModel,
+): TimelineEditSourceProjection {
+  const disabled = (reason: string): TimelineEditSourceProjection => ({
+    status: "disabled",
+    reason,
+  });
+  if (snapshot === null || snapshot.engine_state === "empty") {
+    return disabled("Load a source in the source monitor before editing.");
+  }
+  if (snapshot.engine_state !== "ready") {
+    return disabled("Refresh or reload the stale source monitor session.");
+  }
+  const projectRevision = Number(model.projectRevision);
+  if (
+    snapshot.project_id !== model.projectId ||
+    snapshot.project_revision !== projectRevision
+  ) {
+    return disabled("The loaded source does not match the current project revision.");
+  }
+  if (
+    snapshot.media_id === null ||
+    snapshot.media_name === null ||
+    snapshot.stream === null
+  ) {
+    return disabled("The loaded source identity is incomplete.");
+  }
+  if (
+    snapshot.stream.kind !== "video" &&
+    snapshot.stream.kind !== "audio"
+  ) {
+    return disabled("The loaded source has no editable video or audio stream.");
+  }
+  if (
+    snapshot.source_fingerprint === null ||
+    snapshot.opened_fingerprint === null
+  ) {
+    return disabled("The loaded source fingerprint identity is incomplete.");
+  }
+  const sourceTimebase: TimelineRate = {
+    numerator: snapshot.stream.timebase_numerator,
+    denominator: snapshot.stream.timebase_denominator,
+  };
+  if (
+    !Number.isSafeInteger(sourceTimebase.numerator) ||
+    sourceTimebase.numerator <= 0 ||
+    !Number.isSafeInteger(sourceTimebase.denominator) ||
+    sourceTimebase.denominator <= 0
+  ) {
+    return disabled("The loaded source timebase is invalid.");
+  }
+  const hasStoredMark =
+    snapshot.marks.in_mark !== null || snapshot.marks.out_mark !== null;
+  if (hasStoredMark && !snapshot.marks_fresh) {
+    return disabled("The source in or out mark is stale for the loaded media.");
+  }
+
+  try {
+    const rangeStart = snapshot.range_start
+      ? exactSourceCoordinate(snapshot.range_start, sourceTimebase, "source start")
+      : 0;
+    const start = snapshot.marks_fresh && snapshot.marks.in_mark
+      ? exactSourceCoordinate(snapshot.marks.in_mark, sourceTimebase, "source in")
+      : rangeStart;
+    let end: number;
+    const inclusiveEnd = snapshot.marks_fresh && snapshot.marks.out_mark
+      ? snapshot.marks.out_mark
+      : snapshot.range_end;
+    if (inclusiveEnd) {
+      const inclusive = exactSourceCoordinate(
+        inclusiveEnd,
+        sourceTimebase,
+        "source out",
+      );
+      end = inclusive + 1;
+    } else if (snapshot.duration) {
+      const duration = exactSourceCoordinate(
+        snapshot.duration,
+        sourceTimebase,
+        "source duration",
+      );
+      end = rangeStart + duration;
+    } else {
+      return disabled("Set a source out mark because the source duration is unknown.");
+    }
+    if (!Number.isSafeInteger(end) || end <= start) {
+      return disabled("The source in and out range must be nonempty and ordered.");
+    }
+    return {
+      status: "ready",
+      source: {
+        projectId: model.projectId,
+        projectRevision,
+        mediaId: snapshot.media_id,
+        mediaName: snapshot.media_name,
+        streamKind: snapshot.stream.kind,
+        sourceRange: {
+          start: publicTime(start, sourceTimebase),
+          duration: publicDuration(end - start, sourceTimebase),
+        },
+      },
+    };
+  } catch (error) {
+    return disabled(
+      error instanceof Error
+        ? error.message
+        : "The exact source range could not be projected.",
+    );
+  }
+}
+
+export function buildTimelineHistoryCommand(
+  command: "undo" | "redo",
+  projectRevision: number,
+  transactionId: string,
+): ExecuteProjectCommand {
+  requireSafeRevision(projectRevision);
+  requireTransactionId(transactionId);
+  return {
+    transaction_id: transactionId,
+    expected_project_revision: projectRevision,
+    command: { command },
+  };
+}
+
+export function buildTimelineEditCommand(
+  input: TimelineEditCommandInput,
+): TimelineEditCommandResult {
+  const target = input.model.tracks.find(
+    (track) => track.id === input.targetTrackId,
+  );
+  const targetLabel = target
+    ? `${target.name} (${target.id})`
+    : input.targetTrackId || "No target track";
+  const sourceLabel = input.source
+    ? `${input.source.mediaName} (${input.source.mediaId})`
+    : "No source loaded";
+  const disabled = (reason: string): TimelineEditCommandResult => ({
+    status: "disabled",
+    gesture: input.gesture,
+    target: targetLabel,
+    source: sourceLabel,
+    reason,
+  });
+
+  if (!target) return disabled("Select an exact target track before editing.");
+  if (target.locked) return disabled("The exact target track is locked for editing.");
+  if (!Number.isSafeInteger(Number(input.model.projectRevision))) {
+    return disabled("The canonical project revision is outside the supported range.");
+  }
+  const projectRevision = Number(input.model.projectRevision);
+  if (!Number.isSafeInteger(projectRevision) || projectRevision < 0) {
+    return disabled("The canonical project revision is invalid.");
+  }
+  if (input.transactionId.trim().length === 0) {
+    return disabled("The edit transaction identity is unavailable.");
+  }
+
+  const sourceRequired =
+    input.gesture === "insert" ||
+    input.gesture === "overwrite" ||
+    input.gesture === "append" ||
+    input.gesture === "replace";
+  if (sourceRequired) {
+    if (!input.source) return disabled("Load a compatible source before editing.");
+    const sourceFailure = validateEditSource(input.model, target, input.source);
+    if (sourceFailure) return disabled(sourceFailure);
+  }
+
+  try {
+    requireTransactionId(input.transactionId);
+    const trackEnd = exactTrackEnd(target);
+    let operation: TimelineEditOperation;
+    let consequence: string;
+
+    if (
+      input.gesture === "insert" ||
+      input.gesture === "overwrite" ||
+      input.gesture === "append" ||
+      input.gesture === "replace"
+    ) {
+      const source = input.source as TimelineEditSource;
+      const materialId = checkedNewId(input.createId("clip"), "clip");
+      if (input.gesture === "replace") {
+        const selected = selectedTimedItems(target, input.selectedItemIds);
+        if (selected.length !== 1) {
+          return disabled("Replace requires exactly one selected timed item on the target track.");
+        }
+        const selectedItem = selected[0];
+        const recordRange = publicRange(selectedItem.recordRange, target.timebase);
+        const material = buildClipMaterial(source, materialId, recordRange);
+        operation = {
+          operation: "replace",
+          timeline_id: input.model.id,
+          track_id: target.id,
+          target_id: publicObjectId(selectedItem),
+          material,
+        };
+        consequence = `Replace ${selectedItem.name} on ${target.name} while preserving its exact ${recordRange.duration.value}-unit record duration.`;
+      } else {
+        const recordDuration = sourceDurationAtTarget(source, target.timebase);
+        const material = buildClipMaterial(source, materialId, {
+          start: publicTime(0, target.timebase),
+          duration: recordDuration,
+        });
+        if (input.gesture === "append") {
+          operation = {
+            operation: "append",
+            timeline_id: input.model.id,
+            track_id: target.id,
+            material,
+          };
+          consequence = `Append ${source.mediaName} at the exact end of ${target.name}, extending it by ${recordDuration.value} units.`;
+        } else {
+          const at = displayPointToRecordTime(
+            input.playheadSeconds,
+            input.model.globalStartSeconds,
+            target.timebase,
+          );
+          if (at.value < 0 || at.value > trackEnd.value) {
+            return disabled("The playhead must lie between the target track start and end.");
+          }
+          const end = at.value + recordDuration.value;
+          if (input.gesture === "overwrite" && end > trackEnd.value) {
+            return disabled("Overwrite material would extend beyond the exact target track end.");
+          }
+          if (input.gesture === "insert") {
+            const fragmentIds = fragmentIdsForInsert(
+              target,
+              at,
+              input.createId,
+            );
+            operation = {
+              operation: "insert",
+              timeline_id: input.model.id,
+              track_id: target.id,
+              at,
+              material,
+              fragment_ids: fragmentIds,
+            };
+            consequence = `Insert ${source.mediaName} at ${at.value} on ${target.name}, ripple later material by ${recordDuration.value} units, and preserve ${fragmentIds.length} split identity.`;
+          } else {
+            const editRange = {
+              start: at,
+              duration: recordDuration,
+            } satisfies ExactTimeRange;
+            const fragmentIds = fragmentIdsForRange(
+              target,
+              editRange,
+              input.createId,
+            );
+            operation = {
+              operation: "overwrite",
+              timeline_id: input.model.id,
+              track_id: target.id,
+              at,
+              material,
+              fragment_ids: fragmentIds,
+            };
+            consequence = `Overwrite ${recordDuration.value} exact units on ${target.name} without changing its duration, preserving ${fragmentIds.length} split identity.`;
+          }
+        }
+      }
+    } else {
+      let editRange: ExactTimeRange;
+      if (
+        (input.gesture === "lift" || input.gesture === "extract") &&
+        !input.rangeExplicit
+      ) {
+        return disabled("Set an explicit timeline in and out range before editing.");
+      }
+      if (input.gesture === "backspace") {
+        const selected = selectedTimedItems(target, input.selectedItemIds);
+        if (selected.length > 1) {
+          return disabled("Backspace requires one exact selected item or an explicit in and out range.");
+        }
+        if (selected.length === 0 && !input.rangeExplicit) {
+          return disabled("Select one target item or set an explicit in and out range for Backspace.");
+        }
+        editRange = selected.length === 1
+          ? publicRange(selected[0].recordRange, target.timebase)
+          : displayRangeToRecordRange(
+              input.inPointSeconds,
+              input.outPointSeconds,
+              input.model.globalStartSeconds,
+              target.timebase,
+            );
+      } else {
+        editRange = displayRangeToRecordRange(
+          input.inPointSeconds,
+          input.outPointSeconds,
+          input.model.globalStartSeconds,
+          target.timebase,
+        );
+      }
+      if (editRange.duration.value <= 0) {
+        return disabled("The target edit range must be nonempty.");
+      }
+      const rangeEnd = editRange.start.value + editRange.duration.value;
+      if (editRange.start.value < 0 || rangeEnd > trackEnd.value) {
+        return disabled("The edit range must remain within the exact target track end.");
+      }
+      if (input.gesture === "lift") {
+        const gapId = checkedNewId(input.createId("gap"), "gap");
+        const fragmentIds = fragmentIdsForRange(
+          target,
+          editRange,
+          input.createId,
+        );
+        operation = {
+          operation: "lift",
+          timeline_id: input.model.id,
+          track_id: target.id,
+          range: editRange,
+          gap_id: gapId,
+          gap_name: "Lifted range",
+          fragment_ids: fragmentIds,
+        };
+        consequence = `Lift ${editRange.duration.value} exact units on ${target.name} into a visible gap without moving later material.`;
+      } else {
+        const fragmentIds = fragmentIdsForRange(
+          target,
+          editRange,
+          input.createId,
+        );
+        operation = {
+          operation: "extract",
+          timeline_id: input.model.id,
+          track_id: target.id,
+          range: editRange,
+          fragment_ids: fragmentIds,
+        };
+        consequence = input.gesture === "backspace"
+          ? `Backspace ${editRange.duration.value} exact units from ${target.name} and ripple all later material closed.`
+          : `Extract ${editRange.duration.value} exact units from ${target.name} and ripple all later material closed.`;
+      }
+    }
+
+    const request: ExecuteProjectCommand = {
+      transaction_id: input.transactionId,
+      expected_project_revision: projectRevision,
+      command: {
+        command: "apply",
+        actions: [
+          {
+            action: "edit_timeline",
+            operations: [operation],
+          },
+        ],
+      },
+    };
+    return {
+      status: "ready",
+      gesture: input.gesture,
+      target: targetLabel,
+      source: sourceLabel,
+      consequence,
+      operation,
+      request,
+    };
+  } catch (error) {
+    return disabled(
+      error instanceof Error ? error.message : "The exact edit command could not be built.",
+    );
+  }
+}
+
+function validateEditSource(
+  model: TimelineCanvasModel,
+  target: TimelineCanvasTrack,
+  source: TimelineEditSource,
+): string | null {
+  if (source.projectId !== model.projectId) {
+    return "The loaded source belongs to a different project.";
+  }
+  if (source.projectRevision !== Number(model.projectRevision)) {
+    return "The loaded source revision is stale for the current project revision.";
+  }
+  if (target.kind !== "video" && target.kind !== "audio") {
+    return "Source edits require an exact video or audio target track.";
+  }
+  if (source.streamKind !== target.kind) {
+    return `The ${source.streamKind} source is incompatible with the ${target.kind} target track.`;
+  }
+  if (source.mediaId.length === 0 || source.mediaName.length === 0) {
+    return "The loaded source identity is incomplete.";
+  }
+  try {
+    validatePublicRange(source.sourceRange, "source range");
+  } catch (error) {
+    return error instanceof Error ? error.message : "The source range is invalid.";
+  }
+  return null;
+}
+
 export function timelineSelectionIdentity(
   timelineId: string,
   object: TimelineObjectReference,
@@ -1150,6 +1615,349 @@ export function timelineRectanglesIntersect(
     leftBox.bottom < rightBox.top ||
     leftBox.top > rightBox.bottom
   );
+}
+
+function buildClipMaterial(
+  source: TimelineEditSource,
+  id: string,
+  recordRange: ExactTimeRange,
+): EditorTrackItem {
+  const sourceRange = clonePublicRange(source.sourceRange);
+  const rate = playbackRateFor(sourceRange.duration, recordRange.duration);
+  return {
+    kind: "clip",
+    id,
+    name: source.mediaName,
+    source: { kind: "media", media_id: source.mediaId },
+    source_range: sourceRange,
+    record_range: recordRange,
+    time_map: {
+      record_duration: recordRange.duration,
+      source_timebase: sourceRange.start.timebase,
+      segments: [
+        {
+          record_range: {
+            start: publicTime(0, recordRange.duration.timebase),
+            duration: recordRange.duration,
+          },
+          source_start: sourceRange.start,
+          rate_numerator: rate.numerator,
+          rate_denominator: rate.denominator,
+        },
+      ],
+    },
+  };
+}
+
+function sourceDurationAtTarget(
+  source: TimelineEditSource,
+  targetTimebase: TimelineRate,
+): ExactDuration {
+  validatePublicRange(source.sourceRange, "source range");
+  const sourceDuration = source.sourceRange.duration;
+  const numerator =
+    BigInt(sourceDuration.value) *
+    BigInt(sourceDuration.timebase.denominator) *
+    BigInt(targetTimebase.numerator);
+  const denominator =
+    BigInt(sourceDuration.timebase.numerator) * BigInt(targetTimebase.denominator);
+  const units = divideRoundedNearest(numerator, denominator);
+  return publicDuration(Math.max(1, safeBigIntNumber(units, "record duration")), targetTimebase);
+}
+
+function playbackRateFor(
+  source: ExactDuration,
+  record: ExactDuration,
+): { readonly numerator: number; readonly denominator: number } {
+  validatePublicDuration(source, "source duration");
+  validatePublicDuration(record, "record duration");
+  let numerator =
+    BigInt(source.value) *
+    BigInt(source.timebase.denominator) *
+    BigInt(record.timebase.numerator);
+  let denominator =
+    BigInt(source.timebase.numerator) *
+    BigInt(record.value) *
+    BigInt(record.timebase.denominator);
+  const divisor = greatestCommonDivisorBigInt(numerator, denominator);
+  numerator /= divisor;
+  denominator /= divisor;
+  return {
+    numerator: safeBigIntNumber(numerator, "playback rate numerator"),
+    denominator: safeBigIntNumber(denominator, "playback rate denominator"),
+  };
+}
+
+function fragmentIdsForInsert(
+  track: TimelineCanvasTrack,
+  at: ExactTime,
+  createId: TimelineEditCommandInput["createId"],
+): EditorialObjectId[] {
+  const point = BigInt(at.value);
+  const crossing = track.items.find((item) => {
+    if (item.kind === "transition") return false;
+    const range = modelRangeUnits(item.recordRange, track.timebase);
+    return range.start < point && point < range.end;
+  });
+  return crossing ? [newFragmentId(crossing, createId)] : [];
+}
+
+function fragmentIdsForRange(
+  track: TimelineCanvasTrack,
+  range: ExactTimeRange,
+  createId: TimelineEditCommandInput["createId"],
+): EditorialObjectId[] {
+  const start = BigInt(range.start.value);
+  const end = start + BigInt(range.duration.value);
+  const crossing = track.items.find((item) => {
+    if (item.kind === "transition") return false;
+    const itemRange = modelRangeUnits(item.recordRange, track.timebase);
+    return itemRange.start < start && itemRange.end > end;
+  });
+  return crossing ? [newFragmentId(crossing, createId)] : [];
+}
+
+function newFragmentId(
+  item: TimelineCanvasItem,
+  createId: TimelineEditCommandInput["createId"],
+): EditorialObjectId {
+  if (item.kind === "transition") {
+    throw new Error("Transitions cannot own edit fragments.");
+  }
+  return {
+    kind: item.kind,
+    id: checkedNewId(createId(item.kind), item.kind),
+  } as EditorialObjectId;
+}
+
+function selectedTimedItems(
+  track: TimelineCanvasTrack,
+  selectedItemIds: readonly string[] = [],
+): TimelineCanvasItem[] {
+  const sharedSelection = new Set(selectedItemIds);
+  return track.items.filter(
+    (item) =>
+      item.kind !== "transition" &&
+      (sharedSelection.size > 0
+        ? sharedSelection.has(item.id)
+        : item.selected),
+  );
+}
+
+function publicObjectId(item: TimelineCanvasItem): EditorialObjectId {
+  if (item.kind === "transition") {
+    throw new Error("Transitions are not timed edit targets.");
+  }
+  return { kind: item.kind, id: item.id } as EditorialObjectId;
+}
+
+function exactTrackEnd(track: TimelineCanvasTrack): ExactTime {
+  let end = 0n;
+  for (const item of track.items) {
+    if (item.kind === "transition") continue;
+    const range = modelRangeUnits(item.recordRange, track.timebase);
+    if (range.end > end) end = range.end;
+  }
+  return publicTime(safeBigIntNumber(end, "track end"), track.timebase);
+}
+
+function displayPointToRecordTime(
+  displaySeconds: number,
+  globalStartSeconds: number,
+  timebase: TimelineRate,
+): ExactTime {
+  const recordSeconds = displaySeconds - globalStartSeconds;
+  const units = Math.round(
+    (recordSeconds * timebase.numerator) / timebase.denominator,
+  );
+  if (!Number.isSafeInteger(units)) {
+    throw new Error("The edit point exceeds the supported exact range.");
+  }
+  return publicTime(units, timebase);
+}
+
+function displayRangeToRecordRange(
+  inPointSeconds: number,
+  outPointSeconds: number,
+  globalStartSeconds: number,
+  timebase: TimelineRate,
+): ExactTimeRange {
+  const start = displayPointToRecordTime(
+    Math.min(inPointSeconds, outPointSeconds),
+    globalStartSeconds,
+    timebase,
+  );
+  const end = displayPointToRecordTime(
+    Math.max(inPointSeconds, outPointSeconds),
+    globalStartSeconds,
+    timebase,
+  );
+  return {
+    start,
+    duration: publicDuration(end.value - start.value, timebase),
+  };
+}
+
+function publicRange(
+  range: TimelineExactRange,
+  expected: TimelineRate,
+): ExactTimeRange {
+  if (
+    !sameRate(range.start.timebase, expected) ||
+    !sameRate(range.duration.timebase, expected)
+  ) {
+    throw new Error("The selected target uses a different record clock.");
+  }
+  return {
+    start: publicTime(safeDecimalNumber(range.start.value, "record start"), expected),
+    duration: publicDuration(
+      safeDecimalNumber(range.duration.value, "record duration"),
+      expected,
+    ),
+  };
+}
+
+function exactSourceCoordinate(
+  time: SourceMonitorTime,
+  expectedTimebase: TimelineRate,
+  label: string,
+): number {
+  if (
+    time.timebase_numerator !== expectedTimebase.numerator ||
+    time.timebase_denominator !== expectedTimebase.denominator
+  ) {
+    throw new Error(`The ${label} timebase does not match the loaded stream.`);
+  }
+  if (!Number.isSafeInteger(time.value)) {
+    throw new Error(`The ${label} coordinate is outside the exact safe range.`);
+  }
+  return time.value;
+}
+
+function publicTime(value: number, timebase: TimelineRate): ExactTime {
+  return { value, timebase };
+}
+
+function publicDuration(value: number, timebase: TimelineRate): ExactDuration {
+  return { value, timebase };
+}
+
+function clonePublicRange(range: ExactTimeRange): ExactTimeRange {
+  return {
+    start: {
+      value: range.start.value,
+      timebase: { ...range.start.timebase },
+    },
+    duration: {
+      value: range.duration.value,
+      timebase: { ...range.duration.timebase },
+    },
+  };
+}
+
+function validatePublicRange(range: ExactTimeRange, label: string): void {
+  validatePublicTime(range.start, `${label} start`);
+  validatePublicDuration(range.duration, `${label} duration`);
+  if (!sameRate(range.start.timebase, range.duration.timebase)) {
+    throw new Error(`The ${label} must use one exact timebase.`);
+  }
+}
+
+function validatePublicTime(value: ExactTime, label: string): void {
+  if (!Number.isSafeInteger(value.value)) {
+    throw new Error(`The ${label} must be a safe integer.`);
+  }
+  validateTimebase(value.timebase, label);
+}
+
+function validatePublicDuration(value: ExactDuration, label: string): void {
+  if (!Number.isSafeInteger(value.value) || value.value <= 0) {
+    throw new Error(`The ${label} must be a positive safe integer.`);
+  }
+  validateTimebase(value.timebase, label);
+}
+
+function validateTimebase(value: TimelineRate, label: string): void {
+  if (
+    !Number.isSafeInteger(value.numerator) ||
+    !Number.isSafeInteger(value.denominator) ||
+    value.numerator <= 0 ||
+    value.denominator <= 0
+  ) {
+    throw new Error(`The ${label} has an invalid timebase.`);
+  }
+}
+
+function modelRangeUnits(
+  range: TimelineExactRange,
+  expected: TimelineRate,
+): { readonly start: bigint; readonly end: bigint } {
+  if (
+    !sameRate(range.start.timebase, expected) ||
+    !sameRate(range.duration.timebase, expected)
+  ) {
+    throw new Error("Target track items do not share one exact record clock.");
+  }
+  const start = BigInt(range.start.value);
+  return { start, end: start + BigInt(range.duration.value) };
+}
+
+function checkedNewId(
+  value: string,
+  kind: Exclude<TimelineItemKind, "transition">,
+): string {
+  const expected = new RegExp(`^${kind}:[0-9a-f]{32}$`);
+  const zero = new RegExp(`^${kind}:0{32}$`);
+  if (!expected.test(value) || zero.test(value)) {
+    throw new Error(`The generated ${kind} identity is invalid.`);
+  }
+  return value;
+}
+
+function safeDecimalNumber(value: string, label: string): number {
+  const result = Number(value);
+  if (!Number.isSafeInteger(result)) {
+    throw new Error(`The ${label} exceeds the supported exact range.`);
+  }
+  return result;
+}
+
+function safeBigIntNumber(value: bigint, label: string): number {
+  const result = Number(value);
+  if (!Number.isSafeInteger(result)) {
+    throw new Error(`The ${label} exceeds the supported exact range.`);
+  }
+  return result;
+}
+
+function divideRoundedNearest(numerator: bigint, denominator: bigint): bigint {
+  if (numerator < 0n || denominator <= 0n) {
+    throw new Error("Exact duration conversion requires positive terms.");
+  }
+  return (numerator + denominator / 2n) / denominator;
+}
+
+function greatestCommonDivisorBigInt(left: bigint, right: bigint): bigint {
+  let a = left;
+  let b = right;
+  while (b !== 0n) {
+    const remainder = a % b;
+    a = b;
+    b = remainder;
+  }
+  return a;
+}
+
+function requireSafeRevision(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error("Project revision must be a nonnegative safe integer.");
+  }
+}
+
+function requireTransactionId(value: string): void {
+  if (value.trim().length === 0 || value.length > 128 || /[\u0000-\u001f\u007f]/.test(value)) {
+    throw new Error("Timeline edit transaction identity is invalid.");
+  }
 }
 
 function parseItem(
@@ -1326,7 +2134,7 @@ function validateTrackSequence(track: PendingTrack, path: string): void {
     }
 
     const range = item.parsedRecordRange;
-    if (!sameRate(track.recordRate, range.exact.start.timebase)) {
+    if (!sameRate(track.timebase, range.exact.start.timebase)) {
       throw projectionError(
         `${path}.items[${index}].record_range`,
         "timed item must use its track's exact record clock",
@@ -1461,7 +2269,7 @@ function parseTrackKind(value: unknown, path: string): TimelineTrackKind {
   return kind;
 }
 
-function parseTrackRecordRate(
+function parseTrackTimebase(
   semantics: Record<string, unknown>,
   kind: TimelineTrackKind,
   path: string,

@@ -5,18 +5,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use superi_api::commands::{GetEditorState, GetEditorStateResult};
-use superi_api::editor::{ExecuteProjectCommand, ExecuteProjectCommandResult};
-use superi_api::events::ProjectStateChanged;
-use superi_api::local::LocalProjectExecution;
+use superi_api::commands::{ApiCommand, GetEditorState, GetEngineIntegrationValidation};
+use superi_api::editor::ExecuteProjectCommand;
+use superi_api::events::{ApiEvent, ProjectStateChanged};
 use superi_api::schema::{PublicApiError, PublicErrorContext};
-use superi_api::version::{
-    EXECUTE_PROJECT_COMMAND_METHOD, GET_EDITOR_STATE_METHOD, PROJECT_STATE_CHANGED_EVENT,
-};
 use superi_core::diagnostics::TraceValue;
-use superi_core::error::{Error, ErrorCategory, Recoverability};
+use superi_core::error::{Error, ErrorCategory, ErrorContext, Recoverability};
 
 use crate::engine::EngineConnection;
 use crate::project_lifecycle::{
@@ -28,11 +25,11 @@ pub const DESKTOP_API_EVENT: &str = "superi://api-event";
 
 const COMPONENT: &str = "superi.desktop.transport";
 const STREAM_ID: &str = "superi.desktop.events.v1";
-const INTEGRATION_VALIDATION_METHOD: &str = "superi.engine.integration.validation.get";
 const ENGINE_INTROSPECTION_EVENT: &str = "superi.engine.introspection.changed";
 const MAX_PENDING_REQUESTS: usize = 32;
 const RETAINED_EVENTS: usize = 64;
 const ENGINE_RESPONSE_TIMEOUT: Duration = Duration::from_secs(2);
+const EDITOR_STATE_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Closed command surface accepted by the single desktop API dispatcher.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -122,20 +119,15 @@ pub enum DesktopTransportReply {
     Disconnected { generation: u64 },
 }
 
-/// One dispatcher outcome and its optional ordered event side effect.
+/// One dispatcher outcome and its ordered event side effects.
 pub struct DesktopTransportOutcome {
     reply: DesktopTransportReply,
-    event: Option<DesktopEventEnvelope>,
-}
-
-struct RoutedResponse {
-    response: Value,
-    event: Option<(String, Value)>,
+    events: Vec<DesktopEventEnvelope>,
 }
 
 impl DesktopTransportOutcome {
-    pub(crate) fn into_parts(self) -> (DesktopTransportReply, Option<DesktopEventEnvelope>) {
-        (self.reply, self.event)
+    pub(crate) fn into_parts(self) -> (DesktopTransportReply, Vec<DesktopEventEnvelope>) {
+        (self.reply, self.events)
     }
 
     /// Returns the generated response or control reply.
@@ -146,9 +138,14 @@ impl DesktopTransportOutcome {
 
     /// Returns the ordered replacement event produced by this request, if any.
     #[must_use]
-    pub const fn event(&self) -> Option<&DesktopEventEnvelope> {
-        self.event.as_ref()
+    pub fn event(&self) -> Option<&DesktopEventEnvelope> {
+        self.events.first()
     }
+}
+
+struct RoutedResponse {
+    response: Value,
+    events: Vec<(String, Value)>,
 }
 
 struct DesktopTransportInner {
@@ -221,10 +218,13 @@ impl DesktopTransportState {
                 request_id,
                 method,
                 request,
-            } => self.request(engine, projects, generation, request_id, method, request),
+            } => self.request(projects, engine, generation, request_id, method, request),
             control => self
                 .dispatch_control(control)
-                .map(|reply| DesktopTransportOutcome { reply, event: None }),
+                .map(|reply| DesktopTransportOutcome {
+                    reply,
+                    events: Vec::new(),
+                }),
         }
     }
 
@@ -312,8 +312,8 @@ impl DesktopTransportState {
 
     fn request(
         &self,
+        project: &DesktopProjectState,
         engine: &EngineConnection,
-        projects: &DesktopProjectState,
         generation: u64,
         request_id: String,
         method: String,
@@ -325,89 +325,103 @@ impl DesktopTransportState {
             self.remove_pending(generation, &request_id, &token)?;
             return Err(cancelled_request_error(generation, &request_id, &method));
         }
-        let result = self.route_request(engine, projects, &method, request);
+        let result = self.route_request(project, engine, &method, request);
         self.remove_pending(generation, &request_id, &token)?;
 
         if token.load(Ordering::Acquire) && cancellation_wins_after_routing(&method) {
             return Err(cancelled_request_error(generation, &request_id, &method));
         }
 
-        let RoutedResponse { response, event } = result?;
-        let event = event
-            .map(|(event, payload)| self.publish_event(generation, event, payload))
-            .transpose()?;
-
+        let routed = result.map_err(|error| {
+            public_error_from_core(
+                &error,
+                "request",
+                &[
+                    ("generation", generation.into()),
+                    ("method", method.as_str().into()),
+                    ("request_id", request_id.as_str().into()),
+                ],
+            )
+        })?;
+        let mut events = Vec::with_capacity(routed.events.len());
+        for (event, payload) in routed.events {
+            events.push(self.publish_event(generation, event, payload)?);
+        }
         Ok(DesktopTransportOutcome {
             reply: DesktopTransportReply::Response {
                 generation,
                 request_id,
-                response,
+                response: routed.response,
             },
-            event,
+            events,
         })
     }
 
     fn route_request(
         &self,
+        project: &DesktopProjectState,
         engine: &EngineConnection,
-        projects: &DesktopProjectState,
         method: &str,
         request: Value,
-    ) -> Result<RoutedResponse, PublicApiError> {
+    ) -> Result<RoutedResponse, Error> {
         match method {
-            INTEGRATION_VALIDATION_METHOD => {
+            GetEngineIntegrationValidation::METHOD => {
                 let result = engine
-                    .request_integration_validation()
-                    .and_then(|pending| pending.wait(ENGINE_RESPONSE_TIMEOUT))
-                    .map_err(|error| public_error_from_core(&error, "request_engine", &[]))?;
+                    .request_integration_validation()?
+                    .wait(ENGINE_RESPONSE_TIMEOUT)?;
                 Ok(RoutedResponse {
-                    response: serialize_response(&result, method)?,
-                    event: Some((
+                    response: serialize_generated_response(&result)?,
+                    events: vec![(
                         ENGINE_INTROSPECTION_EVENT.to_owned(),
                         serde_json::json!({ "snapshot": result.snapshot().engine() }),
-                    )),
+                    )],
                 })
             }
-            GET_EDITOR_STATE_METHOD => {
-                let request = serde_json::from_value::<GetEditorState>(request).map_err(|_| {
-                    transport_error(
-                        ErrorCategory::InvalidInput,
-                        Recoverability::UserCorrectable,
-                        "the editor-state request does not match its generated schema",
-                        "decode_request",
-                        &[("method", method.into())],
-                    )
-                })?;
-                let result = projects
-                    .inspect_editor(request)
-                    .map_err(|failure| public_error_from_project(&failure, "inspect_editor"))?;
+            GetEditorState::METHOD => {
+                let request = decode_generated_request::<GetEditorState>(request)?;
+                let lease = project
+                    .begin_editor_request()
+                    .map_err(project_failure_error)?;
+                let route = lease.route().clone();
+                let result = engine
+                    .request_editor_state(route, request)?
+                    .wait(EDITOR_STATE_RESPONSE_TIMEOUT)?;
+                drop(lease);
                 Ok(RoutedResponse {
-                    response: serialize_response::<GetEditorStateResult>(&result, method)?,
-                    event: None,
+                    response: serialize_generated_response(&result)?,
+                    events: Vec::new(),
                 })
             }
-            EXECUTE_PROJECT_COMMAND_METHOD => {
-                let request =
-                    serde_json::from_value::<ExecuteProjectCommand>(request).map_err(|_| {
-                        transport_error(
-                            ErrorCategory::InvalidInput,
-                            Recoverability::UserCorrectable,
-                            "the project-command request does not match its generated schema",
-                            "decode_request",
-                            &[("method", method.into())],
-                        )
-                    })?;
-                let execution = projects
-                    .execute_timeline(request)
-                    .map_err(|failure| public_error_from_project(&failure, "execute_timeline"))?;
-                route_project_execution(execution, method)
+            ExecuteProjectCommand::METHOD => {
+                let request = decode_generated_request::<ExecuteProjectCommand>(request)?;
+                let lease = project
+                    .begin_editor_request()
+                    .map_err(project_failure_error)?;
+                let route = lease.route().clone();
+                let output = engine.request_project_command(route, request)?.wait()?;
+                lease
+                    .accept(output.identity().clone())
+                    .map_err(project_failure_error)?;
+                let events = output
+                    .events()
+                    .iter()
+                    .map(|event| {
+                        Ok((
+                            ProjectStateChanged::NAME.to_owned(),
+                            serialize_generated_response(event)?,
+                        ))
+                    })
+                    .collect::<std::result::Result<Vec<_>, Error>>()?;
+                Ok(RoutedResponse {
+                    response: serialize_generated_response(output.result())?,
+                    events,
+                })
             }
-            _ => Err(transport_error(
+            _ => Err(engine_transport_error(
                 ErrorCategory::Unsupported,
                 Recoverability::Degraded,
-                "this generated method has no desktop route yet",
+                "this generated method has no desktop engine route yet",
                 "route_request",
-                &[("method", method.into())],
             )),
         }
     }
@@ -439,12 +453,10 @@ impl DesktopTransportState {
                 &[("method", method.into())],
             ));
         }
-        if !matches!(
-            method,
-            INTEGRATION_VALIDATION_METHOD
-                | GET_EDITOR_STATE_METHOD
-                | EXECUTE_PROJECT_COMMAND_METHOD
-        ) {
+        if method != GetEngineIntegrationValidation::METHOD
+            && method != GetEditorState::METHOD
+            && method != ExecuteProjectCommand::METHOD
+        {
             return Err(transport_error(
                 ErrorCategory::Unsupported,
                 Recoverability::Degraded,
@@ -453,7 +465,7 @@ impl DesktopTransportState {
                 &[("method", method.into())],
             ));
         }
-        let valid_request = if method == INTEGRATION_VALIDATION_METHOD {
+        let valid_request = if method == GetEngineIntegrationValidation::METHOD {
             request.is_null() || request.as_object().is_some_and(serde_json::Map::is_empty)
         } else {
             request.is_object()
@@ -577,7 +589,7 @@ impl DesktopTransportState {
 fn cancellation_wins_after_routing(method: &str) -> bool {
     // A durable authored command cannot be abandoned after commit. Its response and
     // replacement event must win a late cancellation so the caller can reconcile.
-    method != EXECUTE_PROJECT_COMMAND_METHOD
+    method != ExecuteProjectCommand::METHOD
 }
 
 fn cancelled_request_error(generation: u64, request_id: &str, method: &str) -> PublicApiError {
@@ -616,59 +628,31 @@ pub fn event_emission_error() -> PublicApiError {
     )
 }
 
-fn public_error_from_core(
-    error: &Error,
-    operation: &'static str,
-    fields: &[(&str, TraceValue)],
-) -> PublicApiError {
-    let context = public_context(operation, fields);
-    PublicApiError::from_error(error, vec![context], None)
-        .expect("fixed desktop transport public error context should be valid")
-}
-
-fn route_project_execution(
-    execution: LocalProjectExecution<ExecuteProjectCommandResult, ProjectStateChanged>,
-    method: &str,
-) -> Result<RoutedResponse, PublicApiError> {
-    if execution.events().len() > 1 {
-        return Err(transport_error(
-            ErrorCategory::Internal,
-            Recoverability::Terminal,
-            "one project command produced more than one replacement event",
-            "route_project_event",
-            &[("method", method.into())],
-        ));
-    }
-    let event = execution
-        .events()
-        .first()
-        .map(|event| {
-            serialize_response(event, PROJECT_STATE_CHANGED_EVENT)
-                .map(|payload| (PROJECT_STATE_CHANGED_EVENT.to_owned(), payload))
-        })
-        .transpose()?;
-    Ok(RoutedResponse {
-        response: serialize_response(execution.result(), method)?,
-        event,
-    })
-}
-
-fn serialize_response<T: Serialize>(value: &T, method: &str) -> Result<Value, PublicApiError> {
-    serde_json::to_value(value).map_err(|_| {
-        transport_error(
-            ErrorCategory::Internal,
-            Recoverability::Terminal,
-            "the generated response could not be serialized",
-            "serialize_response",
-            &[("method", method.into())],
+fn decode_generated_request<T: DeserializeOwned>(request: Value) -> Result<T, Error> {
+    serde_json::from_value(request).map_err(|source| {
+        Error::with_source(
+            ErrorCategory::InvalidInput,
+            Recoverability::UserCorrectable,
+            "the generated desktop request payload could not be decoded",
+            source,
         )
+        .with_context(ErrorContext::new(COMPONENT, "decode_request"))
     })
 }
 
-fn public_error_from_project(
-    failure: &DesktopProjectFailure,
-    operation: &'static str,
-) -> PublicApiError {
+fn serialize_generated_response<T: Serialize>(response: &T) -> Result<Value, Error> {
+    serde_json::to_value(response).map_err(|source| {
+        Error::with_source(
+            ErrorCategory::Internal,
+            Recoverability::Terminal,
+            "the generated desktop response could not be serialized",
+            source,
+        )
+        .with_context(ErrorContext::new(COMPONENT, "serialize_response"))
+    })
+}
+
+fn project_failure_error(failure: DesktopProjectFailure) -> Error {
     let (category, recoverability) = match failure.class() {
         DesktopProjectFailureClass::Retryable => {
             (ErrorCategory::Unavailable, Recoverability::Retryable)
@@ -677,19 +661,35 @@ fn public_error_from_project(
             (ErrorCategory::Unavailable, Recoverability::Degraded)
         }
         DesktopProjectFailureClass::UserCorrectable => {
-            (ErrorCategory::InvalidInput, Recoverability::UserCorrectable)
+            (ErrorCategory::Conflict, Recoverability::UserCorrectable)
         }
         DesktopProjectFailureClass::Terminal => (ErrorCategory::Internal, Recoverability::Terminal),
     };
-    let error = Error::new(category, recoverability, failure.title().to_owned());
-    public_error_from_core(
-        &error,
-        operation,
-        &[
-            ("code", failure.code().into()),
-            ("action", failure.action().into()),
-        ],
+    Error::new(category, recoverability, failure.title().to_owned()).with_context(
+        ErrorContext::new(COMPONENT, "project_route")
+            .with_field("code", failure.code().to_owned())
+            .with_field("action", failure.action().to_owned()),
     )
+}
+
+fn engine_transport_error(
+    category: ErrorCategory,
+    recoverability: Recoverability,
+    message: &'static str,
+    operation: &'static str,
+) -> Error {
+    Error::new(category, recoverability, message)
+        .with_context(ErrorContext::new(COMPONENT, operation))
+}
+
+fn public_error_from_core(
+    error: &Error,
+    operation: &'static str,
+    fields: &[(&str, TraceValue)],
+) -> PublicApiError {
+    let context = public_context(operation, fields);
+    PublicApiError::from_error(error, vec![context], None)
+        .expect("fixed desktop transport public error context should be valid")
 }
 
 fn transport_error(
@@ -704,7 +704,8 @@ fn transport_error(
 }
 
 fn public_context(operation: &'static str, fields: &[(&str, TraceValue)]) -> PublicErrorContext {
-    let mut context = PublicErrorContext::reviewed(COMPONENT, format!("{COMPONENT}.{operation}"))
+    let operation = format!("{COMPONENT}.{operation}");
+    let mut context = PublicErrorContext::reviewed(COMPONENT, operation)
         .expect("fixed desktop transport context should be valid");
     for (name, value) in fields {
         context = context
@@ -716,7 +717,132 @@ fn public_context(operation: &'static str, fields: &[(&str, TraceValue)]) -> Pub
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
+    use superi_api::commands::GetEditorStateResult;
+    use superi_api::editor::{
+        EditorTrackItem, ExactDuration, ExactTime, ExactTimeRange, ExecuteProjectCommandResult,
+        ProjectAction, ProjectCommand, TimelineEditOperation,
+    };
+    use superi_engine::editor;
+    use superi_engine::editor::ProjectDatabase;
+
+    use crate::engine::LinkedEngineProcess;
+    use crate::lifecycle::{ApplicationLifecycle, ApplicationLifecyclePhase};
+    use crate::project_lifecycle::{DesktopProjectCommand, DesktopProjectState};
+
     use super::*;
+
+    const PROJECT: editor::ProjectId = editor::ProjectId::from_raw(0xe001);
+    const ROOT: editor::TimelineId = editor::TimelineId::from_raw(0xe002);
+    const TRACK: editor::TrackId = editor::TrackId::from_raw(0xe003);
+    const INITIAL_GAP: editor::GapId = editor::GapId::from_raw(0xe004);
+    const APPENDED_GAP: editor::GapId = editor::GapId::from_raw(0xe005);
+
+    struct TemporaryTransportProject {
+        root: PathBuf,
+        path: PathBuf,
+    }
+
+    impl TemporaryTransportProject {
+        fn new() -> Self {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time is available")
+                .as_nanos();
+            let root = std::env::temp_dir().join(format!(
+                "superi-desktop-transport-{}-{nonce}",
+                std::process::id()
+            ));
+            Self {
+                path: root.join("transport.superi"),
+                root,
+            }
+        }
+    }
+
+    impl Drop for TemporaryTransportProject {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    fn exact_range(start: i64, duration: u64) -> editor::TimeRange {
+        let timebase = editor::FrameRate::FPS_24.timebase();
+        editor::TimeRange::new(
+            editor::RationalTime::new(start, timebase),
+            editor::Duration::new(duration, timebase).unwrap(),
+        )
+        .unwrap()
+    }
+
+    fn project_document() -> editor::ProjectDocument {
+        let timebase = editor::FrameRate::FPS_24.timebase();
+        let timeline = editor::Timeline::new(
+            ROOT,
+            "Transport timeline",
+            timebase,
+            editor::RationalTime::zero(timebase),
+            vec![editor::Track::new(
+                TRACK,
+                "V1",
+                editor::TrackSemantics::Video(editor::VideoTrackSemantics::new(
+                    editor::FrameRate::FPS_24,
+                    editor::VideoCompositing::Over,
+                )),
+                vec![editor::TrackItem::Gap(editor::Gap::new(
+                    INITIAL_GAP,
+                    "Initial gap",
+                    exact_range(0, 24),
+                ))],
+            )],
+        );
+        let editorial = editor::EditorialProject::new(
+            PROJECT,
+            "Transport project",
+            std::iter::empty::<editor::LinkedMediaReference>(),
+            [timeline],
+        )
+        .unwrap();
+        editor::ProjectDocument::new(editorial, ROOT).unwrap()
+    }
+
+    fn public_range(start: i64, duration: u64) -> ExactTimeRange {
+        let timebase = superi_api::editor::ExactTimebase {
+            numerator: 24,
+            denominator: 1,
+        };
+        ExactTimeRange {
+            start: ExactTime {
+                value: start,
+                timebase,
+            },
+            duration: ExactDuration {
+                value: duration,
+                timebase,
+            },
+        }
+    }
+
+    fn wait_for_running_generation(lifecycle: &ApplicationLifecycle) {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            let snapshot = lifecycle.snapshot();
+            if snapshot.application_phase() == ApplicationLifecyclePhase::Running
+                && snapshot.engine_generation() == 1
+            {
+                return;
+            }
+            let remaining = deadline
+                .checked_duration_since(Instant::now())
+                .expect("linked engine lifecycle transition timed out");
+            lifecycle
+                .wait_for_change(snapshot.revision(), remaining)
+                .expect("linked engine lifecycle wait should succeed");
+        }
+    }
 
     #[test]
     fn public_error_projection_preserves_every_recoverability_and_safe_context() {
@@ -751,7 +877,11 @@ mod tests {
             panic!("connect returned an unexpected reply");
         };
         let token = transport
-            .admit_request(generation, "request-1", INTEGRATION_VALIDATION_METHOD)
+            .admit_request(
+                generation,
+                "request-1",
+                GetEngineIntegrationValidation::METHOD,
+            )
             .unwrap();
 
         let first = transport
@@ -787,11 +917,132 @@ mod tests {
     #[test]
     fn late_cancellation_cannot_hide_a_durable_project_commit() {
         assert!(!cancellation_wins_after_routing(
-            EXECUTE_PROJECT_COMMAND_METHOD
+            ExecuteProjectCommand::METHOD
         ));
         assert!(cancellation_wins_after_routing(
-            INTEGRATION_VALIDATION_METHOD
+            GetEngineIntegrationValidation::METHOD
         ));
-        assert!(cancellation_wins_after_routing(GET_EDITOR_STATE_METHOD));
+        assert!(cancellation_wins_after_routing(GetEditorState::METHOD));
+    }
+
+    #[test]
+    fn desktop_transport_routes_editor_state_and_durable_edit_events_end_to_end() {
+        let temporary = TemporaryTransportProject::new();
+        fs::create_dir_all(&temporary.root).unwrap();
+        let initial = project_document().snapshot();
+        let mut database = ProjectDatabase::create(&temporary.path).unwrap();
+        database.replace(&initial).unwrap();
+        drop(database);
+
+        let project = DesktopProjectState::default();
+        project.initialize(temporary.root.join("recovery")).unwrap();
+        project
+            .execute(DesktopProjectCommand::Open {
+                path: temporary.path.to_string_lossy().into_owned(),
+            })
+            .unwrap();
+
+        let lifecycle = ApplicationLifecycle::new().unwrap();
+        let process = LinkedEngineProcess::launch(lifecycle.clone()).unwrap();
+        wait_for_running_generation(&lifecycle);
+        let connection = process.connection();
+        let transport = DesktopTransportState::new();
+        let DesktopTransportReply::Connected { generation, .. } = transport
+            .dispatch_control(DesktopTransportCommand::Connect { after_sequence: 0 })
+            .unwrap()
+        else {
+            panic!("connect returned an unexpected reply");
+        };
+
+        let state_outcome = transport
+            .dispatch_blocking(
+                &connection,
+                &project,
+                DesktopTransportCommand::Request {
+                    generation,
+                    request_id: "state-0".to_owned(),
+                    method: GetEditorState::METHOD.to_owned(),
+                    request: serde_json::to_value(GetEditorState::new("state-0")).unwrap(),
+                },
+            )
+            .unwrap();
+        let (state_reply, state_events) = state_outcome.into_parts();
+        assert!(state_events.is_empty());
+        let DesktopTransportReply::Response { response, .. } = state_reply else {
+            panic!("editor state returned an unexpected reply");
+        };
+        let state: GetEditorStateResult = serde_json::from_value(response).unwrap();
+        assert_eq!(state.snapshot().project().project_revision(), 0);
+
+        let command = ExecuteProjectCommand::new(
+            "append-through-transport",
+            0,
+            ProjectCommand::Apply {
+                actions: vec![ProjectAction::EditTimeline {
+                    operations: vec![TimelineEditOperation::Append {
+                        timeline_id: ROOT.to_string(),
+                        track_id: TRACK.to_string(),
+                        material: EditorTrackItem::Gap {
+                            id: APPENDED_GAP.to_string(),
+                            name: "Appended through transport".to_owned(),
+                            record_range: public_range(0, 12),
+                        },
+                    }],
+                }],
+            },
+        );
+        let command_outcome = transport
+            .dispatch_blocking(
+                &connection,
+                &project,
+                DesktopTransportCommand::Request {
+                    generation,
+                    request_id: "append-1".to_owned(),
+                    method: ExecuteProjectCommand::METHOD.to_owned(),
+                    request: serde_json::to_value(command).unwrap(),
+                },
+            )
+            .unwrap();
+        let (command_reply, command_events) = command_outcome.into_parts();
+        let DesktopTransportReply::Response { response, .. } = command_reply else {
+            panic!("project command returned an unexpected reply");
+        };
+        let result: ExecuteProjectCommandResult = serde_json::from_value(response).unwrap();
+        assert_eq!(result.state().project_revision(), 1);
+        assert_eq!(result.state().undo_depth(), 1);
+        assert_eq!(command_events.len(), 1);
+        assert_eq!(command_events[0].event(), ProjectStateChanged::NAME);
+        let event: ProjectStateChanged =
+            serde_json::from_value(command_events[0].payload().clone()).unwrap();
+        assert_eq!(event.transaction_id(), "append-through-transport");
+        assert_eq!(event.project_revision(), 1);
+        assert_eq!(
+            project
+                .snapshot()
+                .unwrap()
+                .active()
+                .unwrap()
+                .project_revision(),
+            1
+        );
+
+        let reopened = ProjectDatabase::open_read_only(&temporary.path)
+            .unwrap()
+            .load()
+            .unwrap();
+        assert_eq!(
+            reopened
+                .editorial_project()
+                .timeline(ROOT)
+                .unwrap()
+                .track(TRACK)
+                .unwrap()
+                .items()
+                .len(),
+            2
+        );
+
+        lifecycle.request_shutdown().unwrap();
+        process.join().unwrap();
     }
 }
