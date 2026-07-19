@@ -32,6 +32,7 @@ import type {
   ProjectAction,
 } from "./api.ts";
 import type { SourceMonitorSnapshot } from "./project-lifecycle.ts";
+import type { TimelineEditorialFeedback } from "./timeline-editorial-feedback.ts";
 import { classifyDesktopTransportError } from "./transport.ts";
 
 export type ApplicationPanelRenderer = ComponentType;
@@ -58,6 +59,10 @@ export interface ApplicationContextValue {
   ) => Promise<ExecuteProjectCommandResult>;
   readonly sourceMonitor: SourceMonitorSnapshot | null;
   readonly setSourceMonitor: (snapshot: SourceMonitorSnapshot | null) => void;
+  readonly editorialFeedback: TimelineEditorialFeedback | null;
+  readonly setEditorialFeedback: (
+    feedback: TimelineEditorialFeedback | null,
+  ) => void;
 }
 
 const ApplicationContext = createContext<ApplicationContextValue | null>(null);
@@ -85,6 +90,8 @@ export function ApplicationProvider({
   );
   const [sourceMonitor, setSourceMonitor] =
     useState<SourceMonitorSnapshot | null>(null);
+  const [editorialFeedback, setEditorialFeedback] =
+    useState<TimelineEditorialFeedback | null>(null);
   const editorProjectRef = useRef(editorProject);
   const editorRequestRevision = useRef(0);
   const editorTransactionRevision = useRef(0);
@@ -287,6 +294,8 @@ export function ApplicationProvider({
         executeProjectCommand,
         sourceMonitor,
         setSourceMonitor,
+        editorialFeedback,
+        setEditorialFeedback,
       }}
     >
       {children}

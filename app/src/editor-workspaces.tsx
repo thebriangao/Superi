@@ -1,4 +1,8 @@
-import { NativeViewport, SourceMonitor } from "./native-viewport.tsx";
+import {
+  EditorialAudioMeters,
+  NativeViewport,
+  SourceMonitor,
+} from "./native-viewport.tsx";
 import { useCallback, type ReactNode } from "react";
 import type {
   TimelineMarkerMutation,
@@ -21,6 +25,8 @@ export function EditingWorkspacePanel() {
     dispatch,
     sourceMonitor,
     setSourceMonitor,
+    editorialFeedback,
+    setEditorialFeedback,
     state,
   } = useApplication();
   const snapshot = editorProject.snapshot;
@@ -51,9 +57,15 @@ export function EditingWorkspacePanel() {
         <SourceMonitor
           projectRevision={snapshot?.project.project_revision ?? null}
           onSnapshotChange={setSourceMonitor}
+          feedback={editorialFeedback?.source ?? null}
         />
-        <NativeViewport role="program" label="Program" />
+        <NativeViewport
+          role="program"
+          label="Program"
+          feedback={editorialFeedback?.program ?? null}
+        />
       </div>
+      <EditorialAudioMeters feedback={editorialFeedback?.audio ?? null} />
       {snapshot ? (
         <>
           <TimelineWorkspace
@@ -70,6 +82,7 @@ export function EditingWorkspacePanel() {
             sourceMonitor={sourceMonitor}
             onExecuteProjectCommand={executeProjectCommand}
             mutateMarkers={mutateMarkers}
+            onEditorialFeedback={setEditorialFeedback}
           />
           <div className="editor-summary-grid">
             <Metric label="Project" value={snapshot.project.project_id} />

@@ -34,6 +34,11 @@ import type {
 } from "./api.ts";
 import type { SourceMonitorSnapshot } from "./project-lifecycle.ts";
 import {
+  projectTimelineEditorialFeedback,
+  type TimelineEditorialFeedback,
+  type TimelineEditorialFeedbackPhase,
+} from "./timeline-editorial-feedback.ts";
+import {
   generateProjectMediaPreview,
   readProjectMediaLibrary,
   type MediaPreviewBundle,
@@ -247,6 +252,9 @@ export interface TimelineWorkspaceProps {
   readonly mutateMarkers: (
     mutations: readonly TimelineMarkerMutation[],
   ) => Promise<string>;
+  readonly onEditorialFeedback: (
+    feedback: TimelineEditorialFeedback | null,
+  ) => void;
 }
 
 export function TimelineWorkspace({
@@ -263,6 +271,7 @@ export function TimelineWorkspace({
   sourceMonitor,
   onExecuteProjectCommand,
   mutateMarkers,
+  onEditorialFeedback,
 }: TimelineWorkspaceProps) {
   const [requestedTimelinePath, setRequestedTimelinePath] = useState<readonly string[]>(
     () => [rootTimelineId],
@@ -545,6 +554,48 @@ export function TimelineWorkspace({
   const commandPendingRef = useRef(false);
   const [commandStatus, setCommandStatus] = useState(
     "Choose an exact target and editorial gesture.",
+  );
+  const editorialFeedback = useMemo(() => {
+    if (!model) return null;
+    const clips =
+      clipProjection?.status === "ready" ? clipProjection.clips : [];
+    const unavailableReason =
+      clipProjection?.status === "unavailable" ? clipProjection.reason : null;
+    return projectTimelineEditorialFeedback({
+      model,
+      clips,
+      audio: snapshot.audio,
+      tool: editingTool,
+      target: activeEditTarget,
+      plan: editPlan,
+      playheadSeconds: playhead,
+      phase: timelineEditorialFeedbackPhase(
+        unavailableReason,
+        editFailure,
+        commandPending,
+        editPlan,
+        editMessage,
+      ),
+      message: unavailableReason ?? editMessage,
+    });
+  }, [
+    activeEditTarget,
+    clipProjection,
+    commandPending,
+    editFailure,
+    editMessage,
+    editPlan,
+    editingTool,
+    model,
+    playhead,
+    snapshot.audio,
+  ]);
+  useEffect(() => {
+    onEditorialFeedback(editorialFeedback);
+  }, [editorialFeedback, onEditorialFeedback]);
+  useEffect(
+    () => () => onEditorialFeedback(null),
+    [onEditorialFeedback],
   );
   const transactionSequenceRef = useRef(0);
   const nestedCandidates = useMemo(
@@ -4995,6 +5046,21 @@ function timelineToolUsesEdge(tool: TimelineEditingTool): boolean {
 
 function timelineToolLabel(tool: TimelineEditingTool): string {
   return timelineEditingTools.find((candidate) => candidate.id === tool)?.label ?? tool;
+}
+
+function timelineEditorialFeedbackPhase(
+  unavailableReason: string | null,
+  editFailure: string | null,
+  commandPending: boolean,
+  editPlan: TimelineEditPlan | null,
+  editMessage: string,
+): TimelineEditorialFeedbackPhase {
+  if (unavailableReason) return "unavailable";
+  if (editFailure) return "failed";
+  if (commandPending) return "applying";
+  if (editPlan) return "preview";
+  if (editMessage.includes(" applied at project revision ")) return "applied";
+  return "idle";
 }
 
 function timelineEditErrorMessage(error: unknown): string {

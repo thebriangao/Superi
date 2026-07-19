@@ -53,7 +53,7 @@ test("five professional workspaces are exact views over the existing application
   assert.match(workspaces, /onSnapshotChange=\{setSourceMonitor\}/);
   assert.match(workspaces, /onExecuteProjectCommand=\{executeProjectCommand\}/);
   assert.match(applicationContext, /superi\.project\.command\.execute/);
-  assert.match(workspaces, /<NativeViewport role="program" label="Program" \/>/);
+  assert.match(workspaces, /role="program"[\s\S]*?label="Program"/);
   assert.match(workspaces, /<NativeViewport role="composite" label="Composite" \/>/);
   assert.match(workspaces, /<NativeViewport role="color" label="Color" \/>/);
   assert.match(workspaces, /executeProjectActions={executeProjectActions}/);
@@ -183,4 +183,34 @@ test("audio projection preserves sample timing, channel order, routing, and cont
   assert.ok(Object.isFrozen(projection));
   assert.ok(Object.isFrozen(projection.source_channels));
   assert.ok(Object.isFrozen(projection.routes));
+});
+
+test("editorial feedback crosses the existing application owner into viewers and meters", () => {
+  const applicationContext = read(
+    resolve(appRoot, "src/application-context.tsx"),
+  );
+  const workspaces = read(resolve(appRoot, "src/editor-workspaces.tsx"));
+  const timeline = read(resolve(appRoot, "src/timeline-workspace.tsx"));
+  const nativeViewport = read(resolve(appRoot, "src/native-viewport.tsx"));
+  const styles = read(resolve(appRoot, "src/styles.css"));
+
+  assert.match(applicationContext, /editorialFeedback/);
+  assert.match(applicationContext, /setEditorialFeedback/);
+  assert.match(timeline, /projectTimelineEditorialFeedback/);
+  assert.match(timeline, /onEditorialFeedback/);
+  assert.match(workspaces, /feedback=\{editorialFeedback\?\.source \?\? null\}/);
+  assert.match(workspaces, /feedback=\{editorialFeedback\?\.program \?\? null\}/);
+  assert.match(workspaces, /<EditorialAudioMeters/);
+  assert.match(workspaces, /onEditorialFeedback=\{setEditorialFeedback\}/);
+  assert.match(nativeViewport, /TimelineViewerFeedback/);
+  assert.match(nativeViewport, /EditorialAudioMeters/);
+  assert.match(nativeViewport, /data-signal-status=\{feedback\.signalStatus\}/);
+  assert.match(nativeViewport, /data-route-state=\{route\.state\}/);
+  assert.match(styles, /\.viewer-editorial-feedback/);
+  assert.match(styles, /\.editorial-audio-meters/);
+  assert.match(styles, /\.editorial-audio-route\[data-route-state="routed"\]/);
+  assert.doesNotMatch(
+    workspaces,
+    /createContext|useReducer|useState|useSuperiApi|DesktopSuperiTransport|@tauri-apps/,
+  );
 });

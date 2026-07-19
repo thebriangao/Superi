@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: d43159bd64f6f2c59d23607e8c0cb64ba3ab0d2a8896d33f6023c9b73c5bf777
-source_files: 263
+source_hash: 9737338d2f40919255477b41de71c223d42661e8a2c7b791b1b41ac58bc9b9e1
+source_files: 266
 mapped_at_commit: working-tree
 ---
 
@@ -492,6 +492,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   gestures, complete visible marker state, exact and non-navigable navigation behavior, project
   history, strict public contracts, selected-project persistence, native routing, and immediate
   revision-fenced typed inverse reversal.
+- `docs/checkpoints/P3.W04.C016.md`: Durable implementation evidence for exact trim, slip, slide,
+  multicam, and audio consequences in source and program viewers plus the structural meter rack,
+  including canonical sample clocks, ordered channel routes, continuity seams, explicit unobserved
+  signal telemetry, native placement isolation, and application-owned transient state.
 
 ### Production desktop application
 
@@ -503,7 +507,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/package.json`: Declares the private production application package, exact toolchain and
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
   framework, editor-workspace, timeline-canvas, timeline-nesting, timeline-clip, and
-  timeline-transition contracts, and Tauri commands.
+  timeline-transition and editorial-feedback contracts, and Tauri commands.
 - `app/src/api.ts`: Re-exports the complete canonical generated TypeScript contract and constructs
   one frozen `SuperiApiBindings` surface around an injected `SuperiTransport` and `SuperiClient`.
 - `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
@@ -517,8 +521,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   classified failure retention above the existing injected generated API. It also owns unique
   project transaction identity, the visible project revision fence, durable authored action
   execution, the current source-monitor snapshot, exact generated project-command submission,
-  response correlation, failure classification, a typed generic project-action callback, and
-  complete replacement-state refresh for timeline consumers.
+  response correlation, failure classification, a typed generic project-action callback, one
+  application-owned cross-sibling editorial feedback replacement, and complete replacement-state
+  refresh for timeline consumers.
 - `app/src/editor-project.ts`: Defines the exact five workspace identities, public editor-state
   request construction, immutable presentation contract, and sample-preserving audio projection
   without React, transport, or mutable state ownership.
@@ -528,7 +533,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   editing viewers, one composite viewer, one color viewer, and the canonical timeline canvas. It
   passes the existing shared selection, dispatch, public schema, project revision, and the
   application-owned project action and generic command callbacks into that canvas for track,
-  marker, and timeline edit batches and retains the
+  marker, and timeline edit batches. The editing panel consumes application-owned source and
+  program consequence feedback plus one ordered audio routing and continuity rack, and retains the
   stateful `SourceMonitor` in the editing source slot without moving a new context, reducer, API
   client, or Tauri access into this workspace file. Shared timeline selection can become an exact
   replace or backspace target without locally mutating canonical timeline state.
@@ -558,8 +564,14 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   typed identity allocation, derives the lower modified-object boundary for immutable previews,
   and leaves atomic mutation, history, grouping, synchronization, and final validation with the
   native project command owner.
+- `app/src/timeline-editorial-feedback.ts`: Purely projects the active canonical canvas, strict clip
+  detail, exact transient edit plan, and editor audio state into one deeply frozen source-viewer,
+  program-viewer, multicam, and audio-meter replacement. It distinguishes trim, slip, and slide
+  consequences, preserves sample clocks, ordered channel identities, routes, audibility, and seam
+  evidence, and marks live signal telemetry `unobserved` rather than inventing levels.
 - `app/src/timeline-clip-presentation.ts`: Supplements the existing frozen canvas model with strict
-  read-only clip media names and relink state, exact time maps, markers, metadata, multicam intent,
+  read-only clip media names and relink state, exact time maps, markers, metadata, complete multicam
+  angle identities, enabled state, exact switch ranges, and audio policy,
   clip-scoped graph effects and parameter drivers, and attached clip-gain sample keyframes with
   exact clip-relative positions for any active timeline in the same canonical project revision. It
   requires the root exactly once, scopes raw clip, marker, metadata, multicam, effect, and automation
@@ -611,7 +623,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   transient while authored placement and compound actions publish through the same injected
   application action executor. It also provides a dedicated marker panel with complete marker listing,
   exact previous and next navigation, timeline-owned create at playhead, range, label, flag, and note
-  editing, removal, pending and error state, and revision-fenced typed inverse reversal. It
+  editing, removal, pending and error state, and revision-fenced typed inverse reversal. It also
+  publishes one immutable idle, preview, applying, applied, failed, or unavailable editorial
+  feedback replacement through an injected application callback. The projection consumes current
+  edit plans and canonical audio or clip detail without becoming an authored owner. It
   progressively reads one revision-matched media library,
   deduplicates sources, generates previews sequentially, and accepts only matching media and
   freshness identities before displaying filmstrips, thumbnails, or waveforms.
@@ -628,7 +643,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   `SourceMonitor` owns shell-local media-library and monitor state, exposes load, exact seek, mark,
   clear, refresh, and unload controls, publishes every replacement monitor snapshot to its caller,
   refreshes after project revision changes, and labels the retained source session as separate from
-  decode and native GPU presentation.
+  decode and native GPU presentation. Optional editorial consequence strips render outside the
+  native child placement host, expose the current feedback phase, retain complete multicam angle
+  and switch detail, and never enter the placement payload. `EditorialAudioMeters` renders
+  canonical route, audibility, sample clock, destination, and seam evidence, marks routes
+  unavailable when their canvas track is absent, and explicitly labels live signal level
+  unobserved.
 - `app/src/App.tsx`: Registers the five professional workspace routes and panels above the delivered
   application framework while retaining the system shell, shared selection, lifecycle controls,
   generated validation request, engine-introspection state, and the production project lifecycle
@@ -694,7 +714,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   compact source-placement and exact timing-tool controls, history, target, consequence, affected
   object, shortcut, pending, and result states. The retime
   panel adds responsive exact-target fields, rational segment inputs, curve state, validation,
-  consequences, and apply, reset, and undo actions.
+  consequences, and apply, reset, and undo actions. Source and program consequence strips,
+  responsive multicam angle and switch grids, and route-state audio meter cards keep exact evidence
+  readable without presenting structural bars as amplitude.
 - `app/src/transport.ts`: Implements the concrete generated `SuperiTransport` through one injected
   or Tauri-backed invoke/listen host, generation-scoped request identities, ordered event replay,
   stale and duplicate rejection, reconnect, cooperative cancellation, and exact
@@ -704,7 +726,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   routing, and the hashed React bundle.
 - `app/tests/native-viewport-ipc-contract.test.mjs`: Freezes the shell-local viewport command as a
   placement-only Tauri payload, verifies both React invocations use that command, and excludes
-  webview image conversion or pixel-readback mechanisms from the consumer.
+  webview image conversion or pixel-readback mechanisms from the consumer. It also proves viewer
+  and meter feedback remain outside the placement payload.
 - `app/tests/application-framework.test.ts`: Verifies duplicate and reference validation, immutable
   routing and panel reconciliation, exact public-resource selection, local-first asynchronous API
   command delegation, shortcut normalization, and editable-target safety.
@@ -715,7 +738,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   routes, continuity evidence, one application-owned project transaction path, all eleven track
   operation tags, all six marker operation tags, typed reversal, source snapshot and generated
   command wiring, and the absence of direct transport ownership in the workspace. It also verifies
-  transition command wiring through the same application-owned callback.
+  transition command wiring through the same application-owned callback plus application-owned
+  editorial feedback publication, viewer consumption, audio meter rendering, route-state styling,
+  and native IPC isolation.
 - `app/tests/timeline-workspace.test.ts`: Verifies strict canonical revision handling, exact track,
   item, source and record range, group, link, selection, target, lock, output, synchronization, and
   transition preservation, variable height, external global-start placement, deterministic
@@ -744,10 +769,16 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   through the shared project action executor without direct transport ownership.
 - `app/tests/timeline-clip-presentation.test.ts`: Verifies supplemental reuse of the exact canvas
   projection, external global-start placement, mixed record clocks, source names and relink state,
-  retime, linking, grouping, targeting, synchronization, markers, metadata, multicam intent,
+  retime, linking, grouping, targeting, synchronization, markers, metadata, complete multicam angle,
+  switch, and audio-policy intent plus missing-angle rejection,
   clip-scoped effects and drivers, exact clip-gain sample keys and positions, deep immutability,
   malformed-state rejection, exact child-timeline detail scoping, real preview-command composition,
   stale freshness rejection, and application-owned selection integration.
+- `app/tests/timeline-editorial-feedback.test.ts`: Verifies distinct exact trim, slip, and slide
+  viewer consequences, multicam angle, switch, and fixed-audio fidelity, 48 kHz and 96 kHz sample
+  clocks, ordered channel and destination meaning, route and solo behavior, exact gap and source
+  discontinuity seams, deep immutability, explicit unobserved signal telemetry, and missing clip
+  behavior.
 - `app/tests/timeline-transition-presentation.test.ts`: Verifies exact handles and opposite-edge
   limits, duration and alignment derivation, strict no-op and unsafe input rejection, canonical
   scalar-bit decoding, downstream graph traversal, host and driver restrictions, immutable output,
@@ -1697,6 +1728,20 @@ publishes the complete immutable batch through `ApplicationProvider.executeProje
 `edit_timeline` action. That shared executor supplies the unique transaction identity, revision
 fence, native retained-editor route, history, event delivery, and canonical snapshot refresh, so
 React owns gesture intent and preview but never becomes an authored-state owner.
+The editorial-feedback projector consumes that same transient plan and the latest canonical clip and
+audio projections. It publishes one deeply frozen source, program, multicam, and meter replacement
+through `ApplicationProvider`, so sibling viewers update immediately without receiving transport or
+authored state. Slip preserves record placement while showing the proposed source start, slide
+preserves source range while showing the proposed record start, and trim shows its exact proposed
+record boundary beside pre-edit canonical source evidence. An operation is shown only when it
+targets the active clip, and copied multicam detail is frozen without freezing the canonical input
+projection. The audio rack retains sample clocks,
+ordered channel identities, route targets, effective enable, mute, and solo state, and exact seam
+evidence. A canonical audio track missing from the canvas has unavailable audibility and route
+state instead of appearing routed. Because no editor or playback bridge publishes meter readings,
+signal status remains explicitly unobserved and no amplitude is inferred. Viewer consequence DOM
+remains outside the native child placement host and does not alter the strict geometry-only Tauri
+payload.
 The same canvas supplements clip items from the snapshot's canonical graph and attached audio
 automation, and it hydrates real media previews through the existing freshness-fenced Tauri owner.
 Shared clip activation remains an application selection reference, not an authored timeline edit.
@@ -1798,6 +1843,11 @@ of open runtime behavior.
   require physically equal source and record durations until timeline-owned fit-to-fill retiming is
   available. Every successful operation uses the retained generated project-command route and the
   single engine history owner.
+- Editorial viewer and audio-meter feedback is presentation-only. It derives from exact transient
+  plans and canonical replacement state, keeps multicam angle and switch references strict, retains
+  sample clocks, channel order, route intent, audibility, and continuity, and labels live signal
+  telemetry unobserved until a real runtime owner publishes readings. Feedback DOM may not enter or
+  expand the native viewport placement payload.
 - Nested open paths are root-anchored transient presentation state and may advance only through a
   currently visible clip whose source is the next timeline. Candidate placement rejects self or
   recursive dependency cycles, exact duration conversion gates replacement, and compound action
@@ -1933,8 +1983,15 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
 
 - The focused timeline-clip proof freezes reuse of that canvas model, exact source and record
   evidence, mixed clocks, stable media and relationship identity, relink, retime, marker, metadata,
-  multicam, graph effect and driver state, real audio automation samples, deeply frozen detail,
-  preview freshness fences, accessible shared selection, and explicit malformed-state behavior.
+  complete multicam angle, switch, and audio-policy detail, missing-angle rejection, graph effect
+  and driver state, real audio automation samples, deeply frozen detail, preview freshness fences,
+  accessible shared selection, and explicit malformed-state behavior.
+
+- The focused editorial-feedback proof freezes distinct trim, slip, and slide viewer consequences,
+  complete multicam context, exact 48 kHz and 96 kHz sample clocks, ordered source and destination
+  channels, route targets, solo suppression, gap and source-discontinuity seams, explicit
+  unobserved signal telemetry, deep immutability, application-owned cross-sibling publication, real
+  viewer and meter consumption, route-state styling, and native placement-payload isolation.
 
 - The focused timeline-transition proof freezes exact from and to offsets, adjacent and
   opposite-edge capacity, deterministic start, center, end, and custom alignment, duration fitting,
@@ -2294,6 +2351,12 @@ markers visibly non-navigable, and reverses transient pointer gestures through t
 Existing clip items now add real generated filmstrips, thumbnails, and waveforms when available,
 plus exact source, relationship, effect, driver, marker, metadata, multicam, retime, and clip-gain
 automation evidence with positioned keyframe diamonds.
+Trim, slip, and slide plans now publish exact source and program consequences through the existing
+application owner. Multicam detail retains complete angle identity, enabled state, switch ranges,
+and audio policy. An ordered audio rack shows canonical sample clocks, channel routes, destinations,
+audibility, and seam evidence beside an explicit unobserved signal state. The DOM feedback remains
+outside native child placement, and no live RMS, peak, true-peak, or loudness path exists in the
+current editor snapshot.
 Selected transition items now add exact handle, duration, alignment, endpoint, graph, driver, and
 parameter evidence. Start, center, and end placement preserves the entered total, impossible
 placements are disabled, and all authored changes use the application-owned revision-fenced project
@@ -2510,6 +2573,11 @@ export remain absent and cannot be inferred from the reference path.
 
 The largest current risk is cross-document drift:
 
+- Editorial audio feedback currently has canonical structural authority but no runtime meter-reading
+  owner. Route-state bars must remain labeled as routing and audibility evidence, and signal status
+  must remain unobserved until playback publishes real per-channel readings with exact sample and
+  channel identity. UI code must not infer silence or level from authored routing state.
+
 - The canonical fixture, independent expected contract, reference project and graph state, strict
   API projection, and contract runner now exist, and every stage reports bounded timing and
   resident-memory boundary evidence. The hosted workflow directly runs fixture validation and the
@@ -2675,6 +2743,10 @@ refreshed revision is superseded.
 Keep clip detail supplemental to that exact projection. Graph badges must follow real clip-scoped
 topology, keyframes must come from a legal attached owner, previews must retain project, library,
 media, and freshness fences, and authored selection must remain distinct from shared UI selection.
+Keep editorial feedback derived from the exact active plan and canonical replacement snapshot.
+Preserve full multicam angle, switch, and policy identity, keep audio track and channel order stable,
+and retain route, audibility, and continuity meanings. Do not add numerical signal fields until a
+real runtime observation owner exists, and keep all feedback outside native placement IPC.
 Keep transition timing on canonical timeline offsets and processing intent on typed graph values.
 Handle inputs must retain exact decimal strings until safe public conversion, alignments must
 preserve total duration, opposite-edge transitions must reduce available capacity, and driven,

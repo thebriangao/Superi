@@ -44,4 +44,11 @@ test("native viewport IPC accepts control placement only", () => {
     nativeViewport,
     /data:image|createObjectURL|readPixels|toDataURL|transferToImageBitmap/i,
   );
+  assert.match(nativeViewport, /viewer-editorial-feedback/);
+  assert.match(nativeViewport, /data-phase=\{feedback\.phase\}/);
+  assert.match(nativeViewport, /EditorialAudioMeters/);
+  assert.doesNotMatch(
+    nativeViewport,
+    /placement:\s*\{[\s\S]{0,500}(?:feedback|multicam|audio|meter)/i,
+  );
 });

@@ -467,6 +467,22 @@ test("enriches the existing exact canvas projection with clip detail", () => {
     syncMethod: "timecode",
     switchCount: 1,
     audioPolicy: "follow_video",
+    angles: [
+      {
+        id: "angle.a",
+        name: "Camera A",
+        cameraLabel: "A",
+        enabled: true,
+        sourceClipIds: ["clip.video"],
+      },
+    ],
+    switches: [
+      {
+        sourceRange: range("24", "48", 24),
+        angleId: "angle.a",
+      },
+    ],
+    audioPolicyDetail: { kind: "follow_video" },
   });
   assert.deepEqual(video.effects, [
     {
@@ -626,6 +642,25 @@ test("keeps malformed supplemental or unsafe canonical state unavailable", () =>
   start.value = "9007199254740992";
 
   assert.deepEqual(projectTimelineClips(malformed), {
+    status: "unavailable",
+    reason: "Timeline clip detail is malformed or uses an unsupported contract.",
+  });
+});
+
+test("rejects multicam switches that lose their canonical angle identity", () => {
+  const malformed = completeSnapshot();
+  const content = malformed.timeline.document.content as Record<string, unknown>;
+  const payload = content.payload as Record<string, unknown>;
+  const timelines = payload.timelines as Array<Record<string, unknown>>;
+  const multicamClips = timelines[0]?.multicam_clips as Array<Record<string, unknown>>;
+  const switches = multicamClips[0]?.switches as Array<Record<string, unknown>>;
+  if (switches[0]) switches[0].angle_id = "angle.missing";
+  const model = projectTimelineDocument(
+    malformed.timeline.document,
+    malformed.project.root_timeline_id,
+  );
+
+  assert.deepEqual(projectTimelineClipDetails(malformed, model), {
     status: "unavailable",
     reason: "Timeline clip detail is malformed or uses an unsupported contract.",
   });

@@ -13,6 +13,12 @@ import {
   type SourceMonitorSnapshot,
   type SourceMonitorTime,
 } from "./project-lifecycle.ts";
+import type {
+  TimelineAudioFeedback,
+  TimelineAudioSeamFeedback,
+  TimelineAudioTrackFeedback,
+  TimelineViewerFeedback,
+} from "./timeline-editorial-feedback.ts";
 
 type ViewportSnapshot = {
   role: NativeViewerRole;
@@ -29,6 +35,7 @@ export type NativeViewerRole = "source" | "program" | "composite" | "color";
 
 export interface SourceMonitorProps {
   readonly projectRevision: number | null;
+  readonly feedback?: TimelineViewerFeedback | null;
   readonly onSnapshotChange: (
     snapshot: SourceMonitorSnapshot | null,
   ) => void;
@@ -36,6 +43,7 @@ export interface SourceMonitorProps {
 
 export function SourceMonitor({
   projectRevision,
+  feedback = null,
   onSnapshotChange,
 }: SourceMonitorProps) {
   const [library, setLibrary] = useState<MediaLibrarySnapshot | null>(null);
@@ -134,7 +142,7 @@ export function SourceMonitor({
 
   return (
     <div className="source-monitor" data-engine-state={monitor?.engine_state ?? "empty"}>
-      <NativeViewport role="source" label="Source" />
+      <NativeViewport role="source" label="Source" feedback={feedback} />
       <section className="source-monitor__controls" aria-label="Source monitor controls">
         <div className="source-monitor__heading">
           <div>
@@ -268,13 +276,17 @@ function SourceMonitorDetail({ label, value }: { readonly label: string; readonl
   );
 }
 
+export interface NativeViewportProps {
+  readonly role: NativeViewerRole;
+  readonly label: string;
+  readonly feedback?: TimelineViewerFeedback | null;
+}
+
 export function NativeViewport({
   role,
   label,
-}: {
-  readonly role: NativeViewerRole;
-  readonly label: string;
-}) {
+  feedback = null,
+}: NativeViewportProps) {
   const host = useRef<HTMLElement>(null);
   const [snapshot, setSnapshot] = useState<ViewportSnapshot | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
@@ -364,6 +376,228 @@ export function NativeViewport({
       <span className="native-viewport__status" role="status" aria-live="polite">
         {status}
       </span>
+      {feedback ? <ViewerEditorialFeedback feedback={feedback} label={label} /> : null}
     </div>
   );
+}
+
+function ViewerEditorialFeedback({
+  feedback,
+  label,
+}: {
+  readonly feedback: TimelineViewerFeedback;
+  readonly label: string;
+}) {
+  return (
+    <section
+      className="viewer-editorial-feedback"
+      aria-label={`${label} editorial feedback`}
+      data-has-multicam={feedback.multicam !== null}
+      data-phase={feedback.phase}
+    >
+      <div className="viewer-editorial-feedback__summary">
+        <div>
+          <span>Editorial consequence</span>
+          <strong>{feedback.title}</strong>
+        </div>
+        <div className="viewer-editorial-feedback__coordinate">
+          <span>{feedback.phase}</span>
+          <code>{feedback.coordinate ?? "exact coordinate unavailable"}</code>
+        </div>
+      </div>
+      <p>{feedback.detail}</p>
+      {feedback.multicam ? (
+        <div className="viewer-multicam-feedback">
+          <div className="viewer-multicam-feedback__header">
+            <span>{feedback.multicam.syncMethod} sync</span>
+            <span>{feedback.multicam.switchCount} switches</span>
+            <span>{multicamAudioPolicy(feedback.multicam)}</span>
+          </div>
+          <div
+            className="viewer-multicam-feedback__angles"
+            aria-label="Multicam angles"
+          >
+            {feedback.multicam.angles.map((angle) => (
+              <span
+                key={angle.id}
+                data-enabled={angle.enabled}
+                title={`${angle.name}: ${angle.sourceClipIds.join(", ")}`}
+              >
+                <b>{angle.cameraLabel}</b>
+                {angle.name}
+              </span>
+            ))}
+          </div>
+          <ol className="viewer-multicam-feedback__switches">
+            {feedback.multicam.switches.map((multicamSwitch, index) => (
+              <li key={`${multicamSwitch.angleId}:${index}`}>
+                <code>{formatMulticamRange(multicamSwitch.sourceRange)}</code>
+                <span>{multicamSwitch.angleId}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+export function EditorialAudioMeters({
+  feedback,
+}: {
+  readonly feedback: TimelineAudioFeedback | null;
+}) {
+  if (!feedback) {
+    return (
+      <section
+        className="editorial-audio-meters editorial-audio-meters--empty"
+        aria-label="Editorial audio feedback meters"
+        data-signal-status="unobserved"
+      >
+        <span>Audio feedback</span>
+        <p>Select a timeline to inspect canonical routing and continuity.</p>
+      </section>
+    );
+  }
+  return (
+    <section
+      className="editorial-audio-meters"
+      aria-label="Editorial audio feedback meters"
+      data-signal-status={feedback.signalStatus}
+    >
+      <header>
+        <div>
+          <span>Audio feedback</span>
+          <strong>Routing and continuity meters</strong>
+        </div>
+        <em>Signal level unobserved</em>
+      </header>
+      <p>{feedback.message}</p>
+      {feedback.tracks.length === 0 ? (
+        <div className="editorial-audio-meters__empty">No audio tracks in this timeline.</div>
+      ) : (
+        <div className="editorial-audio-meters__tracks">
+          {feedback.tracks.map((track) => (
+            <EditorialAudioTrackMeter key={track.trackId} track={track} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function EditorialAudioTrackMeter({
+  track,
+}: {
+  readonly track: TimelineAudioTrackFeedback;
+}) {
+  return (
+    <article
+      className="editorial-audio-track"
+      data-audibility={track.audibility}
+      data-signal-status={track.signalStatus}
+    >
+      <header>
+        <div>
+          <strong>{track.trackId}</strong>
+          <span>{track.sampleRate} Hz sample clock</span>
+        </div>
+        <span>{track.audibility.replace("_", " ")}</span>
+      </header>
+      <div className="editorial-audio-track__routing">
+        <span>Destination {track.destination}</span>
+        <span>{track.clipCount} clips</span>
+      </div>
+      <div className="editorial-audio-track__channels">
+        {track.routes.map((route, index) => (
+          <div
+            className="editorial-audio-route"
+            data-route-state={route.state}
+            key={`${route.source}:${index}`}
+          >
+            <code>{route.source}</code>
+            <span className="editorial-audio-route__meter" aria-hidden="true">
+              <i />
+            </span>
+            <code>
+              {route.target ??
+                (route.state === "unavailable" ? "unavailable" : "muted or unrouted")}
+            </code>
+            <b>{route.state.replace("_", " ")}</b>
+          </div>
+        ))}
+      </div>
+      <div className="editorial-audio-track__destination-channels">
+        <span>Ordered destination channels</span>
+        <code>{track.destinationChannels.join(" | ") || "none"}</code>
+      </div>
+      <AudioContinuityFeedback track={track} />
+    </article>
+  );
+}
+
+function AudioContinuityFeedback({
+  track,
+}: {
+  readonly track: TimelineAudioTrackFeedback;
+}) {
+  if (track.continuity.status === "unsupported") {
+    return (
+      <p className="editorial-audio-continuity" data-continuity="unsupported">
+        Continuity unsupported: {track.continuity.reason}
+      </p>
+    );
+  }
+  return (
+    <div
+      className="editorial-audio-continuity"
+      data-continuity={
+        track.continuity.uninterruptedRecordCoverage ? "continuous" : "attention"
+      }
+    >
+      <span>
+        {track.continuity.uninterruptedRecordCoverage
+          ? "Uninterrupted record coverage"
+          : "Record continuity needs attention"}
+      </span>
+      {track.continuity.seams.length > 0 ? (
+        <ul>
+          {track.continuity.seams.map((seam, index) => (
+            <li key={`${seam.leftClipId}:${seam.rightClipId}:${index}`}>
+              {formatAudioSeam(seam)}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+function formatAudioSeam(seam: TimelineAudioSeamFeedback): string {
+  const record =
+    seam.recordSampleCount === null
+      ? seam.recordKind
+      : `${seam.recordKind} ${seam.recordSampleCount} samples`;
+  let source: string = seam.sourceKind;
+  if (seam.sourceKind === "discontinuous") {
+    source = `discontinuous ${seam.sourceExpected} to ${seam.sourceActual}`;
+  } else if (seam.sourceKind === "different_clip") {
+    source = `different clip ${seam.sourceLeft} to ${seam.sourceRight}`;
+  }
+  return `${seam.leftClipId} to ${seam.rightClipId}: ${record}, ${source}`;
+}
+
+function multicamAudioPolicy(
+  multicam: NonNullable<TimelineViewerFeedback["multicam"]>,
+): string {
+  const policy = multicam.audioPolicyDetail;
+  return policy.kind === "fixed"
+    ? `fixed audio ${policy.angleId}`
+    : `${policy.kind.replace("_", " ")} audio`;
+}
+
+function formatMulticamRange(
+  range: NonNullable<TimelineViewerFeedback["multicam"]>["switches"][number]["sourceRange"],
+): string {
+  return `${range.start.value}+${range.duration.value} @ ${range.start.timebase.numerator}/${range.start.timebase.denominator}`;
 }

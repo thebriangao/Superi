@@ -66,7 +66,28 @@ export interface TimelineClipMulticamPresentation {
   readonly syncMethod: string;
   readonly switchCount: number;
   readonly audioPolicy: string;
+  readonly angles: readonly TimelineClipMulticamAnglePresentation[];
+  readonly switches: readonly TimelineClipMulticamSwitchPresentation[];
+  readonly audioPolicyDetail: TimelineClipMulticamAudioPolicyPresentation;
 }
+
+export interface TimelineClipMulticamAnglePresentation {
+  readonly id: string;
+  readonly name: string;
+  readonly cameraLabel: string;
+  readonly enabled: boolean;
+  readonly sourceClipIds: readonly string[];
+}
+
+export interface TimelineClipMulticamSwitchPresentation {
+  readonly sourceRange: TimelineExactRange;
+  readonly angleId: string;
+}
+
+export type TimelineClipMulticamAudioPolicyPresentation =
+  | { readonly kind: "follow_video" }
+  | { readonly kind: "fixed"; readonly angleId: string }
+  | { readonly kind: "all_angles" };
 
 export interface TimelineClipAutomationKeyframe {
   readonly sample: number;
@@ -473,21 +494,56 @@ function multicamMap(
     source === null
       ? "unavailable"
       : nonemptyString(record(source.sync_method).kind);
-  if (source !== null) array(source.angles);
+  const angles = source === null
+    ? []
+    : array(source.angles).map((angleValue) => {
+        const angle = record(angleValue);
+        return {
+          id: nonemptyString(angle.id),
+          name: nonemptyString(angle.name),
+          cameraLabel: nonemptyString(angle.camera_label),
+          enabled: boolean(angle.enabled),
+          sourceClipIds: array(angle.source_clips).map(nonemptyString),
+        };
+      });
+  const angleIds = new Set<string>();
+  for (const angle of angles) {
+    if (angleIds.has(angle.id)) throw new Error("duplicate multicam angle");
+    angleIds.add(angle.id);
+  }
   for (const clipValue of array(timeline.multicam_clips)) {
     const clip = record(clipValue);
     const id = nonemptyString(clip.clip_id);
-    const switches = array(clip.switches);
-    for (const switchValue of switches) {
+    if (source === null) throw new Error("multicam clip requires source state");
+    const switches = array(clip.switches).map((switchValue) => {
       const multicamSwitch = record(switchValue);
-      exactRange(multicamSwitch.source_range);
-      nonemptyString(multicamSwitch.angle_id);
+      const angleId = nonemptyString(multicamSwitch.angle_id);
+      if (!angleIds.has(angleId)) throw new Error("multicam switch angle is unavailable");
+      return {
+        sourceRange: exactRange(multicamSwitch.source_range),
+        angleId,
+      };
+    });
+    const policy = record(clip.audio_policy);
+    const policyKind = nonemptyString(policy.kind);
+    let audioPolicyDetail: TimelineClipMulticamAudioPolicyPresentation;
+    if (policyKind === "follow_video" || policyKind === "all_angles") {
+      audioPolicyDetail = { kind: policyKind };
+    } else if (policyKind === "fixed") {
+      const angleId = nonemptyString(policy.angle_id);
+      if (!angleIds.has(angleId)) throw new Error("fixed multicam audio angle is unavailable");
+      audioPolicyDetail = { kind: "fixed", angleId };
+    } else {
+      throw new Error("unsupported multicam audio policy");
     }
     if (result.has(id)) throw new Error("duplicate multicam clip");
     result.set(id, {
       syncMethod,
       switchCount: switches.length,
-      audioPolicy: nonemptyString(record(clip.audio_policy).kind),
+      audioPolicy: policyKind,
+      angles,
+      switches,
+      audioPolicyDetail,
     });
   }
   return result;
