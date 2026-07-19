@@ -49,7 +49,7 @@ language, or project persistence envelope.
 The built-in schemas require the production `superi.render.gpu` capability, but this crate currently
 implements only a deterministic bounded CPU oracle and headless proof. Production GPU kernels,
 engine catalog registration, timeline effect attachment, playback, viewport, export, project
-persistence, UI, production spatial GPU execution, vector shape rasterization, mask rasterization,
+persistence, general effect UI, production spatial GPU execution, vector shape rasterization, mask rasterization,
 feather and expansion
 filtering, propagation solvers, production transition attachment and GPU execution, text
 rasterization and GPU atlases, pyramidal or GPU tracking acceleration, production tracking
@@ -832,12 +832,15 @@ The vector shape authoring flow is:
   visual layering and reusable compositing relationships. Timeline compiles native state into
   graph-owned `GraphValue<TimelineGraphValue>`, including stable transition endpoint, identity, and
   handle
-  parameters. A higher integration owner can pair that editorial projection with the effects-owned
-  transition definitions without reversing the dependency or copying timeline mutation policy.
+  parameters. The desktop pairs that public editorial projection with effects-owned transition
+  node types and supported literal values without reversing the dependency or copying timeline
+  mutation policy.
 - The production editing workspace reads only effect node types already present in the canonical
-  timeline graph and labels nodes reached from a clip before the next timeline-owned node. It does
-  not import this crate, instantiate definitions, evaluate pixels, edit parameters, or claim that
-  effects-owned `AnimationCurve` values are legal in the current compiled timeline graph payload.
+  timeline graph and labels nodes reached from a clip or transition before the next timeline-owned
+  node. It does not import this crate, instantiate definitions, or evaluate pixels. For attached
+  transition nodes it may edit undriven scalar, Boolean, and known directional-wipe choice literals
+  through the public graph transaction, while host-owned progress and unsupported values remain
+  read only and no `AnimationCurve` is invented.
 - `superi-engine::plugins` now owns deterministic native bundle discovery, canonical validation,
   platform-launcher coordination, heterogeneous boxed hosts, exact activation grants, classified
   containment, restart and quarantine recovery, and shared playback, rendering, and export graph
@@ -1167,7 +1170,7 @@ implementations are scalar, allocation-bounded CPU proofs, not performance produ
 and vector shapes, masks, and text have no rasterizer or rendered consumer.
 
 There is no GPU shader parity, engine registry, production runtime catalog, timeline attachment,
-playback, viewport, export, project persistence, effect editing UI, production spatial transform,
+playback, viewport, export, project persistence, general effect editing UI, production spatial transform,
 camera, light, or motion-blur execution, vector shape rasterization, mask rasterization,
 propagation solver, text rasterization or glyph atlas, production tracking attachment, pyramid or GPU
 tracking acceleration, production transition
@@ -1227,9 +1230,12 @@ Keep presets complete and schema-exact, allocate fresh instance identities on re
 availability derived rather than persisted, and require explicit checked forward migrations. Do not
 turn the preset document into a project container or let missing implementations erase saved schema,
 typed values, drivers, edges, or editable graph meaning.
-Keep desktop effect badges topology-backed and read only. Do not present visual keyframes until a
-legal project-level property identity and persisted curve owner crosses the public editor boundary;
-clip-gain automation owned by audio must not be relabeled as an effects curve.
+Keep desktop effect badges and transition controls topology-backed. Transition literals may be
+edited only through stable graph, node, parameter, and value-type identities; driven, host-owned,
+or unsupported values remain read only. Keep the four directional-wipe choice codes synchronized
+with `WipeDirection::ALL`. Do not present visual keyframes until a legal project-level property
+identity and persisted curve owner crosses the public editor boundary; clip-gain automation owned
+by audio must not be relabeled as an effects curve.
 Keep animation property meaning with node schemas and exact time ownership in core. Preserve checked
 immutable editing, the authored-versus-derived timing split, bounded expressions, exact schema
 matching, atomic catalog publication, workflow-neutral instances, request-local literal sampling,

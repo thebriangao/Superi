@@ -2,7 +2,7 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: 5fccadac9d42d1f86ff7254a4b42a3964f76142edfd70f4ac692aba3fb55db68
+source_hash: 76847005f202f2708754261bf23fa02cabe5b74ebdc7d6d89a5a84b42230cc38
 source_files: 32
 mapped_at_commit: working-tree
 ---
@@ -22,7 +22,8 @@ identity, explicit ownership, owner-relative exact ranges, visible labels, flags
 deterministic metadata. Persistent snapping resolves exact timeline, playhead, item, and visible
 marker boundaries with stable filters, exclusions, and tie ordering. Foundational insert,
 overwrite, append, replace, lift, and extract commands join ripple, roll, slip, slide, razor, trim,
-extend, and exact three-point and four-point commands on one typed batch surface. Those commands
+extend, atomic transition-handle replacement, and exact three-point and four-point commands on one
+typed batch surface. Those commands
 report every inserted, removed, modified, split, synchronized, or invalidated relationship.
 Whole-project validation and revision-checked atomic batches keep linked objects, annotations, user
 intent, timing, synchronization, nesting, and direct edits valid at publication boundaries.
@@ -103,7 +104,8 @@ with stable warnings.
 - `open/crates/superi-timeline/src/edit_ops.rs`: Implements directly inspectable foundational and
   advanced commands, exact source-aware and retime-aware trimming and splitting, deterministic
   fragment identities, explicit sync-locked ripple plans, transition reconciliation, result
-  reports, locked-track enforcement, and atomic multi-track batches.
+  reports, locked-track enforcement, atomic dual-handle transition timing, and atomic multi-track
+  batches.
 - `open/crates/superi-timeline/src/edit_state.rs`: Implements exact and relationship-expanded
   selection, bounded track height, per-track target, lock, sync-lock, mute, solo, and enable intent,
   canonical clip links and groups, stable introspection, and structural reconciliation.
@@ -164,7 +166,8 @@ with stable warnings.
   direct child edits, stale revisions, and atomic range, identity, source, and cycle rejection.
 - `open/crates/superi-timeline/tests/edit_ops_contract.rs`: Proves all six foundational operations,
   exact cross-rate source slicing, nested source preservation, typed fragment identities, explicit
-  transition removal, lift gaps, synchronized multi-track publication, and failed-batch rollback.
+  transition removal and dual-handle replacement, lift gaps, synchronized multi-track publication,
+  exact outcome evidence, and failed-batch rollback.
 - `open/crates/superi-timeline/tests/markers_contract.rs`: Proves stable marker identity, timeline,
   track, and object ownership, visible semantics, nested metadata, direct mutation, owner-relative
   resolution, preserved overscan, structural-edit survival, dangling-owner cleanup, exact snapping,
@@ -330,8 +333,9 @@ The timeline state document surface includes:
 The editorial operation surface includes:
 
 - `EditOperation` and `EditKind` for insert, overwrite, append, replace, lift, extract, ripple,
-  roll, slip, slide, razor, trim, extend, three-point, and four-point commands targeted by stable
-  timeline and track identity.
+  roll, slip, slide, razor, trim, extend, `set_transition`, three-point, and four-point commands
+  targeted by stable timeline and track identity. `set_transition` changes both exact handles of
+  one stable transition together without changing track duration or endpoint identity.
 - `EditSide` for exact start or end control, `ExtendMode` for explicit ripple or roll delegation,
   and `ThreePointPlacement` for the four forward and backtimed missing-boundary forms.
 - `RippleSyncAdjustment` for deterministic per-track gap and fragment identities. A ripple names
@@ -509,9 +513,11 @@ Editorial operation flow extends that transaction without creating another state
 8. Three-point placement derives exactly one missing source or record boundary. Four-point
    placement accepts only equal physical durations; fit-to-fill fails as unsupported until explicit
    P2.W02.C008 time remapping exists.
-9. Existing transitions are restored only when their original endpoints remain adjacent and their
-   offsets still fit without overlap. Every invalidated transition is returned in the operation
-   result rather than retargeted implicitly.
+9. `set_transition` resolves one existing transition, requires both handles to use the track clock,
+   rejects zero duration and no-op input, changes both offsets together, and reports the union of
+   old and new visible ranges. Existing transitions are restored only when their original endpoints
+   remain adjacent and their offsets still fit without overlap. Every invalidated transition is
+   returned in the operation result rather than retargeted implicitly.
 10. The existing whole-project validator resolves media and nested timeline sources, global object
    identity, track continuity, synchronization, and nesting cycles before one new revision is
    published. A failure in any command or final invariant discards every command in the batch.
@@ -780,6 +786,9 @@ Timeline document flow preserves those owners without becoming a project contain
   clock, fit adjacent durations, do not overlap another transition on the same item, and do not add
   to track duration. Adjacent transitions are invalid. Effects-owned visual kinds and parameters do
   not replace or reinterpret this editorial owner contract.
+- Transition-handle edits replace both offsets in one unpublished draft. The operation rejects an
+  incorrect clock, zero total, unchanged values, overflow, insufficient adjacent duration, or
+  opposite-edge overlap, and final project validation preserves atomic rollback.
 - Audio routes cover every ordered source channel exactly once. Span construction, endpoints,
   splits, trims, and continuity distances use checked sample arithmetic and retain `ClipId` links.
 - Language tags normalize case and validate bounded BCP 47 syntax without claiming IANA registry
@@ -851,12 +860,14 @@ with exact reimported duration. The public example emits both fixtures; OpenTime
 under Python 3.12 loads them, target-writes them with its release map, rereads them, and reports
 equivalent 48-frame and 120-frame timelines.
 
-Five foundational edit-operation tests prove insert, overwrite, append, replace, lift, and extract
+Six foundational edit-operation tests prove insert, overwrite, append, replace, lift, extract, and
+atomic transition-handle replacement
 through the public API. They cover source and record clocks at 48 and 24 units per second, arbitrary
 boundaries within clips and gaps, nested timeline material, exact right-fragment identities,
-transition invalidation, unchanged and changed duration reports, synchronized two-track batches,
-stale revisions, wrong clocks, transition material, overwrite bounds, and complete rollback after a
-later command fails.
+transition invalidation, exact old and new affected-range union, unchanged and changed duration
+reports, synchronized two-track batches, stale revisions, wrong clocks, zero and unchanged handles,
+overlong handles, transition material, overwrite bounds, and complete rollback after a later
+command fails.
 
 Five nested-operation tests prove existing child placement, atomic compound creation, preservation
 of child objects and selection, links, groups, targeting, and sync-lock state, exact 48-to-24 clock
@@ -999,6 +1010,7 @@ object identity, media identity, bin hierarchy, smart query
 derivation, relink evidence, continuity, physical-time equality, source-aware
 and retime-aware fragmentation, exact time-map seams, explicit transport resolution, explicit
 transition invalidation, result reporting, marker ownership, exact snapping, metadata ordering,
+atomic dual-handle replacement,
 source-link resolution, selection expansion, track intent, clip relationship partitions,
 reconciliation, transition adjacency, nesting acyclicity, exact nested placement, shared-instance
 reporting, multicam angle identity and metadata, source membership, switch coverage, exact

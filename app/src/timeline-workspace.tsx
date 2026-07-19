@@ -21,13 +21,13 @@ import type {
 import type {
   EditorCanonicalDocument,
   EditorPlaybackState,
+  ProjectAction,
   EditorRationalTime,
   EditorStateSnapshot,
   EditorTimeRange,
   TimelineTrackMutation,
   ExecuteProjectCommand,
   ExecuteProjectCommandResult,
-  ProjectAction,
 } from "./api.ts";
 import type { SourceMonitorSnapshot } from "./project-lifecycle.ts";
 import {
@@ -54,6 +54,16 @@ import {
   type TimelineEditingTool,
   type TimelineExtendMode,
 } from "./timeline-editing.ts";
+import {
+  buildSetTransitionAction,
+  buildTransitionParameterAction,
+  projectTimelineTransitionDetails,
+  transitionHandlesForAlignment,
+  transitionHandlesForDuration,
+  type TimelineTransitionAlignment,
+  type TimelineTransitionParameterPresentation,
+  type TimelineTransitionPresentation,
+} from "./timeline-transition-presentation.ts";
 import {
   TIMELINE_DEFAULT_SNAP_RULES,
   TimelineProjectionError,
@@ -224,6 +234,10 @@ export function TimelineWorkspace({
     clipProjection,
     snapshot.project.project_revision,
   );
+  const transitionProjection = useMemo(
+    () => (model ? projectTimelineTransitionDetails(snapshot, model) : null),
+    [model, snapshot],
+  );
   const initial = initialView(model, playback);
   const [playhead, setPlayhead] = useState(initial.playhead);
   const [inPoint, setInPoint] = useState(initial.inPoint);
@@ -347,6 +361,18 @@ export function TimelineWorkspace({
     () => new Set(visibleSelectionKeys),
     [visibleSelectionKeys],
   );
+  const selectedTransition = useMemo(() => {
+    if (visibleSelectionKeys.length !== 1 || transitionProjection === null) {
+      return null;
+    }
+    const target = selectionTargetsByKey.get(visibleSelectionKeys[0]);
+    if (target?.item.kind !== "transition") return null;
+    return (
+      transitionProjection.transitions.find(
+        (transition) => transition.id === target.item.id,
+      ) ?? null
+    );
+  }, [selectionTargetsByKey, transitionProjection, visibleSelectionKeys]);
   const authoredSelection = useMemo(
     () =>
       new Set(
@@ -2333,6 +2359,13 @@ export function TimelineWorkspace({
           Z reverses immediately, and Shift adds redo.
         </p>
       </section>
+      {selectedTransition ? (
+        <TimelineTransitionInspector
+          executeProjectActions={executeProjectActions}
+          key={selectedTransition.id}
+          transition={selectedTransition}
+        />
+      ) : null}
       {clipProjection?.status === "unavailable" ? (
         <p className="timeline-clip-detail-failure" role="alert">
           {clipProjection.reason}
@@ -3132,6 +3165,15 @@ function TimelineItem({
       {item.kind === "clip" ? (
         <TimelineClipVisual detail={detail} preview={preview} />
       ) : null}
+      {item.transition ? (
+        <span className="timeline-transition-handles" aria-hidden="true">
+          <i />
+          <span>
+            {item.transition.fromOffset.value}/{item.transition.toOffset.value}
+          </span>
+          <i />
+        </span>
+      ) : null}
       {detail?.automation ? <TimelineClipAutomationKeys detail={detail} /> : null}
       <span className="timeline-item-copy">
         <span className="timeline-item-kind">{item.kind}</span>
@@ -3195,6 +3237,402 @@ function TimelineItem({
       {contents}
     </div>
   );
+}
+
+type ExecuteProjectActions = TimelineWorkspaceProps["executeProjectActions"];
+
+function TimelineTransitionInspector({
+  executeProjectActions,
+  transition,
+}: {
+  readonly executeProjectActions: ExecuteProjectActions;
+  readonly transition: TimelineTransitionPresentation;
+}) {
+  const [fromValue, setFromValue] = useState(transition.fromOffset.value);
+  const [toValue, setToValue] = useState(transition.toOffset.value);
+  const [durationValue, setDurationValue] = useState(transition.duration.value);
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFromValue(transition.fromOffset.value);
+    setToValue(transition.toOffset.value);
+    setDurationValue(transition.duration.value);
+    setPending(false);
+    setMessage(null);
+  }, [
+    transition.id,
+    transition.projectRevision,
+    transition.fromOffset.value,
+    transition.toOffset.value,
+    transition.duration.value,
+  ]);
+
+  const commitTiming = useCallback(
+    async (nextFrom: string, nextTo: string) => {
+      let action: ProjectAction;
+      try {
+        action = buildSetTransitionAction(transition, nextFrom, nextTo);
+      } catch (error: unknown) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Transition timing is not valid.",
+        );
+        return;
+      }
+      setPending(true);
+      setMessage("Applying exact transition timing...");
+      try {
+        const result = await executeProjectActions([action]);
+        setMessage(
+          `Transition timing published at project revision ${result.state.project_revision}.`,
+        );
+      } catch (error: unknown) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Transition timing could not be published.",
+        );
+      } finally {
+        setPending(false);
+      }
+    },
+    [executeProjectActions, transition],
+  );
+
+  const updateHandle = (side: "from" | "to", value: string) => {
+    const nextFrom = side === "from" ? value : fromValue;
+    const nextTo = side === "to" ? value : toValue;
+    if (side === "from") setFromValue(value);
+    else setToValue(value);
+    const total = sumExactHandleValues(nextFrom, nextTo);
+    if (total !== null) setDurationValue(total);
+    setMessage(null);
+  };
+
+  const updateDuration = (value: string) => {
+    setDurationValue(value);
+    if (!/^(0|[1-9][0-9]*)$/.test(value)) {
+      setMessage(null);
+      return;
+    }
+    try {
+      const handles = transitionHandlesForDuration(transition, value);
+      if (handles === null) {
+        setMessage("That duration does not fit the available adjacent handles.");
+        return;
+      }
+      setFromValue(handles.fromOffsetValue);
+      setToValue(handles.toOffsetValue);
+      setMessage(null);
+    } catch (error: unknown) {
+      setMessage(error instanceof Error ? error.message : "Duration is not valid.");
+    }
+  };
+
+  const applyAlignment = async (
+    alignment: Exclude<TimelineTransitionAlignment, "custom">,
+  ) => {
+    try {
+      const handles = transitionHandlesForAlignment(
+        transition,
+        alignment,
+        durationValue,
+      );
+      if (handles === null) {
+        setMessage(`The current duration cannot use ${alignment} alignment.`);
+        return;
+      }
+      setFromValue(handles.fromOffsetValue);
+      setToValue(handles.toOffsetValue);
+      await commitTiming(handles.fromOffsetValue, handles.toOffsetValue);
+    } catch (error: unknown) {
+      setMessage(error instanceof Error ? error.message : "Alignment is not valid.");
+    }
+  };
+
+  const alignmentAvailable = (
+    alignment: Exclude<TimelineTransitionAlignment, "custom">,
+  ): boolean => {
+    try {
+      return (
+        transitionHandlesForAlignment(transition, alignment, durationValue) !==
+        null
+      );
+    } catch {
+      return false;
+    }
+  };
+
+  return (
+    <section
+      className="timeline-transition-inspector"
+      aria-label={`Transition editor for ${transition.name}`}
+    >
+      <header>
+        <div>
+          <p className="section-kicker">Selected transition</p>
+          <h5>{transition.name}</h5>
+          <span>
+            {transition.from.kind}:{transition.from.id} to {transition.to.kind}:
+            {transition.to.id}
+          </span>
+        </div>
+        <div className="timeline-transition-summary">
+          <b>{transition.alignment} aligned</b>
+          <code>{transition.id}</code>
+        </div>
+      </header>
+      <form
+        className="timeline-transition-timing"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void commitTiming(fromValue, toValue);
+        }}
+      >
+        <label>
+          <span>From handle</span>
+          <input
+            aria-label="From handle"
+            disabled={pending}
+            inputMode="numeric"
+            maxLength={20}
+            onChange={(event) => updateHandle("from", event.currentTarget.value)}
+            value={fromValue}
+          />
+          <small>max {transition.maximumFromOffset.value}</small>
+        </label>
+        <label>
+          <span>To handle</span>
+          <input
+            aria-label="To handle"
+            disabled={pending}
+            inputMode="numeric"
+            maxLength={20}
+            onChange={(event) => updateHandle("to", event.currentTarget.value)}
+            value={toValue}
+          />
+          <small>max {transition.maximumToOffset.value}</small>
+        </label>
+        <label>
+          <span>Transition duration</span>
+          <input
+            aria-label="Transition duration"
+            disabled={pending}
+            inputMode="numeric"
+            maxLength={20}
+            onChange={(event) => updateDuration(event.currentTarget.value)}
+            value={durationValue}
+          />
+          <small>
+            units at {transition.duration.timebase.numerator}/
+            {transition.duration.timebase.denominator}
+          </small>
+        </label>
+        <div
+          className="timeline-transition-alignment"
+          role="group"
+          aria-label="Transition alignment"
+        >
+          {(["start", "center", "end"] as const).map((alignment) => (
+            <button
+              className="secondary"
+              type="button"
+              aria-pressed={transition.alignment === alignment}
+              disabled={pending || !alignmentAvailable(alignment)}
+              key={alignment}
+              onClick={() => void applyAlignment(alignment)}
+            >
+              {capitalize(alignment)}
+            </button>
+          ))}
+        </div>
+        <button className="primary" disabled={pending} type="submit">
+          {pending ? "Applying..." : "Apply timing"}
+        </button>
+      </form>
+      <output className="timeline-transition-status" aria-live="polite">
+        {message ??
+          "Exact handles are canonical timeline state. Alignment applies immediately."}
+      </output>
+      <section className="timeline-transition-parameters">
+        <header>
+          <div>
+            <p className="section-kicker">Editable parameters</p>
+            <h5>Visual and processing intent</h5>
+          </div>
+          {transition.graph.status === "ready" ? (
+            <code>
+              {transition.graph.graphId} r{transition.graph.graphRevision}
+            </code>
+          ) : null}
+        </header>
+        {transition.graph.status === "unavailable" ? (
+          <p className="timeline-transition-parameter-warning" role="status">
+            {transition.graph.reason}
+          </p>
+        ) : transition.graph.effects.length === 0 ? (
+          <p className="timeline-transition-parameter-warning" role="status">
+            No downstream visual transition node is attached. Exact timing remains
+            editable.
+          </p>
+        ) : (
+          transition.graph.effects.map((effect) => (
+            <article className="timeline-transition-effect" key={effect.nodeId}>
+              <header>
+                <strong>{effect.label}</strong>
+                <code>{effect.nodeType}</code>
+              </header>
+              <div className="timeline-transition-parameter-grid">
+                {effect.parameters.map((parameter) => (
+                  <TimelineTransitionParameterControl
+                    executeProjectActions={executeProjectActions}
+                    key={parameter.parameterId}
+                    parameter={parameter}
+                  />
+                ))}
+              </div>
+            </article>
+          ))
+        )}
+      </section>
+    </section>
+  );
+}
+
+function TimelineTransitionParameterControl({
+  executeProjectActions,
+  parameter,
+}: {
+  readonly executeProjectActions: ExecuteProjectActions;
+  readonly parameter: TimelineTransitionParameterPresentation;
+}) {
+  const [value, setValue] = useState(String(parameter.value ?? ""));
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setValue(String(parameter.value ?? ""));
+    setPending(false);
+    setMessage(null);
+  }, [parameter.parameterId, parameter.value, parameter.driven]);
+
+  const commit = async (nextValue: string | boolean) => {
+    let action: ProjectAction;
+    try {
+      action = buildTransitionParameterAction(parameter, nextValue);
+    } catch (error: unknown) {
+      setMessage(error instanceof Error ? error.message : "Parameter is not valid.");
+      return;
+    }
+    setPending(true);
+    setMessage("Applying...");
+    try {
+      const result = await executeProjectActions([action]);
+      setMessage(`Published at revision ${result.state.project_revision}.`);
+    } catch (error: unknown) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "The parameter could not be published.",
+      );
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const restriction = parameter.restriction
+    ? parameter.restriction.replace("_", " ")
+    : parameter.animatable
+      ? "animatable"
+      : "static";
+  if (!parameter.editable) {
+    return (
+      <div className="timeline-transition-parameter" data-editable="false">
+        <span>{parameter.label}</span>
+        <output>{String(parameter.value ?? "unavailable")}</output>
+        <small>{restriction}</small>
+      </div>
+    );
+  }
+
+  if (parameter.kind === "boolean") {
+    const checked = value === "true";
+    return (
+      <label className="timeline-transition-parameter" data-editable="true">
+        <span>{parameter.label}</span>
+        <input
+          checked={checked}
+          disabled={pending}
+          onChange={(event) => {
+            const next = event.currentTarget.checked;
+            setValue(String(next));
+            void commit(next);
+          }}
+          type="checkbox"
+        />
+        <small>{message ?? restriction}</small>
+      </label>
+    );
+  }
+
+  if (parameter.kind === "choice" && parameter.choices.length > 0) {
+    return (
+      <label className="timeline-transition-parameter" data-editable="true">
+        <span>{parameter.label}</span>
+        <select
+          disabled={pending}
+          onChange={(event) => {
+            const next = event.currentTarget.value;
+            setValue(next);
+            void commit(next);
+          }}
+          value={value}
+        >
+          {parameter.choices.map((choice) => (
+            <option key={choice} value={choice}>
+              {choice}
+            </option>
+          ))}
+        </select>
+        <small>{message ?? restriction}</small>
+      </label>
+    );
+  }
+
+  return (
+    <form
+      className="timeline-transition-parameter"
+      data-editable="true"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void commit(value);
+      }}
+    >
+      <label>
+        <span>{parameter.label}</span>
+        <input
+          disabled={pending}
+          onChange={(event) => setValue(event.currentTarget.value)}
+          step={parameter.kind === "scalar" ? "any" : undefined}
+          type={parameter.kind === "scalar" ? "number" : "text"}
+          value={value}
+        />
+      </label>
+      <button className="secondary" disabled={pending} type="submit">
+        Apply
+      </button>
+      <small>{message ?? restriction}</small>
+    </form>
+  );
+}
+
+function sumExactHandleValues(from: string, to: string): string | null {
+  if (!/^(0|[1-9][0-9]*)$/.test(from) || !/^(0|[1-9][0-9]*)$/.test(to)) {
+    return null;
+  }
+  return (BigInt(from) + BigInt(to)).toString();
 }
 
 function TimelineClipAutomationKeys({

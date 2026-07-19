@@ -1005,6 +1005,7 @@ pub enum TimelineEditKind {
     Razor,
     Trim,
     Extend,
+    SetTransition,
     ThreePoint,
     FourPoint,
 }
@@ -1103,6 +1104,13 @@ pub enum TimelineEditOperation {
         to: ExactTime,
         mode: EditorExtendMode,
         sync_adjustments: Vec<EditorRippleSyncAdjustment>,
+    },
+    SetTransition {
+        timeline_id: String,
+        track_id: String,
+        transition_id: String,
+        from_offset: ExactDuration,
+        to_offset: ExactDuration,
     },
     ThreePoint {
         timeline_id: String,
@@ -1302,6 +1310,19 @@ impl TimelineEditOperation {
                     .map(EditorRippleSyncAdjustment::into_engine)
                     .collect::<Result<Vec<_>>>()?,
             }),
+            Self::SetTransition {
+                timeline_id,
+                track_id,
+                transition_id,
+                from_offset,
+                to_offset,
+            } => Ok(engine::EditOperation::set_transition(
+                parse_id(&timeline_id, "timeline_id")?,
+                parse_id(&track_id, "track_id")?,
+                parse_id(&transition_id, "transition_id")?,
+                from_offset.into_engine()?,
+                to_offset.into_engine()?,
+            )),
             Self::ThreePoint {
                 timeline_id,
                 track_id,
@@ -4001,6 +4022,7 @@ fn public_edit_kind(value: engine::EditKind) -> Result<TimelineEditKind> {
         engine::EditKind::Razor => Ok(TimelineEditKind::Razor),
         engine::EditKind::Trim => Ok(TimelineEditKind::Trim),
         engine::EditKind::Extend => Ok(TimelineEditKind::Extend),
+        engine::EditKind::SetTransition => Ok(TimelineEditKind::SetTransition),
         engine::EditKind::ThreePoint => Ok(TimelineEditKind::ThreePoint),
         engine::EditKind::FourPoint => Ok(TimelineEditKind::FourPoint),
         _ => Err(unexpected_result("timeline_edit_evidence")),

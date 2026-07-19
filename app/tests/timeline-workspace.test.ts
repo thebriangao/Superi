@@ -251,6 +251,8 @@ test("canonical projection preserves exact editorial timing and relationships", 
   assert.deepEqual(transition.transition, {
     from: { kind: "clip", id: "clip.a" },
     to: { kind: "clip", id: "clip.b" },
+    fromOffset: duration("12", 24),
+    toOffset: duration("12", 24),
   });
   assert.ok(Object.isFrozen(model));
   assert.ok(Object.isFrozen(model.tracks));
@@ -770,6 +772,17 @@ test("timeline surface is integrated without a second authored mutation owner", 
   assert.match(timeline, /timeline-snap-guide/);
   assert.match(workspaces, /selection=\{state\.selection\}/);
   assert.match(workspaces, /dispatchSelection=\{dispatch\}/);
+  assert.match(workspaces, /executeProjectActions=\{executeProjectActions\}/);
+  assert.match(timeline, /projectTimelineTransitionDetails/);
+  assert.match(timeline, /timeline-transition-inspector/);
+  assert.match(timeline, /From handle/);
+  assert.match(timeline, /To handle/);
+  assert.match(timeline, /Transition duration/);
+  assert.match(timeline, /buildSetTransitionAction/);
+  assert.match(timeline, /buildTransitionParameterAction/);
+  assert.match(timeline, /executeProjectActions/);
+  assert.match(styles, /\.timeline-transition-inspector/);
+  assert.match(styles, /\.timeline-transition-handles/);
   assert.match(timeline, /role="listbox"/);
   assert.match(timeline, /aria-multiselectable="true"/);
   assert.match(timeline, /role="option"/);

@@ -1317,9 +1317,10 @@ both the populated track and its authored mix intent.
   history, lower-domain validation, event sequencing, and selected snapshot meaning without adding
   an engine script owner. The production desktop is now a downstream consumer of both complete
   editor state and the existing generic project command. Its retained host session stays on
-  EngineControl, so all seven timeline gestures plus undo and redo use this bounded history and
-  correlated event owner. Transient playhead, range, scroll, zoom, preview, source, target, status,
-  and shared selection state do not become new engine commands or another authored state owner.
+  EngineControl, so all seven timeline gestures, undo and redo, transition handles, and supported
+  graph literals use this bounded history and correlated event owner. Transient playhead, range,
+  scroll, zoom, preview, source, target, status, draft form, and shared selection state do not
+  become new engine commands or another authored state owner.
 - Cache and GPU retain their own exact local budget enforcement, audio retains its preallocated
   callback-safe queue, media I/O retains decoded value and lifecycle ownership, and export retains
   logical job and publication ownership. The engine arbiter composes a higher shared managed-byte
@@ -1928,9 +1929,12 @@ observations in one eventless replacement aggregate without polling or bulk runt
 production editing workspace consumes its canonical timeline document through a strict canvas
 projection and supplements clips from the same aggregate's graph and automation owners. Authored
 track gestures plus insert, overwrite, append, replace, lift, extract, backspace, undo, and redo
-return through the existing generic project command, compound transaction, and history owners;
-canvas navigation, preview, source, target, status, snapping, and shared-selection state remains
-transient.
+and transition presentation from the same aggregate's graph and automation owners. Authored track
+gestures plus insert, overwrite, append, replace, lift, extract, backspace, undo, redo, transition
+timing, and graph parameter changes return through the existing generic project command, compound
+transaction, and history owners; canvas navigation, preview, source, target, status, snapping,
+draft input, and shared selection remain transient, and every published result returns through a
+fresh observation.
 Playback crosses
 one bounded nonblocking bridge to its real domain owner. Logical export state remains in the
 canonical queue behind a type-erased dispatcher controller, while prepared executors receive fresh
@@ -2073,8 +2077,9 @@ routing, explicit freshness, eventless behavior, and zero hidden polling or file
 domain only through its authoritative owner and keep opaque payloads and typed runtime artifacts out
 of the aggregate. Keep downstream timeline presentation strict against the canonical document and
 route every authored gesture through the existing project command and history owners. Keep graph
-and automation presentation revision-coherent with the selected aggregate, and never treat a UI
-badge, preview, or shared selection reference as engine-owned authored state.
+and automation presentation revision-coherent with the selected aggregate. Transition timing must
+remain one atomic timeline operation and visual literals must remain typed graph mutations. Never
+treat a UI badge, preview, draft value, or shared selection reference as engine-owned authored state.
 Keep the selected immutable snapshot directly consumable by the project-owned autosave command. A
 future background I/O integration may route that public surface, but must not duplicate policy,
 publication, naming, or retention in engine and must not block EngineControl, Playback, Render, or

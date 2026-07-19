@@ -14,7 +14,9 @@ desktop-facing TypeScript representation of the canonical `superi-api` surface. 
 utility, not a runtime crate, transport, application shell, or state owner.
 The current artifact includes the strict extension registry query, full replacement event and
 resource, exact identities, lifecycle, capabilities, safe failure, features, stable public control
-reference, all eleven track mutation tags, action evidence, and typed track output graph state.
+reference, all eleven track mutation tags, action evidence, typed track output graph state, project
+editor schema `1.3.0`, and the additive exact `set_transition` timeline operation used by the
+desktop transition inspector.
 
 ## Source inventory
 
@@ -100,8 +102,9 @@ The API-owned contract independently proves complete canonical method, event, an
 required project, command-log, AI, extension, and track declarations, deterministic output, and
 absence of timestamps and checkout paths. The generated artifact includes the command-log query and
 result union, record types, script step, track action union, semantic evidence, graph output state,
-event correlation sequence, method map, and resource map. Frontend proof belongs to the workspace
-consumer and is not inferred from this tool's Rust tests.
+event correlation sequence, method map, resource map, and timeline edit union. That union includes
+`set_transition` with stable timeline, track, transition, and exact duration fields. Frontend proof
+belongs to the workspace consumer and is not inferred from this tool's Rust tests.
 
 ## Current status and risks
 

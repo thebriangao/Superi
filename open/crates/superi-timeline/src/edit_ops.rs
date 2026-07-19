@@ -40,6 +40,8 @@ pub enum EditKind {
     Trim,
     /// Move one edit point through explicit ripple or roll semantics.
     Extend,
+    /// Replace both exact handles of one existing transition atomically.
+    SetTransition,
     /// Derive one missing source or record boundary from three supplied points.
     ThreePoint,
     /// Place one exact source range over one exact record range.
@@ -62,6 +64,7 @@ impl EditKind {
             Self::Razor => "razor",
             Self::Trim => "trim",
             Self::Extend => "extend",
+            Self::SetTransition => "set_transition",
             Self::ThreePoint => "three_point",
             Self::FourPoint => "four_point",
         }
@@ -318,6 +321,19 @@ pub enum EditOperation {
         mode: ExtendMode,
         /// Deterministic companion-track material for ripple-mode extension.
         sync_adjustments: Vec<RippleSyncAdjustment>,
+    },
+    /// Replace both overlap handles of one existing transition.
+    SetTransition {
+        /// Timeline containing the target track.
+        timeline_id: TimelineId,
+        /// Track containing the transition.
+        track_id: TrackId,
+        /// Stable identity of the transition to update.
+        transition_id: TransitionId,
+        /// Exact time consumed from the preceding item.
+        from_offset: Duration,
+        /// Exact time consumed from the following item.
+        to_offset: Duration,
     },
     /// Derive one missing boundary and overwrite the resulting record range.
     ThreePoint {
@@ -627,6 +643,24 @@ impl EditOperation {
         }
     }
 
+    /// Creates an atomic transition-handle update.
+    #[must_use]
+    pub fn set_transition(
+        timeline_id: TimelineId,
+        track_id: TrackId,
+        transition_id: TransitionId,
+        from_offset: Duration,
+        to_offset: Duration,
+    ) -> Self {
+        Self::SetTransition {
+            timeline_id,
+            track_id,
+            transition_id,
+            from_offset,
+            to_offset,
+        }
+    }
+
     /// Creates a three-point overwrite operation.
     pub fn three_point<I>(
         timeline_id: TimelineId,
@@ -686,6 +720,7 @@ impl EditOperation {
             Self::Razor { .. } => EditKind::Razor,
             Self::Trim { .. } => EditKind::Trim,
             Self::Extend { .. } => EditKind::Extend,
+            Self::SetTransition { .. } => EditKind::SetTransition,
             Self::ThreePoint { .. } => EditKind::ThreePoint,
             Self::FourPoint { .. } => EditKind::FourPoint,
         }
@@ -706,6 +741,7 @@ impl EditOperation {
             | Self::Razor { timeline_id, .. }
             | Self::Trim { timeline_id, .. }
             | Self::Extend { timeline_id, .. }
+            | Self::SetTransition { timeline_id, .. }
             | Self::ThreePoint { timeline_id, .. }
             | Self::FourPoint { timeline_id, .. } => *timeline_id,
         }
@@ -726,6 +762,7 @@ impl EditOperation {
             | Self::Razor { track_id, .. }
             | Self::Trim { track_id, .. }
             | Self::Extend { track_id, .. }
+            | Self::SetTransition { track_id, .. }
             | Self::ThreePoint { track_id, .. }
             | Self::FourPoint { track_id, .. } => *track_id,
         }
@@ -1032,6 +1069,19 @@ pub(crate) fn apply_operation(
                 mode,
                 ..
             } => apply_extend(track, timeline_id, track_id, *target_id, *side, *to, *mode),
+            EditOperation::SetTransition {
+                transition_id,
+                from_offset,
+                to_offset,
+                ..
+            } => apply_set_transition(
+                track,
+                timeline_id,
+                track_id,
+                *transition_id,
+                *from_offset,
+                *to_offset,
+            ),
             EditOperation::ThreePoint {
                 clip,
                 placement,
@@ -1796,6 +1846,131 @@ fn apply_extend(
     };
     outcome.kind = EditKind::Extend;
     Ok(outcome)
+}
+
+fn apply_set_transition(
+    track: &mut Track,
+    timeline_id: TimelineId,
+    track_id: TrackId,
+    transition_id: TransitionId,
+    from_offset: Duration,
+    to_offset: Duration,
+) -> Result<EditOutcome> {
+    let timebase = track.semantics().timebase();
+    if from_offset.timebase() != timebase || to_offset.timebase() != timebase {
+        return Err(invalid_edit(
+            "set_transition",
+            "transition handles must use the exact target track clock",
+        ));
+    }
+    if from_offset.is_zero() && to_offset.is_zero() {
+        return Err(invalid_edit(
+            "set_transition",
+            "transition handle duration must be nonzero",
+        ));
+    }
+
+    let object_id = EditorialObjectId::Transition(transition_id);
+    let index = track
+        .items()
+        .iter()
+        .position(|item| item.id() == object_id)
+        .ok_or_else(|| not_found_edit("set_transition", "transition was not found"))?;
+    let transition = match &track.items()[index] {
+        TrackItem::Transition(transition) => transition,
+        _ => {
+            return Err(invalid_edit(
+                "set_transition",
+                "transition identity resolved to an unrelated item",
+            ));
+        }
+    };
+    if transition.from_offset() == from_offset && transition.to_offset() == to_offset {
+        return Err(invalid_edit(
+            "set_transition",
+            "transition handle edit must change at least one offset",
+        ));
+    }
+    let cut = index
+        .checked_sub(1)
+        .and_then(|value| track.items().get(value))
+        .and_then(TrackItem::record_range)
+        .ok_or_else(|| {
+            invalid_edit(
+                "set_transition",
+                "transition must retain a preceding timed endpoint",
+            )
+        })?
+        .end_exclusive()?;
+    let old_range = transition_handle_range(cut, transition.from_offset(), transition.to_offset())?;
+    let new_range = transition_handle_range(cut, from_offset, to_offset)?;
+
+    let item = track.item_mut(object_id)?;
+    let TrackItem::Transition(transition) = item else {
+        return Err(invalid_edit(
+            "set_transition",
+            "transition identity resolved to an unrelated item",
+        ));
+    };
+    transition.set_offsets(from_offset, to_offset);
+
+    let affected_start = if old_range.start() < new_range.start() {
+        old_range.start()
+    } else {
+        new_range.start()
+    };
+    let old_end = old_range.end_exclusive()?;
+    let new_end = new_range.end_exclusive()?;
+    let affected_end = if old_end > new_end { old_end } else { new_end };
+
+    Ok(EditOutcome {
+        kind: EditKind::SetTransition,
+        timeline_id,
+        track_id,
+        affected_range: TimeRange::from_start_end(affected_start, affected_end)?,
+        duration_change: TrackDurationChange::Unchanged,
+        inserted_ids: Vec::new(),
+        removed_ids: Vec::new(),
+        modified_ids: vec![object_id],
+        fragments: Vec::new(),
+        removed_transitions: Vec::new(),
+        synchronized_tracks: Vec::new(),
+    })
+}
+
+fn transition_handle_range(
+    cut: RationalTime,
+    from_offset: Duration,
+    to_offset: Duration,
+) -> Result<TimeRange> {
+    let from_value = i64::try_from(from_offset.value()).map_err(|_| {
+        invalid_edit(
+            "set_transition",
+            "transition from handle exceeds the supported exact range",
+        )
+    })?;
+    let to_value = i64::try_from(to_offset.value()).map_err(|_| {
+        invalid_edit(
+            "set_transition",
+            "transition to handle exceeds the supported exact range",
+        )
+    })?;
+    let start = cut.value().checked_sub(from_value).ok_or_else(|| {
+        invalid_edit(
+            "set_transition",
+            "transition from handle exceeds the supported exact range",
+        )
+    })?;
+    let end = cut.value().checked_add(to_value).ok_or_else(|| {
+        invalid_edit(
+            "set_transition",
+            "transition to handle exceeds the supported exact range",
+        )
+    })?;
+    TimeRange::from_start_end(
+        RationalTime::new(start, cut.timebase()),
+        RationalTime::new(end, cut.timebase()),
+    )
 }
 
 fn apply_three_point(

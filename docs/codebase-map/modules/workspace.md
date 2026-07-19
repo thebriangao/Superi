@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 28d6276d11f2aa81aca188f1e7d407b2994316da4011f016fb9227d98fec15ee
-source_files: 254
+source_hash: 9e502fad6e2f3b7bc5d42e98c05c2408fa6ef24c4f2cbcb22156963edbd6c538
+source_files: 257
 mapped_at_commit: working-tree
 ---
 
@@ -484,6 +484,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   slide, razor, trim, extend, ripple-delete, and gap plans, mixed-clock synchronization, typed
   identity allocation, immutable consequence previews, the shared atomic project executor, and
   lower-owned durable semantics and history.
+- `docs/checkpoints/P3.W04.C009.md`: Durable implementation evidence for atomic exact transition
+  handles, deterministic duration and alignment, adjacent-media limits, typed graph parameter
+  controls, application-owned command execution, strict failure behavior, and remaining value-kind
+  and safe-integer limits.
 
 ### Production desktop application
 
@@ -494,7 +498,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   dependencies.
 - `app/package.json`: Declares the private production application package, exact toolchain and
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
-  framework, editor-workspace, timeline-canvas, and timeline-clip contracts, and Tauri commands.
+  framework, editor-workspace, timeline-canvas, timeline-clip, and timeline-transition contracts,
+  and Tauri commands.
 - `app/src/api.ts`: Re-exports the complete canonical generated TypeScript contract and constructs
   one frozen `SuperiApiBindings` surface around an injected `SuperiTransport` and `SuperiClient`.
 - `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
@@ -507,7 +512,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   snapshot, stale-response rejection, generated project, audio, and job refresh subscriptions, and
   classified failure retention above the existing injected generated API. It also owns unique
   project transaction identity, the visible project revision fence, durable authored action
-  execution, the current source-monitor snapshot, exact generated project-command submission, and
+  execution, the current source-monitor snapshot, exact generated project-command submission,
+  response correlation, failure classification, a typed generic project-action callback, and
   complete replacement-state refresh for timeline consumers.
 - `app/src/editor-project.ts`: Defines the exact five workspace identities, public editor-state
   request construction, immutable presentation contract, and sample-preserving audio projection
@@ -523,7 +529,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   replace or backspace target without locally mutating canonical timeline state.
 - `app/src/timeline-workspace.ts`: Strictly projects the embedded canonical revision 2 timeline
   document into a deeply frozen canvas model with exact rational source and record ranges, stable
-  identities and relationships, bounded track height, lock, mute, solo, and enable state,
+  identities and relationships, exact transition from and to offsets, bounded track height, lock,
+  mute, solo, and enable state,
   external-global-start display placement, exact owner-clock snap targets, deterministic extent,
   ruler, time-label, visible-window, and range math, and explicit malformed-document rejection. Its
   pure snap resolver honors the canonical switch plus transient target rules, exact cross-clock
@@ -548,6 +555,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   exact clip-relative positions. It leaves geometry with `projectTimelineDocument`, stops effect
   traversal at timeline-owned nodes, rejects malformed detail, and never infers unsupported visual
   animation curves.
+- `app/src/timeline-transition-presentation.ts`: Joins exact canvas transition timing with the one
+  root-timeline graph document, derives stable endpoint and graph identity, adjacent-handle limits,
+  duration and alignment, downstream processing nodes, animatability, drivers, host restrictions,
+  canonical floating-point bit values, and editable scalar, Boolean, and choice intent. It builds
+  strict `set_transition` and `set_parameter` project actions while keeping malformed optional
+  graph detail separate from proven canonical timing.
 - `app/src/timeline-workspace.tsx`: Renders the editing timeline with sticky track headers and ruler,
   exact record-positioned items, transient playhead and in and out range, native scrolling,
   pointer-anchored zoom, topmost-first track presentation, bounded visible-item overscan, fit
@@ -569,7 +582,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   It also projects the existing application selection into labeled multiselect options, group and
   link aware click selection, exact-object Option selection, Command or Control toggle, Shift range,
   mounted-rectangle lasso preview and commit, roving keyboard focus, offscreen focus scrolling, and
-  a polite live count without taking authored mutation ownership.
+  a polite live count. Exactly one selected transition adds visible handle evidence and an accessible
+  inspector for exact from, to, duration, start, center, and end timing plus typed visual parameters.
+  The component submits only through its injected application callback and takes no transport,
+  project-history, timeline, or graph mutation ownership.
 - `app/src/native-viewport.tsx`: Reserves role-addressed native output rectangles and publishes only
   role, geometry, scale, visibility, and returned status to the shell-local viewport command; it
   never constructs an encoded image, blob URL, pixel readback, or webview frame path. Its composed
@@ -631,7 +647,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   filmstrip, channel-separated waveform, responsive multi-selection batch controls, the sticky
   timeline grid, ruler, tracks, accessible clip buttons, layered filmstrip and waveform visuals,
   dense state badges, range, playhead, controls, interaction selection, authored selection
-  evidence, lasso, visible focus, live status, snap rule strip, exact target status and guide, and
+  evidence, lasso, visible focus, live status, snap rule strip, exact target status and guide,
+  transition handle marks, timing and alignment forms, typed effect parameter controls, and
   responsive 16:9 native viewer
   reservations. Timeline rows use canonical variable height, compact two-row track controls,
   disabled output presentation, and visible command failures. It also defines compact ready, stale,
@@ -658,7 +675,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   state-free workspace projection, and immutable preservation of sample timing, ordered channels,
   routes, continuity evidence, one application-owned project transaction path, all eleven track
   operation tags, source snapshot and generated command wiring, and the absence of direct transport
-  ownership in the workspace.
+  ownership in the workspace. It also verifies transition command wiring through the same
+  application-owned callback.
 - `app/tests/timeline-workspace.test.ts`: Verifies strict canonical revision handling, exact track,
   item, source and record range, group, link, selection, target, lock, output, synchronization, and
   transition preservation, variable height, external global-start placement, deterministic
@@ -670,7 +688,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   lasso geometry, real React integration, multiselect accessibility, shared selection wiring,
   transient navigation controls, all seven source-placement edit requests, minimal fragments, exact
   inclusive source-mark conversion, selection override, replace conformance, history requests,
-  visible consequences, failure fences, and the absence of a frontend authored mutation owner.
+  visible consequences, failure fences, exact transition offsets, production transition-inspector
+  wiring, and the absence of a second frontend authored mutation owner.
 - `app/tests/timeline-editing.test.ts`: Verifies the complete timing-tool catalog, exact 24 fps,
   24000/1001, 48 kHz, and inexact 44.1 kHz behavior, typed fragment and gap identities, canonical
   sync-track ordering, direct and ripple extend modes, ripple-delete and gap batches, lower-matched
@@ -682,6 +701,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   clip-scoped effects and drivers, exact clip-gain sample keys and positions, deep immutability,
   malformed-state rejection, real preview-command composition, stale freshness rejection, and
   application-owned selection integration.
+- `app/tests/timeline-transition-presentation.test.ts`: Verifies exact handles and opposite-edge
+  limits, duration and alignment derivation, strict no-op and unsafe input rejection, canonical
+  scalar-bit decoding, downstream graph traversal, host and driver restrictions, immutable output,
+  exact public timing and graph command payloads, and timing survival under malformed graph detail.
 - `app/tests/api-bindings.test.mjs`: Verifies the canonical generated re-export, complete typed map
   boundary, concrete provider/bootstrap injection, and real request/subscription forwarding without
   duplicating generated client policy.
@@ -941,7 +964,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   control, query, event, and resource declarations, generic project import-media request and result
   evidence, and a transport-neutral typed client without owning runtime IPC. The committed artifact
   is freshly regenerated from the canonical schema `1.3.0` project surface and includes strict
-  track mutation, evidence, and track-output graph DTOs.
+  track mutation, evidence, track-output graph DTOs, and the additive exact `set_transition`
+  timeline operation.
 - `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 25 local
   workspace packages, registry dependencies, target-support dependency trees, scenario digest
   and process-instrumentation dependency edges, the API introspection and validation contracts'
@@ -1605,6 +1629,10 @@ React owns gesture intent and preview but never becomes an authored-state owner.
 The same canvas supplements clip items from the snapshot's canonical graph and attached audio
 automation, and it hydrates real media previews through the existing freshness-fenced Tauri owner.
 Shared clip activation remains an application selection reference, not an authored timeline edit.
+Selected transitions retain their exact canonical handle pair, derive adjacent-media limits and
+deterministic alignment, and join the root graph to inspect downstream processing intent. Timing
+submits one public `set_transition` action and scalar, Boolean, or choice values submit typed graph
+mutations through `ApplicationProvider`; the canvas owns only transient form and pending state.
 
 Beside the engine lifecycle, Tauri manages one serialized `DesktopProjectLifecycle` initialized
 with the application recovery root. Its concrete backend calls only `LocalProjectHost` creation,
@@ -1802,7 +1830,8 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   navigation controls, all seven exact generated edit requests, source freshness and
   half-open conversion, minimum fragment identities, shared target selection, replace conformance,
   immediate history requests, visible consequences, and the exclusion of any frontend authored
-  mutation owner.
+  mutation owner. It also freezes exact transition offset retention and production inspector
+  wiring without introducing a second command path.
 
 - The focused timing-tool proof freezes all seven direct tools plus ripple delete and gap work,
   exact mixed-clock conversion, synchronized track ordering, typed allocation, immutable affected
@@ -1814,6 +1843,14 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   evidence, mixed clocks, stable media and relationship identity, relink, retime, marker, metadata,
   multicam, graph effect and driver state, real audio automation samples, deeply frozen detail,
   preview freshness fences, accessible shared selection, and explicit malformed-state behavior.
+
+- The focused timeline-transition proof freezes exact from and to offsets, adjacent and
+  opposite-edge capacity, deterministic start, center, end, and custom alignment, duration fitting,
+  graph identity and downstream effect traversal, canonical scalar-bit decoding, host-owned and
+  driven restrictions, editable scalar and choice commands, deep immutability, no-op rejection, and
+  explicit graph-unavailable fallback. The editor-workspace contract proves the generated command
+  remains owned by `ApplicationProvider`, while TypeScript, the complete frontend suite, and the
+  production build exercise the real inspector consumer.
 
 - The focused media metadata proof freezes the C005 native, typed bridge, and React consumer
   contract. Native behavior tests cover identity and bin preservation, persistent generic metadata,
@@ -2147,6 +2184,10 @@ draws the active or last guide, and reverses an active gesture through its captu
 Existing clip items now add real generated filmstrips, thumbnails, and waveforms when available,
 plus exact source, relationship, effect, driver, marker, metadata, multicam, retime, and clip-gain
 automation evidence with positioned keyframe diamonds.
+Selected transition items now add exact handle, duration, alignment, endpoint, graph, driver, and
+parameter evidence. Start, center, and end placement preserves the entered total, impossible
+placements are disabled, and all authored changes use the application-owned revision-fenced project
+command path before a complete snapshot refresh.
 The canvas now projects exact current-revision timeline-object references through the shared
 application selection, follows canonical groups and enabled links to a fixed point, preserves
 Option direct-object intent, and supports click, toggle, contiguous range, mounted-rectangle lasso,
@@ -2259,7 +2300,7 @@ stable editor snapshot, and local scripting runtime are implemented. CLI project
 execution now routes through the durable local API host and bounded JSON-RPC automation. Logging,
 subscription hosting, and autosave hosting remain incomplete.
 The synchronized remote revision before this checkpoint is
-`db23c0a1392ad26040e6bcb469bf0a4fda3c4b59`.
+`33ff1f7b542a9412ecb90fd70a97855ec31c718e`.
 Commit `217e9d48703bcfd4736d949aea510c94505071bc` added the dependency-policy workflow and aligned the
 root README, deny policy, and structure guide with license-audit CI. Commit
 `e0b3af9f099f527a8544d1b0317896640969903b` added the executable dependency-policy contract and its
@@ -2436,8 +2477,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`db23c0a1392ad26040e6bcb469bf0a4fda3c4b59` when this checkpoint began. Its hash describes the exact
-251 discovered source files, including generated binary payloads, layered on the integrated
+`33ff1f7b542a9412ecb90fd70a97855ec31c718e` when this checkpoint began. Its hash describes the exact
+254 discovered source files, including generated binary payloads, layered on the integrated
 revision.
 
 ## Maintenance notes
@@ -2497,3 +2538,8 @@ an authored operation.
 Keep clip detail supplemental to that exact projection. Graph badges must follow real clip-scoped
 topology, keyframes must come from a legal attached owner, previews must retain project, library,
 media, and freshness fences, and authored selection must remain distinct from shared UI selection.
+Keep transition timing on canonical timeline offsets and processing intent on typed graph values.
+Handle inputs must retain exact decimal strings until safe public conversion, alignments must
+preserve total duration, opposite-edge transitions must reduce available capacity, and driven,
+host-owned, or unsupported parameters must remain noneditable. The React inspector may retain only
+transient form state and must submit through the application-owned generic project command callback.

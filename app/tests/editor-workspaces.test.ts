@@ -39,6 +39,9 @@ test("five professional workspaces are exact views over the existing application
   assert.equal((app.match(/<ApplicationProvider\b/g) ?? []).length, 1);
   assert.doesNotMatch(app, /EditorProjectProvider|ProjectStateProvider/);
   assert.match(applicationContext, /superi\.editor\.state\.get/);
+  assert.match(applicationContext, /executeProjectActions/);
+  assert.match(applicationContext, /superi\.project\.command\.execute/);
+  assert.match(applicationContext, /expected_project_revision/);
   assert.match(applicationContext, /superi\.project\.state\.changed/);
   assert.match(applicationContext, /classifyDesktopTransportError/);
   assert.doesNotMatch(
@@ -53,6 +56,7 @@ test("five professional workspaces are exact views over the existing application
   assert.match(workspaces, /<NativeViewport role="program" label="Program" \/>/);
   assert.match(workspaces, /<NativeViewport role="composite" label="Composite" \/>/);
   assert.match(workspaces, /<NativeViewport role="color" label="Color" \/>/);
+  assert.match(workspaces, /executeProjectActions={executeProjectActions}/);
   assert.match(packageJson.scripts.test, /editor-workspaces\.test\.ts/);
 });
 

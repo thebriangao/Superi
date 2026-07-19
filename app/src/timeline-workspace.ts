@@ -144,6 +144,8 @@ export interface TimelineCanvasItem {
   readonly transition: {
     readonly from: TimelineObjectReference;
     readonly to: TimelineObjectReference;
+    readonly fromOffset: TimelineExactDuration;
+    readonly toOffset: TimelineExactDuration;
   } | null;
   readonly selected: boolean;
   readonly group: readonly string[] | null;
@@ -2085,7 +2087,12 @@ function resolveTransition(
     },
     source: null,
     sourceRange: null,
-    transition: { from: value.from, to: value.to },
+    transition: {
+      from: value.from,
+      to: value.to,
+      fromOffset: value.fromOffset.exact,
+      toOffset: value.toOffset.exact,
+    },
     selected: selected.has(objectKey(reference)),
     group: groups.get(value.id) ?? null,
     link: links.get(value.id) ?? null,

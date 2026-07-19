@@ -27,6 +27,8 @@ const MEDIA: engine::MediaId = engine::MediaId::from_raw(0xe001);
 const ROOT: engine::TimelineId = engine::TimelineId::from_raw(0xe002);
 const TRACK: engine::TrackId = engine::TrackId::from_raw(0xe003);
 const CLIP: engine::ClipId = engine::ClipId::from_raw(0xe004);
+const SECOND_CLIP: engine::ClipId = engine::ClipId::from_raw(0xe005);
+const TRANSITION: engine::TransitionId = engine::TransitionId::from_raw(0xe006);
 
 fn range(start: i64, duration: u64, timebase: engine::Timebase) -> engine::TimeRange {
     engine::TimeRange::new(
@@ -53,6 +55,22 @@ fn project_document() -> engine::ProjectDocument {
         range(0, 48, edit_rate),
     )
     .unwrap();
+    let second_clip = engine::Clip::new(
+        SECOND_CLIP,
+        "second name",
+        engine::ClipSource::Media(MEDIA),
+        range(144, 48, source_rate),
+        range(48, 24, edit_rate),
+    )
+    .unwrap();
+    let transition = engine::Transition::new(
+        TRANSITION,
+        "public dissolve",
+        engine::EditorialObjectId::Clip(CLIP),
+        engine::EditorialObjectId::Clip(SECOND_CLIP),
+        engine::Duration::new(4, edit_rate).unwrap(),
+        engine::Duration::new(4, edit_rate).unwrap(),
+    );
     let timeline = engine::Timeline::new(
         ROOT,
         "public editor timeline",
@@ -65,7 +83,11 @@ fn project_document() -> engine::ProjectDocument {
                 engine::FrameRate::FPS_24,
                 engine::VideoCompositing::Over,
             )),
-            vec![engine::TrackItem::Clip(clip)],
+            vec![
+                engine::TrackItem::Clip(clip),
+                engine::TrackItem::Transition(transition),
+                engine::TrackItem::Clip(second_clip),
+            ],
         )],
     );
     let editorial =
@@ -251,6 +273,7 @@ fn editor_contract_has_permanent_names_and_strict_project_commands() {
     );
     assert_eq!(PROJECT_STATE_CHANGED_EVENT, "superi.project.state.changed");
     assert_eq!(PROJECT_HISTORY_RESOURCE, "superi.project.history");
+    assert_eq!(PROJECT_EDITOR_SCHEMA_VERSION.to_string(), "1.3.0");
     assert_eq!(
         ExecuteProjectCommand::METHOD,
         EXECUTE_PROJECT_COMMAND_METHOD
@@ -296,6 +319,7 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
     let timeline_id = ROOT.to_string();
     let track_id = TRACK.to_string();
     let clip_id = CLIP.to_string();
+    let transition_id = TRANSITION.to_string();
     let gap_id = "gap:00000000000000000000000000000031";
     let clip_object = object_id("clip", &clip_id);
     let gap_object = object_id("gap", gap_id);
@@ -316,6 +340,7 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
         json!({"operation":"razor","timeline_id":timeline_id,"track_id":track_id,"target_id":clip_object,"at":time,"fragment_id":gap_object}),
         json!({"operation":"trim","timeline_id":timeline_id,"track_id":track_id,"target_id":clip_object,"side":"end","to":time,"gap_id":null}),
         json!({"operation":"extend","timeline_id":timeline_id,"track_id":track_id,"target_id":clip_object,"side":"end","to":time,"mode":"ripple","sync_adjustments":[]}),
+        json!({"operation":"set_transition","timeline_id":timeline_id,"track_id":track_id,"transition_id":transition_id,"from_offset":exact_duration(6,24),"to_offset":exact_duration(2,24)}),
         json!({"operation":"three_point","timeline_id":timeline_id,"track_id":track_id,"clip":material,"placement":{"placement":"source_range_at_record_start","source_range":range,"record_start":time},"fragment_ids":[]}),
         json!({"operation":"four_point","timeline_id":timeline_id,"track_id":track_id,"clip":material,"source_range":range,"record_range":range,"fragment_ids":[]}),
     ];
@@ -335,6 +360,7 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
             "razor",
             "trim",
             "extend",
+            "set_transition",
             "three_point",
             "four_point"
         ]
@@ -605,6 +631,13 @@ fn one_public_command_is_atomic_durable_correlated_and_undoable() {
                         "track_id": TRACK.to_string(),
                         "clip_id": CLIP.to_string(),
                         "source_start": exact_time(96, 48)
+                    }, {
+                        "operation": "set_transition",
+                        "timeline_id": ROOT.to_string(),
+                        "track_id": TRACK.to_string(),
+                        "transition_id": TRANSITION.to_string(),
+                        "from_offset": exact_duration(6, 24),
+                        "to_offset": exact_duration(2, 24)
                     }]
                 },
                 {
@@ -657,6 +690,19 @@ fn one_public_command_is_atomic_durable_correlated_and_undoable() {
         .as_clip()
         .unwrap();
     assert_eq!(clip.source_range().start().value(), 96);
+    let transition = published
+        .editorial_project()
+        .timeline(ROOT)
+        .unwrap()
+        .track(TRACK)
+        .unwrap()
+        .item(engine::EditorialObjectId::Transition(TRANSITION))
+        .unwrap();
+    let engine::TrackItem::Transition(transition) = transition else {
+        panic!("public transition identity must remain a transition");
+    };
+    assert_eq!(transition.from_offset().value(), 6);
+    assert_eq!(transition.to_offset().value(), 2);
     assert_eq!(
         published
             .editorial_project()

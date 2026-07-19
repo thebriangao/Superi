@@ -133,6 +133,16 @@ fn clip(project: &EditorialProject, track_id: TrackId, id: ClipId) -> &Clip {
         .unwrap()
 }
 
+fn transition(project: &EditorialProject, track_id: TrackId, id: TransitionId) -> &Transition {
+    let item = track(project, track_id)
+        .item(EditorialObjectId::Transition(id))
+        .unwrap();
+    let TrackItem::Transition(transition) = item else {
+        panic!("transition identity must resolve to transition state");
+    };
+    transition
+}
+
 fn timed_ids(track: &Track) -> Vec<EditorialObjectId> {
     track
         .items()
@@ -362,6 +372,83 @@ fn overwrite_and_replace_preserve_track_duration_and_exact_source_mapping() {
         clip(&identity_preserving, V1, A).source_range(),
         range(60, 16, source_rate())
     );
+}
+
+#[test]
+fn set_transition_updates_both_handles_atomically_with_exact_evidence() {
+    let mut project = project_fixture();
+    let result = apply_edit_batch(
+        &mut project,
+        0,
+        &[EditOperation::set_transition(
+            MAIN_TIMELINE,
+            V1,
+            DISSOLVE,
+            Duration::new(2, edit_rate()).unwrap(),
+            Duration::zero(edit_rate()),
+        )],
+    )
+    .unwrap();
+
+    let outcome = &result.outcomes()[0];
+    assert_eq!(project.revision(), 1);
+    assert_eq!(outcome.kind(), EditKind::SetTransition);
+    assert_eq!(outcome.affected_range(), range(6, 3, edit_rate()));
+    assert_eq!(outcome.duration_change(), TrackDurationChange::Unchanged);
+    assert_eq!(
+        outcome.modified_ids(),
+        &[EditorialObjectId::Transition(DISSOLVE)]
+    );
+    assert!(outcome.inserted_ids().is_empty());
+    assert!(outcome.removed_ids().is_empty());
+    assert!(outcome.removed_transitions().is_empty());
+
+    let updated = transition(&project, V1, DISSOLVE);
+    assert_eq!(
+        updated.from_offset(),
+        Duration::new(2, edit_rate()).unwrap()
+    );
+    assert_eq!(updated.to_offset(), Duration::zero(edit_rate()));
+
+    let published = project.clone();
+    for operation in [
+        EditOperation::set_transition(
+            MAIN_TIMELINE,
+            V1,
+            DISSOLVE,
+            Duration::new(2, edit_rate()).unwrap(),
+            Duration::zero(edit_rate()),
+        ),
+        EditOperation::set_transition(
+            MAIN_TIMELINE,
+            V1,
+            DISSOLVE,
+            Duration::zero(edit_rate()),
+            Duration::zero(edit_rate()),
+        ),
+        EditOperation::set_transition(
+            MAIN_TIMELINE,
+            V1,
+            DISSOLVE,
+            Duration::new(9, edit_rate()).unwrap(),
+            Duration::zero(edit_rate()),
+        ),
+        EditOperation::set_transition(
+            MAIN_TIMELINE,
+            V1,
+            DISSOLVE,
+            Duration::new(1, Timebase::integer(30).unwrap()).unwrap(),
+            Duration::zero(Timebase::integer(30).unwrap()),
+        ),
+    ] {
+        assert_eq!(
+            apply_edit_batch(&mut project, 1, &[operation])
+                .unwrap_err()
+                .category(),
+            ErrorCategory::InvalidInput
+        );
+        assert_eq!(project, published);
+    }
 }
 
 #[test]

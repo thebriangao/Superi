@@ -85,10 +85,10 @@ export function ApplicationProvider({
   );
   const [sourceMonitor, setSourceMonitor] =
     useState<SourceMonitorSnapshot | null>(null);
+  const editorProjectRef = useRef(editorProject);
   const editorRequestRevision = useRef(0);
   const editorTransactionRevision = useRef(0);
   const projectCommandRevision = useRef(0);
-  const editorProjectRef = useRef(editorProject);
   stateRef.current = state;
   editorProjectRef.current = editorProject;
 
@@ -209,7 +209,7 @@ export function ApplicationProvider({
     ): Promise<ExecuteProjectCommandResult> => {
       const snapshot = editorProjectRef.current.snapshot;
       if (snapshot === null) {
-        throw new Error("A durable project must be open before editing tracks.");
+        throw new Error("A durable project must be open before editing project state.");
       }
       if (actions.length === 0) {
         throw new Error("A project command must contain at least one action.");
@@ -280,10 +280,10 @@ export function ApplicationProvider({
         state,
         dispatch,
         executeCommand,
+        executeProjectActions,
         commandFailure,
         editorProject,
         refreshEditorProject,
-        executeProjectActions,
         executeProjectCommand,
         sourceMonitor,
         setSourceMonitor,
