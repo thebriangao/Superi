@@ -303,6 +303,10 @@ pub enum ProjectActionEvidence {
         revision: u64,
         mutations: Vec<TimelineTrackMutationKind>,
     },
+    MarkersMutated {
+        revision: u64,
+        mutations: Vec<TimelineMarkerMutationKind>,
+    },
     GraphMutated {
         graph_id: String,
         revision: u64,
@@ -3337,6 +3341,192 @@ impl TimelineTrackMutation {
     }
 }
 
+/// Stable visible flag carried by one timeline marker.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TimelineMarkerFlag {
+    Red,
+    Pink,
+    Orange,
+    Yellow,
+    Green,
+    Cyan,
+    Blue,
+    Purple,
+    Magenta,
+    Black,
+    White,
+}
+
+impl TimelineMarkerFlag {
+    const fn into_engine(self) -> engine::MarkerFlag {
+        match self {
+            Self::Red => engine::MarkerFlag::Red,
+            Self::Pink => engine::MarkerFlag::Pink,
+            Self::Orange => engine::MarkerFlag::Orange,
+            Self::Yellow => engine::MarkerFlag::Yellow,
+            Self::Green => engine::MarkerFlag::Green,
+            Self::Cyan => engine::MarkerFlag::Cyan,
+            Self::Blue => engine::MarkerFlag::Blue,
+            Self::Purple => engine::MarkerFlag::Purple,
+            Self::Magenta => engine::MarkerFlag::Magenta,
+            Self::Black => engine::MarkerFlag::Black,
+            Self::White => engine::MarkerFlag::White,
+        }
+    }
+}
+
+/// Stable local owner for one public timeline marker.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum TimelineMarkerOwner {
+    Timeline {},
+    Track { track_id: String },
+    Object { object_id: EditorialObjectId },
+}
+
+impl TimelineMarkerOwner {
+    fn into_engine(self) -> Result<engine::MarkerOwner> {
+        match self {
+            Self::Timeline {} => Ok(engine::MarkerOwner::Timeline),
+            Self::Track { track_id } => {
+                Ok(engine::MarkerOwner::Track(parse_id(&track_id, "track_id")?))
+            }
+            Self::Object { object_id } => Ok(engine::MarkerOwner::Object(object_id.into_engine()?)),
+        }
+    }
+}
+
+/// Stable category returned for one applied timeline marker mutation.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TimelineMarkerMutationKind {
+    Create,
+    SetRange,
+    SetLabel,
+    SetFlag,
+    SetNote,
+    Remove,
+}
+
+/// One strict authored timeline marker mutation.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
+pub enum TimelineMarkerMutation {
+    Create {
+        timeline_id: String,
+        marker_id: String,
+        owner: TimelineMarkerOwner,
+        marked_range: ExactTimeRange,
+        label: Option<String>,
+        flag: Option<TimelineMarkerFlag>,
+        note: Option<String>,
+        metadata: BTreeMap<String, EditorMetadataValue>,
+    },
+    SetRange {
+        timeline_id: String,
+        marker_id: String,
+        marked_range: ExactTimeRange,
+    },
+    SetLabel {
+        timeline_id: String,
+        marker_id: String,
+        label: Option<String>,
+    },
+    SetFlag {
+        timeline_id: String,
+        marker_id: String,
+        flag: Option<TimelineMarkerFlag>,
+    },
+    SetNote {
+        timeline_id: String,
+        marker_id: String,
+        note: Option<String>,
+    },
+    Remove {
+        timeline_id: String,
+        marker_id: String,
+    },
+}
+
+impl TimelineMarkerMutation {
+    fn into_engine(self) -> Result<engine::MarkerMutation> {
+        Ok(match self {
+            Self::Create {
+                timeline_id,
+                marker_id,
+                owner,
+                marked_range,
+                label,
+                flag,
+                note,
+                metadata,
+            } => {
+                let mut marker = engine::Marker::new(
+                    parse_id(&marker_id, "marker_id")?,
+                    owner.into_engine()?,
+                    marked_range.into_engine()?,
+                )?;
+                marker.set_label(label.map(engine::MarkerLabel::new).transpose()?);
+                marker.set_flag(flag.map(TimelineMarkerFlag::into_engine));
+                marker.set_note(note.map(engine::MarkerNote::new).transpose()?);
+                marker.set_metadata(metadata_map(metadata)?);
+                engine::MarkerMutation::Create {
+                    timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                    marker,
+                }
+            }
+            Self::SetRange {
+                timeline_id,
+                marker_id,
+                marked_range,
+            } => engine::MarkerMutation::SetRange {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                marker_id: parse_id(&marker_id, "marker_id")?,
+                marked_range: marked_range.into_engine()?,
+            },
+            Self::SetLabel {
+                timeline_id,
+                marker_id,
+                label,
+            } => engine::MarkerMutation::SetLabel {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                marker_id: parse_id(&marker_id, "marker_id")?,
+                label: label.map(engine::MarkerLabel::new).transpose()?,
+            },
+            Self::SetFlag {
+                timeline_id,
+                marker_id,
+                flag,
+            } => engine::MarkerMutation::SetFlag {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                marker_id: parse_id(&marker_id, "marker_id")?,
+                flag: flag.map(TimelineMarkerFlag::into_engine),
+            },
+            Self::SetNote {
+                timeline_id,
+                marker_id,
+                note,
+            } => engine::MarkerMutation::SetNote {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                marker_id: parse_id(&marker_id, "marker_id")?,
+                note: note.map(engine::MarkerNote::new).transpose()?,
+            },
+            Self::Remove {
+                timeline_id,
+                marker_id,
+            } => engine::MarkerMutation::Remove {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                marker_id: parse_id(&marker_id, "marker_id")?,
+            },
+        })
+    }
+}
+
 /// Every authored action integrated by the production project transaction owner.
 #[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -3350,6 +3540,9 @@ pub enum ProjectAction {
     },
     MutateTracks {
         mutations: Vec<TimelineTrackMutation>,
+    },
+    MutateMarkers {
+        mutations: Vec<TimelineMarkerMutation>,
     },
     MutateGraph {
         graph_id: String,
@@ -3396,6 +3589,7 @@ impl ProjectAction {
             Self::SelectRootTimeline { .. }
             | Self::EditTimeline { .. }
             | Self::MutateTracks { .. }
+            | Self::MutateMarkers { .. }
             | Self::MutateGraph { .. }
             | Self::MutateClipMix { .. } => {}
         }
@@ -3420,6 +3614,12 @@ impl ProjectAction {
                 mutations
                     .into_iter()
                     .map(TimelineTrackMutation::into_engine)
+                    .collect::<Result<Vec<_>>>()?,
+            )),
+            Self::MutateMarkers { mutations } => Ok(engine::CompoundProjectAction::mutate_markers(
+                mutations
+                    .into_iter()
+                    .map(TimelineMarkerMutation::into_engine)
                     .collect::<Result<Vec<_>>>()?,
             )),
             Self::MutateGraph {
@@ -3885,6 +4085,16 @@ fn public_action_evidence(
                     .collect(),
             })
         }
+        engine::CompoundProjectActionResult::MarkersMutated(result) => {
+            Ok(ProjectActionEvidence::MarkersMutated {
+                revision: result.revision(),
+                mutations: result
+                    .outcomes()
+                    .iter()
+                    .map(|outcome| public_marker_mutation_kind(outcome.kind()))
+                    .collect(),
+            })
+        }
         engine::CompoundProjectActionResult::GraphMutated { graph_id, revision } => {
             Ok(ProjectActionEvidence::GraphMutated {
                 graph_id: graph_id.to_string(),
@@ -3928,6 +4138,18 @@ fn public_track_mutation_kind(value: engine::TrackMutationKind) -> TimelineTrack
         engine::TrackMutationKind::SetSolo => TimelineTrackMutationKind::SetSolo,
         engine::TrackMutationKind::SetEnabled => TimelineTrackMutationKind::SetEnabled,
         _ => unreachable!("all public track mutation kinds are covered"),
+    }
+}
+
+fn public_marker_mutation_kind(value: engine::MarkerMutationKind) -> TimelineMarkerMutationKind {
+    match value {
+        engine::MarkerMutationKind::Create => TimelineMarkerMutationKind::Create,
+        engine::MarkerMutationKind::SetRange => TimelineMarkerMutationKind::SetRange,
+        engine::MarkerMutationKind::SetLabel => TimelineMarkerMutationKind::SetLabel,
+        engine::MarkerMutationKind::SetFlag => TimelineMarkerMutationKind::SetFlag,
+        engine::MarkerMutationKind::SetNote => TimelineMarkerMutationKind::SetNote,
+        engine::MarkerMutationKind::Remove => TimelineMarkerMutationKind::Remove,
+        _ => unreachable!("all public marker mutation kinds are covered"),
     }
 }
 
@@ -4040,6 +4262,7 @@ where
                 "project_id" => "invalid project identifier",
                 "timeline_id" => "invalid timeline identifier",
                 "track_id" => "invalid track identifier",
+                "marker_id" => "invalid marker identifier",
                 "clip_id" => "invalid clip identifier",
                 "gap_id" => "invalid gap identifier",
                 "transition_id" => "invalid transition identifier",

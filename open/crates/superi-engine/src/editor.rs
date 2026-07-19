@@ -10,8 +10,8 @@ pub use superi_core::color_space::{
 pub use superi_core::diagnostics::FiniteF64 as DiagnosticFiniteF64;
 pub use superi_core::error::{ErrorCategory, ErrorContext, Recoverability};
 pub use superi_core::ids::{
-    CaptionId, ClipId, EdgeId, GapId, GeneratorId, GraphId, MediaId, MulticamAngleId, NodeId,
-    ParameterId, PortId, ProjectId, TimelineId, TrackId, TransitionId,
+    CaptionId, ClipId, EdgeId, GapId, GeneratorId, GraphId, MarkerId, MediaId, MulticamAngleId,
+    NodeId, ParameterId, PortId, ProjectId, TimelineId, TrackId, TransitionId,
 };
 pub use superi_core::pixel::{ChannelLayout, ChannelPosition};
 pub use superi_core::settings::{
@@ -58,7 +58,13 @@ pub use superi_timeline::edit_ops::{
     EditBatchResult, EditKind, EditOperation, EditSide, ExtendMode, RippleSyncAdjustment,
     ThreePointPlacement,
 };
-pub use superi_timeline::markers::{MetadataKey, MetadataValue, TimelineMetadata};
+pub use superi_timeline::marker_ops::{
+    MarkerMutation, MarkerMutationBatchResult, MarkerMutationKind, MarkerMutationOutcome,
+};
+pub use superi_timeline::markers::{
+    Marker, MarkerFlag, MarkerLabel, MarkerNote, MarkerOwner, MetadataKey, MetadataValue,
+    TimelineMetadata,
+};
 pub use superi_timeline::media::{RelinkDecision, RelinkStatus};
 pub use superi_timeline::model::{
     AudioChannelRoute, AudioChannelTarget, AudioRouteDestination, AudioRouting,

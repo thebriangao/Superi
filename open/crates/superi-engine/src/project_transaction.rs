@@ -11,6 +11,9 @@ use superi_project::media::{
 };
 use superi_timeline::compile::{recompile_timeline_preserving_edits, CompiledTimelineGraphValue};
 use superi_timeline::edit_ops::{EditBatchResult, EditOperation};
+use superi_timeline::marker_ops::{
+    apply_marker_mutation_batch, MarkerMutation, MarkerMutationBatchResult,
+};
 use superi_timeline::model::LinkedMediaReference;
 use superi_timeline::track_ops::{
     apply_track_mutation_batch, TrackMutation, TrackMutationBatchResult,
@@ -33,6 +36,8 @@ pub enum CompoundProjectAction {
     EditTimeline(Vec<EditOperation>),
     /// Apply a nonempty atomic track mutation batch.
     MutateTracks(Vec<TrackMutation>),
+    /// Apply a nonempty atomic marker mutation batch.
+    MutateMarkers(Vec<MarkerMutation>),
     /// Apply a nonempty ordered mutation batch to one retained graph.
     MutateGraph {
         /// Stable retained graph identity.
@@ -61,6 +66,12 @@ impl CompoundProjectAction {
     #[must_use]
     pub fn mutate_tracks(mutations: impl IntoIterator<Item = TrackMutation>) -> Self {
         Self::MutateTracks(mutations.into_iter().collect())
+    }
+
+    /// Creates an atomic marker mutation action.
+    #[must_use]
+    pub fn mutate_markers(mutations: impl IntoIterator<Item = MarkerMutation>) -> Self {
+        Self::MutateMarkers(mutations.into_iter().collect())
     }
 
     /// Creates a graph mutation action.
@@ -98,6 +109,7 @@ impl CompoundProjectAction {
             Self::SelectRootTimeline(_) => "select_root_timeline",
             Self::EditTimeline(_) => "edit_timeline",
             Self::MutateTracks(_) => "mutate_tracks",
+            Self::MutateMarkers(_) => "mutate_markers",
             Self::MutateGraph { .. } => "mutate_graph",
             Self::MutateMedia(_) => "mutate_media",
             Self::ImportMedia(_) => "import_media",
@@ -140,6 +152,9 @@ impl CompoundProjectTransaction {
                 CompoundProjectAction::MutateTracks(mutations) if mutations.is_empty()
             ) || matches!(
                 action,
+                CompoundProjectAction::MutateMarkers(mutations) if mutations.is_empty()
+            ) || matches!(
+                action,
                 CompoundProjectAction::MutateGraph { mutations, .. } if mutations.is_empty()
             ) || matches!(
                 action,
@@ -176,6 +191,8 @@ pub enum CompoundProjectActionResult {
     TimelineEdited(EditBatchResult),
     /// Track mutations and graph reconciliation were published.
     TracksMutated(TrackMutationBatchResult),
+    /// Marker mutations and graph reconciliation were published.
+    MarkersMutated(MarkerMutationBatchResult),
     /// A retained graph published one new graph revision.
     GraphMutated {
         /// Stable retained graph identity.
@@ -271,6 +288,25 @@ pub fn execute_compound_project_transaction(
                         draft.replace_timeline_compilation(reconciled)?;
                     }
                     CompoundProjectActionResult::TracksMutated(result)
+                }
+                CompoundProjectAction::MutateMarkers(mutations) => {
+                    let old_project = draft.editorial_project().clone();
+                    let retained = draft
+                        .graphs()
+                        .filter_map(|graph| graph.as_timeline().cloned())
+                        .collect::<Vec<_>>();
+                    let editorial = draft.editorial_project_mut();
+                    let result =
+                        apply_marker_mutation_batch(editorial, editorial.revision(), mutations)?;
+                    for compilation in retained {
+                        let reconciled = recompile_timeline_preserving_edits(
+                            &old_project,
+                            &compilation,
+                            draft.editorial_project(),
+                        )?;
+                        draft.replace_timeline_compilation(reconciled)?;
+                    }
+                    CompoundProjectActionResult::MarkersMutated(result)
                 }
                 CompoundProjectAction::MutateGraph {
                     graph_id,

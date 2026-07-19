@@ -1569,6 +1569,200 @@ button.timeline-edit-tool[aria-pressed="true"],
   background: #13191c;
 }
 
+.timeline-marker-panel {
+  display: grid;
+  gap: 0;
+  border-bottom: 1px solid #293135;
+  background: #111719;
+}
+
+.timeline-marker-header {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 12px;
+}
+
+.timeline-marker-header > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.timeline-marker-header span,
+.timeline-marker-editor label > span {
+  color: #788386;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.timeline-marker-header strong {
+  color: #d6dfda;
+  font-size: 11px;
+}
+
+.timeline-marker-actions,
+.timeline-marker-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.timeline-marker-body {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.42fr) minmax(320px, 1fr);
+  min-height: 92px;
+  border-top: 1px solid #252d30;
+}
+
+.timeline-marker-list {
+  display: grid;
+  max-height: 166px;
+  align-content: start;
+  gap: 3px;
+  padding: 7px;
+  overflow-y: auto;
+  border-right: 1px solid #293135;
+  scrollbar-width: thin;
+}
+
+.timeline-marker-list > p,
+.timeline-marker-empty-editor {
+  margin: 0;
+  padding: 12px;
+  color: #7f8a8d;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+button.timeline-marker-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px;
+  border-color: transparent;
+  color: #cbd4cf;
+  background: transparent;
+  text-align: left;
+}
+
+button.timeline-marker-row:hover,
+button.timeline-marker-row[aria-selected="true"] {
+  border-color: #3e5058;
+  background: #182126;
+}
+
+button.timeline-marker-row[aria-selected="true"] {
+  box-shadow: inset 2px 0 #aaddff;
+}
+
+.timeline-marker-row > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.timeline-marker-row strong,
+.timeline-marker-row small,
+.timeline-marker-row time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-marker-row strong {
+  font-size: 10px;
+}
+
+.timeline-marker-row small,
+.timeline-marker-row time {
+  color: #7f898c;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 8px;
+}
+
+.timeline-marker-swatch {
+  width: 7px;
+  height: 18px;
+  border: 1px solid #566064;
+  border-radius: 2px;
+  background: #30383c;
+}
+
+.timeline-marker-row[data-flag="red"] .timeline-marker-swatch { background: #cf625d; }
+.timeline-marker-row[data-flag="pink"] .timeline-marker-swatch { background: #db7fa5; }
+.timeline-marker-row[data-flag="orange"] .timeline-marker-swatch { background: #d78d55; }
+.timeline-marker-row[data-flag="yellow"] .timeline-marker-swatch { background: #d8bd62; }
+.timeline-marker-row[data-flag="green"] .timeline-marker-swatch { background: #6fa87c; }
+.timeline-marker-row[data-flag="cyan"] .timeline-marker-swatch { background: #65aeb5; }
+.timeline-marker-row[data-flag="blue"] .timeline-marker-swatch { background: #638fc3; }
+.timeline-marker-row[data-flag="purple"] .timeline-marker-swatch { background: #8c73bc; }
+.timeline-marker-row[data-flag="magenta"] .timeline-marker-swatch { background: #b967ac; }
+.timeline-marker-row[data-flag="black"] .timeline-marker-swatch { background: #080a0b; }
+.timeline-marker-row[data-flag="white"] .timeline-marker-swatch { background: #e2e5df; }
+
+.timeline-marker-editor {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(96px, 0.55fr) minmax(110px, 0.65fr) minmax(90px, 0.55fr);
+  align-items: end;
+  gap: 7px;
+  padding: 8px;
+}
+
+.timeline-marker-editor label {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.timeline-marker-editor input,
+.timeline-marker-editor select,
+.timeline-marker-editor textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid #354045;
+  border-radius: 4px;
+  color: #dce2de;
+  background: #0e1315;
+  font: inherit;
+  font-size: 10px;
+}
+
+.timeline-marker-editor textarea {
+  min-height: 45px;
+  resize: vertical;
+}
+
+.timeline-marker-note-field {
+  grid-column: 1 / -2;
+}
+
+.timeline-marker-editor-actions {
+  align-self: end;
+  justify-content: flex-end;
+}
+
+.timeline-marker-editor-actions button {
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 9px;
+}
+
+.timeline-marker-status {
+  min-height: 24px;
+  padding: 5px 12px;
+  border-top: 1px solid #252d30;
+  color: #899598;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
 button.timeline-snap-master,
 button.timeline-snap-rule {
   min-height: 27px;
@@ -2773,6 +2967,15 @@ button.timeline-playhead-handle span {
     justify-content: flex-start;
   }
 
+  .timeline-marker-body {
+    grid-template-columns: 1fr;
+  }
+
+  .timeline-marker-list {
+    border-right: 0;
+    border-bottom: 1px solid #293135;
+  }
+
   .timeline-snap-status {
     grid-column: 1 / -1;
   }
@@ -2842,6 +3045,20 @@ button.timeline-playhead-handle span {
 
   .timeline-edit-actions {
     grid-column: 1;
+  }
+
+  .timeline-marker-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .timeline-marker-editor {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .timeline-marker-note-field,
+  .timeline-marker-editor-actions {
+    grid-column: 1 / -1;
   }
 
   .timeline-snap-status {

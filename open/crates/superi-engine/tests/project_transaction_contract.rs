@@ -1,7 +1,7 @@
 use superi_audio::graph::{AudioProcessBlock, AudioProcessor};
 use superi_audio::mixing::{ChannelMap, ClipMixControls, ClipMixMutation};
 use superi_core::error::ErrorCategory;
-use superi_core::ids::{ClipId, GraphId, MediaId, ProjectId, TimelineId, TrackId};
+use superi_core::ids::{ClipId, GraphId, MarkerId, MediaId, ProjectId, TimelineId, TrackId};
 use superi_core::pixel::{ChannelLayout, ChannelPosition};
 use superi_core::settings::{ComponentId, SemanticVersion, VersionIdentifier};
 use superi_core::time::FrameRate;
@@ -26,6 +26,8 @@ use superi_project::media::ProjectMediaCommand;
 use superi_project::ProjectDatabase;
 use superi_timeline::compile::{TimelineGraphOrigin, TimelineGraphValue};
 use superi_timeline::edit_ops::EditOperation;
+use superi_timeline::marker_ops::MarkerMutation;
+use superi_timeline::markers::{Marker, MarkerFlag, MarkerLabel, MarkerNote, MarkerOwner};
 use superi_timeline::media::RelinkStatus;
 use superi_timeline::model::{
     Clip, ClipSource, EditorialObjectId, EditorialProject, LinkedMediaReference, Timeline, Track,
@@ -38,6 +40,7 @@ const MEDIA: MediaId = MediaId::from_raw(0xd001);
 const ROOT: TimelineId = TimelineId::from_raw(0xd002);
 const TRACK: TrackId = TrackId::from_raw(0xd003);
 const CLIP: ClipId = ClipId::from_raw(0xd004);
+const MARKER: MarkerId = MarkerId::from_raw(0xd005);
 
 fn range(start: i64, duration: u64, timebase: Timebase) -> TimeRange {
     TimeRange::new(
@@ -426,6 +429,73 @@ fn track_mutations_publish_once_recompile_and_round_trip_through_history() {
 }
 
 #[test]
+fn marker_mutations_publish_once_recompile_and_round_trip_through_history() {
+    let mut history = ProjectCommandHistory::new(document());
+    let edit_rate = FrameRate::FPS_24.timebase();
+    let mut marker = Marker::new(MARKER, MarkerOwner::Timeline, range(12, 4, edit_rate)).unwrap();
+    marker.set_label(Some(MarkerLabel::new("picture lock").unwrap()));
+    marker.set_flag(Some(MarkerFlag::Blue));
+    marker.set_note(Some(MarkerNote::new("review with director").unwrap()));
+    let transaction = CompoundProjectTransaction::new([CompoundProjectAction::mutate_markers([
+        MarkerMutation::Create {
+            timeline_id: ROOT,
+            marker,
+        },
+    ])])
+    .unwrap();
+
+    let applied = history
+        .execute(ProjectHistoryCommand::apply(
+            0,
+            ProjectMutation::compound(transaction),
+        ))
+        .unwrap();
+    let ProjectHistoryActionResult::AppliedCompound { actions } = applied.action_result().unwrap()
+    else {
+        panic!("marker command must retain compound action evidence");
+    };
+    assert!(matches!(
+        actions.as_slice(),
+        [CompoundProjectActionResult::MarkersMutated(result)] if result.outcomes().len() == 1
+    ));
+    let published = applied.state().snapshot();
+    let marker = published
+        .editorial_project()
+        .timeline(ROOT)
+        .unwrap()
+        .marker(MARKER)
+        .unwrap();
+    assert_eq!(marker.label().unwrap().as_str(), "picture lock");
+    assert_eq!(marker.flag(), Some(MarkerFlag::Blue));
+    assert_eq!(marker.note().unwrap().as_str(), "review with director");
+    assert_eq!(graph_name(published), "original name");
+
+    let undone = history.execute(ProjectHistoryCommand::undo(1)).unwrap();
+    assert!(undone
+        .state()
+        .snapshot()
+        .editorial_project()
+        .timeline(ROOT)
+        .unwrap()
+        .marker(MARKER)
+        .is_none());
+    let redone = history.execute(ProjectHistoryCommand::redo(2)).unwrap();
+    assert_eq!(
+        redone
+            .state()
+            .snapshot()
+            .editorial_project()
+            .timeline(ROOT)
+            .unwrap()
+            .marker(MARKER)
+            .unwrap()
+            .marked_range(),
+        range(12, 4, edit_rate)
+    );
+    assert_eq!(graph_name(redone.state().snapshot()), "original name");
+}
+
+#[test]
 fn deleting_a_populated_track_releases_clip_mix_intent_and_restores_it_with_history() {
     let mut history = ProjectCommandHistory::new(document());
     let mix = CompoundProjectTransaction::new([CompoundProjectAction::mutate_clip_mix([
@@ -517,6 +587,12 @@ fn compound_bounds_and_empty_subsystem_batches_fail_before_publication() {
     );
     assert_eq!(
         CompoundProjectTransaction::new([CompoundProjectAction::edit_timeline([])])
+            .unwrap_err()
+            .category(),
+        ErrorCategory::InvalidInput
+    );
+    assert_eq!(
+        CompoundProjectTransaction::new([CompoundProjectAction::mutate_markers([])])
             .unwrap_err()
             .category(),
         ErrorCategory::InvalidInput

@@ -2,7 +2,7 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 13fa13a0d3135417ef8acfe928e30f381d95eeda22e862a34e172226d028c5ef
+source_hash: 7ef27b34036f8ae61573fceaf7fe7eff8bf6d2a63361c8094c7787758fb9348c
 source_files: 70
 mapped_at_commit: working-tree
 ---
@@ -23,9 +23,9 @@ validation, checkpoint recovery and quarantine, per-node durable state records, 
 timing-matched audio fallback, deterministic project, device, sleep, wake, shutdown, and restart lifecycle,
 bounded logical export job orchestration, classified cross-subsystem failure propagation
 and recovery, shared finite-resource arbitration across decode, GPU, cache, audio, AI, and export
-work, atomic timeline plus clip-mix edits, atomic track management with removed-clip audio
+work, atomic timeline plus clip-mix edits, atomic track and marker management with removed-clip audio
 reconciliation, typed resolution of durable project settings, bounded compound project transactions
-across authored timeline, track, graph, media, audio, extension, and root state, revisioned authored
+across authored timeline, track, marker, graph, media, audio, extension, and root state, revisioned authored
 audio automation, bounded process-lifetime extension registration and
 capability discovery, and
 engine-owned command history over that project surface. An engine-wide typed command dispatcher
@@ -175,8 +175,8 @@ through the existing dispatcher.
   file-backed active database and project recovery catalog, prepare-before-publish restoration, and
   infallible postpublication history replacement.
 - `open/crates/superi-engine/src/project_transaction.rs`: Implements the bounded whole-project
-  transaction vocabulary, one outer project publication, ordered action results, timeline edit and
-  track mutation batches, clip-mix reconciliation, atomic linked-media batch import, extension
+  transaction vocabulary, one outer project publication, ordered action results, timeline edit,
+  track mutation, and marker mutation batches, clip-mix reconciliation, atomic linked-media batch import, extension
   commands, three-way retained graph preservation, per-action aggregate validation, and complete
   rollback on any late failure.
 - `open/crates/superi-engine/src/proxy_substitution.rs`: Validates exact proxy purpose, source
@@ -348,8 +348,9 @@ through the existing dispatcher.
 - `open/crates/superi-engine/tests/project_transaction_contract.rs`: Proves one compound transaction
   across root, timeline, graph, media, authored audio, and plugin, effect, and AI extension state,
   one project revision and history entry, retained graph edits, exact save and reopen of authored
-  audio and extensions, adjacent-block audible continuity, track controls, populated-track
-  clip-mix cleanup, exact undo and redo restoration, late failure rollback, and action bounds.
+  audio and extensions, adjacent-block audible continuity, track controls, atomic marker controls,
+  marker graph preservation, populated-track clip-mix cleanup, exact undo and redo restoration,
+  late failure rollback, empty subsystem rejection, and action bounds.
 - `open/crates/superi-engine/tests/scenario_contract.rs`: Exact canonical state, atomicity, bounds,
   operation log, reversal proof, bounded oldest-entry eviction, and redo clearing after a successful
   post-undo branch.
@@ -367,7 +368,7 @@ intentionally absent from engine mutations.
 
 `editor` is a narrow upper-tier construction seam. It reexports the existing exact identifiers,
 time values, editorial material, timeline edit operations, compiled graph mutation vocabulary,
-media paths, clip-mix controls, extension state, compound project transactions, history commands,
+media paths, clip-mix controls, marker values and operations, extension state, compound project transactions, history commands,
 dispatcher commands, snapshots, database consumer, and project compatibility vocabulary needed by
 `superi-api::ProjectEditorApi` and `superi-api::VersionNegotiationApi`.
 It owns no behavior and deliberately does not derive or define wire serialization for lower-domain
@@ -683,7 +684,7 @@ schema, but never serializes undo or redo stacks or capacity.
 The authored project mutation vocabulary contains all three real project media commands, every
 project extension command, and the compound transaction. The same history owner also records
 project settings transactions as `ProjectSettings` changes through the project-owned validation
-path. Timeline item edits, track batches, graph, media, extension, root selection, authored
+path. Timeline item edits, track batches, marker batches, graph, media, extension, root selection, authored
 clip-mix, and settings changes all enter this history surface and gain no implicit undo stack in
 their domain crates.
 
@@ -701,6 +702,12 @@ project-wide clip sets before aggregate validation and removes only mix controls
 with their containing tracks. Retained graphs use the same three-way reconciliation path, so track
 structure and typed output intent publish with direct graph edits, audio state, history, and the
 outer document revision or all roll back together.
+
+Marker batches use the timeline-owned atomic mutation surface and return ordered marker operation
+kinds as compound action evidence. Retained timeline graphs recompile through the same three-way
+preservation path, so authored annotations publish with direct graph edits, project history, and the
+outer document revision or all roll back together. One batch becomes one history unit and complete
+snapshot restoration provides exact undo and redo.
 
 Graph batches use the ordinary checked `GraphTransaction`, media and extension actions reuse their
 project draft command seams, clip-mix batches use the audio-owned revisioned state, and root
@@ -1342,7 +1349,7 @@ both the populated track and its authored mix intent.
   branches exactly.
 - Compound project transactions contain one to 64 ordered nonempty actions, validate after each
   action, publish one project revision and one history entry, and retain no partial action evidence
-  on failure. Timeline edit and track reconciliation preserves nonconflicting direct graph edits and
+  on failure. Timeline edit, track, and marker reconciliation preserves nonconflicting direct graph edits and
   rejects overlapping canonical and retained changes.
 - Extension mutations always delegate to the project-owned revisioned command surface. History,
   compound transactions, dispatch, undo, redo, persistence, and autosave preserve the complete
@@ -1583,7 +1590,7 @@ both the populated track and its authored mix intent.
 - Dropping changes scheduling only. It cannot alter graph evaluation, cache identity, decoded
   provenance, color or alpha meaning, authored state, or later render and export inputs.
 - GPU ownership and pool lifetime remain tied to the originating device.
-- Timeline item edits, track batches, retained graph reconciliation, and clip-mix publication are
+- Timeline item edits, track batches, marker batches, retained graph reconciliation, and clip-mix publication are
   all-or-nothing across expected revisions and typed outcomes. Deleting a populated track cannot
   leave orphaned clip controls, and undo restores the complete project snapshot. Independent cache,
   runtime playback, and output owners remain outside this authored commit.
@@ -1667,9 +1674,11 @@ through `acquire_project_resources` after reversal.
 The downstream `superi-api` generic editor contract consumes only the curated `editor` seam. It
 constructs a real project, drives one six-action compound command through EngineControl, checks
 semantic action evidence and one correlated project event, persists and reloads the selected
-snapshot, then performs public undo and redo. Its parity table covers every currently executable
-timeline, graph, media, clip-mix, and extension operation without widening the engine dependency
-graph or making lower types wire owners.
+snapshot, then performs public undo and redo. A separate marker command drives all six strict
+operations, retains complete metadata, observes marker action evidence, and reverses through the
+same long-lived history owner. Its parity table covers every currently executable timeline, track,
+marker, graph, media, clip-mix, and extension operation without widening the engine dependency graph
+or making lower types wire owners.
 
 The downstream scripting contract drives that same curated seam through the API-local script
 interpreter. It proves real mutation and state inspection, committed-prefix visibility after a
@@ -1679,8 +1688,8 @@ adding engine source parsing or scripting state.
 
 The downstream local project host contract exercises the scoped standalone EngineControl helper
 through real no-clobber creation, complete database reopen, permission denial, compound rollback,
-media and timeline dispatch, render settings, copy, backup, recovery, and ordered JSON-RPC
-automation. It proves every reported mutation is durably reopened and that media availability
+media and timeline dispatch, marker typed-inverse persistence, render settings, copy, backup,
+recovery, and ordered JSON-RPC automation. It proves every reported mutation is durably reopened and that media availability
 changes preserve exact timeline source, record, identity, grouping, linking, targeting, and
 synchronization state.
 
@@ -1712,12 +1721,12 @@ also prove settings changes enter the shared project history, undo and redo rest
 settings without authored-audio drift, and scenario-only history attachment cannot invoke the
 full-dispatcher settings surface.
 
-Five project-transaction contracts execute timeline edits, track batches, graph, media, clip-mix,
+Six project-transaction contracts execute timeline edits, track batches, marker batches, graph, media, clip-mix,
 plugin, effect, AI artifact metadata, and root actions through the real aggregate. They prove one
 outer revision and history unit, retained direct graph parameters, exact authored-audio and extension
-save and reopen, prepared adjacent-block audible continuity, track state evidence, populated-track
-mix cleanup, exact undo and redo, late invalid-action rollback with unchanged history, and action
-bounds.
+save and reopen, prepared adjacent-block audible continuity, track and marker state evidence,
+retained graph preservation, populated-track mix cleanup, exact undo and redo, late invalid-action
+rollback with unchanged history, empty subsystem rejection, and action bounds.
 
 Three editor-state contracts use the full dispatcher to prove missing-project classification, one
 coherent eventless selected revision, unchanged history and event state, explicit recovery,
@@ -1927,14 +1936,12 @@ hash and component evidence without an event, history entry, or second semantic 
 Its editor-state command captures the same selected project plus cached optional runtime
 observations in one eventless replacement aggregate without polling or bulk runtime payloads. The
 production editing workspace consumes its canonical timeline document through a strict canvas
-projection and supplements clips from the same aggregate's graph and automation owners. Authored
-track gestures plus insert, overwrite, append, replace, lift, extract, backspace, undo, and redo
-and transition presentation from the same aggregate's graph and automation owners. Authored track
-gestures plus insert, overwrite, append, replace, lift, extract, backspace, undo, redo, transition
-timing, and graph parameter changes return through the existing generic project command, compound
-transaction, and history owners; canvas navigation, preview, source, target, status, snapping,
-draft input, and shared selection remain transient, and every published result returns through a
-fresh observation.
+projection and supplements clips and transition presentation from the same aggregate's graph and
+automation owners. Authored track and marker gestures plus insert, overwrite, append, replace,
+lift, extract, backspace, undo, redo, transition timing, and graph parameter changes return through
+the existing generic project command, compound transaction, and history owners. Canvas navigation,
+preview, source, target, status, snapping, draft input, marker navigation, and shared selection
+remain transient, and every published result returns through a fresh observation.
 Playback crosses
 one bounded nonblocking bridge to its real domain owner. Logical export state remains in the
 canonical queue behind a type-erased dispatcher controller, while prepared executors receive fresh
@@ -2049,7 +2056,7 @@ single candidate-history recorded path. Preflight dispatcher event capacity befo
 append exactly one durable record and event for every successful public apply, undo, redo, inspect,
 or no-op, preserve both branches and the log on failure, and restore only through the project-owned
 revision-fenced monotonic seam. Keep compound actions bounded, ordered, validated after each step,
-and published by one outer project edit. Route track batches through the timeline owner, retained
+and published by one outer project edit. Route track and marker batches through the timeline owner, retained
 graph recompilation through the three-way merge, and removed clip controls through the audio owner
 inside that same candidate. Keep extension payloads opaque, preserve project-owned
 capability, lifecycle, and failure meaning exactly, and never persist derived supervisor readiness

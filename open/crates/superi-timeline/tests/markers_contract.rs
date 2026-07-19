@@ -3,6 +3,9 @@ use superi_core::error::ErrorCategory;
 use superi_core::ids::{ClipId, MarkerId, MediaId, ProjectId, TimelineId, TrackId};
 use superi_core::time::{Duration, FrameRate, RationalTime, TimeRange, Timebase};
 use superi_timeline::edit_ops::{apply_edit_batch, EditOperation};
+use superi_timeline::marker_ops::{
+    apply_marker_mutation_batch, MarkerMutation, MarkerMutationKind,
+};
 use superi_timeline::markers::{
     Marker, MarkerFlag, MarkerLabel, MarkerNote, MarkerOwner, MetadataKey, MetadataOwner,
     MetadataValue, SnapRequest, SnapTarget, SnapTargetKind, TimelineMetadata,
@@ -22,6 +25,8 @@ const OBJECT_MARKER: MarkerId = MarkerId::from_raw(10);
 const TIMELINE_MARKER: MarkerId = MarkerId::from_raw(11);
 const OVERSCAN_MARKER: MarkerId = MarkerId::from_raw(12);
 const TRACK_MARKER: MarkerId = MarkerId::from_raw(13);
+const CREATED_MARKER: MarkerId = MarkerId::from_raw(14);
+const MISSING_MARKER: MarkerId = MarkerId::from_raw(99);
 
 fn edit_rate() -> Timebase {
     Timebase::integer(24).unwrap()
@@ -149,6 +154,165 @@ fn annotated_project() -> EditorialProject {
         })
         .unwrap();
     project
+}
+
+#[test]
+fn marker_mutation_batch_authors_every_visible_field_without_losing_owner_or_metadata() {
+    let mut project = annotated_project();
+    let retained_metadata = project
+        .timeline(TIMELINE)
+        .unwrap()
+        .marker(OBJECT_MARKER)
+        .unwrap()
+        .metadata()
+        .clone();
+    let mut created = Marker::new(
+        CREATED_MARKER,
+        MarkerOwner::Track(TRACK),
+        range(3, 2, edit_rate()),
+    )
+    .unwrap();
+    created.set_label(Some(MarkerLabel::new("review").unwrap()));
+    created.set_flag(Some(MarkerFlag::Yellow));
+    created.set_note(Some(MarkerNote::new("check the cut").unwrap()));
+
+    let result = apply_marker_mutation_batch(
+        &mut project,
+        1,
+        &[
+            MarkerMutation::Create {
+                timeline_id: TIMELINE,
+                marker: created,
+            },
+            MarkerMutation::SetRange {
+                timeline_id: TIMELINE,
+                marker_id: OBJECT_MARKER,
+                marked_range: range(2, 1, edit_rate()),
+            },
+            MarkerMutation::SetLabel {
+                timeline_id: TIMELINE,
+                marker_id: OBJECT_MARKER,
+                label: Some(MarkerLabel::new("take two").unwrap()),
+            },
+            MarkerMutation::SetFlag {
+                timeline_id: TIMELINE,
+                marker_id: OBJECT_MARKER,
+                flag: Some(MarkerFlag::Blue),
+            },
+            MarkerMutation::SetNote {
+                timeline_id: TIMELINE,
+                marker_id: OBJECT_MARKER,
+                note: None,
+            },
+            MarkerMutation::Remove {
+                timeline_id: TIMELINE,
+                marker_id: TIMELINE_MARKER,
+            },
+        ],
+    )
+    .unwrap();
+
+    assert_eq!(result.revision(), 2);
+    assert_eq!(
+        result
+            .outcomes()
+            .iter()
+            .map(|outcome| outcome.kind())
+            .collect::<Vec<_>>(),
+        [
+            MarkerMutationKind::Create,
+            MarkerMutationKind::SetRange,
+            MarkerMutationKind::SetLabel,
+            MarkerMutationKind::SetFlag,
+            MarkerMutationKind::SetNote,
+            MarkerMutationKind::Remove,
+        ]
+    );
+    let timeline = project.timeline(TIMELINE).unwrap();
+    let marker = timeline.marker(OBJECT_MARKER).unwrap();
+    assert_eq!(
+        marker.owner(),
+        MarkerOwner::Object(EditorialObjectId::Clip(B))
+    );
+    assert_eq!(marker.marked_range(), range(2, 1, edit_rate()));
+    assert_eq!(marker.label().unwrap().as_str(), "take two");
+    assert_eq!(marker.flag(), Some(MarkerFlag::Blue));
+    assert_eq!(marker.note(), None);
+    assert_eq!(marker.metadata(), &retained_metadata);
+    assert_eq!(
+        timeline.marker(CREATED_MARKER).unwrap().owner(),
+        MarkerOwner::Track(TRACK)
+    );
+    assert!(timeline.marker(TIMELINE_MARKER).is_none());
+}
+
+#[test]
+fn marker_mutation_batch_rejects_empty_duplicate_and_missing_targets_atomically() {
+    let mut project = annotated_project();
+    let before = project.clone();
+    assert_eq!(
+        apply_marker_mutation_batch(&mut project, 1, &[])
+            .unwrap_err()
+            .category(),
+        ErrorCategory::InvalidInput
+    );
+    assert_eq!(project, before);
+
+    let error = apply_marker_mutation_batch(
+        &mut project,
+        1,
+        &[
+            MarkerMutation::SetLabel {
+                timeline_id: TIMELINE,
+                marker_id: OBJECT_MARKER,
+                label: Some(MarkerLabel::new("must roll back").unwrap()),
+            },
+            MarkerMutation::SetRange {
+                timeline_id: TIMELINE,
+                marker_id: MISSING_MARKER,
+                marked_range: range(1, 0, edit_rate()),
+            },
+        ],
+    )
+    .unwrap_err();
+    assert_eq!(error.category(), ErrorCategory::NotFound);
+    assert_eq!(project, before);
+
+    let duplicate = Marker::new(
+        OBJECT_MARKER,
+        MarkerOwner::Timeline,
+        range(0, 0, edit_rate()),
+    )
+    .unwrap();
+    assert_eq!(
+        apply_marker_mutation_batch(
+            &mut project,
+            1,
+            &[MarkerMutation::Create {
+                timeline_id: TIMELINE,
+                marker: duplicate,
+            }],
+        )
+        .unwrap_err()
+        .category(),
+        ErrorCategory::Conflict
+    );
+    assert_eq!(project, before);
+
+    assert_eq!(
+        apply_marker_mutation_batch(
+            &mut project,
+            1,
+            &[MarkerMutation::Remove {
+                timeline_id: TIMELINE,
+                marker_id: MISSING_MARKER,
+            }],
+        )
+        .unwrap_err()
+        .category(),
+        ErrorCategory::NotFound
+    );
+    assert_eq!(project, before);
 }
 
 #[test]

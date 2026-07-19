@@ -2,6 +2,7 @@ import type {
   EditorialObjectId,
   EditorCanonicalDocument,
   EditorThreePointPlacement,
+  EditorMetadataValue,
   EditorTrackItem,
   ExactDuration,
   ExactTime,
@@ -54,6 +55,40 @@ export interface TimelineObjectReference {
 export interface TimelineSourceReference {
   readonly kind: "media" | "timeline";
   readonly id: string;
+}
+
+export type TimelineMarkerFlag =
+  | "red"
+  | "pink"
+  | "orange"
+  | "yellow"
+  | "green"
+  | "cyan"
+  | "blue"
+  | "purple"
+  | "magenta"
+  | "black"
+  | "white";
+
+export type TimelineMarkerOwner =
+  | { readonly kind: "timeline" }
+  | { readonly kind: "track"; readonly trackId: string }
+  | {
+      readonly kind: "object";
+      readonly object: TimelineObjectReference;
+    };
+
+export interface TimelineCanvasMarker {
+  readonly id: string;
+  readonly owner: TimelineMarkerOwner;
+  readonly markedRange: TimelineExactRange;
+  readonly label: string | null;
+  readonly flag: TimelineMarkerFlag | null;
+  readonly note: string | null;
+  readonly metadata: Readonly<Record<string, EditorMetadataValue>>;
+  readonly resolvedRange: TimelineExactRange | null;
+  readonly startSeconds: number | null;
+  readonly endSeconds: number | null;
 }
 
 export type TimelineItemKind =
@@ -183,6 +218,7 @@ export interface TimelineCanvasModel {
   readonly durationSeconds: number;
   readonly linkedSelectionEnabled: boolean;
   readonly snappingEnabled: boolean;
+  readonly markers: readonly TimelineCanvasMarker[];
   readonly snapTargets: readonly TimelineSnapTarget[];
   readonly tracks: readonly TimelineCanvasTrack[];
 }
@@ -462,7 +498,7 @@ export function projectTimelineDocument(
     }
   }
 
-  const snapTargets = buildTimelineSnapTargets({
+  const { markers, snapTargets } = buildTimelineMarkersAndSnapTargets({
     timeline,
     timelinePath,
     editRate,
@@ -564,12 +600,13 @@ export function projectTimelineDocument(
       timeline.snapping_enabled,
       `${timelinePath}.snapping_enabled`,
     ),
+    markers,
     snapTargets,
     tracks,
   });
 }
 
-function buildTimelineSnapTargets({
+function buildTimelineMarkersAndSnapTargets({
   timeline,
   timelinePath,
   editRate,
@@ -583,8 +620,12 @@ function buildTimelineSnapTargets({
   readonly globalStartSeconds: number;
   readonly tracks: readonly PendingTrack[];
   readonly directItems: ReadonlyMap<string, DirectItem>;
-}): readonly TimelineSnapTarget[] {
+}): {
+  readonly markers: readonly TimelineCanvasMarker[];
+  readonly snapTargets: readonly TimelineSnapTarget[];
+} {
   const targets: TimelineSnapTarget[] = [];
+  const markers: TimelineCanvasMarker[] = [];
   const addTarget = (
     kind: TimelineSnapTarget["kind"],
     id: string,
@@ -652,10 +693,11 @@ function buildTimelineSnapTargets({
       throw projectionError(path, `duplicate marker identity ${id}`);
     }
     markerIds.add(id);
-    const label = asNullableString(marker.label, `${path}.label`) ?? id;
-    asNullableString(marker.flag, `${path}.flag`);
-    asNullableString(marker.note, `${path}.note`);
-    asArray(marker.metadata, `${path}.metadata`);
+    const label = asNullableString(marker.label, `${path}.label`);
+    const displayLabel = label ?? id;
+    const flag = parseMarkerFlag(marker.flag, `${path}.flag`);
+    const note = asNullableString(marker.note, `${path}.note`);
+    const metadata = parseMarkerMetadata(marker.metadata, `${path}.metadata`);
     const markedRange = parseRange(marker.marked_range, `${path}.marked_range`);
     if (markedRange.startUnits < 0n) {
       throw projectionError(
@@ -669,8 +711,10 @@ function buildTimelineSnapTargets({
     let ownerRate: TimelineRate;
     let ownerStartUnits = 0n;
     let ownerDurationUnits: bigint | null = null;
+    let markerOwner: TimelineMarkerOwner;
     if (ownerKind === "timeline") {
       ownerRate = editRate;
+      markerOwner = { kind: "timeline" };
     } else if (ownerKind === "track") {
       const trackId = asString(owner.id, `${path}.owner.id`);
       const track = tracksById.get(trackId);
@@ -681,6 +725,7 @@ function buildTimelineSnapTargets({
         );
       }
       ownerRate = track.timebase;
+      markerOwner = { kind: "track", trackId };
     } else if (ownerKind === "object") {
       const object = parseObjectReference(owner.id, `${path}.owner.id`);
       const item = directItems.get(objectKey(object));
@@ -693,6 +738,7 @@ function buildTimelineSnapTargets({
       ownerRate = item.parsedRecordRange.exact.start.timebase;
       ownerStartUnits = item.parsedRecordRange.startUnits;
       ownerDurationUnits = item.parsedRecordRange.durationUnits;
+      markerOwner = { kind: "object", object };
     } else {
       throw projectionError(
         `${path}.owner.kind`,
@@ -706,32 +752,79 @@ function buildTimelineSnapTargets({
         "marker range must use its owner's exact record clock",
       );
     }
-    if (
+    const exceedsOwner =
       ownerDurationUnits !== null &&
-      markedRange.startUnits + markedRange.durationUnits > ownerDurationUnits
-    ) {
-      continue;
-    }
+      markedRange.startUnits + markedRange.durationUnits > ownerDurationUnits;
     const startUnits = ownerStartUnits + markedRange.startUnits;
     const endUnits = startUnits + markedRange.durationUnits;
-    addTarget(
-      "marker_start",
+    const startEditUnits = exceedsOwner
+      ? null
+      : rescaleExactUnits(startUnits, ownerRate, editRate);
+    const endEditUnits = exceedsOwner
+      ? null
+      : rescaleExactUnits(endUnits, ownerRate, editRate);
+    let resolvedRange: TimelineExactRange | null = null;
+    let startSeconds: number | null = null;
+    let endSeconds: number | null = null;
+    if (startEditUnits !== null && endEditUnits !== null) {
+      const startOffset = exactUnitsToSeconds(
+        startEditUnits,
+        editRate,
+        `${path}.resolved_range.start`,
+      );
+      const endOffset = exactUnitsToSeconds(
+        endEditUnits,
+        editRate,
+        `${path}.resolved_range.end`,
+      );
+      startSeconds = offsetDisplaySeconds(
+        globalStartSeconds,
+        startOffset,
+        `${path}.resolved_range.start`,
+      );
+      endSeconds = offsetDisplaySeconds(
+        globalStartSeconds,
+        endOffset,
+        `${path}.resolved_range.end`,
+      );
+      resolvedRange = {
+        start: { value: startEditUnits.toString(), timebase: editRate },
+        duration: {
+          value: (endEditUnits - startEditUnits).toString(),
+          timebase: editRate,
+        },
+      };
+      addTarget(
+        "marker_start",
+        id,
+        `${displayLabel} start`,
+        null,
+        startUnits,
+        ownerRate,
+        `${path}.snap_target.start`,
+      );
+      addTarget(
+        "marker_end",
+        id,
+        `${displayLabel} end`,
+        null,
+        endUnits,
+        ownerRate,
+        `${path}.snap_target.end`,
+      );
+    }
+    markers.push({
       id,
-      `${label} start`,
-      null,
-      startUnits,
-      ownerRate,
-      `${path}.snap_target.start`,
-    );
-    addTarget(
-      "marker_end",
-      id,
-      `${label} end`,
-      null,
-      endUnits,
-      ownerRate,
-      `${path}.snap_target.end`,
-    );
+      owner: markerOwner,
+      markedRange: markedRange.exact,
+      label,
+      flag,
+      note,
+      metadata,
+      resolvedRange,
+      startSeconds,
+      endSeconds,
+    });
   }
 
   targets.sort((left, right) => {
@@ -742,7 +835,52 @@ function buildTimelineSnapTargets({
     if (kind !== 0) return kind;
     return compareSnapTargetIdentity(left, right);
   });
-  return deepFreeze(targets);
+  markers.sort((left, right) => compareStrings(left.id, right.id));
+  return deepFreeze({ markers, snapTargets: targets });
+}
+
+export function timelineMarkerNeighbor(
+  model: TimelineCanvasModel,
+  currentId: string | null,
+  direction: "previous" | "next",
+): TimelineCanvasMarker | null {
+  const navigable = model.markers
+    .filter(
+      (marker): marker is TimelineCanvasMarker & { readonly startSeconds: number } =>
+        marker.startSeconds !== null,
+    )
+    .slice()
+    .sort((left, right) => {
+      if (left.startSeconds !== right.startSeconds) {
+        return left.startSeconds - right.startSeconds;
+      }
+      return compareStrings(left.id, right.id);
+    });
+  if (navigable.length === 0) return null;
+  if (currentId === null) {
+    return direction === "next"
+      ? navigable[0] ?? null
+      : navigable[navigable.length - 1] ?? null;
+  }
+  const index = navigable.findIndex((marker) => marker.id === currentId);
+  if (index < 0) {
+    return direction === "next"
+      ? navigable[0] ?? null
+      : navigable[navigable.length - 1] ?? null;
+  }
+  return navigable[index + (direction === "next" ? 1 : -1)] ?? null;
+}
+
+export function timelineExactPointAtDisplaySeconds(
+  model: TimelineCanvasModel,
+  seconds: number,
+): TimelineExactPoint {
+  const units = displaySecondsToEditUnits(
+    seconds,
+    model,
+    "timeline.marker.playhead",
+  );
+  return deepFreeze({ value: units.toString(), timebase: model.editRate });
 }
 
 export function buildTimelineRulerTicks(
@@ -2615,6 +2753,140 @@ function parseTrackKind(value: unknown, path: string): TimelineTrackKind {
     throw projectionError(path, `unsupported timeline track kind ${kind}`);
   }
   return kind;
+}
+
+function parseMarkerFlag(value: unknown, path: string): TimelineMarkerFlag | null {
+  const flag = asNullableString(value, path);
+  if (flag === null) return null;
+  if (
+    flag !== "red" &&
+    flag !== "pink" &&
+    flag !== "orange" &&
+    flag !== "yellow" &&
+    flag !== "green" &&
+    flag !== "cyan" &&
+    flag !== "blue" &&
+    flag !== "purple" &&
+    flag !== "magenta" &&
+    flag !== "black" &&
+    flag !== "white"
+  ) {
+    throw projectionError(path, `unsupported timeline marker flag ${flag}`);
+  }
+  return flag;
+}
+
+function parseMarkerMetadata(
+  value: unknown,
+  path: string,
+): Readonly<Record<string, EditorMetadataValue>> {
+  const metadata: Record<string, EditorMetadataValue> = {};
+  for (const [index, rawEntry] of asArray(value, path).entries()) {
+    const entryPath = `${path}[${index}]`;
+    const entry = asObject(rawEntry, entryPath);
+    const key = asString(entry.key, `${entryPath}.key`);
+    if (Object.hasOwn(metadata, key)) {
+      throw projectionError(entryPath, `duplicate marker metadata key ${key}`);
+    }
+    metadata[key] = parseMarkerMetadataValue(
+      entry.value,
+      `${entryPath}.value`,
+    );
+  }
+  return Object.freeze(metadata);
+}
+
+function parseMarkerMetadataValue(
+  value: unknown,
+  path: string,
+): EditorMetadataValue {
+  const wire = asObject(value, path);
+  const kind = asString(wire.kind, `${path}.kind`);
+  switch (kind) {
+    case "null":
+      return { kind: "null" };
+    case "boolean":
+      return { kind: "boolean", value: asBoolean(wire.value, `${path}.value`) };
+    case "signed":
+      return {
+        kind: "signed",
+        value: safeCanonicalNumber(
+          asCanonicalSigned(wire.value, `${path}.value`),
+          `${path}.value`,
+        ),
+      };
+    case "unsigned":
+      return {
+        kind: "unsigned",
+        value: safeCanonicalNumber(
+          asCanonicalUnsigned(wire.value, `${path}.value`),
+          `${path}.value`,
+        ),
+      };
+    case "float": {
+      const numeric = wire.value;
+      if (typeof numeric !== "number" || !Number.isFinite(numeric)) {
+        throw projectionError(`${path}.value`, "metadata float must be finite");
+      }
+      return { kind: "float", value: numeric };
+    }
+    case "text":
+      if (typeof wire.value !== "string") {
+        throw projectionError(`${path}.value`, "metadata text must be a string");
+      }
+      return { kind: "text", value: wire.value };
+    case "time":
+      return { kind: "time", value: publicExactPoint(wire.value, `${path}.value`) };
+    case "range":
+      return { kind: "range", value: publicExactRange(wire.value, `${path}.value`) };
+    case "list":
+      return {
+        kind: "list",
+        value: asArray(wire.values, `${path}.values`).map((entry, index) =>
+          parseMarkerMetadataValue(entry, `${path}.values[${index}]`),
+        ),
+      };
+    case "map":
+      return {
+        kind: "map",
+        value: parseMarkerMetadata(wire.entries, `${path}.entries`),
+      };
+    default:
+      throw projectionError(`${path}.kind`, `unsupported marker metadata kind ${kind}`);
+  }
+}
+
+function publicExactPoint(value: unknown, path: string) {
+  const point = parsePoint(value, path);
+  return {
+    value: safeCanonicalNumber(point.exact.value, `${path}.value`),
+    timebase: point.exact.timebase,
+  };
+}
+
+function publicExactRange(value: unknown, path: string) {
+  const parsed = parseRange(value, path);
+  return {
+    start: {
+      value: safeCanonicalNumber(parsed.exact.start.value, `${path}.start.value`),
+      timebase: parsed.exact.start.timebase,
+    },
+    duration: {
+      value: safeCanonicalNumber(
+        parsed.exact.duration.value,
+        `${path}.duration.value`,
+      ),
+      timebase: parsed.exact.duration.timebase,
+    },
+  };
+}
+
+function safeCanonicalNumber(value: string, path: string): number {
+  const numeric = Number(value);
+  if (!Number.isSafeInteger(numeric)) {
+    throw projectionError(path, "metadata integer exceeds the safe public range");
+  }
+  return numeric;
 }
 
 function parseTrackTimebase(

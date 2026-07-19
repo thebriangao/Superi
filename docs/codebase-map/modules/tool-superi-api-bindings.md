@@ -14,9 +14,9 @@ desktop-facing TypeScript representation of the canonical `superi-api` surface. 
 utility, not a runtime crate, transport, application shell, or state owner.
 The current artifact includes the strict extension registry query, full replacement event and
 resource, exact identities, lifecycle, capabilities, safe failure, features, stable public control
-reference, all eleven track mutation tags, action evidence, typed track output graph state, project
-editor schema `1.3.0`, and the additive exact `set_transition` timeline operation used by the
-desktop transition inspector.
+reference, all eleven track mutation tags, all six marker mutation tags with complete create state,
+track and marker action evidence, typed track output graph state, project editor schema `1.4.0`,
+and the additive exact `set_transition` timeline operation used by the desktop transition inspector.
 
 ## Source inventory
 

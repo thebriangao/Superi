@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: abbec1460a60f7531c404a23545af1ddfc391fe268bd705af04576ff87de78fb
-source_files: 257
+source_hash: d1786ceb550116575a0c6c23d76ff6c7cdd6cb0b634a62f0d7c18027882ae3b7
+source_files: 258
 mapped_at_commit: working-tree
 ---
 
@@ -488,6 +488,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   handles, deterministic duration and alignment, adjacent-media limits, typed graph parameter
   controls, application-owned command execution, strict failure behavior, and remaining value-kind
   and safe-integer limits.
+- `docs/checkpoints/P3.W04.C010.md`: Durable implementation evidence for all six atomic marker
+  gestures, complete visible marker state, exact and non-navigable navigation behavior, project
+  history, strict public contracts, selected-project persistence, native routing, and immediate
+  revision-fenced typed inverse reversal.
 
 ### Production desktop application
 
@@ -523,7 +527,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   ordered channels, routes, synchronization observation, continuity evidence, source and program
   editing viewers, one composite viewer, one color viewer, and the canonical timeline canvas. It
   passes the existing shared selection, dispatch, public schema, project revision, and the
-  application-owned project action and generic command callbacks into that canvas and retains the
+  application-owned project action and generic command callbacks into that canvas for track,
+  marker, and timeline edit batches and retains the
   stateful `SourceMonitor` in the editing source slot without moving a new context, reducer, API
   client, or Tauri access into this workspace file. Shared timeline selection can become an exact
   replace or backspace target without locally mutating canonical timeline state.
@@ -531,7 +536,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   document into a deeply frozen canvas model with exact rational source and record ranges, stable
   identities and relationships, exact transition from and to offsets, bounded track height, lock,
   mute, solo, and enable state,
-  external-global-start display placement, exact owner-clock snap targets, deterministic extent,
+  external-global-start display placement, complete visible marker state, exact owner-clock snap
+  targets, stable exact marker navigation, deterministic extent,
   ruler, time-label, visible-window, and range math, and explicit malformed-document rejection. Its
   pure snap resolver honors the canonical switch plus transient target rules, exact cross-clock
   representability, integer frame tolerance, and the lower stable target order without authoring
@@ -578,7 +584,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   through the application command callback. Ripple, roll, slip, slide, razor, trim, ripple or roll
   extend, ripple delete, gap insert, and gap closure use the exact compiler, snap-aware pointer
   drafts, one-frame nudges, visible affected-object previews, and one shared pending exclusion before
-  publishing the entire operation batch through the injected application action executor. It
+  publishing the entire operation batch through the injected application action executor. It also
+  provides a dedicated marker panel with complete marker listing,
+  exact previous and next navigation, timeline-owned create at playhead, range, label, flag, and note
+  editing, removal, pending and error state, and revision-fenced typed inverse reversal. It
   progressively reads one revision-matched media library,
   deduplicates sources, generates previews sequentially, and accepts only matching media and
   freshness identities before displaying filmstrips, thumbnails, or waveforms.
@@ -651,7 +660,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   timeline grid, ruler, tracks, accessible clip buttons, layered filmstrip and waveform visuals,
   dense state badges, range, playhead, controls, interaction selection, authored selection
   evidence, lasso, visible focus, live status, snap rule strip, exact target status and guide,
-  transition handle marks, timing and alignment forms, typed effect parameter controls, and
+  transition handle marks, timing and alignment forms, typed effect parameter controls, marker list
+  and editor controls, and
   responsive 16:9 native viewer
   reservations. Timeline rows use canonical variable height, compact two-row track controls,
   disabled output presentation, and visible command failures. It also defines compact ready, stale,
@@ -677,16 +687,17 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   consumers including the composed source monitor, explicit public editor request identity,
   state-free workspace projection, and immutable preservation of sample timing, ordered channels,
   routes, continuity evidence, one application-owned project transaction path, all eleven track
-  operation tags, source snapshot and generated command wiring, and the absence of direct transport
-  ownership in the workspace. It also verifies transition command wiring through the same
-  application-owned callback.
+  operation tags, all six marker operation tags, typed reversal, source snapshot and generated
+  command wiring, and the absence of direct transport ownership in the workspace. It also verifies
+  transition command wiring through the same application-owned callback.
 - `app/tests/timeline-workspace.test.ts`: Verifies strict canonical revision handling, exact track,
   item, source and record range, group, link, selection, target, lock, output, synchronization, and
   transition preservation, variable height, external global-start placement, deterministic
   frame-aligned ruler, visible-window, and range math, exact timeline, track, object, item, and
   playhead snap targets, inexact-clock and object-overscan omission, stable tie ordering, per-kind
   filtering, persistent and session disablement, invalid-document and marker-owner failures, all
-  eleven durable track gestures, visible consequence and reversal wiring, selection identity round
+  eleven durable track gestures, complete visible marker semantics, exact marker navigation,
+  non-navigable state, visible consequence and reversal wiring, selection identity round
   trips, fixed-point related and direct selection, display-order ranges, directional neighbors,
   lasso geometry, real React integration, multiselect accessibility, shared selection wiring,
   transient navigation controls, all nine generated edit requests, minimal fragments, exact
@@ -909,9 +920,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/tests/transport_contract.rs`: Proves the bounded transport owner opens exactly one
   ordered connection generation with the stable desktop stream identity and no false replay or
   resync state. Native unit proof additionally opens a real project database, routes complete editor
-  state, a track command, and an append command through the linked EngineControl process, verifies
+  state, a track command, and a complete marker create through the linked EngineControl process, verifies
   exact generated response, revision, and event correlation, refreshes desktop lifecycle identity,
-  reloads the resulting revision 2 timeline state, and reopens the durable two-item track.
+  reloads the resulting revision 2 timeline state, and reopens the durable edited track and marker.
 
 ### Frontend CI contract
 
@@ -969,9 +980,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and response types, strict extension identity, lifecycle, capability, safe failure, feature,
   control, query, event, and resource declarations, generic project import-media request and result
   evidence, and a transport-neutral typed client without owning runtime IPC. The committed artifact
-  is freshly regenerated from the canonical schema `1.3.0` project surface and includes strict
-  track mutation, evidence, track-output graph DTOs, and the additive exact `set_transition`
-  timeline operation.
+  is freshly regenerated from the canonical schema `1.4.0` project surface and includes strict
+  track and marker mutation, evidence, metadata, track-output graph DTOs, and the additive exact
+  `set_transition` timeline operation.
 - `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 25 local
   workspace packages, registry dependencies, target-support dependency trees, scenario digest
   and process-instrumentation dependency edges, the API introspection and validation contracts'
@@ -1619,12 +1630,14 @@ The editing workspace consumes the canonical timeline document already contained
 editor snapshot. Its strict projection preserves exact authored identity, timing, grouping,
 targeting, locks, synchronization, and output intent, while local playhead, range, scroll, zoom,
 source and target choice, pending state, and consequence preview remain transient presentation
-intent. Track gestures plus insert, overwrite, append, replace, lift, extract, backspace, undo, and
+intent. Track and marker gestures plus insert, overwrite, append, replace, lift, extract, backspace, undo, and
 redo return only through the generated project command and fresh complete snapshot paths. The
 projection resolves timeline, item, and owner-clock marker boundaries into exact edit-rate targets,
 skips inexact cross-clock points and valid object-marker overscan, exposes explicit session rules,
 guides, and live consequences, and restores captured transient origin on Escape or pointer
 cancellation.
+Marker create, field edits, and removal retain complete typed inverse batches that are enabled only
+at the exact refreshed revision produced by their preceding gesture.
 The C007 timing compiler consumes that same frozen projection and emits only existing public edit
 operations for ripple, roll, slip, slide, razor, trim, extend, ripple delete, and gap work. It
 converts every affected track clock exactly, allocates typed identities only after validation, and
@@ -1843,7 +1856,10 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   conversion, all four three-point placement modes, equal-duration four-point editing, fit-to-fill
   rejection, exact cross-clock derivation, minimum fragment identities, shared target selection,
   replace conformance, immediate history requests, visible consequences, and the exclusion of any
-  frontend authored mutation owner. It also freezes exact transition offset retention and
+  frontend authored mutation owner. It also proves complete visible timeline, track, object,
+  inexact, and overscan
+  marker projection, stable exact navigation, non-navigable state, all six command tags, and typed
+  inverse reversal through the application owner. It freezes exact transition offset retention and
   production inspector wiring without introducing a second command path.
 
 - The focused timing-tool proof freezes all seven direct tools plus ripple delete and gap work,
@@ -2194,9 +2210,12 @@ items, a frame-snapped playhead, an explicit range, native scrolling, pointer-an
 canonical variable lane height. Track creation, deletion, inline naming, height, order, target,
 lock, sync lock, mute, solo, and enable gestures enter the application-owned generated command and
 refresh from the durable replacement snapshot.
-The same canvas projects exact timeline, item-edge, and timeline, track, or object marker-edge
-targets, exposes a session master plus six target-kind rules, reports every accepted coordinate,
-draws the active or last guide, and reverses an active gesture through its captured origin.
+Marker creation, exact range, label, flag, note, and removal gestures use that same command owner,
+persist through the selected project, and retain one revision-scoped complete inverse for immediate
+reversal. The same canvas projects every authored marker plus exact timeline, item-edge, and
+timeline, track, or object marker-edge targets. It exposes a session master plus six target-kind
+rules, reports every accepted coordinate, draws the active or last guide, keeps inexact or overscan
+markers visibly non-navigable, and reverses transient pointer gestures through their captured origin.
 Existing clip items now add real generated filmstrips, thumbnails, and waveforms when available,
 plus exact source, relationship, effect, driver, marker, metadata, multicam, retime, and clip-gain
 automation evidence with positioned keyframe diamonds.
@@ -2556,6 +2575,10 @@ order, skip inexact cross-clock coordinates, resolve object markers relative to 
 session switches, rule filters, visible consequences, and gesture origins transient. Later authored
 clip gestures must call the lower snapping and edit owners rather than treating the React resolver as
 an authored operation.
+Keep durable marker controls behind the application project command callback. Preserve complete
+create metadata and owner state, retain every authored marker in the visible model, omit inexact
+coordinates only from navigation and snapping, and clear typed inverse reversal when its exact
+refreshed revision is superseded.
 Keep clip detail supplemental to that exact projection. Graph badges must follow real clip-scoped
 topology, keyframes must come from a legal attached owner, previews must retain project, library,
 media, and freshness fences, and authored selection must remain distinct from shared UI selection.

@@ -445,7 +445,7 @@ impl LocalProjectHost {
         execute_project_command(project_path.as_ref(), request, permissions)
     }
 
-    /// Executes only timeline, graph, root-selection, or authored clip-mix actions.
+    /// Executes only timeline-owned apply actions.
     pub fn execute_timeline(
         project_path: impl AsRef<Path>,
         request: ExecuteProjectCommand,
@@ -837,6 +837,7 @@ fn require_timeline_command(request: &ExecuteProjectCommand) -> Result<()> {
                         ProjectAction::SelectRootTimeline { .. }
                             | ProjectAction::EditTimeline { .. }
                             | ProjectAction::MutateTracks { .. }
+                            | ProjectAction::MutateMarkers { .. }
                             | ProjectAction::MutateGraph { .. }
                             | ProjectAction::MutateClipMix { .. }
                     )
@@ -846,7 +847,7 @@ fn require_timeline_command(request: &ExecuteProjectCommand) -> Result<()> {
         }
         _ => Err(invalid(
             "execute_timeline",
-            "timeline execute accepts only root, timeline, track, graph, or clip-mix apply actions",
+            "timeline execute accepts only root, timeline, track, marker, graph, or clip-mix apply actions",
         )),
     }
 }

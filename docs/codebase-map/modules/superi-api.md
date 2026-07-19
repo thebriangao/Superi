@@ -2,7 +2,7 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: 1e4cfc77c0e85f85c47d4af1ffe53bafe020c4a704483a9bc5594300fec09e26
+source_hash: ee09613f01ec1a56a988cc0a9891e7028988c35abada8ca2dbe432575a4310cf
 source_files: 41
 mapped_at_commit: working-tree
 ---
@@ -21,7 +21,7 @@ complete authored project control with durable command-log inspection, determini
 state through one generic revision-fenced facade, process-lifetime extension registration and
 capability discovery, and asynchronous job inspection, progress, cooperative control, and ordered
 completion events over the engine-owned export queue, plus bounded ordered delivery for the complete
-public event vocabulary. The additive schema `1.5.0` catalog classifies all 30 current methods into
+public event vocabulary. The additive schema `1.6.0` catalog classifies all 30 current methods into
 16 commands and 14 queries, describes all nine events and 13 replacement resources, publishes the
 complete error, capability, and permission vocabularies, and defines strict data-only JSON-RPC 2.0
 envelopes. A host-injected nonserializable permission context denies protected filesystem, plugin,
@@ -65,7 +65,7 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   editor state, project settings, project recovery, audio automation, scenario, cancellation,
   removal, restore, and dismissal contracts.
 - `open/crates/superi-api/src/editor.rs`: Owns the strict generic project command, action, timeline
-  item edit, track mutation, graph, media import and mutation, clip-mix, and extension DTOs, checked
+  item edit, track mutation, marker mutation, graph, media import and mutation, clip-mix, and extension DTOs, checked
   engine conversion, exact
   per-source filesystem permission derivation, typed import and history evidence, serialized
   request recording, bounded command-log query and result unions, permission-checked replay detail,
@@ -99,7 +99,7 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
 - `open/crates/superi-api/src/local.rs`: Implements strict no-clobber project creation, complete
   current-schema open and validation, scoped EngineControl dispatch, durable mutation publication,
   collaborative-safe save, collision-aware save-as, copy, backup, recovery attachment, coherent render inspection, settings configuration, domain
-  filtering for media mutation and import plus timeline item and track commands, and strict
+  filtering for media mutation and import plus timeline item, track, and marker commands, and strict
   caller-correlated
   JSON-RPC automation over existing public DTOs, including durable publication of every successful
   generic command and committed `superi-json` script prefix plus read-only command-log inspection.
@@ -149,8 +149,8 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   accessors. It also provides the standalone starting-engine query owner used by the CLI and derives
   standalone construction failures from the shared user-safe projection.
 - `open/crates/superi-api/src/version.rs`: Owns all domain, catalog, and error schema revisions plus
-  permanent method and event names, including catalog revision `1.5.0`, its `1.0.0` through `1.5.0`
-  release table, project editor schema `1.3.0`, command-log schema `1.0.0`, scripting schema `1.0.0`,
+  permanent method and event names, including catalog revision `1.6.0`, its `1.0.0` through `1.6.0`
+  release table, project editor schema `1.4.0`, command-log schema `1.0.0`, scripting schema `1.0.0`,
   `superi.project.command_log.get`, `superi.project.script.run`, the version negotiation
   method, the complete `superi.jobs` vocabulary, the editor-state query, and event subscription
   open, close, and poll methods.
@@ -168,13 +168,13 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
 - `open/crates/superi-api/tests/dispatcher_contract.rs`: Covers atomic public transactions,
   revision fences, strict command and event round trips, ordered full-state publication, one-unit
   undo, inspect behavior, permanent names, and legacy action compatibility.
-- `open/crates/superi-api/tests/editor_contract.rs`: Locks all four generic project commands, seven
-  action groups, 16 timeline item operations, 11 track mutations, eight graph mutations, three
-  media mutations, four clip-mix mutations, and six extension mutations; proves strict decoding,
-  pre-dispatch failure atomicity, editor schema `1.3.0`, one real mixed transaction including exact
-  transition handles, one durable public track command, typed action evidence, event and durable
-  record correlation, cursor-safe log inspection with typed replay, database reload, undo, and
-  redo.
+- `open/crates/superi-api/tests/editor_contract.rs`: Locks all four generic project commands, eight
+  action groups, 16 timeline item operations, 11 track mutations, six marker mutations, eight graph
+  mutations, three media mutations, four clip-mix mutations, and six extension mutations; proves
+  strict decoding, pre-dispatch failure atomicity, editor schema `1.4.0`, one real mixed transaction
+  including exact transition handles, durable public track and marker commands, marker metadata
+  preservation, typed action evidence, event and durable record correlation, cursor-safe log
+  inspection with typed replay, database reload, undo, and redo.
 - `open/crates/superi-api/tests/engine_introspection_contract.rs`: Drives the real engine registry,
   dispatcher, lifecycle, error coordinator, and resource arbiter through strict public query and
   replacement-event projection, independent revisions, degradation, recovery, and safe diagnostic
@@ -196,7 +196,8 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
 - `open/crates/superi-api/tests/local_project_host_contract.rs`: Proves production no-clobber
   creation, immediate inspectability, permission denial, compound rollback, durable media and
   render mutation, durable inspect and no-op recording, source, record, identity, grouping, linking, targeting, and
-  synchronization preservation, current-schema validation, copy, backup, recovery, JSON-RPC ID
+  synchronization preservation, durable marker create, remove, complete typed inverse recreation,
+  current-schema validation, copy, backup, recovery, JSON-RPC ID
   correlation, and exact database reopen after acknowledged changes.
 - `open/crates/superi-api/tests/project_settings_contract.rs`: Covers the real public-to-engine-to-
   project settings path, strict values and transactions, full replacement events, exact project
@@ -216,8 +217,8 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   invalid catalog rejection, typed JSON-RPC success and failure exclusivity, all recovery classes,
   diagnostic visibility filtering, last-valid resource references, the complete permission
   vocabulary, and exact metadata for every method. Its explicit domain oracle locks the generic
-  authored project command, state event, and history resource to their released schema `1.3.0`, and
-  locks the additive catalog release at `1.5.0`.
+  authored project command, state event, and history resource to their released schema `1.4.0`, and
+  locks the additive catalog release at `1.6.0`.
 - `open/crates/superi-api/tests/scenario_contract.rs`: Covers the strict canonical schema, complete
   state projection, exact undo plus redo evidence, structured last-valid-state failures, and
   negative proof that private paths and raw engine context values never serialize.
@@ -239,7 +240,7 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
 
 ## Public surface
 
-The public schema catalog is schema `1.5.0` at query method `superi.api.schema.get`.
+The public schema catalog is schema `1.6.0` at query method `superi.api.schema.get`.
 `PublicApiSchemaSnapshot` records stable primitive revision 1 and JSON-RPC `2.0`, then separates 16
 mutating commands from 14 read-only queries and lists all nine current replacement events, 13
 current replacement resources, one complete error vocabulary, one capability vocabulary, and one
@@ -363,7 +364,7 @@ every ordered automation mutation. Results and events carry complete determinist
 events include exact engine command, event, caller transaction, and audio automation revision
 correlation.
 
-The generic authored project surface is schema `1.3.0`, with command
+The generic authored project surface is schema `1.4.0`, with command
 `superi.project.command.execute`, event `superi.project.state.changed`, and replacement resource
 `superi.project.history`. `ExecuteProjectCommand` carries one caller transaction identity, an exact
 expected project revision, and apply, undo, redo, or inspect. Apply contains one bounded ordered
@@ -375,6 +376,9 @@ stable identity, kind, canonical position, name, and bounded height.
 The additive `set_transition` timeline edit carries stable timeline, track, and transition
 identities plus exact from and to durations, and enters the same history, event, evidence,
 permission, persistence, and undo path as every other authored operation.
+It also carries six strict marker mutations: complete create, exact range, label, flag, note, and
+remove. Complete create retains timeline, track, or object ownership, exact owner-clock range,
+optional visible fields, and recursive metadata, while partial edits preserve unmentioned state.
 Results and events preserve engine command sequence, command-log sequence, project revision,
 history depths, next action kinds, ordered semantic evidence, and caller correlation. Every
 successful command emits the event, including inspect and semantic no-op commands whose authored
@@ -443,7 +447,7 @@ read-only queries.
 `LocalProjectHost` is the process-local persistence adapter consumed by `superi-cli`. Its strict
 creation request uses caller-supplied canonical project and root timeline IDs, names, and exact edit
 rate. It exposes complete editor, settings, render, validation, save, save-as, copy, backup, recovery, generic
-project, media-only, and timeline-only operations, including durable track batches. Mutating calls
+project, media-only, and timeline-only operations, including durable track and marker batches. Mutating calls
 load one complete project, execute
 through the existing facade inside scoped EngineControl, drain correlated events, publish the
 selected snapshot through `ProjectDatabase`, and only then return success. `LocalAutomationRequest`
@@ -780,14 +784,14 @@ messages, contexts, paths, and source chains never serialize.
 The production React and Tauri application consumes the committed generated contract through one
 injected client and retains the complete public editor snapshot. Its application owner issues
 revision-fenced project commands, while the editing workspace strictly projects the canonical
-timeline document and submits typed track gestures, insert, overwrite, append, replace, lift,
-extract, backspace, undo, and redo only through `superi.project.command.execute`. It adds no public
-mutation schema, transport path, or authored-state authority. The same canvas supplements clips
-from canonical graph documents and attached audio automation, showing only real clip-scoped node,
-driver, and sample-key evidence while keeping canonical timeline selection distinct from shared UI
-selection. Native routing remains limited to integration validation, complete editor state, and
-generic project commands, so other unrouted methods retain classified unavailable state. No network
-transport, shell source loader, extension host,
+timeline document and submits typed track and marker gestures, insert, overwrite, append, replace,
+lift, extract, backspace, undo, and redo only through `superi.project.command.execute`. Complete
+typed inverse marker batches provide exact immediate reversal without adding a public mutation
+schema, transport path, or authored-state authority. The same canvas supplements clips from the snapshot's canonical graph documents and
+attached audio automation, showing only real clip-scoped node, driver, and sample-key evidence
+while keeping canonical timeline selection distinct from shared UI selection. Native routing
+covers editor reads and durable project commands but remains closed to unregistered methods. No
+network transport, shell source loader, extension host,
 or closed-tier client is present. The local script interpreter is an in-process public API consumer,
 not a process sandbox or general-purpose language runtime. The local CLI host is a real filesystem
 and JSON-RPC process consumer, and the event stream remains transport-neutral.
@@ -978,14 +982,13 @@ plus two redo actions, final revision 8, structured engine context, last-valid-s
 serialized exclusion of a private missing-source path and raw context values.
 
 Four public schema contracts prove the exact 16-command, 14-query, nine-event, and 13-resource
-surface, current domain versions, catalog schema `1.5.0`, error schema `1.0.0`, media schema `2.0.0`,
+surface, current domain versions, catalog schema `1.6.0`, error schema `1.0.0`, media schema `2.0.0`,
 stable primitive revision 1, strict deterministic catalog round trips, invalid identity and
 duplicate rejection, typed JSON-RPC exclusivity, all four recovery classes, user-safe diagnostic
 filtering, last-valid resource identity and revision, the complete permission vocabulary, and exact
 permission metadata for all 30 methods. The domain oracle explicitly matches the released generic
-project schema `1.3.0`, so a catalog bump cannot leave the exhaustive test on `1.2.0`. They include local scripting, version negotiation, extension
-project schema `1.3.0`, so a catalog bump cannot leave the exhaustive test on an earlier domain
-version. They include local scripting, version negotiation, extension
+project schema `1.4.0`, so a catalog bump cannot leave the exhaustive test on an older release. They
+include local scripting, version negotiation, extension
 discovery, command-log inspection, every public asynchronous job and event
 subscription method and resource, but do not claim a network transport server, dynamic method
 routing, push delivery, or authentication.
@@ -1038,13 +1041,14 @@ conflict rejection, independent monotonic event order with exact originating-com
 complete replacement state, inspect without an event, and compatibility action routing through the
 same dispatcher.
 
-Seven generic editor contracts lock every command and operation discriminant, including all 11
-track mutations, reject guessed fields and variants, and prove malformed ID, timebase, and
+Eight generic editor contracts lock every command and operation discriminant, including all 11
+track mutations and all six marker mutations, reject guessed fields and variants, and prove malformed ID, timebase, and
 non-finite conversion atomicity. A real EngineControl fixture executes one six-action project
 transaction across graph, timeline, media, clip mix, extension, and selected root state. A second
 durable fixture executes a revision-fenced track batch and proves typed evidence, one history unit,
 one correlated event and durable record, exact database reload, undo, and redo through the same
-public facade.
+public facade. A marker fixture proves complete metadata, exact visible fields, typed evidence,
+authored state replacement, and long-lived undo through that owner.
 
 Five scripting contracts lock the `superi-json` language, schema, method, canonical file suffix,
 source, step, identity, and depth bounds. They prove exact-source SHA-256 rejection, duplicate and
@@ -1141,6 +1145,12 @@ durable revision-fenced commands, while the editing workspace uses editor-state 
 and attached automation data as exact canvas and inspector input. Application-owned typed command
 callbacks route durable track mutations, exact editorial gestures, transition timing, and typed
 graph parameter edits through the same generic project command owner.
+EngineControl owner. The application owner uses strict track, marker, and project command types for
+durable revision-fenced commands, while the editing workspace uses editor-state timeline, graph,
+and attached automation data as exact canvas and inspector input. Application-owned typed command
+callbacks route durable track mutations, exact editorial gestures, transition timing, and typed
+graph parameter edits through the same generic project command owner. Complete typed inverse marker
+batches provide immediate durable reversal without creating a second command owner.
 Scenario schema 1 remains deliberately narrow and fixed to one canonical edit. Its reference
 state proves transactional control semantics, not production timeline, graph, or media ownership.
 Authored clip-gain automation is a substantive strict transaction and event surface over the engine
@@ -1167,7 +1177,7 @@ not supply transport, endpoint mutation, or background polling.
 
 The separate negotiation, media, engine introspection, integration validation, scenario, event
 stream, catalog, and error schema versions are correct for independent surfaces. The catalog is
-`1.5.0` because typed track mutation is additive beside extension discovery, command-log inspection,
+`1.6.0` because typed marker mutation is additive beside track mutation, extension discovery, command-log inspection,
 local scripting, and negotiation, while individual method and resource
 schemas retain their own versions.
 Data-only JSON-RPC framing, bounded retryable polling, and host-injected authorization now exist,
@@ -1231,6 +1241,9 @@ infer an unsupported keyframe owner, or turn shared selection into a public time
 Keep track positions canonical, height integer bounds explicit, creation identities caller-owned,
 and operation tags exhaustive across Rust, generated TypeScript, local-host filtering, native
 routing, and the production consumer.
+Keep marker identities project-wide unique, owner clocks exact, create payloads complete, partial
+edits field-preserving, metadata recursive and lossless, and all six operation tags exhaustive
+across Rust, generated TypeScript, local-host filtering, native routing, and the production consumer.
 Keep durable command recording on `superi.project.command.execute`. Serialize and validate exact
 typed requests before dispatch, correlate each successful command with one record and event, keep
 metadata free of raw payloads, reauthorize every retained replay request, return no partial batch on
@@ -1256,6 +1269,12 @@ Its local playhead, range, scroll, and zoom are presentation intent only; author
 must use the existing project command and engine history owners. Preserve `set_transition` as one
 dual-handle revision-fenced operation, and keep visual processing parameters on typed graph
 mutations rather than projecting compiled timing values back into timeline authority.
+must use the existing project command and engine history owners. Preserve `set_transition` as one
+dual-handle revision-fenced operation, and keep visual processing parameters on typed graph
+mutations rather than projecting compiled timing values back into timeline authority. Desktop
+reversal must retain the
+complete inverse marker batch and exact refreshed revision rather than assuming that process-local
+engine history survives selected-project reloads.
 Keep extension discovery permission-free, immutable, canonical, and strictly declarative. Preserve
 exact versioned identity, requested and granted capability separation, core feature discovery,
 ready-only availability, bounded safe failure, semantic change-only events, and the exact existing

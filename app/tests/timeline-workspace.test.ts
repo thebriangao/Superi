@@ -21,6 +21,8 @@ import {
   resolveTimelineSnap,
   timelineRectanglesIntersect,
   timelineItemsInWindow,
+  timelineExactPointAtDisplaySeconds,
+  timelineMarkerNeighbor,
   timelineSelectionIdentity,
   timelineSelectionNeighbor,
   timelineSelectionRange,
@@ -289,7 +291,12 @@ test("projects owner-clock targets and resolves exact configurable snap rules", 
       label: "Preferred cut",
       flag: "cyan",
       note: null,
-      metadata: [],
+      metadata: [
+        {
+          key: "review.status",
+          value: { kind: "text", value: "pending" },
+        },
+      ],
     },
     {
       id: "marker.inexact",
@@ -312,6 +319,52 @@ test("projects owner-clock targets and resolves exact configurable snap rules", 
   ];
 
   const model = projectTimelineDocument(document, "timeline.main");
+  assert.deepEqual(
+    model.markers.map((marker) => [
+      marker.id,
+      marker.label,
+      marker.flag,
+      marker.startSeconds,
+      marker.endSeconds,
+    ]),
+    [
+      ["marker.inexact", "Subframe audio note", null, null, null],
+      ["marker.object", "Preferred cut", "cyan", 0.5, 13 / 24],
+      ["marker.overscan", "Outside clip", null, null, null],
+      ["marker.timeline", "Timeline note", null, 3.5, 85 / 24],
+      ["marker.track", "Track note", null, 3, 73 / 24],
+    ],
+  );
+  assert.deepEqual(model.markers[1]?.owner, {
+    kind: "object",
+    object: { kind: "clip", id: "clip.a" },
+  });
+  assert.deepEqual(model.markers[1]?.metadata, {
+    "review.status": { kind: "text", value: "pending" },
+  });
+  assert.deepEqual(model.markers[4]?.owner, {
+    kind: "track",
+    trackId: "track.video.1",
+  });
+  assert.equal(timelineMarkerNeighbor(model, null, "next")?.id, "marker.object");
+  assert.deepEqual(timelineExactPointAtDisplaySeconds(model, 0.5), {
+    value: "12",
+    timebase: rate,
+  });
+  assert.equal(
+    timelineMarkerNeighbor(model, "marker.object", "next")?.id,
+    "marker.track",
+  );
+  assert.equal(
+    timelineMarkerNeighbor(model, "marker.timeline", "previous")?.id,
+    "marker.track",
+  );
+  assert.equal(
+    timelineMarkerNeighbor(model, "marker.timeline", "next"),
+    null,
+  );
+  assert.ok(Object.isFrozen(model.markers));
+  assert.ok(model.markers.every(Object.isFrozen));
   assert.deepEqual(
     model.snapTargets
       .filter((target) => target.id.startsWith("marker."))
@@ -770,6 +823,13 @@ test("timeline surface is integrated without a second authored mutation owner", 
   assert.match(timeline, /aria-live="polite"/);
   assert.match(timeline, /event\.key !== "Escape"/);
   assert.match(timeline, /timeline-snap-guide/);
+  assert.match(timeline, /aria-label="Timeline markers"/);
+  assert.match(timeline, /Authored timeline markers/);
+  assert.match(timeline, /Add at playhead/);
+  assert.match(timeline, /Save marker/);
+  assert.match(timeline, /Remove marker/);
+  assert.match(timeline, /Not navigable/);
+  assert.match(styles, /\.timeline-marker-panel/);
   assert.match(workspaces, /selection=\{state\.selection\}/);
   assert.match(workspaces, /dispatchSelection=\{dispatch\}/);
   assert.match(workspaces, /executeProjectActions=\{executeProjectActions\}/);

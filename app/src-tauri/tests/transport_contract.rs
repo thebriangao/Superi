@@ -30,7 +30,7 @@ fn transport_state_opens_one_ordered_connection_generation() {
 }
 
 #[test]
-fn active_project_state_and_track_commands_use_the_generated_desktop_route() {
+fn active_project_state_track_and_marker_commands_use_the_generated_desktop_route() {
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -47,6 +47,7 @@ fn active_project_state_and_track_commands_use_the_generated_desktop_route() {
     let project_id = superi_engine::editor::ProjectId::from_raw(1).to_string();
     let timeline_id = superi_engine::editor::TimelineId::from_raw(2).to_string();
     let track_id = superi_engine::editor::TrackId::from_raw(3).to_string();
+    let marker_id = superi_engine::editor::MarkerId::from_raw(4).to_string();
     projects
         .execute(DesktopProjectCommand::Create {
             path: project_path.to_string_lossy().into_owned(),
@@ -129,15 +130,92 @@ fn active_project_state_and_track_commands_use_the_generated_desktop_route() {
     assert_eq!(event.event(), "superi.project.state.changed");
     assert_eq!(event.payload()["project_revision"], 1);
 
+    let marker_command = transport
+        .dispatch_blocking(
+            &engine.connection(),
+            &projects,
+            DesktopTransportCommand::Request {
+                generation,
+                request_id: "marker-command-1".to_owned(),
+                method: "superi.project.command.execute".to_owned(),
+                request: serde_json::json!({
+                    "transaction_id":"marker-command-1",
+                    "expected_project_revision":1,
+                    "command":{
+                        "command":"apply",
+                        "actions":[{
+                            "action":"mutate_markers",
+                            "mutations":[{
+                                "operation":"create",
+                                "timeline_id":timeline_id,
+                                "marker_id":marker_id,
+                                "owner":{"kind":"timeline"},
+                                "marked_range":{
+                                    "start":{
+                                        "value":12,
+                                        "timebase":{"numerator":24,"denominator":1}
+                                    },
+                                    "duration":{
+                                        "value":1,
+                                        "timebase":{"numerator":24,"denominator":1}
+                                    }
+                                },
+                                "label":"First review",
+                                "flag":"cyan",
+                                "note":"Check the exact cut",
+                                "metadata":{}
+                            }]
+                        }]
+                    }
+                }),
+            },
+        )
+        .unwrap();
+    let DesktopTransportReply::Response { response, .. } = marker_command.reply() else {
+        panic!("marker command returned an unexpected reply");
+    };
+    assert_eq!(response["state"]["project_revision"], 2);
+    assert_eq!(
+        response["evidence"],
+        serde_json::json!({
+            "result":"applied",
+            "actions":[{
+                "result":"markers_mutated",
+                "revision":2,
+                "mutations":["create"]
+            }]
+        })
+    );
+    let marker_event = marker_command
+        .event()
+        .expect("authored marker command must publish an event");
+    assert_eq!(marker_event.event(), "superi.project.state.changed");
+    assert_eq!(marker_event.payload()["project_revision"], 2);
+
     let refreshed = projects
         .inspect_editor(superi_api::commands::GetEditorState::new("editor-state-2"))
         .unwrap();
     let refreshed = serde_json::to_value(refreshed).unwrap();
-    assert_eq!(refreshed["snapshot"]["project"]["project_revision"], 1);
+    assert_eq!(refreshed["snapshot"]["project"]["project_revision"], 2);
     assert_eq!(
         refreshed["snapshot"]["timeline"]["document"]["content"]["payload"]["timelines"][0]
             ["edit_state"]["track_states"][0]["height"],
         96
+    );
+    assert_eq!(
+        refreshed["snapshot"]["timeline"]["document"]["content"]["payload"]["timelines"][0]
+            ["markers"][0]["id"],
+        marker_id
+    );
+    assert_eq!(
+        refreshed["snapshot"]["timeline"]["document"]["content"]["payload"]["timelines"][0]
+            ["markers"][0]["marked_range"]["start"]["value"],
+        "12"
+    );
+    assert_eq!(
+        refreshed["snapshot"]["timeline"]["document"]["content"]["payload"]["timelines"][0]
+            ["markers"][0]["label"],
+        "First review"
     );
 
     lifecycle.request_shutdown().unwrap();

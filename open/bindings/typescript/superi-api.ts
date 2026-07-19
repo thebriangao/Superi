@@ -1215,12 +1215,12 @@ export type PollEventsResult = { status: "events"; result: EventBatch } | { stat
 /**
  * Every authored action integrated by the production project transaction owner.
  */
-export type ProjectAction = { action: "select_root_timeline"; timeline_id: string } | { action: "edit_timeline"; operations: TimelineEditOperation[] } | { action: "mutate_tracks"; mutations: TimelineTrackMutation[] } | { action: "mutate_graph"; graph_id: string; mutations: EditorGraphMutation[] } | { action: "mutate_media"; mutation: EditorMediaMutation } | { action: "import_media"; media: EditorImportedMedia[] } | { action: "mutate_clip_mix"; mutations: EditorClipMixMutation[] } | { action: "mutate_extension"; mutation: EditorExtensionMutation };
+export type ProjectAction = { action: "select_root_timeline"; timeline_id: string } | { action: "edit_timeline"; operations: TimelineEditOperation[] } | { action: "mutate_tracks"; mutations: TimelineTrackMutation[] } | { action: "mutate_markers"; mutations: TimelineMarkerMutation[] } | { action: "mutate_graph"; graph_id: string; mutations: EditorGraphMutation[] } | { action: "mutate_media"; mutation: EditorMediaMutation } | { action: "import_media"; media: EditorImportedMedia[] } | { action: "mutate_clip_mix"; mutations: EditorClipMixMutation[] } | { action: "mutate_extension"; mutation: EditorExtensionMutation };
 
 /**
  * One action result inside an applied compound command.
  */
-export type ProjectActionEvidence = { result: "root_timeline_selected"; timeline_id: string } | { result: "timeline_edited"; revision: number; operations: TimelineEditKind[] } | { result: "tracks_mutated"; revision: number; mutations: TimelineTrackMutationKind[] } | { result: "graph_mutated"; graph_id: string; revision: number } | { result: "media_mutated"; outcome: MediaMutationResult } | { result: "media_imported"; media_ids: string[]; skipped_media_ids: string[] } | { result: "clip_mix_mutated"; revision: number } | { result: "extension_mutated"; outcome: ExtensionMutationResultKind; extension_id: string; record_id: string; replaced: boolean | null };
+export type ProjectActionEvidence = { result: "root_timeline_selected"; timeline_id: string } | { result: "timeline_edited"; revision: number; operations: TimelineEditKind[] } | { result: "tracks_mutated"; revision: number; mutations: TimelineTrackMutationKind[] } | { result: "markers_mutated"; revision: number; mutations: TimelineMarkerMutationKind[] } | { result: "graph_mutated"; graph_id: string; revision: number } | { result: "media_mutated"; outcome: MediaMutationResult } | { result: "media_imported"; media_ids: string[]; skipped_media_ids: string[] } | { result: "clip_mix_mutated"; revision: number } | { result: "extension_mutated"; outcome: ExtensionMutationResultKind; extension_id: string; record_id: string; replaced: boolean | null };
 
 /**
  * One generic project command on the stable public surface.
@@ -1606,6 +1606,26 @@ export type TimelineEditKind = "insert" | "overwrite" | "append" | "replace" | "
  * Every current directly executable timeline edit operation.
  */
 export type TimelineEditOperation = { operation: "insert"; timeline_id: string; track_id: string; at: ExactTime; material: EditorTrackItem; fragment_ids: EditorialObjectId[] } | { operation: "overwrite"; timeline_id: string; track_id: string; at: ExactTime; material: EditorTrackItem; fragment_ids: EditorialObjectId[] } | { operation: "append"; timeline_id: string; track_id: string; material: EditorTrackItem } | { operation: "replace"; timeline_id: string; track_id: string; target_id: EditorialObjectId; material: EditorTrackItem } | { operation: "lift"; timeline_id: string; track_id: string; range: ExactTimeRange; gap_id: string; gap_name: string; fragment_ids: EditorialObjectId[] } | { operation: "extract"; timeline_id: string; track_id: string; range: ExactTimeRange; fragment_ids: EditorialObjectId[] } | { operation: "ripple"; timeline_id: string; track_id: string; target_id: EditorialObjectId; side: EditorEditSide; to: ExactTime; sync_adjustments: EditorRippleSyncAdjustment[] } | { operation: "roll"; timeline_id: string; track_id: string; left_id: EditorialObjectId; right_id: EditorialObjectId; to: ExactTime } | { operation: "slip"; timeline_id: string; track_id: string; clip_id: string; source_start: ExactTime } | { operation: "slide"; timeline_id: string; track_id: string; clip_id: string; to: ExactTime } | { operation: "razor"; timeline_id: string; track_id: string; target_id: EditorialObjectId; at: ExactTime; fragment_id: EditorialObjectId } | { operation: "trim"; timeline_id: string; track_id: string; target_id: EditorialObjectId; side: EditorEditSide; to: ExactTime; gap_id: string | null } | { operation: "extend"; timeline_id: string; track_id: string; target_id: EditorialObjectId; side: EditorEditSide; to: ExactTime; mode: EditorExtendMode; sync_adjustments: EditorRippleSyncAdjustment[] } | { operation: "set_transition"; timeline_id: string; track_id: string; transition_id: string; from_offset: ExactDuration; to_offset: ExactDuration } | { operation: "three_point"; timeline_id: string; track_id: string; clip: EditorTrackItem; placement: EditorThreePointPlacement; fragment_ids: EditorialObjectId[] } | { operation: "four_point"; timeline_id: string; track_id: string; clip: EditorTrackItem; source_range: ExactTimeRange; record_range: ExactTimeRange; fragment_ids: EditorialObjectId[] };
+
+/**
+ * Stable visible flag carried by one timeline marker.
+ */
+export type TimelineMarkerFlag = "red" | "pink" | "orange" | "yellow" | "green" | "cyan" | "blue" | "purple" | "magenta" | "black" | "white";
+
+/**
+ * One strict authored timeline marker mutation.
+ */
+export type TimelineMarkerMutation = { operation: "create"; timeline_id: string; marker_id: string; owner: TimelineMarkerOwner; marked_range: ExactTimeRange; label: string | null; flag: TimelineMarkerFlag | null; note: string | null; metadata: { [key: string]: EditorMetadataValue } } | { operation: "set_range"; timeline_id: string; marker_id: string; marked_range: ExactTimeRange } | { operation: "set_label"; timeline_id: string; marker_id: string; label: string | null } | { operation: "set_flag"; timeline_id: string; marker_id: string; flag: TimelineMarkerFlag | null } | { operation: "set_note"; timeline_id: string; marker_id: string; note: string | null } | { operation: "remove"; timeline_id: string; marker_id: string };
+
+/**
+ * Stable category returned for one applied timeline marker mutation.
+ */
+export type TimelineMarkerMutationKind = "create" | "set_range" | "set_label" | "set_flag" | "set_note" | "remove";
+
+/**
+ * Stable local owner for one public timeline marker.
+ */
+export type TimelineMarkerOwner = { kind: "timeline" } | { kind: "track"; track_id: string } | { kind: "object"; object_id: EditorialObjectId };
 
 /**
  * Public canonical timeline state.

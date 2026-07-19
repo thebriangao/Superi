@@ -9,7 +9,9 @@ use superi_api::commands::{
     GetEditorState, GetProjectRecovery, GetProjectSettings, RestoreProjectRecovery,
 };
 use superi_api::editor::{
-    EditorMediaMutation, EditorMediaPath, ExecuteProjectCommand, ProjectAction, ProjectCommand,
+    EditorMediaMutation, EditorMediaPath, ExactDuration, ExactTime, ExactTimeRange, ExactTimebase,
+    ExecuteProjectCommand, ProjectAction, ProjectCommand, TimelineMarkerFlag,
+    TimelineMarkerMutation, TimelineMarkerOwner,
 };
 use superi_api::local::{
     LocalAutomationRequest, LocalAutomationResult, LocalProjectCollision,
@@ -31,6 +33,7 @@ const ROOT: engine::TimelineId = engine::TimelineId::from_raw(0xc023_0003);
 const TRACK: engine::TrackId = engine::TrackId::from_raw(0xc023_0004);
 const FIRST_CLIP: engine::ClipId = engine::ClipId::from_raw(0xc023_0005);
 const SECOND_CLIP: engine::ClipId = engine::ClipId::from_raw(0xc023_0006);
+const MARKER: engine::MarkerId = engine::MarkerId::from_raw(0xc023_0007);
 
 struct TempDirectory {
     path: PathBuf,
@@ -182,6 +185,119 @@ fn production_create_is_no_clobber_and_immediately_inspectable() {
     assert_eq!(
         state["snapshot"]["project"]["project_id"],
         PROJECT.to_string()
+    );
+}
+
+#[test]
+fn timeline_marker_commands_persist_and_reverse_through_typed_inverse_batches() {
+    let directory = TempDirectory::new("timeline-markers");
+    let project = directory.join("markers.superi");
+    create_project(&project);
+    let timebase = ExactTimebase {
+        numerator: 24,
+        denominator: 1,
+    };
+    let mutation = ExecuteProjectCommand::new(
+        "create-marker",
+        0,
+        ProjectCommand::Apply {
+            actions: vec![ProjectAction::MutateMarkers {
+                mutations: vec![TimelineMarkerMutation::Create {
+                    timeline_id: ROOT.to_string(),
+                    marker_id: MARKER.to_string(),
+                    owner: TimelineMarkerOwner::Timeline {},
+                    marked_range: ExactTimeRange {
+                        start: ExactTime {
+                            value: 12,
+                            timebase,
+                        },
+                        duration: ExactDuration { value: 4, timebase },
+                    },
+                    label: Some("review".to_owned()),
+                    flag: Some(TimelineMarkerFlag::Yellow),
+                    note: Some("check the cut".to_owned()),
+                    metadata: Default::default(),
+                }],
+            }],
+        },
+    );
+    let applied = LocalProjectHost::execute_timeline(&project, mutation, untrusted()).unwrap();
+    assert_eq!(applied.result().state().project_revision(), 1);
+    assert_eq!(applied.events().len(), 1);
+    let marker = load(&project)
+        .editorial_project()
+        .timeline(ROOT)
+        .unwrap()
+        .marker(MARKER)
+        .unwrap()
+        .clone();
+    assert_eq!(marker.label().unwrap().as_str(), "review");
+    assert_eq!(marker.flag(), Some(engine::MarkerFlag::Yellow));
+    assert_eq!(marker.note().unwrap().as_str(), "check the cut");
+
+    let reversed = LocalProjectHost::execute_timeline(
+        &project,
+        ExecuteProjectCommand::new(
+            "reverse-marker-create",
+            1,
+            ProjectCommand::Apply {
+                actions: vec![ProjectAction::MutateMarkers {
+                    mutations: vec![TimelineMarkerMutation::Remove {
+                        timeline_id: ROOT.to_string(),
+                        marker_id: MARKER.to_string(),
+                    }],
+                }],
+            },
+        ),
+        untrusted(),
+    )
+    .unwrap();
+    assert_eq!(reversed.result().state().project_revision(), 2);
+    assert!(load(&project)
+        .editorial_project()
+        .timeline(ROOT)
+        .unwrap()
+        .marker(MARKER)
+        .is_none());
+
+    let restored = LocalProjectHost::execute_timeline(
+        &project,
+        ExecuteProjectCommand::new(
+            "reverse-marker-remove",
+            2,
+            ProjectCommand::Apply {
+                actions: vec![ProjectAction::MutateMarkers {
+                    mutations: vec![TimelineMarkerMutation::Create {
+                        timeline_id: ROOT.to_string(),
+                        marker_id: MARKER.to_string(),
+                        owner: TimelineMarkerOwner::Timeline {},
+                        marked_range: ExactTimeRange {
+                            start: ExactTime {
+                                value: 12,
+                                timebase,
+                            },
+                            duration: ExactDuration { value: 4, timebase },
+                        },
+                        label: Some("review".to_owned()),
+                        flag: Some(TimelineMarkerFlag::Yellow),
+                        note: Some("check the cut".to_owned()),
+                        metadata: Default::default(),
+                    }],
+                }],
+            },
+        ),
+        untrusted(),
+    )
+    .unwrap();
+    assert_eq!(restored.result().state().project_revision(), 3);
+    assert_eq!(
+        load(&project)
+            .editorial_project()
+            .timeline(ROOT)
+            .unwrap()
+            .marker(MARKER)
+            .unwrap(),
+        &marker
     );
 }
 

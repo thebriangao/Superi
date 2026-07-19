@@ -1,6 +1,9 @@
 import { NativeViewport, SourceMonitor } from "./native-viewport.tsx";
 import { useCallback, type ReactNode } from "react";
-import type { TimelineTrackMutation } from "./api.ts";
+import type {
+  TimelineMarkerMutation,
+  TimelineTrackMutation,
+} from "./api.ts";
 
 import { useApplication } from "./application-context.tsx";
 import {
@@ -26,6 +29,15 @@ export function EditingWorkspacePanel() {
       await executeProjectActions([
         { action: "mutate_tracks", mutations: [...mutations] },
       ]);
+    },
+    [executeProjectActions],
+  );
+  const mutateMarkers = useCallback(
+    async (mutations: readonly TimelineMarkerMutation[]) => {
+      const result = await executeProjectActions([
+        { action: "mutate_markers", mutations: [...mutations] },
+      ]);
+      return result.state.project_revision.toString();
     },
     [executeProjectActions],
   );
@@ -57,6 +69,7 @@ export function EditingWorkspacePanel() {
             executeProjectActions={executeProjectActions}
             sourceMonitor={sourceMonitor}
             onExecuteProjectCommand={executeProjectCommand}
+            mutateMarkers={mutateMarkers}
           />
           <div className="editor-summary-grid">
             <Metric label="Project" value={snapshot.project.project_id} />

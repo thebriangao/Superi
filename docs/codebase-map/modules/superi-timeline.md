@@ -2,8 +2,8 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: 76847005f202f2708754261bf23fa02cabe5b74ebdc7d6d89a5a84b42230cc38
-source_files: 32
+source_hash: 94d8f72dd6f91f2360b09d73f457ae75adbd632d19f533708deeabebb6072aae
+source_files: 33
 mapped_at_commit: working-tree
 ---
 
@@ -19,7 +19,8 @@ explicit clock and media behavior. Clip range maps keep source and record clocks
 while resolved range contexts expose known media availability or derived nested-timeline
 availability without destroying overscan. Timeline, track, and object markers preserve permanent
 identity, explicit ownership, owner-relative exact ranges, visible labels, flags, notes, and nested
-deterministic metadata. Persistent snapping resolves exact timeline, playhead, item, and visible
+deterministic metadata, and one atomic marker batch owns create, range, label, flag, note, and remove
+gestures. Persistent snapping resolves exact timeline, playhead, item, and visible
 marker boundaries with stable filters, exclusions, and tie ordering. Foundational insert,
 overwrite, append, replace, lift, and extract commands join ripple, roll, slip, slide, razor, trim,
 extend, atomic transition-handle replacement, and exact three-point and four-point commands on one
@@ -112,8 +113,11 @@ with stable warnings.
 - `open/crates/superi-timeline/src/ids.rs`: Re-exports the canonical project, editorial object, and
   multicam angle identities owned by `superi-core`.
 - `open/crates/superi-timeline/src/lib.rs`: Exports the implemented identity, edit-state, edit
-  operation, track-operation, model, media, retime, nesting, marker, multicam, serialization, OTIO,
+  operation, track-operation, marker-operation, model, media, retime, nesting, marker, multicam, serialization, OTIO,
   and graph compilation modules.
+- `open/crates/superi-timeline/src/marker_ops.rs`: Implements one revision-checked atomic batch for
+  complete marker creation, exact range replacement, label, flag, and note replacement, and removal,
+  with strict identity and target checks, field-preserving partial edits, and typed outcomes.
 - `open/crates/superi-timeline/src/markers.rs`: Implements stable timeline, track, and object marker
   ownership, visible labels, flags, notes, recursively nested ordered metadata, owner-relative range
   resolution, dangling-owner reconciliation, persistent snapping state, exact candidate projection,
@@ -169,9 +173,10 @@ with stable warnings.
   transition removal and dual-handle replacement, lift gaps, synchronized multi-track publication,
   exact outcome evidence, and failed-batch rollback.
 - `open/crates/superi-timeline/tests/markers_contract.rs`: Proves stable marker identity, timeline,
-  track, and object ownership, visible semantics, nested metadata, direct mutation, owner-relative
+  track, and object ownership, visible semantics, nested metadata, all six atomic marker mutations,
+  owner and metadata preservation, duplicate and missing-target rejection, direct mutation, owner-relative
   resolution, preserved overscan, structural-edit survival, dangling-owner cleanup, exact snapping,
-  filters, exclusions, persistent disablement, stable ties, and atomic rollback.
+  filters, exclusions, persistent disablement, stable ties, empty-batch rejection, and late atomic rollback.
 - `open/crates/superi-timeline/tests/media_library_contract.rs`: Proves bins, sub-bins, stable paths,
   direct membership, cycle and duplicate rejection, metadata-driven smart collections, missing,
   unverified, mismatched, and accepted relinks, atomic rollback, stable media identity, and
@@ -279,6 +284,9 @@ The annotation and snapping surface includes:
 - `MarkerOwner` for explicit timeline, track, or stable editorial-object ownership, plus `Marker`
   with core-owned `MarkerId`, an exact owner-relative `TimeRange`, and directly replaceable
   `MarkerLabel`, `MarkerFlag`, `MarkerNote`, and marker metadata.
+- `MarkerMutation`, `MarkerMutationKind`, `MarkerMutationOutcome`, and
+  `MarkerMutationBatchResult` for complete creation plus exact range, label, flag, note, and remove
+  gestures through one ordered atomic project revision.
 - `MetadataKey`, `MetadataValue`, and `TimelineMetadata` for deterministic ordered state with null,
   Boolean, signed and unsigned integer, finite floating-point, text, exact time, exact range, list,
   and nested-map values.
@@ -472,6 +480,12 @@ annotations, links, groups, selections, and multicam state. Rename, height, reor
 locks, sync locks, mute, solo, and enable preserve every unaffected track and item exactly. Mute and
 solo accept active intent only for audio tracks, while neutral false values remain valid for legacy
 and generic reconstruction.
+
+`apply_marker_mutation_batch` follows the same single-draft boundary. Creation accepts one complete
+marker and rejects any project-wide identity collision. Partial range, label, flag, and note edits
+resolve an existing exact target and preserve its owner, metadata, and every unmentioned field.
+Removal returns typed evidence for the deleted identity. Empty input, a missing target, or any late
+invalid candidate rejects the complete batch without publishing an editorial revision.
 
 Each `Timeline` also constructs annotation state in the same snapshot. Marker insertion validates
 that the explicit owner exists and that authored timing uses the owner's exact record clock.
@@ -667,7 +681,10 @@ Timeline document flow preserves those owners without becoming a project contain
   compiled graph state. `CompoundProjectAction::EditTimeline` applies an ordered nonempty batch of
   native `EditOperation` values inside the engine transaction boundary, while the public
   `ProjectAction::EditTimeline` and strict `TimelineEditOperation` wire translate into that owner.
-  Timeline remains unaware of history and owns no stack.
+  `CompoundProjectAction::MutateMarkers` applies an ordered nonempty batch of native marker
+  mutations through the same compound transaction boundary. Timeline remains unaware of history
+  and owns no stack; compound timeline, track, marker, graph, audio, and project actions share the
+  engine-owned history boundary.
 - Public integration tests and the `otio_roundtrip` example are real consumers. The engine's
   complete editor-state inspection and API projection now expose the canonical timeline document,
   and the production editing workspace strictly consumes that document as a read-only canvas while
@@ -682,7 +699,10 @@ Timeline document flow preserves those owners without becoming a project contain
   delete, and gap intent into those existing public operation batches with exact mixed-clock and
   typed-identity validation. It publishes one batch through the application-owned project executor;
   this crate and the engine remain authoritative for semantic validation, synchronization,
-  relationship preservation, atomic publication, and history.
+  relationship preservation, atomic publication, and history. The
+  strict public marker DTO and durable application command path now expose all six marker gestures,
+  while the workspace projects every authored marker and omits only inexact targets from snapping
+  and navigation.
 
 ## Invariants and operational boundaries
 
@@ -805,6 +825,9 @@ Timeline document flow preserves those owners without becoming a project contain
 - A track mutation batch is nonempty, revision-fenced, ordered, and atomic. Positions use canonical
   bottom-to-top order, caller-supplied identities never alias existing tracks, and a late invalid
   control or deletion rolls the complete batch back.
+- A marker mutation batch is nonempty, revision-fenced, ordered, and atomic. Create carries complete
+  owner, range, visible fields, and metadata, partial edits preserve unmentioned state, identities
+  remain project-wide unique, and a missing target or late invalid mutation rolls the batch back.
 - Overwrite and replace preserve track duration. Lift makes empty time explicit with a named gap.
   Append and insert report exact extension, while extract reports exact shortening.
 - A transition is never silently redirected. It survives only with its original adjacent endpoints
@@ -879,9 +902,10 @@ Four range tests prove exact cross-clock point and subrange translation, half-op
 failure paths, atomic direct replacement, all four availability classifications, editable media
 overscan, and nested source resolution.
 
-Six marker tests prove all three owner classes, project-wide marker identity uniqueness, stable
+Eight marker tests prove all three owner classes, project-wide marker identity uniqueness, stable
 marker iteration, label, flag, note, nested
-metadata, direct mutation, object-relative placement, overscan suppression, exact cross-clock snap
+metadata, all six atomic marker gestures, owner and metadata preservation, duplicate and missing
+target rejection, empty rejection, late rollback, direct mutation, object-relative placement, overscan suppression, exact cross-clock snap
 projection, target filters, object and marker exclusions, playhead candidates, stable ties,
 persistent disablement, atomic invalid-clock rollback, survival through a real insert, and selective
 cleanup through a real extract.
@@ -945,7 +969,7 @@ scan, and codebase-map validation are required delivery gates.
 
 The foundational project model, rational range mapping, linked availability context, manual media
 organization, saved smart collections, explicit relink state, typed track semantics, atomic track
-management and output intent, authoritative timeline edit state, markers, deterministic metadata,
+management and output intent, authoritative timeline edit state, atomic marker management, deterministic metadata,
 exact snapping,
 exact clip retiming, six primary operations, nine advanced edit families, nested placement,
 compound creation, shared child editing, recursive inspection, and native multicam angle,
@@ -963,11 +987,11 @@ timeline-owned state to those visual schemas is absent. Graph evaluation, fit-to
 grouped-source compound synthesis, multicam mixing and runtime playback, timeline-driven autosave
 scheduling, and recovery orchestration remain absent. Generic editor-state inspection and the
 public API preserve the canonical timeline document and expose typed track mutation through durable
-project commands. The production editing workspace renders the strict projection with transient
+project commands, including strict marker mutation and evidence. The production editing workspace renders the strict projection with transient
 navigation and shared-selection state, exact target snapping, visible session rule and consequence
 state, reversible pointer gestures, supplemental clip detail that does not reparse geometry, and
 exact advanced timing plans that enter the existing public operation wire as one atomic batch.
-Track and item gestures return through the durable project command owner. Engine
+Track and marker gestures return through the durable project command owner. Engine
 preparation integration now consumes and retains the compiled graph, and engine transport consumes
 the standalone signed rate value, but no
 owner yet binds that prepared native timeline graph to decoded playback, multicam mixing, or render
@@ -1009,8 +1033,9 @@ Treat track clocks, semantics, height, target, lock, sync lock, mute, solo, enab
 object identity, media identity, bin hierarchy, smart query
 derivation, relink evidence, continuity, physical-time equality, source-aware
 and retime-aware fragmentation, exact time-map seams, explicit transport resolution, explicit
-transition invalidation, result reporting, marker ownership, exact snapping, metadata ordering,
-atomic dual-handle replacement,
+transition invalidation, result reporting, marker ownership, complete create semantics, partial-field
+preservation, atomic marker mutation order, exact snapping, metadata ordering, atomic dual-handle
+replacement,
 source-link resolution, selection expansion, track intent, clip relationship partitions,
 reconciliation, transition adjacency, nesting acyclicity, exact nested placement, shared-instance
 reporting, multicam angle identity and metadata, source membership, switch coverage, exact

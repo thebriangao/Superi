@@ -10,6 +10,7 @@ pub mod compile;
 pub mod edit_ops;
 pub mod edit_state;
 pub mod ids;
+pub mod marker_ops;
 pub mod markers;
 pub mod media;
 pub mod model;

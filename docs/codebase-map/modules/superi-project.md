@@ -650,7 +650,8 @@ and acquires the exact reachable source and decoder set before one resources pub
   project-owned referenced-media paths into media-I/O source requests, resolves settings into
   existing subsystem types, dispatches authoritative settings transactions, exclusively owns
   bounded command history and compound transactions over the checked whole-snapshot restore seam,
-  routes extension commands and typed results through the same dispatcher and event owner,
+  routes atomic track and marker batches plus extension commands and typed results through the same
+  dispatcher and event owner,
   supplies the real selected history snapshot used by the autosave consumer contract after apply,
   undo, and redo, and exposes eventless `InspectProjectDiagnostics` results from that same attached
   history snapshot. The production desktop now retains that editor history on EngineControl and
@@ -931,7 +932,9 @@ stable identity commands, and the real engine and public API consumers are subst
 test-backed. The same authoritative compatibility table now drives persistence checks, migration
 registry alignment, integrity interpretation, and the public API projection. Its checked
 whole-snapshot restore seam supports the engine-owned session command
-history without moving branching policy or retained entries into the project crate. The same
+history without moving branching policy or retained entries into the project crate. Complete marker
+owner, exact range, label, flag, note, and metadata state persists through that existing timeline
+component without a schema migration. The same
 history, compound transaction, dispatcher, save, and autosave consumers preserve plugin, effect,
 AI artifact metadata, and unknown extension state through one typed command surface without
 requiring a runtime implementation. Its typed

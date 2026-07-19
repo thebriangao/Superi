@@ -25,6 +25,9 @@ import type {
   EditorRationalTime,
   EditorStateSnapshot,
   EditorTimeRange,
+  ExactTimeRange,
+  TimelineMarkerMutation,
+  TimelineMarkerOwner as ApiTimelineMarkerOwner,
   TimelineTrackMutation,
   ExecuteProjectCommand,
   ExecuteProjectCommandResult,
@@ -83,6 +86,8 @@ import {
   timelineRectanglesIntersect,
   timelineItemsInWindow,
   timelineFrameDuration,
+  timelineExactPointAtDisplaySeconds,
+  timelineMarkerNeighbor,
   timelineSelectionIdentity,
   timelineSelectionNeighbor,
   timelineSelectionRange,
@@ -90,12 +95,14 @@ import {
   MAX_TRACK_HEIGHT,
   MIN_TRACK_HEIGHT,
   type TimelineCanvasItem,
+  type TimelineCanvasMarker,
   type TimelineCanvasModel,
   type TimelineCanvasTrack,
   type TimelineSnapMatch,
   type TimelineSnapRules,
   type TimelineRectangle,
   type TimelineSelectionDirection,
+  type TimelineMarkerFlag,
   type TimelineTrackKind,
   type TimelineEditCommandResult,
   type TimelineEditGesture,
@@ -112,6 +119,19 @@ const MAX_SNAP_TOLERANCE_FRAMES = 12;
 const LASSO_DRAG_THRESHOLD = 4;
 const EDIT_DRAG_THRESHOLD = 4;
 const TIMELINE_SELECTION_HELP_ID = "timeline-selection-help";
+const TIMELINE_MARKER_FLAGS = [
+  "red",
+  "pink",
+  "orange",
+  "yellow",
+  "green",
+  "cyan",
+  "blue",
+  "purple",
+  "magenta",
+  "black",
+  "white",
+] as const satisfies readonly TimelineMarkerFlag[];
 
 const TIMELINE_SNAP_RULES = [
   { key: "timelineStart", label: "Timeline start" },
@@ -216,6 +236,9 @@ export interface TimelineWorkspaceProps {
   readonly onExecuteProjectCommand: (
     request: ExecuteProjectCommand,
   ) => Promise<ExecuteProjectCommandResult>;
+  readonly mutateMarkers: (
+    mutations: readonly TimelineMarkerMutation[],
+  ) => Promise<string>;
 }
 
 export function TimelineWorkspace({
@@ -231,6 +254,7 @@ export function TimelineWorkspace({
   executeProjectActions,
   sourceMonitor,
   onExecuteProjectCommand,
+  mutateMarkers,
 }: TimelineWorkspaceProps) {
   const projection = useMemo(() => {
     try {
@@ -2112,6 +2136,12 @@ export function TimelineWorkspace({
           </button>
         </div>
       </header>
+      <TimelineMarkerPanel
+        model={model}
+        mutateMarkers={mutateMarkers}
+        onSeek={setPlayhead}
+        playhead={playhead}
+      />
       <section
         className="timeline-edit-controls"
         aria-label="Timeline editing tools"
@@ -2678,6 +2708,519 @@ export function TimelineWorkspace({
       </div>
     </section>
   );
+}
+
+interface TimelineMarkerReversal {
+  readonly label: string;
+  readonly mutations: readonly TimelineMarkerMutation[];
+  readonly inverse: readonly TimelineMarkerMutation[];
+  readonly availableAtRevision: string;
+}
+
+function TimelineMarkerPanel({
+  model,
+  playhead,
+  onSeek,
+  mutateMarkers,
+}: {
+  readonly model: TimelineCanvasModel;
+  readonly playhead: number;
+  readonly onSeek: (seconds: number) => void;
+  readonly mutateMarkers: (
+    mutations: readonly TimelineMarkerMutation[],
+  ) => Promise<string>;
+}) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [label, setLabel] = useState("");
+  const [flag, setFlag] = useState<TimelineMarkerFlag | "">("");
+  const [note, setNote] = useState("");
+  const [startValue, setStartValue] = useState("0");
+  const [durationValue, setDurationValue] = useState("0");
+  const [pending, setPending] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [status, setStatus] = useState(
+    `${model.markers.length} authored markers visible.`,
+  );
+  const [reversal, setReversal] = useState<TimelineMarkerReversal | null>(null);
+  const pendingRef = useRef(false);
+  const selectedMarker =
+    model.markers.find((marker) => marker.id === selectedId) ?? null;
+
+  useEffect(() => {
+    if (selectedId !== null && selectedMarker === null) {
+      setSelectedId(null);
+    }
+  }, [selectedId, selectedMarker]);
+
+  useEffect(() => {
+    if (selectedMarker === null) return;
+    setLabel(selectedMarker.label ?? "");
+    setFlag(selectedMarker.flag ?? "");
+    setNote(selectedMarker.note ?? "");
+    setStartValue(selectedMarker.markedRange.start.value);
+    setDurationValue(selectedMarker.markedRange.duration.value);
+  }, [model.documentSha256, selectedMarker]);
+
+  useEffect(() => {
+    if (
+      reversal !== null &&
+      BigInt(model.projectRevision) > BigInt(reversal.availableAtRevision)
+    ) {
+      setReversal(null);
+    }
+  }, [model.projectRevision, reversal]);
+
+  useEffect(() => {
+    setSelectedId(null);
+    setReversal(null);
+    setFailure(null);
+    setStatus(`${model.markers.length} authored markers visible.`);
+  }, [model.id, model.projectId]);
+
+  const execute = useCallback(
+    async (
+      identity: string,
+      mutations: readonly TimelineMarkerMutation[],
+      inverse: readonly TimelineMarkerMutation[],
+      reversalLabel: string,
+    ) => {
+      if (pendingRef.current) return;
+      pendingRef.current = true;
+      setPending(identity);
+      setFailure(null);
+      try {
+        const publishedRevision = await mutateMarkers(mutations);
+        setReversal({
+          label: reversalLabel,
+          mutations: inverse,
+          inverse: mutations,
+          availableAtRevision: publishedRevision,
+        });
+        setStatus(`${identity} published. Immediate reversal is ready.`);
+      } catch (error: unknown) {
+        setFailure(
+          error instanceof Error
+            ? error.message
+            : "The marker command could not be completed.",
+        );
+      } finally {
+        pendingRef.current = false;
+        setPending(null);
+      }
+    },
+    [mutateMarkers],
+  );
+
+  const select = useCallback(
+    (marker: TimelineCanvasMarker) => {
+      setSelectedId(marker.id);
+      setFailure(null);
+      if (marker.startSeconds !== null) {
+        onSeek(marker.startSeconds);
+        setStatus(
+          `${marker.label ?? marker.id} targeted at ${formatTimelineTime(
+            marker.startSeconds,
+            model.editRate,
+          )}.`,
+        );
+      } else {
+        setStatus(
+          `${marker.label ?? marker.id} is visible but has no exact navigable target.`,
+        );
+      }
+    },
+    [model.editRate, onSeek],
+  );
+
+  const navigate = useCallback(
+    (direction: "previous" | "next") => {
+      const marker = timelineMarkerNeighbor(model, selectedId, direction);
+      if (marker !== null) select(marker);
+    },
+    [model, select, selectedId],
+  );
+
+  const addMarker = useCallback(() => {
+    const exact = timelineExactPointAtDisplaySeconds(model, playhead);
+    const markerId = `marker:${globalThis.crypto.randomUUID().replaceAll("-", "")}`;
+    const create: TimelineMarkerMutation = {
+      operation: "create",
+      timeline_id: model.id,
+      marker_id: markerId,
+      owner: { kind: "timeline" },
+      marked_range: {
+        start: publicExactPoint(exact),
+        duration: { value: 0, timebase: exact.timebase },
+      },
+      label: "New marker",
+      flag: "yellow",
+      note: null,
+      metadata: {},
+    };
+    void execute(
+      "Marker creation",
+      [create],
+      [{ operation: "remove", timeline_id: model.id, marker_id: markerId }],
+      "Remove the new marker",
+    );
+  }, [execute, model, playhead]);
+
+  const saveMarker = useCallback(() => {
+    if (selectedMarker === null) return;
+    try {
+      const markedRange = publicDraftRange(
+        startValue,
+        durationValue,
+        selectedMarker.markedRange.start.timebase,
+      );
+      const nextLabel = label.trim().length === 0 ? null : label;
+      const nextNote = note.trim().length === 0 ? null : note;
+      const mutations: TimelineMarkerMutation[] = [
+        {
+          operation: "set_range",
+          timeline_id: model.id,
+          marker_id: selectedMarker.id,
+          marked_range: markedRange,
+        },
+        {
+          operation: "set_label",
+          timeline_id: model.id,
+          marker_id: selectedMarker.id,
+          label: nextLabel,
+        },
+        {
+          operation: "set_flag",
+          timeline_id: model.id,
+          marker_id: selectedMarker.id,
+          flag: flag === "" ? null : flag,
+        },
+        {
+          operation: "set_note",
+          timeline_id: model.id,
+          marker_id: selectedMarker.id,
+          note: nextNote,
+        },
+      ];
+      const inverse: TimelineMarkerMutation[] = [
+        {
+          operation: "set_range",
+          timeline_id: model.id,
+          marker_id: selectedMarker.id,
+          marked_range: publicMarkerRange(selectedMarker),
+        },
+        {
+          operation: "set_label",
+          timeline_id: model.id,
+          marker_id: selectedMarker.id,
+          label: selectedMarker.label,
+        },
+        {
+          operation: "set_flag",
+          timeline_id: model.id,
+          marker_id: selectedMarker.id,
+          flag: selectedMarker.flag,
+        },
+        {
+          operation: "set_note",
+          timeline_id: model.id,
+          marker_id: selectedMarker.id,
+          note: selectedMarker.note,
+        },
+      ];
+      void execute("Marker edit", mutations, inverse, "Restore the prior marker fields");
+    } catch (error: unknown) {
+      setFailure(
+        error instanceof Error ? error.message : "Marker range is not valid.",
+      );
+    }
+  }, [durationValue, execute, flag, label, model.id, note, selectedMarker, startValue]);
+
+  const removeMarker = useCallback(() => {
+    if (selectedMarker === null) return;
+    void execute(
+      "Marker removal",
+      [
+        {
+          operation: "remove",
+          timeline_id: model.id,
+          marker_id: selectedMarker.id,
+        },
+      ],
+      [markerCreateMutation(model.id, selectedMarker)],
+      "Restore the removed marker",
+    );
+  }, [execute, model.id, selectedMarker]);
+
+  const reverse = useCallback(() => {
+    if (
+      reversal === null ||
+      reversal.availableAtRevision !== model.projectRevision
+    ) {
+      return;
+    }
+    void execute(
+      "Marker reversal",
+      reversal.mutations,
+      reversal.inverse,
+      "Reapply the reversed marker change",
+    );
+  }, [execute, model.projectRevision, reversal]);
+
+  const reversalAvailable =
+    reversal !== null &&
+    reversal.availableAtRevision === model.projectRevision;
+
+  return (
+    <section className="timeline-marker-panel" aria-label="Timeline markers">
+      <header className="timeline-marker-header">
+        <div>
+          <span>Markers</span>
+          <strong>{model.markers.length} authored</strong>
+        </div>
+        <div className="timeline-marker-actions">
+          <button
+            className="secondary timeline-compact-button"
+            type="button"
+            disabled={pending !== null}
+            onClick={() => navigate("previous")}
+          >
+            Previous
+          </button>
+          <button
+            className="secondary timeline-compact-button"
+            type="button"
+            disabled={pending !== null}
+            onClick={() => navigate("next")}
+          >
+            Next
+          </button>
+          <button
+            className="secondary timeline-compact-button"
+            type="button"
+            disabled={pending !== null}
+            onClick={addMarker}
+          >
+            Add at playhead
+          </button>
+          <button
+            className="secondary timeline-compact-button"
+            type="button"
+            disabled={pending !== null || !reversalAvailable}
+            onClick={reverse}
+            title={reversal?.label ?? "No marker gesture is available to reverse"}
+          >
+            Reverse marker change
+          </button>
+        </div>
+      </header>
+      <div className="timeline-marker-body">
+        <div
+          className="timeline-marker-list"
+          role="listbox"
+          aria-label="Authored timeline markers"
+        >
+          {model.markers.length === 0 ? (
+            <p>No markers yet. Add one at the exact playhead.</p>
+          ) : (
+            model.markers.map((marker) => (
+              <button
+                className="timeline-marker-row"
+                type="button"
+                role="option"
+                aria-selected={marker.id === selectedId}
+                data-flag={marker.flag ?? "none"}
+                key={marker.id}
+                onClick={() => select(marker)}
+              >
+                <span className="timeline-marker-swatch" aria-hidden="true" />
+                <span>
+                  <strong>{marker.label ?? marker.id}</strong>
+                  <small>{markerOwnerLabel(marker)}</small>
+                </span>
+                <time>
+                  {marker.startSeconds === null
+                    ? "Not navigable"
+                    : formatTimelineTime(marker.startSeconds, model.editRate)}
+                </time>
+              </button>
+            ))
+          )}
+        </div>
+        {selectedMarker ? (
+          <form
+            className="timeline-marker-editor"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveMarker();
+            }}
+          >
+            <label>
+              <span>Label</span>
+              <input
+                value={label}
+                disabled={pending !== null}
+                onChange={(event) => setLabel(event.currentTarget.value)}
+                placeholder="Optional visible label"
+              />
+            </label>
+            <label>
+              <span>Flag</span>
+              <select
+                value={flag}
+                disabled={pending !== null}
+                onChange={(event) =>
+                  setFlag(event.currentTarget.value as TimelineMarkerFlag | "")
+                }
+              >
+                <option value="">No flag</option>
+                {TIMELINE_MARKER_FLAGS.map((value) => (
+                  <option value={value} key={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Owner-clock start</span>
+              <input
+                value={startValue}
+                inputMode="numeric"
+                disabled={pending !== null}
+                onChange={(event) => setStartValue(event.currentTarget.value)}
+              />
+            </label>
+            <label>
+              <span>Duration</span>
+              <input
+                value={durationValue}
+                inputMode="numeric"
+                disabled={pending !== null}
+                onChange={(event) => setDurationValue(event.currentTarget.value)}
+              />
+            </label>
+            <label className="timeline-marker-note-field">
+              <span>Note</span>
+              <textarea
+                value={note}
+                disabled={pending !== null}
+                onChange={(event) => setNote(event.currentTarget.value)}
+                placeholder="Optional editorial note"
+              />
+            </label>
+            <div className="timeline-marker-editor-actions">
+              <button type="submit" disabled={pending !== null}>
+                Save marker
+              </button>
+              <button
+                className="secondary"
+                type="button"
+                disabled={pending !== null}
+                onClick={removeMarker}
+              >
+                Remove marker
+              </button>
+            </div>
+          </form>
+        ) : (
+          <p className="timeline-marker-empty-editor">
+            Select a marker to inspect its owner, exact range, label, flag, and note.
+          </p>
+        )}
+      </div>
+      <output className="timeline-marker-status" aria-live="polite">
+        {pending ? `${pending} pending.` : status}
+      </output>
+      {failure ? (
+        <p className="timeline-command-failure" role="alert">
+          {failure}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function publicExactPoint(point: {
+  readonly value: string;
+  readonly timebase: { readonly numerator: number; readonly denominator: number };
+}) {
+  return {
+    value: safeMarkerInteger(point.value, "marker point"),
+    timebase: point.timebase,
+  };
+}
+
+function publicDraftRange(
+  start: string,
+  duration: string,
+  timebase: { readonly numerator: number; readonly denominator: number },
+): ExactTimeRange {
+  const startValue = safeMarkerInteger(start, "marker start");
+  const durationValue = safeMarkerInteger(duration, "marker duration");
+  if (startValue < 0 || durationValue < 0) {
+    throw new Error("Marker start and duration must be nonnegative exact integers.");
+  }
+  return {
+    start: { value: startValue, timebase },
+    duration: { value: durationValue, timebase },
+  };
+}
+
+function publicMarkerRange(marker: TimelineCanvasMarker): ExactTimeRange {
+  return publicDraftRange(
+    marker.markedRange.start.value,
+    marker.markedRange.duration.value,
+    marker.markedRange.start.timebase,
+  );
+}
+
+function markerCreateMutation(
+  timelineId: string,
+  marker: TimelineCanvasMarker,
+): Extract<TimelineMarkerMutation, { readonly operation: "create" }> {
+  return {
+    operation: "create",
+    timeline_id: timelineId,
+    marker_id: marker.id,
+    owner: publicMarkerOwner(marker),
+    marked_range: publicMarkerRange(marker),
+    label: marker.label,
+    flag: marker.flag,
+    note: marker.note,
+    metadata: { ...marker.metadata },
+  };
+}
+
+function publicMarkerOwner(marker: TimelineCanvasMarker): ApiTimelineMarkerOwner {
+  switch (marker.owner.kind) {
+    case "timeline":
+      return { kind: "timeline" };
+    case "track":
+      return { kind: "track", track_id: marker.owner.trackId };
+    case "object":
+      return { kind: "object", object_id: marker.owner.object };
+  }
+}
+
+function markerOwnerLabel(marker: TimelineCanvasMarker): string {
+  switch (marker.owner.kind) {
+    case "timeline":
+      return `Timeline range ${marker.markedRange.start.value} + ${marker.markedRange.duration.value}`;
+    case "track":
+      return `${marker.owner.trackId} range ${marker.markedRange.start.value} + ${marker.markedRange.duration.value}`;
+    case "object":
+      return `${marker.owner.object.kind} ${marker.owner.object.id} range ${marker.markedRange.start.value} + ${marker.markedRange.duration.value}`;
+  }
+}
+
+function safeMarkerInteger(value: string, label: string): number {
+  if (!/^(?:0|[1-9][0-9]*)$/.test(value)) {
+    throw new Error(`${label} must be a canonical nonnegative integer.`);
+  }
+  const number = Number(value);
+  if (!Number.isSafeInteger(number)) {
+    throw new Error(`${label} exceeds the safe public range.`);
+  }
+  return number;
 }
 
 function TimelineTrackHeader({

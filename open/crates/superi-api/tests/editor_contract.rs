@@ -7,7 +7,8 @@ use superi_api::editor::{
     EditorChannelMap, EditorChannelPosition, EditorClipMixControls, EditorClipMixMutation,
     EditorExtensionMutation, EditorGraphMutation, EditorMediaMutation, ExecuteProjectCommand,
     GetProjectCommandLog, GetProjectCommandLogResult, ProjectAction, ProjectCommand,
-    ProjectCommandEvidence, ProjectCommandLogDetail, TimelineEditOperation, TimelineTrackMutation,
+    ProjectCommandEvidence, ProjectCommandLogDetail, TimelineEditOperation, TimelineMarkerMutation,
+    TimelineTrackMutation,
 };
 use superi_api::events::{ApiEvent, ProjectStateChanged};
 use superi_api::permissions::{
@@ -29,6 +30,7 @@ const TRACK: engine::TrackId = engine::TrackId::from_raw(0xe003);
 const CLIP: engine::ClipId = engine::ClipId::from_raw(0xe004);
 const SECOND_CLIP: engine::ClipId = engine::ClipId::from_raw(0xe005);
 const TRANSITION: engine::TransitionId = engine::TransitionId::from_raw(0xe006);
+const MARKER: engine::MarkerId = engine::MarkerId::from_raw(0xe007);
 
 fn range(start: i64, duration: u64, timebase: engine::Timebase) -> engine::TimeRange {
     engine::TimeRange::new(
@@ -273,7 +275,7 @@ fn editor_contract_has_permanent_names_and_strict_project_commands() {
     );
     assert_eq!(PROJECT_STATE_CHANGED_EVENT, "superi.project.state.changed");
     assert_eq!(PROJECT_HISTORY_RESOURCE, "superi.project.history");
-    assert_eq!(PROJECT_EDITOR_SCHEMA_VERSION.to_string(), "1.3.0");
+    assert_eq!(PROJECT_EDITOR_SCHEMA_VERSION.to_string(), "1.4.0");
     assert_eq!(
         ExecuteProjectCommand::METHOD,
         EXECUTE_PROJECT_COMMAND_METHOD
@@ -469,10 +471,31 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
         ]
     );
 
+    let marker_operations = vec![
+        json!({"operation":"create","timeline_id":ROOT.to_string(),"marker_id":MARKER.to_string(),"owner":{"kind":"timeline"},"marked_range":exact_range(12,4,24),"label":"review","flag":"yellow","note":"check the cut","metadata":{}}),
+        json!({"operation":"set_range","timeline_id":ROOT.to_string(),"marker_id":MARKER.to_string(),"marked_range":exact_range(13,2,24)}),
+        json!({"operation":"set_label","timeline_id":ROOT.to_string(),"marker_id":MARKER.to_string(),"label":null}),
+        json!({"operation":"set_flag","timeline_id":ROOT.to_string(),"marker_id":MARKER.to_string(),"flag":"blue"}),
+        json!({"operation":"set_note","timeline_id":ROOT.to_string(),"marker_id":MARKER.to_string(),"note":null}),
+        json!({"operation":"remove","timeline_id":ROOT.to_string(),"marker_id":MARKER.to_string()}),
+    ];
+    assert_eq!(
+        operation_tags::<TimelineMarkerMutation>(marker_operations, "operation"),
+        [
+            "create",
+            "set_range",
+            "set_label",
+            "set_flag",
+            "set_note",
+            "remove"
+        ]
+    );
+
     let project_actions = vec![
         json!({"action":"select_root_timeline","timeline_id":ROOT.to_string()}),
         json!({"action":"edit_timeline","operations":[{"operation":"append","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"material":gap_item()}]}),
         json!({"action":"mutate_tracks","mutations":[{"operation":"rename","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"name":"Picture"}]}),
+        json!({"action":"mutate_markers","mutations":[{"operation":"set_label","timeline_id":ROOT.to_string(),"marker_id":MARKER.to_string(),"label":"Review"}]}),
         json!({"action":"mutate_graph","graph_id":"graph:00000000000000000000000000000047","mutations":[{"operation":"reorder","node_id":node_id,"position":0}]}),
         json!({"action":"mutate_media","mutation":{"operation":"mark_missing","media_id":MEDIA.to_string()}}),
         json!({"action":"mutate_clip_mix","mutations":[{"operation":"remove","clip_id":CLIP.to_string()}]}),
@@ -484,6 +507,7 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
             "select_root_timeline",
             "edit_timeline",
             "mutate_tracks",
+            "mutate_markers",
             "mutate_graph",
             "mutate_media",
             "mutate_clip_mix",
@@ -499,6 +523,115 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
         "operation": "unsupported"
     }))
     .is_err());
+}
+
+#[test]
+fn public_marker_command_is_exact_visible_evidenced_and_undoable() {
+    let _domain = ExecutionDomain::EngineControl
+        .enter_current()
+        .expect("test owns engine control");
+    let mut api = project_api();
+    let request: ExecuteProjectCommand = serde_json::from_value(json!({
+        "transaction_id": "public-marker-controls",
+        "expected_project_revision": 0,
+        "command": {
+            "command": "apply",
+            "actions": [{
+                "action": "mutate_markers",
+                "mutations": [
+                    {
+                        "operation": "create",
+                        "timeline_id": ROOT.to_string(),
+                        "marker_id": MARKER.to_string(),
+                        "owner": {"kind": "timeline"},
+                        "marked_range": exact_range(12, 4, 24),
+                        "label": "review",
+                        "flag": "yellow",
+                        "note": "check the cut",
+                        "metadata": {
+                            "review.status": {"kind": "text", "value": "pending"}
+                        }
+                    },
+                    {
+                        "operation": "set_range",
+                        "timeline_id": ROOT.to_string(),
+                        "marker_id": MARKER.to_string(),
+                        "marked_range": exact_range(13, 2, 24)
+                    },
+                    {
+                        "operation": "set_label",
+                        "timeline_id": ROOT.to_string(),
+                        "marker_id": MARKER.to_string(),
+                        "label": "director review"
+                    },
+                    {
+                        "operation": "set_flag",
+                        "timeline_id": ROOT.to_string(),
+                        "marker_id": MARKER.to_string(),
+                        "flag": "blue"
+                    },
+                    {
+                        "operation": "set_note",
+                        "timeline_id": ROOT.to_string(),
+                        "marker_id": MARKER.to_string(),
+                        "note": "hold this beat"
+                    }
+                ]
+            }]
+        }
+    }))
+    .unwrap();
+
+    let applied = api.execute(request).unwrap();
+    assert_eq!(applied.state().project_revision(), 1);
+    let ProjectCommandEvidence::Applied { actions } = applied.evidence() else {
+        panic!("marker mutation command must retain evidence");
+    };
+    assert_eq!(
+        serde_json::to_value(&actions[0]).unwrap(),
+        json!({
+            "result":"markers_mutated",
+            "revision":1,
+            "mutations":["create","set_range","set_label","set_flag","set_note"]
+        })
+    );
+    let snapshot = api.project_snapshot().unwrap();
+    let marker = snapshot
+        .editorial_project()
+        .timeline(ROOT)
+        .unwrap()
+        .marker(MARKER)
+        .unwrap();
+    assert_eq!(marker.owner(), engine::MarkerOwner::Timeline);
+    assert_eq!(
+        marker.marked_range(),
+        range(13, 2, engine::FrameRate::FPS_24.timebase())
+    );
+    assert_eq!(marker.label().unwrap().as_str(), "director review");
+    assert_eq!(marker.flag(), Some(engine::MarkerFlag::Blue));
+    assert_eq!(marker.note().unwrap().as_str(), "hold this beat");
+    assert_eq!(
+        marker
+            .metadata()
+            .get(&engine::MetadataKey::new("review.status").unwrap()),
+        Some(&engine::MetadataValue::Text("pending".to_owned()))
+    );
+    assert_eq!(api.drain_events().unwrap().len(), 1);
+
+    api.execute(ExecuteProjectCommand::new(
+        "undo-marker-controls",
+        1,
+        ProjectCommand::Undo {},
+    ))
+    .unwrap();
+    assert!(api
+        .project_snapshot()
+        .unwrap()
+        .editorial_project()
+        .timeline(ROOT)
+        .unwrap()
+        .marker(MARKER)
+        .is_none());
 }
 
 #[test]

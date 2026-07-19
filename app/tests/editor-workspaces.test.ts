@@ -100,6 +100,36 @@ test("timeline track gestures route through the application command owner", () =
   );
 });
 
+test("timeline marker gestures share the revision-fenced application command owner", () => {
+  const applicationContext = read(
+    resolve(appRoot, "src/application-context.tsx"),
+  );
+  const workspaces = read(resolve(appRoot, "src/editor-workspaces.tsx"));
+  const timeline = read(resolve(appRoot, "src/timeline-workspace.tsx"));
+
+  assert.match(applicationContext, /executeProjectActions/);
+  assert.match(applicationContext, /expected_project_revision/);
+  assert.match(workspaces, /action: "mutate_markers"/);
+  assert.match(workspaces, /mutateMarkers=\{mutateMarkers\}/);
+  for (const operation of [
+    "create",
+    "set_range",
+    "set_label",
+    "set_flag",
+    "set_note",
+    "remove",
+  ]) {
+    assert.match(timeline, new RegExp(`operation: "${operation}"`));
+  }
+  assert.match(timeline, /Reverse marker change/);
+  assert.match(timeline, /availableAtRevision/);
+  assert.match(timeline, /markerCreateMutation/);
+  assert.doesNotMatch(
+    timeline,
+    /superi\.project\.command\.execute|useSuperiApi|DesktopSuperiTransport|@tauri-apps\/api/,
+  );
+});
+
 test("audio projection preserves sample timing, channel order, routing, and continuity", () => {
   const track = {
     timeline_id: "timeline.main",
