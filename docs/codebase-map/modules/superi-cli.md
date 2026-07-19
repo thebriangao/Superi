@@ -419,7 +419,7 @@ names including the generic editor, `superi.project.command_log.get`, `superi.pr
 replacement resource, event subscription open, close, and poll, the complete permission vocabulary,
 and exact method permission metadata, plus help coverage and precise invalid usage.
 The version oracle also pins catalog `1.9.0` and project editor `1.7.0`, so the CLI cannot report an
-older schema after strict multicam, audio-video, and channel-routing mutations enter the generic
+older schema after strict caption, multicam, audio-video, and channel-routing mutations enter the generic
 command and playback transport enters the public catalog beside it.
 They do not prove method routing, wire transport, event delivery, host policy persistence, job
 execution, scripting, or broad CLI parity.

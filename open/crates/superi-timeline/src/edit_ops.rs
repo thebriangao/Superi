@@ -5,6 +5,7 @@ use superi_core::ids::{ClipId, GapId, TimelineId, TrackId, TransitionId};
 use superi_core::time::{Duration, RationalTime, TimeRange, TimeRounding, Timebase};
 
 use crate::edit_state::{SelectionExpansion, SelectionUpdate};
+use crate::markers::MetadataOwner;
 use crate::model::{
     Caption, Clip, EditorialObjectId, EditorialProject, Gap, Generator, ProjectDraft, Timeline,
     Track, TrackItem, TrackKind, Transition,
@@ -1301,6 +1302,20 @@ pub(crate) fn apply_operation(
 
 fn inherit_fragment_intent(timeline: &mut Timeline, fragments: &[EditFragment]) -> Result<()> {
     for fragment in fragments {
+        if let (EditorialObjectId::Caption(original), EditorialObjectId::Caption(created)) =
+            (fragment.original(), fragment.created())
+        {
+            if let Some(metadata) = timeline
+                .metadata(MetadataOwner::Object(EditorialObjectId::Caption(original)))
+                .cloned()
+            {
+                timeline.set_metadata(
+                    MetadataOwner::Object(EditorialObjectId::Caption(created)),
+                    metadata,
+                )?;
+            }
+            continue;
+        }
         let (EditorialObjectId::Clip(original), EditorialObjectId::Clip(created)) =
             (fragment.original(), fragment.created())
         else {

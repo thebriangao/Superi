@@ -1,7 +1,9 @@
 use superi_audio::graph::{AudioProcessBlock, AudioProcessor};
 use superi_audio::mixing::{ChannelMap, ClipMixControls, ClipMixMutation};
 use superi_core::error::ErrorCategory;
-use superi_core::ids::{ClipId, GraphId, MarkerId, MediaId, ProjectId, TimelineId, TrackId};
+use superi_core::ids::{
+    CaptionId, ClipId, GraphId, MarkerId, MediaId, ProjectId, TimelineId, TrackId,
+};
 use superi_core::pixel::{ChannelLayout, ChannelPosition};
 use superi_core::settings::{ComponentId, SemanticVersion, VersionIdentifier};
 use superi_core::time::FrameRate;
@@ -24,14 +26,16 @@ use superi_project::extensions::{
 };
 use superi_project::media::ProjectMediaCommand;
 use superi_project::ProjectDatabase;
+use superi_timeline::caption_ops::{CaptionAttributes, CaptionMutation};
 use superi_timeline::compile::{TimelineGraphOrigin, TimelineGraphValue};
 use superi_timeline::edit_ops::EditOperation;
 use superi_timeline::marker_ops::MarkerMutation;
 use superi_timeline::markers::{Marker, MarkerFlag, MarkerLabel, MarkerNote, MarkerOwner};
 use superi_timeline::media::RelinkStatus;
 use superi_timeline::model::{
-    Clip, ClipSource, EditorialObjectId, EditorialProject, LinkedMediaReference, Timeline, Track,
-    TrackItem, TrackSemantics, VideoCompositing, VideoTrackSemantics,
+    Caption, CaptionPurpose, CaptionTrackSemantics, Clip, ClipSource, EditorialObjectId,
+    EditorialProject, LanguageTag, LinkedMediaReference, Timeline, Track, TrackItem,
+    TrackSemantics, VideoCompositing, VideoTrackSemantics,
 };
 use superi_timeline::multicam::{
     MulticamAngle, MulticamAudioPolicy, MulticamSource, MulticamSyncMethod,
@@ -58,6 +62,8 @@ const MULTICAM_ANGLE_A: superi_timeline::ids::MulticamAngleId =
     superi_timeline::ids::MulticamAngleId::from_raw(0xd108);
 const MULTICAM_ANGLE_B: superi_timeline::ids::MulticamAngleId =
     superi_timeline::ids::MulticamAngleId::from_raw(0xd109);
+const CAPTION: CaptionId = CaptionId::from_raw(0xd006);
+const MISSING_CAPTION: CaptionId = CaptionId::from_raw(0xd007);
 
 fn range(start: i64, duration: u64, timebase: Timebase) -> TimeRange {
     TimeRange::new(
@@ -207,6 +213,144 @@ fn graph_multicam_attached(snapshot: &ProjectSnapshot) -> bool {
         .find(|parameter| parameter.name().as_str() == "multicam-clip")
         .and_then(|parameter| parameter.value().payload().as_domain())
         .is_some_and(|value| matches!(value, TimelineGraphValue::OptionalMulticamClip(Some(_))))
+}
+
+fn caption_document() -> ProjectDocument {
+    let rate = Timebase::MILLISECONDS;
+    let timeline = Timeline::new(
+        ROOT,
+        "caption timeline",
+        rate,
+        RationalTime::zero(rate),
+        vec![Track::new(
+            TRACK,
+            "English captions",
+            TrackSemantics::Caption(CaptionTrackSemantics::new(
+                rate,
+                LanguageTag::new("en-US").unwrap(),
+                CaptionPurpose::Captions,
+            )),
+            vec![TrackItem::Caption(Caption::new(
+                CAPTION,
+                "Caption 1",
+                "Original text",
+                Some("en-US".to_owned()),
+                range(0, 2_000, rate),
+            ))],
+        )],
+    );
+    let editorial = EditorialProject::new(PROJECT, "caption project", [], [timeline]).unwrap();
+    ProjectDocument::new(editorial, ROOT).unwrap()
+}
+
+#[test]
+fn caption_batches_publish_once_through_history_and_restore_on_undo() {
+    let mut history = ProjectCommandHistory::new(caption_document());
+    let transaction = CompoundProjectTransaction::new([CompoundProjectAction::mutate_captions([
+        CaptionMutation::SetText {
+            timeline_id: ROOT,
+            caption_id: CAPTION,
+            text: "Editable transcript".to_owned(),
+        },
+        CaptionMutation::SetSpeaker {
+            timeline_id: ROOT,
+            caption_id: CAPTION,
+            speaker: Some("Speaker A".to_owned()),
+        },
+    ])])
+    .unwrap();
+    let applied = history
+        .execute(ProjectHistoryCommand::apply(
+            0,
+            ProjectMutation::compound(transaction),
+        ))
+        .unwrap();
+
+    assert_eq!(applied.state().snapshot().revision(), 1);
+    assert_eq!(applied.state().undo_depth(), 1);
+    let ProjectHistoryActionResult::AppliedCompound { actions } = applied.action_result().unwrap()
+    else {
+        panic!("caption command must retain compound evidence");
+    };
+    assert!(matches!(
+        actions.as_slice(),
+        [CompoundProjectActionResult::CaptionsMutated(result)]
+            if result.revision() == 1 && result.outcomes().len() == 2
+    ));
+    let timeline = applied
+        .state()
+        .snapshot()
+        .editorial_project()
+        .timeline(ROOT)
+        .unwrap();
+    let caption = timeline
+        .track(TRACK)
+        .unwrap()
+        .item(EditorialObjectId::Caption(CAPTION))
+        .unwrap()
+        .as_caption()
+        .unwrap();
+    assert_eq!(caption.text(), "Editable transcript");
+    assert_eq!(
+        CaptionAttributes::from_timeline(timeline, CAPTION)
+            .unwrap()
+            .speaker(),
+        Some("Speaker A")
+    );
+
+    let undone = history.execute(ProjectHistoryCommand::undo(1)).unwrap();
+    let timeline = undone
+        .state()
+        .snapshot()
+        .editorial_project()
+        .timeline(ROOT)
+        .unwrap();
+    assert_eq!(
+        timeline
+            .track(TRACK)
+            .unwrap()
+            .item(EditorialObjectId::Caption(CAPTION))
+            .unwrap()
+            .as_caption()
+            .unwrap()
+            .text(),
+        "Original text"
+    );
+    assert_eq!(
+        CaptionAttributes::from_timeline(timeline, CAPTION)
+            .unwrap()
+            .speaker(),
+        None
+    );
+}
+
+#[test]
+fn failed_caption_batch_does_not_publish_partial_project_state() {
+    let initial = caption_document();
+    let initial_snapshot = initial.snapshot();
+    let mut history = ProjectCommandHistory::new(initial);
+    let transaction = CompoundProjectTransaction::new([CompoundProjectAction::mutate_captions([
+        CaptionMutation::SetText {
+            timeline_id: ROOT,
+            caption_id: CAPTION,
+            text: "must roll back".to_owned(),
+        },
+        CaptionMutation::SetText {
+            timeline_id: ROOT,
+            caption_id: MISSING_CAPTION,
+            text: "missing".to_owned(),
+        },
+    ])])
+    .unwrap();
+    let error = history
+        .execute(ProjectHistoryCommand::apply(
+            0,
+            ProjectMutation::compound(transaction),
+        ))
+        .unwrap_err();
+
+    assert_eq!(error.category(), ErrorCategory::NotFound);
+    assert_eq!(history.state().snapshot(), &initial_snapshot);
 }
 
 fn controls() -> ClipMixControls {

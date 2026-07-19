@@ -5,8 +5,8 @@ use superi_core::time::{Duration, FrameRate, RationalTime, TimeRange, Timebase};
 use superi_timeline::edit_ops::{apply_edit_batch, EditOperation};
 use superi_timeline::model::{
     AudioChannelRoute, AudioChannelTarget, AudioRouteDestination, AudioRouting,
-    AudioTrackSemantics, EditorialProject, Gap, Timeline, Track, TrackItem, TrackSemantics,
-    VideoCompositing, VideoTrackSemantics,
+    AudioTrackSemantics, CaptionPurpose, EditorialProject, Gap, Timeline, Track, TrackItem,
+    TrackSemantics, VideoCompositing, VideoTrackSemantics,
 };
 use superi_timeline::track_ops::{
     apply_track_mutation_batch, TrackCreationKind, TrackMutation, TrackMutationKind,
@@ -185,6 +185,12 @@ fn every_creation_kind_uses_explicit_canonical_semantics_and_position() {
                 position: 4,
                 height: 88,
             },
+            TrackMutation::SetCaptionSemantics {
+                timeline_id: TIMELINE,
+                track_id: C1,
+                language: "fr-FR".to_owned(),
+                purpose: CaptionPurpose::Subtitles,
+            },
             TrackMutation::Create {
                 timeline_id: TIMELINE,
                 track_id: D1,
@@ -210,10 +216,15 @@ fn every_creation_kind_uses_explicit_canonical_semantics_and_position() {
         timeline.track(A2).unwrap().semantics(),
         TrackSemantics::Audio(_)
     ));
-    assert!(matches!(
-        timeline.track(C1).unwrap().semantics(),
-        TrackSemantics::Caption(_)
-    ));
+    let TrackSemantics::Caption(caption) = timeline.track(C1).unwrap().semantics() else {
+        panic!("caption creation must retain caption semantics");
+    };
+    assert_eq!(caption.language().as_str(), "fr-fr");
+    assert_eq!(caption.purpose(), CaptionPurpose::Subtitles);
+    assert_eq!(
+        timeline.track(C1).unwrap().semantics().timebase(),
+        Timebase::MILLISECONDS
+    );
     assert!(matches!(
         timeline.track(D1).unwrap().semantics(),
         TrackSemantics::Data(_)
@@ -298,6 +309,23 @@ fn audio_only_controls_and_height_bounds_reject_invalid_intent() {
     )
     .unwrap_err();
     assert_eq!(height_error.category(), ErrorCategory::InvalidInput);
+    assert_eq!(project.revision(), 0);
+
+    let caption_semantics_error = apply_track_mutation_batch(
+        &mut project,
+        0,
+        &[TrackMutation::SetCaptionSemantics {
+            timeline_id: TIMELINE,
+            track_id: V1,
+            language: "fr-FR".to_owned(),
+            purpose: CaptionPurpose::Subtitles,
+        }],
+    )
+    .unwrap_err();
+    assert_eq!(
+        caption_semantics_error.category(),
+        ErrorCategory::InvalidInput
+    );
     assert_eq!(project.revision(), 0);
 }
 

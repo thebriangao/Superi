@@ -2,8 +2,8 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: 112f0d1e4b798ba4f60e76360bf653904036c42e7cc92af9ffc621eb7a96a9a4
-source_files: 36
+source_hash: 19bdc35a2cd1bc340252aafb9aa1c41027d89a4174f31a41d0a2ef7247048ed7
+source_files: 38
 mapped_at_commit: working-tree
 ---
 
@@ -14,7 +14,10 @@ semantics. It represents linked media, timelines, ordered tracks, clips, explici
 transitions, generators, captions, and nested timeline sources with core-owned identities and
 exact rational timing. It also owns authoritative timeline selection, bounded track height,
 targeting, authored-item locks, sync locks, audio mute and solo, output enable, linked selection,
-and clip grouping. Video, audio, caption, and timed-data tracks carry their
+and clip grouping. Caption authoring adds one typed atomic mutation owner for name, text, language,
+speaker, bounded presentation style, and project-valid timeline relationships. Those durable
+attributes use canonical object metadata, preserve unrelated metadata, and follow caption
+fragments through structural edits. Video, audio, caption, and timed-data tracks carry their
 explicit clock and media behavior. Clip range maps keep source and record clocks synchronized,
 while resolved range contexts expose known media availability or derived nested-timeline
 availability without destroying overscan. Timeline, track, and object markers preserve permanent
@@ -110,6 +113,10 @@ with stable warnings.
   `superi-graph`, `serde`, `serde_json`, and the workspace-pinned SHA-256 implementation for the
   model, color seam, strict timeline documents, canonical JSON, integrity digests, and offline OTIO
   interchange.
+- `open/crates/superi-timeline/src/caption_ops.rs`: Implements the revision-checked atomic caption
+  mutation owner for name, text, language, speaker, bounded style, and timeline relationships. It
+  validates project identities, encodes additive attributes in canonical object metadata, preserves
+  unrelated entries, exposes strict typed decoding, and returns ordered mutation evidence.
 - `open/crates/superi-timeline/src/compile.rs`: Compiles validated root and nested timelines into
   one typed editable graph transaction with stable graph, node, port, parameter, and edge IDs,
   explicit stream routing, authored track and item order, complete object and multicam parameters,
@@ -126,7 +133,8 @@ with stable warnings.
   time-map replacement, semantic no-op rejection, durable audio-video link and detach, exact
   sample-clock source synchronization, deterministic fragment identities, explicit sync-locked
   ripple plans, transition reconciliation, result reports, locked-track enforcement, atomic
-  dual-handle transition timing, and atomic multi-track batches.
+  dual-handle transition timing, atomic multi-track batches, and complete caption object metadata
+  inheritance for created fragments.
 - `open/crates/superi-timeline/src/edit_state.rs`: Implements exact and relationship-expanded
   selection, bounded track height, per-track target, lock, sync-lock, mute, solo, and enable intent,
   canonical clip links and groups, stable introspection, structural reconciliation, and complete
@@ -134,8 +142,8 @@ with stable warnings.
 - `open/crates/superi-timeline/src/ids.rs`: Re-exports the canonical project, editorial object, and
   multicam angle identities owned by `superi-core`.
 - `open/crates/superi-timeline/src/lib.rs`: Exports the implemented identity, edit-state, edit
-  operation, track-operation, marker-operation, multicam-operation, model, media, retime, nesting, marker, multicam, serialization, OTIO,
-  and graph compilation modules.
+  operation, track-operation, caption-operation, marker-operation, multicam-operation, model, media,
+  retime, nesting, marker, multicam, serialization, OTIO, and graph compilation modules.
 - `open/crates/superi-timeline/src/marker_ops.rs`: Implements one revision-checked atomic batch for
   complete marker creation, exact range replacement, label, flag, and note replacement, and removal,
   with strict identity and target checks, field-preserving partial edits, and typed outcomes.
@@ -180,11 +188,15 @@ with stable warnings.
   every `TimelineGraphValue` variant by reusing checked timeline-owned wire conversions.
 - `open/crates/superi-timeline/src/track_ops.rs`: Implements one revision-checked atomic batch for
   track creation, deletion, naming, height, order, targeting, locks, sync locks, audio mute and
-  solo, complete audio routing replacement, and output enable, with deterministic four-kind
-  creation templates and typed outcomes.
+  solo, complete audio routing replacement, caption language and purpose, and output enable, with
+  deterministic four-kind creation templates, a millisecond caption exchange clock, and typed
+  outcomes.
 - `open/crates/superi-timeline/tests/audio_video_contract.rs`: Proves durable link and detach,
   exact sample-clock source synchronization with unchanged record timing, replacement transfer of
   authored intent, lock admission, relationship admission, and atomic rejection.
+- `open/crates/superi-timeline/tests/caption_ops_contract.rs`: Proves complete editable caption
+  attributes, ordered evidence, canonical metadata serialization, unrelated metadata preservation,
+  strict style validation, atomic rollback, and structural fragment inheritance.
 - `open/crates/superi-timeline/tests/edit_state_contract.rs`: Proves linked and grouped selection,
   direct member control, target and sync-lock ordering, link and group independence, state
   reconciliation, identity and timing retention, revision conflicts, and atomic rollback.
@@ -245,8 +257,8 @@ with stable warnings.
   exact clocks, channel routing, linked audio reshaping, continuity, and bounded validation.
 - `open/crates/superi-timeline/tests/track_management_contract.rs`: Proves all twelve track
   operations in one atomic batch, stable survivor state, lock enforcement, explicit unlock and
-  delete, audio-only controls, complete routing replacement, bounded heights, authored-item
-  rejection, and rollback.
+  delete, audio-only controls, complete routing replacement, caption-only semantics, bounded
+  heights, authored-item rejection, and rollback.
 - `open/crates/superi-timeline/tests/serialization_contract.rs`: Proves deterministic complete
   state round trips, revision 1 and revision 0 migration, canonical current output, corruption and
   interruption rejection, strict unknown and future state handling, multicam recovery, and
@@ -316,6 +328,16 @@ The timeline edit-state surface includes:
 - `TrackCreationKind`, `TrackMutation`, `TrackMutationKind`, `TrackMutationOutcome`, and
   `TrackMutationBatchResult` for explicit video, audio, caption, and data creation plus all twelve
   track gestures through one atomic project revision.
+
+The caption authoring surface includes:
+
+- `CaptionAlignment`, `CaptionPosition`, and `CaptionStyle` for optional bounded typography,
+  canonical lowercase RGBA colors, emphasis, alignment, and vertical position.
+- `CaptionTimelineRelationship` for an existing timeline and optional clip target, plus
+  `CaptionAttributes` for strict decoding from canonical caption object metadata.
+- `CaptionMutation`, `CaptionMutationKind`, `CaptionMutationOutcome`, and
+  `CaptionMutationBatchResult` for name, text, language, speaker, style, and relationship changes
+  through one ordered atomic project revision.
 
 The annotation and snapping surface includes:
 
@@ -525,13 +547,22 @@ same project revision or roll back together.
 
 `apply_track_mutation_batch` executes an ordered nonempty batch inside one `EditorialProject::edit`
 closure. Creation validates caller identity, canonical position, bounded height, and deterministic
-kind semantics. Deletion requires an unlocked target and reconciles contained object identity,
+kind semantics. Caption creation uses an exact millisecond clock so SRT and WebVTT timestamp
+coordinates remain integral. Deletion requires an unlocked target and reconciles contained object identity,
 annotations, links, groups, selections, and multicam state. Rename, height, reorder, targeting,
 locks, sync locks, mute, solo, and enable preserve every unaffected track and item exactly. Mute and
 solo accept active intent only for audio tracks, while neutral false values remain valid for legacy
 and generic reconstruction. Complete routing replacement requires an audio track, preserves its
 sample rate and ordered source layout, validates one decision per source channel, and rejects a
 self-referential or missing audio-track destination before publication.
+
+`apply_caption_mutation_batch` follows the same single-draft boundary. It resolves every caption by
+typed identity, applies ordered name, text, language, speaker, style, or relationship intent, and
+publishes one editorial revision only after the whole project validates. Speaker, style, and
+relationships occupy reserved canonical object metadata keys, while every unrelated entry remains
+untouched. Relationship targets must exist in the same project and be unique. Empty input, missing
+captions, malformed metadata, invalid language or style, duplicate relationships, and any late
+failure discard the complete batch.
 
 `apply_marker_mutation_batch` follows the same single-draft boundary. Creation accepts one complete
 marker and rejects any project-wide identity collision. Partial range, label, flag, and note edits
@@ -574,7 +605,8 @@ Editorial operation flow extends that transaction without creating another state
    neighbors around an unchanged center source, and plain trim creates or consumes explicit gaps.
    Extend delegates to the same ripple or roll implementation instead of defining new timing rules.
 7. Razor retains the original identity on the left and uses one caller identity on the right.
-   Clip fragments inherit direct selection plus link and group components before publication.
+   Clip fragments inherit direct selection plus link and group components before publication, and
+   caption fragments inherit the original caption object's complete durable metadata.
    Object annotations remain attached to the original stable identity and reconcile atomically.
 8. Three-point placement derives exactly one missing source or record boundary. Four-point
    placement accepts only equal physical durations; fit-to-fill fails as unsupported until explicit
@@ -791,6 +823,9 @@ Timeline document flow preserves those owners without becoming a project contain
   their owner disappears.
 - Metadata keys are canonical nonblank ASCII without whitespace and maps retain stable key order.
   Marker label, flag, and note semantics are explicit public fields rather than hidden key conventions.
+- Caption speaker, style, and timeline relationships use reserved canonical object metadata keys.
+  Styles use bounded sizes and lowercase `#rrggbbaa` colors, relationship targets must exist and
+  remain unique, and caption mutations preserve every unrelated metadata entry.
 - Snapping never rounds a candidate. The request coordinate and tolerance use one clock, inexact
   cross-clock candidates are skipped, exclusions are explicit, and stable target order breaks ties.
 - Timeline edit state references only tracks and objects owned by that timeline. Surviving stable
@@ -936,6 +971,10 @@ direct clip and caption edits, rollback, revision conflicts, missing links, disc
 transition bounds, and cycles. Their project combines 48 fps source time, 24 fps timeline and video
 time, and millisecond caption time while preserving one exact 3.5 second duration.
 
+Four caption-operation tests prove ordered text, language, speaker, style, and relationship
+mutation, one atomic revision, strict size and color validation, missing-target rollback, canonical
+serialization round trip, and speaker plus style preservation when razor creates a caption fragment.
+
 Five edit-state tests exercise the public surface through real `EditorialProject::edit`
 transactions. They prove linked-selection enable and disable behavior, transitive grouping, exact
 member selection, replace, add, and remove selection intent, link and group removal, track target
@@ -1049,8 +1088,9 @@ handling, invalid link rejection, exact multicam resolution after load, continue
 editing, and a complete compiled multicam graph round trip through the public graph codec with
 unknown graph-value fields and tags rejected.
 
-Six track-management tests prove all twelve gestures, explicit canonical creation semantics for
-video, audio, caption, and data tracks, exact survivor and relationship state, one revision per
+Six track-management tests prove all thirteen gestures, explicit canonical creation semantics for
+video, audio, caption, and data tracks, exact caption language and purpose, the exact millisecond
+caption exchange clock, exact survivor and relationship state, one revision per
 batch, locked deletion rollback, explicit unlock and deletion, bounded height, audio-only mute and
 solo, complete channel-routing replacement with preserved sample rate and source layout,
 self-routing and non-audio destination rejection, and locked authored-item rejection.
@@ -1070,8 +1110,10 @@ inspection, and native multicam angle, atomic source and target mutation, synchr
 switching, cut refinement, audio-intent, structural inheritance, and exact resolution are
 substantive and test-backed. Audio-video linking, exact sample-clock synchronization, detach,
 replacement intent transfer, and complete audio routing replacement are also substantive and
-test-backed. Deterministic graph compilation with lossless native domain values and
-shared processing-value coexistence, plus production OTIO 0.18.1 reading,
+test-backed. Atomic typed caption text, language, speaker, style, and timeline
+relationship mutation with metadata-preserving fragments is also test-backed. Deterministic graph
+compilation with lossless native domain values and shared processing-value coexistence, plus
+production OTIO 0.18.1 reading,
 writing, opaque preservation, stable diagnostics, and a headless consumer are also test-backed.
 Strict canonical timeline documents, revision 1 and revision 0 migration, checked recovery,
 continued editing
@@ -1083,11 +1125,13 @@ timeline-owned state to those visual schemas is absent. Graph evaluation, fit-to
 multicam mixing and runtime playback, timeline-driven autosave
 scheduling, and recovery orchestration remain absent. Generic editor-state inspection and the
 public API preserve the canonical timeline document and expose typed track mutation through durable
-project commands, including strict marker mutation and evidence. The production editing workspace renders the strict projection with transient
-navigation and shared-selection state, exact target snapping, visible session rule and consequence
-state, reversible pointer gestures, supplemental clip detail that does not reparse geometry, and
-exact advanced timing plans that enter the existing public operation wire as one atomic batch.
-Track, marker, and multicam gestures return through the durable project command owner. Engine
+project commands, including strict caption, marker, and multicam mutation and evidence. The
+production editing workspace renders the strict projection with transient navigation and
+shared-selection state, exact target snapping, visible session rule and consequence state,
+reversible pointer gestures, supplemental clip detail that does not reparse geometry, bounded
+caption import and export, transcript conversion, and exact advanced timing plans that enter the
+existing public operation wire as one atomic batch. Track, caption, marker, and multicam gestures
+return through the durable project command owner. Engine
 preparation integration now consumes and retains the compiled graph, and engine transport consumes
 the standalone signed rate value, but no
 owner yet binds that prepared native timeline graph to decoded playback, multicam mixing, or render
@@ -1133,6 +1177,8 @@ exact time-map seams, explicit transport resolution, explicit
 transition invalidation, result reporting, marker ownership, complete create semantics, partial-field
 preservation, atomic marker mutation order, exact snapping, metadata ordering, atomic dual-handle
 replacement,
+caption name, text, language, speaker, style, relationship validation, reserved metadata keys,
+unrelated metadata preservation, and fragment attribute inheritance,
 source-link resolution, selection expansion, track intent, clip relationship partitions,
 reconciliation, transition adjacency, nesting acyclicity, exact nested placement, shared-instance
 reporting, multicam angle identity and metadata, source membership, switch coverage, exact

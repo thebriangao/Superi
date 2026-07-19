@@ -2,7 +2,7 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 4ece78f78a4cc18d895d7d475e8ee342868aad45fb6a0c50e41cc91cf6b8b92a
+source_hash: d7c7fd8593154738ce3d6c571adbe00cd7554c13d4688b5544269c7c1a8d87c9
 source_files: 71
 mapped_at_commit: working-tree
 ---
@@ -98,7 +98,8 @@ through the existing dispatcher.
   EngineControl for one bounded caller closure and drops the temporary dispatcher before returning.
 - `open/crates/superi-engine/src/editor.rs`: Exposes the curated checked construction vocabulary
   needed by upper-tier generic project, local file hosting, and version negotiation APIs, including
-  project media import results, the project-owned compatibility table, typed negotiation result,
+  project media import results, typed caption attributes and mutations, the project-owned
+  compatibility table, typed negotiation result,
   and existing project save command, collision, operation, and outcome vocabulary. It adds no wire
   model, mutation algorithm, dispatcher, history, persistence owner, or lower dependency edge.
 - `open/crates/superi-engine/src/editor_state.rs`: Captures one immutable project-history revision,
@@ -183,7 +184,8 @@ through the existing dispatcher.
   infallible postpublication history replacement.
 - `open/crates/superi-engine/src/project_transaction.rs`: Implements the bounded whole-project
   transaction vocabulary, one outer project publication, ordered action results, timeline edit,
-  track, marker, and multicam mutation batches, existing-child nested placement, selection-derived
+  track, caption, marker, and multicam mutation batches, existing-child nested placement,
+  selection-derived
   compound creation, clip-mix reconciliation, atomic linked-media batch import, extension commands,
   three-way retained graph preservation after multicam changes, per-action aggregate validation,
   and complete rollback on any late failure.
@@ -362,9 +364,11 @@ through the existing dispatcher.
 - `open/crates/superi-engine/tests/project_transaction_contract.rs`: Proves one compound transaction
   across root, timeline, graph, media, authored audio, and plugin, effect, and AI extension state,
   one project revision and history entry, retained graph edits, exact save and reopen of authored
-  audio and extensions, adjacent-block audible continuity, track controls, atomic marker controls,
+  audio and extensions, adjacent-block audible continuity, track controls, atomic caption text and
+  attribute changes, caption rollback and history restoration, atomic marker controls,
   marker graph preservation, atomic multicam source and target state, retained multicam graph
-  recompilation, multicam undo and redo, populated-track clip-mix cleanup, existing-child nested placement and
+  recompilation, multicam undo and redo, populated-track clip-mix cleanup, existing-child nested
+  placement and
   selection-derived compound creation with retained-graph recompilation and stable moved-clip mix,
   exact undo and redo restoration, late failure rollback, empty subsystem rejection, and action
   bounds.
@@ -628,7 +632,8 @@ operations return only after every participating state validates.
 `CompoundProjectActionResult`, `CompoundProjectTransactionOutcome`,
 `MAX_COMPOUND_PROJECT_ACTIONS`, and `execute_compound_project_transaction`. One nonempty sequence of
 at most 64 actions can select the root, edit the timeline, mutate a retained graph, execute a media
-or extension command, mutate canonical tracks, markers, or multicam state, mutate authored clip-mix state, place an existing
+or extension command, mutate canonical tracks, captions, markers, or multicam state, mutate
+authored clip-mix state, place an existing
 child timeline, or derive a compound timeline from an exact selection. Track, nested-placement, and
 compound-creation and multicam action results retain their exact typed lower-domain outcomes. Every action
 validates the unpublished aggregate, and the complete sequence publishes exactly once or leaves the
@@ -727,6 +732,14 @@ kinds as compound action evidence. Retained timeline graphs recompile through th
 preservation path, so authored annotations publish with direct graph edits, project history, and the
 outer document revision or all roll back together. One batch becomes one history unit and complete
 snapshot restoration provides exact undo and redo.
+
+Caption batches use the timeline-owned atomic caption mutation surface and return ordered caption
+operation kinds as compound action evidence. The engine clones the prior editorial project and
+retained timeline compilations, applies the complete batch to the unpublished draft, then
+reconciles every retained graph through the same three-way old-canonical, retained, and
+next-canonical path. One outer publication, one history unit, and complete snapshot undo cover text,
+language, speaker, style, and timeline relationship changes. Any missing caption, invalid attribute,
+or graph reconciliation failure leaves the draft, history, retained graphs, and revision unchanged.
 
 Nested placement and selection-derived compound actions clone the prior editorial project before
 calling the timeline-owned mutation. They reconcile authored clip-mix state against the resulting
@@ -1701,8 +1714,10 @@ constructs a real project, drives one six-action compound command through Engine
 semantic action evidence and one correlated project event, persists and reloads the selected
 snapshot, then performs public undo and redo. A separate marker command drives all six strict
 operations, retains complete metadata, observes marker action evidence, and reverses through the
-same long-lived history owner. Its parity table covers every currently executable timeline, track,
-marker, graph, media, clip-mix, and extension operation without widening the engine dependency graph
+same long-lived history owner. A caption command creates a millisecond subtitle track, appends a
+cue, publishes editable text, speaker, style, and timeline relationships, observes typed evidence,
+and reverses through the same history owner. Its parity table covers every currently executable timeline, track,
+caption, marker, graph, media, clip-mix, and extension operation without widening the engine dependency graph
 or making lower types wire owners.
 
 The downstream scripting contract drives that same curated seam through the API-local script
@@ -1962,7 +1977,8 @@ Its editor-state command captures the same selected project plus cached optional
 observations in one eventless replacement aggregate without polling or bulk runtime payloads. The
 production editing workspace consumes its canonical timeline document through a strict canvas
 projection and supplements clips and transition presentation from the same aggregate's graph and
-automation owners. Authored track, marker, and multicam gestures plus insert, overwrite, append, replace,
+automation owners. Authored track, caption, marker, and multicam gestures plus insert, overwrite,
+append, replace,
 lift, extract, backspace, undo, redo, transition timing, exact retime replacement, existing-child
 nested placement, selection-derived compound creation, and graph parameter changes return through
 the existing generic project command, compound transaction, and history owners. Canvas navigation,

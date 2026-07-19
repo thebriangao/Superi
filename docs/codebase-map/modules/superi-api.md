@@ -2,7 +2,7 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: 17912de585c43947572c93059acefe6018f27fa65f90654a280dcf0fbf147b4d
+source_hash: 401bcb7196fddf41fe468f342c8636f35a1ab4f806f00c3c6bcea4a186ab89b4
 source_files: 43
 mapped_at_commit: working-tree
 ---
@@ -66,7 +66,8 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   editor state, project settings, project recovery, audio automation, playback transport, scenario, cancellation,
   removal, restore, and dismissal contracts.
 - `open/crates/superi-api/src/editor.rs`: Owns the strict generic project command, action, timeline
-  item edit, track mutation, marker mutation, multicam mutation, nested placement, selection-derived compound
+  item edit, track mutation, caption mutation, marker mutation, multicam mutation, nested placement,
+  selection-derived compound
   creation, graph, media import and mutation, clip-mix, and extension DTOs, checked engine
   conversion, including crate-visible exact time conversion shared by playback without exposing an
   engine type, and exact multi-segment clip time-map replacement through the ordinary
@@ -76,7 +77,9 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   script prevalidation, and the dispatcher-backed apply, inspect, undo, redo, script, event,
   state-query, and persistence facade. Its timeline union includes atomic exact `set_transition`
   handle replacement, durable audio-video link, exact synchronization, audio detach, complete
-  channel routing replacement, and stable public evidence for every operation.
+  channel routing replacement, and stable public evidence for every operation, while its caption
+  union maps name, text, language, speaker, style, and timeline relationships into stable public
+  evidence.
 - `open/crates/superi-api/src/extensions.rs`: Projects immutable engine registry snapshots into
   strict exact identity, lifecycle, requested and granted capability, core feature discovery, safe
   failure, and stable user-control DTOs. It owns the permission-free `superi.extensions.get` query,
@@ -104,7 +107,7 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
 - `open/crates/superi-api/src/local.rs`: Implements strict no-clobber project creation, complete
   current-schema open and validation, scoped EngineControl dispatch, durable mutation publication,
   collaborative-safe save, collision-aware save-as, copy, backup, recovery attachment, coherent render inspection, settings configuration, domain
-  filtering for media mutation and import plus timeline item, track, and marker commands, and strict
+  filtering for media mutation and import plus timeline item, track, caption, and marker commands, and strict
   caller-correlated
   JSON-RPC automation over existing public DTOs, including durable publication of every successful
   generic command and committed `superi-json` script prefix plus read-only command-log inspection.
@@ -182,13 +185,15 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   revision fences, strict command and event round trips, ordered full-state publication, one-unit
   undo, inspect behavior, permanent names, and legacy action compatibility.
 - `open/crates/superi-api/tests/editor_contract.rs`: Locks all four generic project commands, every
-  public project action family including marker and multicam mutation, nested placement, and compound creation,
-  20 timeline item operations, 12 track mutations, six marker mutations, seven multicam mutations, eight graph mutations,
+  public project action family including caption, marker, and multicam mutation, nested placement,
+  and compound creation, 20 timeline item operations, 13 track mutations, six caption mutations,
+  six marker mutations, seven multicam mutations, eight graph mutations,
   three media mutations, four clip-mix mutations, and six extension mutations; proves strict
   decoding, pre-dispatch failure atomicity, editor schema `1.7.0`, one real mixed transaction
   including exact transition handles, strict nested and compound DTOs, marker metadata
-  preservation, typed result, retime, and multicam evidence, graph compilation, durable public
-  track, marker, multicam, and nesting commands, event and record correlation, cursor-safe log inspection with typed replay,
+  preservation, typed result, retime, caption, and multicam evidence, graph compilation, durable
+  public track, caption, marker, multicam, and nesting commands, event and record correlation,
+  cursor-safe log inspection with typed replay,
   database reload, undo, redo, and atomic inexact-map rejection.
 - `open/crates/superi-api/tests/engine_introspection_contract.rs`: Drives the real engine registry,
   dispatcher, lifecycle, error coordinator, and resource arbiter through strict public query and
@@ -389,9 +394,13 @@ The generic authored project surface is schema `1.7.0`, with command
 expected project revision, and apply, undo, redo, or inspect. Apply contains one bounded ordered
 transaction over root selection, all 20 timeline edits, all eight graph mutations, all three
 referenced-media mutations, all four clip-mix mutations, and all six durable extension mutations.
-The timeline action union additionally carries all 12 strict track mutations: create, delete,
-rename, height, reorder, target, lock, sync lock, mute, solo, complete audio routing, and enable.
-Creation supplies explicit stable identity, kind, canonical position, name, and bounded height.
+The timeline action union additionally carries all 13 strict track mutations: create, delete,
+rename, height, caption language and purpose, reorder, target, lock, sync lock, mute, solo, and
+complete audio routing and enable. Creation supplies explicit stable identity, kind, canonical
+position, name, and bounded height, while caption semantics preserve the existing track clock.
+It carries six strict caption mutations for name, text, optional language, optional speaker,
+optional bounded style, and project-valid timeline relationships. The style DTO retains optional
+font family, point size, RGBA foreground and background, bold, italic, alignment, and position.
 The additive `set_transition` timeline edit carries stable timeline, track, and transition
 identities plus exact from and to durations, and enters the same history, event, evidence,
 permission, persistence, and undo path as every other authored operation.
@@ -472,8 +481,9 @@ read-only queries.
 
 `LocalProjectHost` is the process-local persistence adapter consumed by `superi-cli`. Its strict
 creation request uses caller-supplied canonical project and root timeline IDs, names, and exact edit
-rate. It exposes complete editor, settings, render, validation, save, save-as, copy, backup, recovery, generic
-project, media-only, and timeline-only operations, including durable track and marker batches. Mutating calls
+rate. It exposes complete editor, settings, render, validation, save, save-as, copy, backup, recovery,
+generic project, media-only, and timeline-only operations, including durable track, caption, and
+marker batches. Mutating calls
 load one complete project, execute
 through the existing facade inside scoped EngineControl, drain correlated events, publish the
 selected snapshot through `ProjectDatabase`, and only then return success. `LocalAutomationRequest`
@@ -827,10 +837,12 @@ messages, contexts, paths, and source chains never serialize.
 The production React and Tauri application consumes the committed generated contract through one
 injected client and retains the complete public editor snapshot. Its application owner issues
 revision-fenced project commands, while the editing workspace strictly projects the canonical
-timeline document and submits typed track and marker gestures, insert, overwrite, append, replace,
+timeline document and submits typed track, caption, and marker gestures, insert, overwrite, append, replace,
 lift, extract, backspace, undo, and redo only through `superi.project.command.execute`. Complete
 typed inverse marker batches provide exact immediate reversal without adding a public mutation
-schema, transport path, or authored-state authority. The same canvas supplements clips from the snapshot's canonical graph documents and
+schema, transport path, or authored-state authority. Caption SRT, WebVTT, and fresh transcript
+conversion remains a bounded desktop adapter that submits only these generated action DTOs. The
+same canvas supplements clips from the snapshot's canonical graph documents and
 attached audio automation, showing only real clip-scoped node, driver, and sample-key evidence
 while keeping canonical timeline selection distinct from shared UI selection. Native routing
 covers editor reads and durable project commands but remains closed to unregistered methods. No
@@ -1088,9 +1100,9 @@ conflict rejection, independent monotonic event order with exact originating-com
 complete replacement state, inspect without an event, and compatibility action routing through the
 same dispatcher.
 
-Thirteen generic editor contracts lock every command and operation discriminant, including all 20
-timeline edits, all 12 track mutations, all six marker mutations, and all seven multicam mutations,
-reject guessed fields and
+Fourteen generic editor contracts lock every command and operation discriminant, including all 20
+timeline edits, all 13 track mutations, all six caption mutations, all six marker mutations, and all
+seven multicam mutations, reject guessed fields and
 variants, and prove malformed ID, timebase, and
 non-finite conversion atomicity. A real EngineControl fixture executes one six-action project
 transaction across graph, timeline, media, clip mix, extension, and selected root state. A second
@@ -1099,7 +1111,11 @@ one correlated event and durable record, exact database reload, undo, and redo t
 public facade. A marker fixture proves complete metadata, exact visible fields, typed evidence,
 authored state replacement, and long-lived undo through that owner. A multicam fixture proves
 strict source creation, target attachment, exact live switching, audio intent, typed evidence,
-compiled state, and undo through the same public facade. The retime fixture sends one exact multi-segment map through that same command,
+compiled state, and undo through the same public facade.
+The caption fixture creates a millisecond subtitle track, appends a cue, then changes its text,
+speaker, style, and timeline relationships through one typed batch. It proves canonical state,
+action evidence, one history unit, strict generated DTOs, and undo. The retime fixture sends one
+exact multi-segment map through that same command,
 proves `retime` action evidence and compiled graph state, persists and reloads the result, reconstructs
 the exact replay request, reverses and reapplies it through history, and rejects an inexact source
 seam before any state or event changes.
@@ -1172,7 +1188,8 @@ consumer proof. It rejects wrong revisions and root identities, preserves exact 
 ranges plus stable relationships, complete track intent, snapping, and shared selection, and keeps
 playhead, range, scroll, zoom, source choice, targeting, status, and consequence preview outside API
 mutation ownership. It proves all eleven track gestures, all seven edit requests, undo, and redo
-reuse the application-owned generic command, while the supplemental clip contract proves canonical
+reuse the application-owned generic command. It also proves selected caption editing plus SRT,
+WebVTT, and fresh transcript import use the same owner, while the supplemental clip contract proves canonical
 graph and attached automation inspection, exact keyframe samples, shared `superi.editor.state`
 references, and no new public method, resource, or authored transaction.
 
@@ -1203,10 +1220,10 @@ Generated bindings are implemented as a deterministic representation of the curr
 public surface and are consumed by the production desktop application. They do not themselves
 provide complete native wire routing, mutation authority, or a second authored-state owner. The
 desktop routes the generated editor-state query and generic project command through its existing
-EngineControl owner. The application owner uses strict track action and project command types for
+EngineControl owner. The application owner uses strict track, caption, and project command types for
 durable revision-fenced commands, while the editing workspace uses editor-state timeline, graph,
 and attached automation data as exact canvas and inspector input. Application-owned typed command
-callbacks route durable track, marker, and multicam mutations, exact editorial gestures, transition
+callbacks route durable track, caption, marker, and multicam mutations, exact editorial gestures, transition
 timing, retime replacement, audio-video relationship and synchronization gestures, complete audio
 routing, nested placement, selection-derived compound creation, and typed graph
 parameter edits through the same generic project command owner. Complete typed inverse marker
@@ -1241,7 +1258,7 @@ not supply transport, endpoint mutation, or background polling.
 The separate negotiation, media, engine introspection, integration validation, scenario, event
 stream, catalog, and error schema versions are correct for independent surfaces. The catalog is
 `1.9.0` because exact audio-video linking, synchronization, detach, and complete channel routing are
-additive beside exact playback transport, typed multicam and marker mutation, retime authoring,
+additive beside exact playback transport, typed caption, multicam, and marker mutation, retime authoring,
 nested placement, compound creation, typed track mutation, extension discovery, command-log
 inspection, local scripting, and negotiation, while individual method and resource
 schemas retain their own versions.
@@ -1318,6 +1335,10 @@ across Rust, generated TypeScript, local-host filtering, native routing, and the
 Keep multicam source and target identities explicit, exact record clocks unrounded, mutation order
 stable, and all seven operation tags exhaustive across Rust, generated TypeScript, CLI discovery,
 local-host filtering, native routing, and the production consumer.
+Keep caption names, text, optional language and speaker, bounded styles, and timeline relationships
+strict and typed across Rust, generated TypeScript, local-host filtering, native routing, and the
+production consumer. Caption changes must retain the existing project command, evidence, history,
+graph reconciliation, persistence, replay, and undo owners.
 Keep durable command recording on `superi.project.command.execute`. Serialize and validate exact
 typed requests before dispatch, correlate each successful command with one record and event, keep
 metadata free of raw payloads, reauthorize every retained replay request, return no partial batch on

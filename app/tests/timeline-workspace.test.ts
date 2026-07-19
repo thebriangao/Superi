@@ -380,6 +380,145 @@ test("audio-video and channel-routing planners preserve exact public intent", ()
   );
 });
 
+test("caption projection preserves editable text, language, speaker, style, and relationships", () => {
+  const document = canonicalDocument();
+  const timeline = rootTimeline(document);
+  const tracks = timeline.tracks as Array<Record<string, unknown>>;
+  tracks.push({
+    id: "track.caption.1",
+    name: "English captions",
+    semantics: {
+      kind: "caption",
+      timebase: rate,
+      language: "en-US",
+      purpose: "captions",
+    },
+    items: [
+      {
+        kind: "caption",
+        id: "caption.1",
+        name: "Caption 1",
+        text: "Editable transcript",
+        language: "en-US",
+        record_range: range("0", "48"),
+      },
+    ],
+  });
+  const editState = timeline.edit_state as Record<string, unknown>;
+  const trackStates = editState.track_states as Array<Record<string, unknown>>;
+  trackStates.push({
+    track_id: "track.caption.1",
+    height: 72,
+    targeted: false,
+    locked: false,
+    sync_locked: true,
+    muted: false,
+    solo: false,
+    enabled: true,
+  });
+  timeline.metadata = [
+    {
+      owner: { kind: "object", id: { kind: "caption", id: "caption.1" } },
+      entries: [
+        {
+          key: "superi.caption.speaker",
+          value: { kind: "text", value: "Speaker A" },
+        },
+        {
+          key: "superi.caption.style",
+          value: {
+            kind: "map",
+            entries: [
+              { key: "font_family", value: { kind: "text", value: "Inter" } },
+              { key: "font_size", value: { kind: "unsigned", value: "42" } },
+              { key: "foreground", value: { kind: "text", value: "#ffffffff" } },
+              { key: "background", value: { kind: "text", value: "#000000cc" } },
+              { key: "bold", value: { kind: "boolean", value: true } },
+              { key: "italic", value: { kind: "boolean", value: false } },
+              { key: "alignment", value: { kind: "text", value: "center" } },
+              { key: "position", value: { kind: "text", value: "bottom" } },
+            ],
+          },
+        },
+        {
+          key: "superi.caption.timeline_relationships",
+          value: {
+            kind: "list",
+            values: [
+              {
+                kind: "map",
+                entries: [
+                  { key: "timeline_id", value: { kind: "text", value: "timeline.main" } },
+                  { key: "clip_id", value: { kind: "text", value: "clip.a" } },
+                ],
+              },
+            ],
+          },
+        },
+        {
+          key: "review.status",
+          value: { kind: "text", value: "approved" },
+        },
+      ],
+    },
+  ];
+
+  const model = projectTimelineDocument(document, "timeline.main");
+  const track = model.tracks.find((track) => track.id === "track.caption.1");
+  assert.ok(track);
+  assert.equal(track.captionLanguage, "en-US");
+  assert.equal(track.captionPurpose, "captions");
+  const caption = track.items[0];
+  assert.equal(caption.kind, "caption");
+  assert.deepEqual(caption.caption, {
+    text: "Editable transcript",
+    language: "en-US",
+    speaker: "Speaker A",
+    style: {
+      font_family: "Inter",
+      font_size: 42,
+      foreground: "#ffffffff",
+      background: "#000000cc",
+      bold: true,
+      italic: false,
+      alignment: "center",
+      position: "bottom",
+    },
+    timelineRelationships: [
+      { timeline_id: "timeline.main", clip_id: "clip.a" },
+    ],
+    metadata: {
+      "review.status": { kind: "text", value: "approved" },
+      "superi.caption.speaker": { kind: "text", value: "Speaker A" },
+      "superi.caption.style": {
+        kind: "map",
+        value: {
+          alignment: { kind: "text", value: "center" },
+          background: { kind: "text", value: "#000000cc" },
+          bold: { kind: "boolean", value: true },
+          font_family: { kind: "text", value: "Inter" },
+          font_size: { kind: "unsigned", value: 42 },
+          foreground: { kind: "text", value: "#ffffffff" },
+          italic: { kind: "boolean", value: false },
+          position: { kind: "text", value: "bottom" },
+        },
+      },
+      "superi.caption.timeline_relationships": {
+        kind: "list",
+        value: [
+          {
+            kind: "map",
+            value: {
+              clip_id: { kind: "text", value: "clip.a" },
+              timeline_id: { kind: "text", value: "timeline.main" },
+            },
+          },
+        ],
+      },
+    },
+  });
+});
+
 test("projects owner-clock targets and resolves exact configurable snap rules", () => {
   const document = canonicalDocument();
   const timeline = rootTimeline(document);
@@ -1030,6 +1169,19 @@ test("timeline surface is integrated without a second authored mutation owner", 
   assert.match(styles, /\.timeline-snap-guide/);
   assert.match(styles, /\.timeline-snap-status/);
   assert.match(styles, /\.timeline-point-edit-mode/);
+  assert.match(timeline, /<TimelineCaptionPanel\b/);
+  assert.match(timeline, /selectedCaptionTarget/);
+  const captions = readFileSync(
+    resolve(appRoot, "src/timeline-captions.tsx"),
+    "utf8",
+  );
+  assert.match(captions, /action: "mutate_captions"/);
+  assert.match(captions, /parseCaptionExchange/);
+  assert.match(captions, /captionCuesFromTranscript/);
+  assert.match(captions, /captionCuesFromTrack/);
+  assert.match(captions, /readProjectMediaLibrary/);
+  assert.match(captions, /Import SRT or VTT/);
+  assert.match(captions, /Export caption track/);
   assert.doesNotMatch(
     timeline,
     /superi\.project\.command\.execute|superi\.slice|useSuperiApi|DesktopSuperiTransport|@tauri-apps/,

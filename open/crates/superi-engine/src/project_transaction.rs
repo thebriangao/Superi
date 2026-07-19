@@ -9,6 +9,9 @@ use superi_project::extensions::{ProjectExtensionCommand, ProjectExtensionComman
 use superi_project::media::{
     ProjectMediaCommand, ProjectMediaCommandResult, ProjectMediaImportResult,
 };
+use superi_timeline::caption_ops::{
+    apply_caption_mutation_batch, CaptionMutation, CaptionMutationBatchResult,
+};
 use superi_timeline::compile::{recompile_timeline_preserving_edits, CompiledTimelineGraphValue};
 use superi_timeline::edit_ops::{EditBatchResult, EditOperation};
 use superi_timeline::marker_ops::{
@@ -47,6 +50,8 @@ pub enum CompoundProjectAction {
     MutateMarkers(Vec<MarkerMutation>),
     /// Apply a nonempty atomic multicam mutation batch.
     MutateMulticam(Vec<MulticamMutation>),
+    /// Apply a nonempty atomic caption mutation batch.
+    MutateCaptions(Vec<CaptionMutation>),
     /// Place an existing child timeline on one parent track.
     PlaceNestedSequence {
         /// Stable child timeline identity.
@@ -98,6 +103,12 @@ impl CompoundProjectAction {
         Self::MutateMulticam(mutations.into_iter().collect())
     }
 
+    /// Creates an atomic caption mutation action.
+    #[must_use]
+    pub fn mutate_captions(mutations: impl IntoIterator<Item = CaptionMutation>) -> Self {
+        Self::MutateCaptions(mutations.into_iter().collect())
+    }
+
     /// Creates a graph mutation action.
     #[must_use]
     pub fn mutate_graph(
@@ -135,6 +146,7 @@ impl CompoundProjectAction {
             Self::MutateTracks(_) => "mutate_tracks",
             Self::MutateMarkers(_) => "mutate_markers",
             Self::MutateMulticam(_) => "mutate_multicam",
+            Self::MutateCaptions(_) => "mutate_captions",
             Self::PlaceNestedSequence { .. } => "place_nested_sequence",
             Self::CreateCompoundClip(_) => "create_compound_clip",
             Self::MutateGraph { .. } => "mutate_graph",
@@ -185,6 +197,9 @@ impl CompoundProjectTransaction {
                 CompoundProjectAction::MutateMulticam(mutations) if mutations.is_empty()
             ) || matches!(
                 action,
+                CompoundProjectAction::MutateCaptions(mutations) if mutations.is_empty()
+            ) || matches!(
+                action,
                 CompoundProjectAction::MutateGraph { mutations, .. } if mutations.is_empty()
             ) || matches!(
                 action,
@@ -225,6 +240,8 @@ pub enum CompoundProjectActionResult {
     MarkersMutated(MarkerMutationBatchResult),
     /// Multicam mutations and graph reconciliation were published.
     MulticamMutated(MulticamMutationBatchResult),
+    /// Caption mutations and graph reconciliation were published.
+    CaptionsMutated(CaptionMutationBatchResult),
     /// One existing child timeline was placed and graphs were reconciled.
     NestedSequencePlaced(NestedSequenceResult),
     /// One selection-based compound timeline was created and graphs were reconciled.
@@ -362,6 +379,25 @@ pub fn execute_compound_project_transaction(
                         draft.replace_timeline_compilation(reconciled)?;
                     }
                     CompoundProjectActionResult::MulticamMutated(result)
+                }
+                CompoundProjectAction::MutateCaptions(mutations) => {
+                    let old_project = draft.editorial_project().clone();
+                    let retained = draft
+                        .graphs()
+                        .filter_map(|graph| graph.as_timeline().cloned())
+                        .collect::<Vec<_>>();
+                    let editorial = draft.editorial_project_mut();
+                    let result =
+                        apply_caption_mutation_batch(editorial, editorial.revision(), mutations)?;
+                    for compilation in retained {
+                        let reconciled = recompile_timeline_preserving_edits(
+                            &old_project,
+                            &compilation,
+                            draft.editorial_project(),
+                        )?;
+                        draft.replace_timeline_compilation(reconciled)?;
+                    }
+                    CompoundProjectActionResult::CaptionsMutated(result)
                 }
                 CompoundProjectAction::PlaceNestedSequence {
                     source_timeline_id,

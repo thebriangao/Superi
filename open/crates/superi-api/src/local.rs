@@ -837,6 +837,7 @@ fn require_timeline_command(request: &ExecuteProjectCommand) -> Result<()> {
                         ProjectAction::SelectRootTimeline { .. }
                             | ProjectAction::EditTimeline { .. }
                             | ProjectAction::MutateTracks { .. }
+                            | ProjectAction::MutateCaptions { .. }
                             | ProjectAction::MutateMarkers { .. }
                             | ProjectAction::MutateGraph { .. }
                             | ProjectAction::MutateClipMix { .. }
@@ -847,7 +848,7 @@ fn require_timeline_command(request: &ExecuteProjectCommand) -> Result<()> {
         }
         _ => Err(invalid(
             "execute_timeline",
-            "timeline execute accepts only root, timeline, track, marker, graph, or clip-mix apply actions",
+            "timeline execute accepts only root, timeline, track, caption, marker, graph, or clip-mix apply actions",
         )),
     }
 }

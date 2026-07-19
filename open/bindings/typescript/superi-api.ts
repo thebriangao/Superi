@@ -1255,12 +1255,12 @@ export type PollEventsResult = { status: "events"; result: EventBatch } | { stat
 /**
  * Every authored action integrated by the production project transaction owner.
  */
-export type ProjectAction = { action: "select_root_timeline"; timeline_id: string } | { action: "edit_timeline"; operations: TimelineEditOperation[] } | { action: "mutate_tracks"; mutations: TimelineTrackMutation[] } | { action: "mutate_markers"; mutations: TimelineMarkerMutation[] } | { action: "mutate_multicam"; mutations: TimelineMulticamMutation[] } | { action: "place_nested_sequence"; source_timeline_id: string; request: EditorNestedSequenceRequest } | { action: "create_compound_clip"; request: EditorCompoundClipRequest } | { action: "mutate_graph"; graph_id: string; mutations: EditorGraphMutation[] } | { action: "mutate_media"; mutation: EditorMediaMutation } | { action: "import_media"; media: EditorImportedMedia[] } | { action: "mutate_clip_mix"; mutations: EditorClipMixMutation[] } | { action: "mutate_extension"; mutation: EditorExtensionMutation };
+export type ProjectAction = { action: "select_root_timeline"; timeline_id: string } | { action: "edit_timeline"; operations: TimelineEditOperation[] } | { action: "mutate_tracks"; mutations: TimelineTrackMutation[] } | { action: "mutate_markers"; mutations: TimelineMarkerMutation[] } | { action: "mutate_multicam"; mutations: TimelineMulticamMutation[] } | { action: "mutate_captions"; mutations: TimelineCaptionMutation[] } | { action: "place_nested_sequence"; source_timeline_id: string; request: EditorNestedSequenceRequest } | { action: "create_compound_clip"; request: EditorCompoundClipRequest } | { action: "mutate_graph"; graph_id: string; mutations: EditorGraphMutation[] } | { action: "mutate_media"; mutation: EditorMediaMutation } | { action: "import_media"; media: EditorImportedMedia[] } | { action: "mutate_clip_mix"; mutations: EditorClipMixMutation[] } | { action: "mutate_extension"; mutation: EditorExtensionMutation };
 
 /**
  * One action result inside an applied compound command.
  */
-export type ProjectActionEvidence = { result: "root_timeline_selected"; timeline_id: string } | { result: "timeline_edited"; revision: number; operations: TimelineEditKind[] } | { result: "tracks_mutated"; revision: number; mutations: TimelineTrackMutationKind[] } | { result: "markers_mutated"; revision: number; mutations: TimelineMarkerMutationKind[] } | { result: "multicam_mutated"; revision: number; mutations: TimelineMulticamMutationKind[] } | { result: "nested_sequence_placed"; revision: number; source_timeline_id: string; clip_ids: string[] } | { result: "compound_clip_created"; revision: number; compound_timeline_id: string; clip_ids: string[] } | { result: "graph_mutated"; graph_id: string; revision: number } | { result: "media_mutated"; outcome: MediaMutationResult } | { result: "media_imported"; media_ids: string[]; skipped_media_ids: string[] } | { result: "clip_mix_mutated"; revision: number } | { result: "extension_mutated"; outcome: ExtensionMutationResultKind; extension_id: string; record_id: string; replaced: boolean | null };
+export type ProjectActionEvidence = { result: "root_timeline_selected"; timeline_id: string } | { result: "timeline_edited"; revision: number; operations: TimelineEditKind[] } | { result: "tracks_mutated"; revision: number; mutations: TimelineTrackMutationKind[] } | { result: "markers_mutated"; revision: number; mutations: TimelineMarkerMutationKind[] } | { result: "multicam_mutated"; revision: number; mutations: TimelineMulticamMutationKind[] } | { result: "captions_mutated"; revision: number; mutations: TimelineCaptionMutationKind[] } | { result: "nested_sequence_placed"; revision: number; source_timeline_id: string; clip_ids: string[] } | { result: "compound_clip_created"; revision: number; compound_timeline_id: string; clip_ids: string[] } | { result: "graph_mutated"; graph_id: string; revision: number } | { result: "media_mutated"; outcome: MediaMutationResult } | { result: "media_imported"; media_ids: string[]; skipped_media_ids: string[] } | { result: "clip_mix_mutated"; revision: number } | { result: "extension_mutated"; outcome: ExtensionMutationResultKind; extension_id: string; record_id: string; replaced: boolean | null };
 
 /**
  * One generic project command on the stable public surface.
@@ -1638,6 +1638,36 @@ export type SubscriptionId = string;
 export type SubscriptionStart = "latest" | "earliest_available";
 
 /**
+ * Portable horizontal alignment for one public caption style.
+ */
+export type TimelineCaptionAlignment = "start" | "center" | "end";
+
+/**
+ * One strict authored caption mutation.
+ */
+export type TimelineCaptionMutation = { operation: "set_name"; timeline_id: string; caption_id: string; name: string } | { operation: "set_text"; timeline_id: string; caption_id: string; text: string } | { operation: "set_language"; timeline_id: string; caption_id: string; language: string | null } | { operation: "set_speaker"; timeline_id: string; caption_id: string; speaker: string | null } | { operation: "set_style"; timeline_id: string; caption_id: string; style: TimelineCaptionStyle | null } | { operation: "set_timeline_relationships"; timeline_id: string; caption_id: string; relationships: TimelineCaptionRelationship[] };
+
+/**
+ * Stable category returned for one applied caption mutation.
+ */
+export type TimelineCaptionMutationKind = "set_name" | "set_text" | "set_language" | "set_speaker" | "set_style" | "set_timeline_relationships";
+
+/**
+ * Portable vertical placement for one public caption style.
+ */
+export type TimelineCaptionPosition = "top" | "bottom";
+
+/**
+ * One editable caption relationship to a timeline and optional source clip.
+ */
+export type TimelineCaptionRelationship = { timeline_id: string; clip_id: string | null };
+
+/**
+ * Complete strict portable presentation style for one caption.
+ */
+export type TimelineCaptionStyle = { font_family: string | null; font_size: number | null; foreground: string | null; background: string | null; bold: boolean; italic: boolean; alignment: TimelineCaptionAlignment; position: TimelineCaptionPosition };
+
+/**
  * Stable public timeline operation kind.
  */
 export type TimelineEditKind = "insert" | "overwrite" | "append" | "replace" | "link_audio_video" | "synchronize_audio_video" | "detach_audio" | "lift" | "extract" | "ripple" | "roll" | "slip" | "slide" | "razor" | "trim" | "extend" | "set_transition" | "three_point" | "four_point" | "retime";
@@ -1690,12 +1720,12 @@ export type TimelineTrackCreationKind = "video" | "audio" | "caption" | "data";
 /**
  * One strict authored timeline track mutation.
  */
-export type TimelineTrackMutation = { operation: "create"; timeline_id: string; track_id: string; name: string; kind: TimelineTrackCreationKind; position: number; height: number } | { operation: "delete"; timeline_id: string; track_id: string } | { operation: "rename"; timeline_id: string; track_id: string; name: string } | { operation: "set_height"; timeline_id: string; track_id: string; height: number } | { operation: "reorder"; timeline_id: string; track_id: string; position: number } | { operation: "set_targeted"; timeline_id: string; track_id: string; targeted: boolean } | { operation: "set_locked"; timeline_id: string; track_id: string; locked: boolean } | { operation: "set_sync_locked"; timeline_id: string; track_id: string; sync_locked: boolean } | { operation: "set_muted"; timeline_id: string; track_id: string; muted: boolean } | { operation: "set_solo"; timeline_id: string; track_id: string; solo: boolean } | { operation: "set_audio_routing"; timeline_id: string; track_id: string; destination: EditorAudioDestination; destination_layout: EditorChannelPosition[]; routes: EditorAudioChannelRoute[] } | { operation: "set_enabled"; timeline_id: string; track_id: string; enabled: boolean };
+export type TimelineTrackMutation = { operation: "create"; timeline_id: string; track_id: string; name: string; kind: TimelineTrackCreationKind; position: number; height: number } | { operation: "delete"; timeline_id: string; track_id: string } | { operation: "rename"; timeline_id: string; track_id: string; name: string } | { operation: "set_height"; timeline_id: string; track_id: string; height: number } | { operation: "set_caption_semantics"; timeline_id: string; track_id: string; language: string; purpose: EditorCaptionPurpose } | { operation: "reorder"; timeline_id: string; track_id: string; position: number } | { operation: "set_targeted"; timeline_id: string; track_id: string; targeted: boolean } | { operation: "set_locked"; timeline_id: string; track_id: string; locked: boolean } | { operation: "set_sync_locked"; timeline_id: string; track_id: string; sync_locked: boolean } | { operation: "set_muted"; timeline_id: string; track_id: string; muted: boolean } | { operation: "set_solo"; timeline_id: string; track_id: string; solo: boolean } | { operation: "set_audio_routing"; timeline_id: string; track_id: string; destination: EditorAudioDestination; destination_layout: EditorChannelPosition[]; routes: EditorAudioChannelRoute[] } | { operation: "set_enabled"; timeline_id: string; track_id: string; enabled: boolean };
 
 /**
  * Stable category returned for one applied timeline track mutation.
  */
-export type TimelineTrackMutationKind = "create" | "delete" | "rename" | "set_height" | "reorder" | "set_targeted" | "set_locked" | "set_sync_locked" | "set_muted" | "set_solo" | "set_audio_routing" | "set_enabled";
+export type TimelineTrackMutationKind = "create" | "delete" | "rename" | "set_height" | "set_caption_semantics" | "reorder" | "set_targeted" | "set_locked" | "set_sync_locked" | "set_muted" | "set_solo" | "set_audio_routing" | "set_enabled";
 
 /**
  * Generator-only shadow for the core diagnostic value wire.

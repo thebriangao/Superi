@@ -3,6 +3,7 @@ import type {
   EditorAudioChannelRoute,
   EditorAudioDestination,
   EditorChannelPosition,
+  EditorCaptionPurpose,
   EditorCanonicalDocument,
   EditorThreePointPlacement,
   EditorMetadataValue,
@@ -14,6 +15,8 @@ import type {
   ProjectAction,
   TimelineEditOperation,
   TimelineTrackMutation,
+  TimelineCaptionRelationship,
+  TimelineCaptionStyle,
 } from "./api.ts";
 import type {
   SourceMonitorSnapshot,
@@ -252,6 +255,14 @@ export interface TimelineCanvasItem {
     readonly fromOffset: TimelineExactDuration;
     readonly toOffset: TimelineExactDuration;
   } | null;
+  readonly caption: {
+    readonly text: string;
+    readonly language: string | null;
+    readonly speaker: string | null;
+    readonly style: TimelineCaptionStyle | null;
+    readonly timelineRelationships: readonly TimelineCaptionRelationship[];
+    readonly metadata: Readonly<Record<string, EditorMetadataValue>>;
+  } | null;
   readonly selected: boolean;
   readonly group: readonly string[] | null;
   readonly link: readonly string[] | null;
@@ -262,6 +273,8 @@ export interface TimelineCanvasTrack {
   readonly name: string;
   readonly kind: TimelineTrackKind;
   readonly timebase: TimelineRate;
+  readonly captionLanguage: string | null;
+  readonly captionPurpose: EditorCaptionPurpose | null;
   readonly targeted: boolean;
   readonly height: number;
   readonly locked: boolean;
@@ -371,6 +384,8 @@ interface PendingTrack {
   readonly name: string;
   readonly kind: TimelineTrackKind;
   readonly timebase: TimelineRate;
+  readonly captionLanguage: string | null;
+  readonly captionPurpose: EditorCaptionPurpose | null;
   readonly targeted: boolean;
   readonly height: number;
   readonly locked: boolean;
@@ -489,6 +504,10 @@ export function projectTimelineDocument(
     editState.track_states,
     `${timelinePath}.edit_state.track_states`,
   );
+  const objectMetadata = parseTimelineObjectMetadata(
+    timeline.metadata,
+    `${timelinePath}.metadata`,
+  );
 
   const pendingTracks = asArray(timeline.tracks, `${timelinePath}.tracks`).map(
     (value, trackIndex): PendingTrack => {
@@ -514,6 +533,14 @@ export function projectTimelineDocument(
         kind,
         `${path}.semantics`,
       );
+      const captionLanguage =
+        kind === "caption"
+          ? asString(semantics.language, `${path}.semantics.language`)
+          : null;
+      const captionPurpose =
+        kind === "caption"
+          ? parseCaptionPurpose(semantics.purpose, `${path}.semantics.purpose`)
+          : null;
       if (kind !== "audio" && (state.muted || state.solo)) {
         throw projectionError(
           `${timelinePath}.edit_state.track_states`,
@@ -528,6 +555,7 @@ export function projectTimelineDocument(
           selected,
           groups,
           links,
+          objectMetadata,
         ),
       );
       const pending = {
@@ -535,6 +563,8 @@ export function projectTimelineDocument(
         name: asString(track.name, `${path}.name`),
         kind,
         timebase,
+        captionLanguage,
+        captionPurpose,
         targeted: state.targeted,
         height: state.height,
         locked: state.locked,
@@ -583,14 +613,24 @@ export function projectTimelineDocument(
   }
 
   const directItems = new Map<string, DirectItem>();
+  const allObjectKeys = new Set<string>();
   for (const track of pendingTracks) {
     for (const item of track.items) {
+      allObjectKeys.add(objectKey(item));
       if (item.kind === "transition") continue;
       const key = objectKey(item);
       if (directItems.has(key)) {
         throw projectionError(timelinePath, `duplicate editorial identity ${key}`);
       }
       directItems.set(key, item);
+    }
+  }
+  for (const key of objectMetadata.keys()) {
+    if (!allObjectKeys.has(key)) {
+      throw projectionError(
+        `${timelinePath}.metadata`,
+        `metadata owner object ${key} does not exist`,
+      );
     }
   }
 
@@ -608,6 +648,8 @@ export function projectTimelineDocument(
     name: track.name,
     kind: track.kind,
     timebase: track.timebase,
+    captionLanguage: track.captionLanguage,
+    captionPurpose: track.captionPurpose,
     targeted: track.targeted,
     height: track.height,
     locked: track.locked,
@@ -2781,6 +2823,10 @@ function parseItem(
   selected: ReadonlySet<string>,
   groups: ReadonlyMap<string, readonly string[]>,
   links: ReadonlyMap<string, readonly string[]>,
+  objectMetadata: ReadonlyMap<
+    string,
+    Readonly<Record<string, EditorMetadataValue>>
+  >,
 ): DirectItem | PendingTransition {
   const item = asObject(value, path);
   const kind = parseItemKind(item.kind, `${path}.kind`);
@@ -2800,6 +2846,7 @@ function parseItem(
 
   const recordRange = parseRange(item.record_range, `${path}.record_range`);
   const reference = { kind, id } satisfies TimelineObjectReference;
+  const metadata = objectMetadata.get(objectKey(reference)) ?? Object.freeze({});
   let source: TimelineSourceReference | null = null;
   let sourceRange: TimelineExactRange | null = null;
   if (kind === "clip") {
@@ -2826,6 +2873,10 @@ function parseItem(
     source,
     sourceRange,
     transition: null,
+    caption:
+      kind === "caption"
+        ? projectCaptionPresentation(item, metadata, path)
+        : null,
     selected: selected.has(objectKey(reference)),
     group: groups.get(id) ?? null,
     link: links.get(id) ?? null,
@@ -2905,6 +2956,7 @@ function resolveTransition(
       fromOffset: value.fromOffset.exact,
       toOffset: value.toOffset.exact,
     },
+    caption: null,
     selected: selected.has(objectKey(reference)),
     group: groups.get(value.id) ?? null,
     link: links.get(value.id) ?? null,
@@ -3211,6 +3263,214 @@ function parseAudioChannelPosition(
     throw projectionError(path, "discrete audio channel index exceeds u16");
   }
   return `discrete:${index}`;
+}
+
+function parseCaptionPurpose(value: unknown, path: string): EditorCaptionPurpose {
+  const purpose = asString(value, path);
+  if (
+    purpose !== "captions" &&
+    purpose !== "subtitles" &&
+    purpose !== "descriptions" &&
+    purpose !== "chapters"
+  ) {
+    throw projectionError(path, `unsupported caption purpose ${purpose}`);
+  }
+  return purpose;
+}
+
+function parseTimelineObjectMetadata(
+  value: unknown,
+  path: string,
+): ReadonlyMap<string, Readonly<Record<string, EditorMetadataValue>>> {
+  const result = new Map<
+    string,
+    Readonly<Record<string, EditorMetadataValue>>
+  >();
+  const owners = new Set<string>();
+  for (const [index, rawEntry] of asArray(value, path).entries()) {
+    const entryPath = `${path}[${index}]`;
+    const entry = asObject(rawEntry, entryPath);
+    const owner = asObject(entry.owner, `${entryPath}.owner`);
+    const kind = asString(owner.kind, `${entryPath}.owner.kind`);
+    let ownerKey: string;
+    let object: TimelineObjectReference | null = null;
+    if (kind === "timeline") {
+      ownerKey = "timeline";
+    } else if (kind === "track") {
+      ownerKey = `track:${asString(owner.id, `${entryPath}.owner.id`)}`;
+    } else if (kind === "object") {
+      object = parseObjectReference(owner.id, `${entryPath}.owner.id`);
+      ownerKey = `object:${objectKey(object)}`;
+    } else {
+      throw projectionError(
+        `${entryPath}.owner.kind`,
+        `unsupported timeline metadata owner ${kind}`,
+      );
+    }
+    if (owners.has(ownerKey)) {
+      throw projectionError(entryPath, `duplicate timeline metadata owner ${ownerKey}`);
+    }
+    owners.add(ownerKey);
+    const metadata = parseMarkerMetadata(entry.entries, `${entryPath}.entries`);
+    if (object !== null) result.set(objectKey(object), metadata);
+  }
+  return result;
+}
+
+function projectCaptionPresentation(
+  item: Record<string, unknown>,
+  metadata: Readonly<Record<string, EditorMetadataValue>>,
+  path: string,
+): NonNullable<TimelineCanvasItem["caption"]> {
+  const speaker = optionalCaptionMetadataText(
+    metadata["superi.caption.speaker"],
+    `${path}.metadata.superi.caption.speaker`,
+  );
+  const styleValue = metadata["superi.caption.style"];
+  const style =
+    styleValue === undefined
+      ? null
+      : parseCaptionStyle(styleValue, `${path}.metadata.superi.caption.style`);
+  const relationshipsValue =
+    metadata["superi.caption.timeline_relationships"];
+  const timelineRelationships =
+    relationshipsValue === undefined
+      ? []
+      : parseCaptionRelationships(
+          relationshipsValue,
+          `${path}.metadata.superi.caption.timeline_relationships`,
+        );
+  return {
+    text: asString(item.text, `${path}.text`),
+    language: asNullableString(item.language, `${path}.language`),
+    speaker,
+    style,
+    timelineRelationships,
+    metadata,
+  };
+}
+
+function parseCaptionStyle(
+  value: EditorMetadataValue,
+  path: string,
+): TimelineCaptionStyle | null {
+  if (value.kind === "null") return null;
+  if (value.kind !== "map") {
+    throw projectionError(path, "caption style metadata must be a map");
+  }
+  const map = value.value;
+  const fontFamily = optionalCaptionMetadataText(
+    map.font_family,
+    `${path}.font_family`,
+  );
+  if (fontFamily !== null && (fontFamily.trim().length === 0 || fontFamily.length > 256)) {
+    throw projectionError(`${path}.font_family`, "caption font family is invalid");
+  }
+  const fontSizeValue = map.font_size;
+  let fontSize: number | null;
+  if (fontSizeValue === undefined || fontSizeValue.kind === "null") {
+    fontSize = null;
+  } else if (
+    fontSizeValue.kind === "unsigned" &&
+    Number.isSafeInteger(fontSizeValue.value) &&
+    fontSizeValue.value >= 8 &&
+    fontSizeValue.value <= 256
+  ) {
+    fontSize = fontSizeValue.value;
+  } else {
+    throw projectionError(`${path}.font_size`, "caption font size is invalid");
+  }
+  const foreground = optionalCaptionColor(map.foreground, `${path}.foreground`);
+  const background = optionalCaptionColor(map.background, `${path}.background`);
+  const bold = requiredCaptionMetadataBoolean(map.bold, `${path}.bold`);
+  const italic = requiredCaptionMetadataBoolean(map.italic, `${path}.italic`);
+  const alignment = requiredCaptionMetadataText(map.alignment, `${path}.alignment`);
+  if (alignment !== "start" && alignment !== "center" && alignment !== "end") {
+    throw projectionError(`${path}.alignment`, "caption alignment is invalid");
+  }
+  const position = requiredCaptionMetadataText(map.position, `${path}.position`);
+  if (position !== "top" && position !== "bottom") {
+    throw projectionError(`${path}.position`, "caption position is invalid");
+  }
+  return {
+    font_family: fontFamily,
+    font_size: fontSize,
+    foreground,
+    background,
+    bold,
+    italic,
+    alignment,
+    position,
+  };
+}
+
+function parseCaptionRelationships(
+  value: EditorMetadataValue,
+  path: string,
+): readonly TimelineCaptionRelationship[] {
+  if (value.kind !== "list" || value.value.length > 64) {
+    throw projectionError(path, "caption relationships must be a bounded list");
+  }
+  const seen = new Set<string>();
+  return value.value.map((entry, index) => {
+    const entryPath = `${path}[${index}]`;
+    if (entry.kind !== "map") {
+      throw projectionError(entryPath, "caption relationship must be a map");
+    }
+    const timelineId = requiredCaptionMetadataText(
+      entry.value.timeline_id,
+      `${entryPath}.timeline_id`,
+    );
+    const clipId = optionalCaptionMetadataText(
+      entry.value.clip_id,
+      `${entryPath}.clip_id`,
+    );
+    const key = `${timelineId}\u0000${clipId ?? ""}`;
+    if (seen.has(key)) {
+      throw projectionError(entryPath, "caption relationship is duplicated");
+    }
+    seen.add(key);
+    return { timeline_id: timelineId, clip_id: clipId };
+  });
+}
+
+function requiredCaptionMetadataText(
+  value: EditorMetadataValue | undefined,
+  path: string,
+): string {
+  if (value?.kind !== "text" || value.value.trim().length === 0) {
+    throw projectionError(path, "caption metadata value must be nonblank text");
+  }
+  return value.value;
+}
+
+function optionalCaptionMetadataText(
+  value: EditorMetadataValue | undefined,
+  path: string,
+): string | null {
+  if (value === undefined || value.kind === "null") return null;
+  return requiredCaptionMetadataText(value, path);
+}
+
+function requiredCaptionMetadataBoolean(
+  value: EditorMetadataValue | undefined,
+  path: string,
+): boolean {
+  if (value?.kind !== "boolean") {
+    throw projectionError(path, "caption metadata value must be boolean");
+  }
+  return value.value;
+}
+
+function optionalCaptionColor(
+  value: EditorMetadataValue | undefined,
+  path: string,
+): string | null {
+  const color = optionalCaptionMetadataText(value, path);
+  if (color !== null && !/^#[0-9a-f]{8}$/.test(color)) {
+    throw projectionError(path, "caption color must use canonical #RRGGBBAA syntax");
+  }
+  return color;
 }
 
 function parseMarkerFlag(value: unknown, path: string): TimelineMarkerFlag | null {

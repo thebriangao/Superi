@@ -54,6 +54,7 @@ import {
 } from "./timeline-clip-presentation.ts";
 import { TimelineRetimeEditor } from "./timeline-retime-editor.tsx";
 import type { TimelineRetimeReadyPlan } from "./timeline-retime.ts";
+import { TimelineCaptionPanel } from "./timeline-captions.tsx";
 import {
   TimelineEditingError,
   compileGapClose,
@@ -661,6 +662,11 @@ export function TimelineWorkspace({
   const multicamSourceModel =
     multicamProjection && multicamProjection.status !== "unavailable"
       ? catalog?.byId.get(multicamProjection.sourceTimelineId)?.model ?? null
+      : null;
+  const selectedCaptionTarget =
+    visibleSelectionTargets.length === 1 &&
+    visibleSelectionTargets[0]?.item.kind === "caption"
+      ? visibleSelectionTargets[0]
       : null;
   const selectedReplaceTarget =
     visibleSelectionTargets.length === 1 &&
@@ -2472,6 +2478,12 @@ export function TimelineWorkspace({
         mutateMarkers={mutateMarkers}
         onSeek={setPlayhead}
         playhead={playhead}
+      />
+      <TimelineCaptionPanel
+        model={model}
+        selectedCaptionTarget={selectedCaptionTarget}
+        executeProjectActions={executeProjectActions}
+        projectRevision={snapshot.project.project_revision}
       />
       <section
         className="timeline-edit-console"

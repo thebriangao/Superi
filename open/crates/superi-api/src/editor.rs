@@ -312,6 +312,10 @@ pub enum ProjectActionEvidence {
         revision: u64,
         mutations: Vec<TimelineMulticamMutationKind>,
     },
+    CaptionsMutated {
+        revision: u64,
+        mutations: Vec<TimelineCaptionMutationKind>,
+    },
     NestedSequencePlaced {
         revision: u64,
         source_timeline_id: String,
@@ -2060,6 +2064,17 @@ pub enum EditorCaptionPurpose {
     Chapters,
 }
 
+impl EditorCaptionPurpose {
+    const fn into_engine(self) -> engine::CaptionPurpose {
+        match self {
+            Self::Captions => engine::CaptionPurpose::Captions,
+            Self::Subtitles => engine::CaptionPurpose::Subtitles,
+            Self::Descriptions => engine::CaptionPurpose::Descriptions,
+            Self::Chapters => engine::CaptionPurpose::Chapters,
+        }
+    }
+}
+
 impl EditorTrackSemantics {
     fn into_engine(self) -> Result<engine::TrackSemantics> {
         match self {
@@ -2097,12 +2112,7 @@ impl EditorTrackSemantics {
                 engine::CaptionTrackSemantics::new(
                     timebase.into_engine()?,
                     engine::LanguageTag::new(language)?,
-                    match purpose {
-                        EditorCaptionPurpose::Captions => engine::CaptionPurpose::Captions,
-                        EditorCaptionPurpose::Subtitles => engine::CaptionPurpose::Subtitles,
-                        EditorCaptionPurpose::Descriptions => engine::CaptionPurpose::Descriptions,
-                        EditorCaptionPurpose::Chapters => engine::CaptionPurpose::Chapters,
-                    },
+                    purpose.into_engine(),
                 ),
             )),
             Self::Data {
@@ -3380,6 +3390,7 @@ pub enum TimelineTrackMutationKind {
     Delete,
     Rename,
     SetHeight,
+    SetCaptionSemantics,
     Reorder,
     SetTargeted,
     SetLocked,
@@ -3416,6 +3427,12 @@ pub enum TimelineTrackMutation {
         timeline_id: String,
         track_id: String,
         height: u16,
+    },
+    SetCaptionSemantics {
+        timeline_id: String,
+        track_id: String,
+        language: String,
+        purpose: EditorCaptionPurpose,
     },
     Reorder {
         timeline_id: String,
@@ -3504,6 +3521,17 @@ impl TimelineTrackMutation {
                 timeline_id: parse_id(&timeline_id, "timeline_id")?,
                 track_id: parse_id(&track_id, "track_id")?,
                 height,
+            },
+            Self::SetCaptionSemantics {
+                timeline_id,
+                track_id,
+                language,
+                purpose,
+            } => engine::TrackMutation::SetCaptionSemantics {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                track_id: parse_id(&track_id, "track_id")?,
+                language,
+                purpose: purpose.into_engine(),
             },
             Self::Reorder {
                 timeline_id,
@@ -3617,6 +3645,209 @@ impl TimelineMarkerFlag {
             Self::Black => engine::MarkerFlag::Black,
             Self::White => engine::MarkerFlag::White,
         }
+    }
+}
+
+/// Portable horizontal alignment for one public caption style.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TimelineCaptionAlignment {
+    Start,
+    Center,
+    End,
+}
+
+impl TimelineCaptionAlignment {
+    const fn into_engine(self) -> engine::CaptionAlignment {
+        match self {
+            Self::Start => engine::CaptionAlignment::Start,
+            Self::Center => engine::CaptionAlignment::Center,
+            Self::End => engine::CaptionAlignment::End,
+        }
+    }
+}
+
+/// Portable vertical placement for one public caption style.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TimelineCaptionPosition {
+    Top,
+    Bottom,
+}
+
+impl TimelineCaptionPosition {
+    const fn into_engine(self) -> engine::CaptionPosition {
+        match self {
+            Self::Top => engine::CaptionPosition::Top,
+            Self::Bottom => engine::CaptionPosition::Bottom,
+        }
+    }
+}
+
+/// Complete strict portable presentation style for one caption.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TimelineCaptionStyle {
+    pub font_family: Option<String>,
+    pub font_size: Option<u16>,
+    pub foreground: Option<String>,
+    pub background: Option<String>,
+    pub bold: bool,
+    pub italic: bool,
+    pub alignment: TimelineCaptionAlignment,
+    pub position: TimelineCaptionPosition,
+}
+
+impl TimelineCaptionStyle {
+    fn into_engine(self) -> Result<engine::CaptionStyle> {
+        engine::CaptionStyle::new(
+            self.font_family,
+            self.font_size,
+            self.foreground,
+            self.background,
+            self.bold,
+            self.italic,
+            self.alignment.into_engine(),
+            self.position.into_engine(),
+        )
+    }
+}
+
+/// One editable caption relationship to a timeline and optional source clip.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TimelineCaptionRelationship {
+    pub timeline_id: String,
+    pub clip_id: Option<String>,
+}
+
+impl TimelineCaptionRelationship {
+    fn into_engine(self) -> Result<engine::CaptionTimelineRelationship> {
+        Ok(engine::CaptionTimelineRelationship::new(
+            parse_id(&self.timeline_id, "timeline_id")?,
+            self.clip_id
+                .as_deref()
+                .map(|value| parse_id(value, "clip_id"))
+                .transpose()?,
+        ))
+    }
+}
+
+/// Stable category returned for one applied caption mutation.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TimelineCaptionMutationKind {
+    SetName,
+    SetText,
+    SetLanguage,
+    SetSpeaker,
+    SetStyle,
+    SetTimelineRelationships,
+}
+
+/// One strict authored caption mutation.
+#[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
+pub enum TimelineCaptionMutation {
+    SetName {
+        timeline_id: String,
+        caption_id: String,
+        name: String,
+    },
+    SetText {
+        timeline_id: String,
+        caption_id: String,
+        text: String,
+    },
+    SetLanguage {
+        timeline_id: String,
+        caption_id: String,
+        language: Option<String>,
+    },
+    SetSpeaker {
+        timeline_id: String,
+        caption_id: String,
+        speaker: Option<String>,
+    },
+    SetStyle {
+        timeline_id: String,
+        caption_id: String,
+        style: Option<TimelineCaptionStyle>,
+    },
+    SetTimelineRelationships {
+        timeline_id: String,
+        caption_id: String,
+        relationships: Vec<TimelineCaptionRelationship>,
+    },
+}
+
+impl TimelineCaptionMutation {
+    fn into_engine(self) -> Result<engine::CaptionMutation> {
+        Ok(match self {
+            Self::SetName {
+                timeline_id,
+                caption_id,
+                name,
+            } => engine::CaptionMutation::SetName {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                caption_id: parse_id(&caption_id, "caption_id")?,
+                name,
+            },
+            Self::SetText {
+                timeline_id,
+                caption_id,
+                text,
+            } => engine::CaptionMutation::SetText {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                caption_id: parse_id(&caption_id, "caption_id")?,
+                text,
+            },
+            Self::SetLanguage {
+                timeline_id,
+                caption_id,
+                language,
+            } => engine::CaptionMutation::SetLanguage {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                caption_id: parse_id(&caption_id, "caption_id")?,
+                language,
+            },
+            Self::SetSpeaker {
+                timeline_id,
+                caption_id,
+                speaker,
+            } => engine::CaptionMutation::SetSpeaker {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                caption_id: parse_id(&caption_id, "caption_id")?,
+                speaker,
+            },
+            Self::SetStyle {
+                timeline_id,
+                caption_id,
+                style,
+            } => engine::CaptionMutation::SetStyle {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                caption_id: parse_id(&caption_id, "caption_id")?,
+                style: style.map(TimelineCaptionStyle::into_engine).transpose()?,
+            },
+            Self::SetTimelineRelationships {
+                timeline_id,
+                caption_id,
+                relationships,
+            } => engine::CaptionMutation::SetTimelineRelationships {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                caption_id: parse_id(&caption_id, "caption_id")?,
+                relationships: relationships
+                    .into_iter()
+                    .map(TimelineCaptionRelationship::into_engine)
+                    .collect::<Result<Vec<_>>>()?,
+            },
+        })
     }
 }
 
@@ -3916,6 +4147,9 @@ pub enum ProjectAction {
     MutateMulticam {
         mutations: Vec<TimelineMulticamMutation>,
     },
+    MutateCaptions {
+        mutations: Vec<TimelineCaptionMutation>,
+    },
     PlaceNestedSequence {
         source_timeline_id: String,
         request: EditorNestedSequenceRequest,
@@ -3970,6 +4204,7 @@ impl ProjectAction {
             | Self::MutateTracks { .. }
             | Self::MutateMarkers { .. }
             | Self::MutateMulticam { .. }
+            | Self::MutateCaptions { .. }
             | Self::PlaceNestedSequence { .. }
             | Self::CreateCompoundClip { .. }
             | Self::MutateGraph { .. }
@@ -4009,6 +4244,14 @@ impl ProjectAction {
                     mutations
                         .into_iter()
                         .map(TimelineMulticamMutation::into_engine)
+                        .collect::<Result<Vec<_>>>()?,
+                ))
+            }
+            Self::MutateCaptions { mutations } => {
+                Ok(engine::CompoundProjectAction::mutate_captions(
+                    mutations
+                        .into_iter()
+                        .map(TimelineCaptionMutation::into_engine)
                         .collect::<Result<Vec<_>>>()?,
                 ))
             }
@@ -4519,6 +4762,16 @@ fn public_action_evidence(
                     .collect(),
             })
         }
+        engine::CompoundProjectActionResult::CaptionsMutated(result) => {
+            Ok(ProjectActionEvidence::CaptionsMutated {
+                revision: result.revision(),
+                mutations: result
+                    .outcomes()
+                    .iter()
+                    .map(|outcome| public_caption_mutation_kind(outcome.kind()))
+                    .collect(),
+            })
+        }
         engine::CompoundProjectActionResult::NestedSequencePlaced(result) => {
             Ok(ProjectActionEvidence::NestedSequencePlaced {
                 revision: result.revision(),
@@ -4576,6 +4829,9 @@ fn public_track_mutation_kind(value: engine::TrackMutationKind) -> TimelineTrack
         engine::TrackMutationKind::Delete => TimelineTrackMutationKind::Delete,
         engine::TrackMutationKind::Rename => TimelineTrackMutationKind::Rename,
         engine::TrackMutationKind::SetHeight => TimelineTrackMutationKind::SetHeight,
+        engine::TrackMutationKind::SetCaptionSemantics => {
+            TimelineTrackMutationKind::SetCaptionSemantics
+        }
         engine::TrackMutationKind::Reorder => TimelineTrackMutationKind::Reorder,
         engine::TrackMutationKind::SetTargeted => TimelineTrackMutationKind::SetTargeted,
         engine::TrackMutationKind::SetLocked => TimelineTrackMutationKind::SetLocked,
@@ -4614,6 +4870,20 @@ fn public_multicam_mutation_kind(
         }
         engine::MulticamMutationKind::DetachClip => TimelineMulticamMutationKind::DetachClip,
         _ => unreachable!("all public multicam mutation kinds are covered"),
+    }
+}
+
+fn public_caption_mutation_kind(value: engine::CaptionMutationKind) -> TimelineCaptionMutationKind {
+    match value {
+        engine::CaptionMutationKind::SetName => TimelineCaptionMutationKind::SetName,
+        engine::CaptionMutationKind::SetText => TimelineCaptionMutationKind::SetText,
+        engine::CaptionMutationKind::SetLanguage => TimelineCaptionMutationKind::SetLanguage,
+        engine::CaptionMutationKind::SetSpeaker => TimelineCaptionMutationKind::SetSpeaker,
+        engine::CaptionMutationKind::SetStyle => TimelineCaptionMutationKind::SetStyle,
+        engine::CaptionMutationKind::SetTimelineRelationships => {
+            TimelineCaptionMutationKind::SetTimelineRelationships
+        }
+        _ => unreachable!("all public caption mutation kinds are covered"),
     }
 }
 

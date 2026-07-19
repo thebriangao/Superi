@@ -7,8 +7,8 @@ use superi_api::editor::{
     EditorChannelMap, EditorChannelPosition, EditorClipMixControls, EditorClipMixMutation,
     EditorExtensionMutation, EditorGraphMutation, EditorMediaMutation, ExecuteProjectCommand,
     GetProjectCommandLog, GetProjectCommandLogResult, ProjectAction, ProjectCommand,
-    ProjectCommandEvidence, ProjectCommandLogDetail, TimelineEditOperation, TimelineMarkerMutation,
-    TimelineMulticamMutation, TimelineTrackMutation,
+    ProjectCommandEvidence, ProjectCommandLogDetail, TimelineCaptionMutation,
+    TimelineEditOperation, TimelineMarkerMutation, TimelineMulticamMutation, TimelineTrackMutation,
 };
 use superi_api::events::{ApiEvent, ProjectStateChanged};
 use superi_api::permissions::{
@@ -43,6 +43,8 @@ const MULTICAM_ANGLE_A: engine::MulticamAngleId = engine::MulticamAngleId::from_
 const MULTICAM_ANGLE_B: engine::MulticamAngleId = engine::MulticamAngleId::from_raw(0xe109);
 const AUDIO_TRACK: engine::TrackId = engine::TrackId::from_raw(0xe008);
 const AUDIO_CLIP: engine::ClipId = engine::ClipId::from_raw(0xe009);
+const CAPTION_TRACK: engine::TrackId = engine::TrackId::from_raw(0xe00a);
+const CAPTION: engine::CaptionId = engine::CaptionId::from_raw(0xe00b);
 fn range(start: i64, duration: u64, timebase: engine::Timebase) -> engine::TimeRange {
     engine::TimeRange::new(
         engine::RationalTime::new(start, timebase),
@@ -672,6 +674,7 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
         json!({"operation":"delete","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string()}),
         json!({"operation":"rename","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"name":"Picture"}),
         json!({"operation":"set_height","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"height":96}),
+        json!({"operation":"set_caption_semantics","timeline_id":ROOT.to_string(),"track_id":CAPTION_TRACK.to_string(),"language":"fr-FR","purpose":"subtitles"}),
         json!({"operation":"reorder","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"position":0}),
         json!({"operation":"set_targeted","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"targeted":true}),
         json!({"operation":"set_locked","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"locked":true}),
@@ -688,6 +691,7 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
             "delete",
             "rename",
             "set_height",
+            "set_caption_semantics",
             "reorder",
             "set_targeted",
             "set_locked",
@@ -748,12 +752,33 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
         ]
     );
 
+    let caption_operations = vec![
+        json!({"operation":"set_name","timeline_id":ROOT.to_string(),"caption_id":CAPTION.to_string(),"name":"Caption 1"}),
+        json!({"operation":"set_text","timeline_id":ROOT.to_string(),"caption_id":CAPTION.to_string(),"text":"Editable text"}),
+        json!({"operation":"set_language","timeline_id":ROOT.to_string(),"caption_id":CAPTION.to_string(),"language":"en-US"}),
+        json!({"operation":"set_speaker","timeline_id":ROOT.to_string(),"caption_id":CAPTION.to_string(),"speaker":"Speaker A"}),
+        json!({"operation":"set_style","timeline_id":ROOT.to_string(),"caption_id":CAPTION.to_string(),"style":{"font_family":"Inter","font_size":42,"foreground":"#ffffffff","background":"#000000cc","bold":true,"italic":false,"alignment":"center","position":"bottom"}}),
+        json!({"operation":"set_timeline_relationships","timeline_id":ROOT.to_string(),"caption_id":CAPTION.to_string(),"relationships":[{"timeline_id":ROOT.to_string(),"clip_id":CLIP.to_string()}]}),
+    ];
+    assert_eq!(
+        operation_tags::<TimelineCaptionMutation>(caption_operations, "operation"),
+        [
+            "set_name",
+            "set_text",
+            "set_language",
+            "set_speaker",
+            "set_style",
+            "set_timeline_relationships"
+        ]
+    );
+
     let project_actions = vec![
         json!({"action":"select_root_timeline","timeline_id":ROOT.to_string()}),
         json!({"action":"edit_timeline","operations":[{"operation":"append","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"material":gap_item()}]}),
         json!({"action":"mutate_tracks","mutations":[{"operation":"rename","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"name":"Picture"}]}),
         json!({"action":"mutate_markers","mutations":[{"operation":"set_label","timeline_id":ROOT.to_string(),"marker_id":MARKER.to_string(),"label":"Review"}]}),
         json!({"action":"mutate_multicam","mutations":[{"operation":"set_sync_method","timeline_id":MULTICAM_SOURCE.to_string(),"sync_method":{"kind":"manual"}}]}),
+        json!({"action":"mutate_captions","mutations":[{"operation":"set_text","timeline_id":ROOT.to_string(),"caption_id":CAPTION.to_string(),"text":"Editable text"}]}),
         json!({"action":"place_nested_sequence","source_timeline_id":"timeline:0000000000000000000000000000e020","request":{"parent_timeline_id":ROOT.to_string(),"parent_track_id":TRACK.to_string(),"clip_id":"clip:0000000000000000000000000000e022","name":"Nested scene","source_range":exact_range(0,72,24),"placement":{"placement":"replace","target_id":object_id("clip",&CLIP.to_string())}}}),
         json!({"action":"create_compound_clip","request":{"parent_timeline_id":ROOT.to_string(),"compound_timeline_id":"timeline:0000000000000000000000000000e020","name":"Nested scene","selected_objects":[object_id("clip",&CLIP.to_string()),object_id("clip",&SECOND_CLIP.to_string())],"tracks":[{"parent_track_id":TRACK.to_string(),"compound_track_id":"track:0000000000000000000000000000e021","clip_id":"clip:0000000000000000000000000000e022"}]}}),
         json!({"action":"mutate_graph","graph_id":"graph:00000000000000000000000000000047","mutations":[{"operation":"reorder","node_id":node_id,"position":0}]}),
@@ -769,6 +794,7 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
             "mutate_tracks",
             "mutate_markers",
             "mutate_multicam",
+            "mutate_captions",
             "place_nested_sequence",
             "create_compound_clip",
             "mutate_graph",
@@ -786,6 +812,152 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
         "operation": "unsupported"
     }))
     .is_err());
+}
+
+#[test]
+fn public_caption_command_creates_edits_styles_relates_and_undoes_captions() {
+    let _domain = ExecutionDomain::EngineControl
+        .enter_current()
+        .expect("test owns engine control");
+    let mut api = project_api();
+    let request: ExecuteProjectCommand = serde_json::from_value(json!({
+        "transaction_id": "public-caption-controls",
+        "expected_project_revision": 0,
+        "command": {
+            "command": "apply",
+            "actions": [
+                {
+                    "action": "mutate_tracks",
+                    "mutations": [
+                        {
+                            "operation": "create",
+                            "timeline_id": ROOT.to_string(),
+                            "track_id": CAPTION_TRACK.to_string(),
+                            "name": "English subtitles",
+                            "kind": "caption",
+                            "position": 1,
+                            "height": 72
+                        },
+                        {
+                            "operation": "set_caption_semantics",
+                            "timeline_id": ROOT.to_string(),
+                            "track_id": CAPTION_TRACK.to_string(),
+                            "language": "en-US",
+                            "purpose": "subtitles"
+                        }
+                    ]
+                },
+                {
+                    "action": "edit_timeline",
+                    "operations": [{
+                        "operation": "append",
+                        "timeline_id": ROOT.to_string(),
+                        "track_id": CAPTION_TRACK.to_string(),
+                        "material": {
+                            "kind": "caption",
+                            "id": CAPTION.to_string(),
+                            "name": "Caption 1",
+                            "text": "Initial text",
+                            "language": "en-US",
+                            "record_range": exact_range(0, 1000, 1000)
+                        }
+                    }]
+                },
+                {
+                    "action": "mutate_captions",
+                    "mutations": [
+                        {
+                            "operation": "set_text",
+                            "timeline_id": ROOT.to_string(),
+                            "caption_id": CAPTION.to_string(),
+                            "text": "Editable transcript"
+                        },
+                        {
+                            "operation": "set_speaker",
+                            "timeline_id": ROOT.to_string(),
+                            "caption_id": CAPTION.to_string(),
+                            "speaker": "Speaker A"
+                        },
+                        {
+                            "operation": "set_style",
+                            "timeline_id": ROOT.to_string(),
+                            "caption_id": CAPTION.to_string(),
+                            "style": {
+                                "font_family": "Inter",
+                                "font_size": 42,
+                                "foreground": "#ffffffff",
+                                "background": "#000000cc",
+                                "bold": true,
+                                "italic": false,
+                                "alignment": "center",
+                                "position": "bottom"
+                            }
+                        },
+                        {
+                            "operation": "set_timeline_relationships",
+                            "timeline_id": ROOT.to_string(),
+                            "caption_id": CAPTION.to_string(),
+                            "relationships": [{
+                                "timeline_id": ROOT.to_string(),
+                                "clip_id": CLIP.to_string()
+                            }]
+                        }
+                    ]
+                }
+            ]
+        }
+    }))
+    .unwrap();
+
+    let applied = api.execute(request).unwrap();
+    assert_eq!(applied.state().project_revision(), 1);
+    let ProjectCommandEvidence::Applied { actions } = applied.evidence() else {
+        panic!("caption mutation command must retain evidence");
+    };
+    assert_eq!(
+        serde_json::to_value(&actions[2]).unwrap(),
+        json!({
+            "result": "captions_mutated",
+            "revision": 3,
+            "mutations": ["set_text", "set_speaker", "set_style", "set_timeline_relationships"]
+        })
+    );
+    let snapshot = api.project_snapshot().unwrap();
+    let timeline = snapshot.editorial_project().timeline(ROOT).unwrap();
+    let engine::TrackSemantics::Caption(track_semantics) =
+        timeline.track(CAPTION_TRACK).unwrap().semantics()
+    else {
+        panic!("caption command must preserve caption track semantics");
+    };
+    assert_eq!(track_semantics.language().as_str(), "en-us");
+    assert_eq!(track_semantics.purpose(), engine::CaptionPurpose::Subtitles);
+    let caption = timeline
+        .track(CAPTION_TRACK)
+        .unwrap()
+        .item(engine::EditorialObjectId::Caption(CAPTION))
+        .unwrap()
+        .as_caption()
+        .unwrap();
+    assert_eq!(caption.text(), "Editable transcript");
+    let attributes = engine::CaptionAttributes::from_timeline(timeline, CAPTION).unwrap();
+    assert_eq!(attributes.speaker(), Some("Speaker A"));
+    assert_eq!(attributes.style().unwrap().font_family(), Some("Inter"));
+    assert_eq!(attributes.timeline_relationships()[0].clip_id(), Some(CLIP));
+
+    api.execute(ExecuteProjectCommand::new(
+        "undo-caption-controls",
+        1,
+        ProjectCommand::Undo {},
+    ))
+    .unwrap();
+    assert!(api
+        .project_snapshot()
+        .unwrap()
+        .editorial_project()
+        .timeline(ROOT)
+        .unwrap()
+        .track(CAPTION_TRACK)
+        .is_none());
 }
 
 #[test]

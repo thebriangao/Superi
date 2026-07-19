@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: d37b0fca5cff84cdb3ad578b21a2ffcd98aeefa321d71e3eb6bd11e3d6f3323e
-source_files: 273
+source_hash: b5570bf3e7cab2320133754c1e9ceb22d99e878978a51212bd63afcc6a67508a
+source_files: 276
 mapped_at_commit: working-tree
 ---
 
@@ -513,8 +513,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/package.json`: Declares the private production application package, exact toolchain and
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
   framework, editor-workspace, timeline-canvas, timeline-nesting, timeline-multicam, timeline-clip,
-  timeline-transition, editorial-feedback, and exact playback transport helper contracts, and Tauri
-  commands.
+  timeline-transition, caption projection, exchange, and authoring, editorial-feedback, and exact
+  playback transport helper contracts, and Tauri commands.
 - `app/src/api.ts`: Re-exports the complete canonical generated TypeScript contract and constructs
   one frozen `SuperiApiBindings` surface around an injected `SuperiTransport` and `SuperiClient`.
 - `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
@@ -561,7 +561,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   labels for every engine playback degradation code.
 - `app/src/timeline-workspace.ts`: Strictly projects the embedded canonical revision 2 timeline
   document into a deeply frozen canvas model with exact rational source and record ranges, stable
-  identities and relationships, exact transition from and to offsets, bounded track height, lock,
+  identities and relationships, complete caption text, language, speaker, style, timeline
+  relationships, object metadata, track language and purpose, exact transition from and to offsets,
+  bounded track height, lock,
   mute, solo, enable state, exact audio sample rate, ordered source and destination channel meaning,
   explicit main or audio-track routing destination, and one validated target per source channel,
   external-global-start display placement, complete visible marker state, exact owner-clock snap
@@ -581,6 +583,15 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   command. Pure audio-video planners resolve exactly one video clip and one audio clip by stable
   track identity, build link, exact synchronization, and detach operations, and build one complete
   routing replacement without inventing missing channel decisions.
+- `app/src/timeline-captions.ts`: Implements bounded deterministic SRT and WebVTT parsing and
+  serialization with strict cue-text escaping and unsupported-markup rejection, canonical
+  lowercase color and whole-point style field conversion, exact millisecond caption-track action
+  planning with explicit gaps and authored language and purpose, canonical track export, and freshness-fenced transcript conversion
+  that preserves editable text, timing, speaker, and timeline relationships without retaining model ownership.
+- `app/src/timeline-captions.tsx`: Renders selected caption text, language, speaker, style, and
+  relationship editing plus discoverable SRT or WebVTT import, fresh language-analysis import, and
+  canonical track export. It retains only transient form state and submits authored changes through
+  the injected application project action executor.
 - `app/src/timeline-editing.ts`: Compiles ripple, roll, slip, slide, razor, trim, ripple or roll
   extend, ripple delete, synchronized gap insertion, and gap closure from the frozen canonical
   canvas model into existing public `TimelineEditOperation` batches. It preserves exact rational
@@ -673,6 +684,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   mounted-rectangle lasso preview and commit, roving keyboard focus, offscreen focus scrolling, and
   a polite live count. Exactly one selected transition adds visible handle evidence and an accessible
   inspector for exact from, to, duration, start, center, and end timing plus typed visual parameters.
+  One selected caption mounts the caption editor, while import and export remain visible without a
+  selection. Exact timing edits continue through the existing trim, razor, nudge, ripple, and
+  overwrite gestures instead of a second timing owner.
   The component submits only through its injected application callback and takes no transport,
   project-history, timeline, or graph mutation ownership.
 - `app/src/native-viewport.tsx`: Reserves role-addressed native output rectangles and publishes only
@@ -790,7 +804,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   frame-aligned ruler, visible-window, and range math, exact timeline, track, object, item, and
   playhead snap targets, inexact-clock and object-overscan omission, stable tie ordering, per-kind
   filtering, persistent and session disablement, invalid-document and marker-owner failures, all
-  eleven durable track gestures, complete visible marker semantics, exact marker navigation,
+  thirteen durable track gestures, complete visible marker semantics, exact marker navigation,
   non-navigable state, visible consequence and reversal wiring, selection identity round
   trips, fixed-point related and direct selection, display-order ranges, directional neighbors,
   lasso geometry, real React integration, multiselect accessibility, shared selection wiring,
@@ -804,7 +818,15 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   angle-state viewing, creation, synchronization, switching, exact cut refinement, and history undo
   wiring. It also proves strict complete audio routing projection, exact audio-video selection by
   immutable track identity, link, synchronize, detach, and routing action payloads,
-  incomplete-route rejection, and visible production controls.
+  incomplete-route rejection, visible production controls, complete caption projection, caption
+  panel integration, publication through the shared callback, and the absence of a second frontend
+  authored mutation owner.
+- `app/tests/timeline-captions.test.ts`: Proves SRT import produces one canonical millisecond track
+  with explicit gaps and authored language and subtitles purpose, strict style fields become the canonical API representation, supported
+  WebVTT voice, escaped cue text, and presentation settings round trip deterministically,
+  unsupported markup fails closed, and fresh transcript text, deterministic nearest-millisecond
+  timing, speaker, and timeline relationships become ordinary editable cues while stale revision or
+  fingerprint evidence fails before action construction.
 - `app/tests/timeline-nesting.test.ts`: Verifies exact mixed-clock duration projection, direct child
   dependencies, cycle-safe candidates, root-anchored path opening and stale-path reconciliation,
   append and equal-duration replace action payloads, strict locked and incompatible rejection, and
@@ -1110,7 +1132,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   control, query, event, and resource declarations, generic project import-media request and result
   evidence, and a transport-neutral typed client without owning runtime IPC. The committed artifact
   is freshly regenerated from the canonical schema `1.7.0` project surface and includes strict
-  track, marker, and multicam mutation, complete audio routing, audio-video link, exact
+  track, caption, marker, and multicam mutation, complete audio routing, audio-video link, exact
   synchronization, audio detach, exact retime map and evidence, metadata, track-output graph DTOs,
   the additive exact `set_transition` timeline operation, complete nested placement and
   selection-derived compound request, action, and evidence unions, and all seven multicam
@@ -1775,7 +1797,7 @@ The editing workspace consumes the canonical timeline document already contained
 editor snapshot. Its strict projection preserves exact authored identity, timing, grouping,
 targeting, locks, synchronization, and output intent, while local playhead, range, scroll, zoom,
 source and target choice, pending state, and consequence preview remain transient presentation
-intent. Track and marker gestures plus insert, overwrite, append, replace, lift, extract, backspace, undo, and
+intent. Track, caption, and marker gestures plus insert, overwrite, append, replace, lift, extract, backspace, undo, and
 redo return only through the generated project command and fresh complete snapshot paths. The
 projection resolves timeline, item, and owner-clock marker boundaries into exact edit-rate targets,
 skips inexact cross-clock points and valid object-marker overscan, exposes explicit session rules,
@@ -1792,6 +1814,12 @@ source layout, names an explicit destination, and supplies one channel or mute t
 channel. The application-owned action and exact command executors retain transaction identity,
 revision fencing, native validation, history, persistence, events, and canonical refresh below
 React.
+Caption projection retains canonical text, language, speaker, style, timeline relationships, and
+object metadata beside exact record timing. The caption panel submits selected-field changes as one
+generated `mutate_captions` action. Bounded SRT and WebVTT files and fresh source-fingerprint-bound
+transcripts become explicit-gap millisecond caption tracks through the same shared executor, while
+export reads only the latest frozen canonical track. Parsed input and analysis output never become a
+second authored state owner.
 The C007 timing compiler consumes that same frozen projection and emits only existing public edit
 operations for ripple, roll, slip, slide, razor, trim, extend, ripple delete, and gap work. It
 converts every affected track clock exactly, allocates typed identities only after validation, and
@@ -2054,6 +2082,11 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   actions, ordered named and discrete channel meaning, explicit mute decisions, incomplete-route
   rejection, lock and relationship disabled reasons, accessible production controls, shared pending
   exclusion, and publication only through the existing application project executor.
+- The focused caption proof freezes complete canonical cue projection, millisecond SRT action
+  planning with explicit gaps, supported WebVTT voice and style round trips, model-independent
+  transcript text, timing, speaker, and relationship retention, stale-analysis rejection, selected
+  caption editing, import and export discoverability, generated mutation ownership, TypeScript
+  checking, the complete frontend suite, and the production Vite build.
 
 - The focused timing-tool proof freezes all seven direct tools plus ripple delete and gap work,
   exact mixed-clock conversion, synchronized track ordering, typed allocation, immutable affected
@@ -2429,6 +2462,11 @@ items, a frame-snapped playhead, an explicit range, native scrolling, pointer-an
 canonical variable lane height. Track creation, deletion, inline naming, height, order, target,
 lock, sync lock, mute, solo, and enable gestures enter the application-owned generated command and
 refresh from the durable replacement snapshot.
+Caption tracks now expose exact language, purpose, cue text, speaker, bounded style, relationships,
+and metadata. Selected cues edit those values through one generated caption mutation batch, while
+their timing remains on the existing exact editorial gestures. SRT, WebVTT, and fresh language
+analysis create ordinary editable millisecond tracks with explicit gaps, and export derives only
+from the current canonical snapshot.
 Marker creation, exact range, label, flag, note, and removal gestures use that same command owner,
 persist through the selected project, and retain one revision-scoped complete inverse for immediate
 reversal. The same canvas projects every authored marker plus exact timeline, item-edge, and
@@ -2840,6 +2878,11 @@ Keep durable marker controls behind the application project command callback. Pr
 create metadata and owner state, retain every authored marker in the visible model, omit inexact
 coordinates only from navigation and snapping, and clear typed inverse reversal when its exact
 refreshed revision is superseded.
+Keep caption projection strict and complete. Import must remain byte and cue bounded, exact in
+milliseconds, nonoverlapping, and fail closed on unsupported syntax. Transcript conversion must
+retain project revision and source fingerprint fences, and every resulting text, timing, speaker,
+style, and timeline relationship must become ordinary canonical editable state. Export must read
+only the refreshed model, while React form and parsed-file state remain transient.
 Keep clip detail supplemental to that exact projection. Graph badges must follow real clip-scoped
 topology, keyframes must come from a legal attached owner, previews must retain project, library,
 media, and freshness fences, and authored selection must remain distinct from shared UI selection.

@@ -6,6 +6,7 @@
 //! compile-to-graph state, and OTIO 0.18.1 interchange are implemented. Graph evaluation remains
 //! staged.
 
+pub mod caption_ops;
 pub mod compile;
 pub mod edit_ops;
 pub mod edit_state;

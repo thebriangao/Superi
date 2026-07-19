@@ -21,7 +21,7 @@ pub enum TrackCreationKind {
     Video,
     /// Stereo audio at 48 kHz with direct main-output routing.
     Audio,
-    /// English caption content at the timeline edit rate.
+    /// English caption content on a millisecond exchange clock.
     Caption,
     /// Superi generic timed data at the timeline edit rate.
     Data,
@@ -56,6 +56,13 @@ pub enum TrackMutation {
         timeline_id: TimelineId,
         track_id: TrackId,
         height: u16,
+    },
+    /// Replaces the language and purpose of one caption track without changing its clock.
+    SetCaptionSemantics {
+        timeline_id: TimelineId,
+        track_id: TrackId,
+        language: String,
+        purpose: CaptionPurpose,
     },
     /// Moves one track to a canonical bottom-to-top final position.
     Reorder {
@@ -116,6 +123,7 @@ impl TrackMutation {
             | Self::Delete { timeline_id, .. }
             | Self::Rename { timeline_id, .. }
             | Self::SetHeight { timeline_id, .. }
+            | Self::SetCaptionSemantics { timeline_id, .. }
             | Self::Reorder { timeline_id, .. }
             | Self::SetTargeted { timeline_id, .. }
             | Self::SetLocked { timeline_id, .. }
@@ -135,6 +143,7 @@ impl TrackMutation {
             | Self::Delete { track_id, .. }
             | Self::Rename { track_id, .. }
             | Self::SetHeight { track_id, .. }
+            | Self::SetCaptionSemantics { track_id, .. }
             | Self::Reorder { track_id, .. }
             | Self::SetTargeted { track_id, .. }
             | Self::SetLocked { track_id, .. }
@@ -152,6 +161,7 @@ impl TrackMutation {
             Self::Delete { .. } => TrackMutationKind::Delete,
             Self::Rename { .. } => TrackMutationKind::Rename,
             Self::SetHeight { .. } => TrackMutationKind::SetHeight,
+            Self::SetCaptionSemantics { .. } => TrackMutationKind::SetCaptionSemantics,
             Self::Reorder { .. } => TrackMutationKind::Reorder,
             Self::SetTargeted { .. } => TrackMutationKind::SetTargeted,
             Self::SetLocked { .. } => TrackMutationKind::SetLocked,
@@ -172,6 +182,7 @@ pub enum TrackMutationKind {
     Delete,
     Rename,
     SetHeight,
+    SetCaptionSemantics,
     Reorder,
     SetTargeted,
     SetLocked,
@@ -287,6 +298,28 @@ fn apply_mutation(draft: &mut ProjectDraft, mutation: &TrackMutation) -> Result<
         TrackMutation::SetHeight {
             track_id, height, ..
         } => timeline.set_track_height(*track_id, *height),
+        TrackMutation::SetCaptionSemantics {
+            track_id,
+            language,
+            purpose,
+            ..
+        } => {
+            let track = timeline.track_mut(*track_id)?;
+            let TrackSemantics::Caption(current) = track.semantics() else {
+                return Err(track_error(
+                    ErrorCategory::InvalidInput,
+                    "set_caption_semantics",
+                    "caption semantics can be set only on a caption track",
+                ));
+            };
+            let timebase = current.timebase();
+            track.set_semantics(TrackSemantics::Caption(CaptionTrackSemantics::new(
+                timebase,
+                LanguageTag::new(language.clone())?,
+                *purpose,
+            )));
+            Ok(())
+        }
         TrackMutation::Reorder {
             track_id, position, ..
         } => timeline.reorder_track(*track_id, *position),
@@ -396,7 +429,7 @@ fn default_semantics(
             )?))
         }
         TrackCreationKind::Caption => Ok(TrackSemantics::Caption(CaptionTrackSemantics::new(
-            edit_rate,
+            superi_core::time::Timebase::MILLISECONDS,
             LanguageTag::new("en-US")?,
             CaptionPurpose::Captions,
         ))),

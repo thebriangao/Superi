@@ -51,6 +51,11 @@ pub use superi_project::{
     ProjectSaveOperation, ProjectSaveOutcome, ProjectVersionDisposition, ProjectVersionNegotiation,
     ProjectVersionReason,
 };
+pub use superi_timeline::caption_ops::{
+    CaptionAlignment, CaptionAttributes, CaptionMutation, CaptionMutationBatchResult,
+    CaptionMutationKind, CaptionMutationOutcome, CaptionPosition, CaptionStyle,
+    CaptionTimelineRelationship,
+};
 pub use superi_timeline::compile::{
     CompiledTimelineGraphValue, TimelineGraphOrigin, TimelineGraphValue, TrackOutputState,
 };
