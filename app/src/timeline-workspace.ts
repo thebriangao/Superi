@@ -1,6 +1,7 @@
 import type {
   EditorialObjectId,
   EditorCanonicalDocument,
+  EditorThreePointPlacement,
   EditorTrackItem,
   ExactDuration,
   ExactTime,
@@ -1106,9 +1107,13 @@ export type TimelineEditGesture =
   | "overwrite"
   | "append"
   | "replace"
+  | "three_point"
+  | "four_point"
   | "lift"
   | "extract"
   | "backspace";
+
+export type TimelineThreePointMode = EditorThreePointPlacement["placement"];
 
 export interface TimelineEditSource {
   readonly projectId: string;
@@ -1116,7 +1121,10 @@ export interface TimelineEditSource {
   readonly mediaId: string;
   readonly mediaName: string;
   readonly streamKind: "video" | "audio";
+  readonly availableRange: ExactTimeRange;
   readonly sourceRange: ExactTimeRange;
+  readonly sourceIn: ExactTime | null;
+  readonly sourceOutExclusive: ExactTime | null;
 }
 
 export interface TimelineEditCommandInput {
@@ -1128,6 +1136,7 @@ export interface TimelineEditCommandInput {
   readonly outPointSeconds: number;
   readonly rangeExplicit: boolean;
   readonly source: TimelineEditSource | null;
+  readonly threePointMode?: TimelineThreePointMode;
   readonly selectedItemIds?: readonly string[];
   readonly transactionId: string;
   readonly createId: (kind: Exclude<TimelineItemKind, "transition">) => string;
@@ -1217,31 +1226,45 @@ export function projectSourceMonitorForTimelineEdit(
     const rangeStart = snapshot.range_start
       ? exactSourceCoordinate(snapshot.range_start, sourceTimebase, "source start")
       : 0;
-    const start = snapshot.marks_fresh && snapshot.marks.in_mark
+    const explicitIn = snapshot.marks_fresh && snapshot.marks.in_mark
       ? exactSourceCoordinate(snapshot.marks.in_mark, sourceTimebase, "source in")
-      : rangeStart;
-    let end: number;
-    const inclusiveEnd = snapshot.marks_fresh && snapshot.marks.out_mark
-      ? snapshot.marks.out_mark
-      : snapshot.range_end;
-    if (inclusiveEnd) {
+      : null;
+    const explicitOutInclusive = snapshot.marks_fresh && snapshot.marks.out_mark
+      ? exactSourceCoordinate(snapshot.marks.out_mark, sourceTimebase, "source out")
+      : null;
+    const explicitOutExclusive = explicitOutInclusive === null
+      ? null
+      : explicitOutInclusive + 1;
+    if (
+      explicitOutExclusive !== null &&
+      !Number.isSafeInteger(explicitOutExclusive)
+    ) {
+      return disabled("The source out mark exceeds the exact safe range.");
+    }
+    let availableEnd: number;
+    if (snapshot.range_end) {
       const inclusive = exactSourceCoordinate(
-        inclusiveEnd,
+        snapshot.range_end,
         sourceTimebase,
         "source out",
       );
-      end = inclusive + 1;
+      availableEnd = inclusive + 1;
     } else if (snapshot.duration) {
       const duration = exactSourceCoordinate(
         snapshot.duration,
         sourceTimebase,
         "source duration",
       );
-      end = rangeStart + duration;
+      availableEnd = rangeStart + duration;
     } else {
       return disabled("Set a source out mark because the source duration is unknown.");
     }
-    if (!Number.isSafeInteger(end) || end <= start) {
+    if (!Number.isSafeInteger(availableEnd) || availableEnd <= rangeStart) {
+      return disabled("The retained source range must be nonempty and ordered.");
+    }
+    const start = explicitIn ?? rangeStart;
+    const end = explicitOutExclusive ?? availableEnd;
+    if (start < rangeStart || end > availableEnd || end <= start) {
       return disabled("The source in and out range must be nonempty and ordered.");
     }
     return {
@@ -1252,10 +1275,20 @@ export function projectSourceMonitorForTimelineEdit(
         mediaId: snapshot.media_id,
         mediaName: snapshot.media_name,
         streamKind: snapshot.stream.kind,
+        availableRange: {
+          start: publicTime(rangeStart, sourceTimebase),
+          duration: publicDuration(availableEnd - rangeStart, sourceTimebase),
+        },
         sourceRange: {
           start: publicTime(start, sourceTimebase),
           duration: publicDuration(end - start, sourceTimebase),
         },
+        sourceIn:
+          explicitIn === null ? null : publicTime(explicitIn, sourceTimebase),
+        sourceOutExclusive:
+          explicitOutExclusive === null
+            ? null
+            : publicTime(explicitOutExclusive, sourceTimebase),
       },
     };
   } catch (error) {
@@ -1318,7 +1351,9 @@ export function buildTimelineEditCommand(
     input.gesture === "insert" ||
     input.gesture === "overwrite" ||
     input.gesture === "append" ||
-    input.gesture === "replace";
+    input.gesture === "replace" ||
+    input.gesture === "three_point" ||
+    input.gesture === "four_point";
   if (sourceRequired) {
     if (!input.source) return disabled("Load a compatible source before editing.");
     const sourceFailure = validateEditSource(input.model, target, input.source);
@@ -1331,7 +1366,12 @@ export function buildTimelineEditCommand(
     let operation: TimelineEditOperation;
     let consequence: string;
 
-    if (
+    if (input.gesture === "three_point" || input.gesture === "four_point") {
+      const source = input.source as TimelineEditSource;
+      const pointEdit = buildPointEditOperation(input, target, source, trackEnd);
+      operation = pointEdit.operation;
+      consequence = pointEdit.consequence;
+    } else if (
       input.gesture === "insert" ||
       input.gesture === "overwrite" ||
       input.gesture === "append" ||
@@ -1544,7 +1584,40 @@ function validateEditSource(
     return "The loaded source identity is incomplete.";
   }
   try {
-    validatePublicRange(source.sourceRange, "source range");
+    validatePointSourceRange(source, source.sourceRange);
+    const availableStart = BigInt(source.availableRange.start.value);
+    const availableEnd =
+      availableStart + BigInt(source.availableRange.duration.value);
+    if (source.sourceIn !== null) {
+      validatePublicTime(source.sourceIn, "source in");
+      if (
+        !sameRate(source.sourceIn.timebase, source.availableRange.start.timebase) ||
+        BigInt(source.sourceIn.value) < availableStart ||
+        BigInt(source.sourceIn.value) >= availableEnd
+      ) {
+        throw new Error("The source in mark is outside the retained source range.");
+      }
+    }
+    if (source.sourceOutExclusive !== null) {
+      validatePublicTime(source.sourceOutExclusive, "source out");
+      if (
+        !sameRate(
+          source.sourceOutExclusive.timebase,
+          source.availableRange.start.timebase,
+        ) ||
+        BigInt(source.sourceOutExclusive.value) <= availableStart ||
+        BigInt(source.sourceOutExclusive.value) > availableEnd
+      ) {
+        throw new Error("The source out mark is outside the retained source range.");
+      }
+    }
+    if (
+      source.sourceIn !== null &&
+      source.sourceOutExclusive !== null &&
+      source.sourceOutExclusive.value <= source.sourceIn.value
+    ) {
+      throw new Error("Source in and out marks must be ordered.");
+    }
   } catch (error) {
     return error instanceof Error ? error.message : "The source range is invalid.";
   }
@@ -1619,12 +1692,280 @@ export function timelineRectanglesIntersect(
   );
 }
 
+function buildPointEditOperation(
+  input: TimelineEditCommandInput,
+  target: TimelineCanvasTrack,
+  source: TimelineEditSource,
+  trackEnd: ExactTime,
+): {
+  readonly operation: TimelineEditOperation;
+  readonly consequence: string;
+} {
+  const materialId = checkedNewId(input.createId("clip"), "clip");
+  let sourceRange: ExactTimeRange;
+  let recordRange: ExactTimeRange;
+  let placement: EditorThreePointPlacement | null = null;
+  const mode = input.threePointMode ?? "source_range_at_record_start";
+
+  if (input.gesture === "four_point") {
+    sourceRange = explicitSourceRange(source);
+    recordRange = explicitRecordRange(input, target);
+    if (!durationsPhysicallyEqual(sourceRange.duration, recordRange.duration)) {
+      throw new Error(
+        "Four-point fit-to-fill is unavailable until exact time remapping is supported. Match the timeline range to the source marks.",
+      );
+    }
+  } else {
+    switch (mode) {
+      case "source_range_at_record_start": {
+        sourceRange = explicitSourceRange(source);
+        const recordStart = displayPointToRecordTime(
+          input.playheadSeconds,
+          input.model.globalStartSeconds,
+          target.timebase,
+        );
+        recordRange = {
+          start: recordStart,
+          duration: rescaleDurationExact(
+            sourceRange.duration,
+            target.timebase,
+            "The marked source duration is not exactly representable on the target track clock.",
+          ),
+        };
+        placement = { placement: mode, source_range: sourceRange, record_start: recordStart };
+        break;
+      }
+      case "source_start_over_record_range": {
+        const sourceStart = explicitSourceIn(source);
+        recordRange = explicitRecordRange(input, target);
+        sourceRange = {
+          start: sourceStart,
+          duration: rescaleDurationExact(
+            recordRange.duration,
+            sourceStart.timebase,
+            "The timeline range is not exactly representable on the source clock.",
+          ),
+        };
+        placement = { placement: mode, source_start: sourceStart, record_range: recordRange };
+        break;
+      }
+      case "source_range_backtimed_to_record_end": {
+        sourceRange = explicitSourceRange(source);
+        const recordEnd = displayPointToRecordTime(
+          input.playheadSeconds,
+          input.model.globalStartSeconds,
+          target.timebase,
+        );
+        const duration = rescaleDurationExact(
+          sourceRange.duration,
+          target.timebase,
+          "The marked source duration is not exactly representable on the target track clock.",
+        );
+        recordRange = {
+          start: publicTime(
+            safeBigIntNumber(
+              BigInt(recordEnd.value) - BigInt(duration.value),
+              "backtimed record start",
+            ),
+            target.timebase,
+          ),
+          duration,
+        };
+        placement = { placement: mode, source_range: sourceRange, record_end: recordEnd };
+        break;
+      }
+      case "source_end_backtimed_over_record_range": {
+        const sourceEnd = explicitSourceOut(source);
+        recordRange = explicitRecordRange(input, target);
+        const duration = rescaleDurationExact(
+          recordRange.duration,
+          sourceEnd.timebase,
+          "The timeline range is not exactly representable on the source clock.",
+        );
+        sourceRange = {
+          start: publicTime(
+            safeBigIntNumber(
+              BigInt(sourceEnd.value) - BigInt(duration.value),
+              "backtimed source start",
+            ),
+            sourceEnd.timebase,
+          ),
+          duration,
+        };
+        placement = { placement: mode, source_end: sourceEnd, record_range: recordRange };
+        break;
+      }
+    }
+  }
+
+  validatePointSourceRange(source, sourceRange);
+  validatePointRecordRange(recordRange, trackEnd);
+  const material = buildClipMaterial(source, materialId, recordRange, sourceRange);
+  const fragmentIds = fragmentIdsForRange(target, recordRange, input.createId);
+  if (input.gesture === "three_point") {
+    return {
+      operation: {
+        operation: "three_point",
+        timeline_id: input.model.id,
+        track_id: target.id,
+        clip: material,
+        placement: placement as EditorThreePointPlacement,
+        fragment_ids: fragmentIds,
+      },
+      consequence:
+        `Three-point ${threePointModeDescription(mode)} on ${target.name}: source ` +
+        `${rangeSummary(sourceRange)}, record ${rangeSummary(recordRange)}, preserving ` +
+        `${fragmentIds.length} split identity.`,
+    };
+  }
+  return {
+    operation: {
+      operation: "four_point",
+      timeline_id: input.model.id,
+      track_id: target.id,
+      clip: material,
+      source_range: sourceRange,
+      record_range: recordRange,
+      fragment_ids: fragmentIds,
+    },
+    consequence:
+      `Four-point overwrite on ${target.name}: source ${rangeSummary(sourceRange)}, ` +
+      `record ${rangeSummary(recordRange)}, preserving ${fragmentIds.length} split identity.`,
+  };
+}
+
+function explicitRecordRange(
+  input: TimelineEditCommandInput,
+  target: TimelineCanvasTrack,
+): ExactTimeRange {
+  if (!input.rangeExplicit) {
+    throw new Error("Set explicit timeline in and out points for this edit mode.");
+  }
+  return displayRangeToRecordRange(
+    input.inPointSeconds,
+    input.outPointSeconds,
+    input.model.globalStartSeconds,
+    target.timebase,
+  );
+}
+
+function explicitSourceIn(source: TimelineEditSource): ExactTime {
+  if (source.sourceIn === null) {
+    throw new Error("Set a source in mark for this three-point mode.");
+  }
+  return publicTime(source.sourceIn.value, { ...source.sourceIn.timebase });
+}
+
+function explicitSourceOut(source: TimelineEditSource): ExactTime {
+  if (source.sourceOutExclusive === null) {
+    throw new Error("Set a source out mark for this three-point mode.");
+  }
+  return publicTime(
+    source.sourceOutExclusive.value,
+    { ...source.sourceOutExclusive.timebase },
+  );
+}
+
+function explicitSourceRange(source: TimelineEditSource): ExactTimeRange {
+  const start = explicitSourceIn(source);
+  const end = explicitSourceOut(source);
+  if (!sameRate(start.timebase, end.timebase) || end.value <= start.value) {
+    throw new Error("Source in and out marks must define one nonempty exact range.");
+  }
+  return {
+    start,
+    duration: publicDuration(end.value - start.value, start.timebase),
+  };
+}
+
+function validatePointSourceRange(
+  source: TimelineEditSource,
+  range: ExactTimeRange,
+): void {
+  validatePublicRange(range, "point edit source range");
+  validatePublicRange(source.availableRange, "retained source range");
+  if (!sameRate(range.start.timebase, source.availableRange.start.timebase)) {
+    throw new Error("The point edit source range uses a different exact clock.");
+  }
+  const start = BigInt(range.start.value);
+  const end = start + BigInt(range.duration.value);
+  const availableStart = BigInt(source.availableRange.start.value);
+  const availableEnd =
+    availableStart + BigInt(source.availableRange.duration.value);
+  if (start < availableStart || end > availableEnd) {
+    throw new Error("The derived source range exceeds the retained source bounds.");
+  }
+}
+
+function validatePointRecordRange(range: ExactTimeRange, trackEnd: ExactTime): void {
+  validatePublicRange(range, "point edit record range");
+  if (!sameRate(range.start.timebase, trackEnd.timebase)) {
+    throw new Error("The point edit record range uses a different target clock.");
+  }
+  const start = BigInt(range.start.value);
+  const end = start + BigInt(range.duration.value);
+  if (start < 0n || end > BigInt(trackEnd.value)) {
+    throw new Error("The point edit record range must remain within the exact target track end.");
+  }
+}
+
+function rescaleDurationExact(
+  duration: ExactDuration,
+  target: TimelineRate,
+  message: string,
+): ExactDuration {
+  validatePublicDuration(duration, "point edit duration");
+  validateTimebase(target, "point edit target clock");
+  const numerator =
+    BigInt(duration.value) *
+    BigInt(duration.timebase.denominator) *
+    BigInt(target.numerator);
+  const denominator =
+    BigInt(duration.timebase.numerator) * BigInt(target.denominator);
+  if (numerator % denominator !== 0n) throw new Error(message);
+  return publicDuration(
+    safeBigIntNumber(numerator / denominator, "exact point edit duration"),
+    target,
+  );
+}
+
+function durationsPhysicallyEqual(left: ExactDuration, right: ExactDuration): boolean {
+  validatePublicDuration(left, "source duration");
+  validatePublicDuration(right, "record duration");
+  return (
+    BigInt(left.value) *
+      BigInt(left.timebase.denominator) *
+      BigInt(right.timebase.numerator) ===
+    BigInt(right.value) *
+      BigInt(right.timebase.denominator) *
+      BigInt(left.timebase.numerator)
+  );
+}
+
+function threePointModeDescription(mode: TimelineThreePointMode): string {
+  switch (mode) {
+    case "source_range_at_record_start":
+      return "from source in and out at the playhead record start";
+    case "source_start_over_record_range":
+      return "from source in over the timeline in and out range";
+    case "source_range_backtimed_to_record_end":
+      return "from source in and out backtimed to the playhead record end";
+    case "source_end_backtimed_over_record_range":
+      return "from source out backtimed over the timeline in and out range";
+  }
+}
+
+function rangeSummary(range: ExactTimeRange): string {
+  return `${range.start.value} for ${range.duration.value} at ${range.start.timebase.numerator}/${range.start.timebase.denominator}`;
+}
+
 function buildClipMaterial(
   source: TimelineEditSource,
   id: string,
   recordRange: ExactTimeRange,
+  selectedSourceRange: ExactTimeRange = source.sourceRange,
 ): EditorTrackItem {
-  const sourceRange = clonePublicRange(source.sourceRange);
+  const sourceRange = clonePublicRange(selectedSourceRange);
   const rate = playbackRateFor(sourceRange.duration, recordRange.duration);
   return {
     kind: "clip",

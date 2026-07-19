@@ -100,6 +100,7 @@ import {
   type TimelineEditCommandResult,
   type TimelineEditGesture,
   type TimelineEditSource,
+  type TimelineThreePointMode,
 } from "./timeline-workspace.ts";
 
 const HEADER_WIDTH = 268;
@@ -128,10 +129,39 @@ const TIMELINE_EDIT_GESTURES: readonly TimelineEditGesture[] = [
   "overwrite",
   "append",
   "replace",
+  "three_point",
+  "four_point",
   "lift",
   "extract",
   "backspace",
 ];
+
+const TIMELINE_THREE_POINT_MODES = [
+  {
+    value: "source_range_at_record_start",
+    label: "Source range at record start",
+    detail: "Source in and out plus the playhead as record start",
+  },
+  {
+    value: "source_start_over_record_range",
+    label: "Source start over record range",
+    detail: "Source in plus the timeline in and out range",
+  },
+  {
+    value: "source_range_backtimed_to_record_end",
+    label: "Source range backtimed to record end",
+    detail: "Source in and out plus the playhead as record end",
+  },
+  {
+    value: "source_end_backtimed_over_record_range",
+    label: "Source end backtimed over record range",
+    detail: "Source out plus the timeline in and out range",
+  },
+] as const satisfies readonly {
+  readonly value: TimelineThreePointMode;
+  readonly label: string;
+  readonly detail: string;
+}[];
 
 type TimelineGesture = "playhead" | "in" | "out";
 
@@ -442,6 +472,8 @@ export function TimelineWorkspace({
   );
   const [selectedEdit, setSelectedEdit] =
     useState<TimelineEditGesture>("insert");
+  const [threePointMode, setThreePointMode] =
+    useState<TimelineThreePointMode>("source_range_at_record_start");
   const [commandPending, setCommandPending] = useState(false);
   const commandPendingRef = useRef(false);
   const [commandStatus, setCommandStatus] = useState(
@@ -519,6 +551,7 @@ export function TimelineWorkspace({
       rangeExplicit,
       source:
         sourceProjection?.status === "ready" ? sourceProjection.source : null,
+      threePointMode,
       selectedItemIds: selectedEditItemIds,
       transactionId: "superi.desktop.timeline.preview",
       createId: (kind) => {
@@ -544,6 +577,7 @@ export function TimelineWorkspace({
     selectedEditItemIds,
     sourceProjection,
     targetTrackId,
+    threePointMode,
   ]);
 
   const nextTransactionId = useCallback((kind: string) => {
@@ -581,6 +615,7 @@ export function TimelineWorkspace({
         rangeExplicit,
         source:
           sourceProjection?.status === "ready" ? sourceProjection.source : null,
+        threePointMode,
         selectedItemIds: selectedEditItemIds,
         transactionId,
         createId: randomEditorialId,
@@ -591,11 +626,11 @@ export function TimelineWorkspace({
       }
       commandPendingRef.current = true;
       setCommandPending(true);
-      setCommandStatus(`Applying ${edit} to ${plan.target}.`);
+      setCommandStatus(`Applying ${timelineEditGestureLabel(edit)} to ${plan.target}.`);
       try {
         const result = await onExecuteProjectCommand(plan.request);
         setCommandStatus(
-          `${capitalize(edit)} completed at project revision ${result.state.project_revision}. Undo is available immediately.`,
+          `${timelineEditGestureLabel(edit)} completed at project revision ${result.state.project_revision}. Undo is available immediately.`,
         );
       } catch (error: unknown) {
         setCommandStatus(timelineCommandFailure(error));
@@ -615,6 +650,7 @@ export function TimelineWorkspace({
       selectedEditItemIds,
       sourceProjection,
       targetTrackId,
+      threePointMode,
     ],
   );
 
@@ -2321,10 +2357,37 @@ export function TimelineWorkspace({
               onPointerEnter={() => setSelectedEdit(edit)}
               onClick={() => void executeEdit(edit)}
             >
-              {capitalize(edit)}
+              {timelineEditGestureLabel(edit)}
             </button>
           ))}
         </div>
+        <label
+          className="timeline-point-edit-mode"
+          data-active={selectedEdit === "three_point"}
+        >
+          <span>
+            <strong>Three-point rule</strong>
+            <small>
+              {TIMELINE_THREE_POINT_MODES.find(
+                (candidate) => candidate.value === threePointMode,
+              )?.detail}
+            </small>
+          </span>
+          <select
+            aria-label="Three-point edit rule"
+            value={threePointMode}
+            disabled={commandPending}
+            onChange={(event) =>
+              setThreePointMode(event.target.value as TimelineThreePointMode)
+            }
+          >
+            {TIMELINE_THREE_POINT_MODES.map((mode) => (
+              <option key={mode.value} value={mode.value}>
+                {mode.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <dl className="timeline-edit-state">
           <div>
             <dt>Target</dt>
@@ -2337,6 +2400,10 @@ export function TimelineWorkspace({
                 ? formatTimelineEditSource(sourceProjection.source)
                 : sourceProjection?.reason ?? "No source state"}
             </dd>
+          </div>
+          <div>
+            <dt>Source engine</dt>
+            <dd>{sourceMonitor?.engine_state ?? "empty"}</dd>
           </div>
           <div>
             <dt>Consequence</dt>
@@ -2355,8 +2422,10 @@ export function TimelineWorkspace({
           {commandStatus}
         </output>
         <p className="timeline-edit-shortcuts">
-          Backspace extracts the selected item or active range. Command or Control
-          Z reverses immediately, and Shift adds redo.
+          Three-point uses source marks with the playhead or timeline range. Four-point
+          uses source in and out plus timeline in and out. Backspace extracts the
+          selected item or active range. Command or Control Z reverses immediately,
+          and Shift adds redo.
         </p>
       </section>
       {selectedTransition ? (
@@ -2937,8 +3006,16 @@ function editGestureUsesSource(edit: TimelineEditGesture): boolean {
     edit === "insert" ||
     edit === "overwrite" ||
     edit === "append" ||
-    edit === "replace"
+    edit === "replace" ||
+    edit === "three_point" ||
+    edit === "four_point"
   );
+}
+
+function timelineEditGestureLabel(edit: TimelineEditGesture): string {
+  if (edit === "three_point") return "Three-point";
+  if (edit === "four_point") return "Four-point";
+  return capitalize(edit);
 }
 
 function randomEditorialId(
@@ -2962,10 +3039,18 @@ function formatTimelineEditSource(
   source: TimelineEditSource,
 ): string {
   const range = source.sourceRange;
+  const marks =
+    source.sourceIn && source.sourceOutExclusive
+      ? `, marks ${source.sourceIn.value} to ${source.sourceOutExclusive.value - 1}`
+      : source.sourceIn
+        ? `, source in ${source.sourceIn.value}`
+        : source.sourceOutExclusive
+          ? `, source out ${source.sourceOutExclusive.value - 1}`
+          : ", no explicit source marks";
   return (
     `${source.mediaName} (${source.streamKind}) from ${range.start.value} for ` +
     `${range.duration.value} units at ${range.start.timebase.numerator}/` +
-    `${range.start.timebase.denominator}`
+    `${range.start.timebase.denominator}${marks}`
   );
 }
 

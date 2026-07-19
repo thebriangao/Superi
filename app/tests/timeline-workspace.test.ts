@@ -805,6 +805,11 @@ test("timeline surface is integrated without a second authored mutation owner", 
   assert.match(timeline, /Option-click/);
   assert.match(timeline, /drag empty track space/);
   assert.match(timeline, /Editorial gestures/);
+  assert.match(timeline, /Three-point/);
+  assert.match(timeline, /Four-point/);
+  assert.match(timeline, /Three-point edit rule/);
+  assert.match(timeline, /Source range backtimed to record end/);
+  assert.match(timeline, /sourceMonitor\?\.engine_state/);
   assert.match(timeline, /Backspace extracts/);
   assert.match(timeline, /onExecuteProjectCommand/);
   assert.match(timeline, /model\?\.tracks\.slice\(\)\.reverse\(\)/);
@@ -820,6 +825,7 @@ test("timeline surface is integrated without a second authored mutation owner", 
   assert.match(styles, /\.timeline-snap-controls/);
   assert.match(styles, /\.timeline-snap-guide/);
   assert.match(styles, /\.timeline-snap-status/);
+  assert.match(styles, /\.timeline-point-edit-mode/);
   assert.doesNotMatch(
     timeline,
     /superi\.project\.command\.execute|superi\.slice|useSuperiApi|DesktopSuperiTransport|@tauri-apps/,
@@ -834,6 +840,16 @@ test("timeline edit commands expose exact targets, consequences, and reversible 
     mediaId: "media.a",
     mediaName: "Source A",
     streamKind: "video",
+    availableRange: {
+      start: {
+        value: 0,
+        timebase: { numerator: 48, denominator: 1 },
+      },
+      duration: {
+        value: 96,
+        timebase: { numerator: 48, denominator: 1 },
+      },
+    },
     sourceRange: {
       start: {
         value: 48,
@@ -844,6 +860,8 @@ test("timeline edit commands expose exact targets, consequences, and reversible 
         timebase: { numerator: 48, denominator: 1 },
       },
     },
+    sourceIn: null,
+    sourceOutExclusive: null,
   };
 
   function command(
@@ -946,6 +964,174 @@ test("timeline edit commands expose exact targets, consequences, and reversible 
   });
 });
 
+test("source monitor point editing derives all four three-point modes and exact four-point placement", () => {
+  const model = projectTimelineDocument(canonicalDocument(), "timeline.main");
+  const sourceClock = { numerator: 48, denominator: 1 };
+  const pointSource: TimelineEditSource = {
+    projectId: "project.test",
+    projectRevision: 9,
+    mediaId: "media.point",
+    mediaName: "Marked point source",
+    streamKind: "video",
+    availableRange: {
+      start: { value: 0, timebase: sourceClock },
+      duration: { value: 192, timebase: sourceClock },
+    },
+    sourceRange: {
+      start: { value: 48, timebase: sourceClock },
+      duration: { value: 48, timebase: sourceClock },
+    },
+    sourceIn: { value: 48, timebase: sourceClock },
+    sourceOutExclusive: { value: 96, timebase: sourceClock },
+  };
+  const modes = [
+    ["source_range_at_record_start", 0.5],
+    ["source_start_over_record_range", 0.5],
+    ["source_range_backtimed_to_record_end", 1.5],
+    ["source_end_backtimed_over_record_range", 0.5],
+  ] as const;
+
+  for (const [threePointMode, playheadSeconds] of modes) {
+    let identity = 0;
+    const result = buildTimelineEditCommand({
+      gesture: "three_point",
+      threePointMode,
+      model,
+      targetTrackId: "track.video.1",
+      playheadSeconds,
+      inPointSeconds: 0.5,
+      outPointSeconds: 1.5,
+      rangeExplicit: true,
+      source: pointSource,
+      transactionId: `point-${threePointMode}`,
+      createId: (kind) =>
+        `${kind}:${String(++identity).padStart(32, "0")}`,
+    });
+    assert.equal(result.status, "ready", threePointMode);
+    assert.equal(result.operation.operation, "three_point");
+    if (result.operation.operation !== "three_point") continue;
+    assert.equal(result.operation.placement.placement, threePointMode);
+    assert.deepEqual(result.operation.clip.source_range, {
+      start: { value: 48, timebase: sourceClock },
+      duration: { value: 48, timebase: sourceClock },
+    });
+    assert.deepEqual(result.operation.clip.record_range, {
+      start: { value: 12, timebase: { numerator: 24, denominator: 1 } },
+      duration: { value: 24, timebase: { numerator: 24, denominator: 1 } },
+    });
+    assert.equal(result.operation.fragment_ids.length, 1);
+    assert.match(result.consequence, /three-point/i);
+  }
+
+  let fourIdentity = 8;
+  const fourPoint = buildTimelineEditCommand({
+    gesture: "four_point",
+    model,
+    targetTrackId: "track.video.1",
+    playheadSeconds: 0,
+    inPointSeconds: 0.5,
+    outPointSeconds: 1.5,
+    rangeExplicit: true,
+    source: pointSource,
+    transactionId: "point-four",
+    createId: (kind) =>
+      `${kind}:${String(++fourIdentity).padStart(32, "0")}`,
+  });
+  assert.equal(fourPoint.status, "ready");
+  assert.equal(fourPoint.operation.operation, "four_point");
+  if (fourPoint.operation.operation === "four_point") {
+    assert.equal(fourPoint.operation.source_range.duration.value, 48);
+    assert.equal(fourPoint.operation.record_range.duration.value, 24);
+    assert.equal(
+      fourPoint.operation.clip.time_map.segments[0]?.rate_numerator,
+      1,
+    );
+    assert.equal(
+      fourPoint.operation.clip.time_map.segments[0]?.rate_denominator,
+      1,
+    );
+  }
+
+  const unsupportedFit = buildTimelineEditCommand({
+    gesture: "four_point",
+    model,
+    targetTrackId: "track.video.1",
+    playheadSeconds: 0,
+    inPointSeconds: 0.5,
+    outPointSeconds: 2,
+    rangeExplicit: true,
+    source: pointSource,
+    transactionId: "point-four-fit",
+    createId: (kind) => `${kind}:${"7".repeat(32)}`,
+  });
+  assert.equal(unsupportedFit.status, "disabled");
+  assert.match(unsupportedFit.reason, /fit-to-fill/i);
+
+  const missingOut = buildTimelineEditCommand({
+    gesture: "three_point",
+    model,
+    targetTrackId: "track.video.1",
+    playheadSeconds: 0.5,
+    inPointSeconds: 0.5,
+    outPointSeconds: 1.5,
+    rangeExplicit: true,
+    source: { ...pointSource, sourceOutExclusive: null },
+    transactionId: "point-missing-out",
+    createId: (kind) => `${kind}:${"8".repeat(32)}`,
+  });
+  assert.equal(missingOut.status, "disabled");
+  assert.match(missingOut.reason, /source out mark/i);
+
+  const inexact = buildTimelineEditCommand({
+    gesture: "three_point",
+    model,
+    targetTrackId: "track.video.1",
+    playheadSeconds: 0.5,
+    inPointSeconds: 0.5,
+    outPointSeconds: 1.5,
+    rangeExplicit: true,
+    source: {
+      ...pointSource,
+      sourceRange: {
+        start: { value: 48, timebase: sourceClock },
+        duration: { value: 1, timebase: sourceClock },
+      },
+      sourceOutExclusive: { value: 49, timebase: sourceClock },
+    },
+    transactionId: "point-inexact",
+    createId: (kind) => `${kind}:${"9".repeat(32)}`,
+  });
+  assert.equal(inexact.status, "disabled");
+  assert.match(inexact.reason, /exactly representable/i);
+
+  for (const threePointMode of [
+    "source_start_over_record_range",
+    "source_end_backtimed_over_record_range",
+  ] as const) {
+    const ignoresUnusedOppositeMark = buildTimelineEditCommand({
+      gesture: "three_point",
+      threePointMode,
+      model,
+      targetTrackId: "track.video.1",
+      playheadSeconds: 0,
+      inPointSeconds: 0.5,
+      outPointSeconds: 2.5,
+      rangeExplicit: true,
+      source: pointSource,
+      transactionId: `point-opposite-${threePointMode}`,
+      createId: (kind) => `${kind}:${"a".repeat(32)}`,
+    });
+    assert.equal(ignoresUnusedOppositeMark.status, "ready", threePointMode);
+    assert.equal(ignoresUnusedOppositeMark.operation.operation, "three_point");
+    if (ignoresUnusedOppositeMark.operation.operation === "three_point") {
+      assert.equal(
+        ignoresUnusedOppositeMark.operation.clip.source_range.duration.value,
+        96,
+      );
+    }
+  }
+});
+
 test("timeline edit commands reject stale source and edits outside exact track bounds", () => {
   const model = projectTimelineDocument(canonicalDocument(), "timeline.main");
   const source: TimelineEditSource = {
@@ -954,10 +1140,16 @@ test("timeline edit commands reject stale source and edits outside exact track b
     mediaId: "media.a",
     mediaName: "Stale source",
     streamKind: "video",
+    availableRange: {
+      start: { value: 0, timebase: { numerator: 24, denominator: 1 } },
+      duration: { value: 96, timebase: { numerator: 24, denominator: 1 } },
+    },
     sourceRange: {
       start: { value: 0, timebase: { numerator: 24, denominator: 1 } },
       duration: { value: 24, timebase: { numerator: 24, denominator: 1 } },
     },
+    sourceIn: null,
+    sourceOutExclusive: null,
   };
   const stale = buildTimelineEditCommand({
     gesture: "insert",
@@ -1063,6 +1255,10 @@ test("source monitor projection preserves inclusive marks and rejects stale iden
   assert.equal(projected.status, "ready");
   assert.equal(projected.source.sourceRange.start.value, 12);
   assert.equal(projected.source.sourceRange.duration.value, 24);
+  assert.equal(projected.source.availableRange.start.value, 0);
+  assert.equal(projected.source.availableRange.duration.value, 96);
+  assert.equal(projected.source.sourceIn?.value, 12);
+  assert.equal(projected.source.sourceOutExclusive?.value, 36);
   assert.deepEqual(projected.source.sourceRange.start.timebase, {
     numerator: 48,
     denominator: 1,
@@ -1091,10 +1287,16 @@ test("workspace selection overrides authored selection for replace and backspace
     mediaId: "media.a",
     mediaName: "Source A",
     streamKind: "video",
+    availableRange: {
+      start: { value: 0, timebase: { numerator: 24, denominator: 1 } },
+      duration: { value: 96, timebase: { numerator: 24, denominator: 1 } },
+    },
     sourceRange: {
       start: { value: 0, timebase: { numerator: 24, denominator: 1 } },
       duration: { value: 24, timebase: { numerator: 24, denominator: 1 } },
     },
+    sourceIn: null,
+    sourceOutExclusive: null,
   };
   const replace = buildTimelineEditCommand({
     gesture: "replace",

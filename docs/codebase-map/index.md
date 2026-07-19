@@ -38,7 +38,7 @@ against raw source before changing code.
 | `tool-superi-fixture-tool` | [module map](modules/tool-superi-fixture-tool.md) | `open/tools/superi-fixture-tool` | Offline fixture validation, generation, and typed golden verification | Implemented validation library, six generators, seven-command CLI, four golden harnesses, and focused contracts |
 | `tool-superi-test-report` | [module map](modules/tool-superi-test-report.md) | `open/tools/superi-test-report` | Offline structured platform-lane evidence generator | Implemented strict schema, deterministic findings, collision-safe CLI, and focused contracts |
 | `tool-superi-api-bindings` | [module map](modules/tool-superi-api-bindings.md) | `open/tools/superi-api-bindings` | Deterministic committed TypeScript API artifact generator and freshness checker | Implemented pure rendering, idempotent generation, nonmutating freshness checks, and focused contracts |
-| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, production React and Tauri shell, workspace configuration, fixtures, generated TypeScript artifact, retained frontend consumer, and agent workflows | Active control layer: deterministic checkpoint workflow, explicit revisioned application and headless-engine lifecycle, one durable project lifecycle with bounded recents, revision-fenced recovery, atomic project-settings inspection and editing, real media import, durable organization, metadata, annotations, identity, transparent derived-media state, offline recovery, persisted source baselines, removable-volume and changed-file state, explicit relink intent, source-bound editable transcript plus local-content artifacts, deterministic explainable native content search, one ordered atomic batch for rename, organization, generating transcode or proxy evidence, relink, and metadata, bounded on-demand thumbnail, filmstrip, WAVE waveform, and selected-media preview generation, one retained source monitor with exact seek plus fingerprint-bound in and out marks, a linked EngineControl dispatcher with one retained durable project editor session, bounded native validation, editor-state, and project-command routing, shell-local lifecycle and control-only viewport commands, injected generated `SuperiClient`, thin command and event transport, ordered replay and reconnect, cooperative cancellation, deterministic application routing, transient workspace layout, panel and command registries, immutable shared selection, one public editor-snapshot presentation and generic project-command owner, five professional workspaces, source, program, composite, and color native GPU viewers, and a strict canonical timeline canvas with all eleven track controls, exact tracks, ruler, playhead, range, scrolling, zoom, real clip visuals, topology-backed effects, exact transition timing, alignment, duration, and typed parameter controls, positioned clip-gain keys, badges, group and link aware interaction selection, range and lasso selection, roving keyboard navigation, exact target snapping, six visible session rules, seven exact source-placement gestures, ripple, roll, slip, slide, razor, trim, ripple and roll extend, ripple delete, synchronized gap insertion and closure, visible source, target, affected-object, consequence, pending, and result state, backspace, undo, redo, guides, and immediate reversal are delivered; every timing and gesture plan enters the retained native editor through one application-owned atomic action batch; one GPU submission owner presents role-addressed canonical RGBA16F results through immutable ACEScg-to-sRGB intent, while generated preview artifacts remain ephemeral and CPU-owned and source-monitor state remains separate from decode and presentation |
+| `workspace` | [module map](modules/workspace.md) | Repository files outside `open/crates/*` and `open/tools/*` | Product law, architecture, policy, production React and Tauri shell, workspace configuration, fixtures, generated TypeScript artifact, retained frontend consumer, and agent workflows | Active control layer: deterministic checkpoint workflow, explicit revisioned application and headless-engine lifecycle, one durable project lifecycle with bounded recents, revision-fenced recovery, atomic project-settings inspection and editing, real media import, durable organization, metadata, annotations, identity, transparent derived-media state, offline recovery, persisted source baselines, removable-volume and changed-file state, explicit relink intent, source-bound editable transcript plus local-content artifacts, deterministic explainable native content search, one ordered atomic batch for rename, organization, generating transcode or proxy evidence, relink, and metadata, bounded on-demand thumbnail, filmstrip, WAVE waveform, and selected-media preview generation, one retained source monitor with exact seek plus fingerprint-bound in and out marks, a linked EngineControl dispatcher with one retained durable project editor session, bounded native validation, editor-state, and project-command routing, shell-local lifecycle and control-only viewport commands, injected generated `SuperiClient`, thin command and event transport, ordered replay and reconnect, cooperative cancellation, deterministic application routing, transient workspace layout, panel and command registries, immutable shared selection, one public editor-snapshot presentation and generic project-command owner, five professional workspaces, source, program, composite, and color native GPU viewers, and a strict canonical timeline canvas with all eleven track controls, exact tracks, ruler, playhead, range, scrolling, zoom, real clip visuals, topology-backed effects, exact transition timing, alignment, duration, and typed parameter controls, positioned clip-gain keys, badges, group and link aware interaction selection, range and lasso selection, roving keyboard navigation, exact target snapping, six visible session rules, all nine exact edit gestures including four three-point placements and equal-duration four-point editing, exact advanced ripple, roll, slip, slide, razor, trim, extend, ripple-delete, synchronized gap insertion, and gap closure, visible source engine, source, target, affected-object, consequence, pending, and result state, backspace, undo, redo, guides, and immediate reversal are delivered; point edits, advanced timing batches, and transition changes enter the retained native editor only through application-owned project command callbacks; one GPU submission owner presents role-addressed canonical RGBA16F results through immutable ACEScg-to-sRGB intent, while generated preview artifacts remain ephemeral and CPU-owned and source-monitor state remains separate from decode and presentation |
 
 ## Ownership and repository boundaries
 
@@ -269,12 +269,14 @@ The production desktop lifecycle is implemented without creating a second engine
     operations. Fingerprint-bound in and out marks publish atomically with the media sidecar, while
     React exposes ready, stale, empty, seek, mark, clear, and unload state without treating source
     open as decoded-frame or native GPU presentation.
-17. The editing timeline converts the ready source monitor into one exact half-open source range,
-    chooses an explicit track plus playhead, range, or selected item target, and plans only the
-    fragment identities required by the existing timeline owner. Insert, overwrite, append,
-    replace, lift, extract, and backspace submit one generated project command with visible target
-    and consequence state. Undo and redo submit the existing history commands, and every success
-    refreshes the complete editor snapshot instead of patching React state locally.
+18. The editing timeline converts the ready source monitor's inclusive marks into exact half-open
+    operation ranges, chooses an explicit track plus playhead, timeline range, or selected item
+    target, and plans only the fragment identities required by the existing timeline owner. Insert,
+    overwrite, append, replace, lift, extract, backspace, all four three-point placements, and
+    equal-duration four-point editing submit one generated project command with visible source
+    engine, target, and consequence state. Exact clock conversion and retained bounds are required,
+    unsupported fit-to-fill is explicit, undo and redo use the existing history commands, and every
+    success refreshes the complete editor snapshot instead of patching React state locally.
 
 Media registry construction and capability introspection are implemented as follows:
 
@@ -2154,7 +2156,10 @@ The desktop source-monitor contract opens and seeks a real 48 kHz mono WAVE sour
 reopens exact fingerprint-bound marks, rejects a reversed range without publication, proves an exact
 changed-byte scan makes the retained session stale and fences another seek, unloads the retained
 source, and drives a real three-frame PNG sequence at exact 24 fps through its inclusive range and
-overrun rollback. A focused engine unit contract proves that the source-only constructor
+overrun rollback. That sequence also drives all four three-point placements and equal-duration
+four-point editing through the retained generated project route, proves undo and redo, preserves
+fresh monitor state, and reopens the final revision 8 project. A focused engine unit contract proves
+that the source-only constructor
 contains exactly the four source registrations and constructs no codec factories; frontend
 contracts keep the editing workspace projection and native source-viewer boundary explicit.
 Engine export-job contracts compose the real bounded pool, progress, control, completion, and
@@ -2874,9 +2879,9 @@ For common concerns, begin at these owners:
   `superi-audio` for exact clip-gain keys, `superi-project` for durable replacement,
   `superi-engine` for history and events, `superi-api` for generated state and command contracts,
   then `workspace` for strict projection, source and target planning, freshness-fenced media visuals,
-  exact owner-clock target projection, visible session rules and consequences, all seven
-  source-placement gestures, exact advanced timing gestures,
-  immediate reversal, and shared selection.
+  exact owner-clock target projection, visible session rules and consequences, all nine gestures,
+  all four three-point placements, equal-duration four-point editing, immediate reversal, and shared
+  selection, plus exact advanced timing gestures published as atomic action batches.
 - Shared finite-resource arbitration across decode, GPU, cache, audio, AI, and export workloads:
   `superi-engine`, followed by each lower subsystem owner for its authoritative local allocation and
   release behavior.

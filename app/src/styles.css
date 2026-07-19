@@ -1698,9 +1698,50 @@ button.timeline-snap-rule[aria-pressed="true"] {
   background: #1b3022;
 }
 
+.timeline-point-edit-mode {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.8fr);
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  border: 1px solid #303a3e;
+  border-radius: 5px;
+  color: #9aa6a4;
+  background: #141a1c;
+}
+
+.timeline-point-edit-mode[data-active="true"] {
+  border-color: #6394aa;
+  background: #17252b;
+}
+
+.timeline-point-edit-mode > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.timeline-point-edit-mode strong {
+  color: #d7dfda;
+  font-size: 10px;
+}
+
+.timeline-point-edit-mode small {
+  color: #839093;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.timeline-point-edit-mode select {
+  width: 100%;
+  min-width: 0;
+}
+
 .timeline-edit-state {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr);
+  grid-template-columns:
+    minmax(0, 1fr) minmax(0, 1.2fr) minmax(88px, 0.55fr)
+    minmax(0, 1.5fr);
   gap: 1px;
   margin: 0;
   overflow: hidden;
@@ -2816,6 +2857,10 @@ button.timeline-playhead-handle span {
   .timeline-edit-console > header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .timeline-point-edit-mode {
+    grid-template-columns: 1fr;
   }
 
   .timeline-edit-state {

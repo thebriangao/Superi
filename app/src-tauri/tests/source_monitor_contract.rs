@@ -1,6 +1,13 @@
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use superi_api::editor::{
+    EditorClipSource, EditorClipTimeMap, EditorRetimeSegment, EditorThreePointPlacement,
+    EditorTrackItem, EditorialObjectId, ExactDuration, ExactTime, ExactTimeRange, ExactTimebase,
+    ExecuteProjectCommand, ProjectAction, ProjectCommand, TimelineEditOperation,
+};
+use superi_desktop::engine::LinkedEngineProcess;
+use superi_desktop::lifecycle::ApplicationLifecycle;
 use superi_desktop::project_lifecycle::{
     DesktopMediaImportOrigin, DesktopMediaImportRequest, DesktopProjectCommand,
     DesktopProjectCreateRequest, DesktopProjectState, MediaLibrarySnapshot, MediaSourceScanRequest,
@@ -8,6 +15,10 @@ use superi_desktop::project_lifecycle::{
     SourceMonitorMarkUpdate, SourceMonitorSeekRequest, SourceMonitorTime,
     SourceMonitorUnloadRequest,
 };
+use superi_desktop::transport::{
+    DesktopTransportCommand, DesktopTransportReply, DesktopTransportState,
+};
+use superi_engine::editor as engine;
 
 fn owned_test_root(label: &str) -> PathBuf {
     let nonce = SystemTime::now()
@@ -35,6 +46,56 @@ fn create_project(state: &DesktopProjectState, root: &Path) -> PathBuf {
                 edit_rate_numerator: 24,
                 edit_rate_denominator: 1,
             },
+        })
+        .unwrap();
+    project
+}
+
+fn create_point_edit_project(state: &DesktopProjectState, root: &Path) -> PathBuf {
+    state.initialize(root.join("recovery")).unwrap();
+    let project = root.join("source-monitor-point-edit.superi");
+    let rate = engine::FrameRate::FPS_24.timebase();
+    let root_timeline = engine::TimelineId::from_raw(0x10_314);
+    let track_id = engine::TrackId::from_raw(0x20_314);
+    let gap = engine::Gap::new(
+        engine::GapId::from_raw(0x30_314),
+        "Target bed",
+        engine::TimeRange::new(
+            engine::RationalTime::zero(rate),
+            engine::Duration::new(120, rate).unwrap(),
+        )
+        .unwrap(),
+    );
+    let mut timeline = engine::Timeline::new(
+        root_timeline,
+        "Source Monitor Point Edit",
+        rate,
+        engine::RationalTime::zero(rate),
+        vec![engine::Track::new(
+            track_id,
+            "V1",
+            engine::TrackSemantics::Video(engine::VideoTrackSemantics::new(
+                engine::FrameRate::FPS_24,
+                engine::VideoCompositing::Over,
+            )),
+            vec![engine::TrackItem::Gap(gap)],
+        )],
+    );
+    timeline.set_track_targeted(track_id, true).unwrap();
+    timeline.set_track_sync_locked(track_id, false).unwrap();
+    let editorial = engine::EditorialProject::new(
+        engine::ProjectId::from_raw(0x314),
+        "Source Monitor Point Edit",
+        [],
+        [timeline],
+    )
+    .unwrap();
+    let document = engine::ProjectDocument::new(editorial, root_timeline).unwrap();
+    let mut database = engine::ProjectDatabase::create(&project).unwrap();
+    database.replace(&document.snapshot()).unwrap();
+    state
+        .execute(DesktopProjectCommand::Open {
+            path: project.to_string_lossy().into_owned(),
         })
         .unwrap();
     project
@@ -90,6 +151,106 @@ fn write_png(path: &Path, red: u8) {
     image
         .save_with_format(path, image::ImageFormat::Png)
         .unwrap();
+}
+
+fn exact_time(value: i64) -> ExactTime {
+    ExactTime {
+        value,
+        timebase: ExactTimebase {
+            numerator: 24,
+            denominator: 1,
+        },
+    }
+}
+
+fn exact_duration(value: u64) -> ExactDuration {
+    ExactDuration {
+        value,
+        timebase: ExactTimebase {
+            numerator: 24,
+            denominator: 1,
+        },
+    }
+}
+
+fn exact_range(start: i64, duration: u64) -> ExactTimeRange {
+    ExactTimeRange {
+        start: exact_time(start),
+        duration: exact_duration(duration),
+    }
+}
+
+fn point_edit_clip(
+    id: &str,
+    media_id: &str,
+    source_range: ExactTimeRange,
+    record_range: ExactTimeRange,
+) -> EditorTrackItem {
+    EditorTrackItem::Clip {
+        id: id.to_owned(),
+        name: "Source monitor point edit".to_owned(),
+        source: EditorClipSource::Media {
+            media_id: media_id.to_owned(),
+        },
+        source_range,
+        record_range,
+        time_map: EditorClipTimeMap {
+            record_duration: record_range.duration,
+            source_timebase: source_range.start.timebase,
+            segments: vec![EditorRetimeSegment {
+                record_range: exact_range(0, record_range.duration.value),
+                source_start: source_range.start,
+                rate_numerator: 1,
+                rate_denominator: 1,
+            }],
+        },
+    }
+}
+
+fn point_edit_command(
+    transaction_id: &str,
+    revision: u64,
+    operation: TimelineEditOperation,
+) -> ExecuteProjectCommand {
+    ExecuteProjectCommand::new(
+        transaction_id,
+        revision,
+        ProjectCommand::Apply {
+            actions: vec![ProjectAction::EditTimeline {
+                operations: vec![operation],
+            }],
+        },
+    )
+}
+
+fn execute_generated_project_command(
+    transport: &DesktopTransportState,
+    engine: &LinkedEngineProcess,
+    projects: &DesktopProjectState,
+    generation: u64,
+    request_id: &str,
+    command: ExecuteProjectCommand,
+) -> serde_json::Value {
+    let outcome = transport
+        .dispatch_blocking(
+            &engine.connection(),
+            projects,
+            DesktopTransportCommand::Request {
+                generation,
+                request_id: request_id.to_owned(),
+                method: "superi.project.command.execute".to_owned(),
+                request: serde_json::to_value(command).unwrap(),
+            },
+        )
+        .unwrap();
+    let DesktopTransportReply::Response { response, .. } = outcome.reply() else {
+        panic!("point edit returned an unexpected desktop response");
+    };
+    let event = outcome
+        .event()
+        .expect("point edit must publish one project replacement event");
+    assert_eq!(event.event(), "superi.project.state.changed");
+    response.clone()
 }
 
 #[test]
@@ -364,5 +525,235 @@ fn image_sequence_source_uses_the_exact_project_range_and_rejects_overrun() {
         end.monitor_revision()
     );
 
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn source_monitor_point_edits_use_the_retained_generated_project_route_and_persist() {
+    let root = owned_test_root("point-edit");
+    std::fs::create_dir_all(&root).unwrap();
+    let paths = (1..=3)
+        .map(|frame| root.join(format!("edit_{frame:04}.png")))
+        .collect::<Vec<_>>();
+    for (index, path) in paths.iter().enumerate() {
+        write_png(path, u8::try_from(index * 70).unwrap());
+    }
+
+    let projects = DesktopProjectState::default();
+    let project = create_point_edit_project(&projects, &root);
+    let imported = projects
+        .import_media(import_request(0, paths))
+        .expect("source media should import into the point-edit project");
+    let media = &imported.imported()[0];
+    let library = projects.media_library().unwrap();
+    let (project_revision, library_revision) = library_fences(&library);
+    assert_eq!(project_revision, 1);
+    let loaded = projects
+        .source_monitor_load(SourceMonitorLoadRequest {
+            expected_project_revision: project_revision,
+            expected_library_revision: library_revision,
+            media_id: media.media_id().to_owned(),
+            expected_source_fingerprint: media.content_fingerprint().to_owned(),
+        })
+        .unwrap();
+    let marked_in = projects
+        .source_monitor_update_marks(SourceMonitorMarkUpdate {
+            expected_project_revision: project_revision,
+            expected_library_revision: library_revision,
+            expected_monitor_revision: loaded.monitor_revision(),
+            mutation: SourceMonitorMarkMutation::SetIn,
+        })
+        .unwrap();
+    let (_, library_revision) = library_fences(marked_in.media_library());
+    let seeked = projects
+        .source_monitor_seek(SourceMonitorSeekRequest {
+            expected_project_revision: project_revision,
+            expected_library_revision: library_revision,
+            expected_monitor_revision: marked_in.monitor().monitor_revision(),
+            target: SourceMonitorTime {
+                value: 2,
+                timebase_numerator: 24,
+                timebase_denominator: 1,
+            },
+        })
+        .unwrap();
+    let marked_out = projects
+        .source_monitor_update_marks(SourceMonitorMarkUpdate {
+            expected_project_revision: project_revision,
+            expected_library_revision: library_revision,
+            expected_monitor_revision: seeked.monitor_revision(),
+            mutation: SourceMonitorMarkMutation::SetOut,
+        })
+        .unwrap();
+    assert_eq!(marked_out.monitor().marks().in_mark.unwrap().value, 1);
+    assert_eq!(marked_out.monitor().marks().out_mark.unwrap().value, 2);
+
+    let lifecycle = ApplicationLifecycle::new().unwrap();
+    let engine_process = LinkedEngineProcess::launch(lifecycle.clone()).unwrap();
+    let transport = DesktopTransportState::new();
+    let DesktopTransportReply::Connected { generation, .. } = transport
+        .dispatch_control(DesktopTransportCommand::Connect { after_sequence: 0 })
+        .unwrap()
+    else {
+        panic!("point edit transport returned an unexpected connection reply");
+    };
+
+    let source_range = exact_range(1, 2);
+    let record_range = exact_range(10, 2);
+    let first = TimelineEditOperation::ThreePoint {
+        timeline_id: "timeline:00000000000000000000000000010314".to_owned(),
+        track_id: "track:00000000000000000000000000020314".to_owned(),
+        clip: point_edit_clip(
+            "clip:00000000000000000000000000040314",
+            media.media_id(),
+            source_range,
+            record_range,
+        ),
+        placement: EditorThreePointPlacement::SourceRangeAtRecordStart {
+            source_range,
+            record_start: record_range.start,
+        },
+        fragment_ids: vec![EditorialObjectId::Gap {
+            id: "gap:00000000000000000000000000050314".to_owned(),
+        }],
+    };
+    let applied = execute_generated_project_command(
+        &transport,
+        &engine_process,
+        &projects,
+        generation,
+        "point-three-source-range",
+        point_edit_command("point-three-source-range", 1, first),
+    );
+    assert_eq!(applied["state"]["project_revision"], 2);
+    assert_eq!(applied["state"]["undo_depth"], 1);
+
+    let undone = execute_generated_project_command(
+        &transport,
+        &engine_process,
+        &projects,
+        generation,
+        "point-undo",
+        ExecuteProjectCommand::new("point-undo", 2, ProjectCommand::Undo {}),
+    );
+    assert_eq!(undone["state"]["project_revision"], 3);
+    assert_eq!(undone["state"]["redo_depth"], 1);
+    let redone = execute_generated_project_command(
+        &transport,
+        &engine_process,
+        &projects,
+        generation,
+        "point-redo",
+        ExecuteProjectCommand::new("point-redo", 3, ProjectCommand::Redo {}),
+    );
+    assert_eq!(redone["state"]["project_revision"], 4);
+
+    let remaining_modes = [
+        (
+            "point-three-source-start",
+            "clip:00000000000000000000000000060314",
+            "gap:00000000000000000000000000070314",
+            exact_range(30, 2),
+            EditorThreePointPlacement::SourceStartOverRecordRange {
+                source_start: source_range.start,
+                record_range: exact_range(30, 2),
+            },
+        ),
+        (
+            "point-three-record-end",
+            "clip:00000000000000000000000000080314",
+            "gap:00000000000000000000000000090314",
+            exact_range(40, 2),
+            EditorThreePointPlacement::SourceRangeBacktimedToRecordEnd {
+                source_range,
+                record_end: exact_time(42),
+            },
+        ),
+        (
+            "point-three-source-end",
+            "clip:000000000000000000000000000a0314",
+            "gap:000000000000000000000000000b0314",
+            exact_range(50, 2),
+            EditorThreePointPlacement::SourceEndBacktimedOverRecordRange {
+                source_end: exact_time(3),
+                record_range: exact_range(50, 2),
+            },
+        ),
+    ];
+    for (offset, (transaction, clip_id, fragment_id, record_range, placement)) in
+        remaining_modes.into_iter().enumerate()
+    {
+        let expected_revision = 4 + u64::try_from(offset).unwrap();
+        let operation = TimelineEditOperation::ThreePoint {
+            timeline_id: "timeline:00000000000000000000000000010314".to_owned(),
+            track_id: "track:00000000000000000000000000020314".to_owned(),
+            clip: point_edit_clip(clip_id, media.media_id(), source_range, record_range),
+            placement,
+            fragment_ids: vec![EditorialObjectId::Gap {
+                id: fragment_id.to_owned(),
+            }],
+        };
+        let result = execute_generated_project_command(
+            &transport,
+            &engine_process,
+            &projects,
+            generation,
+            transaction,
+            point_edit_command(transaction, expected_revision, operation),
+        );
+        assert_eq!(result["state"]["project_revision"], expected_revision + 1);
+    }
+
+    let four_range = exact_range(60, 2);
+    let four_point = TimelineEditOperation::FourPoint {
+        timeline_id: "timeline:00000000000000000000000000010314".to_owned(),
+        track_id: "track:00000000000000000000000000020314".to_owned(),
+        clip: point_edit_clip(
+            "clip:000000000000000000000000000c0314",
+            media.media_id(),
+            source_range,
+            four_range,
+        ),
+        source_range,
+        record_range: four_range,
+        fragment_ids: vec![EditorialObjectId::Gap {
+            id: "gap:000000000000000000000000000d0314".to_owned(),
+        }],
+    };
+    let four = execute_generated_project_command(
+        &transport,
+        &engine_process,
+        &projects,
+        generation,
+        "point-four",
+        point_edit_command("point-four", 7, four_point),
+    );
+    assert_eq!(four["state"]["project_revision"], 8);
+    let monitor = projects.source_monitor_snapshot().unwrap();
+    assert_eq!(monitor.engine_state(), SourceMonitorEngineState::Ready);
+    assert_eq!(
+        serde_json::to_value(&monitor).unwrap()["project_revision"],
+        8
+    );
+    assert!(monitor.marks_fresh());
+
+    lifecycle.request_shutdown().unwrap();
+    engine_process.join().unwrap();
+    drop(projects);
+    let reopened = engine::ProjectDatabase::open_read_only(&project)
+        .unwrap()
+        .load()
+        .unwrap();
+    assert_eq!(reopened.snapshot().revision(), 8);
+    let timeline = reopened
+        .editorial_project()
+        .timeline(engine::TimelineId::from_raw(0x10_314))
+        .unwrap();
+    assert!(timeline
+        .track(engine::TrackId::from_raw(0x20_314))
+        .unwrap()
+        .items()
+        .iter()
+        .any(|item| item.id().to_string() == "clip:000000000000000000000000000c0314"));
     let _ = std::fs::remove_dir_all(root);
 }

@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 9e502fad6e2f3b7bc5d42e98c05c2408fa6ef24c4f2cbcb22156963edbd6c538
+source_hash: abbec1460a60f7531c404a23545af1ddfc391fe268bd705af04576ff87de78fb
 source_files: 257
 mapped_at_commit: working-tree
 ---
@@ -538,10 +538,13 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   timeline state. Pure selection helpers add reversible timeline-object identity, topmost-first
   order, canonical fixed-point group and enabled-link expansion, direct selection, contiguous
   ranges, same-track and nearest-temporal cross-track navigation, and normalized lasso intersection.
-  Its pure edit planner validates source-monitor identity, freshness, stream kind,
-  inclusive source marks, exact target clocks, selection, legal bounds, and minimum fragment IDs,
-  then builds existing generated insert, overwrite, append, replace, lift, extract, backspace,
-  undo, and redo project requests with a visible consequence description.
+  Its pure edit planner validates source-monitor identity, freshness, stream kind, retained bounds,
+  inclusive source marks, exact source and target clocks, selection, legal bounds, and minimum
+  fragment IDs. It builds generated insert, overwrite, append, replace, lift, extract, backspace,
+  undo, and redo project requests plus all four exact three-point placements and equal-duration
+  four-point edits with a visible consequence description. It rejects missing marks, inexact clock
+  conversion, out-of-bounds derivation, and unsupported fit-to-fill before submitting a project
+  command.
 - `app/src/timeline-editing.ts`: Compiles ripple, roll, slip, slide, razor, trim, ripple or roll
   extend, ripple delete, synchronized gap insertion, and gap closure from the frozen canonical
   canvas model into existing public `TimelineEditOperation` batches. It preserves exact rational
@@ -569,13 +572,13 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   consequence status, a visible target guide, and Escape or pointer-cancel restoration without
   taking authored mutation ownership. It adds four-kind creation, inline naming, bounded height,
   order, target, lock, sync lock, audio mute and solo, enable, guarded delete, pending and failure
-  state, and honest unavailable state. It also exposes explicit per-track edit targeting, insert,
-  overwrite, append, replace, lift, extract, Backspace extraction, and immediate undo and redo with
-  exact source, target, consequence, pending, and failure state through the application command
-  callback. Ripple, roll, slip, slide, razor, trim, ripple or roll extend, ripple delete, gap insert,
-  and gap closure use the exact compiler, snap-aware pointer drafts, one-frame nudges, visible
-  affected-object previews, and one shared pending exclusion before publishing the entire operation
-  batch through the injected application action executor. It
+  state, and honest unavailable state. It also exposes explicit per-track edit targeting, all nine
+  editorial gestures, a discoverable four-mode three-point rule, exact source engine, source,
+  target, consequence, pending, and failure state, Backspace extraction, and immediate undo and redo
+  through the application command callback. Ripple, roll, slip, slide, razor, trim, ripple or roll
+  extend, ripple delete, gap insert, and gap closure use the exact compiler, snap-aware pointer
+  drafts, one-frame nudges, visible affected-object previews, and one shared pending exclusion before
+  publishing the entire operation batch through the injected application action executor. It
   progressively reads one revision-matched media library,
   deduplicates sources, generates previews sequentially, and accepts only matching media and
   freshness identities before displaying filmstrips, thumbnails, or waveforms.
@@ -686,10 +689,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   eleven durable track gestures, visible consequence and reversal wiring, selection identity round
   trips, fixed-point related and direct selection, display-order ranges, directional neighbors,
   lasso geometry, real React integration, multiselect accessibility, shared selection wiring,
-  transient navigation controls, all seven source-placement edit requests, minimal fragments, exact
-  inclusive source-mark conversion, selection override, replace conformance, history requests,
-  visible consequences, failure fences, exact transition offsets, production transition-inspector
-  wiring, and the absence of a second frontend authored mutation owner.
+  transient navigation controls, all nine generated edit requests, minimal fragments, exact
+  inclusive source-mark conversion, all four three-point placements, equal-duration four-point
+  execution, explicit fit-to-fill rejection, selection override, replace conformance, history
+  requests, visible consequences, failure fences, exact transition offsets, production
+  transition-inspector wiring, and the absence of a second frontend authored mutation owner.
 - `app/tests/timeline-editing.test.ts`: Verifies the complete timing-tool catalog, exact 24 fps,
   24000/1001, 48 kHz, and inexact 44.1 kHz behavior, typed fragment and gap identities, canonical
   sync-track ordering, direct and ripple extend modes, ripple-delete and gap batches, lower-matched
@@ -895,8 +899,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/tests/source_monitor_contract.rs`: Opens one real mono 48 kHz WAVE through the
   engine source registry, proves retained exact seek, atomic and durable fingerprint-bound marks,
   reversed-mark rollback, and unload. It also opens a real three-frame PNG sequence, proves the
-  exact imported 24 fps inclusive range and overrun rollback, and freezes Tauri registration,
-  bridge coverage, workspace purity, and honest no-presentation wording.
+  exact imported 24 fps inclusive range and overrun rollback, and sends all four three-point
+  placements plus equal-duration four-point editing through the retained generated project route.
+  The contract proves undo, redo, revision 8 persistence, source-monitor freshness, Tauri
+  registration, bridge coverage, workspace purity, and honest no-presentation wording.
 - `app/src-tauri/tests/project_settings_contract.rs`: Proves default inspection, complete atomic
   settings update, lifecycle revision coherence, durable reopen, and stale-revision rejection
   through the real local project host.
@@ -1716,6 +1722,12 @@ of open runtime behavior.
 - Authored project changes use one typed engine command-history surface. Retained before and after
   snapshots are bounded session state, the selected project snapshot is the only durable state, and
   domain crates do not own competing undo stacks.
+- Desktop point editing converts the source monitor's inclusive out mark to an exclusive edit
+  boundary exactly once, derives missing source or record boundaries only when rational clocks are
+  exactly representable, and stays within retained source and target track bounds. Four-point edits
+  require physically equal source and record durations until timeline-owned fit-to-fill retiming is
+  available. Every successful operation uses the retained generated project-command route and the
+  single engine history owner.
 - Project extension records use open namespaced kinds, bounded strict metadata, and exact opaque
   payload bytes. Capability grants remain a user-controlled subset, lifecycle and structured
   failure state remain durable and scriptable, unknown kinds survive unchanged, and engine runtime
@@ -1827,11 +1839,12 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   durable track gestures, reversible shared selection identities, canonical fixed-point group and
   link expansion, direct and range selection, directional neighbors, lasso geometry, multiselect
   semantics, roving focus, keyboard coverage, live status, exact target snapping, transient
-  navigation controls, all seven exact generated edit requests, source freshness and
-  half-open conversion, minimum fragment identities, shared target selection, replace conformance,
-  immediate history requests, visible consequences, and the exclusion of any frontend authored
-  mutation owner. It also freezes exact transition offset retention and production inspector
-  wiring without introducing a second command path.
+  navigation controls, all nine exact generated edit requests, source freshness and half-open
+  conversion, all four three-point placement modes, equal-duration four-point editing, fit-to-fill
+  rejection, exact cross-clock derivation, minimum fragment identities, shared target selection,
+  replace conformance, immediate history requests, visible consequences, and the exclusion of any
+  frontend authored mutation owner. It also freezes exact transition offset retention and
+  production inspector wiring without introducing a second command path.
 
 - The focused timing-tool proof freezes all seven direct tools plus ripple delete and gap work,
   exact mixed-clock conversion, synchronized track ordering, typed allocation, immutable affected
@@ -1901,7 +1914,10 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   decode and native presentation. One real WAVE proves content probe and open, retained 48 kHz exact
   seek, atomic fingerprint-bound marks, reversed-mark rollback, scanner-driven changed-byte stale
   state, operation fencing, sidecar reopen, and unload. A real three-frame PNG sequence proves its
-  imported 24 fps inclusive range and overrun rollback. The
+  imported 24 fps inclusive range and overrun rollback. The same real sequence drives all four
+  three-point placements and an equal-duration four-point edit through the retained generated
+  project route, proves undo and redo, preserves fresh source-monitor state, and reopens the final
+  revision 8 SQLite project. The
   focused engine unit proof requires the four stable source backends without codec runtime
   initialization, while media import, identity, preview, viewer, TypeScript, frontend, and Tauri
   gates protect adjacent consumers.
@@ -2193,8 +2209,11 @@ application selection, follows canonical groups and enabled links to a fixed poi
 Option direct-object intent, and supports click, toggle, contiguous range, mounted-rectangle lasso,
 and roving keyboard selection with visible focus and live status. Those controls retain only
 transient viewing and interaction intent. The same timeline exposes exact track targeting,
-source-monitor range state, insert, overwrite, append, replace, lift, extract, backspace, undo,
-redo, visible consequences, pending results, and actionable failures. Canonical authored selection
+source-monitor range and engine state, insert, overwrite, append, replace, all four three-point
+placements, equal-duration four-point editing, lift, extract, backspace, undo, redo, visible
+consequences, pending results, and actionable failures. Inclusive source out marks become half-open
+operation bounds, cross-clock derivation must be exact, and unsupported fit-to-fill is reported
+before submission. Canonical authored selection
 and shared application selection remain distinct until an explicit replace or backspace uses the
 shared target. All authored changes still pass through the existing generated command, engine
 history, timeline operation, and durable project owners.
@@ -2237,7 +2256,9 @@ The editing workspace now also retains one
 source-monitor session with explicit empty, ready, or stale engine state, source-only container
 loading, exact rational seek, and reversible fingerprint-bound in and out marks. Its native GPU
 source viewport remains the independent presentation owner; the monitor does not decode or present
-frames.
+frames. The timeline consumes that state without adding a second editor session and sends every
+point edit through the existing generated project command, engine history, and durable replacement
+flow.
 Fresh Cargo metadata expands the member globs to 25
 packages: 19 crates under
 `open/crates/` plus the `superi-fixture-tool`, `superi-dependency-check`,
