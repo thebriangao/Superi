@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: d1786ceb550116575a0c6c23d76ff6c7cdd6cb0b634a62f0d7c18027882ae3b7
-source_files: 258
+source_hash: f9fb81ad06bcca4849b3b476ad71a08db9dbdd88bef304c0df5611743f25c923
+source_files: 261
 mapped_at_commit: working-tree
 ---
 
@@ -570,6 +570,16 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   canonical floating-point bit values, and editable scalar, Boolean, and choice intent. It builds
   strict `set_transition` and `set_parameter` project actions while keeping malformed optional
   graph detail separate from proven canonical timing.
+- `app/src/timeline-retime.ts`: Owns presentation-only exact retime drafts and command planning over
+  one canonical clip. It classifies identity, speed, reverse, freeze, and multi-segment maps; uses
+  BigInt to reduce rational rates and derive exact source seams; splits and removes record-curve
+  boundaries predictably; rejects no-ops, unsafe wire integers, duration mismatches, and inexact
+  clocks; and emits only the generated public `retime` project command.
+- `app/src/timeline-retime-editor.tsx`: Renders one exact selected clip and track target, authored
+  and proposed timing state, source anchor, rational segment controls, playhead point insertion,
+  point removal, an accessible record-to-source curve, visible consequences, draft reset, apply,
+  and immediate history undo. It owns only reversible local draft state and receives transaction,
+  pending, command, and history behavior from `TimelineWorkspace`.
 - `app/src/timeline-workspace.tsx`: Renders the editing timeline with sticky track headers and ruler,
   exact record-positioned items, transient playhead and in and out range, native scrolling,
   pointer-anchored zoom, topmost-first track presentation, bounded visible-item overscan, fit
@@ -584,7 +594,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   through the application command callback. Ripple, roll, slip, slide, razor, trim, ripple or roll
   extend, ripple delete, gap insert, and gap closure use the exact compiler, snap-aware pointer
   drafts, one-frame nudges, visible affected-object previews, and one shared pending exclusion before
-  publishing the entire operation batch through the injected application action executor. It also
+  publishing the entire operation batch through the injected application action executor. Exact
+  speed, reverse, freeze, and time-remap authoring use that same application-owned command and
+  history path. It also
   provides a dedicated marker panel with complete marker listing,
   exact previous and next navigation, timeline-owned create at playhead, range, label, flag, and note
   editing, removal, pending and error state, and revision-fenced typed inverse reversal. It
@@ -668,7 +680,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and empty source-monitor
   controls with exact state details and responsive action groups. The timeline edit console adds
   compact source-placement and exact timing-tool controls, history, target, consequence, affected
-  object, shortcut, pending, and result states.
+  object, shortcut, pending, and result states. The retime
+  panel adds responsive exact-target fields, rational segment inputs, curve state, validation,
+  consequences, and apply, reset, and undo actions.
 - `app/src/transport.ts`: Implements the concrete generated `SuperiTransport` through one injected
   or Tauri-backed invoke/listen host, generation-scoped request identities, ordered event replay,
   stale and duplicate rejection, reconnect, cooperative cancellation, and exact
@@ -720,6 +734,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   limits, duration and alignment derivation, strict no-op and unsafe input rejection, canonical
   scalar-bit decoding, downstream graph traversal, host and driver restrictions, immutable output,
   exact public timing and graph command payloads, and timing survival under malformed graph detail.
+- `app/tests/timeline-retime.test.ts`: Verifies exact mode drafts, continuous BigInt seam derivation,
+  curve point insertion and removal, generated target, revision, operation, and request shape,
+  visible source traversal, no-op suppression, unsafe integer, wrong-duration, and inexact-clock
+  failures, plus production mounting, accessibility, shared pending and history ownership, styling,
+  and exclusion of direct Tauri mutation.
 - `app/tests/api-bindings.test.mjs`: Verifies the canonical generated re-export, complete typed map
   boundary, concrete provider/bootstrap injection, and real request/subscription forwarding without
   duplicating generated client policy.
@@ -938,7 +957,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   typecheck, build, and test commands, and exact TypeScript and Vite development dependencies.
 - `ci/frontend-smoke/src/api-contract.ts`: Imports the committed generated API artifact, constructs
   an exact typed project command, command-log query, unavailable AI state, and API version
-  negotiation request through current catalog release `1.5.0`, consumes command-log and negotiation
+  negotiation request through current catalog release `1.6.0`, consumes command-log and negotiation
   responses plus the extension query,
   lifecycle, event, resource, stable public control reference, typed maps, and transport-neutral
   client constructor used by the browser build.
@@ -981,7 +1000,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   control, query, event, and resource declarations, generic project import-media request and result
   evidence, and a transport-neutral typed client without owning runtime IPC. The committed artifact
   is freshly regenerated from the canonical schema `1.4.0` project surface and includes strict
-  track and marker mutation, evidence, metadata, track-output graph DTOs, and the additive exact
+  track and marker mutation, exact retime map and evidence, metadata, track-output graph DTOs, and
+  the additive exact
   `set_transition` timeline operation.
 - `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 25 local
   workspace packages, registry dependencies, target-support dependency trees, scenario digest
@@ -1652,6 +1672,11 @@ Selected transitions retain their exact canonical handle pair, derive adjacent-m
 deterministic alignment, and join the root graph to inspect downstream processing intent. Timing
 submits one public `set_transition` action and scalar, Boolean, or choice values submit typed graph
 mutations through `ApplicationProvider`; the canvas owns only transient form and pending state.
+When exactly one source-bearing clip is directly selected, the retime planner projects its current
+canonical map into exact decimal draft fields. Mode changes, playhead curve points, and segment edits
+remain local until BigInt validation derives a gapless exact map and one generated public project
+command. The existing application command owner then supplies the revision fence, pending state,
+history unit, durable refresh, undo, and redo; React never patches canonical clip timing locally.
 
 Beside the engine lifecycle, Tauri manages one serialized `DesktopProjectLifecycle` initialized
 with the application recovery root. Its concrete backend calls only `LocalProjectHost` creation,
@@ -1880,6 +1905,12 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   explicit graph-unavailable fallback. The editor-workspace contract proves the generated command
   remains owned by `ApplicationProvider`, while TypeScript, the complete frontend suite, and the
   production build exercise the real inspector consumer.
+- The focused timeline-retime proof freezes identity, speed, reverse, freeze, and multi-segment
+  draft behavior, exact rational reduction and cross-clock source seams, deterministic curve point
+  insertion and removal, exact clip and track command targets, visible record and source
+  consequences, no-op and unsafe-value suppression, duration and clock failures, real workspace
+  mounting, accessible controls, shared pending state, generated command routing, Escape reset, and
+  immediate use of the existing history undo owner.
 
 - The focused media metadata proof freezes the C005 native, typed bridge, and React consumer
   contract. Native behavior tests cover identity and bin preservation, persistent generic metadata,
@@ -2236,6 +2267,10 @@ before submission. Canonical authored selection
 and shared application selection remain distinct until an explicit replace or backspace uses the
 shared target. All authored changes still pass through the existing generated command, engine
 history, timeline operation, and durable project owners.
+One directly selected clip also exposes exact speed, reverse, freeze, and multi-segment time-map
+controls with an inspectable curve, source traversal, target, and consequence. Applying a retime
+uses the same generated command and history path, while reset, undo, and redo preserve the existing
+application ownership boundary.
 No view takes engine or transport ownership, and unavailable runtime behavior remains honest.
 The System panel also consumes one Tauri-owned project lifecycle that durably creates, validates,
 saves, rebinds through save-as, closes, reopens recent paths, and restores opaque recovery
@@ -2290,7 +2325,7 @@ Its `superi-api` package record now includes one test-only concurrency edge for 
 introspection ownership contract without changing the production runtime graph.
 The API now owns a nonserializable host permission context, typed lexical filesystem and plugin
 scopes, explicit destructive operations, deny precedence, payload-derived requirements, and schema
-`1.5.0` discovery metadata. It also projects one bounded engine-owned extension registry through
+`1.6.0` discovery metadata. It also projects one bounded engine-owned extension registry through
 strict exact identity, lifecycle, capability, feature, safe failure, stable control, query, event,
 and replacement resource contracts. Its bounded `superi-json` runtime uses already resolved JSON and
 packages, adds the typed command-log query step, and preserves the same nested authorization and
@@ -2517,8 +2552,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`33ff1f7b542a9412ecb90fd70a97855ec31c718e` when this checkpoint began. Its hash describes the exact
-254 discovered source files, including generated binary payloads, layered on the integrated
+`770faf37cf9e2dd08630736c9b707a20debb676b` when this checkpoint began. Its hash describes the exact
+261 discovered source files, including generated binary payloads, layered on the integrated
 revision.
 
 ## Maintenance notes
@@ -2587,3 +2622,8 @@ Handle inputs must retain exact decimal strings until safe public conversion, al
 preserve total duration, opposite-edge transitions must reduce available capacity, and driven,
 host-owned, or unsupported parameters must remain noneditable. The React inspector may retain only
 transient form state and must submit through the application-owned generic project command callback.
+Keep retime drafts presentation-only and exact. Require one direct clip target, canonical decimal
+input, positive record durations and denominators, reduced signed rates, safe wire integers,
+complete record coverage, and exact source seams before producing the generated retime operation.
+Curve controls must state their target and consequence, while apply, undo, redo, and durable refresh
+remain with the existing command owner.

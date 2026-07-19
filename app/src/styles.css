@@ -2022,6 +2022,183 @@ button.timeline-snap-rule[aria-pressed="true"] {
   text-transform: uppercase;
 }
 
+.timeline-retime-editor {
+  display: grid;
+  gap: 9px;
+  padding: 11px 12px 12px;
+  border-bottom: 1px solid #2b3438;
+  background: #0f1517;
+}
+
+.timeline-retime-editor > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.timeline-retime-editor h5,
+.timeline-retime-editor .section-kicker {
+  margin: 0;
+}
+
+.timeline-retime-editor h5 {
+  margin-top: 3px;
+  color: #d7dfda;
+  font-size: 12px;
+}
+
+.timeline-retime-editor > header > span {
+  padding: 4px 7px;
+  border: 1px solid #485257;
+  border-radius: 999px;
+  color: #aab4b2;
+  font-size: 9px;
+}
+
+.timeline-retime-editor[data-ready="true"] > header > span {
+  border-color: #5f8e6e;
+  color: #d2ead8;
+  background: #18271d;
+}
+
+.timeline-retime-editor-disabled > p {
+  margin: 0;
+  color: #8f999b;
+  font-size: 10px;
+}
+
+.timeline-retime-target,
+.timeline-retime-consequence {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #2d363a;
+  border-radius: 5px;
+  background: #2d363a;
+}
+
+.timeline-retime-target > div,
+.timeline-retime-consequence > div {
+  min-width: 0;
+  padding: 7px 9px;
+  background: #12191b;
+}
+
+.timeline-retime-target dt,
+.timeline-retime-consequence dt {
+  color: #7f8b8e;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.timeline-retime-target dd,
+.timeline-retime-consequence dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  color: #c6cfca;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.timeline-retime-consequence {
+  grid-template-columns: minmax(150px, 0.55fr) minmax(0, 1.45fr);
+}
+
+.timeline-retime-modes,
+.timeline-retime-actions,
+.timeline-retime-segment-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.timeline-retime-modes button[aria-pressed="true"] {
+  border-color: #6697ad;
+  color: #daf0f8;
+  background: #1a3039;
+}
+
+.timeline-retime-anchor {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 220px) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: #aab4b1;
+  font-size: 10px;
+}
+
+.timeline-retime-anchor input,
+.timeline-retime-segment input {
+  width: 100%;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+}
+
+.timeline-retime-anchor small {
+  color: #748083;
+  font-size: 9px;
+}
+
+.timeline-retime-curve-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(250px, 0.65fr);
+  gap: 9px;
+}
+
+.timeline-retime-segments,
+.timeline-retime-curve {
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid #2c3539;
+  border-radius: 6px;
+  background: #121719;
+}
+
+.timeline-retime-segment-heading {
+  justify-content: space-between;
+  margin-bottom: 7px;
+  color: #aeb8b5;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.timeline-retime-segment {
+  display: grid;
+  grid-template-columns: minmax(72px, 0.55fr) repeat(3, minmax(84px, 1fr));
+  align-items: end;
+  gap: 7px;
+  padding: 8px 0;
+  border-top: 1px solid #252d30;
+}
+
+.timeline-retime-segment:first-of-type {
+  border-top: 0;
+}
+
+.timeline-retime-segment > strong {
+  align-self: center;
+  color: #c9d1cd;
+  font-size: 10px;
+}
+
+.timeline-retime-segment label {
+  display: grid;
+  gap: 4px;
+  color: #7f8b8e;
+  font-size: 8px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
 .timeline-transition-timing {
   display: grid;
   grid-template-columns: repeat(3, minmax(112px, 1fr)) auto auto;
@@ -2160,6 +2337,81 @@ label.timeline-transition-parameter {
 
 .timeline-transition-parameter[data-editable="false"] {
   opacity: 0.68;
+}
+
+.timeline-retime-remove-point {
+  grid-column: 1 / -1;
+  justify-self: start;
+  min-height: 24px;
+  padding: 0 7px;
+  font-size: 9px;
+}
+
+.timeline-retime-curve {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  margin: 0;
+}
+
+.timeline-retime-curve figcaption {
+  color: #aeb8b5;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.timeline-retime-curve svg {
+  width: 100%;
+  height: 150px;
+  overflow: visible;
+  border: 1px solid #2d3b40;
+  border-radius: 4px;
+  background:
+    linear-gradient(rgb(110 147 162 / 8%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(110 147 162 / 8%) 1px, transparent 1px),
+    #0b1012;
+  background-size: 25% 25%;
+}
+
+.timeline-retime-curve polyline {
+  fill: none;
+  stroke: #8cc6dc;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.timeline-retime-curve circle {
+  fill: #d9f2fa;
+  stroke: #214d5d;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.timeline-retime-curve ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  padding-left: 18px;
+  color: #849094;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 8px;
+}
+
+.timeline-retime-curve > p {
+  margin: 0;
+  color: #d4a395;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.timeline-retime-draft-status {
+  min-height: 15px;
+  color: #8f9da0;
+  font-size: 9px;
+  line-height: 1.45;
 }
 
 .timeline-clip-detail-failure {
@@ -3080,12 +3332,20 @@ button.timeline-playhead-handle span {
     grid-template-columns: 1fr;
   }
 
-  .timeline-edit-state {
+  .timeline-edit-state,
+  .timeline-retime-target,
+  .timeline-retime-consequence,
+  .timeline-retime-curve-layout {
     grid-template-columns: 1fr;
   }
 
   .timeline-transition-inspector > header,
   .timeline-transition-parameters > header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .timeline-retime-editor > header {
     align-items: flex-start;
     flex-direction: column;
   }
@@ -3102,6 +3362,18 @@ button.timeline-playhead-handle span {
   .timeline-transition-alignment,
   .timeline-transition-timing > button {
     grid-row: auto;
+  }
+
+  .timeline-retime-anchor {
+    grid-template-columns: 1fr;
+  }
+
+  .timeline-retime-segment {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .timeline-retime-segment > strong {
+    grid-column: 1 / -1;
   }
 }
 

@@ -161,6 +161,27 @@ fn gap_item() -> Value {
     })
 }
 
+fn retime_map() -> Value {
+    json!({
+        "record_duration": exact_duration(48, 24),
+        "source_timebase": {"numerator": 48, "denominator": 1},
+        "segments": [
+            {
+                "record_range": exact_range(0, 24, 24),
+                "source_start": exact_time(48, 48),
+                "rate_numerator": 2,
+                "rate_denominator": 1
+            },
+            {
+                "record_range": exact_range(24, 24, 24),
+                "source_start": exact_time(144, 48),
+                "rate_numerator": 0,
+                "rate_denominator": 1
+            }
+        ]
+    })
+}
+
 fn extension_key() -> Value {
     json!({
         "extension_id": "example.public-editor",
@@ -345,6 +366,22 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
         json!({"operation":"set_transition","timeline_id":timeline_id,"track_id":track_id,"transition_id":transition_id,"from_offset":exact_duration(6,24),"to_offset":exact_duration(2,24)}),
         json!({"operation":"three_point","timeline_id":timeline_id,"track_id":track_id,"clip":material,"placement":{"placement":"source_range_at_record_start","source_range":range,"record_start":time},"fragment_ids":[]}),
         json!({"operation":"four_point","timeline_id":timeline_id,"track_id":track_id,"clip":material,"source_range":range,"record_range":range,"fragment_ids":[]}),
+        json!({
+            "operation": "retime",
+            "timeline_id": timeline_id,
+            "track_id": track_id,
+            "clip_id": clip_id,
+            "time_map": {
+                "record_duration": exact_duration(48, 24),
+                "source_timebase": {"numerator": 48, "denominator": 1},
+                "segments": [{
+                    "record_range": exact_range(0, 48, 24),
+                    "source_start": exact_time(48, 48),
+                    "rate_numerator": 1,
+                    "rate_denominator": 1
+                }]
+            }
+        }),
     ];
     assert_eq!(
         operation_tags::<TimelineEditOperation>(timeline_operations, "operation"),
@@ -364,7 +401,8 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
             "extend",
             "set_transition",
             "three_point",
-            "four_point"
+            "four_point",
+            "retime"
         ]
     );
 
@@ -699,6 +737,234 @@ fn public_track_command_is_revision_fenced_evidenced_and_undoable() {
             .name(),
         "V1"
     );
+}
+
+#[test]
+fn public_retime_is_evidenced_compiled_persisted_replayed_and_reversible() {
+    let _domain = ExecutionDomain::EngineControl
+        .enter_current()
+        .expect("test owns engine control");
+    let mut api = project_api();
+    let initial = api.project_snapshot().unwrap();
+    let initial_map = initial
+        .editorial_project()
+        .timeline(ROOT)
+        .unwrap()
+        .track(TRACK)
+        .unwrap()
+        .item(engine::EditorialObjectId::Clip(CLIP))
+        .unwrap()
+        .as_clip()
+        .unwrap()
+        .time_map()
+        .clone();
+    let request_value = json!({
+        "transaction_id": "public-retime",
+        "expected_project_revision": 0,
+        "command": {
+            "command": "apply",
+            "actions": [{
+                "action": "edit_timeline",
+                "operations": [{
+                    "operation": "retime",
+                    "timeline_id": ROOT.to_string(),
+                    "track_id": TRACK.to_string(),
+                    "clip_id": CLIP.to_string(),
+                    "time_map": retime_map()
+                }]
+            }]
+        }
+    });
+    let request: ExecuteProjectCommand = serde_json::from_value(request_value.clone()).unwrap();
+
+    let applied = api.execute(request).unwrap();
+    assert_eq!(applied.state().project_revision(), 1);
+    assert_eq!(applied.state().undo_depth(), 1);
+    assert_eq!(
+        serde_json::to_value(applied.evidence()).unwrap(),
+        json!({
+            "result": "applied",
+            "actions": [{
+                "result": "timeline_edited",
+                "revision": 1,
+                "operations": ["retime"]
+            }]
+        })
+    );
+
+    let edit_rate = engine::FrameRate::FPS_24.timebase();
+    let source_rate = engine::Timebase::integer(48).unwrap();
+    let expected = engine::ClipTimeMap::new(
+        engine::Duration::new(48, edit_rate).unwrap(),
+        source_rate,
+        [
+            engine::RetimeSegment::new(
+                range(0, 24, edit_rate),
+                engine::RationalTime::new(48, source_rate),
+                engine::PlaybackRate::new(2, 1).unwrap(),
+            )
+            .unwrap(),
+            engine::RetimeSegment::new(
+                range(24, 24, edit_rate),
+                engine::RationalTime::new(144, source_rate),
+                engine::PlaybackRate::new(0, 1).unwrap(),
+            )
+            .unwrap(),
+        ],
+    )
+    .unwrap();
+    let published = api.project_snapshot().unwrap();
+    let clip = published
+        .editorial_project()
+        .timeline(ROOT)
+        .unwrap()
+        .track(TRACK)
+        .unwrap()
+        .item(engine::EditorialObjectId::Clip(CLIP))
+        .unwrap()
+        .as_clip()
+        .unwrap();
+    assert_eq!(clip.time_map(), &expected);
+    assert_eq!(clip.record_range(), range(0, 48, edit_rate));
+
+    let compilation = published.timeline_graph(ROOT).unwrap();
+    let clip_node = compilation
+        .index()
+        .node(engine::TimelineGraphOrigin::Object(
+            engine::EditorialObjectId::Clip(CLIP),
+        ))
+        .unwrap();
+    let compiled_graph = compilation.snapshot();
+    let graph_time_map = compiled_graph
+        .node(clip_node)
+        .unwrap()
+        .parameters()
+        .values()
+        .find(|parameter| parameter.name().as_str() == "time-map")
+        .unwrap()
+        .value()
+        .payload()
+        .as_domain()
+        .unwrap();
+    assert_eq!(
+        graph_time_map,
+        &engine::TimelineGraphValue::ClipTimeMap(expected.clone())
+    );
+
+    let mut database = engine::ProjectDatabase::memory().unwrap();
+    database.replace(&published).unwrap();
+    assert_eq!(database.load().unwrap().snapshot(), published);
+
+    let log = api
+        .execute(GetProjectCommandLog::new(
+            0,
+            256,
+            ProjectCommandLogDetail::Replayable,
+        ))
+        .unwrap();
+    let GetProjectCommandLogResult::Records(log) = log else {
+        panic!("retime command must have replayable command-log evidence");
+    };
+    assert_eq!(log.records().len(), 1);
+    assert_eq!(
+        serde_json::to_value(log.records()[0].replay_request().unwrap()).unwrap(),
+        request_value
+    );
+
+    api.execute(ExecuteProjectCommand::new(
+        "undo-public-retime",
+        1,
+        ProjectCommand::Undo {},
+    ))
+    .unwrap();
+    let undone = api.project_snapshot().unwrap();
+    assert_eq!(
+        undone
+            .editorial_project()
+            .timeline(ROOT)
+            .unwrap()
+            .track(TRACK)
+            .unwrap()
+            .item(engine::EditorialObjectId::Clip(CLIP))
+            .unwrap()
+            .as_clip()
+            .unwrap()
+            .time_map(),
+        &initial_map
+    );
+
+    api.execute(ExecuteProjectCommand::new(
+        "redo-public-retime",
+        2,
+        ProjectCommand::Redo {},
+    ))
+    .unwrap();
+    let redone = api.project_snapshot().unwrap();
+    assert_eq!(
+        redone
+            .editorial_project()
+            .timeline(ROOT)
+            .unwrap()
+            .track(TRACK)
+            .unwrap()
+            .item(engine::EditorialObjectId::Clip(CLIP))
+            .unwrap()
+            .as_clip()
+            .unwrap()
+            .time_map(),
+        &expected
+    );
+}
+
+#[test]
+fn inexact_public_retime_fails_before_project_state_changes() {
+    let _domain = ExecutionDomain::EngineControl
+        .enter_current()
+        .expect("test owns engine control");
+    let mut api = project_api();
+    let before = api.project_snapshot().unwrap();
+    let request: ExecuteProjectCommand = serde_json::from_value(json!({
+        "transaction_id": "inexact-public-retime",
+        "expected_project_revision": 0,
+        "command": {
+            "command": "apply",
+            "actions": [{
+                "action": "edit_timeline",
+                "operations": [{
+                    "operation": "retime",
+                    "timeline_id": ROOT.to_string(),
+                    "track_id": TRACK.to_string(),
+                    "clip_id": CLIP.to_string(),
+                    "time_map": {
+                        "record_duration": exact_duration(48, 24),
+                        "source_timebase": {"numerator": 48, "denominator": 1},
+                        "segments": [
+                            {
+                                "record_range": exact_range(0, 1, 24),
+                                "source_start": exact_time(48, 48),
+                                "rate_numerator": 1,
+                                "rate_denominator": 3
+                            },
+                            {
+                                "record_range": exact_range(1, 47, 24),
+                                "source_start": exact_time(49, 48),
+                                "rate_numerator": 1,
+                                "rate_denominator": 1
+                            }
+                        ]
+                    }
+                }]
+            }]
+        }
+    }))
+    .unwrap();
+
+    assert_eq!(
+        api.execute(request).unwrap_err().category(),
+        engine::ErrorCategory::InvalidInput
+    );
+    assert_eq!(api.project_snapshot().unwrap(), before);
+    assert!(api.drain_events().unwrap().is_empty());
 }
 
 #[test]

@@ -45,6 +45,8 @@ import {
   type TimelineClipPresentation,
   type TimelineClipProjection,
 } from "./timeline-clip-presentation.ts";
+import { TimelineRetimeEditor } from "./timeline-retime-editor.tsx";
+import type { TimelineRetimeReadyPlan } from "./timeline-retime.ts";
 import {
   TimelineEditingError,
   compileGapClose,
@@ -389,6 +391,12 @@ export function TimelineWorkspace({
       }),
     [selectedKeys, selectionTargetsByKey],
   );
+  const selectedRetimeClip = useMemo(() => {
+    if (selectedKeys.length !== 1) return null;
+    const selected = selectionTargetsByKey.get(selectedKeys[0]!);
+    if (selected?.item.kind !== "clip") return null;
+    return clipById.get(selected.item.id) ?? null;
+  }, [clipById, selectedKeys, selectionTargetsByKey]);
   const selectionAnchorKey = useMemo(() => {
     if (!model || selection.anchor === null) return null;
     const reference = selection.anchor;
@@ -608,6 +616,10 @@ export function TimelineWorkspace({
     transactionSequenceRef.current += 1;
     return `superi.desktop.timeline.${kind}.${transactionSequenceRef.current}.${randomHex(8)}`;
   }, []);
+  const nextRetimeTransactionId = useCallback(
+    () => nextTransactionId("retime"),
+    [nextTransactionId],
+  );
 
   const executeEdit = useCallback(
     async (edit: TimelineEditGesture) => {
@@ -716,6 +728,27 @@ export function TimelineWorkspace({
       snapshot.project.redo_depth,
       snapshot.project.undo_depth,
     ],
+  );
+
+  const executeRetime = useCallback(
+    async (plan: TimelineRetimeReadyPlan) => {
+      if (commandPendingRef.current) return;
+      commandPendingRef.current = true;
+      setCommandPending(true);
+      setCommandStatus(`Applying ${plan.mode.replace("_", " ")} to ${plan.target.clipName}.`);
+      try {
+        const result = await onExecuteProjectCommand(plan.request);
+        setCommandStatus(
+          `Retime completed at project revision ${result.state.project_revision}. Undo is available immediately.`,
+        );
+      } catch (error: unknown) {
+        setCommandStatus(timelineCommandFailure(error));
+      } finally {
+        commandPendingRef.current = false;
+        setCommandPending(false);
+      }
+    },
+    [onExecuteProjectCommand],
   );
 
   useEffect(() => {
@@ -2465,6 +2498,18 @@ export function TimelineWorkspace({
           transition={selectedTransition}
         />
       ) : null}
+      <TimelineRetimeEditor
+        busy={commandPending}
+        clip={selectedRetimeClip}
+        makeTransactionId={nextRetimeTransactionId}
+        onApply={(plan) => void executeRetime(plan)}
+        onUndo={() => void executeHistory("undo")}
+        playheadSeconds={playhead}
+        projectRevision={snapshot.project.project_revision}
+        selectionCount={selectedKeys.length}
+        status={commandStatus}
+        undoDepth={snapshot.project.undo_depth}
+      />
       {clipProjection?.status === "unavailable" ? (
         <p className="timeline-clip-detail-failure" role="alert">
           {clipProjection.reason}

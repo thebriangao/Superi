@@ -1012,6 +1012,7 @@ pub enum TimelineEditKind {
     SetTransition,
     ThreePoint,
     FourPoint,
+    Retime,
 }
 
 /// Every current directly executable timeline edit operation.
@@ -1130,6 +1131,12 @@ pub enum TimelineEditOperation {
         source_range: ExactTimeRange,
         record_range: ExactTimeRange,
         fragment_ids: Vec<EditorialObjectId>,
+    },
+    Retime {
+        timeline_id: String,
+        track_id: String,
+        clip_id: String,
+        time_map: EditorClipTimeMap,
     },
 }
 
@@ -1354,6 +1361,17 @@ impl TimelineEditOperation {
                 source_range: source_range.into_engine()?,
                 record_range: record_range.into_engine()?,
                 fragment_ids: object_ids(fragment_ids)?,
+            }),
+            Self::Retime {
+                timeline_id,
+                track_id,
+                clip_id,
+                time_map,
+            } => Ok(engine::EditOperation::Retime {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                track_id: parse_id(&track_id, "track_id")?,
+                clip_id: parse_id(&clip_id, "clip_id")?,
+                time_map: time_map.into_engine()?,
             }),
         }
     }
@@ -4247,6 +4265,7 @@ fn public_edit_kind(value: engine::EditKind) -> Result<TimelineEditKind> {
         engine::EditKind::SetTransition => Ok(TimelineEditKind::SetTransition),
         engine::EditKind::ThreePoint => Ok(TimelineEditKind::ThreePoint),
         engine::EditKind::FourPoint => Ok(TimelineEditKind::FourPoint),
+        engine::EditKind::Retime => Ok(TimelineEditKind::Retime),
         _ => Err(unexpected_result("timeline_edit_evidence")),
     }
 }

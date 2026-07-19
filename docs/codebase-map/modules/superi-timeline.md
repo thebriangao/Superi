@@ -2,8 +2,8 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: 94d8f72dd6f91f2360b09d73f457ae75adbd632d19f533708deeabebb6072aae
-source_files: 33
+source_hash: d3b5837c40c8d208cabda26f68f65a1409971dbde3de09e0736ec77148440b70
+source_files: 34
 mapped_at_commit: working-tree
 ---
 
@@ -26,6 +26,8 @@ overwrite, append, replace, lift, and extract commands join ripple, roll, slip, 
 extend, atomic transition-handle replacement, and exact three-point and four-point commands on one
 typed batch surface. Those commands
 report every inserted, removed, modified, split, synchronized, or invalidated relationship.
+Exact retime replacement uses that same surface to change one clip's complete time map while
+preserving its identity and record duration and rejecting semantic no-ops.
 Whole-project validation and revision-checked atomic batches keep linked objects, annotations, user
 intent, timing, synchronization, nesting, and direct edits valid at publication boundaries.
 Clip-owned exact time maps add rational speed changes, reverse playback, freeze frames, and
@@ -103,10 +105,10 @@ with stable warnings.
 - `open/crates/superi-timeline/examples/otio_roundtrip.rs`: Imports one OTIO document through the
   public native boundary, reports stable diagnostics, and writes deterministic OTIO 0.18.1 JSON.
 - `open/crates/superi-timeline/src/edit_ops.rs`: Implements directly inspectable foundational and
-  advanced commands, exact source-aware and retime-aware trimming and splitting, deterministic
-  fragment identities, explicit sync-locked ripple plans, transition reconciliation, result
-  reports, locked-track enforcement, atomic dual-handle transition timing, and atomic multi-track
-  batches.
+  advanced commands, exact source-aware and retime-aware trimming and splitting, direct exact clip
+  time-map replacement, semantic no-op rejection, deterministic fragment identities, explicit
+  sync-locked ripple plans, transition reconciliation, result reports, locked-track enforcement,
+  atomic dual-handle transition timing, and atomic multi-track batches.
 - `open/crates/superi-timeline/src/edit_state.rs`: Implements exact and relationship-expanded
   selection, bounded track height, per-track target, lock, sync-lock, mute, solo, and enable intent,
   canonical clip links and groups, stable introspection, and structural reconciliation.
@@ -204,6 +206,10 @@ with stable warnings.
 - `open/crates/superi-timeline/tests/retime_contract.rs`: Proves speed changes, reverse, freeze,
   piecewise time remapping, exact seams, explicit quantization, point availability, atomic binding,
   identity resize compatibility, linked intent, and retime preservation through edit splitting.
+- `open/crates/superi-timeline/tests/retime_edit_ops_contract.rs`: Proves direct speed, reverse,
+  freeze, and multi-segment time-map replacement through the ordinary edit batch, exact outcome
+  evidence, stable clip identity and record duration, and atomic rejection of no-ops, locked tracks,
+  missing clips, and wrong track bindings.
 - `open/crates/superi-timeline/tests/track_semantics_contract.rs`: Proves all four track kinds,
   exact clocks, channel routing, linked audio reshaping, continuity, and bounded validation.
 - `open/crates/superi-timeline/tests/track_management_contract.rs`: Proves all eleven track
@@ -341,9 +347,10 @@ The timeline state document surface includes:
 The editorial operation surface includes:
 
 - `EditOperation` and `EditKind` for insert, overwrite, append, replace, lift, extract, ripple,
-  roll, slip, slide, razor, trim, extend, `set_transition`, three-point, and four-point commands
-  targeted by stable timeline and track identity. `set_transition` changes both exact handles of
-  one stable transition together without changing track duration or endpoint identity.
+  roll, slip, slide, razor, trim, extend, `set_transition`, three-point, four-point, and retime
+  commands targeted by stable timeline and track identity. `set_transition` changes both exact
+  handles of one stable transition together without changing track duration or endpoint identity.
+  Retime names one exact clip and replaces only its complete validated `ClipTimeMap`.
 - `EditSide` for exact start or end control, `ExtendMode` for explicit ripple or roll delegation,
   and `ThreePointPlacement` for the four forward and backtimed missing-boundary forms.
 - `RippleSyncAdjustment` for deterministic per-track gap and fragment identities. A ripple names
@@ -434,9 +441,11 @@ Editorial construction and validation then proceed as follows:
 5. `EditorialProject::clip_range_context` resolves media availability directly and derives nested
    availability from `[0, nested duration)` at the nested edit rate. Classification reports
    overscan without snapping or rejecting a media-linked clip.
-6. Each clip begins with a separate identity `ClipTimeMap`. Direct retime replacement validates
-   complete record coverage and source clock binding before mutation, while point queries convert
-   absolute record time to clip-local time and resolve one immutable segment by binary search.
+6. Each clip begins with a separate identity `ClipTimeMap`. Direct replacement through either the
+   clip method or `EditOperation::Retime` validates complete record coverage and source clock
+   binding before mutation, rejects an unchanged map, and reports the unchanged clip record range
+   as its exact affected range. Point queries convert absolute record time to clip-local time and
+   resolve one immutable segment by binary search.
 7. `ClipRangeContext::playback_sample` combines exact map resolution with known source availability
    without changing the nominal selected range. Inexact source samples require an explicit rounding
    policy and report that policy in the result.
@@ -921,6 +930,11 @@ continuous seams, complete coverage, half-open bounds, explicit rounding, point 
 atomic clip binding, identity resize compatibility, link retention, and retime-preserving split and
 record-shift behavior through a real insert operation.
 
+Three retime edit-operation tests prove that speed, reverse, freeze, and continuous multi-segment
+maps all use one revision-checked edit path with exact modified-object and affected-range evidence.
+They also prove stable clip identity and record duration plus complete rollback for semantic no-ops,
+locked tracks, missing clip identities, and wrong track bindings.
+
 Four media-library tests prove stable bin and sub-bin paths, direct media movement, deterministic
 metadata smart collections, atomic cycle, duplicate membership, and missing-media rejection,
 explicit missing and unverified state, content-mismatch evidence, accepted relinks, preserved
@@ -1032,7 +1046,8 @@ yet.
 Treat track clocks, semantics, height, target, lock, sync lock, mute, solo, enable, mutation order,
 object identity, media identity, bin hierarchy, smart query
 derivation, relink evidence, continuity, physical-time equality, source-aware
-and retime-aware fragmentation, exact time-map seams, explicit transport resolution, explicit
+and retime-aware fragmentation, exact authored time-map replacement, semantic no-op rejection,
+exact time-map seams, explicit transport resolution, explicit
 transition invalidation, result reporting, marker ownership, complete create semantics, partial-field
 preservation, atomic marker mutation order, exact snapping, metadata ordering, atomic dual-handle
 replacement,

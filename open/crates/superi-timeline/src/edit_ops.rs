@@ -9,6 +9,7 @@ use crate::model::{
     Caption, Clip, EditorialObjectId, EditorialProject, Gap, Generator, ProjectDraft, Timeline,
     Track, TrackItem, Transition,
 };
+use crate::retime::ClipTimeMap;
 
 /// Stable operation category reported to direct edit consumers.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -46,6 +47,8 @@ pub enum EditKind {
     ThreePoint,
     /// Place one exact source range over one exact record range.
     FourPoint,
+    /// Replace one clip's exact source-to-record time mapping.
+    Retime,
 }
 
 impl EditKind {
@@ -67,6 +70,7 @@ impl EditKind {
             Self::SetTransition => "set_transition",
             Self::ThreePoint => "three_point",
             Self::FourPoint => "four_point",
+            Self::Retime => "retime",
         }
     }
 }
@@ -362,6 +366,17 @@ pub enum EditOperation {
         record_range: TimeRange,
         /// Typed identities for right fragments, consumed in record order.
         fragment_ids: Vec<EditorialObjectId>,
+    },
+    /// Replace one clip's exact source-to-record time mapping.
+    Retime {
+        /// Timeline containing the target track.
+        timeline_id: TimelineId,
+        /// Track containing the target clip.
+        track_id: TrackId,
+        /// Stable identity of the clip whose mapping changes.
+        clip_id: ClipId,
+        /// Complete validated mapping for the clip's unchanged record duration.
+        time_map: ClipTimeMap,
     },
 }
 
@@ -703,6 +718,22 @@ impl EditOperation {
         }
     }
 
+    /// Creates an exact clip retime operation.
+    #[must_use]
+    pub fn retime(
+        timeline_id: TimelineId,
+        track_id: TrackId,
+        clip_id: ClipId,
+        time_map: ClipTimeMap,
+    ) -> Self {
+        Self::Retime {
+            timeline_id,
+            track_id,
+            clip_id,
+            time_map,
+        }
+    }
+
     /// Returns the stable operation category.
     #[must_use]
     pub const fn kind(&self) -> EditKind {
@@ -723,6 +754,7 @@ impl EditOperation {
             Self::SetTransition { .. } => EditKind::SetTransition,
             Self::ThreePoint { .. } => EditKind::ThreePoint,
             Self::FourPoint { .. } => EditKind::FourPoint,
+            Self::Retime { .. } => EditKind::Retime,
         }
     }
 
@@ -743,7 +775,8 @@ impl EditOperation {
             | Self::Extend { timeline_id, .. }
             | Self::SetTransition { timeline_id, .. }
             | Self::ThreePoint { timeline_id, .. }
-            | Self::FourPoint { timeline_id, .. } => *timeline_id,
+            | Self::FourPoint { timeline_id, .. }
+            | Self::Retime { timeline_id, .. } => *timeline_id,
         }
     }
 
@@ -764,7 +797,8 @@ impl EditOperation {
             | Self::Extend { track_id, .. }
             | Self::SetTransition { track_id, .. }
             | Self::ThreePoint { track_id, .. }
-            | Self::FourPoint { track_id, .. } => *track_id,
+            | Self::FourPoint { track_id, .. }
+            | Self::Retime { track_id, .. } => *track_id,
         }
     }
 }
@@ -1038,6 +1072,9 @@ pub(crate) fn apply_operation(
                 source_start,
                 ..
             } => apply_slip(track, timeline_id, track_id, *clip_id, *source_start),
+            EditOperation::Retime {
+                clip_id, time_map, ..
+            } => apply_retime(track, timeline_id, track_id, *clip_id, time_map),
             EditOperation::Slide { clip_id, to, .. } => {
                 apply_slide(track, timeline_id, track_id, *clip_id, *to)
             }
@@ -1453,6 +1490,41 @@ fn apply_slip(
     let record_range = clip.record_range();
     Ok(EditOutcome {
         kind: EditKind::Slip,
+        timeline_id,
+        track_id,
+        affected_range: record_range,
+        duration_change: TrackDurationChange::Unchanged,
+        inserted_ids: Vec::new(),
+        removed_ids: Vec::new(),
+        modified_ids: vec![object_id],
+        fragments: Vec::new(),
+        removed_transitions: Vec::new(),
+        synchronized_tracks: Vec::new(),
+    })
+}
+
+fn apply_retime(
+    track: &mut Track,
+    timeline_id: TimelineId,
+    track_id: TrackId,
+    clip_id: ClipId,
+    time_map: &ClipTimeMap,
+) -> Result<EditOutcome> {
+    let object_id = EditorialObjectId::Clip(clip_id);
+    let item = track.item_mut(object_id)?;
+    let clip = item
+        .as_clip_mut()
+        .ok_or_else(|| invalid_edit("retime", "retime targets must be source-bearing clips"))?;
+    if clip.time_map() == time_map {
+        return Err(invalid_edit(
+            "retime",
+            "retime edit must change the clip time map",
+        ));
+    }
+    clip.set_time_map(time_map.clone())?;
+    let record_range = clip.record_range();
+    Ok(EditOutcome {
+        kind: EditKind::Retime,
         timeline_id,
         track_id,
         affected_range: record_range,

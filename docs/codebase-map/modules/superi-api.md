@@ -2,7 +2,7 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: ee09613f01ec1a56a988cc0a9891e7028988c35abada8ca2dbe432575a4310cf
+source_hash: 96a8c1d799d4b21cfc09cc667a40f584f82dfaad7259b09c4703c18942cf9a9a
 source_files: 41
 mapped_at_commit: working-tree
 ---
@@ -66,7 +66,8 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   removal, restore, and dismissal contracts.
 - `open/crates/superi-api/src/editor.rs`: Owns the strict generic project command, action, timeline
   item edit, track mutation, marker mutation, graph, media import and mutation, clip-mix, and extension DTOs, checked
-  engine conversion, exact
+  engine conversion, including exact multi-segment clip time-map replacement through the ordinary
+  timeline edit union, exact
   per-source filesystem permission derivation, typed import and history evidence, serialized
   request recording, bounded command-log query and result unions, permission-checked replay detail,
   script prevalidation, and the dispatcher-backed apply, inspect, undo, redo, script, event,
@@ -169,12 +170,13 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   revision fences, strict command and event round trips, ordered full-state publication, one-unit
   undo, inspect behavior, permanent names, and legacy action compatibility.
 - `open/crates/superi-api/tests/editor_contract.rs`: Locks all four generic project commands, eight
-  action groups, 16 timeline item operations, 11 track mutations, six marker mutations, eight graph
+  action groups, 17 timeline item operations, 11 track mutations, six marker mutations, eight graph
   mutations, three media mutations, four clip-mix mutations, and six extension mutations; proves
   strict decoding, pre-dispatch failure atomicity, editor schema `1.4.0`, one real mixed transaction
   including exact transition handles, durable public track and marker commands, marker metadata
-  preservation, typed action evidence, event and durable record correlation, cursor-safe log
-  inspection with typed replay, database reload, undo, and redo.
+  preservation, typed action evidence, exact retime evidence and graph compilation, event and durable
+  record correlation, cursor-safe log inspection with typed replay, database reload, undo, redo, and
+  atomic inexact-map rejection.
 - `open/crates/superi-api/tests/engine_introspection_contract.rs`: Drives the real engine registry,
   dispatcher, lifecycle, error coordinator, and resource arbiter through strict public query and
   replacement-event projection, independent revisions, degradation, recovery, and safe diagnostic
@@ -1041,14 +1043,19 @@ conflict rejection, independent monotonic event order with exact originating-com
 complete replacement state, inspect without an event, and compatibility action routing through the
 same dispatcher.
 
-Eight generic editor contracts lock every command and operation discriminant, including all 11
-track mutations and all six marker mutations, reject guessed fields and variants, and prove malformed ID, timebase, and
+Ten generic editor contracts lock every command and operation discriminant, including all 17
+timeline edits, all 11 track mutations, and all six marker mutations, reject guessed fields and
+variants, and prove malformed ID, timebase, and
 non-finite conversion atomicity. A real EngineControl fixture executes one six-action project
 transaction across graph, timeline, media, clip mix, extension, and selected root state. A second
 durable fixture executes a revision-fenced track batch and proves typed evidence, one history unit,
 one correlated event and durable record, exact database reload, undo, and redo through the same
 public facade. A marker fixture proves complete metadata, exact visible fields, typed evidence,
 authored state replacement, and long-lived undo through that owner.
+public facade. The retime fixture sends one exact multi-segment map through that same command,
+proves `retime` action evidence and compiled graph state, persists and reloads the result, reconstructs
+the exact replay request, reverses and reapplies it through history, and rejects an inexact source
+seam before any state or event changes.
 
 Five scripting contracts lock the `superi-json` language, schema, method, canonical file suffix,
 source, step, identity, and depth bounds. They prove exact-source SHA-256 rejection, duplicate and
@@ -1177,8 +1184,9 @@ not supply transport, endpoint mutation, or background polling.
 
 The separate negotiation, media, engine introspection, integration validation, scenario, event
 stream, catalog, and error schema versions are correct for independent surfaces. The catalog is
-`1.6.0` because typed marker mutation is additive beside track mutation, extension discovery, command-log inspection,
-local scripting, and negotiation, while individual method and resource
+`1.6.0` because typed marker mutation and exact retime authoring are additive beside track mutation,
+extension discovery, command-log inspection, local scripting, and negotiation, while individual
+method and resource
 schemas retain their own versions.
 Data-only JSON-RPC framing, bounded retryable polling, and host-injected authorization now exist,
 while network hosting, dynamic routing, authentication, persisted replay, and
@@ -1235,6 +1243,9 @@ Keep generic editor DTOs API-owned and strict, conversions complete before dispa
 authored apply operations inside one engine-owned compound transaction. Add every new lower editor
 operation to the explicit parity contract, public evidence projection, schema catalog, CLI schema
 consumer, and real dispatcher proof without adding direct API dependencies on lower domain crates.
+Treat `EditorClipTimeMap` as the only retime wire owner, preserve exact clocks and signed reduced
+rates through conversion, and keep retime undo, persistence, command-log replay, and graph
+reconciliation on the ordinary project command path.
 Downstream presentation may correlate canonical resources only by their stable public identities
 and revisions. It must not reinterpret missing graph or automation state as authored success,
 infer an unsupported keyframe owner, or turn shared selection into a public timeline mutation.
