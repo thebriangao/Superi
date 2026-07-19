@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 44d028c81a852820391c9b2c4da9af1f1344a95ee62a1f1b038645138822e569
-source_files: 272
+source_hash: d37b0fca5cff84cdb3ad578b21a2ffcd98aeefa321d71e3eb6bd11e3d6f3323e
+source_files: 273
 mapped_at_commit: working-tree
 ---
 
@@ -500,6 +500,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   sample-clock synchronization, detach, replacement intent transfer, complete channel routing,
   strict public schema releases, generated TypeScript, accessible production controls, and
   application-owned durable command publication.
+- `docs/checkpoints/P3.W05.C002.md`: Durable implementation evidence for exact seek, superseding
+  scrub, explicit audio-scrub behavior, canonical playhead follow, focused proof, and delivery.
 
 ### Production desktop application
 
@@ -548,13 +550,14 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   client, or Tauri access into this workspace file. Shared timeline selection can become an exact
   replace or backspace target without locally mutating canonical timeline state.
 - `app/src/playback-controls.tsx`: Renders play, pause, stop, loop, JKL shuttle, variable exact
-  speed, direction, and single-frame controls through the application-owned generated command. It
-  serializes interactions, inspects exact playback state at a bounded cadence only while playing,
+  speed, direction, single-frame, exact seek, and bounded latest-target scrub controls through the
+  application-owned generated command. It serializes interactions, follows only canonical returned
+  playhead state, inspects exact playback state at a bounded cadence only while playing,
   ignores editable keyboard targets, and communicates exact playhead and scheduling clocks, rate,
   direction, loop, continuity, drop, visual, audio, synchronization, comparison, failure, pending,
   and explicit degraded-output state without importing Tauri or claiming rendered pixels or audio.
 - `app/src/playback-transport.ts`: Defines transport-neutral pure JKL and Space command derivation,
-  exact rational time and rate formatting, fixed variable-rate options, and complete user-facing
+  exact half-open-range navigation mapping, rational time and rate formatting, fixed variable-rate options, and complete user-facing
   labels for every engine playback degradation code.
 - `app/src/timeline-workspace.ts`: Strictly projects the embedded canonical revision 2 timeline
   document into a deeply frozen canvas model with exact rational source and record ranges, stable
@@ -779,7 +782,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   editing playback consumer, application-owned generated route, complete required action set,
   exact state categories, and absence of direct Tauri or API-client ownership in the component.
 - `app/tests/playback-transport.test.ts`: Proves exact signed JKL rate cycling, K pause, Space
-  play-or-pause intent, rational time and rate formatting, and explicit unavailable-output labels.
+  play-or-pause intent, half-open exact seek and scrub coordinate mapping, rational time and rate
+  formatting, and explicit unavailable-output labels.
 - `app/tests/timeline-workspace.test.ts`: Verifies strict canonical revision handling, exact track,
   item, source and record range, group, link, selection, target, lock, output, synchronization, and
   transition preservation, variable height, external global-start placement, deterministic

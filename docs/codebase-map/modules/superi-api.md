@@ -2,7 +2,7 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: 54ca3692ca5a02816fd06ee3f21c3e7b205971723b594496fd24c08d1deb3aba
+source_hash: 17912de585c43947572c93059acefe6018f27fa65f90654a280dcf0fbf147b4d
 source_files: 43
 mapped_at_commit: working-tree
 ---
@@ -149,7 +149,7 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   snapshot, canonical authored JSON resource envelopes, bounded extension descriptors, exact audio
   routing and continuity projection, public project identity and semantic hash accessors for script
   traces, and the dispatcher-backed read-only query facade. Playback projection names every exact
-  mode, coordinate, scheduled clock, signed rate, direction, loop, epoch, delivery statistic,
+  mode, authoritative half-open navigation bounds, coordinate, scheduled clock, signed rate, direction, loop, epoch, delivery statistic,
   audio acknowledgement, degradation, and safe failure, then discards only completed playback
   events after taking the replacement snapshot.
 - `open/crates/superi-api/src/typescript.rs`: Collects every canonical request, response, event,

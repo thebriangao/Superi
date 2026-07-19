@@ -295,6 +295,7 @@ struct ScheduledFrame {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PlaybackTransportSnapshot {
     mode: PlaybackTransportMode,
+    bounds: TimeRange,
     playhead: RationalTime,
     scheduled: Option<ScheduledFrame>,
     rate: PlaybackRate,
@@ -311,6 +312,12 @@ impl PlaybackTransportSnapshot {
     #[must_use]
     pub const fn mode(self) -> PlaybackTransportMode {
         self.mode
+    }
+
+    /// Returns the exact half-open navigation range owned by this transport.
+    #[must_use]
+    pub const fn bounds(self) -> TimeRange {
+        self.bounds
     }
 
     /// Returns the last exact requested or presented frame coordinate.
@@ -489,6 +496,7 @@ impl<O: Send + 'static> PlaybackTransport<O> {
         let audio_state = self.audio_state(audio_discard_status);
         PlaybackTransportSnapshot {
             mode: self.mode,
+            bounds: self.bounds,
             playhead: self.playhead,
             scheduled: self.scheduled,
             rate: self.rate,

@@ -83,6 +83,22 @@ export function formatExactPlaybackTime(time: EditorRationalTime): string {
   return `${time.value} @ ${time.timebase.numerator}/${time.timebase.denominator} units/s`;
 }
 
+export function playbackNavigationTarget(
+  snapshot: EditorPlaybackSnapshot,
+  fraction: number,
+): EditorRationalTime {
+  const boundedFraction = Math.min(1, Math.max(0, fraction));
+  const duration = snapshot.bounds.duration;
+  const offset = Math.min(
+    duration - 1,
+    Math.floor(boundedFraction * duration),
+  );
+  return {
+    value: snapshot.bounds.start.value + offset,
+    timebase: snapshot.bounds.start.timebase,
+  };
+}
+
 export function formatExactRate(snapshot: EditorPlaybackSnapshot): string {
   const sign = snapshot.rate_numerator > 0 ? "+" : "";
   return `${sign}${snapshot.rate_numerator}/${snapshot.rate_denominator}x ${snapshot.direction}`;

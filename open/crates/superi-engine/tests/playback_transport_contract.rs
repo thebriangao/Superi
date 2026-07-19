@@ -268,6 +268,72 @@ fn interactive_transport_preserves_exact_discontinuities_rate_cadence_and_loop_d
 }
 
 #[test]
+fn c002_seek_scrub_and_follow_contract_exposes_exact_bounds_and_audio_continuity() {
+    let base = Instant::now();
+    let mut harness = Harness::new(
+        DroppedFramePolicy::PreserveEveryFrame,
+        RationalTime::new(2, frame_timebase()),
+        base,
+    );
+    let playback_domain = ExecutionDomain::Playback.enter_current().unwrap();
+
+    assert_eq!(harness.transport.snapshot().bounds().start().value(), 0);
+    assert_eq!(
+        harness
+            .transport
+            .snapshot()
+            .bounds()
+            .end_exclusive()
+            .unwrap()
+            .value(),
+        12
+    );
+
+    harness.transport.play(base).unwrap();
+    acknowledge_discard(&mut harness.consumer);
+    poll_presented(&mut harness.transport, base, 2);
+    harness
+        .transport
+        .seek(RationalTime::new(6, frame_timebase()), base)
+        .unwrap();
+    let sought = harness.transport.snapshot();
+    assert_eq!(sought.mode(), PlaybackTransportMode::Playing);
+    assert_eq!(sought.playhead().value(), 6);
+    assert!(sought.audio_discard_status().is_pending());
+
+    acknowledge_discard(&mut harness.consumer);
+    poll_presented(&mut harness.transport, base, 6);
+    harness.transport.begin_scrub(base).unwrap();
+    harness
+        .transport
+        .scrub_to(RationalTime::new(8, frame_timebase()), base)
+        .unwrap();
+    harness
+        .transport
+        .scrub_to(RationalTime::new(10, frame_timebase()), base)
+        .unwrap();
+    let scrubbing = harness.transport.snapshot();
+    assert_eq!(scrubbing.mode(), PlaybackTransportMode::Scrubbing);
+    assert_eq!(scrubbing.playhead().value(), 10);
+    assert!(matches!(
+        scrubbing.audio_state(),
+        TransportAudioState::MutedInactive(PlaybackTransportMode::Scrubbing)
+    ));
+    assert!(harness.transport.queue_audio(&[0.0]).is_err());
+
+    acknowledge_discard(&mut harness.consumer);
+    let followed = poll_presented(&mut harness.transport, base, 10);
+    assert_eq!(followed.playhead().value(), 10);
+    harness.transport.end_scrub(false, base).unwrap();
+    let settled = harness.transport.snapshot();
+    assert_eq!(settled.mode(), PlaybackTransportMode::Paused);
+    assert_eq!(settled.playhead().value(), 10);
+
+    drop(playback_domain);
+    harness.shutdown();
+}
+
+#[test]
 fn desktop_transport_commands_are_atomic_exact_and_explicitly_degraded() {
     let base = Instant::now();
     let mut harness = Harness::new_with_baseline(

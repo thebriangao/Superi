@@ -2,7 +2,7 @@
 module_id: superi-engine
 source_paths:
   - open/crates/superi-engine
-source_hash: 994f2a03685aa1fd75769aeb4f842916ba488582ebbc058b1b3b1e8657f2d115
+source_hash: 4ece78f78a4cc18d895d7d475e8ee342868aad45fb6a0c50e41cc91cf6b8b92a
 source_files: 71
 mapped_at_commit: working-tree
 ---
@@ -2024,7 +2024,10 @@ Playback prediction, foreground orchestration, and transport control are substan
 accept caller-prepared graph, audio, cache, and viewport owners and are not a source session binder,
 decoded-audio rate processor, or native presentation path. Engine A/V coordination consumes the
 shared scheduler and actual audio clock, but physical A/V latency and drift remain hardware-lane
-evidence. `TimelineResources` prepares the reachable sources, decoders, and graph, and its acquired
+evidence. Exact transport snapshots expose their authoritative half-open navigation bounds so seek,
+superseding scrub, and playhead-follow consumers map positions without inventing a second clock;
+scrubbing remains explicitly muted and discontinuity-fenced until sample-timed routed audio exists.
+`TimelineResources` prepares the reachable sources, decoders, and graph, and its acquired
 media owner now has a real export consumer. Its project entry point preserves one exact published
 document compilation, and the request adapter now resolves project-owned filesystem targets through
 the real local source path. Playback and export do not yet acquire the whole bundle directly from

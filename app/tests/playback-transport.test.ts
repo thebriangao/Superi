@@ -7,11 +7,19 @@ import {
   formatExactRate,
   playbackActionForKey,
   playbackDegradationLabel,
+  playbackNavigationTarget,
   playbackVisualState,
 } from "../src/playback-transport.ts";
 
 const FORWARD_PLAYBACK = {
   mode: "playing",
+  bounds: {
+    start: {
+      value: 0,
+      timebase: { numerator: 24, denominator: 1 },
+    },
+    duration: 120,
+  },
   playhead: {
     value: 48,
     timebase: { numerator: 24, denominator: 1 },
@@ -60,6 +68,21 @@ test("JKL shuttle commands cycle exact signed rates and K pauses", () => {
   );
   assert.deepEqual(playbackActionForKey("k", FORWARD_PLAYBACK), {
     action: "pause",
+  });
+});
+
+test("seek and scrub targets map the complete half-open range to exact frame coordinates", () => {
+  assert.deepEqual(playbackNavigationTarget(FORWARD_PLAYBACK, 0), {
+    value: 0,
+    timebase: { numerator: 24, denominator: 1 },
+  });
+  assert.deepEqual(playbackNavigationTarget(FORWARD_PLAYBACK, 0.5), {
+    value: 60,
+    timebase: { numerator: 24, denominator: 1 },
+  });
+  assert.deepEqual(playbackNavigationTarget(FORWARD_PLAYBACK, 1), {
+    value: 119,
+    timebase: { numerator: 24, denominator: 1 },
   });
 });
 

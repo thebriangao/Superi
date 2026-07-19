@@ -12,6 +12,7 @@ import {
   formatExactRate,
   playbackActionForKey,
   playbackDegradationLabel,
+  playbackNavigationTarget,
   playbackVisualState,
 } from "./playback-transport.ts";
 
@@ -22,6 +23,10 @@ export function PlaybackControls() {
     playback?.status === "attached" ? playback.latest : null;
   const snapshotRef = useRef<EditorPlaybackSnapshot | null>(snapshot);
   const commandInFlight = useRef(false);
+  const scrubActive = useRef(false);
+  const scrubDriverRunning = useRef(false);
+  const latestScrubFraction = useRef<number | null>(null);
+  const endScrubRequested = useRef(false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   snapshotRef.current = snapshot;
@@ -89,6 +94,45 @@ export function PlaybackControls() {
   const direction = snapshot?.direction === "reverse" ? "reverse" : "forward";
   const loopEnabled = snapshot?.loop_range !== null && snapshot?.loop_range !== undefined;
   const rateOption = selectedRateOption(snapshot);
+  const navigationFraction = snapshot === null ? 0 : playheadFraction(snapshot);
+
+  const flushScrub = useCallback(async (): Promise<void> => {
+    if (scrubDriverRunning.current || !scrubActive.current) {
+      return;
+    }
+    scrubDriverRunning.current = true;
+    while (latestScrubFraction.current !== null) {
+      const fraction = latestScrubFraction.current;
+      latestScrubFraction.current = null;
+      const current = snapshotRef.current;
+      if (current !== null) {
+        await submit({
+          action: "scrub_to",
+          target: playbackNavigationTarget(current, fraction),
+        });
+      }
+    }
+    if (endScrubRequested.current) {
+      await submit({ action: "end_scrub", resume: false });
+      scrubActive.current = false;
+    }
+    scrubDriverRunning.current = false;
+  }, [submit]);
+
+  const beginScrub = useCallback(async (): Promise<void> => {
+    if (snapshotRef.current === null || scrubActive.current) {
+      return;
+    }
+    scrubActive.current = true;
+    endScrubRequested.current = false;
+    await submit({ action: "begin_scrub" });
+    await flushScrub();
+  }, [flushScrub, submit]);
+
+  const requestScrubEnd = useCallback(() => {
+    endScrubRequested.current = true;
+    void flushScrub();
+  }, [flushScrub]);
 
   return (
     <section className="timeline-workspace" aria-label="Playback transport">
@@ -162,6 +206,36 @@ export function PlaybackControls() {
       </div>
 
       <div className="timeline-edit-controls">
+        <label>
+          Exact seek and scrub
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.001"
+            value={navigationFraction}
+            disabled={disabled}
+            aria-label="Exact playback position"
+            onPointerDown={() => void beginScrub()}
+            onChange={(event) => {
+              const fraction = Number(event.target.value);
+              latestScrubFraction.current = fraction;
+              if (scrubActive.current) {
+                void flushScrub();
+              } else {
+                const current = snapshotRef.current;
+                if (current !== null) {
+                  void submit({
+                    action: "seek",
+                    target: playbackNavigationTarget(current, fraction),
+                  });
+                }
+              }
+            }}
+            onPointerUp={requestScrubEnd}
+            onPointerCancel={requestScrubEnd}
+          />
+        </label>
         <div className="timeline-toolbar-actions">
           <button
             type="button"
@@ -372,4 +446,14 @@ function selectedRateOption(snapshot: EditorPlaybackSnapshot | null): string {
 
 function rateValue(numerator: number, denominator: number): string {
   return `${numerator}/${denominator}`;
+}
+
+function playheadFraction(snapshot: EditorPlaybackSnapshot): number {
+  if (snapshot.bounds.duration <= 1) {
+    return 0;
+  }
+  return (
+    (snapshot.playhead.value - snapshot.bounds.start.value) /
+    (snapshot.bounds.duration - 1)
+  );
 }

@@ -585,7 +585,7 @@ export type EditorParameterSchema = { name: string; value_type: string; animatab
 /**
  * Exact playback scheduling and audio synchronization state.
  */
-export type EditorPlaybackSnapshot = { mode: string; playhead: EditorRationalTime; scheduled_frame: EditorRationalTime | null; scheduled_due_clock: EditorRationalTime | null; rate_numerator: number; rate_denominator: number; direction: string; loop_range: EditorTimeRange | null; epoch: number; total_dropped: number; consecutive_dropped: number; forced_presentations: number; audio_state: string; discard_requested_generation: number; discard_applied_generation: number; degradation: string[]; failure: EditorFailureState | null };
+export type EditorPlaybackSnapshot = { mode: string; bounds: EditorTimeRange; playhead: EditorRationalTime; scheduled_frame: EditorRationalTime | null; scheduled_due_clock: EditorRationalTime | null; rate_numerator: number; rate_denominator: number; direction: string; loop_range: EditorTimeRange | null; epoch: number; total_dropped: number; consecutive_dropped: number; forced_presentations: number; audio_state: string; discard_requested_generation: number; discard_applied_generation: number; degradation: string[]; failure: EditorFailureState | null };
 
 /**
  * Playback bridge attachment with pending and latest observation status.

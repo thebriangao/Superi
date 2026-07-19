@@ -619,6 +619,7 @@ pub struct EditorAiState {
 #[serde(deny_unknown_fields)]
 pub struct EditorPlaybackSnapshot {
     mode: String,
+    bounds: EditorTimeRange,
     playhead: EditorRationalTime,
     scheduled_frame: Option<EditorRationalTime>,
     scheduled_due_clock: Option<EditorRationalTime>,
@@ -1129,6 +1130,7 @@ fn public_playback_snapshot(value: EnginePlaybackSnapshot) -> Result<EditorPlayb
     let drops = value.drop_statistics();
     Ok(EditorPlaybackSnapshot {
         mode: mode.to_owned(),
+        bounds: EditorTimeRange::from_engine(value.bounds()),
         playhead: EditorRationalTime::from_engine(value.playhead()),
         scheduled_frame: value.scheduled_frame().map(EditorRationalTime::from_engine),
         scheduled_due_clock: value
