@@ -1150,6 +1150,24 @@ kbd {
   font-size: 9px;
 }
 
+.native-viewport__overlay-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.native-viewport__overlay-toolbar button {
+  min-height: 24px;
+  padding: 3px 6px;
+  font-size: 8px;
+}
+
+.native-viewport__overlay-toolbar button[aria-pressed="true"] {
+  border-color: #7fb4d4;
+  background: #20333d;
+  color: #d7edf8;
+}
+
 .native-viewport__toolbar output {
   min-width: 42px;
   color: #b9c4c1;
@@ -1158,9 +1176,38 @@ kbd {
 }
 
 .native-viewport__frame {
+  position: relative;
   overflow: hidden;
   border-radius: 7px;
 }
+
+.native-viewport__overlays {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 7px;
+  pointer-events: none;
+  transform-origin: center;
+  transition: transform 120ms ease-out;
+}
+
+.viewer-overlay {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+}
+
+.viewer-overlay--safe-area { inset: 10%; border: 1px solid rgb(255 220 96 / 82%); }
+.viewer-overlay--center::before,
+.viewer-overlay--center::after { position: absolute; content: ""; background: rgb(116 218 255 / 70%); }
+.viewer-overlay--guide { background-image: linear-gradient(90deg, transparent calc(33.333% - 0.5px), rgb(116 218 255 / 70%) 33.333%, transparent calc(33.333% + 0.5px), transparent calc(66.666% - 0.5px), rgb(116 218 255 / 70%) 66.666%, transparent calc(66.666% + 0.5px)), linear-gradient(transparent calc(33.333% - 0.5px), rgb(116 218 255 / 70%) 33.333%, transparent calc(33.333% + 0.5px), transparent calc(66.666% - 0.5px), rgb(116 218 255 / 70%) 66.666%, transparent calc(66.666% + 0.5px)); }
+.viewer-overlay--grid { background-image: linear-gradient(rgb(255 255 255 / 18%) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 18%) 1px, transparent 1px); background-size: 12.5% 12.5%; }
+.viewer-overlay--ruler { border-top: 12px solid rgb(15 20 22 / 78%); border-left: 12px solid rgb(15 20 22 / 78%); background-image: repeating-linear-gradient(90deg, transparent 0 19px, rgb(230 238 236 / 72%) 19px 20px), repeating-linear-gradient(0deg, transparent 0 19px, rgb(230 238 236 / 72%) 19px 20px); background-size: 100% 8px, 8px 100%; background-repeat: no-repeat; }
+.viewer-overlay--center::before { top: 50%; left: calc(50% - 24px); width: 48px; height: 1px; }
+.viewer-overlay--center::after { top: calc(50% - 24px); left: 50%; width: 1px; height: 48px; }
+.viewer-overlay--aspect { inset: 9.65% 0; border-block: 1px solid rgb(214 170 255 / 78%); }
+.viewer-overlay--aspect i { position: absolute; top: 4px; right: 6px; color: #d6aaff; font: 9px/1 ui-monospace, monospace; }
+.viewer-overlay--custom { border: 2px dashed rgb(255 126 174 / 85%); }
 
 .native-viewer-grid {
   display: grid;

@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 5f4c0bf886dedd4e7e25cbee7f3b890707f004a7792ec8a7e5be9bce0fc1c80a
-source_files: 279
+source_hash: f138f8a755cc8fcb0e23c760762e68a2decf4ab1cd5416a27afe68e26b69afb3
+source_files: 282
 mapped_at_commit: working-tree
 ---
 
@@ -504,6 +504,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   scrub, explicit audio-scrub behavior, canonical playhead follow, focused proof, and delivery.
 - `docs/checkpoints/P3.W05.C003.md`: Durable implementation evidence for native viewer fit, zoom,
   pan, pixel, fullscreen, and cinema presentation modes with preserved playback and overlay state.
+- `docs/checkpoints/P3.W05.C004.md`: Durable implementation evidence for presentation-only safe
+  area, guide, grid, ruler, center, aspect, and custom viewer overlays.
 
 ### Production desktop application
 
@@ -564,6 +566,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/viewer-navigation.ts`: Defines the frozen shell-local fit, bounded zoom, pan, exact 1:1
   pixel, fullscreen, and cinema state contract plus deterministic display transforms and explicit
   role-addressed external-display intent without importing playback or overlay ownership.
+- `app/src/viewer-overlays.ts`: Defines the frozen seven-kind overlay catalog, immutable visibility
+  state, deterministic custom inset geometry, and ordered visible projection without importing
+  navigation, playback, comparison, or status-display ownership.
 - `app/src/timeline-workspace.ts`: Strictly projects the embedded canonical revision 2 timeline
   document into a deeply frozen canvas model with exact rational source and record ranges, stable
   identities and relationships, complete caption text, language, speaker, style, timeline
@@ -699,8 +704,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   never constructs an encoded image, blob URL, pixel readback, or webview frame path. Its composed
   viewer shell consumes one frozen local contract for fit, bounded zoom, directional pan, exact
   1:1 pixel intent, browser-synchronized fullscreen, cinema layout, and role-addressed external
-  display intent without importing or mutating playback, comparison, editorial feedback, or overlay
-  state. Its composed
+  display intent without importing or mutating playback, comparison, or editorial feedback. A
+  separate frozen local overlay contract renders pointer-transparent safe-area, guide, grid, ruler,
+  center, aspect, and custom geometry above the same transformed frame while preserving navigation
+  and excluding timecode and status displays. Its composed
   `SourceMonitor` owns shell-local media-library and monitor state, exposes load, exact seek, mark,
   clear, refresh, and unload controls, publishes every replacement monitor snapshot to its caller,
   refreshes after project revision changes, and labels the retained source session as separate from
@@ -812,6 +819,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/viewer-navigation.test.ts`: Proves immutable bounded navigation, exact fit and pixel
   resets, deterministic pan, role-addressed display intent, and exclusive fullscreen and cinema
   presentation without changing navigation state.
+- `app/tests/viewer-overlays.test.ts`: Proves the complete frozen overlay catalog, deterministic
+  custom geometry, immutable visibility changes, ordered projection, and absence of navigation,
+  playback, timecode, and status state.
 - `app/tests/timeline-workspace.test.ts`: Verifies strict canonical revision handling, exact track,
   item, source and record range, group, link, selection, target, lock, output, synchronization, and
   transition preservation, variable height, external global-start placement, deterministic

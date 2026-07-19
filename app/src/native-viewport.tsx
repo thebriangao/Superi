@@ -24,6 +24,13 @@ import {
   initialViewerNavigation,
   viewerTransform,
 } from "./viewer-navigation.ts";
+import {
+  OVERLAY_DEFINITIONS,
+  initialViewerOverlays,
+  toggleViewerOverlay,
+  visibleViewerOverlays,
+  type ViewerOverlayDefinition,
+} from "./viewer-overlays.ts";
 
 type ViewportSnapshot = {
   role: NativeViewerRole;
@@ -297,6 +304,7 @@ export function NativeViewport({
   const [snapshot, setSnapshot] = useState<ViewportSnapshot | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
   const [navigation, setNavigation] = useState(() => initialViewerNavigation(role));
+  const [overlays, setOverlays] = useState(initialViewerOverlays);
 
   useEffect(() => {
     setNavigation(initialViewerNavigation(role));
@@ -433,6 +441,18 @@ export function NativeViewport({
         >Cinema</button>
         <button type="button" aria-pressed={navigation.presentation === "fullscreen"} onClick={() => void toggleFullscreen()}>Fullscreen</button>
       </div>
+      <div className="native-viewport__overlay-toolbar" aria-label={`${label} viewer overlays`}>
+        {OVERLAY_DEFINITIONS.map((overlay) => (
+          <button
+            type="button"
+            key={overlay.kind}
+            aria-pressed={overlays[overlay.kind]}
+            onClick={() => setOverlays((current) => toggleViewerOverlay(current, overlay.kind))}
+          >
+            {overlay.label}
+          </button>
+        ))}
+      </div>
       <div className="native-viewport__frame">
         <section
           className="native-viewport"
@@ -442,12 +462,36 @@ export function NativeViewport({
           data-external-display-intent={navigation.externalDisplayIntent}
           style={{ transform: transform.transform, imageRendering: transform.imageRendering }}
         />
+        <div
+          className="native-viewport__overlays"
+          aria-label={`${label} active overlays`}
+          style={{ transform: transform.transform }}
+        >
+          {visibleViewerOverlays(overlays).map((overlay) => (
+            <ViewerOverlay key={overlay.kind} overlay={overlay} />
+          ))}
+        </div>
       </div>
       <span className="native-viewport__status" role="status" aria-live="polite">
         {status} · {navigation.scaleMode} {Math.round(navigation.scale * 100)}% · pan {navigation.panX},{navigation.panY} · {navigation.presentation} · {navigation.externalDisplayIntent}
       </span>
       {feedback ? <ViewerEditorialFeedback feedback={feedback} label={label} /> : null}
     </div>
+  );
+}
+
+function ViewerOverlay({ overlay }: { readonly overlay: ViewerOverlayDefinition }) {
+  const geometry = overlay.geometry;
+  return (
+    <span
+      className={`viewer-overlay viewer-overlay--${overlay.kind}`}
+      data-overlay-kind={overlay.kind}
+      style={geometry ? {
+        inset: `${geometry.insetTop}% ${geometry.insetRight}% ${geometry.insetBottom}% ${geometry.insetLeft}%`,
+      } : undefined}
+    >
+      {overlay.kind === "aspect" ? <i>16:9</i> : null}
+    </span>
   );
 }
 

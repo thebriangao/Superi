@@ -44,6 +44,11 @@ The workspace viewer shell now owns frozen fit, bounded zoom, directional pan, e
 fullscreen, cinema, and role-addressed external-display presentation intent while preserving the
 existing exact playback, caption, editorial feedback, comparison, and later overlay boundaries.
 
+The same shell composes a separate frozen presentation-only overlay contract for safe area, guides,
+grid, rulers, center, aspect, and custom geometry. Overlay visibility follows the C003 transform
+without mutating navigation, pixels, temporal context, comparison intent, external-display intent,
+or the later timecode and status-display boundary.
+
 ## Ownership and repository boundaries
 
 The mapping script assigns each `open/crates/<name>` package to one crate module and each

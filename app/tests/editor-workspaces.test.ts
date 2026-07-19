@@ -238,13 +238,20 @@ test("editorial feedback crosses the existing application owner into viewers and
   assert.match(nativeViewport, />Cinema</);
   assert.match(nativeViewport, />Fullscreen</);
   assert.match(nativeViewport, /data-external-display-intent/);
+  assert.match(nativeViewport, /initialViewerOverlays/);
+  assert.match(nativeViewport, /visibleViewerOverlays/);
+  assert.match(nativeViewport, /data-overlay-kind/);
+  assert.match(nativeViewport, /aria-label=\{`\$\{label\} viewer overlays`\}/);
   assert.doesNotMatch(nativeViewport, /playbackNavigationTarget|scrub_to|begin_scrub/);
+  assert.doesNotMatch(nativeViewport, /timecode|status display/i);
   assert.match(nativeViewport, /EditorialAudioMeters/);
   assert.match(nativeViewport, /data-signal-status=\{feedback\.signalStatus\}/);
   assert.match(nativeViewport, /data-route-state=\{route\.state\}/);
   assert.match(styles, /\.viewer-editorial-feedback/);
   assert.match(styles, /\.native-viewport__toolbar/);
   assert.match(styles, /data-presentation="cinema"/);
+  assert.match(styles, /\.native-viewport__overlays/);
+  assert.match(styles, /\.viewer-overlay--custom/);
   assert.match(styles, /\.editorial-audio-meters/);
   assert.match(styles, /\.editorial-audio-route\[data-route-state="routed"\]/);
   assert.doesNotMatch(
