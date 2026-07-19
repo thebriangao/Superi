@@ -231,10 +231,20 @@ test("editorial feedback crosses the existing application owner into viewers and
   assert.match(workspaces, /<EditorialAudioMeters/);
   assert.match(workspaces, /onEditorialFeedback=\{setEditorialFeedback\}/);
   assert.match(nativeViewport, /TimelineViewerFeedback/);
+  assert.match(nativeViewport, /initialViewerNavigation/);
+  assert.match(nativeViewport, /requestFullscreen/);
+  assert.match(nativeViewport, />Fit</);
+  assert.match(nativeViewport, />1:1</);
+  assert.match(nativeViewport, />Cinema</);
+  assert.match(nativeViewport, />Fullscreen</);
+  assert.match(nativeViewport, /data-external-display-intent/);
+  assert.doesNotMatch(nativeViewport, /playbackNavigationTarget|scrub_to|begin_scrub/);
   assert.match(nativeViewport, /EditorialAudioMeters/);
   assert.match(nativeViewport, /data-signal-status=\{feedback\.signalStatus\}/);
   assert.match(nativeViewport, /data-route-state=\{route\.state\}/);
   assert.match(styles, /\.viewer-editorial-feedback/);
+  assert.match(styles, /\.native-viewport__toolbar/);
+  assert.match(styles, /data-presentation="cinema"/);
   assert.match(styles, /\.editorial-audio-meters/);
   assert.match(styles, /\.editorial-audio-route\[data-route-state="routed"\]/);
   assert.doesNotMatch(

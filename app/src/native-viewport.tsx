@@ -19,6 +19,11 @@ import type {
   TimelineAudioTrackFeedback,
   TimelineViewerFeedback,
 } from "./timeline-editorial-feedback.ts";
+import {
+  applyViewerNavigation,
+  initialViewerNavigation,
+  viewerTransform,
+} from "./viewer-navigation.ts";
 
 type ViewportSnapshot = {
   role: NativeViewerRole;
@@ -287,9 +292,29 @@ export function NativeViewport({
   label,
   feedback = null,
 }: NativeViewportProps) {
+  const shell = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLElement>(null);
   const [snapshot, setSnapshot] = useState<ViewportSnapshot | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
+  const [navigation, setNavigation] = useState(() => initialViewerNavigation(role));
+
+  useEffect(() => {
+    setNavigation(initialViewerNavigation(role));
+  }, [role]);
+
+  useEffect(() => {
+    const synchronizeFullscreen = () => {
+      if (document.fullscreenElement !== shell.current) {
+        setNavigation((current) =>
+          current.presentation === "fullscreen"
+            ? applyViewerNavigation(current, { action: "presentation", mode: "normal" })
+            : current,
+        );
+      }
+    };
+    document.addEventListener("fullscreenchange", synchronizeFullscreen);
+    return () => document.removeEventListener("fullscreenchange", synchronizeFullscreen);
+  }, []);
 
   useEffect(() => {
     const element = host.current;
@@ -364,17 +389,62 @@ export function NativeViewport({
     : snapshot
       ? `${label} · ${snapshot.displayIntent} · ${snapshot.phase} · ${snapshot.physicalWidth}×${snapshot.physicalHeight} · frame ${snapshot.frameSequence}`
       : "Starting native GPU output";
+  const transform = viewerTransform(navigation);
+  const updateNavigation = (action: Parameters<typeof applyViewerNavigation>[1]) => {
+    setNavigation((current) => applyViewerNavigation(current, action));
+  };
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement === shell.current) {
+        await document.exitFullscreen();
+      } else if (shell.current) {
+        await shell.current.requestFullscreen();
+        updateNavigation({ action: "presentation", mode: "fullscreen" });
+      }
+    } catch (error: unknown) {
+      setSummary(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   return (
-    <div className="native-viewport-shell">
-      <section
-        className="native-viewport"
-        ref={host}
-        aria-label={`${label} native GPU media viewer`}
-        data-viewer-role={role}
-      />
+    <div
+      className="native-viewport-shell"
+      ref={shell}
+      data-presentation={navigation.presentation}
+      data-scale-mode={navigation.scaleMode}
+    >
+      <div className="native-viewport__toolbar" aria-label={`${label} viewer navigation`}>
+        <button type="button" onClick={() => updateNavigation({ action: "fit" })}>Fit</button>
+        <button type="button" onClick={() => updateNavigation({ action: "zoom", factor: 0.5 })}>-</button>
+        <output aria-label="Viewer zoom">{Math.round(navigation.scale * 100)}%</output>
+        <button type="button" onClick={() => updateNavigation({ action: "zoom", factor: 2 })}>+</button>
+        <button type="button" onClick={() => updateNavigation({ action: "pixel" })}>1:1</button>
+        <button type="button" onClick={() => updateNavigation({ action: "pan", deltaX: -32, deltaY: 0 })}>Left</button>
+        <button type="button" onClick={() => updateNavigation({ action: "pan", deltaX: 32, deltaY: 0 })}>Right</button>
+        <button type="button" onClick={() => updateNavigation({ action: "pan", deltaX: 0, deltaY: -32 })}>Up</button>
+        <button type="button" onClick={() => updateNavigation({ action: "pan", deltaX: 0, deltaY: 32 })}>Down</button>
+        <button
+          type="button"
+          aria-pressed={navigation.presentation === "cinema"}
+          onClick={() => updateNavigation({
+            action: "presentation",
+            mode: navigation.presentation === "cinema" ? "normal" : "cinema",
+          })}
+        >Cinema</button>
+        <button type="button" aria-pressed={navigation.presentation === "fullscreen"} onClick={() => void toggleFullscreen()}>Fullscreen</button>
+      </div>
+      <div className="native-viewport__frame">
+        <section
+          className="native-viewport"
+          ref={host}
+          aria-label={`${label} native GPU media viewer`}
+          data-viewer-role={role}
+          data-external-display-intent={navigation.externalDisplayIntent}
+          style={{ transform: transform.transform, imageRendering: transform.imageRendering }}
+        />
+      </div>
       <span className="native-viewport__status" role="status" aria-live="polite">
-        {status}
+        {status} · {navigation.scaleMode} {Math.round(navigation.scale * 100)}% · pan {navigation.panX},{navigation.panY} · {navigation.presentation} · {navigation.externalDisplayIntent}
       </span>
       {feedback ? <ViewerEditorialFeedback feedback={feedback} label={label} /> : null}
     </div>

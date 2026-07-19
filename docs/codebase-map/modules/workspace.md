@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: b5570bf3e7cab2320133754c1e9ceb22d99e878978a51212bd63afcc6a67508a
-source_files: 276
+source_hash: 5f4c0bf886dedd4e7e25cbee7f3b890707f004a7792ec8a7e5be9bce0fc1c80a
+source_files: 279
 mapped_at_commit: working-tree
 ---
 
@@ -502,6 +502,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   application-owned durable command publication.
 - `docs/checkpoints/P3.W05.C002.md`: Durable implementation evidence for exact seek, superseding
   scrub, explicit audio-scrub behavior, canonical playhead follow, focused proof, and delivery.
+- `docs/checkpoints/P3.W05.C003.md`: Durable implementation evidence for native viewer fit, zoom,
+  pan, pixel, fullscreen, and cinema presentation modes with preserved playback and overlay state.
 
 ### Production desktop application
 
@@ -559,6 +561,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/playback-transport.ts`: Defines transport-neutral pure JKL and Space command derivation,
   exact half-open-range navigation mapping, rational time and rate formatting, fixed variable-rate options, and complete user-facing
   labels for every engine playback degradation code.
+- `app/src/viewer-navigation.ts`: Defines the frozen shell-local fit, bounded zoom, pan, exact 1:1
+  pixel, fullscreen, and cinema state contract plus deterministic display transforms and explicit
+  role-addressed external-display intent without importing playback or overlay ownership.
 - `app/src/timeline-workspace.ts`: Strictly projects the embedded canonical revision 2 timeline
   document into a deeply frozen canvas model with exact rational source and record ranges, stable
   identities and relationships, complete caption text, language, speaker, style, timeline
@@ -692,6 +697,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/native-viewport.tsx`: Reserves role-addressed native output rectangles and publishes only
   role, geometry, scale, visibility, and returned status to the shell-local viewport command; it
   never constructs an encoded image, blob URL, pixel readback, or webview frame path. Its composed
+  viewer shell consumes one frozen local contract for fit, bounded zoom, directional pan, exact
+  1:1 pixel intent, browser-synchronized fullscreen, cinema layout, and role-addressed external
+  display intent without importing or mutating playback, comparison, editorial feedback, or overlay
+  state. Its composed
   `SourceMonitor` owns shell-local media-library and monitor state, exposes load, exact seek, mark,
   clear, refresh, and unload controls, publishes every replacement monitor snapshot to its caller,
   refreshes after project revision changes, and labels the retained source session as separate from
@@ -758,8 +767,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   evidence, lasso, visible focus, live status, snap rule strip, exact target status and guide,
   transition handle marks, timing and alignment forms, typed effect parameter controls, marker list
   and editor controls, and
-  responsive 16:9 native viewer
-  reservations. Timeline rows use canonical variable height, compact two-row track controls,
+  responsive 16:9 native viewer reservations plus bounded navigation controls, clipped transforms,
+  pixel-mode fidelity intent, fullscreen, and cinema presentation. Timeline rows use canonical variable height, compact two-row track controls,
   disabled output presentation, and visible command failures. It also defines compact ready, stale,
   and empty source-monitor
   controls with exact state details and responsive action groups. The timeline edit console adds
@@ -793,11 +802,16 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   transition command wiring through the same application-owned callback plus application-owned
   editorial feedback publication, viewer consumption, audio meter rendering, route-state styling,
   and native IPC isolation. It also freezes the
+  complete fit, zoom, pan, 1:1, fullscreen, cinema, and external-display-intent viewer control
+  consumer while excluding C002 playback navigation ownership. It also freezes the
   editing playback consumer, application-owned generated route, complete required action set,
   exact state categories, and absence of direct Tauri or API-client ownership in the component.
 - `app/tests/playback-transport.test.ts`: Proves exact signed JKL rate cycling, K pause, Space
   play-or-pause intent, half-open exact seek and scrub coordinate mapping, rational time and rate
   formatting, and explicit unavailable-output labels.
+- `app/tests/viewer-navigation.test.ts`: Proves immutable bounded navigation, exact fit and pixel
+  resets, deterministic pan, role-addressed display intent, and exclusive fullscreen and cinema
+  presentation without changing navigation state.
 - `app/tests/timeline-workspace.test.ts`: Verifies strict canonical revision handling, exact track,
   item, source and record range, group, link, selection, target, lock, output, synchronization, and
   transition preservation, variable height, external global-start placement, deterministic

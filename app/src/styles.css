@@ -1133,6 +1133,33 @@ kbd {
   display: grid;
   gap: 6px;
   margin-top: 12px;
+  padding: 6px;
+  background: #090c0d;
+}
+
+.native-viewport__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.native-viewport__toolbar button {
+  min-height: 26px;
+  padding: 4px 7px;
+  font-size: 9px;
+}
+
+.native-viewport__toolbar output {
+  min-width: 42px;
+  color: #b9c4c1;
+  font: 10px/1.2 ui-monospace, monospace;
+  text-align: center;
+}
+
+.native-viewport__frame {
+  overflow: hidden;
+  border-radius: 7px;
 }
 
 .native-viewer-grid {
@@ -1152,6 +1179,35 @@ kbd {
   border: 1px solid #30373a;
   border-radius: 7px;
   background: #030405;
+  transform-origin: center;
+  transition: transform 120ms ease-out;
+}
+
+.native-viewport-shell[data-scale-mode="pixel"] .native-viewport {
+  transition: none;
+}
+
+.native-viewport-shell[data-presentation="cinema"],
+.native-viewport-shell:fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  margin: 0;
+  padding: 12px;
+  background: #000;
+}
+
+.native-viewport-shell[data-presentation="cinema"] .native-viewport__frame,
+.native-viewport-shell:fullscreen .native-viewport__frame {
+  display: grid;
+  min-height: 0;
+  place-items: center;
+}
+
+.native-viewport-shell[data-presentation="cinema"] .native-viewport,
+.native-viewport-shell:fullscreen .native-viewport {
+  width: min(100%, calc(100vh * 16 / 9));
+  max-height: calc(100vh - 96px);
 }
 
 .native-viewport__status {
