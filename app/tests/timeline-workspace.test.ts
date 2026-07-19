@@ -12,6 +12,8 @@ import {
   buildTimelineHistoryCommand,
   buildTimelineRulerTicks,
   buildTimelineEditCommand,
+  buildTimelineAudioRoutingAction,
+  buildTimelineAudioVideoAction,
   clampTimelineRange,
   expandTimelineSelection,
   formatTimelineTime,
@@ -151,7 +153,10 @@ function canonicalDocument(): EditorCanonicalDocument {
                   routing: {
                     destination: { kind: "main" },
                     destination_layout: ["front_left", "front_right"],
-                    routes: [],
+                    routes: [
+                      { source: "front_left", target: { kind: "channel", channel: "front_left" } },
+                      { source: "front_right", target: { kind: "channel", channel: "front_right" } },
+                    ],
                   },
                 },
                 items: [],
@@ -229,6 +234,15 @@ test("canonical projection preserves exact editorial timing and relationships", 
     numerator: 48_000,
     denominator: 1,
   });
+  assert.deepEqual(audio.audioRouting, {
+    sourceLayout: ["front_left", "front_right"],
+    destination: { kind: "main" },
+    destinationLayout: ["front_left", "front_right"],
+    routes: [
+      { source: "front_left", target: { kind: "channel", channel: "front_left" } },
+      { source: "front_right", target: { kind: "channel", channel: "front_right" } },
+    ],
+  });
 
   const opening = video.items.find((item) => item.id === "clip.a");
   assert.ok(opening);
@@ -259,6 +273,111 @@ test("canonical projection preserves exact editorial timing and relationships", 
   assert.ok(Object.isFrozen(model));
   assert.ok(Object.isFrozen(model.tracks));
   assert.ok(Object.isFrozen(video.items));
+});
+
+test("audio-video and channel-routing planners preserve exact public intent", () => {
+  const document = canonicalDocument();
+  const timeline = rootTimeline(document);
+  const tracks = timeline.tracks as Array<Record<string, unknown>>;
+  const audioTrack = tracks[1]!;
+  const audioRate = { numerator: 48_000, denominator: 1 };
+  (audioTrack.items as unknown[]).push({
+    kind: "gap",
+    id: "gap.audio-lead",
+    name: "Audio lead",
+    record_range: rangeAt("0", "48000", audioRate),
+  }, {
+    kind: "clip",
+    id: "clip.audio",
+    name: "Production audio",
+    source: { kind: "media", id: "media.a" },
+    source_range: rangeAt("0", "48000", audioRate),
+    record_range: rangeAt("48000", "48000", audioRate),
+    time_map: {
+      record_duration: { value: "48000", timebase: audioRate },
+      source_timebase: audioRate,
+      segments: [{
+        record_range: rangeAt("0", "48000", audioRate),
+        source_start: { value: "0", timebase: audioRate },
+        rate_numerator: "1",
+        rate_denominator: "1",
+      }],
+    },
+  });
+  const editState = timeline.edit_state as Record<string, unknown>;
+  editState.selected_objects = [
+    { kind: "clip", id: "clip.a" },
+    { kind: "clip", id: "clip.audio" },
+  ];
+  const states = editState.track_states as Array<Record<string, unknown>>;
+  states[1]!.locked = false;
+
+  const model = projectTimelineDocument(document, "timeline.main");
+  const link = buildTimelineAudioVideoAction({
+    gesture: "link",
+    model,
+    selectedItemIds: ["clip.a", "clip.audio"],
+  });
+  assert.equal(link.status, "ready");
+  assert.deepEqual(link.action, {
+    action: "edit_timeline",
+    operations: [{
+      operation: "link_audio_video",
+      timeline_id: "timeline.main",
+      video_track_id: "track.video.1",
+      video_clip_id: "clip.a",
+      audio_track_id: "track.audio.1",
+      audio_clip_id: "clip.audio",
+    }],
+  });
+  const synchronize = buildTimelineAudioVideoAction({
+    gesture: "synchronize",
+    model,
+    selectedItemIds: ["clip.a", "clip.audio"],
+  });
+  assert.equal(synchronize.status, "ready");
+  assert.equal(synchronize.action.operations[0]?.operation, "synchronize_audio_video");
+
+  const routing = buildTimelineAudioRoutingAction({
+    model,
+    trackId: "track.audio.1",
+    destination: { kind: "main" },
+    destinationLayout: ["front_left", "front_right"],
+    routes: [
+      { source: "front_left", target: { kind: "channel", channel: "front_right" } },
+      { source: "front_right", target: { kind: "muted" } },
+    ],
+  });
+  assert.equal(routing.status, "ready");
+  assert.deepEqual(routing.action, {
+    action: "mutate_tracks",
+    mutations: [{
+      operation: "set_audio_routing",
+      timeline_id: "timeline.main",
+      track_id: "track.audio.1",
+      destination: { kind: "main" },
+      destination_layout: [{ kind: "front_left" }, { kind: "front_right" }],
+      routes: [
+        {
+          source: { kind: "front_left" },
+          target: { kind: "channel", position: { kind: "front_right" } },
+        },
+        { source: { kind: "front_right" }, target: { kind: "muted" } },
+      ],
+    }],
+  });
+
+  const incomplete = canonicalDocument();
+  const incompleteTimeline = rootTimeline(incomplete);
+  const incompleteAudio = (incompleteTimeline.tracks as Array<Record<string, unknown>>)[1]!;
+  const semantics = incompleteAudio.semantics as Record<string, unknown>;
+  const canonicalRouting = semantics.routing as Record<string, unknown>;
+  canonicalRouting.routes = [];
+  assert.throws(
+    () => projectTimelineDocument(incomplete, "timeline.main"),
+    (error: unknown) =>
+      error instanceof TimelineProjectionError && /every source channel/i.test(error.message),
+  );
 });
 
 test("projects owner-clock targets and resolves exact configurable snap rules", () => {
@@ -859,6 +978,12 @@ test("timeline surface is integrated without a second authored mutation owner", 
   assert.match(timeline, /buildMulticamSwitchAction/);
   assert.match(timeline, /buildMulticamMoveCutAction/);
   assert.match(timeline, /Undo last project edit/);
+  assert.match(timeline, /aria-label="Audio and video controls"/);
+  assert.match(timeline, /Link audio and video/);
+  assert.match(timeline, /Sync by source time/);
+  assert.match(timeline, /Detach audio/);
+  assert.match(timeline, /Replace audio/);
+  assert.match(timeline, /Channel mapping/);
   assert.match(timeline, /onDoubleClick={onDoubleClick}/);
   assert.match(styles, /\.timeline-transition-inspector/);
   assert.match(styles, /\.timeline-transition-handles/);

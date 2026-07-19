@@ -1126,6 +1126,9 @@ pub enum TimelineEditKind {
     Overwrite,
     Append,
     Replace,
+    LinkAudioVideo,
+    SynchronizeAudioVideo,
+    DetachAudio,
     Lift,
     Extract,
     Ripple,
@@ -1170,6 +1173,27 @@ pub enum TimelineEditOperation {
         track_id: String,
         target_id: EditorialObjectId,
         material: EditorTrackItem,
+    },
+    LinkAudioVideo {
+        timeline_id: String,
+        video_track_id: String,
+        video_clip_id: String,
+        audio_track_id: String,
+        audio_clip_id: String,
+    },
+    SynchronizeAudioVideo {
+        timeline_id: String,
+        video_track_id: String,
+        video_clip_id: String,
+        audio_track_id: String,
+        audio_clip_id: String,
+    },
+    DetachAudio {
+        timeline_id: String,
+        video_track_id: String,
+        video_clip_id: String,
+        audio_track_id: String,
+        audio_clip_id: String,
     },
     Lift {
         timeline_id: String,
@@ -1315,6 +1339,45 @@ impl TimelineEditOperation {
                 target_id: target_id.into_engine()?,
                 material: material.into_engine()?,
             }),
+            Self::LinkAudioVideo {
+                timeline_id,
+                video_track_id,
+                video_clip_id,
+                audio_track_id,
+                audio_clip_id,
+            } => Ok(engine::EditOperation::link_audio_video(
+                parse_id(&timeline_id, "timeline_id")?,
+                parse_id(&video_track_id, "video_track_id")?,
+                parse_id(&video_clip_id, "video_clip_id")?,
+                parse_id(&audio_track_id, "audio_track_id")?,
+                parse_id(&audio_clip_id, "audio_clip_id")?,
+            )),
+            Self::SynchronizeAudioVideo {
+                timeline_id,
+                video_track_id,
+                video_clip_id,
+                audio_track_id,
+                audio_clip_id,
+            } => Ok(engine::EditOperation::synchronize_audio_video(
+                parse_id(&timeline_id, "timeline_id")?,
+                parse_id(&video_track_id, "video_track_id")?,
+                parse_id(&video_clip_id, "video_clip_id")?,
+                parse_id(&audio_track_id, "audio_track_id")?,
+                parse_id(&audio_clip_id, "audio_clip_id")?,
+            )),
+            Self::DetachAudio {
+                timeline_id,
+                video_track_id,
+                video_clip_id,
+                audio_track_id,
+                audio_clip_id,
+            } => Ok(engine::EditOperation::detach_audio(
+                parse_id(&timeline_id, "timeline_id")?,
+                parse_id(&video_track_id, "video_track_id")?,
+                parse_id(&video_clip_id, "video_clip_id")?,
+                parse_id(&audio_track_id, "audio_track_id")?,
+                parse_id(&audio_clip_id, "audio_clip_id")?,
+            )),
             Self::Lift {
                 timeline_id,
                 track_id,
@@ -1928,6 +1991,17 @@ pub enum EditorAudioDestination {
     Track { track_id: String },
 }
 
+impl EditorAudioDestination {
+    fn into_engine(self) -> Result<engine::AudioRouteDestination> {
+        match self {
+            Self::Main {} => Ok(engine::AudioRouteDestination::Main),
+            Self::Track { track_id } => Ok(engine::AudioRouteDestination::Track(parse_id(
+                &track_id, "track_id",
+            )?)),
+        }
+    }
+}
+
 /// Audio channel route target.
 #[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1937,6 +2011,17 @@ pub enum EditorAudioChannelTarget {
     Muted {},
 }
 
+impl EditorAudioChannelTarget {
+    const fn into_engine(self) -> engine::AudioChannelTarget {
+        match self {
+            Self::Channel { position } => {
+                engine::AudioChannelTarget::Channel(position.into_engine())
+            }
+            Self::Muted {} => engine::AudioChannelTarget::Muted,
+        }
+    }
+}
+
 /// One exact audio channel routing decision.
 #[cfg_attr(feature = "typescript-bindings", derive(specta::Type))]
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1944,6 +2029,24 @@ pub enum EditorAudioChannelTarget {
 pub struct EditorAudioChannelRoute {
     pub source: EditorChannelPosition,
     pub target: EditorAudioChannelTarget,
+}
+
+impl EditorAudioChannelRoute {
+    const fn into_engine(self) -> engine::AudioChannelRoute {
+        engine::AudioChannelRoute::new(self.source.into_engine(), self.target.into_engine())
+    }
+}
+
+fn audio_routing(
+    destination: EditorAudioDestination,
+    destination_layout: Vec<EditorChannelPosition>,
+    routes: Vec<EditorAudioChannelRoute>,
+) -> Result<engine::AudioRouting> {
+    engine::AudioRouting::new(
+        destination.into_engine()?,
+        channel_layout(destination_layout)?,
+        routes.into_iter().map(EditorAudioChannelRoute::into_engine),
+    )
 }
 
 /// Timed text purpose.
@@ -1981,30 +2084,7 @@ impl EditorTrackSemantics {
                 routes,
             } => {
                 let source_layout = channel_layout(source_layout)?;
-                let destination_layout = channel_layout(destination_layout)?;
-                let destination = match destination {
-                    EditorAudioDestination::Main {} => engine::AudioRouteDestination::Main,
-                    EditorAudioDestination::Track { track_id } => {
-                        engine::AudioRouteDestination::Track(parse_id(&track_id, "track_id")?)
-                    }
-                };
-                let routes = routes
-                    .into_iter()
-                    .map(|route| {
-                        engine::AudioChannelRoute::new(
-                            route.source.into_engine(),
-                            match route.target {
-                                EditorAudioChannelTarget::Channel { position } => {
-                                    engine::AudioChannelTarget::Channel(position.into_engine())
-                                }
-                                EditorAudioChannelTarget::Muted {} => {
-                                    engine::AudioChannelTarget::Muted
-                                }
-                            },
-                        )
-                    })
-                    .collect::<Vec<_>>();
-                let routing = engine::AudioRouting::new(destination, destination_layout, routes)?;
+                let routing = audio_routing(destination, destination_layout, routes)?;
                 Ok(engine::TrackSemantics::Audio(
                     engine::AudioTrackSemantics::new(sample_rate, source_layout, routing)?,
                 ))
@@ -3306,6 +3386,7 @@ pub enum TimelineTrackMutationKind {
     SetSyncLocked,
     SetMuted,
     SetSolo,
+    SetAudioRouting,
     SetEnabled,
 }
 
@@ -3365,6 +3446,13 @@ pub enum TimelineTrackMutation {
         timeline_id: String,
         track_id: String,
         solo: bool,
+    },
+    SetAudioRouting {
+        timeline_id: String,
+        track_id: String,
+        destination: EditorAudioDestination,
+        destination_layout: Vec<EditorChannelPosition>,
+        routes: Vec<EditorAudioChannelRoute>,
     },
     SetEnabled {
         timeline_id: String,
@@ -3471,6 +3559,17 @@ impl TimelineTrackMutation {
                 timeline_id: parse_id(&timeline_id, "timeline_id")?,
                 track_id: parse_id(&track_id, "track_id")?,
                 solo,
+            },
+            Self::SetAudioRouting {
+                timeline_id,
+                track_id,
+                destination,
+                destination_layout,
+                routes,
+            } => engine::TrackMutation::SetAudioRouting {
+                timeline_id: parse_id(&timeline_id, "timeline_id")?,
+                track_id: parse_id(&track_id, "track_id")?,
+                routing: audio_routing(destination, destination_layout, routes)?,
             },
             Self::SetEnabled {
                 timeline_id,
@@ -4483,6 +4582,7 @@ fn public_track_mutation_kind(value: engine::TrackMutationKind) -> TimelineTrack
         engine::TrackMutationKind::SetSyncLocked => TimelineTrackMutationKind::SetSyncLocked,
         engine::TrackMutationKind::SetMuted => TimelineTrackMutationKind::SetMuted,
         engine::TrackMutationKind::SetSolo => TimelineTrackMutationKind::SetSolo,
+        engine::TrackMutationKind::SetAudioRouting => TimelineTrackMutationKind::SetAudioRouting,
         engine::TrackMutationKind::SetEnabled => TimelineTrackMutationKind::SetEnabled,
         _ => unreachable!("all public track mutation kinds are covered"),
     }
@@ -4599,6 +4699,9 @@ fn public_edit_kind(value: engine::EditKind) -> Result<TimelineEditKind> {
         engine::EditKind::Overwrite => Ok(TimelineEditKind::Overwrite),
         engine::EditKind::Append => Ok(TimelineEditKind::Append),
         engine::EditKind::Replace => Ok(TimelineEditKind::Replace),
+        engine::EditKind::LinkAudioVideo => Ok(TimelineEditKind::LinkAudioVideo),
+        engine::EditKind::SynchronizeAudioVideo => Ok(TimelineEditKind::SynchronizeAudioVideo),
+        engine::EditKind::DetachAudio => Ok(TimelineEditKind::DetachAudio),
         engine::EditKind::Lift => Ok(TimelineEditKind::Lift),
         engine::EditKind::Extract => Ok(TimelineEditKind::Extract),
         engine::EditKind::Ripple => Ok(TimelineEditKind::Ripple),

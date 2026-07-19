@@ -1,5 +1,8 @@
 import type {
   EditorialObjectId,
+  EditorAudioChannelRoute,
+  EditorAudioDestination,
+  EditorChannelPosition,
   EditorCanonicalDocument,
   EditorThreePointPlacement,
   EditorMetadataValue,
@@ -8,7 +11,9 @@ import type {
   ExactTime,
   ExactTimeRange,
   ExecuteProjectCommand,
+  ProjectAction,
   TimelineEditOperation,
+  TimelineTrackMutation,
 } from "./api.ts";
 import type {
   SourceMonitorSnapshot,
@@ -26,6 +31,26 @@ const SAFE_UNSIGNED_DECIMAL = /^(?:0|[1-9][0-9]*)$/;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 const TIMELINE_SELECTION_IDENTITY_PREFIX = "superi.timeline.object/";
 const MAX_TIMELINE_SELECTION_IDENTITY_LENGTH = 4_096;
+const TIMELINE_NAMED_AUDIO_CHANNELS = Object.freeze([
+  "front_left",
+  "front_right",
+  "front_center",
+  "low_frequency",
+  "back_left",
+  "back_right",
+  "front_left_of_center",
+  "front_right_of_center",
+  "back_center",
+  "side_left",
+  "side_right",
+  "top_center",
+  "top_front_left",
+  "top_front_center",
+  "top_front_right",
+  "top_back_left",
+  "top_back_center",
+  "top_back_right",
+] as const);
 
 export interface TimelineRate {
   readonly numerator: number;
@@ -99,6 +124,50 @@ export type TimelineItemKind =
   | "caption";
 
 export type TimelineTrackKind = "video" | "audio" | "caption" | "data";
+
+export type TimelineAudioChannelPosition =
+  | "front_left"
+  | "front_right"
+  | "front_center"
+  | "low_frequency"
+  | "back_left"
+  | "back_right"
+  | "front_left_of_center"
+  | "front_right_of_center"
+  | "back_center"
+  | "side_left"
+  | "side_right"
+  | "top_center"
+  | "top_front_left"
+  | "top_front_center"
+  | "top_front_right"
+  | "top_back_left"
+  | "top_back_center"
+  | "top_back_right"
+  | `discrete:${number}`;
+
+export type TimelineAudioRouteDestination =
+  | { readonly kind: "main" }
+  | { readonly kind: "track"; readonly trackId: string };
+
+export type TimelineAudioChannelTarget =
+  | {
+      readonly kind: "channel";
+      readonly channel: TimelineAudioChannelPosition;
+    }
+  | { readonly kind: "muted" };
+
+export interface TimelineAudioChannelRoute {
+  readonly source: TimelineAudioChannelPosition;
+  readonly target: TimelineAudioChannelTarget;
+}
+
+export interface TimelineAudioRouting {
+  readonly sourceLayout: readonly TimelineAudioChannelPosition[];
+  readonly destination: TimelineAudioRouteDestination;
+  readonly destinationLayout: readonly TimelineAudioChannelPosition[];
+  readonly routes: readonly TimelineAudioChannelRoute[];
+}
 
 export type TimelineSnapTargetKind =
   | "timeline_start"
@@ -200,6 +269,7 @@ export interface TimelineCanvasTrack {
   readonly muted: boolean;
   readonly solo: boolean;
   readonly enabled: boolean;
+  readonly audioRouting: TimelineAudioRouting | null;
   readonly items: readonly TimelineCanvasItem[];
 }
 
@@ -308,6 +378,7 @@ interface PendingTrack {
   readonly muted: boolean;
   readonly solo: boolean;
   readonly enabled: boolean;
+  readonly audioRouting: TimelineAudioRouting | null;
   readonly items: readonly (DirectItem | PendingTransition)[];
 }
 
@@ -438,6 +509,11 @@ export function projectTimelineDocument(
         kind,
         `${path}.semantics`,
       );
+      const audioRouting = parseTimelineAudioRouting(
+        semantics,
+        kind,
+        `${path}.semantics`,
+      );
       if (kind !== "audio" && (state.muted || state.solo)) {
         throw projectionError(
           `${timelinePath}.edit_state.track_states`,
@@ -466,6 +542,7 @@ export function projectTimelineDocument(
         muted: state.muted,
         solo: state.solo,
         enabled: state.enabled,
+        audioRouting,
         items,
       };
       validateTrackSequence(pending, path);
@@ -484,6 +561,25 @@ export function projectTimelineDocument(
       `${timelinePath}.edit_state.track_states`,
       "track edit state must correspond exactly to the timeline tracks",
     );
+  }
+  for (const track of pendingTracks) {
+    const destination = track.audioRouting?.destination;
+    if (destination?.kind !== "track") continue;
+    if (destination.trackId === track.id) {
+      throw projectionError(
+        `${timelinePath}.tracks[id=${track.id}].semantics.routing.destination`,
+        "an audio track cannot route into itself",
+      );
+    }
+    const destinationTrack = pendingTracks.find(
+      (candidate) => candidate.id === destination.trackId,
+    );
+    if (destinationTrack?.kind !== "audio") {
+      throw projectionError(
+        `${timelinePath}.tracks[id=${track.id}].semantics.routing.destination`,
+        "an audio track destination must name another audio track",
+      );
+    }
   }
 
   const directItems = new Map<string, DirectItem>();
@@ -519,6 +615,7 @@ export function projectTimelineDocument(
     muted: track.muted,
     solo: track.solo,
     enabled: track.enabled,
+    audioRouting: track.audioRouting,
     items: track.items.map((item) =>
       item.kind === "transition"
         ? resolveTransition(
@@ -1238,6 +1335,242 @@ export function timelineSelectionNeighbor(
     }).key;
   }
   return null;
+}
+
+export type TimelineAudioVideoGesture = "link" | "synchronize" | "detach";
+
+export type TimelineAudioVideoSelection =
+  | {
+      readonly status: "ready";
+      readonly videoTrack: TimelineCanvasTrack;
+      readonly videoClip: TimelineCanvasItem;
+      readonly audioTrack: TimelineCanvasTrack;
+      readonly audioClip: TimelineCanvasItem;
+    }
+  | { readonly status: "disabled"; readonly reason: string };
+
+type TimelineEditProjectAction = Extract<ProjectAction, { action: "edit_timeline" }>;
+type TimelineTrackProjectAction = Extract<ProjectAction, { action: "mutate_tracks" }>;
+
+export type TimelineAudioVideoActionResult =
+  | {
+      readonly status: "ready";
+      readonly action: TimelineEditProjectAction;
+      readonly selection: Extract<TimelineAudioVideoSelection, { status: "ready" }>;
+      readonly consequence: string;
+    }
+  | { readonly status: "disabled"; readonly reason: string };
+
+export function resolveTimelineAudioVideoSelection(
+  model: TimelineCanvasModel,
+  selectedItemIds: readonly string[] = [],
+): TimelineAudioVideoSelection {
+  const requested = new Set(
+    selectedItemIds.length > 0
+      ? selectedItemIds
+      : timelineSelectionTargets(model)
+          .filter((target) => target.item.selected)
+          .map((target) => target.item.id),
+  );
+  if (requested.size !== 2) {
+    return {
+      status: "disabled",
+      reason: "Select exactly one video clip and one audio clip.",
+    };
+  }
+  const targets = timelineSelectionTargets(model).filter((target) =>
+    requested.has(target.item.id),
+  );
+  if (targets.length !== 2 || targets.some((target) => target.item.kind !== "clip")) {
+    return {
+      status: "disabled",
+      reason: "Audio-video operations require two exact clip selections.",
+    };
+  }
+  const video = targets.find(
+    (target) => model.tracks.find((track) => track.id === target.trackId)?.kind === "video",
+  );
+  const audio = targets.find(
+    (target) => model.tracks.find((track) => track.id === target.trackId)?.kind === "audio",
+  );
+  if (!video || !audio) {
+    return {
+      status: "disabled",
+      reason: "The selection must contain one clip on a video track and one on an audio track.",
+    };
+  }
+  const videoTrack = model.tracks.find((track) => track.id === video.trackId)!;
+  const audioTrack = model.tracks.find((track) => track.id === audio.trackId)!;
+  if (videoTrack.locked || audioTrack.locked) {
+    return {
+      status: "disabled",
+      reason: `Unlock ${videoTrack.locked ? videoTrack.name : audioTrack.name} before changing audio-video intent.`,
+    };
+  }
+  return {
+    status: "ready",
+    videoTrack,
+    videoClip: video.item,
+    audioTrack,
+    audioClip: audio.item,
+  };
+}
+
+export function buildTimelineAudioVideoAction({
+  gesture,
+  model,
+  selectedItemIds = [],
+}: {
+  readonly gesture: TimelineAudioVideoGesture;
+  readonly model: TimelineCanvasModel;
+  readonly selectedItemIds?: readonly string[];
+}): TimelineAudioVideoActionResult {
+  const selection = resolveTimelineAudioVideoSelection(model, selectedItemIds);
+  if (selection.status === "disabled") return selection;
+  const linked =
+    selection.audioClip.link?.includes(selection.videoClip.id) === true;
+  if (gesture === "link" && linked) {
+    return { status: "disabled", reason: "The selected audio and video clips are already linked." };
+  }
+  if (gesture === "detach" && !linked) {
+    return { status: "disabled", reason: "The selected audio clip is not linked to the video clip." };
+  }
+  const operation: TimelineEditOperation = {
+    operation:
+      gesture === "link"
+        ? "link_audio_video"
+        : gesture === "synchronize"
+          ? "synchronize_audio_video"
+          : "detach_audio",
+    timeline_id: model.id,
+    video_track_id: selection.videoTrack.id,
+    video_clip_id: selection.videoClip.id,
+    audio_track_id: selection.audioTrack.id,
+    audio_clip_id: selection.audioClip.id,
+  };
+  return {
+    status: "ready",
+    selection,
+    action: { action: "edit_timeline", operations: [operation] },
+    consequence:
+      gesture === "link"
+        ? `Link ${selection.audioClip.name} to ${selection.videoClip.name} without moving either clip.`
+        : gesture === "synchronize"
+          ? `Align ${selection.audioClip.name} by exact source time while preserving its record placement.`
+          : `Detach ${selection.audioClip.name} without changing source or record timing.`,
+  };
+}
+
+export type TimelineAudioRoutingActionResult =
+  | {
+      readonly status: "ready";
+      readonly action: TimelineTrackProjectAction;
+      readonly consequence: string;
+    }
+  | { readonly status: "disabled"; readonly reason: string };
+
+export function buildTimelineAudioRoutingAction({
+  model,
+  trackId,
+  destination,
+  destinationLayout,
+  routes,
+}: {
+  readonly model: TimelineCanvasModel;
+  readonly trackId: string;
+  readonly destination: TimelineAudioRouteDestination;
+  readonly destinationLayout: readonly TimelineAudioChannelPosition[];
+  readonly routes: readonly TimelineAudioChannelRoute[];
+}): TimelineAudioRoutingActionResult {
+  const track = model.tracks.find((candidate) => candidate.id === trackId);
+  if (track?.kind !== "audio" || track.audioRouting === null) {
+    return { status: "disabled", reason: "Choose an audio track with canonical routing state." };
+  }
+  if (destination.kind === "track") {
+    const target = model.tracks.find(
+      (candidate) => candidate.id === destination.trackId,
+    );
+    if (target?.kind !== "audio" || target.id === track.id) {
+      return { status: "disabled", reason: "Choose another audio track as the routing destination." };
+    }
+  }
+  if (
+    destinationLayout.length === 0 ||
+    new Set(destinationLayout).size !== destinationLayout.length
+  ) {
+    return { status: "disabled", reason: "Destination channel meaning must be complete and unique." };
+  }
+  if (
+    routes.length !== track.audioRouting.sourceLayout.length ||
+    routes.some(
+      (route, index) => route.source !== track.audioRouting?.sourceLayout[index],
+    )
+  ) {
+    return { status: "disabled", reason: "Map every source channel exactly once in stream order." };
+  }
+  if (
+    routes.some(
+      (route) =>
+        route.target.kind === "channel" &&
+        !destinationLayout.includes(route.target.channel),
+    )
+  ) {
+    return { status: "disabled", reason: "Every routed channel must exist in the destination layout." };
+  }
+  const replacement: TimelineAudioRouting = {
+    sourceLayout: track.audioRouting.sourceLayout,
+    destination,
+    destinationLayout,
+    routes,
+  };
+  if (JSON.stringify(replacement) === JSON.stringify(track.audioRouting)) {
+    return { status: "disabled", reason: "Change at least one destination or channel route." };
+  }
+  const mutation: TimelineTrackMutation = {
+    operation: "set_audio_routing",
+    timeline_id: model.id,
+    track_id: track.id,
+    destination: publicAudioDestination(destination),
+    destination_layout: destinationLayout.map(publicAudioChannelPosition),
+    routes: routes.map(publicAudioChannelRoute),
+  };
+  return {
+    status: "ready",
+    action: { action: "mutate_tracks", mutations: [mutation] },
+    consequence: `Replace all ${routes.length} source-channel routes on ${track.name} atomically.`,
+  };
+}
+
+function publicAudioDestination(
+  destination: TimelineAudioRouteDestination,
+): EditorAudioDestination {
+  return destination.kind === "main"
+    ? { kind: "main" }
+    : { kind: "track", track_id: destination.trackId };
+}
+
+function publicAudioChannelRoute(
+  route: TimelineAudioChannelRoute,
+): EditorAudioChannelRoute {
+  return {
+    source: publicAudioChannelPosition(route.source),
+    target:
+      route.target.kind === "muted"
+        ? { kind: "muted" }
+        : {
+            kind: "channel",
+            position: publicAudioChannelPosition(route.target.channel),
+          },
+  };
+}
+
+function publicAudioChannelPosition(
+  position: TimelineAudioChannelPosition,
+): EditorChannelPosition {
+  if (position.startsWith("discrete:")) {
+    return { kind: "discrete", index: Number(position.slice("discrete:".length)) };
+  }
+  return { kind: position } as EditorChannelPosition;
 }
 
 export type TimelineEditGesture =
@@ -2753,6 +3086,131 @@ function parseTrackKind(value: unknown, path: string): TimelineTrackKind {
     throw projectionError(path, `unsupported timeline track kind ${kind}`);
   }
   return kind;
+}
+
+function parseTimelineAudioRouting(
+  semantics: Record<string, unknown>,
+  kind: TimelineTrackKind,
+  path: string,
+): TimelineAudioRouting | null {
+  if (kind !== "audio") return null;
+  const sourceLayout = parseAudioChannelLayout(
+    semantics.channel_layout,
+    `${path}.channel_layout`,
+  );
+  const routing = asObject(semantics.routing, `${path}.routing`);
+  const destinationWire = asObject(
+    routing.destination,
+    `${path}.routing.destination`,
+  );
+  const destinationKind = asString(
+    destinationWire.kind,
+    `${path}.routing.destination.kind`,
+  );
+  const destination: TimelineAudioRouteDestination =
+    destinationKind === "main"
+      ? { kind: "main" }
+      : destinationKind === "track"
+        ? {
+            kind: "track",
+            trackId: asString(
+              destinationWire.track_id,
+              `${path}.routing.destination.track_id`,
+            ),
+          }
+        : (() => {
+            throw projectionError(
+              `${path}.routing.destination.kind`,
+              `unsupported audio route destination ${destinationKind}`,
+            );
+          })();
+  const destinationLayout = parseAudioChannelLayout(
+    routing.destination_layout,
+    `${path}.routing.destination_layout`,
+  );
+  const routes = asArray(routing.routes, `${path}.routing.routes`).map(
+    (value, index): TimelineAudioChannelRoute => {
+      const routePath = `${path}.routing.routes[${index}]`;
+      const route = asObject(value, routePath);
+      const source = parseAudioChannelPosition(route.source, `${routePath}.source`);
+      const targetWire = asObject(route.target, `${routePath}.target`);
+      const targetKind = asString(targetWire.kind, `${routePath}.target.kind`);
+      const target: TimelineAudioChannelTarget =
+        targetKind === "muted"
+          ? { kind: "muted" }
+          : targetKind === "channel"
+            ? {
+                kind: "channel",
+                channel: parseAudioChannelPosition(
+                  targetWire.channel,
+                  `${routePath}.target.channel`,
+                ),
+              }
+            : (() => {
+                throw projectionError(
+                  `${routePath}.target.kind`,
+                  `unsupported audio channel target ${targetKind}`,
+                );
+              })();
+      if (
+        target.kind === "channel" &&
+        !destinationLayout.includes(target.channel)
+      ) {
+        throw projectionError(
+          `${routePath}.target.channel`,
+          "audio route target is absent from the destination layout",
+        );
+      }
+      return { source, target };
+    },
+  );
+  if (
+    routes.length !== sourceLayout.length ||
+    routes.some((route, index) => route.source !== sourceLayout[index])
+  ) {
+    throw projectionError(
+      `${path}.routing.routes`,
+      "audio routing must describe every source channel exactly once in stream order",
+    );
+  }
+  return { sourceLayout, destination, destinationLayout, routes };
+}
+
+function parseAudioChannelLayout(
+  value: unknown,
+  path: string,
+): readonly TimelineAudioChannelPosition[] {
+  const positions = asArray(value, path).map((position, index) =>
+    parseAudioChannelPosition(position, `${path}[${index}]`),
+  );
+  if (positions.length === 0) {
+    throw projectionError(path, "audio channel layout must not be empty");
+  }
+  if (new Set(positions).size !== positions.length) {
+    throw projectionError(path, "audio channel layout contains duplicate meanings");
+  }
+  return positions;
+}
+
+function parseAudioChannelPosition(
+  value: unknown,
+  path: string,
+): TimelineAudioChannelPosition {
+  const position = asString(value, path);
+  if (
+    (TIMELINE_NAMED_AUDIO_CHANNELS as readonly string[]).includes(position)
+  ) {
+    return position as TimelineAudioChannelPosition;
+  }
+  const discrete = position.match(/^discrete:(0|[1-9][0-9]*)$/);
+  if (discrete === null) {
+    throw projectionError(path, `unsupported audio channel position ${position}`);
+  }
+  const index = Number(discrete[1]);
+  if (!Number.isSafeInteger(index) || index > 65_535) {
+    throw projectionError(path, "discrete audio channel index exceeds u16");
+  }
+  return `discrete:${index}`;
 }
 
 function parseMarkerFlag(value: unknown, path: string): TimelineMarkerFlag | null {

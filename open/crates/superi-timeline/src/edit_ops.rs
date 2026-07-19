@@ -7,7 +7,7 @@ use superi_core::time::{Duration, RationalTime, TimeRange, TimeRounding, Timebas
 use crate::edit_state::{SelectionExpansion, SelectionUpdate};
 use crate::model::{
     Caption, Clip, EditorialObjectId, EditorialProject, Gap, Generator, ProjectDraft, Timeline,
-    Track, TrackItem, Transition,
+    Track, TrackItem, TrackKind, Transition,
 };
 use crate::retime::ClipTimeMap;
 
@@ -23,6 +23,12 @@ pub enum EditKind {
     Append,
     /// Exchange one exact timed object without changing its placement or duration.
     Replace,
+    /// Link one video clip and one audio clip for synchronized editorial selection.
+    LinkAudioVideo,
+    /// Align one audio clip's source time to one video clip and link the pair.
+    SynchronizeAudioVideo,
+    /// Remove one audio clip from its linked video relationship.
+    DetachAudio,
     /// Replace a record range with an explicit gap.
     Lift,
     /// Remove a record range and ripple later content left.
@@ -58,6 +64,9 @@ impl EditKind {
             Self::Overwrite => "overwrite",
             Self::Append => "append",
             Self::Replace => "replace",
+            Self::LinkAudioVideo => "link_audio_video",
+            Self::SynchronizeAudioVideo => "synchronize_audio_video",
+            Self::DetachAudio => "detach_audio",
             Self::Lift => "lift",
             Self::Extract => "extract",
             Self::Ripple => "ripple",
@@ -206,6 +215,30 @@ pub enum EditOperation {
         target_id: EditorialObjectId,
         /// One non-transition item normalized to the target placement.
         material: TrackItem,
+    },
+    /// Link one exact video clip and audio clip without changing timing.
+    LinkAudioVideo {
+        timeline_id: TimelineId,
+        video_track_id: TrackId,
+        video_clip_id: ClipId,
+        audio_track_id: TrackId,
+        audio_clip_id: ClipId,
+    },
+    /// Align audio source time to video source time at their record positions and link the pair.
+    SynchronizeAudioVideo {
+        timeline_id: TimelineId,
+        video_track_id: TrackId,
+        video_clip_id: ClipId,
+        audio_track_id: TrackId,
+        audio_clip_id: ClipId,
+    },
+    /// Remove one exact audio clip from its current linked video component.
+    DetachAudio {
+        timeline_id: TimelineId,
+        video_track_id: TrackId,
+        video_clip_id: ClipId,
+        audio_track_id: TrackId,
+        audio_clip_id: ClipId,
     },
     /// Lift a record range into a caller-identified explicit gap.
     Lift {
@@ -444,6 +477,60 @@ impl EditOperation {
             track_id,
             target_id,
             material,
+        }
+    }
+
+    /// Creates an exact audio-video link operation.
+    #[must_use]
+    pub const fn link_audio_video(
+        timeline_id: TimelineId,
+        video_track_id: TrackId,
+        video_clip_id: ClipId,
+        audio_track_id: TrackId,
+        audio_clip_id: ClipId,
+    ) -> Self {
+        Self::LinkAudioVideo {
+            timeline_id,
+            video_track_id,
+            video_clip_id,
+            audio_track_id,
+            audio_clip_id,
+        }
+    }
+
+    /// Creates an exact source-time audio-video synchronization operation.
+    #[must_use]
+    pub const fn synchronize_audio_video(
+        timeline_id: TimelineId,
+        video_track_id: TrackId,
+        video_clip_id: ClipId,
+        audio_track_id: TrackId,
+        audio_clip_id: ClipId,
+    ) -> Self {
+        Self::SynchronizeAudioVideo {
+            timeline_id,
+            video_track_id,
+            video_clip_id,
+            audio_track_id,
+            audio_clip_id,
+        }
+    }
+
+    /// Creates an exact audio detach operation.
+    #[must_use]
+    pub const fn detach_audio(
+        timeline_id: TimelineId,
+        video_track_id: TrackId,
+        video_clip_id: ClipId,
+        audio_track_id: TrackId,
+        audio_clip_id: ClipId,
+    ) -> Self {
+        Self::DetachAudio {
+            timeline_id,
+            video_track_id,
+            video_clip_id,
+            audio_track_id,
+            audio_clip_id,
         }
     }
 
@@ -742,6 +829,9 @@ impl EditOperation {
             Self::Overwrite { .. } => EditKind::Overwrite,
             Self::Append { .. } => EditKind::Append,
             Self::Replace { .. } => EditKind::Replace,
+            Self::LinkAudioVideo { .. } => EditKind::LinkAudioVideo,
+            Self::SynchronizeAudioVideo { .. } => EditKind::SynchronizeAudioVideo,
+            Self::DetachAudio { .. } => EditKind::DetachAudio,
             Self::Lift { .. } => EditKind::Lift,
             Self::Extract { .. } => EditKind::Extract,
             Self::Ripple { .. } => EditKind::Ripple,
@@ -764,6 +854,9 @@ impl EditOperation {
             | Self::Overwrite { timeline_id, .. }
             | Self::Append { timeline_id, .. }
             | Self::Replace { timeline_id, .. }
+            | Self::LinkAudioVideo { timeline_id, .. }
+            | Self::SynchronizeAudioVideo { timeline_id, .. }
+            | Self::DetachAudio { timeline_id, .. }
             | Self::Lift { timeline_id, .. }
             | Self::Extract { timeline_id, .. } => *timeline_id,
             Self::Ripple { timeline_id, .. }
@@ -788,6 +881,9 @@ impl EditOperation {
             | Self::Replace { track_id, .. }
             | Self::Lift { track_id, .. }
             | Self::Extract { track_id, .. } => *track_id,
+            Self::LinkAudioVideo { audio_track_id, .. }
+            | Self::SynchronizeAudioVideo { audio_track_id, .. }
+            | Self::DetachAudio { audio_track_id, .. } => *audio_track_id,
             Self::Ripple { track_id, .. }
             | Self::Roll { track_id, .. }
             | Self::Slip { track_id, .. }
@@ -984,6 +1080,57 @@ pub(crate) fn apply_operation(
     let track_id = operation.track_id();
     let timeline = draft.timeline_mut(timeline_id)?;
     require_unlocked_track(timeline, track_id)?;
+    match operation {
+        EditOperation::LinkAudioVideo {
+            video_track_id,
+            video_clip_id,
+            audio_track_id,
+            audio_clip_id,
+            ..
+        } => {
+            return apply_link_audio_video(
+                timeline,
+                timeline_id,
+                *video_track_id,
+                *video_clip_id,
+                *audio_track_id,
+                *audio_clip_id,
+            );
+        }
+        EditOperation::SynchronizeAudioVideo {
+            video_track_id,
+            video_clip_id,
+            audio_track_id,
+            audio_clip_id,
+            ..
+        } => {
+            return apply_synchronize_audio_video(
+                timeline,
+                timeline_id,
+                *video_track_id,
+                *video_clip_id,
+                *audio_track_id,
+                *audio_clip_id,
+            );
+        }
+        EditOperation::DetachAudio {
+            video_track_id,
+            video_clip_id,
+            audio_track_id,
+            audio_clip_id,
+            ..
+        } => {
+            return apply_detach_audio(
+                timeline,
+                timeline_id,
+                *video_track_id,
+                *video_clip_id,
+                *audio_track_id,
+                *audio_clip_id,
+            );
+        }
+        _ => {}
+    }
     if let EditOperation::Ripple {
         target_id,
         side,
@@ -1049,6 +1196,11 @@ pub(crate) fn apply_operation(
                 material,
                 ..
             } => apply_replace(track, timeline_id, track_id, *target_id, material),
+            EditOperation::LinkAudioVideo { .. }
+            | EditOperation::SynchronizeAudioVideo { .. }
+            | EditOperation::DetachAudio { .. } => {
+                unreachable!("audio-video operations are handled before track borrow")
+            }
             EditOperation::Lift {
                 range,
                 gap,
@@ -1143,7 +1295,7 @@ pub(crate) fn apply_operation(
         }
     }?;
     inherit_fragment_intent(timeline, outcome.fragments())?;
-    inherit_replacement_intent(timeline, &outcome);
+    inherit_replacement_intent(timeline, &outcome)?;
     Ok(outcome)
 }
 
@@ -1186,16 +1338,233 @@ fn inherit_fragment_intent(timeline: &mut Timeline, fragments: &[EditFragment]) 
     Ok(())
 }
 
-fn inherit_replacement_intent(timeline: &mut Timeline, outcome: &EditOutcome) {
+fn inherit_replacement_intent(timeline: &mut Timeline, outcome: &EditOutcome) -> Result<()> {
     if outcome.kind() != EditKind::Replace {
-        return;
+        return Ok(());
     }
     let ([EditorialObjectId::Clip(removed)], [EditorialObjectId::Clip(inserted)]) =
         (outcome.removed_ids(), outcome.inserted_ids())
     else {
-        return;
+        return Ok(());
     };
+    timeline.transfer_clip_intent(*removed, *inserted)?;
     timeline.transfer_multicam_clip(*removed, *inserted);
+    Ok(())
+}
+
+fn checked_audio_video_clips(
+    timeline: &Timeline,
+    operation: &'static str,
+    video_track_id: TrackId,
+    video_clip_id: ClipId,
+    audio_track_id: TrackId,
+    audio_clip_id: ClipId,
+) -> Result<(Clip, Clip)> {
+    require_unlocked_track(timeline, video_track_id)?;
+    let video_track = timeline.track(video_track_id).ok_or_else(|| {
+        not_found_edit(operation, "the video track was not found on the timeline")
+    })?;
+    if video_track.kind() != TrackKind::Video {
+        return Err(invalid_edit(
+            operation,
+            "the video side must name a video track",
+        ));
+    }
+    let audio_track = timeline.track(audio_track_id).ok_or_else(|| {
+        not_found_edit(operation, "the audio track was not found on the timeline")
+    })?;
+    if audio_track.kind() != TrackKind::Audio {
+        return Err(invalid_edit(
+            operation,
+            "the audio side must name an audio track",
+        ));
+    }
+    let video = video_track
+        .item(EditorialObjectId::Clip(video_clip_id))
+        .and_then(TrackItem::as_clip)
+        .cloned()
+        .ok_or_else(|| {
+            not_found_edit(
+                operation,
+                "the video clip was not found on the named video track",
+            )
+        })?;
+    let audio = audio_track
+        .item(EditorialObjectId::Clip(audio_clip_id))
+        .and_then(TrackItem::as_clip)
+        .cloned()
+        .ok_or_else(|| {
+            not_found_edit(
+                operation,
+                "the audio clip was not found on the named audio track",
+            )
+        })?;
+    Ok((video, audio))
+}
+
+fn apply_link_audio_video(
+    timeline: &mut Timeline,
+    timeline_id: TimelineId,
+    video_track_id: TrackId,
+    video_clip_id: ClipId,
+    audio_track_id: TrackId,
+    audio_clip_id: ClipId,
+) -> Result<EditOutcome> {
+    let (_, audio) = checked_audio_video_clips(
+        timeline,
+        "link_audio_video",
+        video_track_id,
+        video_clip_id,
+        audio_track_id,
+        audio_clip_id,
+    )?;
+    if timeline
+        .edit_state()
+        .link_for(audio_clip_id)
+        .is_some_and(|relation| relation.contains(video_clip_id))
+    {
+        return Err(invalid_edit(
+            "link_audio_video",
+            "the audio and video clips are already linked",
+        ));
+    }
+    timeline.link_clips([video_clip_id, audio_clip_id])?;
+    Ok(audio_video_outcome(
+        EditKind::LinkAudioVideo,
+        timeline_id,
+        video_track_id,
+        video_clip_id,
+        audio_track_id,
+        audio_clip_id,
+        audio.record_range(),
+    ))
+}
+
+fn apply_synchronize_audio_video(
+    timeline: &mut Timeline,
+    timeline_id: TimelineId,
+    video_track_id: TrackId,
+    video_clip_id: ClipId,
+    audio_track_id: TrackId,
+    audio_clip_id: ClipId,
+) -> Result<EditOutcome> {
+    let (video, audio) = checked_audio_video_clips(
+        timeline,
+        "synchronize_audio_video",
+        video_track_id,
+        video_clip_id,
+        audio_track_id,
+        audio_clip_id,
+    )?;
+    let source_timebase = audio.source_range().timebase();
+    let video_source_start = video
+        .source_range()
+        .start()
+        .checked_rescale(source_timebase, TimeRounding::Exact)?;
+    let record_offset = audio.record_range().start().checked_sub_at(
+        video.record_range().start(),
+        source_timebase,
+        TimeRounding::Exact,
+    )?;
+    let source_start =
+        video_source_start.checked_add_at(record_offset, source_timebase, TimeRounding::Exact)?;
+    let source_range = TimeRange::new(source_start, audio.source_range().duration())?;
+    let already_linked = timeline
+        .edit_state()
+        .link_for(audio_clip_id)
+        .is_some_and(|relation| relation.contains(video_clip_id));
+    if source_range == audio.source_range() && already_linked {
+        return Err(invalid_edit(
+            "synchronize_audio_video",
+            "the audio clip is already synchronized and linked to the video clip",
+        ));
+    }
+    if source_range != audio.source_range() {
+        timeline
+            .track_mut(audio_track_id)?
+            .item_mut(EditorialObjectId::Clip(audio_clip_id))?
+            .as_clip_mut()
+            .expect("checked audio clip remains a clip")
+            .set_source_range(source_range)?;
+    }
+    if !already_linked {
+        timeline.link_clips([video_clip_id, audio_clip_id])?;
+    }
+    Ok(audio_video_outcome(
+        EditKind::SynchronizeAudioVideo,
+        timeline_id,
+        video_track_id,
+        video_clip_id,
+        audio_track_id,
+        audio_clip_id,
+        audio.record_range(),
+    ))
+}
+
+fn apply_detach_audio(
+    timeline: &mut Timeline,
+    timeline_id: TimelineId,
+    video_track_id: TrackId,
+    video_clip_id: ClipId,
+    audio_track_id: TrackId,
+    audio_clip_id: ClipId,
+) -> Result<EditOutcome> {
+    let (_, audio) = checked_audio_video_clips(
+        timeline,
+        "detach_audio",
+        video_track_id,
+        video_clip_id,
+        audio_track_id,
+        audio_clip_id,
+    )?;
+    if !timeline
+        .edit_state()
+        .link_for(audio_clip_id)
+        .is_some_and(|relation| relation.contains(video_clip_id))
+    {
+        return Err(invalid_edit(
+            "detach_audio",
+            "the audio clip is not linked to the named video clip",
+        ));
+    }
+    timeline.unlink_clips([audio_clip_id])?;
+    Ok(audio_video_outcome(
+        EditKind::DetachAudio,
+        timeline_id,
+        video_track_id,
+        video_clip_id,
+        audio_track_id,
+        audio_clip_id,
+        audio.record_range(),
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn audio_video_outcome(
+    kind: EditKind,
+    timeline_id: TimelineId,
+    video_track_id: TrackId,
+    video_clip_id: ClipId,
+    audio_track_id: TrackId,
+    audio_clip_id: ClipId,
+    affected_range: TimeRange,
+) -> EditOutcome {
+    EditOutcome {
+        kind,
+        timeline_id,
+        track_id: audio_track_id,
+        affected_range,
+        duration_change: TrackDurationChange::Unchanged,
+        inserted_ids: Vec::new(),
+        removed_ids: Vec::new(),
+        modified_ids: vec![
+            EditorialObjectId::Clip(audio_clip_id),
+            EditorialObjectId::Clip(video_clip_id),
+        ],
+        fragments: Vec::new(),
+        removed_transitions: Vec::new(),
+        synchronized_tracks: vec![video_track_id],
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

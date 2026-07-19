@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: d5844436f6a0f6922bcda1721063c29cc9bef6a246edd127bbe038f8db1cd1f4
-source_files: 271
+source_hash: 44d028c81a852820391c9b2c4da9af1f1344a95ee62a1f1b038645138822e569
+source_files: 272
 mapped_at_commit: working-tree
 ---
 
@@ -496,6 +496,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   multicam, and audio consequences in source and program viewers plus the structural meter rack,
   including canonical sample clocks, ordered channel routes, continuity seams, explicit unobserved
   signal telemetry, native placement isolation, and application-owned transient state.
+- `docs/checkpoints/P3.W04.C015.md`: Durable implementation evidence for audio-video link, exact
+  sample-clock synchronization, detach, replacement intent transfer, complete channel routing,
+  strict public schema releases, generated TypeScript, accessible production controls, and
+  application-owned durable command publication.
 
 ### Production desktop application
 
@@ -555,7 +559,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/timeline-workspace.ts`: Strictly projects the embedded canonical revision 2 timeline
   document into a deeply frozen canvas model with exact rational source and record ranges, stable
   identities and relationships, exact transition from and to offsets, bounded track height, lock,
-  mute, solo, and enable state,
+  mute, solo, enable state, exact audio sample rate, ordered source and destination channel meaning,
+  explicit main or audio-track routing destination, and one validated target per source channel,
   external-global-start display placement, complete visible marker state, exact owner-clock snap
   targets, stable exact marker navigation, deterministic extent,
   ruler, time-label, visible-window, and range math, and explicit malformed-document rejection. Its
@@ -570,7 +575,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   undo, and redo project requests plus all four exact three-point placements and equal-duration
   four-point edits with a visible consequence description. It rejects missing marks, inexact clock
   conversion, out-of-bounds derivation, and unsupported fit-to-fill before submitting a project
-  command.
+  command. Pure audio-video planners resolve exactly one video clip and one audio clip by stable
+  track identity, build link, exact synchronization, and detach operations, and build one complete
+  routing replacement without inventing missing channel decisions.
 - `app/src/timeline-editing.ts`: Compiles ripple, roll, slip, slide, razor, trim, ripple or roll
   extend, ripple delete, synchronized gap insertion, and gap closure from the frozen canonical
   canvas model into existing public `TimelineEditOperation` batches. It preserves exact rational
@@ -654,6 +661,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   progressively reads one revision-matched media library,
   deduplicates sources, generates previews sequentially, and accepts only matching media and
   freshness identities before displaying filmstrips, thumbnails, or waveforms.
+  A dedicated Audio and video panel exposes exact Link, Sync by source time, Detach audio, and
+  Replace audio gestures plus an audio-track selector, explicit main or audio-track destination,
+  and one channel or mute choice per source channel. It publishes through the same injected project
+  action executor and reports disabled reasons, pending state, success revision, and failures.
   It also projects the existing application selection into labeled multiselect options, group and
   link aware click selection, exact-object Option selection, Command or Control toggle, Shift range,
   mounted-rectangle lasso preview and commit, roving keyboard focus, offscreen focus scrolling, and
@@ -759,7 +770,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   one existing application/project owner, exact source, program, composite, and color viewer
   consumers including the composed source monitor, explicit public editor request identity,
   state-free workspace projection, and immutable preservation of sample timing, ordered channels,
-  routes, continuity evidence, one application-owned project transaction path, all eleven track
+  routes, continuity evidence, one application-owned project transaction path, all twelve track
   operation tags, all six marker operation tags, typed reversal, source snapshot and generated
   command wiring, and the absence of direct transport ownership in the workspace. It also verifies
   transition command wiring through the same application-owned callback plus application-owned
@@ -786,11 +797,15 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   transition-inspector wiring, nested catalog and path consumption, visible open, placement, and
   compound controls, double-click nesting, publication through the shared callback, and the absence
   of a second frontend authored mutation owner. It also freezes accessible multicam panel mounting,
-  angle-state viewing, creation, synchronization, switching, exact cut refinement, and history undo wiring.
+  angle-state viewing, creation, synchronization, switching, exact cut refinement, and history undo
+  wiring. It also proves strict complete audio routing projection, exact audio-video selection by
+  immutable track identity, link, synchronize, detach, and routing action payloads,
+  incomplete-route rejection, and visible production controls.
 - `app/tests/timeline-nesting.test.ts`: Verifies exact mixed-clock duration projection, direct child
   dependencies, cycle-safe candidates, root-anchored path opening and stale-path reconciliation,
   append and equal-duration replace action payloads, strict locked and incompatible rejection, and
-  deterministic compound object and affected-track identity ordering.
+  deterministic compound object and affected-track identity ordering, with complete valid stereo
+  routing retained by canonical fixtures.
 - `app/tests/timeline-multicam.test.ts`: Verifies strict setup and authored-state projection,
   source-track angle derivation, active-angle and source-availability resolution at the exact
   playhead, unavailable-take rejection, generated atomic creation, live switch, frame cut-move,
@@ -805,7 +820,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   retime, linking, grouping, targeting, synchronization, markers, metadata, complete multicam angle,
   switch, and audio-policy intent plus missing-angle rejection,
   clip-scoped effects and drivers, exact clip-gain sample keys and positions, deep immutability,
-  malformed-state rejection, exact child-timeline detail scoping, real preview-command composition,
+  malformed-state rejection, complete canonical stereo routing, exact child-timeline detail scoping, real preview-command composition,
   stale freshness rejection, and application-owned selection integration.
 - `app/tests/timeline-editorial-feedback.test.ts`: Verifies distinct exact trim, slip, and slide
   viewer consequences, multicam angle, switch, and fixed-audio fidelity, 48 kHz and 96 kHz sample
@@ -1047,7 +1062,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   typecheck, build, and test commands, and exact TypeScript and Vite development dependencies.
 - `ci/frontend-smoke/src/api-contract.ts`: Imports the committed generated API artifact, constructs
   exact typed project and playback commands, a command-log query, unavailable AI state, and API
-  version negotiation request through current catalog release `1.8.0`, consumes playback,
+  version negotiation request through current catalog release `1.9.0`, consumes playback,
   command-log, and negotiation
   responses plus the extension query,
   lifecycle, event, resource, stable public control reference, typed maps, and transport-neutral
@@ -1090,11 +1105,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and response types, strict exact playback transport actions and acceptance, extension identity, lifecycle, capability, safe failure, feature,
   control, query, event, and resource declarations, generic project import-media request and result
   evidence, and a transport-neutral typed client without owning runtime IPC. The committed artifact
-  is freshly regenerated from the canonical schema `1.6.0` project surface and includes strict
-  track, marker, and multicam mutation, exact retime map and evidence, metadata, track-output graph DTOs, the
-  additive exact `set_transition` timeline operation, and complete nested placement and
-  selection-derived compound request, action, and evidence unions plus all seven multicam
-  operations and ordered mutation evidence.
+  is freshly regenerated from the canonical schema `1.7.0` project surface and includes strict
+  track, marker, and multicam mutation, complete audio routing, audio-video link, exact
+  synchronization, audio detach, exact retime map and evidence, metadata, track-output graph DTOs,
+  the additive exact `set_transition` timeline operation, complete nested placement and
+  selection-derived compound request, action, and evidence unions, and all seven multicam
+  operations with ordered mutation evidence.
 - `open/Cargo.lock`: Cargo lockfile format 3 for the resolved workspace. It records 25 local
   workspace packages, registry dependencies, target-support dependency trees, scenario digest
   and process-instrumentation dependency edges, the API introspection and validation contracts'
@@ -1763,6 +1779,15 @@ guides, and live consequences, and restores captured transient origin on Escape 
 cancellation.
 Marker create, field edits, and removal retain complete typed inverse batches that are enabled only
 at the exact refreshed revision produced by their preceding gesture.
+The audio-video panel consumes that same frozen projection and resolves the selected pair by stable
+track and clip identity rather than presentation order. Link, exact source-time synchronization,
+and detach compile directly to the generated timeline operations. Replace reuses the existing
+source-monitor replace planner and exact command executor with an audio-track target override.
+Channel controls always submit one complete `set_audio_routing` mutation that retains the canonical
+source layout, names an explicit destination, and supplies one channel or mute target per source
+channel. The application-owned action and exact command executors retain transaction identity,
+revision fencing, native validation, history, persistence, events, and canonical refresh below
+React.
 The C007 timing compiler consumes that same frozen projection and emits only existing public edit
 operations for ripple, roll, slip, slide, razor, trim, extend, ripple delete, and gap work. It
 converts every affected track clock exactly, allocates typed identities only after validation, and
@@ -2003,8 +2028,8 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
 
 - The focused timeline-canvas proof freezes strict revision 2 parsing, exact source and record
   ranges, stable grouping, linking, selection, complete track control state, two-pass transition
-  placement, deterministic ruler and range math, real editing-workspace composition, all eleven
-  durable track gestures, reversible shared selection identities, canonical fixed-point group and
+  placement, deterministic ruler and range math, real editing-workspace composition, the complete
+  general track controls plus audio routing, reversible shared selection identities, canonical fixed-point group and
   link expansion, direct and range selection, directional neighbors, lasso geometry, multiselect
   semantics, roving focus, keyboard coverage, live status, exact target snapping, transient
   navigation controls, all nine exact generated edit requests, source freshness and half-open
@@ -2019,6 +2044,12 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   exact active-angle projection, source-track creation, atomic action shapes, live switching,
   frame cut refinement, sync and audio intent, detach, accessible production mounting, and reuse of
   the same pending, command, revision, and history owners.
+
+- The focused audio-video proof freezes exact selection by stable track identity, explicit video
+  and audio role admission, generated link, synchronize, detach, replace, and complete routing
+  actions, ordered named and discrete channel meaning, explicit mute decisions, incomplete-route
+  rejection, lock and relationship disabled reasons, accessible production controls, shared pending
+  exclusion, and publication only through the existing application project executor.
 
 - The focused timing-tool proof freezes all seven direct tools plus ripple delete and gap work,
   exact mixed-clock conversion, synchronized track ordering, typed allocation, immutable affected
@@ -2426,6 +2457,12 @@ before submission. Canonical authored selection
 and shared application selection remain distinct until an explicit replace or backspace uses the
 shared target. All authored changes still pass through the existing generated command, engine
 history, timeline operation, and durable project owners.
+Exactly one selected video clip and one selected audio clip now expose durable link, exact
+source-time synchronization, detach, and audio replacement controls. The same panel projects every
+audio track's sample rate, ordered semantic source channels, destination, and complete route, then
+publishes one full channel map with explicit per-source mute choices. Disabled, pending, completed,
+and failed intent remains visible, while successful state arrives only from the refreshed canonical
+snapshot.
 One directly selected clip also exposes exact speed, reverse, freeze, and multi-segment time-map
 controls with an inspectable curve, source traversal, target, and consequence. Applying a retime
 uses the same generated command and history path, while reset, undo, and redo preserve the existing
@@ -2500,7 +2537,7 @@ Its `superi-api` package record now includes one test-only concurrency edge for 
 introspection ownership contract without changing the production runtime graph.
 The API now owns a nonserializable host permission context, typed lexical filesystem and plugin
 scopes, explicit destructive operations, deny precedence, payload-derived requirements, and schema
-`1.8.0` discovery metadata. It also projects one bounded engine-owned extension registry through
+`1.9.0` discovery metadata. It also projects one bounded engine-owned extension registry through
 strict exact identity, lifecycle, capability, feature, safe failure, stable control, query, event,
 and replacement resource contracts. Its bounded `superi-json` runtime uses already resolved JSON and
 packages, adds the typed command-log query step, and preserves the same nested authorization and
@@ -2816,3 +2853,8 @@ input, positive record durations and denominators, reduced signed rates, safe wi
 complete record coverage, and exact source seams before producing the generated retime operation.
 Curve controls must state their target and consequence, while apply, undo, redo, and durable refresh
 remain with the existing command owner.
+Keep audio-video selection tied to immutable track and clip IDs, never reversed display indices.
+Preserve exact record timing in link, synchronization, and detach previews, reuse the existing
+replace owner, and require a complete ordered route for every source channel. React may own only
+draft channel choices, disabled reasons, and pending presentation; native timeline and engine owners
+remain authoritative for timing, relationships, channel validation, history, and publication.

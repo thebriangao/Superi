@@ -9,7 +9,8 @@ use superi_timeline::model::{
     VideoCompositing, VideoTrackSemantics,
 };
 use superi_timeline::track_ops::{
-    apply_track_mutation_batch, TrackCreationKind, TrackMutation, DEFAULT_TRACK_HEIGHT,
+    apply_track_mutation_batch, TrackCreationKind, TrackMutation, TrackMutationKind,
+    DEFAULT_TRACK_HEIGHT,
 };
 
 const TIMELINE: TimelineId = TimelineId::from_raw(10);
@@ -331,4 +332,110 @@ fn authored_item_edits_reject_a_locked_target_without_publishing() {
     .unwrap_err();
     assert_eq!(error.category(), ErrorCategory::Conflict);
     assert_eq!(project, before);
+}
+
+#[test]
+fn complete_audio_routing_replacement_preserves_source_meaning_and_is_atomic() {
+    let mut project = project_fixture();
+    let swapped = AudioRouting::new(
+        AudioRouteDestination::Main,
+        ChannelLayout::stereo(),
+        [
+            AudioChannelRoute::new(
+                ChannelPosition::FrontLeft,
+                AudioChannelTarget::Channel(ChannelPosition::FrontRight),
+            ),
+            AudioChannelRoute::new(ChannelPosition::FrontRight, AudioChannelTarget::Muted),
+        ],
+    )
+    .unwrap();
+    let result = apply_track_mutation_batch(
+        &mut project,
+        0,
+        &[TrackMutation::SetAudioRouting {
+            timeline_id: TIMELINE,
+            track_id: A1,
+            routing: swapped.clone(),
+        }],
+    )
+    .unwrap();
+
+    assert_eq!(
+        result.outcomes()[0].kind(),
+        TrackMutationKind::SetAudioRouting
+    );
+    let TrackSemantics::Audio(audio) = project
+        .timeline(TIMELINE)
+        .unwrap()
+        .track(A1)
+        .unwrap()
+        .semantics()
+    else {
+        panic!("A1 must remain an audio track");
+    };
+    assert_eq!(audio.sample_rate(), 48_000);
+    assert_eq!(audio.channel_layout(), &ChannelLayout::stereo());
+    assert_eq!(audio.routing(), &swapped);
+
+    let before = project.clone();
+    let incomplete = AudioRouting::new(
+        AudioRouteDestination::Main,
+        ChannelLayout::stereo(),
+        [AudioChannelRoute::new(
+            ChannelPosition::FrontLeft,
+            AudioChannelTarget::Channel(ChannelPosition::FrontLeft),
+        )],
+    )
+    .unwrap();
+    assert_eq!(
+        apply_track_mutation_batch(
+            &mut project,
+            1,
+            &[TrackMutation::SetAudioRouting {
+                timeline_id: TIMELINE,
+                track_id: A1,
+                routing: incomplete,
+            }],
+        )
+        .unwrap_err()
+        .category(),
+        ErrorCategory::InvalidInput
+    );
+    assert_eq!(project, before);
+
+    for destination in [
+        AudioRouteDestination::Track(A1),
+        AudioRouteDestination::Track(V1),
+    ] {
+        let invalid_destination = AudioRouting::new(
+            destination,
+            ChannelLayout::stereo(),
+            [
+                AudioChannelRoute::new(
+                    ChannelPosition::FrontLeft,
+                    AudioChannelTarget::Channel(ChannelPosition::FrontLeft),
+                ),
+                AudioChannelRoute::new(
+                    ChannelPosition::FrontRight,
+                    AudioChannelTarget::Channel(ChannelPosition::FrontRight),
+                ),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            apply_track_mutation_batch(
+                &mut project,
+                1,
+                &[TrackMutation::SetAudioRouting {
+                    timeline_id: TIMELINE,
+                    track_id: A1,
+                    routing: invalid_destination,
+                }],
+            )
+            .unwrap_err()
+            .category(),
+            ErrorCategory::InvalidInput
+        );
+        assert_eq!(project, before);
+    }
 }

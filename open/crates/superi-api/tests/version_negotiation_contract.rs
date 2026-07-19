@@ -49,7 +49,10 @@ fn negotiation_selects_highest_common_canonical_versions_and_projects_migrations
             .iter()
             .map(ToString::to_string)
             .collect::<Vec<_>>(),
-        vec!["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.8.0",]
+        vec![
+            "1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.8.0",
+            "1.9.0",
+        ]
     );
     assert_eq!(result.support().primitive_schema_revisions(), &[1]);
     let selection = result.selection().unwrap();

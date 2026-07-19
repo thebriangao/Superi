@@ -41,7 +41,8 @@ const MULTICAM_SOURCE_CLIP_B: engine::ClipId = engine::ClipId::from_raw(0xe106);
 const MULTICAM_TARGET_CLIP: engine::ClipId = engine::ClipId::from_raw(0xe107);
 const MULTICAM_ANGLE_A: engine::MulticamAngleId = engine::MulticamAngleId::from_raw(0xe108);
 const MULTICAM_ANGLE_B: engine::MulticamAngleId = engine::MulticamAngleId::from_raw(0xe109);
-
+const AUDIO_TRACK: engine::TrackId = engine::TrackId::from_raw(0xe008);
+const AUDIO_CLIP: engine::ClipId = engine::ClipId::from_raw(0xe009);
 fn range(start: i64, duration: u64, timebase: engine::Timebase) -> engine::TimeRange {
     engine::TimeRange::new(
         engine::RationalTime::new(start, timebase),
@@ -202,6 +203,89 @@ fn multicam_project_api() -> superi_api::editor::ProjectEditorApi {
     superi_api::editor::ProjectEditorApi::new(dispatcher).unwrap()
 }
 
+fn audio_video_project_api() -> superi_api::editor::ProjectEditorApi {
+    let source_rate = engine::Timebase::integer(48).unwrap();
+    let edit_rate = engine::FrameRate::FPS_24.timebase();
+    let audio_rate = engine::Timebase::integer(48_000).unwrap();
+    let media = engine::LinkedMediaReference::new(
+        MEDIA,
+        "source",
+        "urn:public-editor:audio-video",
+        Some(range(0, 480, source_rate)),
+    );
+    let video = engine::Clip::new(
+        CLIP,
+        "picture",
+        engine::ClipSource::Media(MEDIA),
+        range(48, 96, source_rate),
+        range(0, 48, edit_rate),
+    )
+    .unwrap();
+    let audio = engine::Clip::new(
+        AUDIO_CLIP,
+        "production audio",
+        engine::ClipSource::Media(MEDIA),
+        range(0, 48, source_rate),
+        range(48_000, 48_000, audio_rate),
+    )
+    .unwrap();
+    let layout = engine::ChannelLayout::stereo();
+    let routing = engine::AudioRouting::new(
+        engine::AudioRouteDestination::Main,
+        layout.clone(),
+        [
+            engine::AudioChannelRoute::new(
+                engine::ChannelPosition::FrontLeft,
+                engine::AudioChannelTarget::Channel(engine::ChannelPosition::FrontLeft),
+            ),
+            engine::AudioChannelRoute::new(
+                engine::ChannelPosition::FrontRight,
+                engine::AudioChannelTarget::Channel(engine::ChannelPosition::FrontRight),
+            ),
+        ],
+    )
+    .unwrap();
+    let timeline = engine::Timeline::new(
+        ROOT,
+        "public audio-video timeline",
+        edit_rate,
+        engine::RationalTime::zero(edit_rate),
+        vec![
+            engine::Track::new(
+                TRACK,
+                "V1",
+                engine::TrackSemantics::Video(engine::VideoTrackSemantics::new(
+                    engine::FrameRate::FPS_24,
+                    engine::VideoCompositing::Over,
+                )),
+                vec![engine::TrackItem::Clip(video)],
+            ),
+            engine::Track::new(
+                AUDIO_TRACK,
+                "A1",
+                engine::TrackSemantics::Audio(
+                    engine::AudioTrackSemantics::new(48_000, layout, routing).unwrap(),
+                ),
+                vec![
+                    engine::TrackItem::Gap(engine::Gap::new(
+                        engine::GapId::from_raw(0xe00a),
+                        "audio lead",
+                        range(0, 48_000, audio_rate),
+                    )),
+                    engine::TrackItem::Clip(audio),
+                ],
+            ),
+        ],
+    );
+    let editorial =
+        engine::EditorialProject::new(PROJECT, "public audio-video project", [media], [timeline])
+            .unwrap();
+    let mut dispatcher = engine::EngineCommandDispatcher::new().unwrap();
+    dispatcher
+        .attach_project(engine::ProjectDocument::new(editorial, ROOT).unwrap())
+        .unwrap();
+    superi_api::editor::ProjectEditorApi::new(dispatcher).unwrap()
+}
 fn extension_permissions() -> Arc<ApiPermissionContext> {
     Arc::new(
         ApiPermissionContext::new(
@@ -394,7 +478,7 @@ fn editor_contract_has_permanent_names_and_strict_project_commands() {
     );
     assert_eq!(PROJECT_STATE_CHANGED_EVENT, "superi.project.state.changed");
     assert_eq!(PROJECT_HISTORY_RESOURCE, "superi.project.history");
-    assert_eq!(PROJECT_EDITOR_SCHEMA_VERSION.to_string(), "1.6.0");
+    assert_eq!(PROJECT_EDITOR_SCHEMA_VERSION.to_string(), "1.7.0");
     assert_eq!(
         ExecuteProjectCommand::METHOD,
         EXECUTE_PROJECT_COMMAND_METHOD
@@ -452,6 +536,9 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
         json!({"operation":"overwrite","timeline_id":timeline_id,"track_id":track_id,"at":time,"material":material,"fragment_ids":[]}),
         json!({"operation":"append","timeline_id":timeline_id,"track_id":track_id,"material":material}),
         json!({"operation":"replace","timeline_id":timeline_id,"track_id":track_id,"target_id":clip_object,"material":material}),
+        json!({"operation":"link_audio_video","timeline_id":timeline_id,"video_track_id":track_id,"video_clip_id":clip_id,"audio_track_id":"track:0000000000000000000000000000e011","audio_clip_id":"clip:0000000000000000000000000000e012"}),
+        json!({"operation":"synchronize_audio_video","timeline_id":timeline_id,"video_track_id":track_id,"video_clip_id":clip_id,"audio_track_id":"track:0000000000000000000000000000e011","audio_clip_id":"clip:0000000000000000000000000000e012"}),
+        json!({"operation":"detach_audio","timeline_id":timeline_id,"video_track_id":track_id,"video_clip_id":clip_id,"audio_track_id":"track:0000000000000000000000000000e011","audio_clip_id":"clip:0000000000000000000000000000e012"}),
         json!({"operation":"lift","timeline_id":timeline_id,"track_id":track_id,"range":range,"gap_id":gap_id,"gap_name":"lifted","fragment_ids":[]}),
         json!({"operation":"extract","timeline_id":timeline_id,"track_id":track_id,"range":range,"fragment_ids":[]}),
         json!({"operation":"ripple","timeline_id":timeline_id,"track_id":track_id,"target_id":clip_object,"side":"end","to":time,"sync_adjustments":[]}),
@@ -488,6 +575,9 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
             "overwrite",
             "append",
             "replace",
+            "link_audio_video",
+            "synchronize_audio_video",
+            "detach_audio",
             "lift",
             "extract",
             "ripple",
@@ -588,6 +678,7 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
         json!({"operation":"set_sync_locked","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"sync_locked":false}),
         json!({"operation":"set_muted","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"muted":true}),
         json!({"operation":"set_solo","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"solo":true}),
+        json!({"operation":"set_audio_routing","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"destination":{"kind":"main"},"destination_layout":[{"kind":"front_left"},{"kind":"front_right"}],"routes":[{"source":{"kind":"front_left"},"target":{"kind":"channel","position":{"kind":"front_right"}}},{"source":{"kind":"front_right"},"target":{"kind":"muted"}}]}),
         json!({"operation":"set_enabled","timeline_id":ROOT.to_string(),"track_id":TRACK.to_string(),"enabled":false}),
     ];
     assert_eq!(
@@ -603,6 +694,7 @@ fn every_current_editor_operation_has_one_strict_typed_discriminant() {
             "set_sync_locked",
             "set_muted",
             "set_solo",
+            "set_audio_routing",
             "set_enabled"
         ]
     );
@@ -1102,6 +1194,90 @@ fn public_track_command_is_revision_fenced_evidenced_and_undoable() {
             .unwrap()
             .name(),
         "V1"
+    );
+}
+
+#[test]
+fn public_audio_video_edits_and_channel_routing_execute_with_typed_evidence() {
+    let _domain = ExecutionDomain::EngineControl
+        .enter_current()
+        .expect("test owns engine control");
+    let mut api = audio_video_project_api();
+    let request: ExecuteProjectCommand = serde_json::from_value(json!({
+        "transaction_id": "public-audio-video-edit",
+        "expected_project_revision": 0,
+        "command": {
+            "command": "apply",
+            "actions": [
+                {
+                    "action": "edit_timeline",
+                    "operations": [
+                        {"operation":"link_audio_video","timeline_id":ROOT.to_string(),"video_track_id":TRACK.to_string(),"video_clip_id":CLIP.to_string(),"audio_track_id":AUDIO_TRACK.to_string(),"audio_clip_id":AUDIO_CLIP.to_string()},
+                        {"operation":"detach_audio","timeline_id":ROOT.to_string(),"video_track_id":TRACK.to_string(),"video_clip_id":CLIP.to_string(),"audio_track_id":AUDIO_TRACK.to_string(),"audio_clip_id":AUDIO_CLIP.to_string()},
+                        {"operation":"synchronize_audio_video","timeline_id":ROOT.to_string(),"video_track_id":TRACK.to_string(),"video_clip_id":CLIP.to_string(),"audio_track_id":AUDIO_TRACK.to_string(),"audio_clip_id":AUDIO_CLIP.to_string()}
+                    ]
+                },
+                {
+                    "action": "mutate_tracks",
+                    "mutations": [{
+                        "operation": "set_audio_routing",
+                        "timeline_id": ROOT.to_string(),
+                        "track_id": AUDIO_TRACK.to_string(),
+                        "destination": {"kind":"main"},
+                        "destination_layout": [{"kind":"front_left"},{"kind":"front_right"}],
+                        "routes": [
+                            {"source":{"kind":"front_left"},"target":{"kind":"channel","position":{"kind":"front_right"}}},
+                            {"source":{"kind":"front_right"},"target":{"kind":"muted"}}
+                        ]
+                    }]
+                }
+            ]
+        }
+    }))
+    .unwrap();
+
+    let applied = api.execute(request).unwrap();
+    let ProjectCommandEvidence::Applied { actions } = applied.evidence() else {
+        panic!("audio-video command must retain per-action evidence");
+    };
+    let edit_evidence = serde_json::to_value(&actions[0]).unwrap();
+    assert_eq!(
+        edit_evidence["operations"],
+        json!([
+            "link_audio_video",
+            "detach_audio",
+            "synchronize_audio_video"
+        ])
+    );
+    let routing_evidence = serde_json::to_value(&actions[1]).unwrap();
+    assert_eq!(routing_evidence["mutations"], json!(["set_audio_routing"]));
+
+    let snapshot = api.project_snapshot().unwrap();
+    let timeline = snapshot.editorial_project().timeline(ROOT).unwrap();
+    let audio_clip = timeline
+        .track(AUDIO_TRACK)
+        .unwrap()
+        .item(engine::EditorialObjectId::Clip(AUDIO_CLIP))
+        .unwrap()
+        .as_clip()
+        .unwrap();
+    assert_eq!(audio_clip.source_range().start().value(), 96);
+    assert!(timeline
+        .edit_state()
+        .link_for(AUDIO_CLIP)
+        .unwrap()
+        .contains(CLIP));
+    let engine::TrackSemantics::Audio(audio) = timeline.track(AUDIO_TRACK).unwrap().semantics()
+    else {
+        panic!("audio routing mutation must preserve audio semantics");
+    };
+    assert_eq!(
+        audio.routing().routes()[0].target(),
+        engine::AudioChannelTarget::Channel(engine::ChannelPosition::FrontRight)
+    );
+    assert_eq!(
+        audio.routing().routes()[1].target(),
+        engine::AudioChannelTarget::Muted
     );
 }
 

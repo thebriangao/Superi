@@ -2269,6 +2269,11 @@ impl Timeline {
         self.edit_state.unlink_clips(clips, &self.tracks)
     }
 
+    pub(crate) fn transfer_clip_intent(&mut self, removed: ClipId, inserted: ClipId) -> Result<()> {
+        self.edit_state
+            .transfer_clip_intent(removed, inserted, &self.tracks)
+    }
+
     /// Groups clips as one editorial unit, including each named clip's linked component.
     pub fn group_clips<I>(&mut self, clips: I) -> Result<()>
     where

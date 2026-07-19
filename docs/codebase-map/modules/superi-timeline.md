@@ -2,8 +2,8 @@
 module_id: superi-timeline
 source_paths:
   - open/crates/superi-timeline
-source_hash: ffed65db9ecf35f763ce5d7173773046aa1a06ba495d34d15609979346a2b284
-source_files: 35
+source_hash: 112f0d1e4b798ba4f60e76360bf653904036c42e7cc92af9ffc621eb7a96a9a4
+source_files: 36
 mapped_at_commit: working-tree
 ---
 
@@ -28,6 +28,12 @@ typed batch surface. Those commands
 report every inserted, removed, modified, split, synchronized, or invalidated relationship.
 Exact retime replacement uses that same surface to change one clip's complete time map while
 preserving its identity and record duration and rejecting semantic no-ops.
+Audio-video link and detach operations change durable relationship intent without moving either
+clip. Exact audio-video synchronization translates the complete audio source map at its sample
+clock while preserving record placement, and replacement transfers selection, link, group, and
+multicam intent to the caller-owned replacement identity. Audio track mutation can replace one
+complete validated destination and per-source-channel routing map without changing sample rate or
+source channel meaning.
 Whole-project validation and revision-checked atomic batches keep linked objects, annotations, user
 intent, timing, synchronization, nesting, and direct edits valid at publication boundaries.
 Clip-owned exact time maps add rational speed changes, reverse playback, freeze frames, and
@@ -117,12 +123,14 @@ with stable warnings.
   public native boundary, reports stable diagnostics, and writes deterministic OTIO 0.18.1 JSON.
 - `open/crates/superi-timeline/src/edit_ops.rs`: Implements directly inspectable foundational and
   advanced commands, exact source-aware and retime-aware trimming and splitting, direct exact clip
-  time-map replacement, semantic no-op rejection, deterministic fragment identities, explicit
-  sync-locked ripple plans, transition reconciliation, result reports, locked-track enforcement,
-  atomic dual-handle transition timing, and atomic multi-track batches.
+  time-map replacement, semantic no-op rejection, durable audio-video link and detach, exact
+  sample-clock source synchronization, deterministic fragment identities, explicit sync-locked
+  ripple plans, transition reconciliation, result reports, locked-track enforcement, atomic
+  dual-handle transition timing, and atomic multi-track batches.
 - `open/crates/superi-timeline/src/edit_state.rs`: Implements exact and relationship-expanded
   selection, bounded track height, per-track target, lock, sync-lock, mute, solo, and enable intent,
-  canonical clip links and groups, stable introspection, and structural reconciliation.
+  canonical clip links and groups, stable introspection, structural reconciliation, and complete
+  relationship-intent transfer from a removed clip to its replacement identity.
 - `open/crates/superi-timeline/src/ids.rs`: Re-exports the canonical project, editorial object, and
   multicam angle identities owned by `superi-core`.
 - `open/crates/superi-timeline/src/lib.rs`: Exports the implemented identity, edit-state, edit
@@ -172,7 +180,11 @@ with stable warnings.
   every `TimelineGraphValue` variant by reusing checked timeline-owned wire conversions.
 - `open/crates/superi-timeline/src/track_ops.rs`: Implements one revision-checked atomic batch for
   track creation, deletion, naming, height, order, targeting, locks, sync locks, audio mute and
-  solo, and output enable, with deterministic four-kind creation templates and typed outcomes.
+  solo, complete audio routing replacement, and output enable, with deterministic four-kind
+  creation templates and typed outcomes.
+- `open/crates/superi-timeline/tests/audio_video_contract.rs`: Proves durable link and detach,
+  exact sample-clock source synchronization with unchanged record timing, replacement transfer of
+  authored intent, lock admission, relationship admission, and atomic rejection.
 - `open/crates/superi-timeline/tests/edit_state_contract.rs`: Proves linked and grouped selection,
   direct member control, target and sync-lock ordering, link and group independence, state
   reconciliation, identity and timing retention, revision conflicts, and atomic rollback.
@@ -231,9 +243,10 @@ with stable warnings.
   missing clips, and wrong track bindings.
 - `open/crates/superi-timeline/tests/track_semantics_contract.rs`: Proves all four track kinds,
   exact clocks, channel routing, linked audio reshaping, continuity, and bounded validation.
-- `open/crates/superi-timeline/tests/track_management_contract.rs`: Proves all eleven track
+- `open/crates/superi-timeline/tests/track_management_contract.rs`: Proves all twelve track
   operations in one atomic batch, stable survivor state, lock enforcement, explicit unlock and
-  delete, audio-only controls, bounded heights, authored-item rejection, and rollback.
+  delete, audio-only controls, complete routing replacement, bounded heights, authored-item
+  rejection, and rollback.
 - `open/crates/superi-timeline/tests/serialization_contract.rs`: Proves deterministic complete
   state round trips, revision 1 and revision 0 migration, canonical current output, corruption and
   interruption rejection, strict unknown and future state handling, multicam recovery, and
@@ -301,7 +314,7 @@ The timeline edit-state surface includes:
   intent, insert, delete, reorder, and control tracks, enumerate targeted tracks by timeline order
   and media kind, and resolve sync-affected tracks for later insert and ripple commands.
 - `TrackCreationKind`, `TrackMutation`, `TrackMutationKind`, `TrackMutationOutcome`, and
-  `TrackMutationBatchResult` for explicit video, audio, caption, and data creation plus all eleven
+  `TrackMutationBatchResult` for explicit video, audio, caption, and data creation plus all twelve
   track gestures through one atomic project revision.
 
 The annotation and snapping surface includes:
@@ -368,11 +381,12 @@ The timeline state document surface includes:
 
 The editorial operation surface includes:
 
-- `EditOperation` and `EditKind` for insert, overwrite, append, replace, lift, extract, ripple,
-  roll, slip, slide, razor, trim, extend, `set_transition`, three-point, four-point, and retime
-  commands targeted by stable timeline and track identity. `set_transition` changes both exact
-  handles of one stable transition together without changing track duration or endpoint identity.
-  Retime names one exact clip and replaces only its complete validated `ClipTimeMap`.
+- `EditOperation` and `EditKind` for insert, overwrite, append, replace, audio-video link,
+  audio-video synchronization, audio detach, lift, extract, ripple, roll, slip, slide, razor, trim,
+  extend, `set_transition`, three-point, four-point, and retime commands targeted by stable timeline
+  and track identity. `set_transition` changes both exact handles of one stable transition together
+  without changing track duration or endpoint identity. Retime names one exact clip and replaces
+  only its complete validated `ClipTimeMap`.
 - `EditSide` for exact start or end control, `ExtendMode` for explicit ripple or roll delegation,
   and `ThreePointPlacement` for the four forward and backtimed missing-boundary forms.
 - `RippleSyncAdjustment` for deterministic per-track gap and fragment identities. A ripple names
@@ -515,7 +529,9 @@ kind semantics. Deletion requires an unlocked target and reconciles contained ob
 annotations, links, groups, selections, and multicam state. Rename, height, reorder, targeting,
 locks, sync locks, mute, solo, and enable preserve every unaffected track and item exactly. Mute and
 solo accept active intent only for audio tracks, while neutral false values remain valid for legacy
-and generic reconstruction.
+and generic reconstruction. Complete routing replacement requires an audio track, preserves its
+sample rate and ordered source layout, validates one decision per source channel, and rejects a
+self-referential or missing audio-track destination before publication.
 
 `apply_marker_mutation_batch` follows the same single-draft boundary. Creation accepts one complete
 marker and rejects any project-wide identity collision. Partial range, label, flag, and note edits
@@ -568,7 +584,15 @@ Editorial operation flow extends that transaction without creating another state
    old and new visible ranges. Existing transitions are restored only when their original endpoints
    remain adjacent and their offsets still fit without overlap. Every invalidated transition is
    returned in the operation result rather than retargeted implicitly.
-10. The existing whole-project validator resolves media and nested timeline sources, global object
+10. Audio-video link and detach resolve exactly one clip on a video track and one clip on an audio
+   track, enforce both locks, and change only the canonical link relation. Synchronization derives
+   the audio source anchor from the exact video source start plus the audio-to-video record offset,
+   translates every audio retime segment at the audio source clock, preserves the complete audio
+   record range, and links the pair in the same edit.
+11. Replacement transfers selection, canonical links, groups, and multicam target or source
+   membership from the removed identity to the inserted identity before relationship
+   reconciliation, while preserving the ordinary replacement timing contract.
+12. The existing whole-project validator resolves media and nested timeline sources, global object
    identity, track continuity, synchronization, and nesting cycles before one new revision is
    published. A failure in any command or final invariant discards every command in the batch.
 
@@ -772,6 +796,13 @@ Timeline document flow preserves those owners without becoming a project contain
 - Timeline edit state references only tracks and objects owned by that timeline. Surviving stable
   identities retain their selection, height, targeting, lock, synchronization, output, link, and
   group intent through structural project edits.
+- Audio-video gestures require one local video clip and one local audio clip and both containing
+  tracks unlocked. Link and detach never change source or record timing. Synchronization preserves
+  audio record timing and translates its complete source map only through exact cross-clock
+  arithmetic; an inexact conversion fails before publication.
+- Audio routing is a complete replacement contract. The ordered source layout and sample rate stay
+  fixed, every source channel appears exactly once, track destinations must resolve to a different
+  audio track, and invalid or no-op replacements leave the project unchanged.
 - Link components and group components are each disjoint canonical sets with at least two clips.
   They intentionally share core `ClipId` members rather than introducing relationship IDs. Groups
   include the complete linked components they contain, while unlinking does not silently ungroup.
@@ -975,6 +1006,12 @@ maps all use one revision-checked edit path with exact modified-object and affec
 They also prove stable clip identity and record duration plus complete rollback for semantic no-ops,
 locked tracks, missing clip identities, and wrong track bindings.
 
+Four audio-video edit-operation tests prove durable link and detach without movement, exact source
+synchronization from a 24 fps video clock into a 48 kHz audio clock, unchanged audio record range
+and sample duration, complete time-map translation, replacement transfer of selection, links,
+groups, and multicam intent, locked-track rejection, relationship-state rejection, and batch
+rollback.
+
 Four media-library tests prove stable bin and sub-bin paths, direct media movement, deterministic
 metadata smart collections, atomic cycle, duplicate membership, and missing-media rejection,
 explicit missing and unverified state, content-mismatch evidence, accepted relinks, preserved
@@ -1012,10 +1049,11 @@ handling, invalid link rejection, exact multicam resolution after load, continue
 editing, and a complete compiled multicam graph round trip through the public graph codec with
 unknown graph-value fields and tags rejected.
 
-Five track-management tests prove all eleven gestures, explicit canonical creation semantics for
+Six track-management tests prove all twelve gestures, explicit canonical creation semantics for
 video, audio, caption, and data tracks, exact survivor and relationship state, one revision per
 batch, locked deletion rollback, explicit unlock and deletion, bounded height, audio-only mute and
-solo, and locked authored-item rejection.
+solo, complete channel-routing replacement with preserved sample rate and source layout,
+self-routing and non-audio destination rejection, and locked authored-item rejection.
 
 Workspace tests, warnings-denied Clippy, formatting, dependency direction, the offline boundary
 scan, and codebase-map validation are required delivery gates.
@@ -1030,7 +1068,9 @@ exact clip retiming, six primary operations, nine advanced edit families, nested
 prepared and selection-derived multi-track compound creation, shared child editing, recursive
 inspection, and native multicam angle, atomic source and target mutation, synchronization,
 switching, cut refinement, audio-intent, structural inheritance, and exact resolution are
-substantive and test-backed. Deterministic graph compilation with lossless native domain values and
+substantive and test-backed. Audio-video linking, exact sample-clock synchronization, detach,
+replacement intent transfer, and complete audio routing replacement are also substantive and
+test-backed. Deterministic graph compilation with lossless native domain values and
 shared processing-value coexistence, plus production OTIO 0.18.1 reading,
 writing, opaque preservation, stable diagnostics, and a headless consumer are also test-backed.
 Strict canonical timeline documents, revision 1 and revision 0 migration, checked recovery,
@@ -1098,6 +1138,9 @@ reconciliation, transition adjacency, nesting acyclicity, exact nested placement
 reporting, multicam angle identity and metadata, source membership, switch coverage, exact
 record-to-source mapping, later-cut preservation, cut boundaries, audio intent, structural
 inheritance, and atomic publication as public contracts.
+Treat audio-video role checks, exact source synchronization, unchanged record timing, complete
+source-map translation, replacement relationship transfer, and complete ordered channel routing as
+the same class of public contract. Do not round source synchronization or publish a partial route.
 Keep linked media targets opaque here, preserve every relink evidence field in canonical state, and
 route filesystem interpretation through `superi-project` without moving or duplicating `MediaId`.
 Treat the timeline document format, primitive revision gate, field names, enum codes, decimal

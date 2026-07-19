@@ -127,7 +127,16 @@ function completeSnapshot(): EditorStateSnapshot {
                 routing: {
                   destination: { kind: "main" },
                   destination_layout: ["front_left", "front_right"],
-                  routes: [],
+                  routes: [
+                    {
+                      source: "front_left",
+                      target: { kind: "channel", channel: "front_left" },
+                    },
+                    {
+                      source: "front_right",
+                      target: { kind: "channel", channel: "front_right" },
+                    },
+                  ],
                 },
               },
               items: [

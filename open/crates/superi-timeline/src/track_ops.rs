@@ -93,6 +93,12 @@ pub enum TrackMutation {
         track_id: TrackId,
         solo: bool,
     },
+    /// Replaces complete source-channel routing intent for one audio track.
+    SetAudioRouting {
+        timeline_id: TimelineId,
+        track_id: TrackId,
+        routing: AudioRouting,
+    },
     /// Changes output enable intent.
     SetEnabled {
         timeline_id: TimelineId,
@@ -116,6 +122,7 @@ impl TrackMutation {
             | Self::SetSyncLocked { timeline_id, .. }
             | Self::SetMuted { timeline_id, .. }
             | Self::SetSolo { timeline_id, .. }
+            | Self::SetAudioRouting { timeline_id, .. }
             | Self::SetEnabled { timeline_id, .. } => *timeline_id,
         }
     }
@@ -134,6 +141,7 @@ impl TrackMutation {
             | Self::SetSyncLocked { track_id, .. }
             | Self::SetMuted { track_id, .. }
             | Self::SetSolo { track_id, .. }
+            | Self::SetAudioRouting { track_id, .. }
             | Self::SetEnabled { track_id, .. } => *track_id,
         }
     }
@@ -150,6 +158,7 @@ impl TrackMutation {
             Self::SetSyncLocked { .. } => TrackMutationKind::SetSyncLocked,
             Self::SetMuted { .. } => TrackMutationKind::SetMuted,
             Self::SetSolo { .. } => TrackMutationKind::SetSolo,
+            Self::SetAudioRouting { .. } => TrackMutationKind::SetAudioRouting,
             Self::SetEnabled { .. } => TrackMutationKind::SetEnabled,
         }
     }
@@ -169,6 +178,7 @@ pub enum TrackMutationKind {
     SetSyncLocked,
     SetMuted,
     SetSolo,
+    SetAudioRouting,
     SetEnabled,
 }
 
@@ -295,6 +305,61 @@ fn apply_mutation(draft: &mut ProjectDraft, mutation: &TrackMutation) -> Result<
             track_id, muted, ..
         } => timeline.set_track_muted(*track_id, *muted),
         TrackMutation::SetSolo { track_id, solo, .. } => timeline.set_track_solo(*track_id, *solo),
+        TrackMutation::SetAudioRouting {
+            track_id, routing, ..
+        } => {
+            if let AudioRouteDestination::Track(destination) = routing.destination() {
+                if destination == *track_id {
+                    return Err(track_error(
+                        ErrorCategory::InvalidInput,
+                        "set_audio_routing",
+                        "an audio track cannot route into itself",
+                    ));
+                }
+                let destination_track = timeline.track(destination).ok_or_else(|| {
+                    track_error(
+                        ErrorCategory::NotFound,
+                        "set_audio_routing",
+                        "the routed destination track was not found",
+                    )
+                })?;
+                if destination_track.kind() != crate::model::TrackKind::Audio {
+                    return Err(track_error(
+                        ErrorCategory::InvalidInput,
+                        "set_audio_routing",
+                        "audio routing destinations must be audio tracks",
+                    ));
+                }
+            }
+            let source_track = timeline.track(*track_id).ok_or_else(|| {
+                track_error(
+                    ErrorCategory::NotFound,
+                    "set_audio_routing",
+                    "the audio track was not found",
+                )
+            })?;
+            let replacement = match source_track.semantics() {
+                TrackSemantics::Audio(audio) => {
+                    if audio.routing() == routing {
+                        return Err(track_error(
+                            ErrorCategory::InvalidInput,
+                            "set_audio_routing",
+                            "audio routing replacement must change routing intent",
+                        ));
+                    }
+                    TrackSemantics::Audio(audio.with_routing(routing.clone())?)
+                }
+                _ => {
+                    return Err(track_error(
+                        ErrorCategory::InvalidInput,
+                        "set_audio_routing",
+                        "audio routing is supported only for audio tracks",
+                    ));
+                }
+            };
+            timeline.track_mut(*track_id)?.set_semantics(replacement);
+            Ok(())
+        }
         TrackMutation::SetEnabled {
             track_id, enabled, ..
         } => timeline.set_track_enabled(*track_id, *enabled),

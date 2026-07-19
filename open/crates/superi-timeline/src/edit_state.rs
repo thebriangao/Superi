@@ -381,6 +381,22 @@ impl TimelineEditState {
         Ok(())
     }
 
+    pub(crate) fn transfer_clip_intent(
+        &mut self,
+        removed: ClipId,
+        inserted: ClipId,
+        tracks: &[Track],
+    ) -> Result<()> {
+        let removed_object = EditorialObjectId::Clip(removed);
+        if self.selected_objects.remove(&removed_object) {
+            self.selected_objects
+                .insert(EditorialObjectId::Clip(inserted));
+        }
+        replace_relation_member(&mut self.links, removed, inserted);
+        replace_relation_member(&mut self.groups, removed, inserted);
+        self.validate(tracks)
+    }
+
     pub(crate) fn reconcile(&mut self, tracks: &[Track]) {
         let (track_ids, object_ids, clip_ids) = timeline_ids(tracks);
         self.track_states
@@ -554,6 +570,15 @@ fn remove_relation_members(relations: &mut Vec<ClipRelation>, clips: &BTreeSet<C
     }
     sort_relations(&mut retained);
     *relations = retained;
+}
+
+fn replace_relation_member(relations: &mut [ClipRelation], removed: ClipId, inserted: ClipId) {
+    for relation in relations.iter_mut() {
+        if relation.members.remove(&removed) {
+            relation.members.insert(inserted);
+        }
+    }
+    sort_relations(relations);
 }
 
 fn reconcile_relations(relations: &mut Vec<ClipRelation>, clip_ids: &BTreeSet<ClipId>) {

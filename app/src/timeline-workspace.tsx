@@ -97,6 +97,8 @@ import {
 } from "./timeline-multicam.ts";
 import {
   TIMELINE_DEFAULT_SNAP_RULES,
+  buildTimelineAudioRoutingAction,
+  buildTimelineAudioVideoAction,
   buildTimelineEditCommand,
   buildTimelineHistoryCommand,
   buildTimelineRulerTicks,
@@ -107,6 +109,7 @@ import {
   parseTimelineSelectionIdentity,
   resolveTimelineSnap,
   projectSourceMonitorForTimelineEdit,
+  resolveTimelineAudioVideoSelection,
   snapTimelineTime,
   timelineObjectKey,
   timelineRectanglesIntersect,
@@ -124,6 +127,9 @@ import {
   type TimelineCanvasMarker,
   type TimelineCanvasModel,
   type TimelineCanvasTrack,
+  type TimelineAudioChannelPosition,
+  type TimelineAudioChannelTarget,
+  type TimelineAudioRouteDestination,
   type TimelineSnapMatch,
   type TimelineSnapRules,
   type TimelineRectangle,
@@ -881,9 +887,18 @@ export function TimelineWorkspace({
   }, [compoundName, executeProjectActions, model, visibleSelectionTargets]);
 
   const executeEdit = useCallback(
-    async (edit: TimelineEditGesture) => {
+    async (
+      edit: TimelineEditGesture,
+      override?: {
+        readonly targetTrackId?: string;
+        readonly selectedItemIds?: readonly string[];
+      },
+    ) => {
       setSelectedEdit(edit);
-      if (!model || commandPendingRef.current) return;
+      if (!model || commandPendingRef.current) return false;
+      const editTargetTrackId = override?.targetTrackId ?? targetTrackId;
+      const editSelectedItemIds = override?.selectedItemIds ?? selectedEditItemIds;
+      if (override?.targetTrackId) setTargetTrackId(override.targetTrackId);
       if (
         editGestureUsesSource(edit) &&
         sourceProjection?.status !== "ready"
@@ -891,19 +906,19 @@ export function TimelineWorkspace({
         setCommandStatus(
           sourceProjection?.reason ?? "Load a compatible source before editing.",
         );
-        return;
+        return false;
       }
       let transactionId: string;
       try {
         transactionId = nextTransactionId(edit);
       } catch (error: unknown) {
         setCommandStatus(timelineCommandFailure(error));
-        return;
+        return false;
       }
       const plan = buildTimelineEditCommand({
         gesture: edit,
         model,
-        targetTrackId,
+        targetTrackId: editTargetTrackId,
         playheadSeconds: playhead,
         inPointSeconds: inPoint,
         outPointSeconds: outPoint,
@@ -911,13 +926,13 @@ export function TimelineWorkspace({
         source:
           sourceProjection?.status === "ready" ? sourceProjection.source : null,
         threePointMode,
-        selectedItemIds: selectedEditItemIds,
+        selectedItemIds: editSelectedItemIds,
         transactionId,
         createId: randomEditorialId,
       });
       if (plan.status === "disabled") {
         setCommandStatus(plan.reason);
-        return;
+        return false;
       }
       commandPendingRef.current = true;
       setCommandPending(true);
@@ -927,8 +942,10 @@ export function TimelineWorkspace({
         setCommandStatus(
           `${timelineEditGestureLabel(edit)} completed at project revision ${result.state.project_revision}. Undo is available immediately.`,
         );
+        return true;
       } catch (error: unknown) {
         setCommandStatus(timelineCommandFailure(error));
+        return false;
       } finally {
         commandPendingRef.current = false;
         setCommandPending(false);
@@ -2614,6 +2631,24 @@ export function TimelineWorkspace({
           onUndo={() => executeHistory("undo")}
         />
       ) : null}
+      <TimelineAudioVideoPanel
+        busy={commandPending}
+        executeProjectActions={executeProjectActions}
+        model={model}
+        onReplaceAudio={(trackId, clipId) =>
+          executeEdit("replace", {
+            targetTrackId: trackId,
+            selectedItemIds: [clipId],
+          })
+        }
+        replaceDisabledReason={
+          sourceProjection?.status === "ready"
+            ? null
+            : sourceProjection?.reason ??
+              "Load a compatible audio source before replacing."
+        }
+        selectedItemIds={selectedEditItemIds}
+      />
       <section
         className="timeline-edit-controls"
         aria-label="Timeline editing tools"
@@ -3619,6 +3654,376 @@ function TimelineMulticamPanel({
   );
 }
 
+function TimelineAudioVideoPanel({
+  model,
+  selectedItemIds,
+  busy,
+  executeProjectActions,
+  onReplaceAudio,
+  replaceDisabledReason,
+}: {
+  readonly model: TimelineCanvasModel;
+  readonly selectedItemIds: readonly string[];
+  readonly busy: boolean;
+  readonly executeProjectActions: TimelineWorkspaceProps["executeProjectActions"];
+  readonly onReplaceAudio: (trackId: string, clipId: string) => Promise<boolean>;
+  readonly replaceDisabledReason: string | null;
+}) {
+  const selection = useMemo(
+    () => resolveTimelineAudioVideoSelection(model, selectedItemIds),
+    [model, selectedItemIds],
+  );
+  const audioTracks = useMemo(
+    () => model.tracks.filter((track) => track.kind === "audio"),
+    [model.tracks],
+  );
+  const [trackId, setTrackId] = useState(
+    () =>
+      (selection.status === "ready" ? selection.audioTrack.id : null) ??
+      audioTracks[0]?.id ??
+      "",
+  );
+  const [destinationKey, setDestinationKey] = useState("main");
+  const [routeTargets, setRouteTargets] = useState<Readonly<Record<string, string>>>({});
+  const [pending, setPending] = useState<string | null>(null);
+  const [status, setStatus] = useState(
+    "Select one video clip and one audio clip to link, synchronize, detach, or replace.",
+  );
+
+  useEffect(() => {
+    setTrackId((current) => {
+      if (selection.status === "ready") return selection.audioTrack.id;
+      return audioTracks.some((track) => track.id === current)
+        ? current
+        : audioTracks[0]?.id ?? "";
+    });
+  }, [audioTracks, selection]);
+
+  const routingTrack =
+    audioTracks.find((track) => track.id === trackId) ?? audioTracks[0] ?? null;
+  useEffect(() => {
+    const routing = routingTrack?.audioRouting;
+    if (!routing) {
+      setDestinationKey("main");
+      setRouteTargets({});
+      return;
+    }
+    setDestinationKey(audioDestinationKey(routing.destination));
+    setRouteTargets(
+      Object.fromEntries(
+        routing.routes.map((route) => [route.source, audioTargetKey(route.target)]),
+      ),
+    );
+  }, [model.documentSha256, routingTrack?.id]);
+
+  const destination = audioDestinationFromKey(destinationKey);
+  const destinationTrack =
+    destination.kind === "track"
+      ? audioTracks.find((track) => track.id === destination.trackId) ?? null
+      : null;
+  const destinationLayout = useMemo(() => {
+    const routing = routingTrack?.audioRouting;
+    if (!routing) return Object.freeze([]) as readonly TimelineAudioChannelPosition[];
+    if (destination.kind === "track") {
+      return destinationTrack?.audioRouting?.sourceLayout ?? Object.freeze([]);
+    }
+    return routing.destination.kind === "main"
+      ? routing.destinationLayout
+      : routing.sourceLayout;
+  }, [destination.kind, destinationTrack, routingTrack]);
+  const draftRoutes = useMemo(
+    () =>
+      routingTrack?.audioRouting?.sourceLayout.map((source) => ({
+        source,
+        target: audioTargetFromKey(routeTargets[source], destinationLayout, source),
+      })) ?? Object.freeze([]),
+    [destinationLayout, routeTargets, routingTrack],
+  );
+  const routingPlan = useMemo(
+    () =>
+      routingTrack
+        ? buildTimelineAudioRoutingAction({
+            model,
+            trackId: routingTrack.id,
+            destination,
+            destinationLayout,
+            routes: draftRoutes,
+          })
+        : { status: "disabled", reason: "No audio track is available." } as const,
+    [destination, destinationLayout, draftRoutes, model, routingTrack],
+  );
+  const linkPlan = useMemo(
+    () => buildTimelineAudioVideoAction({ gesture: "link", model, selectedItemIds }),
+    [model, selectedItemIds],
+  );
+  const synchronizePlan = useMemo(
+    () =>
+      buildTimelineAudioVideoAction({
+        gesture: "synchronize",
+        model,
+        selectedItemIds,
+      }),
+    [model, selectedItemIds],
+  );
+  const detachPlan = useMemo(
+    () => buildTimelineAudioVideoAction({ gesture: "detach", model, selectedItemIds }),
+    [model, selectedItemIds],
+  );
+  const unavailable = busy || pending !== null;
+
+  const executeAudioVideo = useCallback(
+    async (gesture: "link" | "synchronize" | "detach") => {
+      const plan =
+        gesture === "link"
+          ? linkPlan
+          : gesture === "synchronize"
+            ? synchronizePlan
+            : detachPlan;
+      if (plan.status === "disabled" || unavailable) {
+        if (plan.status === "disabled") setStatus(plan.reason);
+        return;
+      }
+      setPending(gesture);
+      setStatus(plan.consequence);
+      try {
+        const result = await executeProjectActions([plan.action]);
+        setStatus(
+          `${gesture === "synchronize" ? "Synchronization" : capitalize(gesture)} completed at project revision ${result.state.project_revision}. Undo is available immediately.`,
+        );
+      } catch (error: unknown) {
+        setStatus(timelineCommandFailure(error));
+      } finally {
+        setPending(null);
+      }
+    }, [detachPlan, executeProjectActions, linkPlan, synchronizePlan, unavailable],
+  );
+
+  const replaceAudio = useCallback(async () => {
+    if (selection.status === "disabled" || replaceDisabledReason || unavailable) {
+      if (selection.status === "disabled") setStatus(selection.reason);
+      else if (replaceDisabledReason) setStatus(replaceDisabledReason);
+      return;
+    }
+    setPending("replace");
+    setStatus(
+      `Replacing ${selection.audioClip.name} through the exact equal-duration edit path.`,
+    );
+    try {
+      const completed = await onReplaceAudio(
+        selection.audioTrack.id,
+        selection.audioClip.id,
+      );
+      setStatus(
+        completed
+          ? "Audio replacement completed through project history."
+          : "Audio replacement did not complete. Review the timeline command status.",
+      );
+    } catch (error: unknown) {
+      setStatus(timelineCommandFailure(error));
+    } finally {
+      setPending(null);
+    }
+  }, [onReplaceAudio, replaceDisabledReason, selection, unavailable]);
+
+  const applyRouting = useCallback(async () => {
+    if (routingPlan.status === "disabled" || unavailable) {
+      if (routingPlan.status === "disabled") setStatus(routingPlan.reason);
+      return;
+    }
+    setPending("routing");
+    setStatus(routingPlan.consequence);
+    try {
+      const result = await executeProjectActions([routingPlan.action]);
+      setStatus(
+        `Channel mapping completed at project revision ${result.state.project_revision}. Every source channel retains explicit meaning.`,
+      );
+    } catch (error: unknown) {
+      setStatus(timelineCommandFailure(error));
+    } finally {
+      setPending(null);
+    }
+  }, [executeProjectActions, routingPlan, unavailable]);
+
+  return (
+    <section
+      className="timeline-edit-console"
+      aria-label="Audio and video controls"
+      data-pending={pending !== null}
+    >
+      <header>
+        <div>
+          <p className="section-kicker">Audio and video</p>
+          <h5>Precise relationships, source sync, replacement, and channel meaning</h5>
+        </div>
+      </header>
+      <div className="timeline-edit-actions">
+        <button
+          type="button"
+          className="secondary"
+          disabled={unavailable || linkPlan.status === "disabled"}
+          title={linkPlan.status === "disabled" ? linkPlan.reason : linkPlan.consequence}
+          onClick={() => void executeAudioVideo("link")}
+        >
+          Link audio and video
+        </button>
+        <button
+          type="button"
+          className="secondary"
+          disabled={unavailable || synchronizePlan.status === "disabled"}
+          title={
+            synchronizePlan.status === "disabled"
+              ? synchronizePlan.reason
+              : synchronizePlan.consequence
+          }
+          onClick={() => void executeAudioVideo("synchronize")}
+        >
+          Sync by source time
+        </button>
+        <button
+          type="button"
+          className="secondary"
+          disabled={unavailable || detachPlan.status === "disabled"}
+          title={detachPlan.status === "disabled" ? detachPlan.reason : detachPlan.consequence}
+          onClick={() => void executeAudioVideo("detach")}
+        >
+          Detach audio
+        </button>
+        <button
+          type="button"
+          className="secondary"
+          disabled={
+            unavailable ||
+            selection.status === "disabled" ||
+            replaceDisabledReason !== null
+          }
+          title={
+            selection.status === "disabled"
+              ? selection.reason
+              : replaceDisabledReason ??
+                "Replace the selected audio clip with the loaded audio source."
+          }
+          onClick={() => void replaceAudio()}
+        >
+          Replace audio
+        </button>
+        <label>
+          <span>Audio track</span>
+          <select
+            aria-label="Audio routing track"
+            value={routingTrack?.id ?? ""}
+            disabled={unavailable || audioTracks.length === 0}
+            onChange={(event) => setTrackId(event.currentTarget.value)}
+          >
+            {audioTracks.length === 0 ? <option value="">No audio track</option> : null}
+            {audioTracks.map((track) => (
+              <option key={track.id} value={track.id}>{track.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Destination</span>
+          <select
+            aria-label="Audio routing destination"
+            value={destinationKey}
+            disabled={unavailable || routingTrack === null}
+            onChange={(event) => setDestinationKey(event.currentTarget.value)}
+          >
+            <option value="main">Main output</option>
+            {audioTracks
+              .filter((track) => track.id !== routingTrack?.id)
+              .map((track) => (
+                <option key={track.id} value={`track:${track.id}`}>
+                  {track.name}
+                </option>
+              ))}
+          </select>
+        </label>
+      </div>
+      <fieldset className="timeline-edit-actions" disabled={unavailable || routingTrack === null}>
+        <legend>Channel mapping</legend>
+        {draftRoutes.map((route) => (
+          <label key={route.source}>
+            <span>{audioChannelLabel(route.source)}</span>
+            <select
+              aria-label={`Route ${audioChannelLabel(route.source)}`}
+              value={audioTargetKey(route.target)}
+              onChange={(event) =>
+                setRouteTargets((current) => ({
+                  ...current,
+                  [route.source]: event.currentTarget.value,
+                }))
+              }
+            >
+              {destinationLayout.map((channel) => (
+                <option key={channel} value={`channel:${channel}`}>
+                  {audioChannelLabel(channel)}
+                </option>
+              ))}
+              <option value="muted">Muted</option>
+            </select>
+          </label>
+        ))}
+        <button
+          type="button"
+          disabled={unavailable || routingPlan.status === "disabled"}
+          title={routingPlan.status === "disabled" ? routingPlan.reason : routingPlan.consequence}
+          onClick={() => void applyRouting()}
+        >
+          Apply channel mapping
+        </button>
+      </fieldset>
+      <output
+        className="timeline-command-status"
+        data-pending={pending !== null}
+        aria-live="polite"
+      >
+        {pending ? "Publishing one atomic audio transaction. " : ""}
+        {status}
+      </output>
+    </section>
+  );
+}
+
+function audioDestinationKey(destination: TimelineAudioRouteDestination): string {
+  return destination.kind === "main" ? "main" : `track:${destination.trackId}`;
+}
+
+function audioDestinationFromKey(value: string): TimelineAudioRouteDestination {
+  return value.startsWith("track:")
+    ? { kind: "track", trackId: value.slice("track:".length) }
+    : { kind: "main" };
+}
+
+function audioTargetKey(target: TimelineAudioChannelTarget): string {
+  return target.kind === "muted" ? "muted" : `channel:${target.channel}`;
+}
+
+function audioTargetFromKey(
+  value: string | undefined,
+  destinationLayout: readonly TimelineAudioChannelPosition[],
+  source: TimelineAudioChannelPosition,
+): TimelineAudioChannelTarget {
+  if (value === "muted") return { kind: "muted" };
+  const channel = value?.startsWith("channel:")
+    ? (value.slice("channel:".length) as TimelineAudioChannelPosition)
+    : null;
+  if (channel && destinationLayout.includes(channel)) {
+    return { kind: "channel", channel };
+  }
+  return destinationLayout.includes(source)
+    ? { kind: "channel", channel: source }
+    : { kind: "muted" };
+}
+
+function audioChannelLabel(position: TimelineAudioChannelPosition): string {
+  if (position.startsWith("discrete:")) {
+    return `Discrete ${position.slice("discrete:".length)}`;
+  }
+  return position
+    .split("_")
+    .map(capitalize)
+    .join(" ");
+}
 interface TimelineMarkerReversal {
   readonly label: string;
   readonly mutations: readonly TimelineMarkerMutation[];
