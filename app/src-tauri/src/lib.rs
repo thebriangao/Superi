@@ -2,6 +2,7 @@
 
 //! Native Tauri ownership for the Superi desktop lifecycle.
 
+pub mod desktop_shell;
 pub mod engine;
 pub mod file_associations;
 pub mod lifecycle;
@@ -28,7 +29,7 @@ use transport::{
 };
 
 #[derive(Clone)]
-struct ManagedLifecycle(ApplicationLifecycle);
+pub(crate) struct ManagedLifecycle(pub(crate) ApplicationLifecycle);
 
 #[derive(Debug, Serialize)]
 struct LifecycleCommandError {
@@ -105,14 +106,20 @@ pub fn configure<R: Runtime>(builder: Builder<R>, lifecycle: ApplicationLifecycl
     builder
         .plugin(tauri_plugin_dialog::init())
         .manage(ManagedLifecycle(lifecycle))
+        .manage(desktop_shell::DesktopShellState::default())
         .manage(DesktopTransportState::new())
         .manage(DesktopProjectState::default())
         .manage(viewport::DesktopViewportState::default())
         .manage(window_session::DesktopWindowState::default())
+        .on_menu_event(desktop_shell::handle_menu_event)
         .invoke_handler(tauri::generate_handler![
             desktop_lifecycle_snapshot,
             desktop_lifecycle_request,
             desktop_api_dispatch,
+            desktop_shell::desktop_shell_snapshot,
+            desktop_shell::desktop_shell_sync,
+            desktop_shell::desktop_shell_resolve_close,
+            desktop_shell::desktop_shell_request_close,
             project_lifecycle::desktop_project_snapshot,
             project_lifecycle::desktop_project_execute,
             project_lifecycle::desktop_project_settings,
@@ -149,10 +156,10 @@ pub fn configure<R: Runtime>(builder: Builder<R>, lifecycle: ApplicationLifecycl
             window_session::desktop_window_reopen
         ])
         .on_window_event(|window, event| {
+            desktop_shell::handle_window_event(window, event);
             let state = window.state::<window_session::DesktopWindowState>();
-            let lifecycle = window.state::<ManagedLifecycle>();
             let transport = window.state::<DesktopTransportState>();
-            state.handle_window_event(window, event, &lifecycle.0, transport.inner());
+            state.handle_window_event(window, event, transport.inner());
         })
 }
 
@@ -177,8 +184,14 @@ pub fn run() {
     let app = configure(tauri::Builder::default(), lifecycle)
         .manage(engine.connection())
         .setup(move |app| {
+            let recovery_root = app.path().app_data_dir()?.join("recovery");
             app.state::<DesktopProjectState>()
-                .initialize(app.path().app_data_dir()?.join("recovery"))?;
+                .initialize(recovery_root.clone())?;
+            app.state::<desktop_shell::DesktopShellState>()
+                .initialize(&recovery_root)?;
+            let shell_snapshot = app.state::<desktop_shell::DesktopShellState>().snapshot()?;
+            let menu = desktop_shell::build_menu(app.handle(), &shell_snapshot)?;
+            app.set_menu(menu)?;
             app.state::<viewport::DesktopViewportState>()
                 .initialize(app)?;
             app.state::<window_session::DesktopWindowState>()
@@ -204,8 +217,16 @@ pub fn run() {
             let snapshot = event_lifecycle.snapshot();
             if snapshot.application_phase() != ApplicationLifecyclePhase::Stopped {
                 api.prevent_exit();
-                if let Err(error) = event_lifecycle.request_shutdown() {
-                    eprintln!("could not begin orderly Superi shutdown: {error}");
+                if snapshot.intent() == LifecycleIntent::Shutdown {
+                    return;
+                }
+                let shell = handle.state::<desktop_shell::DesktopShellState>();
+                if let Err(error) = desktop_shell::emit_close_request(
+                    handle,
+                    &shell,
+                    desktop_shell::DesktopCloseReason::Quit,
+                ) {
+                    eprintln!("could not request safe Superi shutdown: {error}");
                 }
             } else {
                 event_window_state.begin_shutdown();

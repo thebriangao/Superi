@@ -672,22 +672,44 @@ const MUTATE_OFFLINE_MEDIA_COMMAND = "mutate_project_offline_media";
 const SCAN_MEDIA_SOURCES_COMMAND = "scan_project_media_sources";
 const MUTATE_MEDIA_BATCH_COMMAND = "mutate_project_media_batch";
 
+const projectSnapshotListeners = new Set<
+  (snapshot: DesktopProjectSnapshot) => void
+>();
+
+export function subscribeDesktopProjectSnapshot(
+  listener: (snapshot: DesktopProjectSnapshot) => void,
+): () => void {
+  projectSnapshotListeners.add(listener);
+  return () => projectSnapshotListeners.delete(listener);
+}
+
+function publishDesktopProjectSnapshot(snapshot: DesktopProjectSnapshot): void {
+  for (const listener of projectSnapshotListeners) listener(snapshot);
+}
+
 export async function getDesktopProjectSnapshot(): Promise<DesktopProjectSnapshot> {
-  return invoke<DesktopProjectSnapshot>(SNAPSHOT_COMMAND);
+  const snapshot = await invoke<DesktopProjectSnapshot>(SNAPSHOT_COMMAND);
+  publishDesktopProjectSnapshot(snapshot);
+  return snapshot;
 }
 
 export function listenForDesktopProjectOpen(
   listener: (event: DesktopProjectOpenEvent) => void,
 ): Promise<UnlistenFn> {
-  return listen<DesktopProjectOpenEvent>(PROJECT_OPENED_EVENT, (event) =>
-    listener(event.payload),
-  );
+  return listen<DesktopProjectOpenEvent>(PROJECT_OPENED_EVENT, (event) => {
+    if (event.payload.snapshot !== null) {
+      publishDesktopProjectSnapshot(event.payload.snapshot);
+    }
+    listener(event.payload);
+  });
 }
 
 export async function executeDesktopProject(
   command: DesktopProjectCommand,
 ): Promise<DesktopProjectSnapshot> {
-  return invoke<DesktopProjectSnapshot>(EXECUTE_COMMAND, { command });
+  const snapshot = await invoke<DesktopProjectSnapshot>(EXECUTE_COMMAND, { command });
+  publishDesktopProjectSnapshot(snapshot);
+  return snapshot;
 }
 
 export async function getDesktopProjectSettings(): Promise<DesktopProjectSettings> {

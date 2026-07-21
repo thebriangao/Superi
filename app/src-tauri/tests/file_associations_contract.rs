@@ -1,5 +1,6 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use superi_desktop::file_associations::{
@@ -12,14 +13,17 @@ use tauri::Url;
 
 struct TestRoot(PathBuf);
 
+static NEXT_TEST_ROOT: AtomicU64 = AtomicU64::new(0);
+
 impl TestRoot {
     fn new() -> Self {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock must follow the Unix epoch")
             .as_nanos();
+        let ordinal = NEXT_TEST_ROOT.fetch_add(1, Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!(
-            "superi-file-associations-{}-{nonce}",
+            "superi-file-associations-{}-{nonce}-{ordinal}",
             std::process::id()
         ));
         std::fs::create_dir_all(&path).expect("test root must be creatable");

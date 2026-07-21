@@ -1,10 +1,12 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use superi_desktop::project_lifecycle::{
     DesktopProjectBackend, DesktopProjectCommand, DesktopProjectCreateRequest,
     DesktopProjectFailure, DesktopProjectFailureClass, DesktopProjectIdentity,
-    DesktopProjectLifecycle, DesktopRecoveryCandidate, DesktopRecoveryCatalog,
+    DesktopProjectLifecycle, DesktopProjectState, DesktopRecoveryCandidate, DesktopRecoveryCatalog,
 };
 
 #[derive(Clone, Default)]
@@ -145,6 +147,42 @@ fn create_request(seed: &str) -> DesktopProjectCreateRequest {
         root_timeline_name: format!("Timeline {seed}"),
         edit_rate_numerator: 24,
         edit_rate_denominator: 1,
+    }
+}
+
+struct TemporaryProjectSession {
+    root: PathBuf,
+}
+
+static NEXT_TEMPORARY_PROJECT_SESSION: AtomicU64 = AtomicU64::new(0);
+
+impl TemporaryProjectSession {
+    fn new() -> Self {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let ordinal = NEXT_TEMPORARY_PROJECT_SESSION.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "superi-desktop-session-{}-{suffix}-{ordinal}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        Self { root }
+    }
+
+    fn recovery_root(&self) -> PathBuf {
+        self.root.join("recovery")
+    }
+
+    fn project(&self, name: &str) -> PathBuf {
+        self.root.join(name)
+    }
+}
+
+impl Drop for TemporaryProjectSession {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
     }
 }
 
@@ -326,4 +364,112 @@ fn project_lifecycle_commits_authority_and_preserves_actionable_failure_context(
             "open:terminal.superi",
         ]
     );
+}
+
+#[test]
+fn desktop_project_state_restores_active_identity_and_recents_across_launches() {
+    let temporary = TemporaryProjectSession::new();
+    let recovery_root = temporary.recovery_root();
+    let project_path = temporary.project("session.superi");
+
+    let first = DesktopProjectState::default();
+    first.initialize(recovery_root.clone()).unwrap();
+    let created = first
+        .execute(DesktopProjectCommand::Create {
+            path: project_path.to_string_lossy().into_owned(),
+            project: DesktopProjectCreateRequest {
+                project_id: "project:00000000000000000000000000000602".into(),
+                project_name: "Session Project".into(),
+                root_timeline_id: "timeline:00000000000000000000000000010602".into(),
+                root_timeline_name: "Session Timeline".into(),
+                edit_rate_numerator: 24,
+                edit_rate_denominator: 1,
+            },
+        })
+        .unwrap();
+    assert_eq!(
+        created.active().unwrap().project_id(),
+        "project:00000000000000000000000000000602"
+    );
+    drop(first);
+
+    let restored = DesktopProjectState::default();
+    restored.initialize(recovery_root).unwrap();
+    let snapshot = restored.snapshot().unwrap();
+    assert_eq!(
+        snapshot.active().unwrap().path(),
+        project_path.to_string_lossy()
+    );
+    assert_eq!(
+        snapshot.active().unwrap().project_id(),
+        "project:00000000000000000000000000000602"
+    );
+    assert_eq!(snapshot.recent().len(), 1);
+    assert_eq!(snapshot.recent()[0].path(), project_path.to_string_lossy());
+    assert!(snapshot.failure().is_none());
+}
+
+#[test]
+fn missing_session_document_degrades_without_discarding_recent_identity() {
+    let temporary = TemporaryProjectSession::new();
+    let recovery_root = temporary.recovery_root();
+    let project_path = temporary.project("missing.superi");
+
+    let first = DesktopProjectState::default();
+    first.initialize(recovery_root.clone()).unwrap();
+    first
+        .execute(DesktopProjectCommand::Create {
+            path: project_path.to_string_lossy().into_owned(),
+            project: DesktopProjectCreateRequest {
+                project_id: "project:00000000000000000000000000000603".into(),
+                project_name: "Missing Session Project".into(),
+                root_timeline_id: "timeline:00000000000000000000000000010603".into(),
+                root_timeline_name: "Missing Session Timeline".into(),
+                edit_rate_numerator: 24,
+                edit_rate_denominator: 1,
+            },
+        })
+        .unwrap();
+    drop(first);
+    std::fs::remove_file(&project_path).unwrap();
+
+    let restored = DesktopProjectState::default();
+    restored.initialize(recovery_root).unwrap();
+    let snapshot = restored.snapshot().unwrap();
+    assert!(snapshot.active().is_none());
+    assert_eq!(snapshot.recent().len(), 1);
+    assert_eq!(snapshot.recent()[0].path(), project_path.to_string_lossy());
+    assert!(snapshot.failure().is_some());
+}
+
+#[test]
+fn session_record_failure_does_not_report_a_durable_project_create_as_failed() {
+    let temporary = TemporaryProjectSession::new();
+    let recovery_root = temporary.recovery_root();
+    let project_path = temporary.project("available.superi");
+
+    let state = DesktopProjectState::default();
+    state.initialize(recovery_root.clone()).unwrap();
+    std::fs::create_dir(recovery_root.join("project-session.json")).unwrap();
+    let snapshot = state
+        .execute(DesktopProjectCommand::Create {
+            path: project_path.to_string_lossy().into_owned(),
+            project: DesktopProjectCreateRequest {
+                project_id: "project:00000000000000000000000000000604".into(),
+                project_name: "Available Project".into(),
+                root_timeline_id: "timeline:00000000000000000000000000010604".into(),
+                root_timeline_name: "Available Timeline".into(),
+                edit_rate_numerator: 24,
+                edit_rate_denominator: 1,
+            },
+        })
+        .unwrap();
+    assert_eq!(
+        snapshot.active().unwrap().path(),
+        project_path.to_string_lossy()
+    );
+    let failure = snapshot.failure().unwrap();
+    assert_eq!(failure.code(), "error.unavailable.retryable");
+    assert_eq!(failure.context("operation"), Some("publish"));
+    assert!(project_path.is_file());
 }

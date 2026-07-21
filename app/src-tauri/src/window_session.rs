@@ -18,7 +18,6 @@ use tauri::{
     WebviewWindowBuilder, Window, WindowEvent,
 };
 
-use crate::lifecycle::ApplicationLifecycle;
 use crate::transport::DesktopTransportState;
 
 pub const DESKTOP_WINDOW_EVENT: &str = "superi://window-session-changed";
@@ -599,7 +598,6 @@ impl DesktopWindowState {
         &self,
         window: &Window<R>,
         event: &WindowEvent,
-        lifecycle: &ApplicationLifecycle,
         transport: &DesktopTransportState,
     ) {
         let label = window.label();
@@ -607,12 +605,8 @@ impl DesktopWindowState {
             return;
         }
         let result = match event {
-            WindowEvent::CloseRequested { api, .. } if label == PRIMARY_WINDOW_LABEL => {
-                api.prevent_close();
-                if let Err(error) = self.capture_window(window) {
-                    self.record_failure(&error);
-                }
-                lifecycle.request_shutdown().map(|_| ())
+            WindowEvent::CloseRequested { .. } if label == PRIMARY_WINDOW_LABEL => {
+                self.capture_window(window)
             }
             WindowEvent::CloseRequested { .. } => self
                 .capture_window(window)
@@ -741,6 +735,28 @@ impl DesktopWindowState {
     fn snapshot(&self) -> Result<DesktopWindowSnapshot> {
         let inner = self.lock_inner("snapshot")?;
         Ok(snapshot_from_inner(&inner))
+    }
+
+    /// Selects the active editor webview for one process-wide native menu command.
+    pub(crate) fn command_target(&self) -> String {
+        self.inner
+            .lock()
+            .ok()
+            .and_then(|inner| {
+                inner
+                    .focused_label
+                    .as_ref()
+                    .or(inner.session.last_focused_label.as_ref())
+                    .filter(|label| {
+                        inner
+                            .session
+                            .windows
+                            .iter()
+                            .any(|window| &window.label == *label)
+                    })
+                    .cloned()
+            })
+            .unwrap_or_else(|| PRIMARY_WINDOW_LABEL.to_owned())
     }
 
     fn create<R: Runtime>(
@@ -1952,6 +1968,34 @@ mod tests {
         assert_eq!(restored.y, 0);
         assert_eq!(restored.width, 1920);
         assert_eq!(restored.height, 1080);
+    }
+
+    #[test]
+    fn native_menu_commands_follow_the_focused_then_last_active_webview() {
+        let state = DesktopWindowState::default();
+        assert_eq!(state.command_target(), "main");
+        {
+            let mut inner = state.inner.lock().unwrap();
+            inner.session.windows.push(PersistedWindow::new(
+                "workspace-1",
+                "Superi Workspace 1",
+                "color",
+                placement(1200, 80, 1000, 800, "reference"),
+            ));
+            inner.session.last_focused_label = Some("workspace-1".to_owned());
+            inner.focused_label = Some("workspace-1".to_owned());
+        }
+        assert_eq!(state.command_target(), "workspace-1");
+        state.inner.lock().unwrap().focused_label = None;
+        assert_eq!(state.command_target(), "workspace-1");
+        state
+            .inner
+            .lock()
+            .unwrap()
+            .session
+            .windows
+            .retain(|window| window.label == "main");
+        assert_eq!(state.command_target(), "main");
     }
 
     #[test]

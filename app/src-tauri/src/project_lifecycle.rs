@@ -3169,6 +3169,26 @@ pub struct DesktopProjectSnapshot {
     failure: Option<DesktopProjectFailure>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DesktopProjectSession {
+    schema_version: u32,
+    active_path: Option<String>,
+    recent: Vec<DesktopProjectRecord>,
+}
+
+impl DesktopProjectSession {
+    const SCHEMA_VERSION: u32 = 1;
+
+    fn from_snapshot(snapshot: &DesktopProjectSnapshot) -> Self {
+        Self {
+            schema_version: Self::SCHEMA_VERSION,
+            active_path: snapshot.active.as_ref().map(|active| active.path.clone()),
+            recent: snapshot.recent.clone(),
+        }
+    }
+}
+
 impl DesktopProjectSnapshot {
     #[must_use]
     pub const fn revision(&self) -> u64 {
@@ -3865,6 +3885,7 @@ impl DesktopProjectBackend for LocalProjectBackend {
 #[derive(Clone)]
 pub struct DesktopProjectState {
     lifecycle: Arc<Mutex<Option<DesktopProjectLifecycle<LocalProjectBackend>>>>,
+    project_session_path: Arc<Mutex<Option<PathBuf>>>,
     media_libraries: Arc<Mutex<MediaLibraryStore>>,
     media_library_path: Arc<Mutex<Option<PathBuf>>>,
     source_monitor: Arc<Mutex<source_monitor::SourceMonitorRuntime>>,
@@ -3874,6 +3895,7 @@ impl Default for DesktopProjectState {
     fn default() -> Self {
         Self {
             lifecycle: Arc::new(Mutex::new(None)),
+            project_session_path: Arc::new(Mutex::new(None)),
             media_libraries: Arc::new(Mutex::new(MediaLibraryStore::default())),
             media_library_path: Arc::new(Mutex::new(None)),
             source_monitor: Arc::new(Mutex::new(source_monitor::SourceMonitorRuntime::default())),
@@ -3920,6 +3942,8 @@ impl DesktopProjectEditorLease<'_> {
             .to_owned();
         self.state.sync_project_revision(&project_id, revision)?;
         drop(self.lifecycle);
+        self.state
+            .persist_project_session_or_record_failure("accept_editor_state")?;
         Ok(snapshot)
     }
 }
@@ -3937,6 +3961,7 @@ impl DesktopProjectState {
                 ),
             )
         })?;
+        let project_session_path = recovery_root.join("project-session.json");
         let media_library_path = recovery_root.join("media-library-views.json");
         let mut store = if media_library_path.exists() {
             let bytes = std::fs::read(&media_library_path)
@@ -3956,8 +3981,23 @@ impl DesktopProjectState {
             library.refresh_derived();
             library.validate()?;
         }
-        let lifecycle = DesktopProjectLifecycle::new(LocalProjectBackend::new(recovery_root), 12)?;
+        let mut lifecycle =
+            DesktopProjectLifecycle::new(LocalProjectBackend::new(recovery_root), 12)?;
+        if project_session_path.exists() {
+            match std::fs::read(&project_session_path)
+                .map_err(|source| project_session_store_failure("read", source))
+                .and_then(|bytes| {
+                    serde_json::from_slice::<DesktopProjectSession>(&bytes)
+                        .map_err(|_| project_session_invalid())
+                })
+                .and_then(|session| lifecycle.restore_session(session))
+            {
+                Ok(()) => {}
+                Err(failure) => lifecycle.record_failure(failure),
+            }
+        }
         *self.lock("initialize")? = Some(lifecycle);
+        *self.project_session_path_lock("initialize")? = Some(project_session_path);
         *self.media_library_lock("initialize")? = store;
         *self.media_library_path_lock("initialize")? = Some(media_library_path);
         self.reset_source_monitor("initialize")?;
@@ -4026,7 +4066,8 @@ impl DesktopProjectState {
             self.reset_source_monitor("execute_project_transition")?;
         }
         self.activate_media_library(&snapshot)?;
-        Ok(snapshot)
+        self.persist_project_session_or_record_failure("execute_project_transition")?;
+        self.snapshot()
     }
 
     pub fn settings(&self) -> Result<DesktopProjectSettings, DesktopProjectFailure> {
@@ -4059,6 +4100,7 @@ impl DesktopProjectState {
             .ok_or_else(not_initialized)?
             .execute_timeline(request)?;
         self.sync_active_project_revision(execution.result().state().project_revision())?;
+        self.persist_project_session_or_record_failure("execute_timeline")?;
         Ok(execution)
     }
 
@@ -4072,6 +4114,7 @@ impl DesktopProjectState {
             .ok_or_else(not_initialized)?
             .update_settings(update)?;
         self.sync_active_project_revision(settings.project_revision())?;
+        self.persist_project_session_or_record_failure("update_settings")?;
         Ok(settings)
     }
 
@@ -4091,6 +4134,7 @@ impl DesktopProjectState {
                 .to_owned();
             (result, project_id)
         };
+        self.persist_project_session_or_record_failure("import_media")?;
         {
             let mut store = self.media_library_lock("import_media")?;
             store
@@ -4510,6 +4554,39 @@ impl DesktopProjectState {
         publish_media_library_bytes(&path, bytes)
     }
 
+    fn persist_project_session(&self) -> Result<(), DesktopProjectFailure> {
+        let path = self
+            .project_session_path_lock("persist_project_session")?
+            .clone()
+            .ok_or_else(not_initialized)?;
+        let session = {
+            let lifecycle = self.lock("persist_project_session")?;
+            DesktopProjectSession::from_snapshot(
+                lifecycle.as_ref().ok_or_else(not_initialized)?.snapshot(),
+            )
+        };
+        let bytes =
+            serde_json::to_vec_pretty(&session).map_err(|_| project_session_serialize_failure())?;
+        let temporary = path.with_extension("json.tmp");
+        std::fs::write(&temporary, bytes)
+            .map_err(|source| project_session_store_failure("write", source))?;
+        std::fs::rename(&temporary, path)
+            .map_err(|source| project_session_store_failure("publish", source))
+    }
+
+    fn persist_project_session_or_record_failure(
+        &self,
+        operation: &'static str,
+    ) -> Result<(), DesktopProjectFailure> {
+        if let Err(failure) = self.persist_project_session() {
+            self.lock(operation)?
+                .as_mut()
+                .ok_or_else(not_initialized)?
+                .record_failure(failure);
+        }
+        Ok(())
+    }
+
     fn lock(
         &self,
         operation: &'static str,
@@ -4537,6 +4614,21 @@ impl DesktopProjectState {
                 DesktopProjectFailureClass::Terminal,
                 "media_library_poisoned",
                 "Media library cannot continue",
+                "Restart Superi before continuing.",
+            )
+            .with_context("operation", operation)
+        })
+    }
+
+    fn project_session_path_lock(
+        &self,
+        operation: &'static str,
+    ) -> Result<std::sync::MutexGuard<'_, Option<PathBuf>>, DesktopProjectFailure> {
+        self.project_session_path.lock().map_err(|_| {
+            DesktopProjectFailure::new(
+                DesktopProjectFailureClass::Terminal,
+                "project_session_path_poisoned",
+                "Project session continuity cannot continue",
                 "Restart Superi before continuing.",
             )
             .with_context("operation", operation)
@@ -4635,6 +4727,39 @@ fn media_library_store_failure(
             ErrorCategory::Unavailable,
             Recoverability::Retryable,
             "media library presentation could not be saved",
+            source,
+        ),
+    )
+}
+
+fn project_session_invalid() -> DesktopProjectFailure {
+    DesktopProjectFailure::new(
+        DesktopProjectFailureClass::Degraded,
+        "project_session_invalid",
+        "Project session continuity could not be restored",
+        "Open a recent project manually and continue working.",
+    )
+}
+
+fn project_session_serialize_failure() -> DesktopProjectFailure {
+    DesktopProjectFailure::new(
+        DesktopProjectFailureClass::Terminal,
+        "project_session_serialize_failed",
+        "Project session continuity could not be saved",
+        "Save the active project and restart Superi before continuing.",
+    )
+}
+
+fn project_session_store_failure(
+    operation: &'static str,
+    source: std::io::Error,
+) -> DesktopProjectFailure {
+    safe_failure(
+        operation,
+        Error::with_source(
+            ErrorCategory::Unavailable,
+            Recoverability::Retryable,
+            "project session continuity could not be saved",
             source,
         ),
     )
@@ -4899,6 +5024,50 @@ impl<B: DesktopProjectBackend> DesktopProjectLifecycle<B> {
     #[must_use]
     pub const fn snapshot(&self) -> &DesktopProjectSnapshot {
         &self.snapshot
+    }
+
+    fn restore_session(
+        &mut self,
+        session: DesktopProjectSession,
+    ) -> Result<(), DesktopProjectFailure> {
+        if session.schema_version != DesktopProjectSession::SCHEMA_VERSION
+            || session.recent.len() > self.recent_capacity
+        {
+            return Err(project_session_invalid());
+        }
+        let mut paths = BTreeSet::new();
+        let mut recent = Vec::with_capacity(session.recent.len());
+        for record in session.recent {
+            let path = validate_path(record.path, "restore_project_session")?;
+            if !paths.insert(path.clone()) {
+                return Err(project_session_invalid());
+            }
+            let identity = DesktopProjectIdentity::new(
+                record.identity.project_id,
+                record.identity.project_revision,
+                record.identity.root_timeline_id,
+            )?;
+            recent.push(DesktopProjectRecord::new(path, identity));
+        }
+        self.snapshot.recent = recent;
+        self.snapshot.active = None;
+        self.snapshot.recovery = None;
+        self.snapshot.failure = None;
+
+        let Some(path) = session.active_path else {
+            if !self.snapshot.recent.is_empty() {
+                self.advance_revision()?;
+            }
+            return Ok(());
+        };
+        let path = validate_path(path, "restore_project_session")?;
+        match self.backend.open(Path::new(&path)) {
+            Ok(identity) => self.commit(ProjectTransition::Activate { path, identity }),
+            Err(failure) => {
+                self.record_failure(failure);
+                Ok(())
+            }
+        }
     }
 
     pub fn execute(

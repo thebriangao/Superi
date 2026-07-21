@@ -8,6 +8,7 @@ import {
   isEditableCommandTarget,
   normalizeShortcut,
   reduceApplicationState,
+  restoreApplicationWorkspace,
 } from "../src/application.ts";
 
 function definitions() {
@@ -271,4 +272,41 @@ test("keyboard helpers canonicalize shortcuts and preserve editable controls", (
   assert.equal(isEditableCommandTarget({ tagName: "button" }), false);
   assert.equal(isEditableCommandTarget({ isContentEditable: true }), true);
   assert.equal(isEditableCommandTarget(null), false);
+});
+
+test("workspace restoration reconciles persisted routes and panels against the live registry", () => {
+  const registry = new ApplicationRegistry(definitions());
+  const initial = createApplicationState(registry);
+  const restored = restoreApplicationWorkspace(registry, initial, {
+    active_route_id: "system",
+    hidden_panel_ids: ["application.selection", "removed.panel"],
+    focused_panel_id: "removed.panel",
+  });
+  assert.equal(restored.activeRouteId, "system");
+  assert.deepEqual(restored.hiddenPanelIds, ["application.selection"]);
+  assert.deepEqual(restored.visiblePanelIds, ["application.lifecycle"]);
+  assert.equal(restored.focusedPanelId, "application.lifecycle");
+
+  const windowOwnedRoute = reduceApplicationState(registry, restored, {
+    type: "restore_workspace_presentation",
+    workspace: {
+      active_route_id: "workspace",
+      hidden_panel_ids: ["application.selection"],
+      focused_panel_id: "application.overview",
+    },
+  });
+  assert.equal(windowOwnedRoute.activeRouteId, "system");
+  assert.deepEqual(windowOwnedRoute.visiblePanelIds, ["application.lifecycle"]);
+  assert.equal(windowOwnedRoute.focusedPanelId, "application.lifecycle");
+
+  const fallback = restoreApplicationWorkspace(registry, restored, {
+    active_route_id: "removed.route",
+    hidden_panel_ids: [],
+    focused_panel_id: null,
+  });
+  assert.equal(fallback.activeRouteId, registry.defaultRouteId);
+  assert.deepEqual(fallback.visiblePanelIds, [
+    "application.overview",
+    "application.selection",
+  ]);
 });

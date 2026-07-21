@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 882dd0075504be01e15a3de904dae18933d725ef5067dbcec0873fb07c8ed833
-source_files: 309
+source_hash: 6f285727066eb501e31bf79d7556d164807af1c4db75c305dd417f37dbd81932
+source_files: 314
 mapped_at_commit: working-tree
 ---
 
@@ -536,6 +536,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   creation, restoration, bounded multi-window behavior, fullscreen, monitor movement, reversible
   placement, per-webview transport generations, one shared engine and project authority, and
   primary-window-only native GPU viewer ownership.
+- `docs/checkpoints/P3.W06.C002.md`: Durable implementation evidence for native desktop menus,
+  dialogs, clipboard roles, project and media drag and drop, recent documents, path-safe document
+  titles, workspace continuity, active project restoration, and one-shot safe close resolution.
 - `docs/checkpoints/P3.W06.C003.md`: Durable implementation evidence for exact `.superi` association
   metadata, startup-argument and macOS resource-open ingress, nonblocking reuse of the sole desktop
   project owner, complete replacement snapshots, visible failure retention, and workspace-preserving
@@ -550,7 +553,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   dependencies.
 - `app/package.json`: Declares the private production application package, exact toolchain and
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
-  framework, editor-workspace, timeline-canvas, timeline-nesting, timeline-multicam, timeline-clip,
+  framework, native desktop-shell, editor-workspace, timeline-canvas, timeline-nesting,
+  timeline-multicam, timeline-clip,
   timeline-transition, caption projection, exchange, and authoring, editorial-feedback, exact
   playback transport, viewer navigation, overlay, comparison, viewer-status, analysis, and
   viewer-transform, viewer color-management, external-display, and persistent window-session
@@ -560,8 +564,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
   without owning project state or concrete reliability behavior.
 - `app/src/application.ts`: Defines immutable panel, route, and command registries, deterministic
-  transient workspace routing and panel focus or visibility state, typed immutable shared public
-  resource selection, and generated-client command delegation without transport behavior.
+  workspace routing and panel focus or visibility state, live-registry reconciliation for restored
+  workspace presentation, panel-only restoration that preserves the window-session-owned route,
+  typed immutable shared public resource selection, and generated-client command delegation without
+  transport behavior.
 - `app/src/application-context.tsx`: Provides the sole React application/project presentation owner,
   keyboard-to-command registry adapter, asynchronous command execution, one last-valid public editor
   snapshot, stale-response rejection, generated project, audio, and job refresh subscriptions, and
@@ -863,10 +869,21 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   kind, mount state, accepted fingerprint, current observation, size, and actionable detail. The
   root shell hydrates its restored workspace route from the native window session before publishing
   subsequent route changes, mounts the real `WindowSessionPanel` in System, and listens for exact
-  native replacement events without taking persistence or placement ownership. The
-  System panel registers the project-association listener before its initial snapshot read, rejects
-  a stale initial revision, replaces only project presentation after an operating-system open, and
-  preserves route, panel, selection, workspace, and other transient application state.
+  native replacement events without taking persistence or placement ownership. The always-mounted
+  native-shell consumer restores registry-reconciled panel visibility and focus while preserving
+  the window session's per-webview route, executes typed native menu intents, uses native project
+  and media dialogs, separates project from media
+  drops, routes undo and redo through the existing project command owner, and resolves project or
+  application close only after busy-state checks, durable save, and any required session-history
+  warning for either undo or redo state. Main-window state alone projects the process-wide menu,
+  while each native command is delivered only to the focused editor webview. The same always-mounted
+  consumer registers the project association listener before its initial snapshot read, rejects
+  stale replacement revisions, updates only project presentation after an operating-system open,
+  and preserves route, panel, selection, workspace, and other transient application state.
+- `app/src/desktop-shell.ts`: Defines the strict native shell snapshot and intent bridge, serialized
+  sequence-fenced synchronization, close request resolution, typed event listening, deterministic
+  project-versus-media drop partitioning, safe-close decisions, and document titles that expose only
+  the basename and durable revision.
 - `app/src/lifecycle.ts`: Defines the exact shell-local serialized lifecycle contract and typed
   asynchronous wrappers for the two Tauri lifecycle commands without importing engine bindings.
 - `app/src/project-lifecycle.ts`: Defines strict shell-local project lifecycle, settings, media
@@ -882,9 +899,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   paths, source facts, built-in and user metadata, annotations, offline state, source-monitoring
   state, relink intent, and volume evidence without introducing another persisted search index.
   C014 adds exact rational source time, stream, engine-state, fingerprint-bound mark, replacement
-  snapshot, and atomic mark-result DTOs plus five optimistic Tauri wrappers. It also exposes the
-  exact typed `superi://project-opened` replacement event without adding project authority to
-  React.
+  snapshot, and atomic mark-result DTOs plus five optimistic Tauri wrappers. Snapshot reads and
+  lifecycle mutations publish replacement project presentation to always-mounted shell subscribers,
+  and the same adapter exposes the exact typed `superi://project-opened` replacement event without
+  adding project authority to React.
 - `app/src/main.tsx`: Constructs one process-lifetime `DesktopSuperiTransport`, injects it through
   the generated API provider, disposes it at unload, and mounts the React application under strict
   mode.
@@ -922,7 +940,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/app-contract.test.mjs`: Verifies exact production pins, lifecycle and engine-process
   ownership seams, application framework composition, transport isolation, production workflow
   routing, the hashed React bundle, exact `.superi` association metadata, startup and macOS native
-  routing, blocking-worker dispatch, lifecycle Open reuse, and typed React event consumption.
+  routing, blocking-worker dispatch, lifecycle Open reuse, typed React event consumption, focused
+  webview menu targeting, primary-only shell synchronization, and safe-close composition with the
+  persistent window owner.
 - `app/tests/native-viewport-ipc-contract.test.mjs`: Freezes the shell-local viewport command as a
   placement, analysis, and display-selection control-only Tauri payload, verifies both React
   invocations use that command, and freezes the distinct color command as a control-only selection
@@ -933,7 +953,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   native path, and an external presentation failure does not terminate inline GPU presentation.
 - `app/tests/application-framework.test.ts`: Verifies duplicate and reference validation, immutable
   routing and panel reconciliation, exact public-resource selection, local-first asynchronous API
-  command delegation, shortcut normalization, and editable-target safety.
+  command delegation, shortcut normalization, editable-target safety, and persisted workspace
+  reconciliation against removed routes or panels.
+- `app/tests/desktop-shell.test.ts`: Proves deterministic project-versus-media drop classification,
+  busy and history-aware close decisions, path-safe document titles for POSIX and Windows paths,
+  and sequence resumption after a webview reload.
 - `app/tests/editor-workspaces.test.ts`: Verifies exactly five registry-backed professional routes,
   one existing application/project owner, exact source, program, composite, and color viewer
   consumers including the composed source monitor, explicit public editor request identity,
@@ -1108,6 +1132,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/icons/icon.png`: Supplies Tauri's default Unix desktop icon.
 - `app/src-tauri/icons/icon.ico`: Supplies the Windows desktop icon bundle.
 - `app/src-tauri/icons/icon.icns`: Supplies the macOS desktop icon bundle.
+- `app/src-tauri/src/desktop_shell.rs`: Owns bounded native menu and title projection, stable typed
+  menu intents, frontend sequence fencing, private versioned workspace-presentation persistence,
+  recent-project menu mapping, native clipboard roles, and duplicate-suppressed one-shot window or
+  quit resolution into orderly application shutdown. It carries document identity, history depth,
+  busy state, and layout only as presentation, emits no authored mutation, and never serializes
+  project history or project bytes.
 - `app/src-tauri/src/lifecycle.rs`: Owns explicit application intent, serialized application and
   engine phases, generation changes, classified safe failures, recovery, restart, shutdown, exact
   acknowledgement tokens, and the stable headless-engine participant seam.
@@ -1137,7 +1167,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   restores auxiliary webviews, and publishes one immutable snapshot event. A capacity-one worker
   coalesces changes and atomically replaces the session file off the event loop. Exact commands
   expose snapshot, create, focus, fullscreen, monitor movement, placement undo, route update, close,
-  and reopen, while main-window close enters the existing orderly lifecycle instead of bypassing it.
+  and reopen. It exposes the focused or last-active editor webview as the process-wide native menu
+  target, captures primary placement without authorizing closure, and leaves primary close to the
+  desktop shell's project-preserving handshake before orderly lifecycle shutdown.
 - `app/src-tauri/src/transport.rs`: Owns the thin bounded desktop command dispatcher above the
   managed `EngineConnection`, per-webview generation-scoped request and cancellation state, exact
   public error conversion with reviewed canonical contexts, and a 64-record globally ordered
@@ -1153,7 +1185,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/src/project_lifecycle.rs`: Owns the sole serialized desktop project session above
   `LocalProjectHost`, including commit-only active identity, bounded deduplicated recent projects,
   revision-fenced recovery presentation, last-valid state retention, and retryable, degraded,
-  user-correctable, or terminal actionable failures. Its editor lease retains the exact active
+  user-correctable, or terminal actionable failures. A private versioned atomic session record now
+  retains only the active path and last-known recent records, validates the active document through
+  the local host at launch, and degrades to no active document without discarding recents when that
+  path cannot reopen. It republishes the record after lifecycle and editor identity transitions.
+  Its editor lease retains the exact active
   path, project, revision, and root through one engine request, admits only same-or-next durable
   identity, permits a root change only with the next revision, synchronizes media presentation, and
   releases the route only after acceptance completes. It projects and atomically updates the
@@ -1224,19 +1260,22 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   metadata and state only, never packets, decoded frames, audio blocks, textures, or presentation.
 - `app/src-tauri/src/lib.rs`: Configures the mock and native Tauri builders, retains the linked
   engine process, manages its bounded connection and transport state alongside application
-  lifecycle, project-session, and persistent window-session state, registers lifecycle, project,
-  window snapshot and mutation, viewport placement, viewport color selection, and API commands,
+  lifecycle, project-session, native desktop-shell, and persistent window-session state, registers
+  lifecycle, shell, project, window snapshot and mutation, viewport placement, viewport color
+  selection, and API commands,
   including media-library snapshot, organization mutation, source inspection, user metadata, and
   editorial annotation, C007 identity-selection, C008 derived-media mutation, C009 offline recovery,
   C010 generated-preview, C011 content-analysis mutation plus content-search, and C012 atomic batch
   commands, plus the C013 revision-fenced source-scan command and the C014 source monitor snapshot,
   load, seek, mark, and unload commands,
-  initializes the project recovery and window persistence roots, collects portable startup
+  initializes the project, shell, and window persistence roots, installs the native menu on the
+  main-thread setup path, collects portable startup
   association arguments after process launch, routes macOS `RunEvent::Opened` file URLs, scopes API
   dispatch by invoking webview label, passes project state into every blocking generated request,
   targets every returned ordered Tauri event to its client webview, records window focus, move,
-  resize, close, and route state, converts primary-window close into nonblocking exit intent, and
-  joins both background persistence and engine owners after the native application stops.
+  resize, auxiliary close, and route state, intercepts primary close and direct operating-system
+  exit through the same one-shot safe-close handshake, and joins both background persistence and
+  engine owners after the native application stops.
 - `app/src-tauri/src/main.rs`: Starts the native production desktop host.
 - `app/src-tauri/tests/engine_connection_contract.rs`: Proves dedicated EngineControl ownership,
   truthful public validation projection, bounded nonblocking admission, stable connection reuse
@@ -1251,7 +1290,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/tests/project_lifecycle_contract.rs`: Proves create, open, close, save, save-as,
   bounded recent ordering, revision-fenced recovery restore, commit-only state changes, and all four
   actionable failure classes through a deterministic backend. It also proves exact active editor
-  route matching, accepted revision publication, and stale editor refresh rejection.
+  route matching, accepted revision publication, stale editor refresh rejection, active and recent
+  restoration through the real local host, and missing-document degradation that retains recents.
+- `app/src-tauri/tests/desktop_shell_contract.rs`: Proves sequence-fenced document, recent, history,
+  busy, and workspace synchronization, stable recent and workspace menu intents, duplicate close
+  suppression, one-shot resolution, malformed and invalid persisted presentation recovery,
+  nonblocking persistence failure, and private workspace restoration across native state instances.
 - `app/src-tauri/tests/media_import_contract.rs`: Proves picker, drag/drop, recursive folder scan,
   deterministic image-sequence grouping, direct API and automation parity, correlated event
   evidence, durable reopen, and duplicate no-op semantics through the real local project host.
@@ -2151,11 +2195,26 @@ Each result emits one complete replacement snapshot and restores the main window
 listener rejects stale initial state and changes only project presentation, so it does not reset
 workspace, panel, route, or selection state.
 
+The native desktop shell accepts a complete bounded presentation from the always-mounted
+application consumer and rejects stale client sequences. It rebuilds native File, Edit, and
+Workspace menus from active document, recent path, history depth, busy, and route state, then emits
+stable typed intents back to that consumer. Project dialogs and drops still call the existing
+desktop project and media owners; undo and redo still call the generated project command; native
+clipboard roles stay with the operating system. A close request is prevented once, duplicate
+requests are suppressed while confirmation is active, and only a successful save plus explicit
+frontend resolution enters the existing orderly application lifecycle. Window close, menu quit,
+and direct operating-system exit share this path, including when auxiliary webviews remain open.
+Workspace route, hidden panels, and focus persist privately and are reconciled against the live
+registry before use.
+
 Beside the engine lifecycle, Tauri manages one serialized `DesktopProjectLifecycle` initialized
 with the application recovery root. Its concrete backend calls only `LocalProjectHost` creation,
 validation, save, save-as, recovery, settings inspection, and atomic settings transaction methods;
 it also uses the same host for complete editor inspection and timeline command execution. Successful
-durable results alone replace active identity and bounded recent state. The typed React
+durable results alone replace active identity and bounded recent state. A separate private session
+record stores those paths and last-known identities atomically, revalidates the active project on
+launch, retains recents when the active path is missing, and never serializes project contents or
+the engine's in-memory undo and redo stacks. The typed React
 adapter invokes complete project commands and the System panel renders lifecycle state, reviewed
 failure actions, and an editable projection of project settings. The project-identity media store
 owns bins, smart collections, freshness-fenced source inspection, and revision-fenced generic user
@@ -2233,6 +2292,11 @@ of open runtime behavior.
 - Authored project changes use one typed engine command-history surface. Retained before and after
   snapshots are bounded session state, the selected project snapshot is the only durable state, and
   domain crates do not own competing undo stacks.
+- Native shell state is presentation-only. It may retain workspace route, hidden panels, focus,
+  active document identity, recent paths, busy state, and history depth, but project bytes and undo
+  or redo snapshots remain with their existing durable project and engine-session owners. Close
+  resolution is one-shot, active operations block closing, and any accepted close saves the active
+  project before document replacement or process exit.
 - Desktop point editing converts the source monitor's inclusive out mark to an exclusive edit
   boundary exactly once, derives missing source or record boundaries only when rational clocks are
   exactly representable, and stays within retained source and target track bounds. Four-point edits
@@ -2388,8 +2452,20 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   generations, shared ordered authored events, and client-local disconnect. Its frontend companion validates exact
   command payloads, strict replacement admission, listener cleanup, real System panel and route
   hydration wiring, complete action visibility, and the primary-window-only native viewport
-  boundary. The complete production frontend and desktop Rust suites provide widening coverage over
-  the same owners.
+  boundary. The composed proof also freezes focused or last-active native menu routing and confirms
+  the window owner cannot bypass project-preserving shutdown. The complete production frontend and
+  desktop Rust suites provide widening coverage over the same owners.
+
+- The focused desktop-shell contracts prove deterministic drop partitioning, path-safe document
+  titles, busy and history-aware close decisions, sequence-fenced native state, exact recent and
+  workspace intents, duplicate close suppression, one-shot resolution, reload-safe sequencing,
+  recoverable workspace persistence, active project restoration, and missing-document degradation
+  with retained recents. Integration contracts keep shell synchronization on the primary webview,
+  preserve window-owned routes while restoring panel presentation, and target commands to the
+  focused webview. Strict
+  TypeScript, the production build, the complete frontend contract set, focused native contracts,
+  and the Tauri library suite provide the current integration floor; native menu appearance and
+  operating-system interaction remain physical-lane evidence.
 
 - The focused timeline-canvas proof freezes strict revision 2 parsing, exact source and record
   ranges, stable grouping, linking, selection, complete track control state, two-pass transition
@@ -2942,6 +3018,16 @@ uses the existing history command. The angle viewer reports engine-authored prog
 from source-media availability at the exact playhead and does not claim decoded tiles or runtime
 multicam mixing.
 No view takes engine or transport ownership, and unavailable runtime behavior remains honest.
+The always-mounted application shell now restores workspace presentation through the live registry,
+keeps native menus synchronized with active project and session-history availability, opens project
+and media paths through native dialogs or unambiguous drops, and resolves close requests through
+busy checks, durable save, and an explicit history-loss warning. Tauri owns the stable menu surface,
+path-safe document title, recent mapping, native clipboard roles, private workspace record, and
+one-shot close resolution into the existing application lifecycle. The desktop project lifecycle
+separately restores its active path and bounded recent records through the durable local host. Undo
+and redo remain intentionally
+session-local, file associations remain assigned to P3.W06.C003, and menu fidelity remains subject
+to physical macOS, Windows, and Linux verification.
 The System panel also consumes one Tauri-owned project lifecycle that durably creates, validates,
 saves, rebinds through save-as, closes, reopens recent paths, and restores opaque recovery
 candidates while retaining actionable classified failure context beside the last valid state. It
@@ -3251,7 +3337,7 @@ The largest current risk is cross-document drift:
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
 `c14300def2f15373022495ce27379c9369f4634c` when this checkpoint began. Its hash describes the exact
-309 discovered source files, including generated binary payloads, layered on the integrated
+314 discovered source files, including generated binary payloads, layered on the integrated
 revision.
 
 ## Maintenance notes
@@ -3301,6 +3387,12 @@ platform resource URLs must normalize into local paths, remain off the main thre
 validation, and enter the sole `DesktopProjectState` Open transition. Emit replacement state for
 both success and failure, preserve the prior active project on failure, and never turn the React
 listener into a second document, recent-history, persistence, or workspace owner.
+Keep native desktop menu IDs and typed frontend intents synchronized. Workspace restoration must
+filter removed registry identities, project-session restoration must revalidate the active path,
+recent records must stay bounded and deduplicated, title projection must never expose parent paths,
+and exactly one approved close resolution may enter orderly lifecycle shutdown. Never serialize
+engine history into either private shell record or let dialogs, drops, or menus bypass the existing
+project, media, application, or generated command owners.
 Keep the timeline canvas projection synchronized with the canonical timeline document revision,
 exact rational clocks, stable identities, and relationship fields. Keep application selection
 references revision-fenced and reversible, mirror the lower fixed-point rule exactly, keep group

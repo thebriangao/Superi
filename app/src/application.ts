@@ -41,8 +41,22 @@ export interface ApplicationState {
   readonly selection: ApplicationSelection;
 }
 
+export interface ApplicationWorkspacePresentation {
+  readonly active_route_id: string;
+  readonly hidden_panel_ids: readonly string[];
+  readonly focused_panel_id: string | null;
+}
+
 export type ApplicationAction =
   | { readonly type: "navigate"; readonly routeId: string }
+  | {
+      readonly type: "restore_workspace";
+      readonly workspace: ApplicationWorkspacePresentation;
+    }
+  | {
+      readonly type: "restore_workspace_presentation";
+      readonly workspace: ApplicationWorkspacePresentation;
+    }
   | { readonly type: "toggle_panel"; readonly panelId: string }
   | { readonly type: "focus_panel"; readonly panelId: string }
   | {
@@ -247,6 +261,13 @@ export function reduceApplicationState<Renderer>(
   action: ApplicationAction,
 ): ApplicationState {
   switch (action.type) {
+    case "restore_workspace":
+      return restoreApplicationWorkspace(registry, state, action.workspace);
+    case "restore_workspace_presentation":
+      return restoreApplicationWorkspace(registry, state, {
+        ...action.workspace,
+        active_route_id: state.activeRouteId,
+      });
     case "navigate": {
       const route = registry.route(action.routeId);
       if (route.id === state.activeRouteId) {
@@ -345,6 +366,33 @@ export function reduceApplicationState<Renderer>(
         ? state
         : nextState(state, { selection: emptySelection() });
   }
+}
+
+export function restoreApplicationWorkspace<Renderer>(
+  registry: ApplicationRegistry<Renderer>,
+  state: ApplicationState,
+  workspace: ApplicationWorkspacePresentation,
+): ApplicationState {
+  const route =
+    registry.routeDefinitions.find(
+      (candidate) => candidate.id === workspace.active_route_id,
+    ) ?? registry.route(registry.defaultRouteId);
+  const requestedHidden = new Set(workspace.hidden_panel_ids);
+  const hiddenPanelIds = registry.panelDefinitions
+    .map((panel) => panel.id)
+    .filter((panelId) => requestedHidden.has(panelId));
+  const visiblePanelIds = visiblePanels(route, hiddenPanelIds);
+  const focusedPanelId =
+    workspace.focused_panel_id !== null &&
+    visiblePanelIds.includes(workspace.focused_panel_id)
+      ? workspace.focused_panel_id
+      : preferredPanel(route, visiblePanelIds);
+  return nextState(state, {
+    activeRouteId: route.id,
+    hiddenPanelIds,
+    visiblePanelIds,
+    focusedPanelId,
+  });
 }
 
 export async function executeApplicationCommand<Renderer>(options: {

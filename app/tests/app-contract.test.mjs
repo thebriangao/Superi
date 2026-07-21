@@ -150,6 +150,26 @@ test("development shell owns exact Superi project file association ingress", () 
   assert.match(projectAdapter, /listenForDesktopProjectOpen/);
   assert.match(projectAdapter, /superi:\/\/project-opened/);
   assert.match(app, /await listenForDesktopProjectOpen/);
-  assert.match(app, /project\.revision >= latestProjectRevision/);
-  assert.match(app, /setProjectSnapshot\(event\.snapshot\)/);
+  assert.match(app, /snapshot\.revision <= latestProjectRevision\.current/);
+  assert.match(app, /acceptProjectSnapshot\(event\.snapshot\)/);
+  assert.match(app, /void refreshEditorProject\(\)/);
+});
+
+test("native desktop commands compose with persistent multi-window ownership", () => {
+  const host = read(resolve(tauriRoot, "src/lib.rs"));
+  const shell = read(resolve(tauriRoot, "src/desktop_shell.rs"));
+  const windows = read(resolve(tauriRoot, "src/window_session.rs"));
+  const app = read(resolve(appRoot, "src/App.tsx"));
+  const application = read(resolve(appRoot, "src/application.ts"));
+
+  assert.match(host, /desktop_shell::handle_window_event\(window, event\)/);
+  assert.match(host, /state\.handle_window_event\(window, event, transport\.inner\(\)\)/);
+  assert.match(shell, /window\.label\(\) != "main"/);
+  assert.match(shell, /emit_to\(&target, DESKTOP_SHELL_EVENT, intent\)/);
+  assert.match(shell, /lifecycle\.0\.request_shutdown\(\)/);
+  assert.match(windows, /pub\(crate\) fn command_target/);
+  assert.doesNotMatch(windows, /lifecycle\.request_shutdown/);
+  assert.match(app, /currentWindowLabel !== "main"/);
+  assert.match(app, /type: "restore_workspace_presentation"/);
+  assert.match(application, /active_route_id: state\.activeRouteId/);
 });
