@@ -88,6 +88,7 @@ test("five professional workspaces are exact views over the existing application
   assert.match(packageJson.scripts.test, /playback-transport\.test\.ts/);
   assert.match(packageJson.scripts.test, /viewer-status\.test\.ts/);
   assert.match(packageJson.scripts.test, /viewer-transform-controls\.test\.ts/);
+  assert.match(packageJson.scripts.test, /viewer-color-management\.test\.ts/);
 });
 
 test("editor requests use one explicit public transaction identity", () => {
@@ -402,5 +403,35 @@ test("Program viewer transform controls edit ordinary graph parameters through t
   assert.doesNotMatch(
     nativeViewport,
     /style=\{\{[^}]*transform\.matrix|style=\{\{[^}]*canonicalMatrix/,
+  );
+});
+
+test("monitor profiles and display transforms reach every real native viewer without replacing status owners", () => {
+  const nativeViewport = read(resolve(appRoot, "src/native-viewport.tsx"));
+  const viewerColor = read(
+    resolve(appRoot, "src/viewer-color-management.ts"),
+  );
+  const workspaces = read(resolve(appRoot, "src/editor-workspaces.tsx"));
+
+  assert.equal((workspaces.match(/<NativeViewport\b/g) ?? []).length, 3);
+  assert.match(workspaces, /<SourceMonitor\b/);
+  assert.match(nativeViewport, /projectViewerColorState/);
+  assert.match(nativeViewport, /createViewerColorSelection/);
+  assert.match(nativeViewport, /desktop_viewport_color_update/);
+  assert.match(nativeViewport, /aria-label=\{`\$\{label\} monitor color management`\}/);
+  assert.match(nativeViewport, /aria-label=\{`\$\{label\} monitor color state`\}/);
+  assert.match(nativeViewport, /projectViewerStatusDisplay/);
+  assert.match(nativeViewport, /formatViewerComparisonState/);
+  assert.match(nativeViewport, /viewerTransform\(navigation\)/);
+  assert.match(viewerColor, /code: "srgb"/);
+  assert.match(viewerColor, /code: "display_p3"/);
+  assert.match(viewerColor, /state\.profileNote/);
+  assert.doesNotMatch(
+    viewerColor,
+    /@tauri-apps|useSuperiApi|DesktopSuperiTransport|project command|playback command/,
+  );
+  assert.doesNotMatch(
+    nativeViewport,
+    /selection:\s*\{[\s\S]{0,400}(?:frame|image|pixel|texture|bytes|blob|base64)/i,
   );
 });

@@ -26,9 +26,10 @@ image, alpha, individual-channel, luminance, false-color, and display-linear cli
 Engine foreground playback now consumes the CPU output transform
 for an explicit display branch. Engine render-export now invokes a separate caller-owned delivery
 stage and validates its color history, but no concrete export transform in this crate is wired.
-Executable ICC evaluation and concrete export conversion remain absent. The production shell
-consumes the GPU display presenter through four role-addressed native viewports and binds one
-explicit transient analysis view to every presentation.
+Executable ICC evaluation and concrete export conversion remain absent. The production shell now
+consumes system display discovery, transactional profile catalogs, monitor bindings, and the GPU
+display presenter through all four native viewer roles, with explicit sRGB and Display P3 output
+choices plus one explicit transient analysis view per presentation.
 
 The crate owns color interpretation, transform policy, and explicit legal-range RGB normalization,
 but it does not own YUV matrix conversion, media decoding, image storage primitives, GPU device
@@ -152,8 +153,9 @@ The GPU display surface consists of `GpuDisplayView`, `GpuDisplayPresenter`, `Gp
 linear-light stage they inspect. The compatibility presenter constructor selects image, while
 `new_with_view` binds one explicit diagnostic interpretation, display transform, and attachment
 format to the managed device lifetime. Encoding samples a canonical managed `Rgba16Float` texture
-directly, applies reference-derived analysis, gamut, and sRGB operations, aspect-fits arbitrary
-extents, and retains the sampled source until its presentation fence retires.
+directly, applies reference-derived analysis plus the selected destination gamut and transfer
+operations, aspect-fits arbitrary extents, and retains the sampled source until its presentation
+fence retires.
 
 The transfer surface consists of `RelativeLight`, `EncodedSignal`, `NormalizedSignal`, `Nits`, and
 `HlgDisplayParameters`, plus `decode_relative_transfer`, `encode_relative_transfer`,
@@ -292,6 +294,18 @@ the GPU submission queue and presenting. A monitor move, profile refresh, displa
 mid-frame generation change therefore rejects stale presentation until the viewport is explicitly
 rebound.
 
+The production desktop composes the same lower contracts without introducing another color model.
+It refreshes `SystemDisplayProfileDiscovery` into one shared `DisplayProfileCatalog`, creates a
+fresh `MonitorPresentationBinding` for each selected viewer monitor, checks that binding before
+surface acquire and before submit, and rebuilds `GpuDisplayPresenter` from one explicit
+`OutputColorTransform` when the viewer chooses sRGB or Display P3. The application snapshot exposes
+bounded profile metadata, exact content identity, freshness generation, working-space meaning,
+precision, output transform ID, and canonical order, but never ICC bytes or frame pixels. During a
+selection change the desktop hides that native child and reveals it only after a successful frame
+through the replacement binding and transform. Both the native command and shell reply paths reject
+older revisions, so rapid selections cannot republish or reveal an earlier transform. This is a real
+built-in display-transform consumer, not an ICC tag evaluator.
+
 ## Dependencies and consumers
 
 Direct runtime dependencies are:
@@ -315,8 +329,8 @@ node catalogs or orchestration must consume both from above.
 `superi-engine::playback` is the first runtime source consumer. Its
 `CpuPlaybackDisplayTransform` binds one exact nonterminal scene pipeline and display stage to
 `OutputColorTransform`, executes the transform on a playback-priority worker, and publishes the
-result with `ViewportColorMetadata` through a bounded handoff. Native surface submission, ICC
-evaluation, GPU output conversion, export, and shell display remain unwired. Engine
+result with `ViewportColorMetadata` through a bounded handoff. Native surface submission remains a
+separate desktop-owned consumer, while ICC evaluation and concrete export remain unwired. Engine
 `export_queue` owns a generic `ExportVideoDelivery<V>` seam and validates the returned terminal
 output pipeline, scene continuity, format, and alpha meaning, but it does not import or execute a
 `superi-color` transform. The crate's own public
@@ -324,10 +338,13 @@ integration contracts, including the canonical repository color fixture, remain 
 algorithm proofs. The fixture contract reads versioned artifacts directly and does not add a
 runtime dependency on the repository fixture generator.
 
-`superi-desktop::viewport` is the production GPU display consumer. One native GPU submission thread
-maps each strict shell selection to `GpuDisplayView`, constructs the presenter against the existing
-ACEScg-to-sRGB intent, and presents source, program, composite, and color role textures without
-frame IPC or readback. The shell keeps selected and last-presented analysis state distinct.
+`app/src-tauri/src/viewport.rs` is the production native display consumer. It owns one shared system
+catalog, per-role profile bindings, the current built-in transform selection, and the sole GPU
+submission thread. Each strict placement maps its transient analysis choice to `GpuDisplayView`,
+while the separate color command selects the exact monitor binding and built-in sRGB or Display P3
+intent. `app/src/viewer-color-management.ts` is the strict presentation projection over that state;
+the shell keeps selected and last-presented analysis distinct and keeps both controls independent
+from playback, navigation, overlays, comparison, status, and frame ownership.
 
 `docs/unsafe-ffi.md` consumes the macOS boundary as an audit inventory, and
 `open/crates/superi-color/tests/icc_contract.rs` verifies that this inventory remains present.
@@ -427,8 +444,8 @@ The engine playback contract constructs decoded provenance, a canonical working 
 display transform, and a bounded viewport payload. The engine render-export contract separately
 proves delivery-pipeline and alpha validation through a caller-owned test stage, but it does not
 exercise this crate's output transform. The desktop application now exercises native GPU viewport
-presentation, while project-configured looks, ICC evaluation, and concrete color-to-export proof
-remain absent.
+presentation through exact active-monitor bindings and both built-in display transforms, while
+project-configured looks, arbitrary ICC evaluation, and concrete color-to-export proof remain absent.
 
 ## Current status and risks
 
@@ -442,13 +459,14 @@ contracts are implemented and extensively tested. The module is not yet a comple
   artifacts. Engine foreground playback is a concrete display consumer, but executable ICC profile
   evaluation, project-configured rule persistence, concrete integer or YUV encoding, complete
   HDR display and delivery GPU output transforms, and concrete export conversion remain absent. The
-  implemented native presenter intentionally supports the current sRGB display slice and its eight
-  deterministic inspection modes.
+  implemented native presenter supports the current SDR sRGB and Display P3 built-in slices plus
+  their eight deterministic inspection modes.
 - ICC profiles are validated and bound to presentation, but their matrix/TRC or LUT payloads are
   not evaluated. `MonitorAwareViewport` prevents stale profile use but does not color-convert the
   rendered texture by itself.
-- Engine foreground playback is a live CPU output-transform consumer. The desktop editing panel is
-  the native GPU display consumer. Engine export has only a generic delivery seam, not a live
+- Engine foreground playback is a live CPU output-transform consumer. All four desktop viewer roles
+  are native GPU display consumers with independent exact monitor selection. Engine export has only
+  a generic delivery seam, not a live
   transform from this crate, and viewer-specific render-result binding remains separate.
 - `superi-graph` is an unused manifest dependency. No color node catalog or graph-visible transform
   integration exists in this crate.
@@ -478,7 +496,8 @@ file must appear in the inventory.
 
 Changes to canonical image meaning must be reconciled with `superi-core` color and pixel tags,
 `superi-image` descriptors, and `superi-gpu` frame descriptors. Changes to viewport ownership must
-be reconciled with `superi-gpu` surface and submission lifetimes. Graph integration must preserve
+be reconciled with `superi-gpu` surface and submission lifetimes plus the desktop catalog, binding,
+selection, and diagnostics consumer. Graph integration must preserve
 the downward dependency rule in `open/docs/STRUCTURE.md`.
 
 Changes to `open/crates/superi-color/src/icc/macos.rs`, its target dependencies, or any new unsafe
@@ -489,8 +508,8 @@ When configuration becomes real, replace the placeholder in
 `open/crates/superi-color/src/config.rs`, add its complete contracts and tests, and update the
 dependency and consumer trace. Keep the existing engine CPU playback consumer and its bounded
 viewport integration explicit, and keep the engine export delivery seam distinct from a concrete
-color transform. Record native viewport or concrete export integration separately when it exists.
-Do not describe future OCIO, ICC evaluation, GPU output
-conversion, or concrete color export conversion as implemented before the source and
-end-to-end consumers exist. Keep legal-range RGB encoding distinct from later YUV matrix and packed
-integer storage ownership.
+color transform. Preserve the current native sRGB and Display P3 consumer, its exact profile
+freshness checks, and its explicit limitation to built-in transforms. Do not describe future OCIO,
+arbitrary ICC evaluation, broader GPU output conversion, or concrete color export conversion as
+implemented before the source and end-to-end consumers exist. Keep legal-range RGB encoding
+distinct from later YUV matrix and packed integer storage ownership.

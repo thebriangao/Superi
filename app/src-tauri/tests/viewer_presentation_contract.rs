@@ -3,7 +3,7 @@ use superi_core::color_space::ColorSpace;
 use superi_core::pixel::AlphaMode;
 use superi_desktop::viewport::{
     DesktopViewerAnalysisView, DesktopViewerRole, DesktopViewportSurfaceDestination,
-    ViewerPresentationIntent,
+    ViewerDisplayTransform, ViewerPresentationIntent,
 };
 use superi_gpu::wgpu;
 
@@ -158,4 +158,57 @@ fn viewer_analysis_codes_map_exhaustively_to_their_color_stage() {
         assert_eq!(desktop.gpu_view(), gpu);
         assert_eq!(gpu.analysis_stage(), stage);
     }
+}
+
+#[test]
+fn built_in_viewer_transforms_preserve_scene_meaning_and_change_the_real_display_branch() {
+    let extent = wgpu::Extent3d {
+        width: 3_840,
+        height: 2_160,
+        depth_or_array_layers: 1,
+    };
+    assert_eq!(
+        ViewerDisplayTransform::ALL,
+        &[
+            ViewerDisplayTransform::Srgb,
+            ViewerDisplayTransform::DisplayP3
+        ]
+    );
+
+    let srgb = ViewerPresentationIntent::for_display(
+        DesktopViewerRole::Program,
+        extent,
+        ViewerDisplayTransform::Srgb,
+    )
+    .unwrap();
+    let p3 = ViewerPresentationIntent::for_display(
+        DesktopViewerRole::Program,
+        extent,
+        ViewerDisplayTransform::DisplayP3,
+    )
+    .unwrap();
+
+    assert_eq!(srgb.scene_space(), ColorSpace::ACESCG);
+    assert_eq!(p3.scene_space(), ColorSpace::ACESCG);
+    assert_eq!(srgb.source_format(), wgpu::TextureFormat::Rgba16Float);
+    assert_eq!(p3.source_format(), wgpu::TextureFormat::Rgba16Float);
+    assert_eq!(srgb.display_space(), ColorSpace::SRGB);
+    assert_eq!(p3.display_space(), ColorSpace::DISPLAY_P3);
+    assert_eq!(srgb.display_transform_code(), "srgb");
+    assert_eq!(p3.display_transform_code(), "display_p3");
+    assert_eq!(
+        p3.display_transform_id(),
+        "superi.viewport.acescg-to-display-p3.v1"
+    );
+    assert_eq!(srgb.transform_order(), p3.transform_order());
+    assert_ne!(srgb, p3);
+    assert_eq!(
+        p3,
+        ViewerPresentationIntent::for_display(
+            DesktopViewerRole::Program,
+            extent,
+            ViewerDisplayTransform::DisplayP3,
+        )
+        .unwrap()
+    );
 }

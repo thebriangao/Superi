@@ -72,11 +72,20 @@ import {
   type ViewerTransformNodePresentation,
   type ViewerTransformProjection,
 } from "./viewer-transform-controls.ts";
+import {
+  VIEWER_DISPLAY_TRANSFORMS,
+  createViewerColorSelection,
+  formatViewerColorState,
+  projectViewerColorState,
+  type ViewerColorSnapshot,
+  type ViewerDisplayTransform,
+} from "./viewer-color-management.ts";
 
-type ViewportSnapshot = {
+type ViewportSnapshot = ViewerColorSnapshot & {
   role: NativeViewerRole;
   selectedView: ViewerAnalysisView;
   presentedView: ViewerAnalysisView | null;
+  revision: number;
   phase: string;
   physicalWidth: number;
   physicalHeight: number;
@@ -370,6 +379,8 @@ export function NativeViewport({
     useApplication();
   const shell = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLElement>(null);
+  const activeRole = useRef(role);
+  const snapshotRevision = useRef(-1);
   const [snapshot, setSnapshot] = useState<ViewportSnapshot | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
   const [navigation, setNavigation] = useState(() => initialViewerNavigation(role));
@@ -386,8 +397,27 @@ export function NativeViewport({
   const publishViewport = useRef<() => void>(() => {});
   analysisViewRef.current = analysisView;
   externalDisplayIdRef.current = externalDisplayId;
+  const [colorBusy, setColorBusy] = useState(false);
+  activeRole.current = role;
+
+  const acceptSnapshot = useCallback((next: ViewportSnapshot) => {
+    if (next.role !== activeRole.current) {
+      return false;
+    }
+    if (!Number.isSafeInteger(next.revision) || next.revision < 0) {
+      setSummary("Native viewport returned an invalid state revision.");
+      return false;
+    }
+    if (next.revision < snapshotRevision.current) return false;
+    snapshotRevision.current = next.revision;
+    setSnapshot(next);
+    setSummary(null);
+    return true;
+  }, []);
 
   useEffect(() => {
+    snapshotRevision.current = -1;
+    setSnapshot(null);
     setNavigation(initialViewerNavigation(role));
     setComparison(initialViewerComparison());
     setAnalysisView(DEFAULT_VIEWER_ANALYSIS_VIEW);
@@ -440,8 +470,7 @@ export function NativeViewport({
         })
           .then((next) => {
             if (!disposed) {
-              setSnapshot(next);
-              setSummary(null);
+              acceptSnapshot(next);
             }
           })
           .catch((error: unknown) => {
@@ -481,7 +510,7 @@ export function NativeViewport({
         },
       });
     };
-  }, [role]);
+  }, [acceptSnapshot, role]);
 
   useEffect(() => {
     publishViewport.current();
@@ -505,6 +534,14 @@ export function NativeViewport({
   const externalStatus = snapshot
     ? formatViewerExternalDisplayOutput(snapshot.externalOutput)
     : "External display unavailable; native output has not started.";
+  const colorState = useMemo(
+    () => (snapshot === null ? null : projectViewerColorState(snapshot)),
+    [snapshot],
+  );
+  const colorSummary =
+    colorState === null
+      ? "Monitor profile unavailable; native desktop color state has not been observed."
+      : formatViewerColorState(colorState);
   const currentFrame = createViewerFrameIdentity(role, snapshot, temporalContext);
   const comparisonSummary = formatViewerComparisonState(comparison, currentFrame);
   const statusDisplay = useMemo(
@@ -542,6 +579,28 @@ export function NativeViewport({
     setComparison((current) =>
       applyViewerComparison(current, action, currentFrame),
     );
+  };
+  const updateColor = async (
+    monitorId: string,
+    displayTransform: ViewerDisplayTransform,
+  ) => {
+    if (colorState === null || !isTauri()) return;
+    setColorBusy(true);
+    try {
+      const selection = createViewerColorSelection(role, colorState, {
+        monitorId,
+        displayTransform,
+      });
+      const next = await invoke<ViewportSnapshot>(
+        "desktop_viewport_color_update",
+        { selection },
+      );
+      acceptSnapshot(next);
+    } catch (error: unknown) {
+      setSummary(error instanceof Error ? error.message : String(error));
+    } finally {
+      setColorBusy(false);
+    }
   };
 
   useEffect(() => {
@@ -623,6 +682,68 @@ export function NativeViewport({
             ))}
           </select>
         </label>
+      </div>
+      <div
+        className="native-viewport__overlay-toolbar native-viewport__color-toolbar"
+        aria-label={`${label} monitor color management`}
+      >
+        <label>
+          Monitor profile
+          <select
+            value={colorState?.selectedMonitorId ?? ""}
+            disabled={colorBusy || colorState === null || colorState.monitorProfiles.length === 0}
+            onChange={(event) => {
+              if (colorState !== null) {
+                void updateColor(event.target.value, colorState.displayTransform);
+              }
+            }}
+          >
+            {colorState?.monitorProfiles.length ? null : (
+              <option value="">Unavailable</option>
+            )}
+            {colorState?.monitorProfiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.name} ({profile.profileState})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Display transform
+          <select
+            value={colorState?.displayTransform ?? "srgb"}
+            disabled={colorBusy || colorState?.selectedMonitor === null || colorState === null}
+            onChange={(event) => {
+              if (colorState?.selectedMonitorId) {
+                void updateColor(
+                  colorState.selectedMonitorId,
+                  event.target.value as ViewerDisplayTransform,
+                );
+              }
+            }}
+          >
+            {VIEWER_DISPLAY_TRANSFORMS.map((transform) => (
+              <option key={transform.code} value={transform.code}>
+                {transform.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          disabled={colorBusy || colorState?.selectedMonitorId == null}
+          onClick={() => {
+            if (colorState?.selectedMonitorId) {
+              void updateColor(
+                colorState.selectedMonitorId,
+                colorState.displayTransform,
+              );
+            }
+          }}
+        >
+          Refresh profile
+        </button>
+        <output aria-label={`${label} monitor color state`}>{colorSummary}</output>
       </div>
       <div
         className="native-viewport__comparison-toolbar"
@@ -762,7 +883,7 @@ export function NativeViewport({
         </div>
       </div>
       <span className="native-viewport__status" role="status" aria-live="polite">
-        {status} · {externalStatus} · requested {analysisView} · {navigation.scaleMode} {Math.round(navigation.scale * 100)}% · pan {navigation.panX},{navigation.panY} · {navigation.presentation} · {navigation.externalDisplayIntent} · {comparisonSummary}
+        {status} · {externalStatus} · requested {analysisView} · {navigation.scaleMode} {Math.round(navigation.scale * 100)}% · pan {navigation.panX},{navigation.panY} · {navigation.presentation} · {navigation.externalDisplayIntent} · {colorSummary} · {comparisonSummary}
       </span>
       <dl
         className="editor-detail-list compact-details"

@@ -4,7 +4,7 @@ source_paths:
   - open/crates/superi-gpu
 source_hash: 3ccd5b7e2cf881c46a02f4a6878ee0cfcb72f6cd0e7342d05b6178179ed21d44
 source_files: 34
-mapped_at_commit: 217e9d48703bcfd4736d949aea510c94505071bc
+mapped_at_commit: working-tree
 ---
 
 ## Purpose and ownership
@@ -314,6 +314,13 @@ which must be performed by `superi-color`.
    configures FIFO presentation, and acquires a frame tied to an exclusive surface borrow and the
    configuring device. `submit_and_present` validates queue identity, submits first, then presents
    without waiting for the fence.
+5. The production desktop owns four role-addressed surfaces on the sole GPU submission thread.
+   `superi-color` builds the selected sRGB or Display P3 presenter above each surface, validates an
+   exact active-monitor profile binding before acquisition and again before submission, and retains
+   canonical RGBA16F frame ownership through the managed fence. A desktop selection change keeps the
+   native child hidden until this owner successfully presents the replacement transform, and the
+   desktop rejects queued commands whose revision is no longer current. The GPU crate receives no
+   ICC bytes, display-discovery policy, React state, or alternate submission path.
 
 ### Device loss and recovery
 
@@ -369,9 +376,11 @@ which must be performed by `superi-color`.
 - `superi-color/src/view.rs` wraps `NativeViewportSurface` with immutable monitor and ICC evidence.
   It delegates adapter filtering, configuration, acquisition, and submit-before-present to this
   crate, but rejects presentation if monitor/profile evidence changed after acquisition.
-- `app/src-tauri/src/viewport.rs` creates the production native host on the UI thread, moves its
-  surface into the sole GPU submission domain, and waits for retained presentation work before
-  source or host teardown.
+- `app/src-tauri/src/viewport.rs` creates four production native hosts on the UI thread, moves their
+  surfaces into the sole GPU submission domain, composes exact per-role monitor freshness guards and
+  explicit sRGB or Display P3 `GpuDisplayPresenter` instances through `superi-color`, and waits for
+  retained presentation work before source or host teardown. Geometry updates and color selection
+  remain separate strict shell commands, and neither transports pixels, ICC bytes, or GPU handles.
 - `superi-concurrency` defines a blocking-capable `GpuSubmission` execution domain. Its integration
   contract constructs the real non-Send `GpuSubmissionQueue`, submits, and waits inside that owned
   thread. The GPU crate documents this placement but does not itself enforce the execution-domain
@@ -515,7 +524,8 @@ and broader one-way reference vectors remain important verification needs.
 The module is substantive across every owned source file. It implements device and resource
 ownership, decoded upload, conversion, passes, queue retirement, memory pressure, readback,
 diagnostics, native presentation, and explicit recovery. It contains no scaffold-only production
-path, but several boundaries intentionally stop short of application policy or full integration.
+path. The desktop now integrates four native presentation surfaces through `superi-color`, while
+several other boundaries intentionally stop short of application policy or full integration.
 
 - Cross-adapter transfer and synchronization are absent. Multi-adapter support is independent
   selection and device ownership only.
@@ -547,6 +557,10 @@ path, but several boundaries intentionally stop short of application policy or f
   or out-of-memory recovery.
 - Surface automation is mostly handle-level. Real AppKit, Win32, WinRT, X11, XCB, and Wayland
   configure, acquire, resize, present, and loss behavior needs platform hardware coverage.
+- The desktop color consumer currently selects only built-in SDR sRGB and Display P3 transforms.
+  Exact monitor and ICC freshness are enforced above this crate, but arbitrary ICC tag evaluation,
+  HDR display modes, cross-adapter presentation, and non-macOS system-profile discovery remain
+  outside the GPU substrate and are not implied by successful native submission.
 - Public readback, timing, and snapshot APIs are contract-tested but not yet connected to non-test
   workspace export, thumbnail, or telemetry consumers. Cache now consumes portable memory
   accounting for budgeted retained values, while declared GPU dependencies in effects and graph
@@ -579,6 +593,9 @@ path, but several boundaries intentionally stop short of application policy or f
 - Surface changes must be reconciled with `superi-color/src/view.rs`; upload changes with
   `superi-engine/src/frame_upload.rs`; queue placement and blocking guidance with
   `superi-concurrency/src/threads.rs` and its GPU integration contract.
+- Changes to native presentation must also be reconciled with the four-role desktop owner, its
+  separate geometry and color commands, the exact monitor-binding freshness checks, both built-in
+  output transforms, and the rule that ICC bytes and pixels never cross React IPC.
 - Memory-pool and reservation changes must be reconciled with `superi-cache::eviction` and
   `CacheMemoryPlacement::Device`, preserving exact managed-byte equality, rollback after refusal,
   matching-device LRU release before retry, and lock-free pressure cooperation across the cache tier

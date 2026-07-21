@@ -5,6 +5,12 @@ use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use superi_color::gpu_display::{GpuDisplayPresenter, GpuDisplayView};
+#[cfg(target_os = "macos")]
+use superi_color::icc::SystemDisplayProfileDiscovery;
+use superi_color::icc::{
+    DisplayProfileCatalog, DisplayProfileSnapshot, IccDisplayModel, IccRenderingIntent, MonitorId,
+    MonitorPresentationBinding, PresentationProfileState,
+};
 use superi_color::transform_out::{OutputColorTransform, OutputTargetKind, OutputTransformOptions};
 use superi_color::working_space::WorkingSpace;
 use superi_concurrency::threads::{ExecutionDomain, ExecutionDomainThread};
@@ -23,7 +29,8 @@ use tauri::window::{Monitor, WindowBuilder};
 use tauri::{App, Manager, PhysicalPosition, PhysicalSize, State, Window, Wry};
 
 const COMPONENT: &str = "superi-desktop.viewport";
-const DISPLAY_TRANSFORM_ID: &str = "superi.viewport.acescg-to-srgb.v1";
+const SRGB_DISPLAY_TRANSFORM_ID: &str = "superi.viewport.acescg-to-srgb.v1";
+const DISPLAY_P3_TRANSFORM_ID: &str = "superi.viewport.acescg-to-display-p3.v1";
 const TRANSFORM_ORDER: [&str; 6] = [
     "alpha_unassociate",
     "scene_to_display_primaries",
@@ -32,6 +39,10 @@ const TRANSFORM_ORDER: [&str; 6] = [
     "transfer_encoding",
     "alpha_reassociate",
 ];
+const PROFILE_IDENTITY_NOTE: &str = "Profile identity and freshness verified; built-in display transform selected; arbitrary ICC tag evaluation is unavailable.";
+const UNPROFILED_NOTE: &str = "The selected monitor is explicitly unprofiled; the built-in display transform remains explicit and arbitrary ICC tag evaluation is unavailable.";
+const PROFILE_UNAVAILABLE_NOTE: &str =
+    "Monitor profile discovery is unavailable on this desktop target.";
 
 /// Stable application roles for native GPU media presentation.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
@@ -178,11 +189,56 @@ impl DesktopViewerAnalysisView {
     }
 }
 
+/// Stable built-in transforms supported by the native viewer presenter.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ViewerDisplayTransform {
+    Srgb,
+    DisplayP3,
+}
+
+impl ViewerDisplayTransform {
+    pub const ALL: &'static [Self] = &[Self::Srgb, Self::DisplayP3];
+
+    #[must_use]
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Srgb => "srgb",
+            Self::DisplayP3 => "display_p3",
+        }
+    }
+
+    #[must_use]
+    pub const fn destination(self) -> ColorSpace {
+        match self {
+            Self::Srgb => ColorSpace::SRGB,
+            Self::DisplayP3 => ColorSpace::DISPLAY_P3,
+        }
+    }
+
+    #[must_use]
+    pub const fn transform_id(self) -> &'static str {
+        match self {
+            Self::Srgb => SRGB_DISPLAY_TRANSFORM_ID,
+            Self::DisplayP3 => DISPLAY_P3_TRANSFORM_ID,
+        }
+    }
+
+    #[must_use]
+    pub const fn intent(self) -> &'static str {
+        match self {
+            Self::Srgb => "scene-linear ACEScg to sRGB display",
+            Self::DisplayP3 => "scene-linear ACEScg to Display P3 display",
+        }
+    }
+}
+
 /// Immutable scene and display meaning for one GPU-resident viewer result.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ViewerPresentationIntent {
     role: DesktopViewerRole,
     source_extent: wgpu::Extent3d,
+    display_transform_kind: ViewerDisplayTransform,
     scene_pipeline: ColorPipelineMetadata,
     display_pipeline: ColorPipelineMetadata,
     display_transform: OutputColorTransform,
@@ -191,6 +247,15 @@ pub struct ViewerPresentationIntent {
 impl ViewerPresentationIntent {
     /// Creates the canonical ACEScg-to-sRGB display intent without rewriting scene metadata.
     pub fn canonical(role: DesktopViewerRole, source_extent: wgpu::Extent3d) -> Result<Self> {
+        Self::for_display(role, source_extent, ViewerDisplayTransform::Srgb)
+    }
+
+    /// Creates one explicit built-in display branch without rewriting scene metadata.
+    pub fn for_display(
+        role: DesktopViewerRole,
+        source_extent: wgpu::Extent3d,
+        display_transform_kind: ViewerDisplayTransform,
+    ) -> Result<Self> {
         if source_extent.width == 0
             || source_extent.height == 0
             || source_extent.depth_or_array_layers != 1
@@ -203,20 +268,21 @@ impl ViewerPresentationIntent {
         let scene_pipeline = ColorPipelineMetadata::new(ImageColorTags::new(ColorSpace::ACESCG))?;
         let display_stage = ColorTransformStage::new(
             ColorTransformStageKind::Display,
-            DISPLAY_TRANSFORM_ID,
+            display_transform_kind.transform_id(),
             ColorSpace::ACESCG,
-            ColorSpace::SRGB,
+            display_transform_kind.destination(),
         )?;
         let display_pipeline = scene_pipeline.clone().with_stage(display_stage)?;
         let display_transform = OutputColorTransform::new(
             OutputTargetKind::Display,
             WorkingSpace::ACESCG,
-            ColorSpace::SRGB,
+            display_transform_kind.destination(),
             OutputTransformOptions::new(),
         )?;
         Ok(Self {
             role,
             source_extent,
+            display_transform_kind,
             scene_pipeline,
             display_pipeline,
             display_transform,
@@ -256,6 +322,16 @@ impl ViewerPresentationIntent {
     #[must_use]
     pub const fn display_target(&self) -> &'static str {
         "display"
+    }
+
+    #[must_use]
+    pub const fn display_transform_code(&self) -> &'static str {
+        self.display_transform_kind.code()
+    }
+
+    #[must_use]
+    pub const fn display_intent(&self) -> &'static str {
+        self.display_transform_kind.intent()
     }
 
     #[must_use]
@@ -481,6 +557,29 @@ impl Default for DesktopExternalOutputSnapshot {
     }
 }
 
+/// Strict shell control for one role's monitor profile and display transform.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DesktopViewportColorSelection {
+    role: DesktopViewerRole,
+    monitor_id: String,
+    display_transform: ViewerDisplayTransform,
+}
+
+/// Bounded monitor profile evidence returned to the shell without ICC bytes.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopMonitorProfile {
+    id: String,
+    name: String,
+    primary: bool,
+    built_in: bool,
+    profile_state: String,
+    profile_id: Option<String>,
+    profile_model: Option<String>,
+    rendering_intent: Option<String>,
+}
+
 /// Immutable viewport diagnostics returned to the shell.
 #[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -495,6 +594,13 @@ pub struct DesktopViewportSnapshot {
     surface_generation: u64,
     frame_sequence: u64,
     display_intent: String,
+    display_transform: ViewerDisplayTransform,
+    display_transform_id: String,
+    transform_order: Vec<String>,
+    profile_generation: u64,
+    monitor_profiles: Vec<DesktopMonitorProfile>,
+    selected_monitor_id: Option<String>,
+    profile_note: String,
     summary: Option<String>,
     external_displays: Vec<DesktopExternalDisplayTarget>,
     external_output: DesktopExternalOutputSnapshot,
@@ -512,7 +618,14 @@ impl DesktopViewportSnapshot {
             physical_height: 0,
             surface_generation: 0,
             frame_sequence: 0,
-            display_intent: "scene-linear ACEScg to sRGB display".to_owned(),
+            display_intent: ViewerDisplayTransform::Srgb.intent().to_owned(),
+            display_transform: ViewerDisplayTransform::Srgb,
+            display_transform_id: ViewerDisplayTransform::Srgb.transform_id().to_owned(),
+            transform_order: TRANSFORM_ORDER.iter().map(ToString::to_string).collect(),
+            profile_generation: 0,
+            monitor_profiles: Vec::new(),
+            selected_monitor_id: None,
+            profile_note: PROFILE_UNAVAILABLE_NOTE.to_owned(),
             summary: None,
             external_displays: Vec::new(),
             external_output: DesktopExternalOutputSnapshot::default(),
@@ -640,6 +753,30 @@ fn resolve_external_display(
     }
 }
 
+#[derive(Clone, Debug)]
+struct ViewerColorSelectionState {
+    role: DesktopViewerRole,
+    monitor_id: Option<MonitorId>,
+    binding: Option<MonitorPresentationBinding>,
+    display_transform: ViewerDisplayTransform,
+}
+
+impl ViewerColorSelectionState {
+    fn new(role: DesktopViewerRole) -> Self {
+        Self {
+            role,
+            monitor_id: None,
+            binding: None,
+            display_transform: ViewerDisplayTransform::Srgb,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ViewerColorPresentation {
+    binding: Option<MonitorPresentationBinding>,
+    display_transform: ViewerDisplayTransform,
+}
 /// Serializable shell-local command failure.
 #[derive(Debug, Serialize)]
 pub struct DesktopViewportCommandError {
@@ -665,6 +802,8 @@ enum GpuCommand {
         view: DesktopViewerAnalysisView,
         extent: ViewportExtent,
         revision: u64,
+        color: ViewerColorPresentation,
+        reveal_after_present: Option<Box<Window<Wry>>>,
     },
     Hidden {
         role: DesktopViewerRole,
@@ -680,12 +819,15 @@ struct NativeControl {
     external_children: Vec<(DesktopViewerRole, Window<Wry>)>,
     sender: Option<mpsc::Sender<GpuCommand>>,
     worker: Option<ExecutionDomainThread<()>>,
+    colors: Vec<ViewerColorSelectionState>,
+    extents: Vec<(DesktopViewerRole, Option<ViewportExtent>)>,
 }
 
 /// Application-owned native viewport lifetime.
 pub struct DesktopViewportState {
     control: Mutex<NativeControl>,
     snapshots: Arc<Mutex<Vec<DesktopViewportSnapshot>>>,
+    profiles: Arc<Mutex<DisplayProfileCatalog>>,
 }
 
 impl Default for DesktopViewportState {
@@ -697,6 +839,16 @@ impl Default for DesktopViewportState {
                 external_children: Vec::new(),
                 sender: None,
                 worker: None,
+                colors: DesktopViewerRole::ALL
+                    .iter()
+                    .copied()
+                    .map(ViewerColorSelectionState::new)
+                    .collect(),
+                extents: DesktopViewerRole::ALL
+                    .iter()
+                    .copied()
+                    .map(|role| (role, None))
+                    .collect(),
             }),
             snapshots: Arc::new(Mutex::new(
                 DesktopViewerRole::ALL
@@ -705,6 +857,7 @@ impl Default for DesktopViewportState {
                     .map(DesktopViewportSnapshot::for_role)
                     .collect(),
             )),
+            profiles: Arc::new(Mutex::new(DisplayProfileCatalog::new())),
         }
     }
 }
@@ -763,10 +916,27 @@ impl DesktopViewportState {
             surfaces.push((*role, DesktopViewportSurfaceDestination::External, surface));
         }
 
+        let (profile_snapshot, profile_failure) = refresh_profile_catalog(&self.profiles);
+        let mut colors = DesktopViewerRole::ALL
+            .iter()
+            .copied()
+            .map(ViewerColorSelectionState::new)
+            .collect::<Vec<_>>();
+        for color in &mut colors {
+            install_default_monitor(color, &profile_snapshot)?;
+            publish_color_snapshot(
+                &self.snapshots,
+                color,
+                &profile_snapshot,
+                profile_failure.as_deref(),
+            );
+        }
+
         let snapshots = Arc::clone(&self.snapshots);
+        let profiles = Arc::clone(&self.profiles);
         let (sender, receiver) = mpsc::channel();
         let worker = ExecutionDomain::GpuSubmission.spawn(move |_| {
-            let result = gpu_loop(instance, surfaces, receiver, &snapshots);
+            let result = gpu_loop(instance, surfaces, receiver, &snapshots, &profiles);
             if let Err(error) = &result {
                 for role in DesktopViewerRole::ALL {
                     update_snapshot(&snapshots, *role, |state| {
@@ -792,6 +962,7 @@ impl DesktopViewportState {
         control.external_children = external_children;
         control.sender = Some(sender);
         control.worker = Some(worker);
+        control.colors = colors;
         drop(control);
         for role in DesktopViewerRole::ALL {
             update_snapshot(&self.snapshots, *role, |state| {
@@ -804,8 +975,9 @@ impl DesktopViewportState {
     fn update(&self, placement: DesktopViewportPlacement) -> Result<DesktopViewportSnapshot> {
         let geometry = PhysicalViewportGeometry::from_placement(&placement)?;
         let role = placement.role;
-        let control = self.lock_control("update_native_viewport")?;
-        let main = control.main.as_ref().ok_or_else(|| {
+        let (profile_snapshot, profile_failure) = refresh_profile_catalog(&self.profiles);
+        let mut control = self.lock_control("update_native_viewport")?;
+        let main = control.main.clone().ok_or_else(|| {
             unavailable(
                 "update_native_viewport",
                 "the native viewport has not initialized",
@@ -814,7 +986,7 @@ impl DesktopViewportState {
         let child = control
             .children
             .iter()
-            .find_map(|(candidate, child)| (*candidate == role).then_some(child))
+            .find_map(|(candidate, child)| (*candidate == role).then(|| child.clone()))
             .ok_or_else(|| {
                 unavailable(
                     "update_native_viewport",
@@ -824,21 +996,21 @@ impl DesktopViewportState {
         let external_child = control
             .external_children
             .iter()
-            .find_map(|(candidate, child)| (*candidate == role).then_some(child))
+            .find_map(|(candidate, child)| (*candidate == role).then(|| child.clone()))
             .ok_or_else(|| {
                 unavailable(
                     "update_native_viewport",
                     "the external viewport window is unavailable",
                 )
             })?;
-        let sender = control.sender.as_ref().ok_or_else(|| {
+        let sender = control.sender.clone().ok_or_else(|| {
             unavailable(
                 "update_native_viewport",
                 "the GPU viewport owner is unavailable",
             )
         })?;
         let (external_displays, external) = resolve_external_display(
-            discover_external_display_targets(main),
+            discover_external_display_targets(&main),
             placement.external_display_id.as_deref(),
         );
         if let ResolvedExternalDisplay::Active(target) = &external {
@@ -853,51 +1025,24 @@ impl DesktopViewportState {
                 ));
             }
         }
-
-        if placement.visible {
-            let origin = main
-                .inner_position()
-                .map_err(|source| native_error("read_main_window_position", source))?;
-            child
-                .set_position(PhysicalPosition::new(
-                    origin.x.saturating_add(geometry.x),
-                    origin.y.saturating_add(geometry.y),
-                ))
-                .map_err(|source| native_error("position_native_viewport", source))?;
-            child
-                .set_size(PhysicalSize::new(geometry.width, geometry.height))
-                .map_err(|source| native_error("size_native_viewport", source))?;
-            child
-                .show()
-                .map_err(|source| native_error("show_native_viewport", source))?;
-        } else {
-            child
-                .hide()
-                .map_err(|source| native_error("hide_native_viewport", source))?;
-        }
-
-        match &external {
-            ResolvedExternalDisplay::Active(target) => {
-                external_child
-                    .set_position(PhysicalPosition::new(target.position_x, target.position_y))
-                    .map_err(|source| native_error("position_external_viewport", source))?;
-                external_child
-                    .set_size(PhysicalSize::new(
-                        target.physical_width,
-                        target.physical_height,
-                    ))
-                    .map_err(|source| native_error("size_external_viewport", source))?;
-                external_child
-                    .show()
-                    .map_err(|source| native_error("show_external_viewport", source))?;
-            }
-            ResolvedExternalDisplay::Inactive { .. } => {
-                external_child
-                    .hide()
-                    .map_err(|source| native_error("hide_external_viewport", source))?;
-            }
-        }
-
+        let (blocked_monitor, color_presentation, color_snapshot) = {
+            let color = control
+                .colors
+                .iter_mut()
+                .find(|color| color.role == role)
+                .ok_or_else(|| {
+                    unavailable("update_native_viewport", "viewer color state is missing")
+                })?;
+            refresh_monitor_binding(color, &profile_snapshot)?;
+            (
+                color.monitor_id.is_some() && color.binding.is_none(),
+                ViewerColorPresentation {
+                    binding: color.binding.clone(),
+                    display_transform: color.display_transform,
+                },
+                color.clone(),
+            )
+        };
         let revision = {
             let mut snapshots = lock_snapshots(&self.snapshots, "update_native_viewport")?;
             let snapshot = snapshots
@@ -918,26 +1063,42 @@ impl DesktopViewportState {
             snapshot.physical_width = geometry.width;
             snapshot.physical_height = geometry.height;
             snapshot.selected_view = placement.view;
-            snapshot.phase = if placement.visible {
+            snapshot.phase = if placement.visible && blocked_monitor {
+                "profile_selection_required"
+            } else if placement.visible {
                 "queued"
             } else {
                 "hidden"
             }
             .to_owned();
-            snapshot.summary = None;
+            snapshot.summary = blocked_monitor.then(|| {
+                "The selected monitor is no longer active; choose an active monitor profile"
+                    .to_owned()
+            });
             snapshot.external_displays = external_displays;
+            snapshot.external_output.display_intent =
+                color_presentation.display_transform.intent().to_owned();
             match &external {
                 ResolvedExternalDisplay::Active(target) => {
                     let target_changed =
                         snapshot.external_output.target_id.as_deref() != Some(target.id.as_str());
-                    snapshot.external_output.phase = "queued".to_owned();
+                    snapshot.external_output.phase = if blocked_monitor {
+                        "unavailable"
+                    } else {
+                        "queued"
+                    }
+                    .to_owned();
                     snapshot.external_output.target_id = Some(target.id.clone());
                     snapshot.external_output.target_name = Some(target.name.clone());
                     snapshot.external_output.selected_view = placement.view;
                     snapshot.external_output.physical_width = target.physical_width;
                     snapshot.external_output.physical_height = target.physical_height;
                     snapshot.external_output.scale_factor = target.scale_factor;
-                    snapshot.external_output.summary = None;
+                    snapshot.external_output.summary = blocked_monitor
+                        .then(|| "The selected monitor profile is no longer active.".to_owned());
+                    if blocked_monitor {
+                        snapshot.external_output.presented_view = None;
+                    }
                     if target_changed {
                         snapshot.external_output.presented_view = None;
                         snapshot.external_output.surface_generation = 0;
@@ -960,57 +1121,295 @@ impl DesktopViewportState {
             }
             snapshot.revision
         };
+        publish_color_snapshot(
+            &self.snapshots,
+            &color_snapshot,
+            &profile_snapshot,
+            profile_failure.as_deref(),
+        );
 
-        let inline_command = if placement.visible {
-            GpuCommand::Present {
-                role,
-                destination: DesktopViewportSurfaceDestination::Inline,
-                view: placement.view,
-                extent: ViewportExtent::new(
-                    geometry.width,
-                    geometry.height,
-                    placement.scale_factor,
-                )?,
-                revision,
+        let inline_extent = placement
+            .visible
+            .then(|| ViewportExtent::new(geometry.width, geometry.height, placement.scale_factor))
+            .transpose()?;
+        if let Some((_, current)) = control
+            .extents
+            .iter_mut()
+            .find(|(candidate, _)| *candidate == role)
+        {
+            *current = inline_extent;
+        }
+        if let Some(extent) = inline_extent {
+            let origin = main
+                .inner_position()
+                .map_err(|source| native_error("read_main_window_position", source))?;
+            child
+                .set_position(PhysicalPosition::new(
+                    origin.x.saturating_add(geometry.x),
+                    origin.y.saturating_add(geometry.y),
+                ))
+                .map_err(|source| native_error("position_native_viewport", source))?;
+            child
+                .set_size(PhysicalSize::new(geometry.width, geometry.height))
+                .map_err(|source| native_error("size_native_viewport", source))?;
+            if blocked_monitor {
+                child
+                    .hide()
+                    .map_err(|source| native_error("hide_stale_profile_viewport", source))?;
+                sender
+                    .send(GpuCommand::Hidden {
+                        role,
+                        destination: DesktopViewportSurfaceDestination::Inline,
+                        revision,
+                    })
+                    .map_err(|_| {
+                        unavailable("hide_native_viewport", "the GPU viewport owner stopped")
+                    })?;
+            } else {
+                child
+                    .show()
+                    .map_err(|source| native_error("show_native_viewport", source))?;
+                sender
+                    .send(GpuCommand::Present {
+                        role,
+                        destination: DesktopViewportSurfaceDestination::Inline,
+                        view: placement.view,
+                        extent,
+                        revision,
+                        color: color_presentation.clone(),
+                        reveal_after_present: None,
+                    })
+                    .map_err(|_| {
+                        unavailable(
+                            "queue_native_viewport_frame",
+                            "the GPU viewport owner stopped",
+                        )
+                    })?;
             }
         } else {
-            GpuCommand::Hidden {
-                role,
-                destination: DesktopViewportSurfaceDestination::Inline,
-                revision,
-            }
-        };
-        sender.send(inline_command).map_err(|_| {
-            unavailable(
-                "queue_native_viewport_frame",
-                "the GPU viewport owner stopped",
-            )
-        })?;
+            child
+                .hide()
+                .map_err(|source| native_error("hide_native_viewport", source))?;
+            sender
+                .send(GpuCommand::Hidden {
+                    role,
+                    destination: DesktopViewportSurfaceDestination::Inline,
+                    revision,
+                })
+                .map_err(|_| {
+                    unavailable("hide_native_viewport", "the GPU viewport owner stopped")
+                })?;
+        }
 
-        let external_command = match external {
-            ResolvedExternalDisplay::Active(target) => GpuCommand::Present {
-                role,
-                destination: DesktopViewportSurfaceDestination::External,
-                view: placement.view,
-                extent: ViewportExtent::new(
-                    target.physical_width,
-                    target.physical_height,
-                    target.scale_factor,
-                )?,
-                revision,
-            },
-            ResolvedExternalDisplay::Inactive { .. } => GpuCommand::Hidden {
-                role,
-                destination: DesktopViewportSurfaceDestination::External,
-                revision,
-            },
-        };
-        sender.send(external_command).map_err(|_| {
+        match &external {
+            ResolvedExternalDisplay::Active(target) => {
+                external_child
+                    .set_position(PhysicalPosition::new(target.position_x, target.position_y))
+                    .map_err(|source| native_error("position_external_viewport", source))?;
+                external_child
+                    .set_size(PhysicalSize::new(
+                        target.physical_width,
+                        target.physical_height,
+                    ))
+                    .map_err(|source| native_error("size_external_viewport", source))?;
+                if blocked_monitor {
+                    external_child
+                        .hide()
+                        .map_err(|source| native_error("hide_external_viewport", source))?;
+                    sender
+                        .send(GpuCommand::Hidden {
+                            role,
+                            destination: DesktopViewportSurfaceDestination::External,
+                            revision,
+                        })
+                        .map_err(|_| {
+                            unavailable("hide_external_viewport", "the GPU viewport owner stopped")
+                        })?;
+                } else {
+                    external_child
+                        .show()
+                        .map_err(|source| native_error("show_external_viewport", source))?;
+                    sender
+                        .send(GpuCommand::Present {
+                            role,
+                            destination: DesktopViewportSurfaceDestination::External,
+                            view: placement.view,
+                            extent: ViewportExtent::new(
+                                target.physical_width,
+                                target.physical_height,
+                                target.scale_factor,
+                            )?,
+                            revision,
+                            color: color_presentation.clone(),
+                            reveal_after_present: None,
+                        })
+                        .map_err(|_| {
+                            unavailable(
+                                "queue_external_viewport_frame",
+                                "the GPU viewport owner stopped",
+                            )
+                        })?;
+                }
+            }
+            ResolvedExternalDisplay::Inactive { .. } => {
+                external_child
+                    .hide()
+                    .map_err(|source| native_error("hide_external_viewport", source))?;
+                sender
+                    .send(GpuCommand::Hidden {
+                        role,
+                        destination: DesktopViewportSurfaceDestination::External,
+                        revision,
+                    })
+                    .map_err(|_| {
+                        unavailable("hide_external_viewport", "the GPU viewport owner stopped")
+                    })?;
+            }
+        }
+        drop(control);
+        self.snapshot(role)
+    }
+
+    fn select_color(
+        &self,
+        selection: DesktopViewportColorSelection,
+    ) -> Result<DesktopViewportSnapshot> {
+        let monitor_id = MonitorId::new(selection.monitor_id)?;
+        let (profile_snapshot, profile_failure) = refresh_profile_catalog(&self.profiles);
+        let binding = profile_snapshot.bind_for_presentation(&monitor_id)?;
+        let role = selection.role;
+        let mut control = self.lock_control("select_native_viewport_color")?;
+        let sender = control.sender.clone().ok_or_else(|| {
             unavailable(
-                "queue_external_viewport_frame",
-                "the GPU viewport owner stopped",
+                "select_native_viewport_color",
+                "the GPU viewport owner is unavailable",
             )
         })?;
+        let (color_presentation, color_snapshot) = {
+            let color = control
+                .colors
+                .iter_mut()
+                .find(|color| color.role == role)
+                .ok_or_else(|| {
+                    unavailable(
+                        "select_native_viewport_color",
+                        "viewer color state is missing",
+                    )
+                })?;
+            color.monitor_id = Some(monitor_id);
+            color.binding = Some(binding);
+            color.display_transform = selection.display_transform;
+            (
+                ViewerColorPresentation {
+                    binding: color.binding.clone(),
+                    display_transform: color.display_transform,
+                },
+                color.clone(),
+            )
+        };
+        let prior = self.snapshot(role)?;
+        let view = prior.selected_view;
+        let external_extent = prior
+            .external_output
+            .target_id
+            .as_ref()
+            .map(|_| {
+                ViewportExtent::new(
+                    prior.external_output.physical_width,
+                    prior.external_output.physical_height,
+                    prior.external_output.scale_factor,
+                )
+            })
+            .transpose()?;
+        let revision =
+            bump_snapshot_revision(&self.snapshots, role, "select_native_viewport_color")?;
+        publish_color_snapshot(
+            &self.snapshots,
+            &color_snapshot,
+            &profile_snapshot,
+            profile_failure.as_deref(),
+        );
+        let inline_extent = control
+            .extents
+            .iter()
+            .find_map(|(candidate, extent)| (*candidate == role).then_some(*extent))
+            .flatten();
+        update_snapshot(&self.snapshots, role, |state| {
+            if inline_extent.is_some() {
+                state.presented_view = None;
+                state.phase = "queued".to_owned();
+                state.summary = None;
+            }
+            state.external_output.display_intent =
+                color_presentation.display_transform.intent().to_owned();
+            if external_extent.is_some() {
+                state.external_output.presented_view = None;
+                state.external_output.phase = "queued".to_owned();
+                state.external_output.summary = None;
+            }
+        });
+        if let Some(extent) = inline_extent {
+            let child = control
+                .children
+                .iter()
+                .find_map(|(candidate, child)| (*candidate == role).then(|| child.clone()))
+                .ok_or_else(|| {
+                    unavailable(
+                        "select_native_viewport_color",
+                        "the native viewport window is unavailable",
+                    )
+                })?;
+            child.hide().map_err(|source| {
+                native_error("hide_native_viewport_during_color_selection", source)
+            })?;
+            sender
+                .send(GpuCommand::Present {
+                    role,
+                    destination: DesktopViewportSurfaceDestination::Inline,
+                    view,
+                    extent,
+                    revision,
+                    color: color_presentation.clone(),
+                    reveal_after_present: Some(Box::new(child)),
+                })
+                .map_err(|_| {
+                    unavailable(
+                        "queue_native_viewport_color_frame",
+                        "the GPU viewport owner stopped",
+                    )
+                })?;
+        }
+        if let Some(extent) = external_extent {
+            let child = control
+                .external_children
+                .iter()
+                .find_map(|(candidate, child)| (*candidate == role).then(|| child.clone()))
+                .ok_or_else(|| {
+                    unavailable(
+                        "select_native_viewport_color",
+                        "the external viewport window is unavailable",
+                    )
+                })?;
+            child.hide().map_err(|source| {
+                native_error("hide_external_viewport_during_color_selection", source)
+            })?;
+            sender
+                .send(GpuCommand::Present {
+                    role,
+                    destination: DesktopViewportSurfaceDestination::External,
+                    view,
+                    extent,
+                    revision,
+                    color: color_presentation,
+                    reveal_after_present: Some(Box::new(child)),
+                })
+                .map_err(|_| {
+                    unavailable(
+                        "queue_external_viewport_color_frame",
+                        "the GPU viewport owner stopped",
+                    )
+                })?;
+        }
         drop(control);
         self.snapshot(role)
     }
@@ -1067,6 +1466,15 @@ pub fn desktop_viewport_update(
     state: State<'_, DesktopViewportState>,
 ) -> std::result::Result<DesktopViewportSnapshot, DesktopViewportCommandError> {
     state.update(placement).map_err(Into::into)
+}
+
+/// Applies an explicit monitor profile and built-in display transform selection.
+#[tauri::command]
+pub fn desktop_viewport_color_update(
+    selection: DesktopViewportColorSelection,
+    state: State<'_, DesktopViewportState>,
+) -> std::result::Result<DesktopViewportSnapshot, DesktopViewportCommandError> {
+    state.select_color(selection).map_err(Into::into)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1130,6 +1538,7 @@ fn gpu_loop(
     )>,
     receiver: mpsc::Receiver<GpuCommand>,
     snapshots: &Arc<Mutex<Vec<DesktopViewportSnapshot>>>,
+    profiles: &Arc<Mutex<DisplayProfileCatalog>>,
 ) -> Result<()> {
     let first_surface = surfaces.first().ok_or_else(|| {
         unavailable(
@@ -1161,7 +1570,17 @@ fn gpu_loop(
                 view,
                 extent,
                 revision,
+                color,
+                reveal_after_present,
             } => {
+                if !snapshot_revision_is_current(
+                    snapshots,
+                    role,
+                    revision,
+                    "prepare_native_viewer_frame",
+                )? {
+                    continue;
+                }
                 let surface = surfaces
                     .iter_mut()
                     .find_map(|(candidate_role, candidate_destination, surface)| {
@@ -1180,7 +1599,7 @@ fn gpu_loop(
                             "the GPU render result is unavailable",
                         )
                     })?;
-                let presentation = present_once(
+                let presented = present_once(
                     surface,
                     &device,
                     &resources,
@@ -1188,50 +1607,99 @@ fn gpu_loop(
                     render_result,
                     view,
                     extent,
+                    &color,
+                    profiles,
                 );
-                let (generation, sequence) = match presentation {
-                    Ok(presented) => presented,
+                match presented {
+                    Ok((generation, sequence, intent)) => {
+                        let mut states = lock_snapshots(snapshots, "publish_native_viewer_frame")?;
+                        let state = states
+                            .iter_mut()
+                            .find(|state| state.role == role)
+                            .ok_or_else(|| {
+                                unavailable(
+                                    "publish_native_viewer_frame",
+                                    "the native viewer snapshot is unavailable",
+                                )
+                            })?;
+                        if state.revision != revision {
+                            continue;
+                        }
+                        if let Some(child) = reveal_after_present {
+                            child.show().map_err(|source| {
+                                native_error(
+                                    match destination {
+                                        DesktopViewportSurfaceDestination::Inline => {
+                                            "show_native_viewport_after_color_selection"
+                                        }
+                                        DesktopViewportSurfaceDestination::External => {
+                                            "show_external_viewport_after_color_selection"
+                                        }
+                                    },
+                                    source,
+                                )
+                            })?;
+                        }
+                        match destination {
+                            DesktopViewportSurfaceDestination::Inline => {
+                                state.phase = "presenting".to_owned();
+                                state.presented_view = Some(view);
+                                state.surface_generation = generation;
+                                state.frame_sequence = sequence;
+                                state.display_intent = intent.display_intent().to_owned();
+                                state.display_transform = color.display_transform;
+                                state.display_transform_id =
+                                    intent.display_transform_id().to_owned();
+                                state.summary = None;
+                            }
+                            DesktopViewportSurfaceDestination::External => {
+                                state.external_output.phase = "presenting".to_owned();
+                                state.external_output.presented_view = Some(view);
+                                state.external_output.surface_generation = generation;
+                                state.external_output.frame_sequence = sequence;
+                                state.external_output.display_intent =
+                                    intent.display_intent().to_owned();
+                                state.external_output.summary = None;
+                            }
+                        }
+                    }
                     Err(error) if destination == DesktopViewportSurfaceDestination::External => {
                         update_snapshot(snapshots, role, |state| {
-                            state.external_output.phase = "failed".to_owned();
-                            state.external_output.presented_view = None;
-                            state.external_output.summary = Some(error.message().to_owned());
+                            if state.revision == revision {
+                                state.external_output.phase = "failed".to_owned();
+                                state.external_output.presented_view = None;
+                                state.external_output.summary = Some(error.message().to_owned());
+                            }
                         });
                         continue;
                     }
+                    Err(error) if error.recoverability() != Recoverability::Terminal => {
+                        update_snapshot(snapshots, role, |state| {
+                            if state.revision == revision {
+                                state.phase = "profile_or_surface_retry".to_owned();
+                                state.summary = Some(error.message().to_owned());
+                            }
+                        });
+                    }
                     Err(error) => return Err(error),
-                };
-                update_snapshot(snapshots, role, |state| match destination {
-                    DesktopViewportSurfaceDestination::Inline => {
-                        state.revision = state.revision.max(revision);
-                        state.phase = "presenting".to_owned();
-                        state.presented_view = Some(view);
-                        state.surface_generation = generation;
-                        state.frame_sequence = sequence;
-                        state.summary = None;
-                    }
-                    DesktopViewportSurfaceDestination::External => {
-                        state.external_output.phase = "presenting".to_owned();
-                        state.external_output.presented_view = Some(view);
-                        state.external_output.surface_generation = generation;
-                        state.external_output.frame_sequence = sequence;
-                        state.external_output.summary = None;
-                    }
-                });
+                }
             }
             GpuCommand::Hidden {
                 role,
                 destination,
                 revision,
             } => {
-                update_snapshot(snapshots, role, |state| match destination {
-                    DesktopViewportSurfaceDestination::Inline => {
-                        state.revision = state.revision.max(revision);
-                        state.phase = "hidden".to_owned();
-                        state.presented_view = None;
-                    }
-                    DesktopViewportSurfaceDestination::External => {
-                        state.external_output.presented_view = None;
+                update_snapshot(snapshots, role, |state| {
+                    if state.revision == revision {
+                        match destination {
+                            DesktopViewportSurfaceDestination::Inline => {
+                                state.phase = "hidden".to_owned();
+                                state.presented_view = None;
+                            }
+                            DesktopViewportSurfaceDestination::External => {
+                                state.external_output.presented_view = None;
+                            }
+                        }
                     }
                 });
             }
@@ -1318,11 +1786,23 @@ fn present_once<'device>(
     render_result: &ViewerGpuRenderResult,
     view: DesktopViewerAnalysisView,
     extent: ViewportExtent,
-) -> Result<(u64, u64)> {
+    color: &ViewerColorPresentation,
+    profiles: &Arc<Mutex<DisplayProfileCatalog>>,
+) -> Result<(u64, u64, ViewerPresentationIntent)> {
+    ensure_profile_current(
+        color.binding.as_ref(),
+        profiles,
+        "prepare_native_viewer_frame",
+    )?;
+    let intent = ViewerPresentationIntent::for_display(
+        render_result.intent.role(),
+        render_result.intent.source_extent(),
+        color.display_transform,
+    )?;
     let configuration = surface.configure(device, extent)?.clone();
     let presenter = GpuDisplayPresenter::new_with_view(
         resources,
-        render_result.intent.display_transform(),
+        intent.display_transform(),
         configuration.format,
         view.gpu_view(),
     )?;
@@ -1342,9 +1822,222 @@ fn present_once<'device>(
             depth_or_array_layers: 1,
         },
     )?;
+    ensure_profile_current(
+        color.binding.as_ref(),
+        profiles,
+        "present_native_viewer_frame",
+    )?;
     let fence = encoded.submit_and_present(frame, submissions)?;
     let _ = submissions.wait(&fence)?;
-    Ok((generation, sequence))
+    Ok((generation, sequence, intent))
+}
+
+fn refresh_profile_catalog(
+    profiles: &Arc<Mutex<DisplayProfileCatalog>>,
+) -> (DisplayProfileSnapshot, Option<String>) {
+    let Ok(mut catalog) = profiles.lock() else {
+        return (
+            DisplayProfileSnapshot::default(),
+            Some("the monitor profile catalog lock was poisoned".to_owned()),
+        );
+    };
+    let failure = refresh_system_profile_catalog(&mut catalog)
+        .err()
+        .map(|error| error.message().to_owned());
+    (catalog.snapshot(), failure)
+}
+
+#[cfg(target_os = "macos")]
+fn refresh_system_profile_catalog(catalog: &mut DisplayProfileCatalog) -> Result<()> {
+    let _ = catalog.refresh(&SystemDisplayProfileDiscovery)?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn refresh_system_profile_catalog(_catalog: &mut DisplayProfileCatalog) -> Result<()> {
+    Ok(())
+}
+
+fn install_default_monitor(
+    color: &mut ViewerColorSelectionState,
+    snapshot: &DisplayProfileSnapshot,
+) -> Result<()> {
+    let Some(display) = snapshot
+        .primary_display()
+        .or_else(|| snapshot.displays().first())
+    else {
+        color.monitor_id = None;
+        color.binding = None;
+        return Ok(());
+    };
+    color.monitor_id = Some(display.id().clone());
+    color.binding = Some(snapshot.bind_for_presentation(display.id())?);
+    Ok(())
+}
+
+fn refresh_monitor_binding(
+    color: &mut ViewerColorSelectionState,
+    snapshot: &DisplayProfileSnapshot,
+) -> Result<()> {
+    let Some(monitor_id) = color.monitor_id.as_ref() else {
+        return install_default_monitor(color, snapshot);
+    };
+    color.binding = snapshot.bind_for_presentation(monitor_id).ok();
+    Ok(())
+}
+
+fn publish_color_snapshot(
+    snapshots: &Arc<Mutex<Vec<DesktopViewportSnapshot>>>,
+    color: &ViewerColorSelectionState,
+    profile_snapshot: &DisplayProfileSnapshot,
+    profile_failure: Option<&str>,
+) {
+    let monitor_profiles = profile_snapshot
+        .displays()
+        .iter()
+        .map(desktop_monitor_profile)
+        .collect::<Vec<_>>();
+    let profile_note = profile_failure.map_or_else(
+        || match color.binding.as_ref() {
+            Some(binding) => match binding.state() {
+                PresentationProfileState::Profiled { .. } => PROFILE_IDENTITY_NOTE.to_owned(),
+                PresentationProfileState::Unprofiled => UNPROFILED_NOTE.to_owned(),
+            },
+            None => color.monitor_id.as_ref().map_or_else(
+                || PROFILE_UNAVAILABLE_NOTE.to_owned(),
+                |monitor_id| {
+                    format!(
+                        "The selected monitor {} is no longer active; choose an active monitor profile.",
+                        monitor_id.as_str()
+                    )
+                },
+            ),
+        },
+        |failure| format!("Monitor profile refresh failed: {failure}"),
+    );
+    update_snapshot(snapshots, color.role, |state| {
+        state.profile_generation = profile_snapshot.generation();
+        state.monitor_profiles = monitor_profiles;
+        state.selected_monitor_id = color
+            .binding
+            .as_ref()
+            .map(|binding| binding.monitor_id().as_str().to_owned());
+        state.display_transform = color.display_transform;
+        state.display_intent = color.display_transform.intent().to_owned();
+        state.display_transform_id = color.display_transform.transform_id().to_owned();
+        state.transform_order = TRANSFORM_ORDER.iter().map(ToString::to_string).collect();
+        state.profile_note = profile_note;
+    });
+}
+
+fn desktop_monitor_profile(display: &superi_color::icc::DisplayProfile) -> DesktopMonitorProfile {
+    let (profile_state, profile_id, profile_model, rendering_intent) =
+        display.profile().map_or_else(
+            || ("unprofiled".to_owned(), None, None, None),
+            |profile| {
+                (
+                    "profiled".to_owned(),
+                    Some(profile.id().to_string()),
+                    Some(icc_model_code(profile.display_model()).to_owned()),
+                    Some(icc_rendering_intent_code(profile.rendering_intent()).to_owned()),
+                )
+            },
+        );
+    DesktopMonitorProfile {
+        id: display.id().as_str().to_owned(),
+        name: display.name().to_owned(),
+        primary: display.is_primary(),
+        built_in: display.is_built_in(),
+        profile_state,
+        profile_id,
+        profile_model,
+        rendering_intent,
+    }
+}
+
+fn icc_model_code(model: IccDisplayModel) -> &'static str {
+    match model {
+        IccDisplayModel::MatrixTrc => "matrix_trc",
+        IccDisplayModel::Lut => "lut",
+        _ => "unknown",
+    }
+}
+
+fn icc_rendering_intent_code(intent: IccRenderingIntent) -> &'static str {
+    match intent {
+        IccRenderingIntent::Perceptual => "perceptual",
+        IccRenderingIntent::MediaRelativeColorimetric => "media_relative_colorimetric",
+        IccRenderingIntent::Saturation => "saturation",
+        IccRenderingIntent::AbsoluteColorimetric => "absolute_colorimetric",
+        _ => "unknown",
+    }
+}
+
+fn ensure_profile_current(
+    binding: Option<&MonitorPresentationBinding>,
+    profiles: &Arc<Mutex<DisplayProfileCatalog>>,
+    operation: &'static str,
+) -> Result<()> {
+    let Some(binding) = binding else {
+        return Ok(());
+    };
+    let catalog = profiles.lock().map_err(|_| {
+        Error::new(
+            ErrorCategory::Internal,
+            Recoverability::Terminal,
+            "the monitor profile catalog lock was poisoned",
+        )
+        .with_context(ErrorContext::new(COMPONENT, operation))
+    })?;
+    let snapshot = catalog.snapshot();
+    if binding.is_current(&snapshot) {
+        return Ok(());
+    }
+    Err(Error::new(
+        ErrorCategory::Conflict,
+        Recoverability::Retryable,
+        "the selected monitor profile changed before native presentation",
+    )
+    .with_context(
+        ErrorContext::new(COMPONENT, operation)
+            .with_field("monitor_id", binding.monitor_id().as_str())
+            .with_field(
+                "binding_generation",
+                binding.catalog_generation().to_string(),
+            )
+            .with_field("profile_generation", snapshot.generation().to_string()),
+    ))
+}
+
+fn bump_snapshot_revision(
+    snapshots: &Arc<Mutex<Vec<DesktopViewportSnapshot>>>,
+    role: DesktopViewerRole,
+    operation: &'static str,
+) -> Result<u64> {
+    let mut snapshots = lock_snapshots(snapshots, operation)?;
+    let snapshot = snapshots
+        .iter_mut()
+        .find(|snapshot| snapshot.role == role)
+        .ok_or_else(|| unavailable(operation, "the native viewer snapshot is unavailable"))?;
+    snapshot.revision = snapshot
+        .revision
+        .checked_add(1)
+        .ok_or_else(|| conflict(operation, "the viewport revision is exhausted"))?;
+    Ok(snapshot.revision)
+}
+
+fn snapshot_revision_is_current(
+    snapshots: &Arc<Mutex<Vec<DesktopViewportSnapshot>>>,
+    role: DesktopViewerRole,
+    revision: u64,
+    operation: &'static str,
+) -> Result<bool> {
+    let snapshots = lock_snapshots(snapshots, operation)?;
+    let snapshot = snapshots
+        .iter()
+        .find(|snapshot| snapshot.role == role)
+        .ok_or_else(|| unavailable(operation, "the native viewer snapshot is unavailable"))?;
+    Ok(snapshot.revision == revision)
 }
 
 fn update_snapshot(
@@ -1434,9 +2127,17 @@ fn native_error(operation: &'static str, source: tauri::Error) -> Error {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
     use super::{
-        project_external_display_targets, DesktopMonitorDescriptor, DesktopViewerAnalysisView,
-        DesktopViewerRole, DesktopViewportPlacement, PhysicalViewportGeometry,
+        ensure_profile_current, install_default_monitor, project_external_display_targets,
+        publish_color_snapshot, refresh_monitor_binding, snapshot_revision_is_current,
+        DesktopMonitorDescriptor, DesktopViewerAnalysisView, DesktopViewerRole,
+        DesktopViewportPlacement, DesktopViewportSnapshot, PhysicalViewportGeometry,
+        ViewerColorSelectionState,
+    };
+    use superi_color::icc::{
+        DisplayProfileCatalog, DisplayProfileObservation, MonitorId, NativeDisplayProfileProvider,
     };
 
     #[test]
@@ -1525,6 +2226,91 @@ mod tests {
                 .unwrap_err()
                 .category(),
             superi_core::error::ErrorCategory::Unavailable,
+        );
+    }
+
+    #[test]
+    fn monitor_selection_is_exact_reversible_and_stale_state_fails_closed() {
+        let primary = DisplayProfileObservation::new(
+            MonitorId::new("display:primary").unwrap(),
+            "Primary",
+            true,
+            true,
+            None,
+        )
+        .unwrap();
+        let reference = DisplayProfileObservation::new(
+            MonitorId::new("display:reference").unwrap(),
+            "Reference",
+            false,
+            false,
+            None,
+        )
+        .unwrap();
+        let profiles = Arc::new(Mutex::new(DisplayProfileCatalog::new()));
+        profiles
+            .lock()
+            .unwrap()
+            .refresh(
+                &NativeDisplayProfileProvider::new(vec![primary.clone(), reference.clone()])
+                    .unwrap(),
+            )
+            .unwrap();
+        let snapshot = profiles.lock().unwrap().snapshot();
+        let mut color = ViewerColorSelectionState::new(DesktopViewerRole::Program);
+        install_default_monitor(&mut color, &snapshot).unwrap();
+        assert_eq!(
+            color.monitor_id.as_ref().unwrap().as_str(),
+            "display:primary"
+        );
+        assert!(color.binding.as_ref().unwrap().is_current(&snapshot));
+
+        let reference_id = MonitorId::new("display:reference").unwrap();
+        color.monitor_id = Some(reference_id.clone());
+        color.binding = Some(snapshot.bind_for_presentation(&reference_id).unwrap());
+        let captured = color.binding.clone().unwrap();
+        ensure_profile_current(Some(&captured), &profiles, "test_profile_before_frame").unwrap();
+
+        profiles
+            .lock()
+            .unwrap()
+            .refresh(&NativeDisplayProfileProvider::new(vec![primary]).unwrap())
+            .unwrap();
+        let refreshed = profiles.lock().unwrap().snapshot();
+        assert!(
+            ensure_profile_current(Some(&captured), &profiles, "test_profile_before_present")
+                .is_err()
+        );
+        refresh_monitor_binding(&mut color, &refreshed).unwrap();
+        assert_eq!(color.monitor_id.as_ref(), Some(&reference_id));
+        assert!(color.binding.is_none());
+        let snapshots = Arc::new(Mutex::new(vec![DesktopViewportSnapshot::for_role(
+            DesktopViewerRole::Program,
+        )]));
+        assert!(snapshot_revision_is_current(
+            &snapshots,
+            DesktopViewerRole::Program,
+            0,
+            "test_current_color_revision",
+        )
+        .unwrap());
+        assert!(!snapshot_revision_is_current(
+            &snapshots,
+            DesktopViewerRole::Program,
+            1,
+            "test_stale_color_revision",
+        )
+        .unwrap());
+        publish_color_snapshot(&snapshots, &color, &refreshed, None);
+        let published = snapshots.lock().unwrap()[0].clone();
+        assert_eq!(published.selected_monitor_id, None);
+        assert!(published.profile_note.contains("is no longer active"));
+
+        color.monitor_id = None;
+        install_default_monitor(&mut color, &refreshed).unwrap();
+        assert_eq!(
+            color.monitor_id.as_ref().unwrap().as_str(),
+            "display:primary"
         );
     }
 }

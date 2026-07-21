@@ -125,7 +125,8 @@ pub fn configure<R: Runtime>(builder: Builder<R>, lifecycle: ApplicationLifecycl
             project_lifecycle::mutate_project_offline_media,
             project_lifecycle::scan_project_media_sources,
             project_lifecycle::mutate_project_media_batch,
-            viewport::desktop_viewport_update
+            viewport::desktop_viewport_update,
+            viewport::desktop_viewport_color_update
         ])
 }
 

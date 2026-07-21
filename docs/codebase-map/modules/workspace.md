@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 8e354862dc09cd9e7f86792fb206440ec92216a2a5ec93dcef4d97d604a711a3
-source_files: 297
+source_hash: b0dec1fe02ec34c981987d1588a8c6489e9d2760a841aa1f5005e5421f7ce571
+source_files: 300
 mapped_at_commit: working-tree
 ---
 
@@ -519,6 +519,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W05.C008.md`: Durable implementation evidence for exact selected-clip
   built-in transform projection, ordinary graph matrix and sampling controls, driver restrictions,
   application-owned typed mutations, and authored-state separation from viewer navigation.
+- `docs/checkpoints/P3.W05.C009.md`: Durable implementation evidence for exact active-monitor ICC
+  identity and freshness, reversible per-viewer monitor selection, explicit sRGB and Display P3 GPU
+  output transforms, strict control-only IPC, preserved viewer state, and the intentionally absent
+  arbitrary ICC tag evaluator.
 - `docs/checkpoints/P3.W05.C010.md`: Durable implementation evidence for selectable external
   display output from all four native viewer roles, connection-local monitor routing, exact target
   and presentation diagnostics, shared canonical GPU textures, external failure isolation, and
@@ -535,8 +539,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
   framework, editor-workspace, timeline-canvas, timeline-nesting, timeline-multicam, timeline-clip,
   timeline-transition, caption projection, exchange, and authoring, editorial-feedback, exact
-  playback transport, viewer navigation, overlay, comparison, viewer-status, analysis,
-  viewer-transform, and external-display helper contracts, and Tauri commands.
+  playback transport, viewer navigation, overlay, comparison, viewer-status, analysis, and
+  viewer-transform, viewer color-management, and external-display helper contracts, and Tauri
+  commands.
 - `app/src/api.ts`: Re-exports the complete canonical generated TypeScript contract and constructs
   one frozen `SuperiApiBindings` surface around an injected `SuperiTransport` and `SuperiClient`.
 - `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
@@ -614,6 +619,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   plus nearest or bilinear sampling, and emits one ordered `mutate_graph` action containing only
   changed ordinary parameters. Missing, ambiguous, stale, malformed, unsupported, and driver-owned
   states fail closed without React, transport, history, persistence, rendering, or CSS ownership.
+- `app/src/viewer-color-management.ts`: Defines the deeply frozen viewer color-management contract
+  for an exact bounded native monitor catalog, exact ICC profile identity and freshness evidence,
+  canonical ACEScg scene meaning and RGBA16F precision, explicit sRGB and Display P3 presentation
+  transforms, immutable per-role selection payloads, and honest diagnostic formatting. It validates
+  all native values and does not accept pixels, ICC bytes, project mutations, playback commands, or
+  arbitrary ICC transform claims.
 - `app/src/viewer-external-display.ts`: Defines frozen transient external target selection,
   stale-target reconciliation, exact target and native presentation diagnostics, and deterministic
   external output formatting without importing React, Tauri, project, playback, pixel, or authored
@@ -750,8 +761,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   project-history, timeline, or graph mutation ownership.
 - `app/src/native-viewport.tsx`: Reserves role-addressed native output rectangles and publishes only
   role, analysis code, geometry, scale, visibility, connection-local external display selection,
-  and returned status to the shell-local viewport command; it
-  never constructs an encoded image, blob URL, pixel readback, or webview frame path. Its composed
+  and returned status to the shell-local viewport command. It never constructs an encoded image,
+  blob URL, pixel readback, or webview frame path. A separate
+  strict control-only command selects one exact active monitor and sRGB or Display P3 transform per
+  role, then replaces the frozen native color snapshot without moving ICC bytes or frame data
+  through React. Its composed
   viewer shell consumes one frozen local contract for fit, bounded zoom, directional pan, exact
   1:1 pixel intent, browser-synchronized fullscreen, cinema layout, and role-addressed external
   display intent without mutating playback or editorial feedback. A
@@ -778,7 +792,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   drives one accessible target selector, clears stale hotplug identities, and reports exact
   physical extent, scale, selected and presented
   analysis view, display intent, surface generation, frame sequence, and failure state without
-  resetting navigation, overlays, comparison captures, analysis, or temporal context. Its
+  resetting navigation, overlays, comparison captures, analysis, or temporal context. The same
+  viewer renders exact profile identity,
+  catalog generation, scene contract,
+  precision, transform order, display intent, selected monitor, and refresh failures without
+  changing its analysis, navigation, playback, overlay, comparison, status, or editorial owners. Its
   composed `SourceMonitor` owns shell-local media-library and monitor state, exposes load, exact seek, mark,
   clear, refresh, and unload controls, publishes every replacement monitor snapshot to its caller,
   refreshes after project revision changes, and labels the retained source session as separate from
@@ -869,8 +887,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   routing, and the hashed React bundle.
 - `app/tests/native-viewport-ipc-contract.test.mjs`: Freezes the shell-local viewport command as a
   placement, analysis, and display-selection control-only Tauri payload, verifies both React
-  invocations use that command, and excludes webview image conversion or pixel-readback mechanisms
-  from the consumer. It also proves viewer and meter feedback remain outside the placement payload,
+  invocations use that command, and freezes the distinct color command as a control-only selection
+  payload with both native registrations. It excludes webview image conversion, ICC bytes, and
+  pixel-readback mechanisms from either consumer. It also proves viewer and meter feedback remain
+  outside the placement payload,
   selected versus presented diagnostics remain explicit, external windows use the destination-aware
   native path, and an external presentation failure does not terminate inline GPU presentation.
 - `app/tests/application-framework.test.ts`: Verifies duplicate and reference validation, immutable
@@ -898,6 +918,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   It also proves that the Program viewer consumes shared selection, exact ordinary transform state,
   and the application-owned revision-fenced action executor while keeping authored matrices out of
   shell-local navigation styling.
+- `app/tests/viewer-color-management.test.ts`: Proves strict bounded catalog validation, exact ICC
+  profile and unprofiled evidence, immutable monitor and transform selection, canonical transform
+  order and scene contract, deterministic diagnostics, stale or malformed native rejection, and
+  input nonmutation.
 - `app/tests/playback-transport.test.ts`: Proves exact signed JKL rate cycling, K pause, Space
   play-or-pause intent, half-open exact seek and scrub coordinate mapping, rational time and rate
   formatting, and explicit unavailable-output labels.
@@ -1006,15 +1030,19 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   borderless top-level external windows, checked CSS-to-physical placement, strict analysis and
   connection-local display selection, deterministic Tauri monitor projection, current-editor
   display exclusion, target conflict rejection, exact inline and external selected and
-  last-presented status, and join-before-host-drop lifetime. One dedicated GPU submission thread
-  presents both destination kinds from the same managed canonical RGBA16F role results through the
-  immutable ACEScg-to-sRGB display intent and direct analysis-aware presenter. Unsupported external
+  last-presented status, per-role color binding, and join-before-host-drop lifetime. One dedicated
+  GPU submission thread presents both destination kinds from the same managed canonical RGBA16F
+  role results through explicit ACEScg-to-sRGB or ACEScg-to-Display-P3 transforms and the direct
+  analysis-aware presenter. It owns exact macOS system profile discovery, atomic catalog refresh,
+  and immutable freshness-checked monitor bindings before acquire and submit. Unsupported external
   surface presentation records an explicit external failure and continues inline output. The Tauri
-  placement DTO denies unknown fields, so frame payloads, image data, and texture handles cannot
-  enter either native presenter destination.
+  placement DTO and separate color-selection DTO both deny unknown fields, so frame payloads, image
+  data, ICC bytes, and texture handles cannot enter either native presenter destination.
 - `app/src-tauri/tests/viewer_presentation_contract.rs`: Freezes source, program, composite, and
   color role order plus canonical precision, alpha, scene meaning, terminal display meaning,
-  transform order, deterministic intent, arbitrary 8K extent, invalid zero-extent behavior, and the
+  both terminal display meanings, exact transform order and IDs, deterministic intent, arbitrary
+  8K extent, invalid zero-extent behavior, reversible exact-monitor selection, stale binding
+  rejection after catalog change, absent-selection projection, and the
   exhaustive shell-to-color mapping and linear-light stage for all eight analysis codes. It also
   freezes inline and external as the only two destinations on the shared native presentation owner.
 - `app/src-tauri/Cargo.toml`: Declares the `superi-desktop` library and binary, exact Tauri,
@@ -1130,7 +1158,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   metadata and state only, never packets, decoded frames, audio blocks, textures, or presentation.
 - `app/src-tauri/src/lib.rs`: Configures the mock and native Tauri builders, retains the linked
   engine process, manages its bounded connection and transport state alongside application
-  lifecycle and project-session state, registers lifecycle, project, viewport, and API commands,
+  lifecycle and project-session state, registers lifecycle, project, viewport placement, viewport
+  color selection, and API commands,
   including media-library snapshot, organization mutation, source inspection, user metadata, and
   editorial annotation, C007 identity-selection, C008 derived-media mutation, C009 offline recovery,
   C010 generated-preview, C011 content-analysis mutation plus content-search, and C012 atomic batch
@@ -2133,6 +2162,16 @@ of open runtime behavior.
   and parameter order, reject nonfinite or unsupported state, keep driver-owned values read-only,
   and publish only through the revision-fenced application project action executor. Authored
   matrices may never be copied into the viewer navigation CSS transform or native placement payload.
+- Viewer color selection is presentation-only and independent for source, program, composite, and
+  color roles. The native owner must refresh the bounded display catalog, bind an exact monitor ID
+  and profile identity or explicit unprofiled state, verify that binding before frame acquisition and
+  again before presentation, and execute only the selected sRGB or Display P3 GPU transform. React
+  may send role, monitor ID, and transform ID through the separate strict command and may display
+  returned diagnostics, but it may not receive ICC bytes or frame data, reorder the canonical
+  transform stages, infer a profile, or claim arbitrary ICC matrix, TRC, or LUT execution. A profile
+  change hides the native child until the GPU owner successfully presents the first frame through
+  the replacement binding and transform, and both native commands and shell replies are revision
+  fenced, so a stale or differently transformed frame cannot flash or replace current diagnostics.
 - Nested open paths are root-anchored transient presentation state and may advance only through a
   currently visible clip whose source is the next timeline. Candidate placement rejects self or
   recursive dependency cycles, exact duration conversion gates replacement, and compound action
@@ -2682,6 +2721,20 @@ navigation, overlays, comparison captures, analysis, exact temporal context, vis
 status, and canonical project state remain unchanged. Tauri monitor identities are intentionally
 connection-local routing keys and do not claim the exact platform ICC or HDR identity owned by the
 color profile path.
+
+Every native viewer role now also exposes the exact current system display catalog and one
+independent color selection. On macOS the native GPU owner refreshes CoreGraphics observations into
+the existing transactional ICC catalog, records exact profile content identity or explicit
+unprofiled state, binds the role to a selected monitor, and rejects removal or freshness drift before
+acquire and before submit. The selected sRGB or Display P3 intent rebuilds the real
+`GpuDisplayPresenter`, preserving canonical ACEScg scene-linear RGBA16F input and the six-stage
+transform order. A changed selection hides that role's native child and carries a boxed reveal token
+with the GPU command, so only a successful current-revision presentation restores visibility. React
+also rejects out-of-order command replies before replacing its frozen diagnostics. It receives only
+bounded immutable profile metadata through a separate strict control command, so navigation,
+playback, overlays, comparison, status, and native placement remain unchanged. Non-macOS system
+discovery remains explicitly unavailable, and neither the shell nor `superi-color` evaluates
+arbitrary ICC matrix, TRC, or LUT tags yet.
 The editing view now also parses the snapshot's canonical timeline document into a frozen
 identity-preserving canvas with sticky headers, an adaptive ruler, record-positioned tracks and
 items, a frame-snapped playhead, an explicit range, native scrolling, pointer-anchored zoom, and
@@ -3044,7 +3097,7 @@ The largest current risk is cross-document drift:
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
 `3f0575d8604abe3f2db958ddd0e78574fe915a5b` when this checkpoint began. Its hash describes the exact
-294 discovered source files, including generated binary payloads, layered on the integrated
+297 discovered source files, including generated binary payloads, layered on the integrated
 revision.
 
 ## Maintenance notes
@@ -3109,6 +3162,12 @@ schema references, graph revision, node and port topology, driver targets, clip 
 canonical graph order, keep every driver-owned value inspectable and read-only, emit only changed
 ordinary parameters through the application command owner, and never use authored matrices as
 viewer-local CSS navigation state.
+Keep viewer color state presentation-only and role-aware. The frontend catalog must mirror exact
+native monitor and profile identity, catalog generation, selected transform, display intent, and
+canonical stage order without carrying ICC bytes or pixels. Preserve the separate strict color
+command, refresh and bind through `superi-color`, recheck freshness around native presentation,
+rebuild the real presenter for sRGB or Display P3, and keep arbitrary ICC evaluation explicitly
+unimplemented until a tested evaluator and real consumer exist.
 Keep nested catalog projection complete across every timeline in the canonical document. Open paths
 must remain root-anchored, clip-edge validated, transient, and self-healing after authored changes.
 Keep candidate filtering cycle-safe and duration conversion exact; keep compound mapping canonical
