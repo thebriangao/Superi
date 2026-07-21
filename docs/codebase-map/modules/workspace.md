@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 63e81af767fdda02a24ef012ae45a5b5684c114251e5238160fae65f61276df7
-source_files: 291
+source_hash: 332aa8823f3fc58ce17f86bc7988e933d77a6b6a62d540606aceb161b845646c
+source_files: 294
 mapped_at_commit: working-tree
 ---
 
@@ -516,6 +516,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W05.C007.md`: Durable implementation evidence for GPU-resident alpha,
   individual-channel, luminance, false-color, and display-linear clipping inspection, exact
   selected-versus-presented state, and preserved canonical scene and display meaning.
+- `docs/checkpoints/P3.W05.C008.md`: Durable implementation evidence for exact selected-clip
+  built-in transform projection, ordinary graph matrix and sampling controls, driver restrictions,
+  application-owned typed mutations, and authored-state separation from viewer navigation.
 
 ### Production desktop application
 
@@ -528,8 +531,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
   framework, editor-workspace, timeline-canvas, timeline-nesting, timeline-multicam, timeline-clip,
   timeline-transition, caption projection, exchange, and authoring, editorial-feedback, exact
-  playback transport, viewer navigation, overlay, comparison, viewer-status, and analysis helper
-  contracts, and Tauri commands.
+  playback transport, viewer navigation, overlay, comparison, viewer-status, analysis, and
+  viewer-transform helper contracts, and Tauri commands.
 - `app/src/api.ts`: Re-exports the complete canonical generated TypeScript contract and constructs
   one frozen `SuperiApiBindings` surface around an injected `SuperiTransport` and `SuperiClient`.
 - `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
@@ -599,6 +602,14 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/viewer-analysis.ts`: Defines the frozen eight-view image and diagnostic catalog, stable
   cross-boundary codes, exact labels and semantics, image default, and fail-closed lookup without
   owning authored, navigation, overlay, playback, comparison, or display-transform state.
+- `app/src/viewer-transform-controls.ts`: Defines the frozen selected-clip transform projection and
+  typed action builder over the existing editor snapshot and shared application selection. It
+  validates one timeline-scoped canonical graph envelope, schemas, node and port topology, order,
+  drivers, clip identity, and every exact built-in `superi.effect.transform` 1.0.0 parameter,
+  traverses reachable processing nodes in canonical order, decodes all nine finite matrix scalars
+  plus nearest or bilinear sampling, and emits one ordered `mutate_graph` action containing only
+  changed ordinary parameters. Missing, ambiguous, stale, malformed, unsupported, and driver-owned
+  states fail closed without React, transport, history, persistence, rendering, or CSS ownership.
 - `app/src/timeline-workspace.ts`: Strictly projects the embedded canonical revision 2 timeline
   document into a deeply frozen canvas model with exact rational source and record ranges, stable
   identities and relationships, complete caption text, language, speaker, style, timeline
@@ -750,7 +761,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   projection consumes the existing application snapshot and retained source monitor, then renders
   exact role-aware temporal, source, drop, playback, visual, audio, comparison, and editorial
   evidence outside the transformed frame so every navigation, overlay, and comparison mode
-  preserves it. Its
+  preserves it. The Program role additionally projects every exact built-in transform reachable
+  from the one current selected clip, renders complete matrix and sampling state outside the
+  transformed frame, keeps driver-owned values inspectable and read-only, and submits Apply or
+  identity reset as one typed graph action through the existing application command owner. Authored
+  matrices never become shell-local CSS transforms. Its
   composed `SourceMonitor` owns shell-local media-library and monitor state, exposes load, exact seek, mark,
   clear, refresh, and unload controls, publishes every replacement monitor snapshot to its caller,
   refreshes after project revision changes, and labels the retained source session as separate from
@@ -820,7 +835,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   responsive 16:9 native viewer reservations plus bounded navigation controls, clipped transforms,
   pixel-mode fidelity intent, fullscreen, cinema presentation, compact comparison capture and mode
   controls, transformed exact-identity badges, bounded split or wipe controls, difference intent,
-  and pointer-transparent dividers beneath the existing overlay layer. Timeline rows use canonical variable height, compact two-row track controls,
+  pointer-transparent dividers beneath the existing overlay layer, and compact scrollable Program
+  transform cards with a complete 3 by 3 matrix, sampling, driver state, action feedback, and
+  responsive controls. Timeline rows use canonical variable height, compact two-row track controls,
   disabled output presentation, and visible command failures. It also defines compact ready, stale,
   and empty source-monitor
   controls with exact state details and responsive action groups. The timeline edit console adds
@@ -864,6 +881,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   also freezes comparison catalog consumption, exact source and playback temporal wiring, program
   summary publication through the existing application owner, live playback summary consumption,
   comparison presentation styles, and continued state-free workspace projection.
+  It also proves that the Program viewer consumes shared selection, exact ordinary transform state,
+  and the application-owned revision-fenced action executor while keeping authored matrices out of
+  shell-local navigation styling.
 - `app/tests/playback-transport.test.ts`: Proves exact signed JKL rate cycling, K pause, Space
   play-or-pause intent, half-open exact seek and scrub coordinate mapping, rational time and rate
   formatting, and explicit unavailable-output labels.
@@ -883,6 +903,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   source-monitor identity, explicit unavailable owners, frozen output, and input nonmutation.
 - `app/tests/viewer-analysis.test.ts`: Proves exact ordered view codes and labels, complete catalog
   freezing, the image default, deterministic lookup, and fail-closed unknown selection.
+- `app/tests/viewer-transform-controls.test.ts`: Proves exact current selected-clip resolution,
+  canonical graph and transform order, all nine scalar values, nearest and bilinear sampling,
+  immutable projection, ordered changed-only typed mutations, identity reset, no-op and nonfinite
+  rejection, driver locks, stale selection, absent transform, malformed scalar failure, and input
+  nonmutation.
 - `app/tests/timeline-workspace.test.ts`: Verifies strict canonical revision handling, exact track,
   item, source and record range, group, link, selection, target, lock, output, synchronization, and
   transition preservation, variable height, external global-start placement, deterministic
@@ -1948,6 +1973,16 @@ and the transformed pointer-transparent comparison layer communicates mode and i
 copying or synthesizing pixels. The program viewer publishes its deterministic formatted summary
 through `ApplicationProvider`, and `PlaybackControls` displays that live comparison beside the
 canonical playback visual, audio, synchronization, timing, and degradation fields.
+Program viewer transform controls begin from the same shared application selection and latest editor
+snapshot. The pure projector accepts exactly one current clip reference, validates one matching
+timeline graph plus its canonical envelope, schemas, nodes, ports, edges, order, drivers, and typed
+clip identity, then walks only downstream processing nodes until the next timeline boundary. Every
+exact built-in transform becomes one immutable ordered matrix and sampling presentation. Apply or
+identity reset builds one changed-only `mutate_graph` action and hands it to
+`ApplicationProvider.executeProjectActions`, which retains transaction identity, project revision
+fencing, history, persistence, failure classification, and canonical refresh. React retains only
+temporary input text, pending state, and result text, and never applies authored matrix values to
+the viewer-local navigation transform or native placement geometry.
 The same canvas supplements clip items from the snapshot's canonical graph and attached audio
 automation, and it hydrates real media previews through the existing freshness-fenced Tauri owner.
 Shared clip activation remains an application selection reference, not an authored timeline edit.
@@ -2064,6 +2099,12 @@ of open runtime behavior.
   native diagnostics distinguish selected from last-presented state, and pixel interpretation stays
   on the production GPU display presenter. Navigation, overlays, playback, audio, comparison,
   authored project state, canonical scene pixels, and frame IPC remain independent.
+- Viewer transform controls are an editor for ordinary canonical graph parameters, not a second
+  transform, render, graph, history, or persistence owner. They must resolve one current selected
+  clip, validate exact graph topology and the built-in transform schema, preserve canonical node
+  and parameter order, reject nonfinite or unsupported state, keep driver-owned values read-only,
+  and publish only through the revision-fenced application project action executor. Authored
+  matrices may never be copied into the viewer navigation CSS transform or native placement payload.
 - Nested open paths are root-anchored transient presentation state and may advance only through a
   currently visible clip whose source is the next timeline. Candidate placement rejects self or
   recursive dependency cycles, exact duration conversion gates replacement, and compound action
@@ -2578,6 +2619,14 @@ continuous frame number, topmost enabled source identity and exact ranges, physi
 transport scheduling, visual degradation, audio discard acknowledgement, comparison, and current
 selection, group, link, target, and sync-lock intent. Invalid or unobserved owners remain explicitly
 unavailable, and the status list stays outside the transformed frame across every navigation mode.
+The Program viewer now also resolves exactly one current selected clip into its timeline-scoped
+canonical graph and exposes every reachable exact built-in transform in node order. All nine finite
+matrix scalars and nearest or bilinear sampling remain ordinary typed graph parameters; drivers make
+their owned inputs inspectable but read-only, while Apply and identity reset publish one ordered
+changed-only graph action through the application-owned revision fence. Missing transforms and
+stale, ambiguous, malformed, unsupported, or changed graph state remain explicit, authored matrices
+never enter the shell-local CSS navigation transform, and refreshed project state remains the only
+successful result authority.
 The current production runtime is intentionally timing-only and reports unavailable viewport pixels
 and audio output instead of claiming decoded presentation or samples.
 Every native viewer role now also owns one frozen comparison presentation with single, compare,
@@ -2957,8 +3006,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`ad6ced324ce752301ad0e0f6297ab88a42cbed2d` when this checkpoint began. Its hash describes the exact
-285 discovered source files, including generated binary payloads, layered on the integrated
+`3f0575d8604abe3f2db958ddd0e78574fe915a5b` when this checkpoint began. Its hash describes the exact
+294 discovered source files, including generated binary payloads, layered on the integrated
 revision.
 
 ## Maintenance notes
@@ -3017,6 +3066,12 @@ and failure observations, and the retained source monitor owns its current sourc
 fingerprint. Exact rescaling must fail closed, omitted drop-frame labels must never alter continuous
 frame identity, active-item lookup must preserve half-open range and topmost enabled-track rules,
 and status rendering must remain outside native placement and transformed-frame ownership.
+Keep viewer transform projection strict and selected-clip scoped. Validate canonical envelopes,
+schema references, graph revision, node and port topology, driver targets, clip identity, exact
+`superi.effect.transform` 1.0.0 parameters, and finite scalar bits before exposing controls. Preserve
+canonical graph order, keep every driver-owned value inspectable and read-only, emit only changed
+ordinary parameters through the application command owner, and never use authored matrices as
+viewer-local CSS navigation state.
 Keep nested catalog projection complete across every timeline in the canonical document. Open paths
 must remain root-anchored, clip-edge validated, transient, and self-healing after authored changes.
 Keep candidate filtering cycle-safe and duration conversion exact; keep compound mapping canonical

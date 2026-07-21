@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useApplication } from "./application-context.tsx";
+import type { ProjectAction } from "./api.ts";
 import {
   loadProjectSourceMonitor,
   readProjectMediaLibrary,
@@ -55,6 +56,14 @@ import {
   VIEWER_STATUS_FIELDS,
   projectViewerStatusDisplay,
 } from "./viewer-status.ts";
+import {
+  VIEWER_TRANSFORM_IDENTITY_MATRIX,
+  buildViewerTransformAction,
+  projectViewerTransformControls,
+  type ViewerTransformDraft,
+  type ViewerTransformNodePresentation,
+  type ViewerTransformProjection,
+} from "./viewer-transform-controls.ts";
 
 type ViewportSnapshot = {
   role: NativeViewerRole;
@@ -347,7 +356,8 @@ export function NativeViewport({
   temporalContext = null,
   onComparisonStateChange,
 }: NativeViewportProps) {
-  const { editorProject, sourceMonitor } = useApplication();
+  const { editorProject, sourceMonitor, state, executeProjectActions } =
+    useApplication();
   const shell = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLElement>(null);
   const [snapshot, setSnapshot] = useState<ViewportSnapshot | null>(null);
@@ -474,6 +484,23 @@ export function NativeViewport({
         comparisonSummary,
       ),
     [comparisonSummary, editorProject.snapshot, role, sourceMonitor],
+  );
+  const transformControls = useMemo(
+    () =>
+      role === "program"
+        ? projectViewerTransformControls(
+            editorProject.snapshot,
+            state.selection,
+          )
+        : null,
+    [editorProject.snapshot, role, state.selection],
+  );
+  const applyViewerTransform = useCallback(
+    async (action: ProjectAction) => {
+      const result = await executeProjectActions([action]);
+      return result.state.project_revision;
+    },
+    [executeProjectActions],
   );
   const transform = viewerTransform(navigation);
   const updateNavigation = (action: Parameters<typeof applyViewerNavigation>[1]) => {
@@ -682,8 +709,232 @@ export function NativeViewport({
           </div>
         ))}
       </dl>
+      {transformControls ? (
+        <ViewerTransformControls
+          projection={transformControls}
+          onApply={applyViewerTransform}
+        />
+      ) : null}
       {feedback ? <ViewerEditorialFeedback feedback={feedback} label={label} /> : null}
     </div>
+  );
+}
+
+function ViewerTransformControls({
+  projection,
+  onApply,
+}: {
+  readonly projection: ViewerTransformProjection;
+  readonly onApply: (action: ProjectAction) => Promise<number>;
+}) {
+  if (projection.status === "unavailable") {
+    return (
+      <section
+        className="viewer-transform-controls viewer-transform-controls--unavailable"
+        aria-label="Program viewer transform controls"
+        data-transform-state="unavailable"
+      >
+        <header>
+          <div>
+            <span>Authored visual state</span>
+            <strong>Graph transforms</strong>
+          </div>
+          <em>Unavailable</em>
+        </header>
+        <p>{projection.reason}</p>
+      </section>
+    );
+  }
+  return (
+    <section
+      className="viewer-transform-controls"
+      aria-label="Program viewer transform controls"
+      data-transform-state="ready"
+    >
+      <header>
+        <div>
+          <span>Authored visual state</span>
+          <strong>Graph transforms</strong>
+        </div>
+        <div className="viewer-transform-controls__identity">
+          <code>{projection.clipId}</code>
+          <code>{projection.graphId}</code>
+          <span>
+            project revision {projection.projectRevision}, graph revision{" "}
+            {projection.graphRevision}, {projection.transforms.length}{" "}
+            {projection.transforms.length === 1 ? "node" : "nodes"}
+          </span>
+        </div>
+      </header>
+      <div className="viewer-transform-controls__nodes">
+        {projection.transforms.map((transform, index) => (
+          <ViewerTransformNodeControl
+            key={`${projection.graphId}:${transform.nodeId}`}
+            index={index}
+            transform={transform}
+            onApply={onApply}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ViewerTransformNodeControl({
+  index,
+  transform,
+  onApply,
+}: {
+  readonly index: number;
+  readonly transform: ViewerTransformNodePresentation;
+  readonly onApply: (action: ProjectAction) => Promise<number>;
+}) {
+  const canonicalMatrix = transform.matrix.map((parameter) => parameter.value);
+  const canonicalKey = `${transform.graphRevision}:${transform.nodeId}:${canonicalMatrix.join(",")}:${transform.sampling.value}`;
+  const [matrix, setMatrix] = useState(() =>
+    canonicalMatrix.map((value) => value.toString()),
+  );
+  const [sampling, setSampling] = useState(transform.sampling.value);
+  const [pending, setPending] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMatrix(canonicalMatrix.map((value) => value.toString()));
+    setSampling(transform.sampling.value);
+  }, [canonicalKey]);
+
+  const numericMatrix = matrix.map((value) =>
+    value.trim().length === 0 ? Number.NaN : Number(value),
+  );
+  const matrixValid = numericMatrix.every((value) => Number.isFinite(value));
+  const matrixChanged =
+    matrixValid &&
+    numericMatrix.some((value, matrixIndex) => value !== canonicalMatrix[matrixIndex]);
+  const samplingChanged = sampling !== transform.sampling.value;
+  const canApply =
+    !pending &&
+    matrixValid &&
+    ((matrixChanged && !transform.matrixDriven) ||
+      (samplingChanged && !transform.sampling.driven));
+  const resetDraft: ViewerTransformDraft = {
+    matrix: transform.matrixDriven
+      ? canonicalMatrix
+      : VIEWER_TRANSFORM_IDENTITY_MATRIX,
+    sampling: transform.sampling.driven ? transform.sampling.value : "bilinear",
+  };
+  const canReset =
+    !pending &&
+    (resetDraft.matrix.some(
+      (value, matrixIndex) => value !== canonicalMatrix[matrixIndex],
+    ) || resetDraft.sampling !== transform.sampling.value);
+
+  const publish = async (draft: ViewerTransformDraft, verb: string) => {
+    setPending(true);
+    setResult(`${verb} pending through the project owner.`);
+    try {
+      const action = buildViewerTransformAction(transform, draft);
+      const revision = await onApply(action);
+      setResult(`${verb} committed at project revision ${revision}.`);
+    } catch (error: unknown) {
+      setResult(
+        error instanceof Error
+          ? error.message
+          : "The viewer transform edit could not be completed.",
+      );
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <article
+      className="viewer-transform-node"
+      data-matrix-driven={transform.matrixDriven}
+      data-sampling-driven={transform.sampling.driven}
+    >
+      <div className="viewer-transform-node__heading">
+        <div>
+          <span>Transform {index + 1}</span>
+          <code>{transform.nodeId}</code>
+        </div>
+        <span>schema {transform.schemaVersion}</span>
+      </div>
+      <fieldset disabled={pending || transform.matrixDriven}>
+        <legend>
+          Exact 3 by 3 matrix
+          {transform.matrixDriven ? " (driver owned, inspect only)" : ""}
+        </legend>
+        <div className="viewer-transform-node__matrix">
+          {transform.matrix.map((parameter, matrixIndex) => (
+            <label key={parameter.parameterId} data-driven={parameter.driven}>
+              <span>
+                {parameter.label}
+                {parameter.driven ? " (driven)" : ""}
+              </span>
+              <code>{parameter.name}</code>
+              <input
+                type="number"
+                step="any"
+                value={matrix[matrixIndex] ?? ""}
+                aria-label={`${parameter.label} ${parameter.name}`}
+                onChange={(event) =>
+                  setMatrix((current) =>
+                    current.map((value, currentIndex) =>
+                      currentIndex === matrixIndex ? event.target.value : value,
+                    ),
+                  )
+                }
+              />
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <label className="viewer-transform-node__sampling">
+        <span>
+          Sampling
+          {transform.sampling.driven ? " (driver owned, inspect only)" : ""}
+        </span>
+        <select
+          value={sampling}
+          disabled={pending || transform.sampling.driven}
+          onChange={(event) =>
+            setSampling(event.target.value as typeof sampling)
+          }
+        >
+          <option value="nearest">Nearest</option>
+          <option value="bilinear">Bilinear</option>
+        </select>
+      </label>
+      <div className="viewer-transform-node__actions">
+        <button
+          type="button"
+          disabled={!canApply}
+          onClick={() =>
+            void publish({ matrix: numericMatrix, sampling }, "Transform edit")
+          }
+        >
+          Apply
+        </button>
+        <button
+          type="button"
+          className="secondary"
+          disabled={!canReset}
+          onClick={() => void publish(resetDraft, "Transform reset")}
+        >
+          Reset identity
+        </button>
+      </div>
+      <p
+        className="viewer-transform-node__result"
+        role={result && !result.includes("committed") && !result.includes("pending") ? "alert" : "status"}
+        aria-live="polite"
+      >
+        {result ??
+          `Canonical graph revision ${transform.graphRevision}. Matrix ${
+            transform.matrixDriven ? "driver owned" : "editable"
+          }; sampling ${transform.sampling.driven ? "driver owned" : "editable"}.`}
+      </p>
+    </article>
   );
 }
 

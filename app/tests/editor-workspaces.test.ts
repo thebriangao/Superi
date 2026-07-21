@@ -87,6 +87,7 @@ test("five professional workspaces are exact views over the existing application
   assert.match(packageJson.scripts.test, /editor-workspaces\.test\.ts/);
   assert.match(packageJson.scripts.test, /playback-transport\.test\.ts/);
   assert.match(packageJson.scripts.test, /viewer-status\.test\.ts/);
+  assert.match(packageJson.scripts.test, /viewer-transform-controls\.test\.ts/);
 });
 
 test("editor requests use one explicit public transaction identity", () => {
@@ -347,5 +348,54 @@ test("viewer comparisons preserve exact frame context through the real viewer an
   assert.doesNotMatch(
     workspaces,
     /createContext|useReducer|useState|useSuperiApi|DesktopSuperiTransport|@tauri-apps/,
+  );
+});
+
+test("Program viewer transform controls edit ordinary graph parameters through the application owner", () => {
+  const applicationContext = read(
+    resolve(appRoot, "src/application-context.tsx"),
+  );
+  const nativeViewport = read(resolve(appRoot, "src/native-viewport.tsx"));
+  const transformControls = read(
+    resolve(appRoot, "src/viewer-transform-controls.ts"),
+  );
+  const styles = read(resolve(appRoot, "src/styles.css"));
+
+  assert.match(nativeViewport, /role === "program"/);
+  assert.match(nativeViewport, /projectViewerTransformControls/);
+  assert.match(nativeViewport, /state\.selection/);
+  assert.match(nativeViewport, /executeProjectActions\(\[action\]\)/);
+  assert.match(nativeViewport, /buildViewerTransformAction/);
+  assert.match(nativeViewport, /Program viewer transform controls/);
+  assert.match(nativeViewport, /Exact 3 by 3 matrix/);
+  assert.match(nativeViewport, /Reset identity/);
+  assert.match(nativeViewport, /VIEWER_STATUS_FIELDS\.map/);
+  assert.match(applicationContext, /expected_project_revision/);
+  assert.match(transformControls, /const TRANSFORM_NODE_TYPE = "superi\.effect\.transform"/);
+  assert.match(transformControls, /action: "mutate_graph"/);
+  assert.match(transformControls, /operation: "set_parameter"/);
+  assert.match(transformControls, /parameter_drivers/);
+  for (const parameter of [
+    "m00",
+    "m01",
+    "m02",
+    "m10",
+    "m11",
+    "m12",
+    "m20",
+    "m21",
+    "m22",
+  ]) {
+    assert.match(transformControls, new RegExp(`"${parameter}"`));
+  }
+  assert.match(styles, /\.viewer-transform-controls/);
+  assert.match(styles, /\.viewer-transform-node__matrix/);
+  assert.doesNotMatch(
+    transformControls,
+    /useSuperiApi|DesktopSuperiTransport|@tauri-apps|\binvoke\b|style\s*:/,
+  );
+  assert.doesNotMatch(
+    nativeViewport,
+    /style=\{\{[^}]*transform\.matrix|style=\{\{[^}]*canonicalMatrix/,
   );
 });
