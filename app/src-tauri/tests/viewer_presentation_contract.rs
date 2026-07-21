@@ -2,7 +2,8 @@ use superi_color::gpu_display::GpuDisplayView;
 use superi_core::color_space::ColorSpace;
 use superi_core::pixel::AlphaMode;
 use superi_desktop::viewport::{
-    DesktopViewerAnalysisView, DesktopViewerRole, ViewerPresentationIntent,
+    DesktopViewerAnalysisView, DesktopViewerRole, DesktopViewportSurfaceDestination,
+    ViewerPresentationIntent,
 };
 use superi_gpu::wgpu;
 
@@ -67,6 +68,22 @@ fn four_viewers_share_one_reproducible_scene_to_display_contract() {
     assert_eq!(
         invalid.category(),
         superi_core::error::ErrorCategory::InvalidInput
+    );
+}
+
+#[test]
+fn inline_and_external_outputs_share_the_native_presentation_owner() {
+    assert_eq!(
+        DesktopViewportSurfaceDestination::ALL,
+        &[
+            DesktopViewportSurfaceDestination::Inline,
+            DesktopViewportSurfaceDestination::External,
+        ]
+    );
+    assert_eq!(DesktopViewportSurfaceDestination::Inline.code(), "inline");
+    assert_eq!(
+        DesktopViewportSurfaceDestination::External.code(),
+        "external"
     );
 }
 

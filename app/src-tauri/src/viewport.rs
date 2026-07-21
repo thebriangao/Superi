@@ -3,6 +3,7 @@
 use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use superi_color::gpu_display::{GpuDisplayPresenter, GpuDisplayView};
 use superi_color::transform_out::{OutputColorTransform, OutputTargetKind, OutputTransformOptions};
 use superi_color::working_space::WorkingSpace;
@@ -18,7 +19,7 @@ use superi_gpu::wgpu;
 use superi_image::metadata::{
     ColorPipelineMetadata, ColorTransformStage, ColorTransformStageKind, ImageColorTags,
 };
-use tauri::window::WindowBuilder;
+use tauri::window::{Monitor, WindowBuilder};
 use tauri::{App, Manager, PhysicalPosition, PhysicalSize, State, Window, Wry};
 
 const COMPONENT: &str = "superi-desktop.viewport";
@@ -64,6 +65,15 @@ impl DesktopViewerRole {
         }
     }
 
+    const fn external_window_label(self) -> &'static str {
+        match self {
+            Self::Source => "external-source-viewport",
+            Self::Program => "external-program-viewport",
+            Self::Composite => "external-composite-viewport",
+            Self::Color => "external-color-viewport",
+        }
+    }
+
     const fn source_label(self) -> &'static str {
         match self {
             Self::Source => "source viewer canonical render result",
@@ -99,6 +109,25 @@ impl DesktopViewerRole {
                 b: 0.2,
                 a: 1.0,
             },
+        }
+    }
+}
+
+/// One native presentation destination owned by the GPU submission domain.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum DesktopViewportSurfaceDestination {
+    Inline,
+    External,
+}
+
+impl DesktopViewportSurfaceDestination {
+    pub const ALL: &'static [Self] = &[Self::Inline, Self::External];
+
+    #[must_use]
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Inline => "inline",
+            Self::External => "external",
         }
     }
 }
@@ -288,7 +317,7 @@ impl ViewerGpuRenderResult {
 }
 
 /// Analysis selection, geometry, and visibility published by the React workspace shell.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DesktopViewportPlacement {
     role: DesktopViewerRole,
@@ -299,6 +328,157 @@ pub struct DesktopViewportPlacement {
     height: f64,
     scale_factor: f64,
     visible: bool,
+    external_display_id: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct DesktopMonitorDescriptor {
+    name: Option<String>,
+    position_x: i32,
+    position_y: i32,
+    physical_width: u32,
+    physical_height: u32,
+    scale_factor: f64,
+    primary: bool,
+}
+
+impl DesktopMonitorDescriptor {
+    fn new(
+        name: Option<String>,
+        position_x: i32,
+        position_y: i32,
+        physical_width: u32,
+        physical_height: u32,
+        scale_factor: f64,
+        primary: bool,
+    ) -> Result<Self> {
+        if physical_width == 0
+            || physical_height == 0
+            || !scale_factor.is_finite()
+            || scale_factor <= 0.0
+        {
+            return Err(invalid(
+                "describe_external_display",
+                "external display geometry requires nonzero physical dimensions and a finite positive scale",
+            ));
+        }
+        Ok(Self {
+            name,
+            position_x,
+            position_y,
+            physical_width,
+            physical_height,
+            scale_factor,
+            primary,
+        })
+    }
+
+    fn from_monitor(monitor: &Monitor, primary_id: Option<&str>) -> Result<Self> {
+        let mut descriptor = Self::new(
+            monitor.name().cloned(),
+            monitor.position().x,
+            monitor.position().y,
+            monitor.size().width,
+            monitor.size().height,
+            monitor.scale_factor(),
+            false,
+        )?;
+        descriptor.primary = primary_id.is_some_and(|id| descriptor.routing_id() == id);
+        Ok(descriptor)
+    }
+
+    fn routing_id(&self) -> String {
+        let identity = format!(
+            "{}\u{0}{}\u{0}{}\u{0}{}\u{0}{}\u{0}{:016x}",
+            self.name.as_deref().unwrap_or(""),
+            self.position_x,
+            self.position_y,
+            self.physical_width,
+            self.physical_height,
+            self.scale_factor.to_bits(),
+        );
+        let digest = Sha256::digest(identity.as_bytes());
+        let hexadecimal = digest
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        format!("tauri-monitor:{hexadecimal}")
+    }
+
+    fn display_name(&self) -> String {
+        self.name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned)
+            .unwrap_or_else(|| format!("Display at {},{}", self.position_x, self.position_y))
+    }
+}
+
+/// One connection-local target that can host clean native viewer output.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopExternalDisplayTarget {
+    id: String,
+    name: String,
+    position_x: i32,
+    position_y: i32,
+    physical_width: u32,
+    physical_height: u32,
+    scale_factor: f64,
+    primary: bool,
+}
+
+impl From<&DesktopMonitorDescriptor> for DesktopExternalDisplayTarget {
+    fn from(descriptor: &DesktopMonitorDescriptor) -> Self {
+        Self {
+            id: descriptor.routing_id(),
+            name: descriptor.display_name(),
+            position_x: descriptor.position_x,
+            position_y: descriptor.position_y,
+            physical_width: descriptor.physical_width,
+            physical_height: descriptor.physical_height,
+            scale_factor: descriptor.scale_factor,
+            primary: descriptor.primary,
+        }
+    }
+}
+
+/// Exact external surface diagnostics returned beside the inline viewer snapshot.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopExternalOutputSnapshot {
+    phase: String,
+    target_id: Option<String>,
+    target_name: Option<String>,
+    selected_view: DesktopViewerAnalysisView,
+    presented_view: Option<DesktopViewerAnalysisView>,
+    physical_width: u32,
+    physical_height: u32,
+    scale_factor: f64,
+    surface_generation: u64,
+    frame_sequence: u64,
+    display_intent: String,
+    summary: Option<String>,
+}
+
+impl Default for DesktopExternalOutputSnapshot {
+    fn default() -> Self {
+        Self {
+            phase: "inactive".to_owned(),
+            target_id: None,
+            target_name: None,
+            selected_view: DesktopViewerAnalysisView::Image,
+            presented_view: None,
+            physical_width: 0,
+            physical_height: 0,
+            scale_factor: 0.0,
+            surface_generation: 0,
+            frame_sequence: 0,
+            display_intent: "scene-linear ACEScg to sRGB display".to_owned(),
+            summary: Some("No external display selected.".to_owned()),
+        }
+    }
 }
 
 /// Immutable viewport diagnostics returned to the shell.
@@ -316,6 +496,8 @@ pub struct DesktopViewportSnapshot {
     frame_sequence: u64,
     display_intent: String,
     summary: Option<String>,
+    external_displays: Vec<DesktopExternalDisplayTarget>,
+    external_output: DesktopExternalOutputSnapshot,
 }
 
 impl DesktopViewportSnapshot {
@@ -332,7 +514,129 @@ impl DesktopViewportSnapshot {
             frame_sequence: 0,
             display_intent: "scene-linear ACEScg to sRGB display".to_owned(),
             summary: None,
+            external_displays: Vec::new(),
+            external_output: DesktopExternalOutputSnapshot::default(),
         }
+    }
+}
+
+fn project_external_display_targets(
+    monitors: &[DesktopMonitorDescriptor],
+    main_monitor: &DesktopMonitorDescriptor,
+) -> Result<Vec<DesktopExternalDisplayTarget>> {
+    let main_id = main_monitor.routing_id();
+    if !monitors
+        .iter()
+        .any(|monitor| monitor.routing_id() == main_id)
+    {
+        return Err(unavailable(
+            "enumerate_external_displays",
+            "the editor window monitor is absent from the active display catalog",
+        ));
+    }
+    let mut targets = monitors
+        .iter()
+        .filter(|monitor| monitor.routing_id() != main_id)
+        .map(DesktopExternalDisplayTarget::from)
+        .collect::<Vec<_>>();
+    targets.sort_by(|left, right| {
+        (
+            left.position_x,
+            left.position_y,
+            left.name.as_str(),
+            left.id.as_str(),
+        )
+            .cmp(&(
+                right.position_x,
+                right.position_y,
+                right.name.as_str(),
+                right.id.as_str(),
+            ))
+    });
+    targets.dedup_by(|left, right| left.id == right.id);
+    Ok(targets)
+}
+
+fn discover_external_display_targets(
+    main: &Window<Wry>,
+) -> Result<Vec<DesktopExternalDisplayTarget>> {
+    let primary = main
+        .primary_monitor()
+        .map_err(|source| native_error("read_primary_monitor", source))?;
+    let primary_id = primary
+        .as_ref()
+        .map(|monitor| DesktopMonitorDescriptor::from_monitor(monitor, None))
+        .transpose()?
+        .map(|monitor| monitor.routing_id());
+    let current = main
+        .current_monitor()
+        .map_err(|source| native_error("read_editor_monitor", source))?
+        .ok_or_else(|| {
+            unavailable(
+                "enumerate_external_displays",
+                "the editor window monitor is unavailable",
+            )
+        })?;
+    let current = DesktopMonitorDescriptor::from_monitor(&current, primary_id.as_deref())?;
+    let monitors = main
+        .available_monitors()
+        .map_err(|source| native_error("enumerate_external_displays", source))?
+        .iter()
+        .map(|monitor| DesktopMonitorDescriptor::from_monitor(monitor, primary_id.as_deref()))
+        .collect::<Result<Vec<_>>>()?;
+    project_external_display_targets(&monitors, &current)
+}
+
+enum ResolvedExternalDisplay {
+    Active(DesktopExternalDisplayTarget),
+    Inactive {
+        phase: &'static str,
+        summary: String,
+    },
+}
+
+fn resolve_external_display(
+    catalog: std::result::Result<Vec<DesktopExternalDisplayTarget>, Error>,
+    requested_id: Option<&str>,
+) -> (Vec<DesktopExternalDisplayTarget>, ResolvedExternalDisplay) {
+    match catalog {
+        Ok(targets) => {
+            if let Some(requested_id) = requested_id {
+                let selected = targets
+                    .iter()
+                    .find(|target| target.id == requested_id)
+                    .cloned();
+                return match selected {
+                    Some(target) => (targets, ResolvedExternalDisplay::Active(target)),
+                    None => (
+                        targets,
+                        ResolvedExternalDisplay::Inactive {
+                            phase: "unavailable",
+                            summary: "Selected external display is no longer available.".to_owned(),
+                        },
+                    ),
+                };
+            }
+            let summary = if targets.is_empty() {
+                "No external display detected."
+            } else {
+                "No external display selected."
+            };
+            (
+                targets,
+                ResolvedExternalDisplay::Inactive {
+                    phase: "inactive",
+                    summary: summary.to_owned(),
+                },
+            )
+        }
+        Err(error) => (
+            Vec::new(),
+            ResolvedExternalDisplay::Inactive {
+                phase: "unavailable",
+                summary: error.message().to_owned(),
+            },
+        ),
     }
 }
 
@@ -357,12 +661,14 @@ impl From<Error> for DesktopViewportCommandError {
 enum GpuCommand {
     Present {
         role: DesktopViewerRole,
+        destination: DesktopViewportSurfaceDestination,
         view: DesktopViewerAnalysisView,
         extent: ViewportExtent,
         revision: u64,
     },
     Hidden {
         role: DesktopViewerRole,
+        destination: DesktopViewportSurfaceDestination,
         revision: u64,
     },
     Shutdown,
@@ -371,6 +677,7 @@ enum GpuCommand {
 struct NativeControl {
     main: Option<Window<Wry>>,
     children: Vec<(DesktopViewerRole, Window<Wry>)>,
+    external_children: Vec<(DesktopViewerRole, Window<Wry>)>,
     sender: Option<mpsc::Sender<GpuCommand>>,
     worker: Option<ExecutionDomainThread<()>>,
 }
@@ -387,6 +694,7 @@ impl Default for DesktopViewportState {
             control: Mutex::new(NativeControl {
                 main: None,
                 children: Vec::new(),
+                external_children: Vec::new(),
                 sender: None,
                 worker: None,
             }),
@@ -402,7 +710,7 @@ impl Default for DesktopViewportState {
 }
 
 impl DesktopViewportState {
-    /// Creates the native child and transfers presentation ownership to the GPU domain.
+    /// Creates inline and external native surfaces and transfers them to the GPU domain.
     pub fn initialize(&self, app: &App<Wry>) -> Result<()> {
         let main = app
             .get_webview_window("main")
@@ -415,7 +723,8 @@ impl DesktopViewportState {
             })?;
         let instance = GpuInstance::new(InstanceOptions::default())?;
         let mut children = Vec::with_capacity(DesktopViewerRole::ALL.len());
-        let mut surfaces = Vec::with_capacity(DesktopViewerRole::ALL.len());
+        let mut external_children = Vec::with_capacity(DesktopViewerRole::ALL.len());
+        let mut surfaces = Vec::with_capacity(DesktopViewerRole::ALL.len() * 2);
         for role in DesktopViewerRole::ALL {
             let child = WindowBuilder::new(app, role.window_label())
                 .title(format!("Superi {} viewer", role.code()))
@@ -434,7 +743,24 @@ impl DesktopViewportState {
                 .map_err(|source| native_error("ignore_native_viewport_input", source))?;
             let surface = NativeViewportSurface::create(&instance, Arc::new(child.clone()))?;
             children.push((*role, child));
-            surfaces.push((*role, surface));
+            surfaces.push((*role, DesktopViewportSurfaceDestination::Inline, surface));
+
+            let external = WindowBuilder::new(app, role.external_window_label())
+                .title(format!("Superi {} external viewer", role.code()))
+                .inner_size(1.0, 1.0)
+                .visible(false)
+                .decorations(false)
+                .resizable(false)
+                .focusable(false)
+                .skip_taskbar(true)
+                .build()
+                .map_err(|source| native_error("create_external_viewport", source))?;
+            external
+                .set_ignore_cursor_events(true)
+                .map_err(|source| native_error("ignore_external_viewport_input", source))?;
+            let surface = NativeViewportSurface::create(&instance, Arc::new(external.clone()))?;
+            external_children.push((*role, external));
+            surfaces.push((*role, DesktopViewportSurfaceDestination::External, surface));
         }
 
         let snapshots = Arc::clone(&self.snapshots);
@@ -446,6 +772,8 @@ impl DesktopViewportState {
                     update_snapshot(&snapshots, *role, |state| {
                         state.phase = "failed".to_owned();
                         state.summary = Some(error.message().to_owned());
+                        state.external_output.phase = "failed".to_owned();
+                        state.external_output.summary = Some(error.message().to_owned());
                     });
                 }
             }
@@ -461,6 +789,7 @@ impl DesktopViewportState {
         }
         control.main = Some(main);
         control.children = children;
+        control.external_children = external_children;
         control.sender = Some(sender);
         control.worker = Some(worker);
         drop(control);
@@ -473,7 +802,7 @@ impl DesktopViewportState {
     }
 
     fn update(&self, placement: DesktopViewportPlacement) -> Result<DesktopViewportSnapshot> {
-        let geometry = PhysicalViewportGeometry::from_placement(placement)?;
+        let geometry = PhysicalViewportGeometry::from_placement(&placement)?;
         let role = placement.role;
         let control = self.lock_control("update_native_viewport")?;
         let main = control.main.as_ref().ok_or_else(|| {
@@ -492,12 +821,82 @@ impl DesktopViewportState {
                     "the native viewport window is unavailable",
                 )
             })?;
+        let external_child = control
+            .external_children
+            .iter()
+            .find_map(|(candidate, child)| (*candidate == role).then_some(child))
+            .ok_or_else(|| {
+                unavailable(
+                    "update_native_viewport",
+                    "the external viewport window is unavailable",
+                )
+            })?;
         let sender = control.sender.as_ref().ok_or_else(|| {
             unavailable(
                 "update_native_viewport",
                 "the GPU viewport owner is unavailable",
             )
         })?;
+        let (external_displays, external) = resolve_external_display(
+            discover_external_display_targets(main),
+            placement.external_display_id.as_deref(),
+        );
+        if let ResolvedExternalDisplay::Active(target) = &external {
+            let snapshots = lock_snapshots(&self.snapshots, "select_external_display")?;
+            if snapshots.iter().any(|snapshot| {
+                snapshot.role != role
+                    && snapshot.external_output.target_id.as_deref() == Some(target.id.as_str())
+            }) {
+                return Err(conflict(
+                    "select_external_display",
+                    "the external display target is already owned by another viewer",
+                ));
+            }
+        }
+
+        if placement.visible {
+            let origin = main
+                .inner_position()
+                .map_err(|source| native_error("read_main_window_position", source))?;
+            child
+                .set_position(PhysicalPosition::new(
+                    origin.x.saturating_add(geometry.x),
+                    origin.y.saturating_add(geometry.y),
+                ))
+                .map_err(|source| native_error("position_native_viewport", source))?;
+            child
+                .set_size(PhysicalSize::new(geometry.width, geometry.height))
+                .map_err(|source| native_error("size_native_viewport", source))?;
+            child
+                .show()
+                .map_err(|source| native_error("show_native_viewport", source))?;
+        } else {
+            child
+                .hide()
+                .map_err(|source| native_error("hide_native_viewport", source))?;
+        }
+
+        match &external {
+            ResolvedExternalDisplay::Active(target) => {
+                external_child
+                    .set_position(PhysicalPosition::new(target.position_x, target.position_y))
+                    .map_err(|source| native_error("position_external_viewport", source))?;
+                external_child
+                    .set_size(PhysicalSize::new(
+                        target.physical_width,
+                        target.physical_height,
+                    ))
+                    .map_err(|source| native_error("size_external_viewport", source))?;
+                external_child
+                    .show()
+                    .map_err(|source| native_error("show_external_viewport", source))?;
+            }
+            ResolvedExternalDisplay::Inactive { .. } => {
+                external_child
+                    .hide()
+                    .map_err(|source| native_error("hide_external_viewport", source))?;
+            }
+        }
 
         let revision = {
             let mut snapshots = lock_snapshots(&self.snapshots, "update_native_viewport")?;
@@ -518,61 +917,100 @@ impl DesktopViewportState {
             })?;
             snapshot.physical_width = geometry.width;
             snapshot.physical_height = geometry.height;
+            snapshot.selected_view = placement.view;
+            snapshot.phase = if placement.visible {
+                "queued"
+            } else {
+                "hidden"
+            }
+            .to_owned();
             snapshot.summary = None;
+            snapshot.external_displays = external_displays;
+            match &external {
+                ResolvedExternalDisplay::Active(target) => {
+                    let target_changed =
+                        snapshot.external_output.target_id.as_deref() != Some(target.id.as_str());
+                    snapshot.external_output.phase = "queued".to_owned();
+                    snapshot.external_output.target_id = Some(target.id.clone());
+                    snapshot.external_output.target_name = Some(target.name.clone());
+                    snapshot.external_output.selected_view = placement.view;
+                    snapshot.external_output.physical_width = target.physical_width;
+                    snapshot.external_output.physical_height = target.physical_height;
+                    snapshot.external_output.scale_factor = target.scale_factor;
+                    snapshot.external_output.summary = None;
+                    if target_changed {
+                        snapshot.external_output.presented_view = None;
+                        snapshot.external_output.surface_generation = 0;
+                        snapshot.external_output.frame_sequence = 0;
+                    }
+                }
+                ResolvedExternalDisplay::Inactive { phase, summary } => {
+                    snapshot.external_output.phase = (*phase).to_owned();
+                    snapshot.external_output.target_id = None;
+                    snapshot.external_output.target_name = None;
+                    snapshot.external_output.selected_view = placement.view;
+                    snapshot.external_output.presented_view = None;
+                    snapshot.external_output.physical_width = 0;
+                    snapshot.external_output.physical_height = 0;
+                    snapshot.external_output.scale_factor = 0.0;
+                    snapshot.external_output.surface_generation = 0;
+                    snapshot.external_output.frame_sequence = 0;
+                    snapshot.external_output.summary = Some(summary.clone());
+                }
+            }
             snapshot.revision
         };
 
-        if placement.visible {
-            let origin = main
-                .inner_position()
-                .map_err(|source| native_error("read_main_window_position", source))?;
-            child
-                .set_position(PhysicalPosition::new(
-                    origin.x.saturating_add(geometry.x),
-                    origin.y.saturating_add(geometry.y),
-                ))
-                .map_err(|source| native_error("position_native_viewport", source))?;
-            child
-                .set_size(PhysicalSize::new(geometry.width, geometry.height))
-                .map_err(|source| native_error("size_native_viewport", source))?;
-            child
-                .show()
-                .map_err(|source| native_error("show_native_viewport", source))?;
-            sender
-                .send(GpuCommand::Present {
-                    role,
-                    view: placement.view,
-                    extent: ViewportExtent::new(
-                        geometry.width,
-                        geometry.height,
-                        placement.scale_factor,
-                    )?,
-                    revision,
-                })
-                .map_err(|_| {
-                    unavailable(
-                        "queue_native_viewport_frame",
-                        "the GPU viewport owner stopped",
-                    )
-                })?;
-            update_snapshot(&self.snapshots, role, |state| {
-                state.selected_view = placement.view;
-                state.phase = "queued".to_owned();
-            });
+        let inline_command = if placement.visible {
+            GpuCommand::Present {
+                role,
+                destination: DesktopViewportSurfaceDestination::Inline,
+                view: placement.view,
+                extent: ViewportExtent::new(
+                    geometry.width,
+                    geometry.height,
+                    placement.scale_factor,
+                )?,
+                revision,
+            }
         } else {
-            child
-                .hide()
-                .map_err(|source| native_error("hide_native_viewport", source))?;
-            sender
-                .send(GpuCommand::Hidden { role, revision })
-                .map_err(|_| {
-                    unavailable("hide_native_viewport", "the GPU viewport owner stopped")
-                })?;
-            update_snapshot(&self.snapshots, role, |state| {
-                state.selected_view = placement.view;
-                state.phase = "hidden".to_owned();
-            });
-        }
+            GpuCommand::Hidden {
+                role,
+                destination: DesktopViewportSurfaceDestination::Inline,
+                revision,
+            }
+        };
+        sender.send(inline_command).map_err(|_| {
+            unavailable(
+                "queue_native_viewport_frame",
+                "the GPU viewport owner stopped",
+            )
+        })?;
+
+        let external_command = match external {
+            ResolvedExternalDisplay::Active(target) => GpuCommand::Present {
+                role,
+                destination: DesktopViewportSurfaceDestination::External,
+                view: placement.view,
+                extent: ViewportExtent::new(
+                    target.physical_width,
+                    target.physical_height,
+                    target.scale_factor,
+                )?,
+                revision,
+            },
+            ResolvedExternalDisplay::Inactive { .. } => GpuCommand::Hidden {
+                role,
+                destination: DesktopViewportSurfaceDestination::External,
+                revision,
+            },
+        };
+        sender.send(external_command).map_err(|_| {
+            unavailable(
+                "queue_external_viewport_frame",
+                "the GPU viewport owner stopped",
+            )
+        })?;
         drop(control);
         self.snapshot(role)
     }
@@ -601,19 +1039,24 @@ impl DesktopViewportState {
 
 impl Drop for DesktopViewportState {
     fn drop(&mut self) {
-        let (worker, children) = match self.control.get_mut() {
+        let (worker, children, external_children) = match self.control.get_mut() {
             Ok(control) => {
                 if let Some(sender) = control.sender.take() {
                     let _ = sender.send(GpuCommand::Shutdown);
                 }
-                (control.worker.take(), std::mem::take(&mut control.children))
+                (
+                    control.worker.take(),
+                    std::mem::take(&mut control.children),
+                    std::mem::take(&mut control.external_children),
+                )
             }
-            Err(_) => (None, Vec::new()),
+            Err(_) => (None, Vec::new(), Vec::new()),
         };
         if let Some(worker) = worker {
             let _ = worker.join();
         }
         drop(children);
+        drop(external_children);
     }
 }
 
@@ -635,7 +1078,7 @@ struct PhysicalViewportGeometry {
 }
 
 impl PhysicalViewportGeometry {
-    fn from_placement(placement: DesktopViewportPlacement) -> Result<Self> {
+    fn from_placement(placement: &DesktopViewportPlacement) -> Result<Self> {
         if !placement.x.is_finite()
             || !placement.y.is_finite()
             || !placement.width.is_finite()
@@ -680,7 +1123,11 @@ impl PhysicalViewportGeometry {
 
 fn gpu_loop(
     instance: GpuInstance,
-    mut surfaces: Vec<(DesktopViewerRole, NativeViewportSurface)>,
+    mut surfaces: Vec<(
+        DesktopViewerRole,
+        DesktopViewportSurfaceDestination,
+        NativeViewportSurface,
+    )>,
     receiver: mpsc::Receiver<GpuCommand>,
     snapshots: &Arc<Mutex<Vec<DesktopViewportSnapshot>>>,
 ) -> Result<()> {
@@ -691,7 +1138,7 @@ fn gpu_loop(
         )
     })?;
     let adapter = first_surface
-        .1
+        .2
         .compatible_adapters(&instance)?
         .select(&AdapterSelection::default())?;
     let device = pollster::block_on(
@@ -710,13 +1157,17 @@ fn gpu_loop(
         match command {
             GpuCommand::Present {
                 role,
+                destination,
                 view,
                 extent,
                 revision,
             } => {
                 let surface = surfaces
                     .iter_mut()
-                    .find_map(|(candidate, surface)| (*candidate == role).then_some(surface))
+                    .find_map(|(candidate_role, candidate_destination, surface)| {
+                        (*candidate_role == role && *candidate_destination == destination)
+                            .then_some(surface)
+                    })
                     .ok_or_else(|| {
                         unavailable("present_native_viewer", "the viewer surface is unavailable")
                     })?;
@@ -729,7 +1180,7 @@ fn gpu_loop(
                             "the GPU render result is unavailable",
                         )
                     })?;
-                let (generation, sequence) = present_once(
+                let presentation = present_once(
                     surface,
                     &device,
                     &resources,
@@ -737,21 +1188,51 @@ fn gpu_loop(
                     render_result,
                     view,
                     extent,
-                )?;
-                update_snapshot(snapshots, role, |state| {
-                    state.revision = state.revision.max(revision);
-                    state.phase = "presenting".to_owned();
-                    state.presented_view = Some(view);
-                    state.surface_generation = generation;
-                    state.frame_sequence = sequence;
-                    state.summary = None;
+                );
+                let (generation, sequence) = match presentation {
+                    Ok(presented) => presented,
+                    Err(error) if destination == DesktopViewportSurfaceDestination::External => {
+                        update_snapshot(snapshots, role, |state| {
+                            state.external_output.phase = "failed".to_owned();
+                            state.external_output.presented_view = None;
+                            state.external_output.summary = Some(error.message().to_owned());
+                        });
+                        continue;
+                    }
+                    Err(error) => return Err(error),
+                };
+                update_snapshot(snapshots, role, |state| match destination {
+                    DesktopViewportSurfaceDestination::Inline => {
+                        state.revision = state.revision.max(revision);
+                        state.phase = "presenting".to_owned();
+                        state.presented_view = Some(view);
+                        state.surface_generation = generation;
+                        state.frame_sequence = sequence;
+                        state.summary = None;
+                    }
+                    DesktopViewportSurfaceDestination::External => {
+                        state.external_output.phase = "presenting".to_owned();
+                        state.external_output.presented_view = Some(view);
+                        state.external_output.surface_generation = generation;
+                        state.external_output.frame_sequence = sequence;
+                        state.external_output.summary = None;
+                    }
                 });
             }
-            GpuCommand::Hidden { role, revision } => {
-                update_snapshot(snapshots, role, |state| {
-                    state.revision = state.revision.max(revision);
-                    state.phase = "hidden".to_owned();
-                    state.presented_view = None;
+            GpuCommand::Hidden {
+                role,
+                destination,
+                revision,
+            } => {
+                update_snapshot(snapshots, role, |state| match destination {
+                    DesktopViewportSurfaceDestination::Inline => {
+                        state.revision = state.revision.max(revision);
+                        state.phase = "hidden".to_owned();
+                        state.presented_view = None;
+                    }
+                    DesktopViewportSurfaceDestination::External => {
+                        state.external_output.presented_view = None;
+                    }
                 });
             }
             GpuCommand::Shutdown => break,
@@ -954,13 +1435,13 @@ fn native_error(operation: &'static str, source: tauri::Error) -> Error {
 #[cfg(test)]
 mod tests {
     use super::{
-        DesktopViewerAnalysisView, DesktopViewerRole, DesktopViewportPlacement,
-        PhysicalViewportGeometry,
+        project_external_display_targets, DesktopMonitorDescriptor, DesktopViewerAnalysisView,
+        DesktopViewerRole, DesktopViewportPlacement, PhysicalViewportGeometry,
     };
 
     #[test]
     fn placement_converts_css_geometry_to_physical_pixels() {
-        let geometry = PhysicalViewportGeometry::from_placement(DesktopViewportPlacement {
+        let geometry = PhysicalViewportGeometry::from_placement(&DesktopViewportPlacement {
             role: DesktopViewerRole::Program,
             view: DesktopViewerAnalysisView::Luminance,
             x: 10.25,
@@ -969,6 +1450,7 @@ mod tests {
             height: 540.0,
             scale_factor: 2.0,
             visible: true,
+            external_display_id: None,
         })
         .unwrap();
 
@@ -980,7 +1462,7 @@ mod tests {
 
     #[test]
     fn hidden_placement_accepts_zero_extent_without_surface_configuration() {
-        let geometry = PhysicalViewportGeometry::from_placement(DesktopViewportPlacement {
+        let geometry = PhysicalViewportGeometry::from_placement(&DesktopViewportPlacement {
             role: DesktopViewerRole::Program,
             view: DesktopViewerAnalysisView::Clipping,
             x: 0.0,
@@ -989,10 +1471,60 @@ mod tests {
             height: 0.0,
             scale_factor: 2.0,
             visible: false,
+            external_display_id: None,
         })
         .unwrap();
 
         assert_eq!(geometry.width, 0);
         assert_eq!(geometry.height, 0);
+    }
+
+    #[test]
+    fn external_catalog_excludes_the_editor_monitor_and_preserves_exact_geometry() {
+        let main =
+            DesktopMonitorDescriptor::new(Some("Editor".to_owned()), 0, 0, 2560, 1440, 2.0, true)
+                .unwrap();
+        let studio = DesktopMonitorDescriptor::new(
+            Some("Studio".to_owned()),
+            2560,
+            -120,
+            3840,
+            2160,
+            2.0,
+            false,
+        )
+        .unwrap();
+        let client = DesktopMonitorDescriptor::new(
+            Some("Client".to_owned()),
+            -1920,
+            0,
+            1920,
+            1080,
+            1.0,
+            false,
+        )
+        .unwrap();
+
+        let targets = project_external_display_targets(
+            &[main.clone(), studio.clone(), client.clone()],
+            &main,
+        )
+        .unwrap();
+        assert_eq!(targets.len(), 2);
+        assert_eq!(targets[0].name, "Client");
+        assert_eq!(targets[0].position_x, -1920);
+        assert_eq!(targets[0].physical_width, 1920);
+        assert_eq!(targets[1].name, "Studio");
+        assert_eq!(targets[1].position_y, -120);
+        assert_eq!(targets[1].physical_width, 3840);
+        assert_eq!(targets[1].physical_height, 2160);
+        assert_eq!(targets[1].scale_factor, 2.0);
+        assert_ne!(targets[0].id, targets[1].id);
+        assert_eq!(
+            project_external_display_targets(&[main], &studio)
+                .unwrap_err()
+                .category(),
+            superi_core::error::ErrorCategory::Unavailable,
+        );
     }
 }

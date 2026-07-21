@@ -32,6 +32,14 @@ import {
   viewerTransform,
 } from "./viewer-navigation.ts";
 import {
+  INITIAL_VIEWER_EXTERNAL_DISPLAY_SELECTION,
+  formatViewerExternalDisplayOutput,
+  reconcileViewerExternalDisplaySelection,
+  selectViewerExternalDisplay,
+  type ViewerExternalDisplayTarget,
+  type ViewerExternalOutputSnapshot,
+} from "./viewer-external-display.ts";
+import {
   OVERLAY_DEFINITIONS,
   initialViewerOverlays,
   toggleViewerOverlay,
@@ -76,6 +84,8 @@ type ViewportSnapshot = {
   frameSequence: number;
   displayIntent: string;
   summary: string | null;
+  externalDisplays: readonly ViewerExternalDisplayTarget[];
+  externalOutput: ViewerExternalOutputSnapshot;
 };
 
 export type NativeViewerRole = ViewerComparisonRole;
@@ -368,14 +378,20 @@ export function NativeViewport({
   const [analysisView, setAnalysisView] = useState<ViewerAnalysisView>(
     DEFAULT_VIEWER_ANALYSIS_VIEW,
   );
+  const [externalDisplayId, setExternalDisplayId] = useState<string | null>(
+    INITIAL_VIEWER_EXTERNAL_DISPLAY_SELECTION.targetId,
+  );
   const analysisViewRef = useRef(analysisView);
+  const externalDisplayIdRef = useRef(externalDisplayId);
   const publishViewport = useRef<() => void>(() => {});
   analysisViewRef.current = analysisView;
+  externalDisplayIdRef.current = externalDisplayId;
 
   useEffect(() => {
     setNavigation(initialViewerNavigation(role));
     setComparison(initialViewerComparison());
     setAnalysisView(DEFAULT_VIEWER_ANALYSIS_VIEW);
+    setExternalDisplayId(INITIAL_VIEWER_EXTERNAL_DISPLAY_SELECTION.targetId);
   }, [role]);
 
   useEffect(() => {
@@ -419,6 +435,7 @@ export function NativeViewport({
               document.visibilityState === "visible" &&
               bounds.width > 0 &&
               bounds.height > 0,
+            externalDisplayId: externalDisplayIdRef.current,
           },
         })
           .then((next) => {
@@ -448,6 +465,7 @@ export function NativeViewport({
       observer.disconnect();
       window.removeEventListener("resize", publish);
       document.removeEventListener("visibilitychange", publish);
+      externalDisplayIdRef.current = null;
       const bounds = element.getBoundingClientRect();
       void invoke("desktop_viewport_update", {
         placement: {
@@ -459,6 +477,7 @@ export function NativeViewport({
           height: 0,
           scaleFactor: window.devicePixelRatio,
           visible: false,
+          externalDisplayId: externalDisplayIdRef.current,
         },
       });
     };
@@ -466,13 +485,26 @@ export function NativeViewport({
 
   useEffect(() => {
     publishViewport.current();
-  }, [analysisView, role]);
+  }, [analysisView, externalDisplayId, role]);
+
+  useEffect(() => {
+    if (!snapshot) return;
+    setExternalDisplayId((current) =>
+      reconcileViewerExternalDisplaySelection(
+        { targetId: current },
+        snapshot.externalDisplays,
+      ).targetId,
+    );
+  }, [snapshot]);
 
   const status = summary
     ? summary
     : snapshot
       ? `${label} · ${snapshot.displayIntent} · selected ${snapshot.selectedView} · presented ${snapshot.presentedView ?? "none"} · ${snapshot.phase} · ${snapshot.physicalWidth}×${snapshot.physicalHeight} · frame ${snapshot.frameSequence}`
       : "Starting native GPU output";
+  const externalStatus = snapshot
+    ? formatViewerExternalDisplayOutput(snapshot.externalOutput)
+    : "External display unavailable; native output has not started.";
   const currentFrame = createViewerFrameIdentity(role, snapshot, temporalContext);
   const comparisonSummary = formatViewerComparisonState(comparison, currentFrame);
   const statusDisplay = useMemo(
@@ -529,6 +561,20 @@ export function NativeViewport({
     }
   };
 
+  const selectExternalDisplay = (targetId: string | null) => {
+    try {
+      setExternalDisplayId((current) =>
+        selectViewerExternalDisplay(
+          { targetId: current },
+          targetId,
+          snapshot?.externalDisplays ?? [],
+        ).targetId,
+      );
+    } catch (error: unknown) {
+      setSummary(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   return (
     <div
       className="native-viewport-shell"
@@ -537,6 +583,7 @@ export function NativeViewport({
       data-scale-mode={navigation.scaleMode}
       data-comparison-mode={comparison.mode}
       data-analysis-view={analysisView}
+      data-external-display-phase={snapshot?.externalOutput.phase ?? "unavailable"}
     >
       <div className="native-viewport__toolbar" aria-label={`${label} viewer navigation`}>
         <button type="button" onClick={() => updateNavigation({ action: "fit" })}>Fit</button>
@@ -557,6 +604,25 @@ export function NativeViewport({
           })}
         >Cinema</button>
         <button type="button" aria-pressed={navigation.presentation === "fullscreen"} onClick={() => void toggleFullscreen()}>Fullscreen</button>
+        <label>
+          <span>External</span>
+          <select
+            aria-label={`${label} external display`}
+            value={externalDisplayId ?? ""}
+            disabled={!isTauri() || (snapshot?.externalDisplays.length ?? 0) === 0}
+            onChange={(event) =>
+              selectExternalDisplay(event.target.value || null)
+            }
+          >
+            <option value="">Inline only</option>
+            {snapshot?.externalDisplays.map((target) => (
+              <option value={target.id} key={target.id}>
+                {target.name} {target.physicalWidth}x{target.physicalHeight} @ {target.scaleFactor}x
+                {target.primary ? " primary" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
       <div
         className="native-viewport__comparison-toolbar"
@@ -696,7 +762,7 @@ export function NativeViewport({
         </div>
       </div>
       <span className="native-viewport__status" role="status" aria-live="polite">
-        {status} · requested {analysisView} · {navigation.scaleMode} {Math.round(navigation.scale * 100)}% · pan {navigation.panX},{navigation.panY} · {navigation.presentation} · {navigation.externalDisplayIntent} · {comparisonSummary}
+        {status} · {externalStatus} · requested {analysisView} · {navigation.scaleMode} {Math.round(navigation.scale * 100)}% · pan {navigation.panX},{navigation.panY} · {navigation.presentation} · {navigation.externalDisplayIntent} · {comparisonSummary}
       </span>
       <dl
         className="editor-detail-list compact-details"

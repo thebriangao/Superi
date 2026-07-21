@@ -241,6 +241,10 @@ test("editorial feedback crosses the existing application owner into viewers and
   assert.match(nativeViewport, />Cinema</);
   assert.match(nativeViewport, />Fullscreen</);
   assert.match(nativeViewport, /data-external-display-intent/);
+  assert.match(nativeViewport, /data-external-display-phase/);
+  assert.match(nativeViewport, /selectViewerExternalDisplay/);
+  assert.match(nativeViewport, /formatViewerExternalDisplayOutput/);
+  assert.match(nativeViewport, /aria-label=\{`\$\{label\} external display`\}/);
   assert.match(nativeViewport, /initialViewerOverlays/);
   assert.match(nativeViewport, /visibleViewerOverlays/);
   assert.match(nativeViewport, /data-overlay-kind/);
@@ -345,6 +349,7 @@ test("viewer comparisons preserve exact frame context through the real viewer an
   assert.match(styles, /\.native-viewport__comparison/);
   assert.match(styles, /\.viewer-comparison__divider/);
   assert.match(packageJson.scripts.test, /viewer-comparison\.test\.ts/);
+  assert.match(packageJson.scripts.test, /viewer-external-display\.test\.ts/);
   assert.doesNotMatch(
     workspaces,
     /createContext|useReducer|useState|useSuperiApi|DesktopSuperiTransport|@tauri-apps/,

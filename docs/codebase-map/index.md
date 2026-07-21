@@ -82,6 +82,15 @@ program viewer publishes one formatted live summary through the existing applica
 time-bound native frames, retained GPU reference pixels, and scene-linear native difference
 rendering remain an explicit render-result binder gap.
 
+External display routing is a separate frozen shell-local control contract. React selects only an
+active connection-local monitor identity, while Tauri excludes the editor window's current display,
+rejects a target already owned by another viewer, and routes the same managed canonical role texture
+to one borderless external surface on the sole GPU submission owner. The shell reports exact target
+geometry, scale, selected and presented analysis, surface generation, frame sequence, display
+intent, and unavailable or failed state without resetting navigation, overlays, comparison,
+analysis, temporal, visual, or audio context. External presentation failure remains isolated from
+inline output, and routing identities do not claim monitor ICC or HDR policy.
+
 ## Ownership and repository boundaries
 
 The mapping script assigns each `open/crates/<name>` package to one crate module and each
@@ -279,15 +288,22 @@ The production desktop lifecycle is implemented without creating a second engine
     through the application-owned callback and return through the refreshed canonical snapshot.
 13. Editing reserves source and program native rectangles, compositing reserves composite, and color
     reserves color; React publishes only role, stable analysis code, geometry, scale, visibility,
-    and status through the shell-local command. Tauri owns all four child windows and distinguishes
-    selected analysis from nullable last-presented analysis, while the sole GPU submission domain
-    configures their surfaces and presents managed canonical `Rgba16Float` results through one
-    immutable ACEScg-to-sRGB intent without readback. Image, alpha, channel, luminance, and fixed false-color inspection operate in source scene-linear space before display conversion; clipping classifies display-linear RGB before transfer and attachment clamping. The placement DTO rejects every unknown field,
+    optional connection-local external display identity, and status through the shell-local command.
+    Tauri owns all four child windows plus one hidden borderless external window per role, excludes
+    the editor window's current display, rejects target conflicts, and distinguishes selected
+    analysis from nullable last-presented analysis for both destinations. The sole GPU submission
+    domain configures inline and external surfaces and presents the same managed canonical
+    `Rgba16Float` role result through one immutable ACEScg-to-sRGB intent without readback. External
+    surface failure remains explicit and does not stop inline output. Image, alpha, channel,
+    luminance, and fixed false-color inspection operate in source scene-linear space before display
+    conversion; clipping classifies display-linear RGB before transfer and attachment clamping. The placement DTO rejects every unknown field,
     and focused contracts keep frame bytes, image conversion, blob URLs, pixel readback, and texture
     handles outside this IPC seam while fixing precision, alpha, transform order, display intent, analysis identity, and actual offscreen pixel parity.
     Viewer navigation, overlays, status, and editorial feedback remain DOM presentation outside the
     native placement payload; the status list is also outside the transformed frame so every fit,
-    zoom, pan, pixel, fullscreen, cinema, and external-display mode retains exact evidence.
+    zoom, pan, pixel, fullscreen, cinema, and external-display mode retains exact evidence. The
+    external status additionally reports target geometry, scale, selected and presented analysis,
+    surface generation, frame sequence, display intent, and unavailable or failed state.
 14. A separate Tauri-owned project lifecycle calls `LocalProjectHost` for durable create, open,
     save, save-as, validation, recovery, settings inspection, editor inspection, atomic settings
     transactions, and timeline command execution. It
@@ -1733,8 +1749,9 @@ while an explicit `GpuDisplayView` compiles alpha, individual-channel, source-lu
 false-color, or clipping inspection into the presentation shader. Diagnostic views are opaque and
 zero-alpha RGB avoids division. Source modes run before primary, gamut, and transfer stages; clipping
 runs after display-linear primary and gamut conversion but before transfer encoding and attachment
-clamping. The four Tauri viewer roles use this path on the sole GPU submission owner, and actual
-offscreen tests compare every mode per pixel and channel to the CPU reference after half
+clamping. The four Tauri viewer roles use this path on the sole GPU submission owner for both inline
+and external native surfaces, sampling the same managed canonical role texture on each destination.
+Actual offscreen tests compare every mode per pixel and channel to the CPU reference after half
 quantization.
 
 The versioned color baseline now exercises that public CPU transform path with eight compact SDR,

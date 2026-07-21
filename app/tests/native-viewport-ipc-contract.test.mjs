@@ -25,6 +25,7 @@ test("native viewport IPC accepts control placement only", () => {
   assert.match(placement[0], /\n\s*height: f64,/);
   assert.match(placement[0], /\n\s*scale_factor: f64,/);
   assert.match(placement[0], /\n\s*visible: bool,/);
+  assert.match(placement[0], /\n\s*external_display_id: Option<String>,/);
   assert.doesNotMatch(
     placement[0],
     /frame|image|pixel|texture|handle|bytes|blob|base64/i,
@@ -45,6 +46,14 @@ test("native viewport IPC accepts control placement only", () => {
     (nativeViewport.match(/view: analysisViewRef\.current/g) ?? []).length,
     2,
   );
+  assert.equal(
+    (nativeViewport.match(/externalDisplayId: externalDisplayIdRef\.current/g) ?? []).length,
+    2,
+  );
+  assert.match(nativeViewport, /viewer-external-display/);
+  assert.match(nativeViewport, /aria-label=\{`\$\{label\} external display`\}/);
+  assert.match(nativeViewport, /snapshot\.externalDisplays/);
+  assert.match(nativeViewport, /snapshot\.externalOutput/);
   assert.match(nativeViewport, /selectedView: ViewerAnalysisView;/);
   assert.match(nativeViewport, /presentedView: ViewerAnalysisView \| null;/);
   assert.match(nativeViewport, /snapshot\.selectedView/);
@@ -59,5 +68,12 @@ test("native viewport IPC accepts control placement only", () => {
   assert.doesNotMatch(
     nativeViewport,
     /placement:\s*\{[\s\S]{0,500}(?:feedback|multicam|audio|meter)/i,
+  );
+  assert.match(rustViewport, /DesktopViewportSurfaceDestination::External/);
+  assert.match(rustViewport, /external_children/);
+  assert.match(rustViewport, /create_external_viewport/);
+  assert.match(
+    rustViewport,
+    /destination == DesktopViewportSurfaceDestination::External[\s\S]*?external_output\.phase = "failed"[\s\S]*?continue;/,
   );
 });
