@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: f138f8a755cc8fcb0e23c760762e68a2decf4ab1cd5416a27afe68e26b69afb3
-source_files: 282
+source_hash: 22fc862a16dfea7d97bf43ded53ee85ed08fcf41cff649092f64120766b28ec2
+source_files: 285
 mapped_at_commit: working-tree
 ---
 
@@ -506,6 +506,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   pan, pixel, fullscreen, and cinema presentation modes with preserved playback and overlay state.
 - `docs/checkpoints/P3.W05.C004.md`: Durable implementation evidence for presentation-only safe
   area, guide, grid, ruler, center, aspect, and custom viewer overlays.
+- `docs/checkpoints/P3.W05.C006.md`: Durable implementation evidence for shell-local compare,
+  split, wipe, difference, reference, and snapshot views with exact native frame identity, separate
+  temporal navigation context, capture gating, live playback communication, and preserved native
+  IPC ownership.
 
 ### Production desktop application
 
@@ -517,8 +521,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/package.json`: Declares the private production application package, exact toolchain and
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
   framework, editor-workspace, timeline-canvas, timeline-nesting, timeline-multicam, timeline-clip,
-  timeline-transition, caption projection, exchange, and authoring, editorial-feedback, and exact
-  playback transport helper contracts, and Tauri commands.
+  timeline-transition, caption projection, exchange, and authoring, editorial-feedback, exact
+  playback transport, viewer navigation, overlay, and comparison helper contracts, and Tauri
+  commands.
 - `app/src/api.ts`: Re-exports the complete canonical generated TypeScript contract and constructs
   one frozen `SuperiApiBindings` surface around an injected `SuperiTransport` and `SuperiClient`.
 - `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
@@ -533,8 +538,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   project transaction identity, the visible project revision fence, durable authored action
   execution, the current source-monitor snapshot, exact generated project-command submission,
   response correlation, failure classification, a typed generic project-action callback, one
-  application-owned cross-sibling editorial feedback replacement, and complete replacement-state
-  refresh for timeline consumers. It additionally owns unique playback
+  application-owned cross-sibling editorial feedback replacement, one formatted transient program
+  comparison summary for the sibling playback display, and complete replacement-state refresh for
+  timeline consumers. It additionally owns unique playback
   transaction identities, submits the generated playback command, verifies immediate bounded
   acceptance, and polls the same editor-state replacement until the playback-domain owner has
   completed without creating a React transport model.
@@ -550,16 +556,20 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   marker, and timeline edit batches. The editing panel consumes application-owned source and
   program consequence feedback plus one ordered audio routing and continuity rack, and retains the
   stateful `SourceMonitor` in the editing source slot with the exact playback control consumer below
-  the dual viewer, without moving a new context, reducer, API
-  client, or Tauri access into this workspace file. Shared timeline selection can become an exact
+  the dual viewer. Source viewer state receives the monitor's exact rational navigation coordinate,
+  while program, composite, and color viewer state receives the attached playback playhead as
+  separate navigation context. The program viewer publishes its formatted comparison state through
+  the existing application owner, without moving a new context, reducer, API client, or Tauri
+  access into this workspace file. Shared timeline selection can become an exact
   replace or backspace target without locally mutating canonical timeline state.
 - `app/src/playback-controls.tsx`: Renders play, pause, stop, loop, JKL shuttle, variable exact
   speed, direction, single-frame, exact seek, and bounded latest-target scrub controls through the
   application-owned generated command. It serializes interactions, follows only canonical returned
   playhead state, inspects exact playback state at a bounded cadence only while playing,
   ignores editable keyboard targets, and communicates exact playhead and scheduling clocks, rate,
-  direction, loop, continuity, drop, visual, audio, synchronization, comparison, failure, pending,
-  and explicit degraded-output state without importing Tauri or claiming rendered pixels or audio.
+  direction, loop, continuity, drop, visual, audio, synchronization, live application-owned program
+  comparison, failure, pending, and explicit degraded-output state without importing Tauri or
+  claiming rendered pixels or audio.
 - `app/src/playback-transport.ts`: Defines transport-neutral pure JKL and Space command derivation,
   exact half-open-range navigation mapping, rational time and rate formatting, fixed variable-rate options, and complete user-facing
   labels for every engine playback degradation code.
@@ -569,6 +579,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/viewer-overlays.ts`: Defines the frozen seven-kind overlay catalog, immutable visibility
   state, deterministic custom inset geometry, and ordered visible projection without importing
   navigation, playback, comparison, or status-display ownership.
+- `app/src/viewer-comparison.ts`: Defines the frozen single, compare, split, wipe, difference,
+  reference, and snapshot catalog; immutable exact native frame identities and optional separate
+  rational navigation contexts; capture and availability gates; bounded split or wipe position; orientation; and
+  deterministic live state formatting without importing React, Tauri, playback, project, pixel, or
+  transport ownership.
 - `app/src/timeline-workspace.ts`: Strictly projects the embedded canonical revision 2 timeline
   document into a deeply frozen canvas model with exact rational source and record ranges, stable
   identities and relationships, complete caption text, language, speaker, style, timeline
@@ -704,10 +719,16 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   never constructs an encoded image, blob URL, pixel readback, or webview frame path. Its composed
   viewer shell consumes one frozen local contract for fit, bounded zoom, directional pan, exact
   1:1 pixel intent, browser-synchronized fullscreen, cinema layout, and role-addressed external
-  display intent without importing or mutating playback, comparison, or editorial feedback. A
+  display intent without mutating playback or editorial feedback. A
   separate frozen local overlay contract renders pointer-transparent safe-area, guide, grid, ruler,
   center, aspect, and custom geometry above the same transformed frame while preserving navigation
-  and excluding timecode and status displays. Its composed
+  and excluding timecode and status displays. A third frozen local comparison contract captures
+  only exact native surface, frame, extent, display-intent, and optional rational navigation context,
+  gates modes on available captures, and renders accessible controls plus pointer-transparent mode,
+  identity, orientation, and divider evidence through the same transform. It never retains or
+  fabricates GPU textures, comparison pixels, decoded media, or project state. The program viewer
+  publishes only its deterministic formatted comparison summary through an optional callback. Its
+  composed
   `SourceMonitor` owns shell-local media-library and monitor state, exposes load, exact seek, mark,
   clear, refresh, and unload controls, publishes every replacement monitor snapshot to its caller,
   refreshes after project revision changes, and labels the retained source session as separate from
@@ -775,7 +796,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   transition handle marks, timing and alignment forms, typed effect parameter controls, marker list
   and editor controls, and
   responsive 16:9 native viewer reservations plus bounded navigation controls, clipped transforms,
-  pixel-mode fidelity intent, fullscreen, and cinema presentation. Timeline rows use canonical variable height, compact two-row track controls,
+  pixel-mode fidelity intent, fullscreen, cinema presentation, compact comparison capture and mode
+  controls, transformed exact-identity badges, bounded split or wipe controls, difference intent,
+  and pointer-transparent dividers beneath the existing overlay layer. Timeline rows use canonical variable height, compact two-row track controls,
   disabled output presentation, and visible command failures. It also defines compact ready, stale,
   and empty source-monitor
   controls with exact state details and responsive action groups. The timeline edit console adds
@@ -812,7 +835,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   complete fit, zoom, pan, 1:1, fullscreen, cinema, and external-display-intent viewer control
   consumer while excluding C002 playback navigation ownership. It also freezes the
   editing playback consumer, application-owned generated route, complete required action set,
-  exact state categories, and absence of direct Tauri or API-client ownership in the component.
+  exact state categories, and absence of direct Tauri or API-client ownership in the component. It
+  also freezes comparison catalog consumption, exact source and playback temporal wiring, program
+  summary publication through the existing application owner, live playback summary consumption,
+  comparison presentation styles, and continued state-free workspace projection.
 - `app/tests/playback-transport.test.ts`: Proves exact signed JKL rate cycling, K pause, Space
   play-or-pause intent, half-open exact seek and scrub coordinate mapping, rational time and rate
   formatting, and explicit unavailable-output labels.
@@ -822,6 +848,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/viewer-overlays.test.ts`: Proves the complete frozen overlay catalog, deterministic
   custom geometry, immutable visibility changes, ordered projection, and absence of navigation,
   playback, timecode, and status state.
+- `app/tests/viewer-comparison.test.ts`: Proves the complete seven-mode catalog, immutable native
+  frame and separate rational navigation-context captures, missing-frame and missing-reference
+  gating, bounded divider position, orientation, snapshot identity, and deterministic exact current
+  and captured summaries.
 - `app/tests/timeline-workspace.test.ts`: Verifies strict canonical revision handling, exact track,
   item, source and record range, group, link, selection, target, lock, output, synchronization, and
   transition preservation, variable height, external global-start placement, deterministic
@@ -1865,6 +1895,16 @@ state instead of appearing routed. Because no editor or playback bridge publishe
 signal status remains explicitly unobserved and no amplitude is inferred. Viewer consequence DOM
 remains outside the native child placement host and does not alter the strict geometry-only Tauri
 payload.
+Viewer comparison follows the same application boundary. Each `NativeViewport` combines the real
+native diagnostic snapshot with a separate exact source-monitor or attached-playback navigation
+coordinate to build one immutable shell identity. Capture actions retain that identity only, and
+mode admission requires
+the matching current and captured visual evidence, and split or wipe adjustment stays bounded
+presentation state. Navigation and overlays remain independent, the native child stays mounted,
+and the transformed pointer-transparent comparison layer communicates mode and identity without
+copying or synthesizing pixels. The program viewer publishes its deterministic formatted summary
+through `ApplicationProvider`, and `PlaybackControls` displays that live comparison beside the
+canonical playback visual, audio, synchronization, timing, and degradation fields.
 The same canvas supplements clip items from the snapshot's canonical graph and attached audio
 automation, and it hydrates real media previews through the existing freshness-fenced Tauri owner.
 Shared clip activation remains an application selection reference, not an authored timeline edit.
@@ -1971,6 +2011,12 @@ of open runtime behavior.
   sample clocks, channel order, route intent, audibility, and continuity, and labels live signal
   telemetry unobserved until a real runtime owner publishes readings. Feedback DOM may not enter or
   expand the native viewport placement payload.
+- Viewer comparison is presentation-only and captures immutable shell diagnostics rather than GPU
+  textures. Reference-dependent modes require an exact native reference identity, snapshot view
+  requires an exact native snapshot identity, and unavailable current pixels or temporal context
+  remain explicit. Comparison controls, summaries, and DOM may not author project state, drive
+  playback, alter display intent, copy pixels, retain native textures, or expand the strict
+  geometry-only viewport payload.
 - Nested open paths are root-anchored transient presentation state and may advance only through a
   currently visible clip whose source is the next timeline. Candidate placement rejects self or
   recursive dependency cycles, exact duration conversion gates replacement, and compound action
@@ -2480,6 +2526,16 @@ loop, JKL shuttle, exact variable speed, direction, and frame-step controls, plu
 temporal, visual, audio, synchronization, comparison, pending, failure, and degradation readouts.
 The current production runtime is intentionally timing-only and reports unavailable viewport pixels
 and audio output instead of claiming decoded presentation or samples.
+Every native viewer role now also owns one frozen comparison presentation with single, compare,
+split, wipe, difference, reference, and snapshot modes. Capture controls preserve exact native
+surface generation, frame sequence, physical extent, display intent, and available source or
+playback rational navigation time, explicitly labeled as unbound from the native frame; missing
+native evidence keeps dependent modes disabled. The program summary crosses the existing
+application owner into playback controls, while navigation, overlays,
+external-display intent, canonical project state, playback commands, and the placement-only Tauri
+payload remain unchanged. The shell does not retain reference textures or perform scene-linear
+difference rendering, and it labels that native render-result binder gap rather than simulating
+pixels in React.
 The editing view now also parses the snapshot's canonical timeline document into a frozen
 identity-preserving canvas with sticky headers, an adaptive ruler, record-positioned tracks and
 items, a frame-snapped playhead, an explicit range, native scrolling, pointer-anchored zoom, and

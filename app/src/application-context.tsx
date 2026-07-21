@@ -36,6 +36,11 @@ import type {
 import type { SourceMonitorSnapshot } from "./project-lifecycle.ts";
 import type { TimelineEditorialFeedback } from "./timeline-editorial-feedback.ts";
 import { classifyDesktopTransportError } from "./transport.ts";
+import {
+  createViewerFrameIdentity,
+  formatViewerComparisonState,
+  initialViewerComparison,
+} from "./viewer-comparison.ts";
 
 export type ApplicationPanelRenderer = ComponentType;
 
@@ -68,9 +73,15 @@ export interface ApplicationContextValue {
   readonly setEditorialFeedback: (
     feedback: TimelineEditorialFeedback | null,
   ) => void;
+  readonly programComparisonSummary: string;
+  readonly setProgramComparisonSummary: (summary: string) => void;
 }
 
 const ApplicationContext = createContext<ApplicationContextValue | null>(null);
+const INITIAL_PROGRAM_COMPARISON_SUMMARY = formatViewerComparisonState(
+  initialViewerComparison(),
+  createViewerFrameIdentity("program", null, null),
+);
 
 export interface ApplicationProviderProps {
   readonly registry: ApplicationRegistry<ApplicationPanelRenderer>;
@@ -97,6 +108,9 @@ export function ApplicationProvider({
     useState<SourceMonitorSnapshot | null>(null);
   const [editorialFeedback, setEditorialFeedback] =
     useState<TimelineEditorialFeedback | null>(null);
+  const [programComparisonSummary, setProgramComparisonSummary] = useState(
+    INITIAL_PROGRAM_COMPARISON_SUMMARY,
+  );
   const editorProjectRef = useRef(editorProject);
   const editorRequestRevision = useRef(0);
   const editorTransactionRevision = useRef(0);
@@ -380,6 +394,8 @@ export function ApplicationProvider({
         setSourceMonitor,
         editorialFeedback,
         setEditorialFeedback,
+        programComparisonSummary,
+        setProgramComparisonSummary,
       }}
     >
       {children}

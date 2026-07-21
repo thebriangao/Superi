@@ -16,6 +16,7 @@ import {
 } from "./editor-project.ts";
 import { TimelineWorkspace } from "./timeline-workspace.tsx";
 import { PlaybackControls } from "./playback-controls.tsx";
+import type { ViewerTemporalContext } from "./viewer-comparison.ts";
 
 export function EditingWorkspacePanel() {
   const {
@@ -28,9 +29,11 @@ export function EditingWorkspacePanel() {
     setSourceMonitor,
     editorialFeedback,
     setEditorialFeedback,
+    setProgramComparisonSummary,
     state,
   } = useApplication();
   const snapshot = editorProject.snapshot;
+  const playbackTemporalContext = playbackViewerTemporalContext(snapshot);
   const mutateTracks = useCallback(
     async (mutations: readonly TimelineTrackMutation[]) => {
       await executeProjectActions([
@@ -64,6 +67,8 @@ export function EditingWorkspacePanel() {
           role="program"
           label="Program"
           feedback={editorialFeedback?.program ?? null}
+          temporalContext={playbackTemporalContext}
+          onComparisonStateChange={setProgramComparisonSummary}
         />
       </div>
       <PlaybackControls />
@@ -167,7 +172,11 @@ export function CompositingWorkspacePanel() {
       project={editorProject}
       refresh={refreshEditorProject}
     >
-      <NativeViewport role="composite" label="Composite" />
+      <NativeViewport
+        role="composite"
+        label="Composite"
+        temporalContext={playbackViewerTemporalContext(snapshot)}
+      />
       {snapshot ? (
         <>
           <div className="editor-summary-grid">
@@ -218,7 +227,11 @@ export function ColorWorkspacePanel() {
       project={editorProject}
       refresh={refreshEditorProject}
     >
-      <NativeViewport role="color" label="Color" />
+      <NativeViewport
+        role="color"
+        label="Color"
+        temporalContext={playbackViewerTemporalContext(snapshot)}
+      />
       {snapshot ? (
         <>
           <div className="editor-summary-grid">
@@ -259,6 +272,22 @@ export function ColorWorkspacePanel() {
       ) : null}
     </WorkspaceSurface>
   );
+}
+
+function playbackViewerTemporalContext(
+  snapshot: EditorProjectPresentation["snapshot"],
+): ViewerTemporalContext | null {
+  const playback = snapshot?.playback;
+  if (playback?.status !== "attached" || playback.latest === null) {
+    return null;
+  }
+  const playhead = playback.latest.playhead;
+  return {
+    owner: "playback",
+    value: playhead.value,
+    timebaseNumerator: playhead.timebase.numerator,
+    timebaseDenominator: playhead.timebase.denominator,
+  };
 }
 
 export function AudioWorkspacePanel() {

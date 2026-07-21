@@ -60,8 +60,8 @@ test("five professional workspaces are exact views over the existing application
   assert.match(applicationContext, /superi\.project\.command\.execute/);
   assert.match(workspaces, /role="program"[\s\S]*?label="Program"/);
   assert.match(workspaces, /<PlaybackControls \/>/);
-  assert.match(workspaces, /<NativeViewport role="composite" label="Composite" \/>/);
-  assert.match(workspaces, /<NativeViewport role="color" label="Color" \/>/);
+  assert.match(workspaces, /role="composite"[\s\S]*?label="Composite"/);
+  assert.match(workspaces, /role="color"[\s\S]*?label="Color"/);
   assert.match(workspaces, /executeProjectActions={executeProjectActions}/);
   for (const action of [
     "play",
@@ -254,6 +254,56 @@ test("editorial feedback crosses the existing application owner into viewers and
   assert.match(styles, /\.viewer-overlay--custom/);
   assert.match(styles, /\.editorial-audio-meters/);
   assert.match(styles, /\.editorial-audio-route\[data-route-state="routed"\]/);
+  assert.doesNotMatch(
+    workspaces,
+    /createContext|useReducer|useState|useSuperiApi|DesktopSuperiTransport|@tauri-apps/,
+  );
+});
+
+test("viewer comparisons preserve exact frame context through the real viewer and playback consumers", () => {
+  const applicationContext = read(
+    resolve(appRoot, "src/application-context.tsx"),
+  );
+  const workspaces = read(resolve(appRoot, "src/editor-workspaces.tsx"));
+  const nativeViewport = read(resolve(appRoot, "src/native-viewport.tsx"));
+  const viewerComparison = read(
+    resolve(appRoot, "src/viewer-comparison.ts"),
+  );
+  const playbackControls = read(
+    resolve(appRoot, "src/playback-controls.tsx"),
+  );
+  const styles = read(resolve(appRoot, "src/styles.css"));
+  const packageJson = JSON.parse(read(resolve(appRoot, "package.json")));
+
+  assert.match(applicationContext, /programComparisonSummary/);
+  assert.match(applicationContext, /setProgramComparisonSummary/);
+  assert.match(workspaces, /playbackViewerTemporalContext\(snapshot\)/);
+  assert.match(workspaces, /onComparisonStateChange=\{setProgramComparisonSummary\}/);
+  assert.match(nativeViewport, /VIEWER_COMPARISON_DEFINITIONS/);
+  assert.match(nativeViewport, /createViewerFrameIdentity/);
+  assert.match(nativeViewport, /applyViewerComparison/);
+  assert.match(nativeViewport, /viewerComparisonAvailable/);
+  assert.match(nativeViewport, /data-comparison-mode=\{comparison\.mode\}/);
+  assert.match(nativeViewport, /aria-label=\{`\$\{label\} viewer comparisons`\}/);
+  for (const label of [
+    "Compare",
+    "Split",
+    "Wipe",
+    "Difference",
+    "Reference",
+    "Snapshot",
+  ]) {
+    assert.match(viewerComparison, new RegExp(`label: "${label}"`));
+  }
+  assert.match(playbackControls, /programComparisonSummary/);
+  assert.doesNotMatch(
+    playbackControls,
+    /Single program output; no visual comparison mode is active/,
+  );
+  assert.match(styles, /\.native-viewport__comparison-toolbar/);
+  assert.match(styles, /\.native-viewport__comparison/);
+  assert.match(styles, /\.viewer-comparison__divider/);
+  assert.match(packageJson.scripts.test, /viewer-comparison\.test\.ts/);
   assert.doesNotMatch(
     workspaces,
     /createContext|useReducer|useState|useSuperiApi|DesktopSuperiTransport|@tauri-apps/,

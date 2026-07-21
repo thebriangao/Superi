@@ -31,6 +31,20 @@ import {
   visibleViewerOverlays,
   type ViewerOverlayDefinition,
 } from "./viewer-overlays.ts";
+import {
+  VIEWER_COMPARISON_DEFINITIONS,
+  applyViewerComparison,
+  comparisonUsesPosition,
+  createViewerFrameIdentity,
+  formatViewerComparisonState,
+  initialViewerComparison,
+  viewerComparisonAvailable,
+  type ViewerComparisonAction,
+  type ViewerComparisonRole,
+  type ViewerComparisonState,
+  type ViewerFrameIdentity,
+  type ViewerTemporalContext,
+} from "./viewer-comparison.ts";
 
 type ViewportSnapshot = {
   role: NativeViewerRole;
@@ -43,7 +57,7 @@ type ViewportSnapshot = {
   summary: string | null;
 };
 
-export type NativeViewerRole = "source" | "program" | "composite" | "color";
+export type NativeViewerRole = ViewerComparisonRole;
 
 export interface SourceMonitorProps {
   readonly projectRevision: number | null;
@@ -154,7 +168,12 @@ export function SourceMonitor({
 
   return (
     <div className="source-monitor" data-engine-state={monitor?.engine_state ?? "empty"}>
-      <NativeViewport role="source" label="Source" feedback={feedback} />
+      <NativeViewport
+        role="source"
+        label="Source"
+        feedback={feedback}
+        temporalContext={sourceViewerTemporalContext(monitor?.current ?? null)}
+      />
       <section className="source-monitor__controls" aria-label="Source monitor controls">
         <div className="source-monitor__heading">
           <div>
@@ -279,6 +298,19 @@ function formatSourceMonitorTime(time: SourceMonitorTime | null): string {
   return `${time.value} @ ${time.timebase_numerator}/${time.timebase_denominator}`;
 }
 
+function sourceViewerTemporalContext(
+  time: SourceMonitorTime | null,
+): ViewerTemporalContext | null {
+  return time === null
+    ? null
+    : {
+        owner: "source",
+        value: time.value,
+        timebaseNumerator: time.timebase_numerator,
+        timebaseDenominator: time.timebase_denominator,
+      };
+}
+
 function SourceMonitorDetail({ label, value }: { readonly label: string; readonly value: string }) {
   return (
     <div>
@@ -292,12 +324,16 @@ export interface NativeViewportProps {
   readonly role: NativeViewerRole;
   readonly label: string;
   readonly feedback?: TimelineViewerFeedback | null;
+  readonly temporalContext?: ViewerTemporalContext | null;
+  readonly onComparisonStateChange?: (summary: string) => void;
 }
 
 export function NativeViewport({
   role,
   label,
   feedback = null,
+  temporalContext = null,
+  onComparisonStateChange,
 }: NativeViewportProps) {
   const shell = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLElement>(null);
@@ -305,9 +341,11 @@ export function NativeViewport({
   const [summary, setSummary] = useState<string | null>(null);
   const [navigation, setNavigation] = useState(() => initialViewerNavigation(role));
   const [overlays, setOverlays] = useState(initialViewerOverlays);
+  const [comparison, setComparison] = useState(initialViewerComparison);
 
   useEffect(() => {
     setNavigation(initialViewerNavigation(role));
+    setComparison(initialViewerComparison());
   }, [role]);
 
   useEffect(() => {
@@ -397,10 +435,22 @@ export function NativeViewport({
     : snapshot
       ? `${label} · ${snapshot.displayIntent} · ${snapshot.phase} · ${snapshot.physicalWidth}×${snapshot.physicalHeight} · frame ${snapshot.frameSequence}`
       : "Starting native GPU output";
+  const currentFrame = createViewerFrameIdentity(role, snapshot, temporalContext);
+  const comparisonSummary = formatViewerComparisonState(comparison, currentFrame);
   const transform = viewerTransform(navigation);
   const updateNavigation = (action: Parameters<typeof applyViewerNavigation>[1]) => {
     setNavigation((current) => applyViewerNavigation(current, action));
   };
+  const updateComparison = (action: ViewerComparisonAction) => {
+    setComparison((current) =>
+      applyViewerComparison(current, action, currentFrame),
+    );
+  };
+
+  useEffect(() => {
+    onComparisonStateChange?.(comparisonSummary);
+  }, [comparisonSummary, onComparisonStateChange]);
+
   const toggleFullscreen = async () => {
     try {
       if (document.fullscreenElement === shell.current) {
@@ -420,6 +470,7 @@ export function NativeViewport({
       ref={shell}
       data-presentation={navigation.presentation}
       data-scale-mode={navigation.scaleMode}
+      data-comparison-mode={comparison.mode}
     >
       <div className="native-viewport__toolbar" aria-label={`${label} viewer navigation`}>
         <button type="button" onClick={() => updateNavigation({ action: "fit" })}>Fit</button>
@@ -440,6 +491,82 @@ export function NativeViewport({
           })}
         >Cinema</button>
         <button type="button" aria-pressed={navigation.presentation === "fullscreen"} onClick={() => void toggleFullscreen()}>Fullscreen</button>
+      </div>
+      <div
+        className="native-viewport__comparison-toolbar"
+        aria-label={`${label} viewer comparisons`}
+      >
+        {VIEWER_COMPARISON_DEFINITIONS.map((definition) => (
+          <button
+            type="button"
+            key={definition.mode}
+            aria-pressed={comparison.mode === definition.mode}
+            disabled={
+              !viewerComparisonAvailable(
+                comparison,
+                currentFrame,
+                definition.mode,
+              )
+            }
+            onClick={() =>
+              updateComparison({ action: "mode", mode: definition.mode })
+            }
+          >
+            {definition.label}
+          </button>
+        ))}
+        <span className="native-viewport__comparison-captures">
+          <button
+            type="button"
+            disabled={currentFrame.visual === null}
+            onClick={() => updateComparison({ action: "capture_reference" })}
+          >
+            {comparison.reference === null ? "Capture reference" : "Update reference"}
+          </button>
+          <button
+            type="button"
+            disabled={currentFrame.visual === null}
+            onClick={() => updateComparison({ action: "capture_snapshot" })}
+          >
+            {comparison.snapshot === null ? "Capture snapshot" : "Update snapshot"}
+          </button>
+        </span>
+        {comparisonUsesPosition(comparison.mode) ? (
+          <div className="native-viewport__comparison-position">
+            <label className="native-viewport__comparison-slider">
+              <span>{comparison.orientation} boundary</span>
+              <input
+                type="range"
+                min="5"
+                max="95"
+                step="1"
+                value={Math.round(comparison.position * 100)}
+                aria-label={`${label} comparison boundary`}
+                onChange={(event) =>
+                  updateComparison({
+                    action: "position",
+                    position: Number(event.target.value) / 100,
+                  })
+                }
+              />
+            </label>
+            <output>{Math.round(comparison.position * 100)}%</output>
+            <button
+              type="button"
+              onClick={() =>
+                updateComparison({
+                  action: "orientation",
+                  orientation:
+                    comparison.orientation === "vertical"
+                      ? "horizontal"
+                      : "vertical",
+                })
+              }
+            >
+              {comparison.orientation === "vertical" ? "Use horizontal" : "Use vertical"}
+            </button>
+          </div>
+        ) : null}
       </div>
       <div className="native-viewport__overlay-toolbar" aria-label={`${label} viewer overlays`}>
         {OVERLAY_DEFINITIONS.map((overlay) => (
@@ -463,6 +590,23 @@ export function NativeViewport({
           style={{ transform: transform.transform, imageRendering: transform.imageRendering }}
         />
         <div
+          className="native-viewport__comparison"
+          role="img"
+          aria-label={comparisonSummary}
+          data-comparison-mode={comparison.mode}
+          data-comparison-available={viewerComparisonAvailable(
+            comparison,
+            currentFrame,
+            comparison.mode,
+          )}
+          style={{ transform: transform.transform }}
+        >
+          <ViewerComparisonPresentation
+            state={comparison}
+            current={currentFrame}
+          />
+        </div>
+        <div
           className="native-viewport__overlays"
           aria-label={`${label} active overlays`}
           style={{ transform: transform.transform }}
@@ -473,11 +617,83 @@ export function NativeViewport({
         </div>
       </div>
       <span className="native-viewport__status" role="status" aria-live="polite">
-        {status} · {navigation.scaleMode} {Math.round(navigation.scale * 100)}% · pan {navigation.panX},{navigation.panY} · {navigation.presentation} · {navigation.externalDisplayIntent}
+        {status} · {navigation.scaleMode} {Math.round(navigation.scale * 100)}% · pan {navigation.panX},{navigation.panY} · {navigation.presentation} · {navigation.externalDisplayIntent} · {comparisonSummary}
       </span>
       {feedback ? <ViewerEditorialFeedback feedback={feedback} label={label} /> : null}
     </div>
   );
+}
+
+function ViewerComparisonPresentation({
+  state,
+  current,
+}: {
+  readonly state: ViewerComparisonState;
+  readonly current: ViewerFrameIdentity;
+}) {
+  if (state.mode === "single") return null;
+  const captured = state.mode === "snapshot" ? state.snapshot : state.reference;
+  const showCurrent =
+    state.mode === "compare" ||
+    state.mode === "split" ||
+    state.mode === "wipe" ||
+    state.mode === "difference";
+  const showDivider =
+    state.mode === "compare" || comparisonUsesPosition(state.mode);
+  const dividerOrientation =
+    state.mode === "compare" ? "vertical" : state.orientation;
+  const dividerPosition =
+    state.mode === "compare"
+      ? "50%"
+      : `${Math.round(state.position * 100)}%`;
+  const dividerStyle =
+    dividerOrientation === "vertical"
+      ? { left: dividerPosition }
+      : { top: dividerPosition };
+  return (
+    <>
+      <span className="viewer-comparison__mode">{comparisonModeLabel(state.mode)}</span>
+      {showCurrent ? (
+        <span className="viewer-comparison__identity viewer-comparison__identity--current">
+          <b>Current</b>
+          <code>{viewerFrameLabel(current)}</code>
+        </span>
+      ) : null}
+      {captured ? (
+        <span className="viewer-comparison__identity viewer-comparison__identity--captured">
+          <b>{state.mode === "snapshot" ? "Snapshot" : "Reference"}</b>
+          <code>{viewerFrameLabel(captured)}</code>
+        </span>
+      ) : null}
+      {showDivider ? (
+        <i
+          className="viewer-comparison__divider"
+          aria-hidden="true"
+          data-orientation={dividerOrientation}
+          style={dividerStyle}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function comparisonModeLabel(mode: ViewerComparisonState["mode"]): string {
+  return (
+    VIEWER_COMPARISON_DEFINITIONS.find(
+      (definition) => definition.mode === mode,
+    )?.label ?? "Single"
+  );
+}
+
+function viewerFrameLabel(frame: ViewerFrameIdentity): string {
+  const visual = frame.visual;
+  const visualLabel = visual
+    ? `s${visual.surfaceGeneration} f${visual.frameSequence}`
+    : "native unavailable";
+  const temporalLabel = frame.temporal
+    ? `${frame.temporal.owner} context ${frame.temporal.value} @ ${frame.temporal.timebaseNumerator}/${frame.temporal.timebaseDenominator}`
+    : "time unavailable";
+  return `${visualLabel} · ${temporalLabel}`;
 }
 
 function ViewerOverlay({ overlay }: { readonly overlay: ViewerOverlayDefinition }) {

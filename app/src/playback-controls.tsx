@@ -17,7 +17,11 @@ import {
 } from "./playback-transport.ts";
 
 export function PlaybackControls() {
-  const { editorProject, executePlaybackTransport } = useApplication();
+  const {
+    editorProject,
+    executePlaybackTransport,
+    programComparisonSummary,
+  } = useApplication();
   const playback = editorProject.snapshot?.playback ?? null;
   const snapshot =
     playback?.status === "attached" ? playback.latest : null;
@@ -356,7 +360,7 @@ export function PlaybackControls() {
         />
         <PlaybackDetail
           label="Comparison state"
-          value="Single program output; no visual comparison mode is active."
+          value={programComparisonSummary}
         />
         <PlaybackDetail
           label="Command state"
