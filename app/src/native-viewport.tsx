@@ -21,6 +21,11 @@ import type {
   TimelineViewerFeedback,
 } from "./timeline-editorial-feedback.ts";
 import {
+  DEFAULT_VIEWER_ANALYSIS_VIEW,
+  VIEWER_ANALYSIS_DEFINITIONS,
+  type ViewerAnalysisView,
+} from "./viewer-analysis.ts";
+import {
   applyViewerNavigation,
   initialViewerNavigation,
   viewerTransform,
@@ -53,6 +58,8 @@ import {
 
 type ViewportSnapshot = {
   role: NativeViewerRole;
+  selectedView: ViewerAnalysisView;
+  presentedView: ViewerAnalysisView | null;
   phase: string;
   physicalWidth: number;
   physicalHeight: number;
@@ -348,10 +355,17 @@ export function NativeViewport({
   const [navigation, setNavigation] = useState(() => initialViewerNavigation(role));
   const [overlays, setOverlays] = useState(initialViewerOverlays);
   const [comparison, setComparison] = useState(initialViewerComparison);
+  const [analysisView, setAnalysisView] = useState<ViewerAnalysisView>(
+    DEFAULT_VIEWER_ANALYSIS_VIEW,
+  );
+  const analysisViewRef = useRef(analysisView);
+  const publishViewport = useRef<() => void>(() => {});
+  analysisViewRef.current = analysisView;
 
   useEffect(() => {
     setNavigation(initialViewerNavigation(role));
     setComparison(initialViewerComparison());
+    setAnalysisView(DEFAULT_VIEWER_ANALYSIS_VIEW);
   }, [role]);
 
   useEffect(() => {
@@ -371,6 +385,7 @@ export function NativeViewport({
   useEffect(() => {
     const element = host.current;
     if (!element || !isTauri()) {
+      publishViewport.current = () => {};
       setSummary("Native GPU output is available in the desktop application.");
       return;
     }
@@ -384,6 +399,7 @@ export function NativeViewport({
         void invoke<ViewportSnapshot>("desktop_viewport_update", {
           placement: {
             role,
+            view: analysisViewRef.current,
             x: bounds.x,
             y: bounds.y,
             width: bounds.width,
@@ -408,15 +424,16 @@ export function NativeViewport({
           });
       });
     };
+    publishViewport.current = publish;
 
     const observer = new ResizeObserver(publish);
     observer.observe(element);
     window.addEventListener("resize", publish);
     document.addEventListener("visibilitychange", publish);
-    publish();
 
     return () => {
       disposed = true;
+      publishViewport.current = () => {};
       cancelAnimationFrame(animationFrame);
       observer.disconnect();
       window.removeEventListener("resize", publish);
@@ -425,6 +442,7 @@ export function NativeViewport({
       void invoke("desktop_viewport_update", {
         placement: {
           role,
+          view: analysisViewRef.current,
           x: Math.max(0, bounds.x),
           y: Math.max(0, bounds.y),
           width: 0,
@@ -436,10 +454,14 @@ export function NativeViewport({
     };
   }, [role]);
 
+  useEffect(() => {
+    publishViewport.current();
+  }, [analysisView, role]);
+
   const status = summary
     ? summary
     : snapshot
-      ? `${label} · ${snapshot.displayIntent} · ${snapshot.phase} · ${snapshot.physicalWidth}×${snapshot.physicalHeight} · frame ${snapshot.frameSequence}`
+      ? `${label} · ${snapshot.displayIntent} · selected ${snapshot.selectedView} · presented ${snapshot.presentedView ?? "none"} · ${snapshot.phase} · ${snapshot.physicalWidth}×${snapshot.physicalHeight} · frame ${snapshot.frameSequence}`
       : "Starting native GPU output";
   const currentFrame = createViewerFrameIdentity(role, snapshot, temporalContext);
   const comparisonSummary = formatViewerComparisonState(comparison, currentFrame);
@@ -487,6 +509,7 @@ export function NativeViewport({
       data-presentation={navigation.presentation}
       data-scale-mode={navigation.scaleMode}
       data-comparison-mode={comparison.mode}
+      data-analysis-view={analysisView}
     >
       <div className="native-viewport__toolbar" aria-label={`${label} viewer navigation`}>
         <button type="button" onClick={() => updateNavigation({ action: "fit" })}>Fit</button>
@@ -584,6 +607,19 @@ export function NativeViewport({
           </div>
         ) : null}
       </div>
+      <div className="native-viewport__overlay-toolbar" aria-label={`${label} viewer analysis`}>
+        {VIEWER_ANALYSIS_DEFINITIONS.map((definition) => (
+          <button
+            type="button"
+            key={definition.view}
+            title={definition.description}
+            aria-pressed={analysisView === definition.view}
+            onClick={() => setAnalysisView(definition.view)}
+          >
+            {definition.label}
+          </button>
+        ))}
+      </div>
       <div className="native-viewport__overlay-toolbar" aria-label={`${label} viewer overlays`}>
         {OVERLAY_DEFINITIONS.map((overlay) => (
           <button
@@ -633,7 +669,7 @@ export function NativeViewport({
         </div>
       </div>
       <span className="native-viewport__status" role="status" aria-live="polite">
-        {status} · {navigation.scaleMode} {Math.round(navigation.scale * 100)}% · pan {navigation.panX},{navigation.panY} · {navigation.presentation} · {navigation.externalDisplayIntent} · {comparisonSummary}
+        {status} · requested {analysisView} · {navigation.scaleMode} {Math.round(navigation.scale * 100)}% · pan {navigation.panX},{navigation.panY} · {navigation.presentation} · {navigation.externalDisplayIntent} · {comparisonSummary}
       </span>
       <dl
         className="editor-detail-list compact-details"

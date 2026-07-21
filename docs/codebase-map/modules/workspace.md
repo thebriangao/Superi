@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 8328c0c83c97b79f3cb6602d920ac5dd59c44e21361ccf1d1dc6fd26efc90df8
-source_files: 288
+source_hash: 63e81af767fdda02a24ef012ae45a5b5684c114251e5238160fae65f61276df7
+source_files: 291
 mapped_at_commit: working-tree
 ---
 
@@ -513,6 +513,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   split, wipe, difference, reference, and snapshot views with exact native frame identity, separate
   temporal navigation context, capture gating, live playback communication, and preserved native
   IPC ownership.
+- `docs/checkpoints/P3.W05.C007.md`: Durable implementation evidence for GPU-resident alpha,
+  individual-channel, luminance, false-color, and display-linear clipping inspection, exact
+  selected-versus-presented state, and preserved canonical scene and display meaning.
 
 ### Production desktop application
 
@@ -525,8 +528,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
   framework, editor-workspace, timeline-canvas, timeline-nesting, timeline-multicam, timeline-clip,
   timeline-transition, caption projection, exchange, and authoring, editorial-feedback, exact
-  playback transport, viewer navigation, overlay, comparison, and viewer-status helper contracts,
-  and Tauri commands.
+  playback transport, viewer navigation, overlay, comparison, viewer-status, and analysis helper
+  contracts, and Tauri commands.
 - `app/src/api.ts`: Re-exports the complete canonical generated TypeScript contract and constructs
   one frozen `SuperiApiBindings` surface around an injected `SuperiTransport` and `SuperiClient`.
 - `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
@@ -593,6 +596,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   label projection, selects the exact active program item, and reports source, record, identity,
   relationships, playback, physical drops, visual, audio, comparison, degradation, failure, and
   editorial intent without accepting a command, setter, transport, or authored state.
+- `app/src/viewer-analysis.ts`: Defines the frozen eight-view image and diagnostic catalog, stable
+  cross-boundary codes, exact labels and semantics, image default, and fail-closed lookup without
+  owning authored, navigation, overlay, playback, comparison, or display-transform state.
 - `app/src/timeline-workspace.ts`: Strictly projects the embedded canonical revision 2 timeline
   document into a deeply frozen canvas model with exact rational source and record ranges, stable
   identities and relationships, complete caption text, language, speaker, style, timeline
@@ -724,14 +730,17 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   The component submits only through its injected application callback and takes no transport,
   project-history, timeline, or graph mutation ownership.
 - `app/src/native-viewport.tsx`: Reserves role-addressed native output rectangles and publishes only
-  role, geometry, scale, visibility, and returned status to the shell-local viewport command; it
+  role, analysis code, geometry, scale, visibility, and returned status to the shell-local viewport command; it
   never constructs an encoded image, blob URL, pixel readback, or webview frame path. Its composed
   viewer shell consumes one frozen local contract for fit, bounded zoom, directional pan, exact
   1:1 pixel intent, browser-synchronized fullscreen, cinema layout, and role-addressed external
   display intent without mutating playback or editorial feedback. A
   separate frozen local overlay contract renders pointer-transparent safe-area, guide, grid, ruler,
   center, aspect, and custom geometry above the same transformed frame while preserving navigation
-  and excluding timecode and status ownership. A third frozen local comparison contract captures
+  and excluding timecode and status ownership. A third frozen local catalog selects image, alpha,
+  red, green, blue, luminance, false-color, or clipping presentation, republishes the current code
+  through one resize and visibility observer, and reports requested, native-selected, and
+  last-presented state without moving pixel math into React. A fourth frozen local comparison contract captures
   only exact native surface, frame, extent, display-intent, and optional rational navigation context,
   gates modes on available captures, and renders accessible controls plus pointer-transparent mode,
   identity, orientation, and divider evidence through the same transform. It never retains or
@@ -829,9 +838,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   ownership seams, application framework composition, transport isolation, production workflow
   routing, and the hashed React bundle.
 - `app/tests/native-viewport-ipc-contract.test.mjs`: Freezes the shell-local viewport command as a
-  placement-only Tauri payload, verifies both React invocations use that command, and excludes
+  placement-and-analysis-control-only Tauri payload, verifies both React invocations use that command, and excludes
   webview image conversion or pixel-readback mechanisms from the consumer. It also proves viewer
-  and meter feedback remain outside the placement payload.
+  and meter feedback remain outside the placement payload and selected versus presented diagnostics
+  remain explicit.
 - `app/tests/application-framework.test.ts`: Verifies duplicate and reference validation, immutable
   routing and panel reconciliation, exact public-resource selection, local-first asynchronous API
   command delegation, shortcut normalization, and editable-target safety.
@@ -844,7 +854,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   command wiring, and the absence of direct transport ownership in the workspace. It also verifies
   transition command wiring through the same application-owned callback plus application-owned
   editorial feedback publication, viewer consumption, audio meter rendering, route-state styling,
-  and native IPC isolation. It also freezes the
+  native IPC isolation, accessible analysis selection, and selected-versus-presented status. It also freezes the
   complete fit, zoom, pan, 1:1, fullscreen, cinema, and external-display-intent viewer control
   consumer while excluding C002 playback navigation ownership. It freezes all nine viewer-status
   fields, application-owned projection, transformed-frame separation, exact role coverage, and
@@ -871,6 +881,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   continuous display frames, physical-drop separation, exact active source and ranges, grouping,
   linking, targeting, synchronization, selection, playback, visual, audio, comparison,
   source-monitor identity, explicit unavailable owners, frozen output, and input nonmutation.
+- `app/tests/viewer-analysis.test.ts`: Proves exact ordered view codes and labels, complete catalog
+  freezing, the image default, deterministic lookup, and fail-closed unknown selection.
 - `app/tests/timeline-workspace.test.ts`: Verifies strict canonical revision handling, exact track,
   item, source and record range, group, link, selection, target, lock, output, synchronization, and
   transition preservation, variable height, external global-start placement, deterministic
@@ -948,13 +960,15 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   on the public API, engine, shared concurrency, core, image, media-I/O, and Rust codec contracts,
   plus the pinned PNG decoder and data-URL encoder.
 - `app/src-tauri/src/viewport.rs`: Owns four role-addressed native child windows, checked
-  CSS-to-physical placement, per-role status, one dedicated GPU submission thread, managed canonical
-  RGBA16F results, immutable ACEScg-to-sRGB display intent, direct presentation, and
-  join-before-host-drop lifetime. Its Tauri placement DTO denies unknown fields, so frame payloads,
-  image data, and texture handles cannot enter the native presenter.
+  CSS-to-physical placement, strict analysis selection, selected and last-presented status, one
+  dedicated GPU submission thread, managed canonical RGBA16F results, immutable ACEScg-to-sRGB
+  display intent, direct analysis-aware presentation, and join-before-host-drop lifetime. Its Tauri
+  placement DTO denies unknown fields, so frame payloads, image data, and texture handles cannot
+  enter the native presenter.
 - `app/src-tauri/tests/viewer_presentation_contract.rs`: Freezes source, program, composite, and
   color role order plus canonical precision, alpha, scene meaning, terminal display meaning,
-  transform order, deterministic intent, arbitrary 8K extent, and invalid zero-extent behavior.
+  transform order, deterministic intent, arbitrary 8K extent, invalid zero-extent behavior, and the
+  exhaustive shell-to-color mapping and linear-light stage for all eight analysis codes.
 - `app/src-tauri/Cargo.toml`: Declares the `superi-desktop` library and binary, exact Tauri,
   serialization, image, and base64 pins, stable Rust edition, and downward-only lifecycle, engine,
   public API, media-I/O, image, and in-tree codec dependencies.
@@ -1866,6 +1880,16 @@ engine-introspection replacements continue through the same bounded ordered enve
 `app/src/transport.ts` implements the generated `SuperiTransport`, and `app/src/api.ts` remains the
 sole `SuperiClient` factory. React consumes the injected binding for validation, health, complete
 editor replacement state, and exact project commands without owning engine or project behavior.
+The native viewer path remains a separate shell-local control boundary. Each `NativeViewport`
+retains transient navigation, overlay, and analysis selection, then publishes only role, stable
+analysis code, CSS geometry, device scale, and visibility. `DesktopViewportState` converts geometry
+to physical pixels, records selected analysis separately from the nullable last-presented analysis,
+and queues one role-addressed command to the existing GPU submission thread. That owner maps the
+strict shell enum exhaustively to `superi-color::GpuDisplayView` and presents the unchanged managed
+RGBA16F texture through the existing ACEScg-to-sRGB intent. Image, alpha, channel, luminance, and
+false-color analysis enter before primary and transfer conversion; clipping observes display-linear
+RGB before transfer and attachment clamping. No pixels, texture handles, encoded images, authored
+state, playback commands, comparison state, or second GPU owner cross the Tauri seam.
 The editing workspace consumes the canonical timeline document already contained by the public
 editor snapshot. Its strict projection preserves exact authored identity, timing, grouping,
 targeting, locks, synchronization, and output intent, while local playhead, range, scroll, zoom,
@@ -2035,7 +2059,11 @@ of open runtime behavior.
   requires an exact native snapshot identity, and unavailable current pixels or temporal context
   remain explicit. Comparison controls, summaries, and DOM may not author project state, drive
   playback, alter display intent, copy pixels, retain native textures, or expand the strict
-  geometry-only viewport payload.
+  control-only viewport payload.
+- Viewer analysis is transient presentation-only state. The shell sends exactly one stable code,
+  native diagnostics distinguish selected from last-presented state, and pixel interpretation stays
+  on the production GPU display presenter. Navigation, overlays, playback, audio, comparison,
+  authored project state, canonical scene pixels, and frame IPC remain independent.
 - Nested open paths are root-anchored transient presentation state and may advance only through a
   currently visible clip whose source is the next timeline. Candidate placement rejects self or
   recursive dependency cycles, exact duration conversion gates replacement, and compound action
@@ -2558,10 +2586,16 @@ surface generation, frame sequence, physical extent, display intent, and availab
 playback rational navigation time, explicitly labeled as unbound from the native frame; missing
 native evidence keeps dependent modes disabled. The program summary crosses the existing
 application owner into playback controls, while navigation, overlays,
-external-display intent, canonical project state, playback commands, and the placement-only Tauri
-payload remain unchanged. The shell does not retain reference textures or perform scene-linear
+external-display intent, canonical project state, and playback commands remain unchanged. The
+control-only Tauri payload remains free of pixels and texture handles. The shell does not retain reference textures or perform scene-linear
 difference rendering, and it labels that native render-result binder gap rather than simulating
 pixels in React.
+Independently, the four native viewer roles present their existing managed canonical role textures
+through one GPU owner. They now select image, alpha, red, green, blue, luminance, fixed false-color,
+or display-linear clipping on the production `GpuDisplayPresenter`, retain navigation and overlays,
+and report requested, selected, queued, and last-presented state without frame IPC. Those initial
+textures remain placeholders until a later decoded timeline renderer binds canonical results, so
+this analysis path does not turn timing-only playback into decoded presentation.
 The editing view now also parses the snapshot's canonical timeline document into a frozen
 identity-preserving canvas with sticky headers, an adaptive ruler, record-positioned tracks and
 items, a frame-snapped playhead, an explicit range, native scrolling, pointer-anchored zoom, and
@@ -3009,6 +3043,10 @@ Keep editorial feedback derived from the exact active plan and canonical replace
 Preserve full multicam angle, switch, and policy identity, keep audio track and channel order stable,
 and retain route, audibility, and continuity meanings. Do not add numerical signal fields until a
 real runtime observation owner exists, and keep all feedback outside native placement IPC.
+Keep viewer analysis codes synchronized across the frozen TypeScript catalog, strict Tauri enum,
+and `GpuDisplayView`. Preserve selected versus last-presented diagnostics, scene-linear inspection
+before the display transform, clipping after display-linear conversion, the image compatibility
+constructor, canonical RGBA16F residency, and the absence of pixels or texture handles in IPC.
 Keep transition timing on canonical timeline offsets and processing intent on typed graph values.
 Handle inputs must retain exact decimal strings until safe public conversion, alignments must
 preserve total duration, opposite-edge transitions must reduce available capacity, and driven,

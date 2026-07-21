@@ -3,7 +3,7 @@
 use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
-use superi_color::gpu_display::GpuDisplayPresenter;
+use superi_color::gpu_display::{GpuDisplayPresenter, GpuDisplayView};
 use superi_color::transform_out::{OutputColorTransform, OutputTargetKind, OutputTransformOptions};
 use superi_color::working_space::WorkingSpace;
 use superi_concurrency::threads::{ExecutionDomain, ExecutionDomainThread};
@@ -99,6 +99,52 @@ impl DesktopViewerRole {
                 b: 0.2,
                 a: 1.0,
             },
+        }
+    }
+}
+
+/// Stable shell selection for GPU-resident viewer analysis.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DesktopViewerAnalysisView {
+    Image,
+    Alpha,
+    Red,
+    Green,
+    Blue,
+    Luminance,
+    FalseColor,
+    Clipping,
+}
+
+impl DesktopViewerAnalysisView {
+    pub const ALL: &'static [Self] = &[
+        Self::Image,
+        Self::Alpha,
+        Self::Red,
+        Self::Green,
+        Self::Blue,
+        Self::Luminance,
+        Self::FalseColor,
+        Self::Clipping,
+    ];
+
+    #[must_use]
+    pub const fn code(self) -> &'static str {
+        self.gpu_view().code()
+    }
+
+    #[must_use]
+    pub const fn gpu_view(self) -> GpuDisplayView {
+        match self {
+            Self::Image => GpuDisplayView::Image,
+            Self::Alpha => GpuDisplayView::Alpha,
+            Self::Red => GpuDisplayView::Red,
+            Self::Green => GpuDisplayView::Green,
+            Self::Blue => GpuDisplayView::Blue,
+            Self::Luminance => GpuDisplayView::Luminance,
+            Self::FalseColor => GpuDisplayView::FalseColor,
+            Self::Clipping => GpuDisplayView::Clipping,
         }
     }
 }
@@ -241,11 +287,12 @@ impl ViewerGpuRenderResult {
     }
 }
 
-/// Geometry and visibility published by the React workspace shell.
+/// Analysis selection, geometry, and visibility published by the React workspace shell.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DesktopViewportPlacement {
     role: DesktopViewerRole,
+    view: DesktopViewerAnalysisView,
     x: f64,
     y: f64,
     width: f64,
@@ -259,6 +306,8 @@ pub struct DesktopViewportPlacement {
 #[serde(rename_all = "camelCase")]
 pub struct DesktopViewportSnapshot {
     role: DesktopViewerRole,
+    selected_view: DesktopViewerAnalysisView,
+    presented_view: Option<DesktopViewerAnalysisView>,
     revision: u64,
     phase: String,
     physical_width: u32,
@@ -273,6 +322,8 @@ impl DesktopViewportSnapshot {
     fn for_role(role: DesktopViewerRole) -> Self {
         Self {
             role,
+            selected_view: DesktopViewerAnalysisView::Image,
+            presented_view: None,
             revision: 0,
             phase: "uninitialized".to_owned(),
             physical_width: 0,
@@ -306,6 +357,7 @@ impl From<Error> for DesktopViewportCommandError {
 enum GpuCommand {
     Present {
         role: DesktopViewerRole,
+        view: DesktopViewerAnalysisView,
         extent: ViewportExtent,
         revision: u64,
     },
@@ -489,6 +541,7 @@ impl DesktopViewportState {
             sender
                 .send(GpuCommand::Present {
                     role,
+                    view: placement.view,
                     extent: ViewportExtent::new(
                         geometry.width,
                         geometry.height,
@@ -503,6 +556,7 @@ impl DesktopViewportState {
                     )
                 })?;
             update_snapshot(&self.snapshots, role, |state| {
+                state.selected_view = placement.view;
                 state.phase = "queued".to_owned();
             });
         } else {
@@ -515,6 +569,7 @@ impl DesktopViewportState {
                     unavailable("hide_native_viewport", "the GPU viewport owner stopped")
                 })?;
             update_snapshot(&self.snapshots, role, |state| {
+                state.selected_view = placement.view;
                 state.phase = "hidden".to_owned();
             });
         }
@@ -655,6 +710,7 @@ fn gpu_loop(
         match command {
             GpuCommand::Present {
                 role,
+                view,
                 extent,
                 revision,
             } => {
@@ -679,11 +735,13 @@ fn gpu_loop(
                     &resources,
                     &submissions,
                     render_result,
+                    view,
                     extent,
                 )?;
                 update_snapshot(snapshots, role, |state| {
                     state.revision = state.revision.max(revision);
                     state.phase = "presenting".to_owned();
+                    state.presented_view = Some(view);
                     state.surface_generation = generation;
                     state.frame_sequence = sequence;
                     state.summary = None;
@@ -693,6 +751,7 @@ fn gpu_loop(
                 update_snapshot(snapshots, role, |state| {
                     state.revision = state.revision.max(revision);
                     state.phase = "hidden".to_owned();
+                    state.presented_view = None;
                 });
             }
             GpuCommand::Shutdown => break,
@@ -776,13 +835,15 @@ fn present_once<'device>(
     resources: &GpuResources<'device>,
     submissions: &GpuSubmissionQueue<'device>,
     render_result: &ViewerGpuRenderResult,
+    view: DesktopViewerAnalysisView,
     extent: ViewportExtent,
 ) -> Result<(u64, u64)> {
     let configuration = surface.configure(device, extent)?.clone();
-    let presenter = GpuDisplayPresenter::new(
+    let presenter = GpuDisplayPresenter::new_with_view(
         resources,
         render_result.intent.display_transform(),
         configuration.format,
+        view.gpu_view(),
     )?;
     let prepared = presenter.prepare_source(render_result.texture.clone())?;
     let frame = surface.acquire_frame(device)?;
@@ -892,12 +953,16 @@ fn native_error(operation: &'static str, source: tauri::Error) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use super::{DesktopViewerRole, DesktopViewportPlacement, PhysicalViewportGeometry};
+    use super::{
+        DesktopViewerAnalysisView, DesktopViewerRole, DesktopViewportPlacement,
+        PhysicalViewportGeometry,
+    };
 
     #[test]
     fn placement_converts_css_geometry_to_physical_pixels() {
         let geometry = PhysicalViewportGeometry::from_placement(DesktopViewportPlacement {
             role: DesktopViewerRole::Program,
+            view: DesktopViewerAnalysisView::Luminance,
             x: 10.25,
             y: 20.5,
             width: 960.0,
@@ -917,6 +982,7 @@ mod tests {
     fn hidden_placement_accepts_zero_extent_without_surface_configuration() {
         let geometry = PhysicalViewportGeometry::from_placement(DesktopViewportPlacement {
             role: DesktopViewerRole::Program,
+            view: DesktopViewerAnalysisView::Clipping,
             x: 0.0,
             y: 0.0,
             width: 0.0,

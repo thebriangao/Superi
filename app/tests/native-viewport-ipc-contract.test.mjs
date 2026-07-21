@@ -18,6 +18,7 @@ test("native viewport IPC accepts control placement only", () => {
   );
 
   assert.ok(placement, "viewport placement must reject unknown Tauri fields");
+  assert.match(placement[0], /\n\s*view: DesktopViewerAnalysisView,/);
   assert.match(placement[0], /\n\s*x: f64,/);
   assert.match(placement[0], /\n\s*y: f64,/);
   assert.match(placement[0], /\n\s*width: f64,/);
@@ -40,6 +41,14 @@ test("native viewport IPC accepts control placement only", () => {
     nativeViewport,
     /invoke<ViewportSnapshot>\(\s*"desktop_viewport_update",\s*\{\s*placement:\s*\{/,
   );
+  assert.equal(
+    (nativeViewport.match(/view: analysisViewRef\.current/g) ?? []).length,
+    2,
+  );
+  assert.match(nativeViewport, /selectedView: ViewerAnalysisView;/);
+  assert.match(nativeViewport, /presentedView: ViewerAnalysisView \| null;/);
+  assert.match(nativeViewport, /snapshot\.selectedView/);
+  assert.match(nativeViewport, /snapshot\.presentedView/);
   assert.doesNotMatch(
     nativeViewport,
     /data:image|createObjectURL|readPixels|toDataURL|transferToImageBitmap/i,

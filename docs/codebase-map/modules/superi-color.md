@@ -2,7 +2,7 @@
 module_id: superi-color
 source_paths:
   - open/crates/superi-color
-source_hash: d97f144ddbd37791298aa237f1f4dae60d86bd30cf0b0bdfe8db29b7908fbf7c
+source_hash: 1ab9eeb47c6817da5eb4c3a8da97e4d27e0050b67b752f287a8d90e1b98d7a0a
 source_files: 27
 mapped_at_commit: working-tree
 ---
@@ -21,11 +21,14 @@ Implemented ownership is narrower than the full color architecture described by
 `docs/phase-0-build-contracts.md`. Input and output transforms, transfer functions, primary
 conversion, working-space storage, LUTs, ICC validation and discovery, and stale-profile
 presentation checks are implemented. Managed GPU wide-gamut and native display transforms are
-implemented for canonical `Rgba16Float` textures. Engine foreground playback now consumes the CPU output transform
+implemented for canonical `Rgba16Float` textures. The native display transform now includes exact
+image, alpha, individual-channel, luminance, false-color, and display-linear clipping inspection.
+Engine foreground playback now consumes the CPU output transform
 for an explicit display branch. Engine render-export now invokes a separate caller-owned delivery
 stage and validates its color history, but no concrete export transform in this crate is wired.
-Executable ICC evaluation and concrete export conversion remain absent. The production shell now
-consumes the GPU display presenter through one native editing viewport.
+Executable ICC evaluation and concrete export conversion remain absent. The production shell
+consumes the GPU display presenter through four role-addressed native viewports and binds one
+explicit transient analysis view to every presentation.
 
 The crate owns color interpretation, transform policy, and explicit legal-range RGB normalization,
 but it does not own YUV matrix conversion, media decoding, image storage primitives, GPU device
@@ -49,7 +52,8 @@ selection, and invalidation only.
   allocation, pass encoding, submission, and fence-scoped ownership.
 - `open/crates/superi-color/src/gpu_display.rs`: direct canonical-texture sampling into native or
   managed display attachments, shader constants derived from one `OutputColorTransform`, checked
-  aspect fitting, sRGB attachment handling, and fence-scoped source retention.
+  aspect fitting, sRGB attachment handling, deterministic scene-linear and display-linear analysis
+  modes, and fence-scoped source retention.
 - `open/crates/superi-color/src/hdr.rs`: validated relative-light, encoded-signal, normalized PQ,
   and nit value types; SDR, PQ, and HLG transfer functions; and complete reference HLG display
   rendering.
@@ -88,8 +92,9 @@ selection, and invalidation only.
 - `open/crates/superi-color/tests/gpu_transform_contract.rs`: constructor and validation contracts
   plus native upload, compute, submission, fence, explicit export readback, and binary64 CPU parity
   proof for canonical `Rgba16Float` frames.
-- `open/crates/superi-color/tests/gpu_display_contract.rs`: frozen display metadata and
-  resolution-independent aspect-fit contract for the native presentation seam.
+- `open/crates/superi-color/tests/gpu_display_contract.rs`: frozen display metadata,
+  resolution-independent aspect fitting, stable analysis identity, compatibility construction, and
+  actual offscreen pixel parity for all eight analysis modes through the native presentation seam.
 - `open/crates/superi-color/tests/icc_contract.rs`: ICC structure and tag validation, atomic
   discovery, monitor binding and viewport state, native provider behavior, macOS discovery, and
   unsafe-boundary inventory checks.
@@ -141,11 +146,14 @@ allocates a canonical output texture, and returns an owned managed pass batch. S
 the source, output, bindings, pipeline, and pass resources through the returned fence without an
 ordinary CPU pixel path.
 
-The GPU display surface consists of `GpuDisplayPresenter`, `GpuDisplaySource`,
-`EncodedGpuDisplayFrame`, and `DisplayViewport`. Construction binds one explicit display
-transform and attachment format to the managed device lifetime. Encoding samples a canonical
-managed `Rgba16Float` texture directly, applies reference-derived gamut and sRGB operations,
-aspect-fits arbitrary extents, and retains the sampled source until its presentation fence retires.
+The GPU display surface consists of `GpuDisplayView`, `GpuDisplayPresenter`, `GpuDisplaySource`,
+`EncodedGpuDisplayFrame`, and `DisplayViewport`. `GpuDisplayView` fixes the stable `image`, `alpha`,
+`red`, `green`, `blue`, `luminance`, `false_color`, and `clipping` codes plus the source or display
+linear-light stage they inspect. The compatibility presenter constructor selects image, while
+`new_with_view` binds one explicit diagnostic interpretation, display transform, and attachment
+format to the managed device lifetime. Encoding samples a canonical managed `Rgba16Float` texture
+directly, applies reference-derived analysis, gamut, and sRGB operations, aspect-fits arbitrary
+extents, and retains the sampled source until its presentation fence retires.
 
 The transfer surface consists of `RelativeLight`, `EncodedSignal`, `NormalizedSignal`, `Nits`, and
 `HlgDisplayParameters`, plus `decode_relative_transfer`, `encode_relative_transfer`,
@@ -243,6 +251,16 @@ Numerically sensitive work uses a separate `Rgba32Float` owner. Promotion and qu
 windows, color tags, channel names, and metadata. They change only sample precision. GPU working
 frames use one `Rgba16Float` texture plane with the same color and alpha interpretation.
 
+The native GPU display path samples that canonical texture without mutation or readback. It
+unassociates nonzero alpha in shader float computation. Image view retains the original black-backed
+coverage; alpha and diagnostic views are opaque so inspected values are not multiplied twice.
+Alpha, individual channels, source CIE Y, and fixed false-color exposure bands are formed in the
+source scene-linear space before the unchanged gamut and transfer stages. Source CIE Y coefficients
+are derived from the actual source primaries through `WideGamutTransform`. Clipping instead
+classifies the configured display-linear result after primary and gamut conversion and before
+transfer encoding or attachment clamping: under range is blue, over range is red, simultaneous
+under and over range is magenta, and in-range output is destination-luminance gray.
+
 Configuration loading reads at most 1 MiB plus one detection byte, parses one strict schema and
 version, validates every declared space through `WorkingSpace`, canonicalizes aliases and role
 targets, and hashes normalized semantics in deterministic map order. A project selection stores the
@@ -306,6 +324,11 @@ integration contracts, including the canonical repository color fixture, remain 
 algorithm proofs. The fixture contract reads versioned artifacts directly and does not add a
 runtime dependency on the repository fixture generator.
 
+`superi-desktop::viewport` is the production GPU display consumer. One native GPU submission thread
+maps each strict shell selection to `GpuDisplayView`, constructs the presenter against the existing
+ACEScg-to-sRGB intent, and presents source, program, composite, and color role textures without
+frame IPC or readback. The shell keeps selected and last-presented analysis state distinct.
+
 `docs/unsafe-ffi.md` consumes the macOS boundary as an audit inventory, and
 `open/crates/superi-color/tests/icc_contract.rs` verifies that this inventory remains present.
 
@@ -318,6 +341,9 @@ runtime dependency on the repository fixture generator.
   drift fail closed. Project identity uses validated semantics, not JSON formatting.
 - Canonical CPU and GPU storage is premultiplied `Rgba16Float`. Binary32 is a distinct computation
   representation and cannot be constructed as canonical storage.
+- GPU analysis never changes the canonical texture or scene metadata. Image view preserves source
+  coverage, diagnostic views are opaque, zero-alpha RGB avoids division, source inspection precedes
+  the output transform, and clipping alone observes display-linear values before transfer encoding.
 - Working images require exactly the unqualified `R`, `G`, `B`, `A` channel order. Construction
   validates representation and interpretation but intentionally does not clamp sample payloads.
 - Input transforms require prior full-range RGB conversion. They do not silently choose YUV
@@ -356,7 +382,7 @@ runtime dependency on the repository fixture generator.
 
 ## Tests and verification
 
-The eleven integration suites cover the implemented CPU, GPU display, and presentation-state contracts:
+The twelve integration suites cover the implemented CPU, GPU display, and presentation-state contracts:
 
 - `open/crates/superi-color/tests/color_fixture_contract.rs` checks all eight canonical SDR,
   wide-gamut, PQ, HLG, alpha, f16, and f32 images through explicit input and output intent. It also
@@ -378,8 +404,9 @@ The eleven integration suites cover the implemented CPU, GPU display, and presen
   source validation, native compute submission and fence ordering, explicit export readback, and
   per-channel parity with the binary64 CPU reference after source half quantization.
 - `open/crates/superi-color/tests/gpu_display_contract.rs` checks centered 8K aspect fitting,
-  zero-extent rejection, canonical GPU source format, the exact display reference, and the explicit
-  sRGB target format.
+  zero-extent rejection, canonical GPU source format, the exact display reference, compatibility
+  image construction, stable view codes and stages, and actual per-channel offscreen parity for all
+  eight modes after RGBA16F source quantization.
 - `open/crates/superi-color/tests/input_transform_contract.rs` proves source-family distinctions,
   decode-before-primary-conversion order, explicit PQ reference white, canonical output, and
   binary16 overflow rejection.
@@ -414,8 +441,9 @@ contracts are implemented and extensively tested. The module is not yet a comple
 - Output transforms and rule evaluation remain CPU implementations that emit RGBA binary32
   artifacts. Engine foreground playback is a concrete display consumer, but executable ICC profile
   evaluation, project-configured rule persistence, concrete integer or YUV encoding, complete
-  complete HDR display and delivery GPU output transforms and concrete export conversion remain
-  absent. The implemented native presenter intentionally supports the current sRGB display slice.
+  HDR display and delivery GPU output transforms, and concrete export conversion remain absent. The
+  implemented native presenter intentionally supports the current sRGB display slice and its eight
+  deterministic inspection modes.
 - ICC profiles are validated and bound to presentation, but their matrix/TRC or LUT payloads are
   not evaluated. `MonitorAwareViewport` prevents stale profile use but does not color-convert the
   rendered texture by itself.
@@ -445,7 +473,7 @@ contracts are implemented and extensively tested. The module is not yet a comple
 ## Maintenance notes
 
 After any source change under `open/crates/superi-color`, rerun the mapping script's `files` and
-`hash` commands, update both metadata and prose, and run all nine contract suites. Any new source
+`hash` commands, update both metadata and prose, and run the complete contract suite. Any new source
 file must appear in the inventory.
 
 Changes to canonical image meaning must be reconciled with `superi-core` color and pixel tags,

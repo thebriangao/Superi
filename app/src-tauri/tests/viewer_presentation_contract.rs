@@ -1,6 +1,9 @@
+use superi_color::gpu_display::GpuDisplayView;
 use superi_core::color_space::ColorSpace;
 use superi_core::pixel::AlphaMode;
-use superi_desktop::viewport::{DesktopViewerRole, ViewerPresentationIntent};
+use superi_desktop::viewport::{
+    DesktopViewerAnalysisView, DesktopViewerRole, ViewerPresentationIntent,
+};
 use superi_gpu::wgpu;
 
 #[test]
@@ -65,4 +68,77 @@ fn four_viewers_share_one_reproducible_scene_to_display_contract() {
         invalid.category(),
         superi_core::error::ErrorCategory::InvalidInput
     );
+}
+
+#[test]
+fn viewer_analysis_codes_map_exhaustively_to_their_color_stage() {
+    assert_eq!(
+        DesktopViewerAnalysisView::ALL,
+        &[
+            DesktopViewerAnalysisView::Image,
+            DesktopViewerAnalysisView::Alpha,
+            DesktopViewerAnalysisView::Red,
+            DesktopViewerAnalysisView::Green,
+            DesktopViewerAnalysisView::Blue,
+            DesktopViewerAnalysisView::Luminance,
+            DesktopViewerAnalysisView::FalseColor,
+            DesktopViewerAnalysisView::Clipping,
+        ]
+    );
+
+    let expected = [
+        (
+            DesktopViewerAnalysisView::Image,
+            GpuDisplayView::Image,
+            "image",
+            "source_scene_linear",
+        ),
+        (
+            DesktopViewerAnalysisView::Alpha,
+            GpuDisplayView::Alpha,
+            "alpha",
+            "source_scene_linear",
+        ),
+        (
+            DesktopViewerAnalysisView::Red,
+            GpuDisplayView::Red,
+            "red",
+            "source_scene_linear",
+        ),
+        (
+            DesktopViewerAnalysisView::Green,
+            GpuDisplayView::Green,
+            "green",
+            "source_scene_linear",
+        ),
+        (
+            DesktopViewerAnalysisView::Blue,
+            GpuDisplayView::Blue,
+            "blue",
+            "source_scene_linear",
+        ),
+        (
+            DesktopViewerAnalysisView::Luminance,
+            GpuDisplayView::Luminance,
+            "luminance",
+            "source_scene_linear",
+        ),
+        (
+            DesktopViewerAnalysisView::FalseColor,
+            GpuDisplayView::FalseColor,
+            "false_color",
+            "source_scene_linear",
+        ),
+        (
+            DesktopViewerAnalysisView::Clipping,
+            GpuDisplayView::Clipping,
+            "clipping",
+            "display_linear",
+        ),
+    ];
+    for (desktop, gpu, code, stage) in expected {
+        assert_eq!(desktop.code(), code);
+        assert_eq!(desktop.gpu_view(), gpu);
+        assert_eq!(gpu.analysis_stage(), stage);
+    }
 }

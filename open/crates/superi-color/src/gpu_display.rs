@@ -11,11 +11,71 @@ use superi_gpu::surface::ViewportFrame;
 use superi_gpu::texture::GpuTexture;
 use superi_gpu::wgpu;
 
-use crate::gamut::GamutMapping;
+use crate::gamut::{ChromaticAdaptation, GamutMapping, WideGamutTransform};
 use crate::transform_out::{OutputColorTransform, OutputTargetKind, ToneMapping};
 
 const COMPONENT: &str = "superi-color.gpu-display";
 const SOURCE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
+
+/// A deterministic diagnostic interpretation of one canonical viewer result.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum GpuDisplayView {
+    /// Present the canonical image through the configured output transform.
+    #[default]
+    Image,
+    /// Present straight alpha as an opaque neutral image.
+    Alpha,
+    /// Present unassociated scene-linear red as an opaque neutral image.
+    Red,
+    /// Present unassociated scene-linear green as an opaque neutral image.
+    Green,
+    /// Present unassociated scene-linear blue as an opaque neutral image.
+    Blue,
+    /// Present source-space CIE Y as an opaque neutral image.
+    Luminance,
+    /// Present fixed source-space exposure bands through the output transform.
+    FalseColor,
+    /// Present under and over range after display-linear gamut conversion.
+    Clipping,
+}
+
+impl GpuDisplayView {
+    /// Every supported view in stable shell and diagnostic order.
+    pub const ALL: &'static [Self] = &[
+        Self::Image,
+        Self::Alpha,
+        Self::Red,
+        Self::Green,
+        Self::Blue,
+        Self::Luminance,
+        Self::FalseColor,
+        Self::Clipping,
+    ];
+
+    /// Returns the stable cross-boundary code.
+    #[must_use]
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Image => "image",
+            Self::Alpha => "alpha",
+            Self::Red => "red",
+            Self::Green => "green",
+            Self::Blue => "blue",
+            Self::Luminance => "luminance",
+            Self::FalseColor => "false_color",
+            Self::Clipping => "clipping",
+        }
+    }
+
+    /// Returns the linear-light stage whose values define this view.
+    #[must_use]
+    pub const fn analysis_stage(self) -> &'static str {
+        match self {
+            Self::Clipping => "display_linear",
+            _ => "source_scene_linear",
+        }
+    }
+}
 
 /// A centered, aspect-preserving rectangle in physical target pixels.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -82,6 +142,7 @@ impl DisplayViewport {
 /// A render pipeline that converts one canonical working texture into a display attachment.
 pub struct GpuDisplayPresenter<'device> {
     reference: OutputColorTransform,
+    view: GpuDisplayView,
     target_format: wgpu::TextureFormat,
     resources: GpuResources<'device>,
     resource_scope: u64,
@@ -97,6 +158,16 @@ impl<'device> GpuDisplayPresenter<'device> {
         resources: &GpuResources<'device>,
         reference: OutputColorTransform,
         target_format: wgpu::TextureFormat,
+    ) -> Result<Self> {
+        Self::new_with_view(resources, reference, target_format, GpuDisplayView::Image)
+    }
+
+    /// Builds the display pipeline with one explicit diagnostic interpretation.
+    pub fn new_with_view(
+        resources: &GpuResources<'device>,
+        reference: OutputColorTransform,
+        target_format: wgpu::TextureFormat,
+        view: GpuDisplayView,
     ) -> Result<Self> {
         if reference.target_kind() != OutputTargetKind::Display
             || reference.destination().transfer() != TransferFunction::Srgb
@@ -151,8 +222,9 @@ impl<'device> GpuDisplayPresenter<'device> {
             label: Some("gpu display transform"),
             source: wgpu::ShaderSource::Wgsl(Cow::Owned(shader_source(
                 reference,
+                view,
                 target_format.is_srgb(),
-            ))),
+            )?)),
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("gpu display presenter"),
@@ -182,6 +254,7 @@ impl<'device> GpuDisplayPresenter<'device> {
 
         Ok(Self {
             reference,
+            view,
             target_format,
             resources: resources.clone(),
             resource_scope: resources.scope_id(),
@@ -196,6 +269,12 @@ impl<'device> GpuDisplayPresenter<'device> {
     #[must_use]
     pub const fn reference(&self) -> OutputColorTransform {
         self.reference
+    }
+
+    /// Returns the diagnostic interpretation compiled into this presenter.
+    #[must_use]
+    pub const fn view(&self) -> GpuDisplayView {
+        self.view
     }
 
     /// Returns the configured display attachment format.
@@ -387,10 +466,22 @@ fn validate_source(resource_scope: u64, source: &GpuTexture) -> Result<()> {
     Ok(())
 }
 
-fn shader_source(reference: OutputColorTransform, srgb_attachment: bool) -> String {
+fn shader_source(
+    reference: OutputColorTransform,
+    view: GpuDisplayView,
+    srgb_attachment: bool,
+) -> Result<String> {
     let gamut = reference.gamut_transform();
     let matrix = gamut.matrix();
     let luma = gamut.destination_luma();
+    let source_primaries = reference.source().color_space().primaries();
+    let source_luma = WideGamutTransform::new(
+        source_primaries,
+        source_primaries,
+        ChromaticAdaptation::None,
+        GamutMapping::Preserve,
+    )?
+    .destination_luma();
     let mapping = match gamut.mapping() {
         GamutMapping::Preserve => "return converted;",
         GamutMapping::ClipNegative => "return max(converted, vec3<f32>(0.0));",
@@ -398,17 +489,37 @@ fn shader_source(reference: OutputColorTransform, srgb_attachment: bool) -> Stri
             "let minimum = min(converted.x, min(converted.y, converted.z));\n    if minimum >= 0.0 { return converted; }\n    let luminance = dot(DESTINATION_LUMA, converted);\n    if luminance <= 0.0 { return converted; }\n    let scale = luminance / (luminance - minimum);\n    return max(vec3<f32>(0.0), luminance + scale * (converted - luminance));"
         }
     };
-    let target_output = if srgb_attachment {
-        "return vec4<f32>(srgb_decode(encoded * rgba.a), 1.0);"
+    let source_analysis = match view {
+        GpuDisplayView::Image | GpuDisplayView::Clipping => "return rgb;",
+        GpuDisplayView::Alpha => "return vec3<f32>(alpha);",
+        GpuDisplayView::Red => "return vec3<f32>(rgb.r);",
+        GpuDisplayView::Green => "return vec3<f32>(rgb.g);",
+        GpuDisplayView::Blue => "return vec3<f32>(rgb.b);",
+        GpuDisplayView::Luminance => "return vec3<f32>(dot(SOURCE_LUMA, rgb));",
+        GpuDisplayView::FalseColor => "return false_color(dot(SOURCE_LUMA, rgb));",
+    };
+    let display_analysis = if view == GpuDisplayView::Clipping {
+        "let under = any(rgb < vec3<f32>(0.0));\n    let over = any(rgb > vec3<f32>(1.0));\n    if under && over { return vec3<f32>(1.0, 0.0, 1.0); }\n    if under { return vec3<f32>(0.0, 0.0, 1.0); }\n    if over { return vec3<f32>(1.0, 0.0, 0.0); }\n    return vec3<f32>(clamp(dot(DESTINATION_LUMA, rgb), 0.0, 1.0));"
     } else {
-        "return vec4<f32>(encoded * rgba.a, 1.0);"
+        "return rgb;"
+    };
+    let coverage = if view == GpuDisplayView::Image {
+        "rgba.a"
+    } else {
+        "1.0"
+    };
+    let target_output = if srgb_attachment {
+        "return vec4<f32>(srgb_decode(encoded * coverage), 1.0);"
+    } else {
+        "return vec4<f32>(encoded * coverage, 1.0);"
     };
 
-    format!(
+    Ok(format!(
         "const ROW_0: vec3<f32> = vec3<f32>({m00}, {m01}, {m02});\n\
 const ROW_1: vec3<f32> = vec3<f32>({m10}, {m11}, {m12});\n\
 const ROW_2: vec3<f32> = vec3<f32>({m20}, {m21}, {m22});\n\
-const DESTINATION_LUMA: vec3<f32> = vec3<f32>({l0}, {l1}, {l2});\n\n\
+const DESTINATION_LUMA: vec3<f32> = vec3<f32>({l0}, {l1}, {l2});\n\
+const SOURCE_LUMA: vec3<f32> = vec3<f32>({s0}, {s1}, {s2});\n\n\
 @group(0) @binding(0) var source_texture: texture_2d<f32>;\n\
 @group(0) @binding(1) var source_sampler: sampler;\n\n\
 struct VertexOutput {{ @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32> }};\n\n\
@@ -423,6 +534,21 @@ fn map_gamut(rgb: vec3<f32>) -> vec3<f32> {{\n\
     let converted = vec3<f32>(dot(ROW_0, rgb), dot(ROW_1, rgb), dot(ROW_2, rgb));\n\
     {mapping}\n\
 }}\n\n\
+fn false_color(luminance: f32) -> vec3<f32> {{\n\
+    if luminance < (1.0 / 64.0) {{ return vec3<f32>(0.25, 0.0, 0.5); }}\n\
+    if luminance < (1.0 / 16.0) {{ return vec3<f32>(0.0, 0.0, 1.0); }}\n\
+    if luminance < (1.0 / 4.0) {{ return vec3<f32>(0.0, 1.0, 1.0); }}\n\
+    if luminance < 1.0 {{ return vec3<f32>(0.0, 1.0, 0.0); }}\n\
+    if luminance < 2.0 {{ return vec3<f32>(1.0, 1.0, 0.0); }}\n\
+    if luminance < 4.0 {{ return vec3<f32>(1.0, 0.25, 0.0); }}\n\
+    return vec3<f32>(1.0, 0.0, 0.0);\n\
+}}\n\n\
+fn analyze_source(rgb: vec3<f32>, alpha: f32) -> vec3<f32> {{\n\
+    {source_analysis}\n\
+}}\n\n\
+fn analyze_display(rgb: vec3<f32>) -> vec3<f32> {{\n\
+    {display_analysis}\n\
+}}\n\n\
 fn srgb_encode(value: vec3<f32>) -> vec3<f32> {{\n\
     let absolute = abs(value);\n\
     let curved = sign(value) * (1.055 * pow(absolute, vec3<f32>(1.0 / 2.4)) - 0.055);\n\
@@ -435,9 +561,13 @@ fn srgb_decode(value: vec3<f32>) -> vec3<f32> {{\n\
 }}\n\n\
 @fragment\nfn fragment_main(input: VertexOutput) -> @location(0) vec4<f32> {{\n\
     let rgba = textureSampleLevel(source_texture, source_sampler, input.uv, 0.0);\n\
-    if rgba.a <= 0.0 {{ return vec4<f32>(0.0, 0.0, 0.0, 1.0); }}\n\
-    let converted = map_gamut(rgba.rgb / rgba.a);\n\
-    let encoded = srgb_encode(converted);\n\
+    var straight = vec3<f32>(0.0);\n\
+    if rgba.a > 0.0 {{ straight = rgba.rgb / rgba.a; }}\n\
+    let analyzed = analyze_source(straight, rgba.a);\n\
+    let converted = map_gamut(analyzed);\n\
+    let viewed = analyze_display(converted);\n\
+    let encoded = srgb_encode(viewed);\n\
+    let coverage = {coverage};\n\
     {target_output}\n\
 }}\n",
         m00 = literal(matrix[0][0]),
@@ -452,7 +582,10 @@ fn srgb_decode(value: vec3<f32>) -> vec3<f32> {{\n\
         l0 = literal(luma[0]),
         l1 = literal(luma[1]),
         l2 = literal(luma[2]),
-    )
+        s0 = literal(source_luma[0]),
+        s1 = literal(source_luma[1]),
+        s2 = literal(source_luma[2]),
+    ))
 }
 
 fn literal(value: f64) -> String {

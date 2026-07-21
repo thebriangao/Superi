@@ -244,6 +244,13 @@ test("editorial feedback crosses the existing application owner into viewers and
   assert.match(nativeViewport, /visibleViewerOverlays/);
   assert.match(nativeViewport, /data-overlay-kind/);
   assert.match(nativeViewport, /aria-label=\{`\$\{label\} viewer overlays`\}/);
+  assert.match(nativeViewport, /VIEWER_ANALYSIS_DEFINITIONS/);
+  assert.match(nativeViewport, /DEFAULT_VIEWER_ANALYSIS_VIEW/);
+  assert.match(nativeViewport, /aria-label=\{`\$\{label\} viewer analysis`\}/);
+  assert.match(nativeViewport, /aria-pressed=\{analysisView === definition\.view\}/);
+  assert.match(nativeViewport, /view: analysisViewRef\.current/);
+  assert.match(nativeViewport, /snapshot\.selectedView/);
+  assert.match(nativeViewport, /snapshot\.presentedView/);
   assert.doesNotMatch(nativeViewport, /playbackNavigationTarget|scrub_to|begin_scrub/);
   assert.match(nativeViewport, /useApplication/);
   assert.match(nativeViewport, /projectViewerStatusDisplay/);
