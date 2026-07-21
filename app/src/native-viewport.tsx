@@ -1,4 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useApplication } from "./application-context.tsx";
@@ -368,7 +369,27 @@ export interface NativeViewportProps {
   readonly onComparisonStateChange?: (summary: string) => void;
 }
 
-export function NativeViewport({
+export function NativeViewport(props: NativeViewportProps) {
+  if (isTauri() && getCurrentWebviewWindow().label !== "main") {
+    return (
+      <section
+        className="native-viewport-shell"
+        data-viewer-role={props.role}
+        data-presentation="primary-window-only"
+        aria-label={`${props.label} native GPU media viewer`}
+      >
+        <p className="native-viewport__status" role="status">
+          Native GPU presentation remains owned by the primary window. This
+          workspace window keeps shared project and engine controls available
+          without moving or replacing the primary native viewer surfaces.
+        </p>
+      </section>
+    );
+  }
+  return <PrimaryNativeViewport {...props} />;
+}
+
+function PrimaryNativeViewport({
   role,
   label,
   feedback = null,

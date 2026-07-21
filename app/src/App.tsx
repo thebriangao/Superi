@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ComponentType } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open } from "@tauri-apps/plugin-dialog";
 
@@ -63,6 +63,14 @@ import {
   type UserMetadataMutation,
 } from "./project-lifecycle";
 import { classifyDesktopTransportError } from "./transport";
+import { WindowSessionPanel } from "./window-session-panel.tsx";
+import {
+  desktopWindowFailure,
+  getDesktopWindowSession,
+  listenDesktopWindowSession,
+  updateDesktopWindowWorkspace,
+  type DesktopWindowSnapshot,
+} from "./window-session.ts";
 import {
   AudioWorkspacePanel,
   ColorWorkspacePanel,
@@ -255,6 +263,74 @@ function ApplicationShell() {
     commandFailure,
   } = useApplication();
   const route = registry.route(state.activeRouteId);
+  const [windowSessionHydrated, setWindowSessionHydrated] = useState(false);
+  const [windowContinuityFailure, setWindowContinuityFailure] =
+    useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isTauri()) {
+      setWindowSessionHydrated(true);
+      return;
+    }
+    const currentLabel = getCurrentWebviewWindow().label;
+    let active = true;
+    let hydrated = false;
+    let stop: (() => void) | null = null;
+    const hydrate = (snapshot: DesktopWindowSnapshot) => {
+      if (
+        !active ||
+        hydrated ||
+        !["ready", "recovered"].includes(snapshot.phase)
+      ) {
+        return;
+      }
+      const current = snapshot.windows.find(
+        (windowRecord) => windowRecord.label === currentLabel,
+      );
+      if (
+        current !== undefined &&
+        registry.routeDefinitions.some(
+          (definition) => definition.id === current.workspace,
+        )
+      ) {
+        dispatch({ type: "navigate", routeId: current.workspace });
+        setWindowContinuityFailure(null);
+        hydrated = true;
+        setWindowSessionHydrated(true);
+        return;
+      }
+      setWindowContinuityFailure(
+        "This window is waiting for its restored workspace identity.",
+      );
+    };
+    void getDesktopWindowSession()
+      .then(hydrate)
+      .catch((error: unknown) => {
+        if (active) setWindowContinuityFailure(desktopWindowFailure(error));
+      });
+    void listenDesktopWindowSession(hydrate)
+      .then((unlisten) => {
+        if (active) stop = unlisten;
+        else unlisten();
+      })
+      .catch((error: unknown) => {
+        if (active) setWindowContinuityFailure(desktopWindowFailure(error));
+      });
+    return () => {
+      active = false;
+      stop?.();
+    };
+  }, [dispatch, registry]);
+
+  useEffect(() => {
+    if (!isTauri() || !windowSessionHydrated) return;
+    const label = getCurrentWebviewWindow().label;
+    void updateDesktopWindowWorkspace(label, state.activeRouteId)
+      .then(() => setWindowContinuityFailure(null))
+      .catch((error: unknown) =>
+        setWindowContinuityFailure(desktopWindowFailure(error)),
+      );
+  }, [state.activeRouteId, windowSessionHydrated]);
 
   return (
     <main className="application-shell" aria-labelledby="product-title">
@@ -322,6 +398,12 @@ function ApplicationShell() {
         {commandFailure ? (
           <p className="command-failure" role="alert">
             {commandFailure}
+          </p>
+        ) : null}
+
+        {windowContinuityFailure ? (
+          <p className="command-failure" role="alert">
+            {windowContinuityFailure}
           </p>
         ) : null}
 
@@ -1111,6 +1193,8 @@ function SystemPanel() {
           Quit Superi
         </button>
       </div>
+
+      <WindowSessionPanel />
 
       <section aria-labelledby="project-lifecycle-title">
         <h4 id="project-lifecycle-title">Project lifecycle</h4>

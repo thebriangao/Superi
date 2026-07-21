@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: ed4bfe1799eefefbd06922a7dc6d196ae6a29fcdccaebc5abb0663f654bca61e
-source_files: 304
+source_hash: 882dd0075504be01e15a3de904dae18933d725ef5067dbcec0873fb07c8ed833
+source_files: 309
 mapped_at_commit: working-tree
 ---
 
@@ -11,7 +11,8 @@ mapped_at_commit: working-tree
 
 The `workspace` module owns the repository-level product definition, architectural contracts,
 license and codec policy, build sequencing, operating-system test policy, unsafe-boundary audit,
-the production React and Tauri desktop shell, Cargo workspace configuration, dependency lock,
+the production React and Tauri desktop shell including persistent multi-window session ownership,
+Cargo workspace configuration, dependency lock,
 shared test-fixture contract, and repository-owned agent workflows. Runtime implementation under
 `open/crates/*` and repository utilities under
 `open/tools/*` belong to their own module maps. This map therefore explains the constraints and
@@ -531,6 +532,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   audio cache indicators over exact scheduled timing, predictive and output degradation, discard
   acknowledgement, sample clocks, ordered channel meaning, routing intent, continuity seams, and
   explicit unavailable telemetry across every transport mode.
+- `docs/checkpoints/P3.W06.C001.md`: Durable implementation evidence for persistent native window
+  creation, restoration, bounded multi-window behavior, fullscreen, monitor movement, reversible
+  placement, per-webview transport generations, one shared engine and project authority, and
+  primary-window-only native GPU viewer ownership.
 - `docs/checkpoints/P3.W06.C003.md`: Durable implementation evidence for exact `.superi` association
   metadata, startup-argument and macOS resource-open ingress, nonblocking reuse of the sole desktop
   project owner, complete replacement snapshots, visible failure retention, and workspace-preserving
@@ -548,8 +553,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   framework, editor-workspace, timeline-canvas, timeline-nesting, timeline-multicam, timeline-clip,
   timeline-transition, caption projection, exchange, and authoring, editorial-feedback, exact
   playback transport, viewer navigation, overlay, comparison, viewer-status, analysis, and
-  viewer-transform, viewer color-management, and external-display helper contracts, and Tauri
-  commands.
+  viewer-transform, viewer color-management, external-display, and persistent window-session
+  helper contracts, and Tauri commands.
 - `app/src/api.ts`: Re-exports the complete canonical generated TypeScript contract and constructs
   one frozen `SuperiApiBindings` surface around an injected `SuperiTransport` and `SuperiClient`.
 - `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
@@ -570,6 +575,15 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   transaction identities, submits the generated playback command, verifies immediate bounded
   acceptance, and polls the same editor-state replacement until the playback-domain owner has
   completed without creating a React transport model.
+- `app/src/window-session.ts`: Defines strict immutable window-session, monitor, placement,
+  persistence, recovery, and recently closed DTOs; validates every native replacement; wraps the
+  exact snapshot, create, focus, fullscreen, monitor move, placement undo, workspace update, close,
+  and reopen commands; and exposes the one replacement event without owning persistence or native
+  placement.
+- `app/src/window-session-panel.tsx`: Renders the System panel's real persistent window consumer.
+  It reports exact focus, route, fullscreen, placement, monitor, persistence, and recovery state,
+  exposes bounded create, focus, fullscreen, monitor movement, undo, close, and reopen controls,
+  serializes pending actions, and retains the last valid replacement alongside actionable errors.
 - `app/src/editor-project.ts`: Defines the exact five workspace identities, public editor-state
   request construction, immutable presentation contract, and sample-preserving audio projection
   without React, transport, or mutable state ownership.
@@ -818,7 +832,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and switch detail, and never enter the placement payload. `EditorialAudioMeters` renders
   canonical route, audibility, sample clock, destination, and seam evidence, marks routes
   unavailable when their canvas track is absent, and explicitly labels live signal level
-  unobserved.
+  unobserved. Auxiliary webviews stop before native viewport command ownership and render an exact
+  primary-window ownership notice, preserving shared engine and workspace state without creating a
+  second role-addressed surface set.
 - `app/src/App.tsx`: Registers the five professional workspace routes and panels above the delivered
   application framework while retaining the system shell, shared selection, lifecycle controls,
   generated validation request, engine-introspection state, and the production project lifecycle
@@ -845,6 +861,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   browser checks every source through metadata-efficient monitoring or forces exact bytes for one
   selected identity, then displays scan generation, relink intent, path state, volume identity and
   kind, mount state, accepted fingerprint, current observation, size, and actionable detail. The
+  root shell hydrates its restored workspace route from the native window session before publishing
+  subsequent route changes, mounts the real `WindowSessionPanel` in System, and listens for exact
+  native replacement events without taking persistence or placement ownership. The
   System panel registers the project-association listener before its initial snapshot read, rejects
   a stale initial revision, replaces only project presentation after an operating-system open, and
   preserves route, panel, selection, workspace, and other transient application state.
@@ -1045,6 +1064,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/transport.test.mjs`: Verifies the one native dispatcher call, generated request
   identity, ordered replay, stale and duplicate event rejection, reconnect cursor, abort-driven
   cancellation, and exact classified public error preservation through an injected headless host.
+- `app/tests/window-session.test.ts`: Proves strict native replacement validation, exact command
+  names and payloads, listener cleanup, route hydration and update wiring, real System panel
+  mounting, complete user-facing action coverage, and the auxiliary-window exclusion from native
+  GPU viewport ownership.
 - `app/tsconfig.json`: Enables strict no-emit TypeScript, isolated modules, and bundler resolution.
 - `app/vite.config.ts`: Configures the React Vite build and fixed Tauri development port.
 - `app/src-tauri/Cargo.lock`: Locks the standalone desktop host together with its path dependencies
@@ -1075,8 +1098,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/build.rs`: Runs the standard Tauri build integration.
 - `app/src-tauri/rust-toolchain.toml`: Selects stable Rust with rustfmt and Clippy.
 - `app/src-tauri/tauri.conf.json`: Declares the Superi identity, production frontend, bounded main
-  window, disabled packaging, exact `.superi` editor and owner association metadata with exported
-  `com.superi.project` database type and MIME identity, and explicit cross-platform desktop icons.
+  window hidden until persistent restoration applies its safe placement, disabled packaging,
+  exact `.superi` editor and owner association metadata with exported `com.superi.project` database
+  type and MIME identity, and explicit cross-platform desktop icons.
 - `app/src-tauri/icons/app-icon.svg`: Retains the editable source for the initial application icon.
 - `app/src-tauri/icons/32x32.png`: Supplies the small desktop PNG icon.
 - `app/src-tauri/icons/128x128.png`: Supplies the standard desktop PNG icon.
@@ -1104,17 +1128,28 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   on Tauri's blocking runtime through `DesktopProjectState::execute(Open)`, emits a complete
   replacement snapshot or retained actionable failure, and restores focus without creating a
   second document or project owner.
+- `app/src-tauri/src/window_session.rs`: Owns the native application window session above Tauri.
+  Its strict schema-versioned JSON contains exactly one primary window, at most seven auxiliary
+  workspace windows, stable labels, routes, normal placement, fullscreen and monitor intent,
+  previous placement, focus order, and a bounded recently closed stack. Startup loads before setup,
+  preserves malformed input under a rejected filename, restores a safe primary with visible
+  recovery evidence, reconciles placements against the current monitor catalog, creates and
+  restores auxiliary webviews, and publishes one immutable snapshot event. A capacity-one worker
+  coalesces changes and atomically replaces the session file off the event loop. Exact commands
+  expose snapshot, create, focus, fullscreen, monitor movement, placement undo, route update, close,
+  and reopen, while main-window close enters the existing orderly lifecycle instead of bypassing it.
 - `app/src-tauri/src/transport.rs`: Owns the thin bounded desktop command dispatcher above the
-  managed `EngineConnection`, generation-scoped request and cancellation state, exact public error
-  conversion with reviewed canonical contexts, and a 64-record ordered replacement-event replay
-  window without engine semantics. It routes integration validation, complete editor state, and
+  managed `EngineConnection`, per-webview generation-scoped request and cancellation state, exact
+  public error conversion with reviewed canonical contexts, and a 64-record globally ordered
+  replacement-event replay window without engine semantics. It routes integration validation, complete editor state, and
   generic project commands plus immediately accepted playback transport through exact generated request and response types on the managed
   EngineControl connection, publishes every correlated project event in order, and advances desktop
   project identity only after durable command completion. Cancellation wins before durable work
   starts, while a completed durable commit and its replacement event win a late cancellation so
   committed state cannot be hidden from reconciliation. The same late-cancellation rule preserves
-  an already accepted playback command, and focused routing proof observes its completion through
-  editor state before a durable edit.
+  an already accepted playback command. Each connected webview receives the same authored sequence
+  in its own current generation, and one webview disconnect cannot cancel or reset another. Focused
+  routing proof observes playback completion through editor state before a durable edit.
 - `app/src-tauri/src/project_lifecycle.rs`: Owns the sole serialized desktop project session above
   `LocalProjectHost`, including commit-only active identity, bounded deduplicated recent projects,
   revision-fenced recovery presentation, last-valid state retention, and retryable, degraded,
@@ -1189,18 +1224,19 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   metadata and state only, never packets, decoded frames, audio blocks, textures, or presentation.
 - `app/src-tauri/src/lib.rs`: Configures the mock and native Tauri builders, retains the linked
   engine process, manages its bounded connection and transport state alongside application
-  lifecycle and project-session state, registers lifecycle, project, viewport placement, viewport
-  color selection, and API commands,
+  lifecycle, project-session, and persistent window-session state, registers lifecycle, project,
+  window snapshot and mutation, viewport placement, viewport color selection, and API commands,
   including media-library snapshot, organization mutation, source inspection, user metadata, and
   editorial annotation, C007 identity-selection, C008 derived-media mutation, C009 offline recovery,
   C010 generated-preview, C011 content-analysis mutation plus content-search, and C012 atomic batch
   commands, plus the C013 revision-fenced source-scan command and the C014 source monitor snapshot,
   load, seek, mark, and unload commands,
-  initializes the recovery root, collects portable startup association arguments after process
-  launch, routes macOS `RunEvent::Opened` file URLs, passes project state into every blocking
-  generated request, emits
-  every returned ordered Tauri event before the reply, records
-  nonblocking exit intent, and joins the engine owner after the native application stops.
+  initializes the project recovery and window persistence roots, collects portable startup
+  association arguments after process launch, routes macOS `RunEvent::Opened` file URLs, scopes API
+  dispatch by invoking webview label, passes project state into every blocking generated request,
+  targets every returned ordered Tauri event to its client webview, records window focus, move,
+  resize, close, and route state, converts primary-window close into nonblocking exit intent, and
+  joins both background persistence and engine owners after the native application stops.
 - `app/src-tauri/src/main.rs`: Starts the native production desktop host.
 - `app/src-tauri/tests/engine_connection_contract.rs`: Proves dedicated EngineControl ownership,
   truthful public validation projection, bounded nonblocking admission, stable connection reuse
@@ -1664,6 +1700,19 @@ index when contracts, ownership, layering, flow, or status changes. Only after p
 may the exact `hash` and file count be recorded. Validation must pass after updates, after final
 integration or rebase, and before delivery. A passing hash never excuses stale prose.
 
+The desktop window-session flow begins before Tauri setup finishes. The process-owned state starts
+one bounded persistence worker, loads the strict session file, preserves rejected bytes on decode or
+normalization failure, enumerates current monitors, reconciles every normal placement into visible
+bounds, applies the primary placement, and restores auxiliary workspace webviews in stable session
+order. Focus, move, resize, fullscreen, route, close, and reopen mutations replace one revisioned
+snapshot, enqueue coalesced atomic persistence, and emit the same exact state to all webviews.
+Monitor movement computes relative placement from the source work area into the selected target and
+stores the previous placement; undo swaps those records so the action is reversible. Main-window
+close requests the existing orderly application shutdown, while auxiliary close removes only that
+window and its transport client. Each webview opens an independent generated transport generation
+above the one shared engine and project lifecycle, and every authored replacement retains one global
+event sequence across those client-local generations.
+
 The desktop C012 media flow extends the existing C004 through C009 presentation owner without a new
 authority:
 
@@ -1984,13 +2033,18 @@ The production Tauri host consumes `superi-concurrency::LifecycleCoordinator`, t
 classification through explicit downward path dependencies. `LinkedEngineProcess` retains one
 dispatcher per application generation on a dedicated EngineControl thread and consumes the exact
 headless-engine participant seam. Tauri manages the fixed-capacity `EngineConnection`, while its
-React lifecycle client consumes only two shell-local asynchronous lifecycle commands. Above that
-unchanged connection, `transport.rs` registers one async Tauri API dispatcher for connect, request,
-cancel, and disconnect control, routes integration validation, complete editor state, and generic
-project commands into the existing EngineControl owner, and converts failures through
-`PublicApiError`. The retained editor session durably replaces the exact active project before its
-lifecycle revision advances, then transport emits every generated project event in order. Generated
-engine-introspection replacements continue through the same bounded ordered envelope.
+React lifecycle client consumes only two shell-local asynchronous lifecycle commands. The sibling
+`DesktopWindowState` consumes Tauri window and monitor APIs, the application data directory, and the
+existing lifecycle shutdown seam. Its typed React client and System panel consume only strict
+shell-local snapshot and mutation commands plus one replacement event. Above the unchanged engine
+connection, `transport.rs` registers one async Tauri API dispatcher for connect, request, cancel,
+and disconnect control, scopes connection and pending identities by invoking webview label, routes
+integration validation, complete editor state, and generic project commands into the existing
+EngineControl owner, and converts failures through `PublicApiError`. The retained editor session
+durably replaces the exact active project before its lifecycle revision advances, then transport
+targets every generated project event to all connected webviews with one shared order and each
+client's current generation. Generated engine-introspection replacements continue through the same
+bounded ordered envelope.
 `app/src/transport.ts` implements the generated `SuperiTransport`, and `app/src/api.ts` remains the
 sole `SuperiClient` factory. React consumes the injected binding for validation, health, complete
 editor replacement state, and exact project commands without owning engine or project behavior.
@@ -2326,6 +2380,16 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   failure, immediate placeholder recovery, terminal behavior, and blocking-safe observation.
   Retained frontend and Tauri contracts continue to prove generated binding and toolchain
   compatibility without standing in for the product application.
+
+- The focused window-session proof validates strict session normalization and unknown-field
+  rejection, missing-monitor relative placement, exact placement swap reversal, corrupt-file
+  preservation and safe-primary recovery, atomic JSON round trip, close and reopen continuity, one
+  real auxiliary webview creation through Tauri's mock runtime, independent webview connection
+  generations, shared ordered authored events, and client-local disconnect. Its frontend companion validates exact
+  command payloads, strict replacement admission, listener cleanup, real System panel and route
+  hydration wiring, complete action visibility, and the primary-window-only native viewport
+  boundary. The complete production frontend and desktop Rust suites provide widening coverage over
+  the same owners.
 
 - The focused timeline-canvas proof freezes strict revision 2 parsing, exact source and record
   ranges, stable grouping, linking, selection, complete track control state, two-pass transition
@@ -2722,7 +2786,18 @@ native dispatcher forwards integration validation through the retained EngineCon
 routes generated editor reads, exact playback commands, and durable project commands through the active project lifecycle. It
 emits ordered generated introspection and project replacement events and exposes bounded replay,
 reconnect, cancellation, and all four public recoverability conditions through the concrete
-frontend transport.
+frontend transport. The transport now isolates generation, pending, cancellation, replay cursor,
+and disconnect state by webview label while retaining one authored event sequence, so every
+restored auxiliary window observes the same engine and project replacements without invalidating a
+sibling connection.
+The process also owns one strict persistent window session. It restores one primary plus bounded
+auxiliary workspace windows, reconciles unavailable monitor identities into visible placements,
+retains exact fullscreen and prior placement state, preserves rejected session bytes, exposes
+recovery and persistence phase visibly, and atomically coalesces updates off the event loop. The
+System panel provides precise create, focus, fullscreen, monitor move, undo, close, and reopen
+actions. Workspace routes restore before ordinary route persistence, main close remains orderly,
+and auxiliary native GPU viewports remain intentionally unavailable because the existing presenter
+owns one primary-window role surface set.
 Above that unchanged transport, `application.ts` owns deterministic route, panel, and command
 registries plus transient panel layout and one immutable typed public-resource selection.
 `ApplicationProvider` composes the framework above `SuperiApiProvider` and remains the single owner
@@ -3056,6 +3131,13 @@ export remain absent and cannot be inferred from the reference path.
 
 The largest current risk is cross-document drift:
 
+- Persistent window state is application-shell intent, not project authority. Monitor routing IDs
+  are derived from local Tauri monitor facts and may change with operating-system topology; restore
+  must continue to reconcile them into visible bounds and preserve one reversible prior placement.
+  Auxiliary windows share generated engine and project state but do not own the current singleton
+  role-addressed native GPU surfaces, so future presenter work must establish an explicit
+  multi-webview surface ownership model before removing that honest boundary.
+
 - Viewer timecode labels and physical playback drops are separate domains. Future status work must
   preserve the continuous physical frame index, apply drop-frame rules only to labels at supported
   rates, retain exact clock representability, and never convert missing or malformed observations
@@ -3168,8 +3250,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`3f0575d8604abe3f2db958ddd0e78574fe915a5b` when this checkpoint began. Its hash describes the exact
-297 discovered source files, including generated binary payloads, layered on the integrated
+`c14300def2f15373022495ce27379c9369f4634c` when this checkpoint began. Its hash describes the exact
+309 discovered source files, including generated binary payloads, layered on the integrated
 revision.
 
 ## Maintenance notes

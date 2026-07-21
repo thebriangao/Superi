@@ -123,11 +123,24 @@ pub enum DesktopTransportReply {
 /// One dispatcher outcome and its ordered event side effects.
 pub struct DesktopTransportOutcome {
     reply: DesktopTransportReply,
-    events: Vec<DesktopEventEnvelope>,
+    events: Vec<DesktopTransportEmission>,
 }
 
 impl DesktopTransportOutcome {
+    #[cfg(test)]
     pub(crate) fn into_parts(self) -> (DesktopTransportReply, Vec<DesktopEventEnvelope>) {
+        (
+            self.reply,
+            self.events
+                .into_iter()
+                .map(|emission| emission.envelope)
+                .collect(),
+        )
+    }
+
+    pub(crate) fn into_targeted_parts(
+        self,
+    ) -> (DesktopTransportReply, Vec<DesktopTransportEmission>) {
         (self.reply, self.events)
     }
 
@@ -140,7 +153,23 @@ impl DesktopTransportOutcome {
     /// Returns the ordered replacement event produced by this request, if any.
     #[must_use]
     pub fn event(&self) -> Option<&DesktopEventEnvelope> {
-        self.events.first()
+        self.events.first().map(|emission| &emission.envelope)
+    }
+}
+
+/// One ordered event projected for one connected webview generation.
+pub struct DesktopTransportEmission {
+    client_id: String,
+    envelope: DesktopEventEnvelope,
+}
+
+impl DesktopTransportEmission {
+    pub(crate) fn client_id(&self) -> &str {
+        &self.client_id
+    }
+
+    pub(crate) const fn envelope(&self) -> &DesktopEventEnvelope {
+        &self.envelope
     }
 }
 
@@ -149,12 +178,44 @@ struct RoutedResponse {
     events: Vec<(String, Value)>,
 }
 
-struct DesktopTransportInner {
+struct DesktopRequestDispatch {
+    generation: u64,
+    request_id: String,
+    method: String,
+    request: Value,
+}
+
+#[derive(Clone, Debug)]
+struct RetainedDesktopEvent {
+    sequence: u64,
+    event: String,
+    payload: Value,
+}
+
+impl RetainedDesktopEvent {
+    fn envelope(&self, generation: u64) -> DesktopEventEnvelope {
+        DesktopEventEnvelope {
+            generation,
+            stream_id: STREAM_ID.to_owned(),
+            sequence: self.sequence,
+            event: self.event.clone(),
+            payload: self.payload.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct DesktopClientConnection {
     generation: u64,
     connected: bool,
+}
+
+struct DesktopTransportInner {
+    next_generation: u64,
     sequence: u64,
-    retained: VecDeque<DesktopEventEnvelope>,
-    pending: HashMap<(u64, String), Arc<AtomicBool>>,
+    retained: VecDeque<RetainedDesktopEvent>,
+    clients: HashMap<String, DesktopClientConnection>,
+    pending: HashMap<(String, u64, String), Arc<AtomicBool>>,
 }
 
 /// Shared bounded transport state managed by Tauri above C002's engine handle.
@@ -175,10 +236,10 @@ impl DesktopTransportState {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(DesktopTransportInner {
-                generation: 0,
-                connected: false,
+                next_generation: 0,
                 sequence: 0,
                 retained: VecDeque::with_capacity(RETAINED_EVENTS),
+                clients: HashMap::new(),
                 pending: HashMap::with_capacity(MAX_PENDING_REQUESTS),
             })),
         }
@@ -189,13 +250,27 @@ impl DesktopTransportState {
         &self,
         command: DesktopTransportCommand,
     ) -> Result<DesktopTransportReply, PublicApiError> {
+        self.dispatch_control_for("main", command)
+    }
+
+    /// Executes one control command for the invoking editor webview.
+    pub fn dispatch_control_for(
+        &self,
+        client_id: &str,
+        command: DesktopTransportCommand,
+    ) -> Result<DesktopTransportReply, PublicApiError> {
+        validate_client_id(client_id)?;
         match command {
-            DesktopTransportCommand::Connect { after_sequence } => self.connect(after_sequence),
+            DesktopTransportCommand::Connect { after_sequence } => {
+                self.connect(client_id, after_sequence)
+            }
             DesktopTransportCommand::Cancel {
                 generation,
                 request_id,
-            } => self.cancel(generation, request_id),
-            DesktopTransportCommand::Disconnect { generation } => self.disconnect(generation),
+            } => self.cancel(client_id, generation, request_id),
+            DesktopTransportCommand::Disconnect { generation } => {
+                self.disconnect(client_id, generation)
+            }
             DesktopTransportCommand::Request { .. } => Err(transport_error(
                 ErrorCategory::InvalidInput,
                 Recoverability::UserCorrectable,
@@ -213,29 +288,60 @@ impl DesktopTransportState {
         projects: &DesktopProjectState,
         command: DesktopTransportCommand,
     ) -> Result<DesktopTransportOutcome, PublicApiError> {
+        self.dispatch_blocking_for("main", engine, projects, command)
+    }
+
+    /// Executes one command for the invoking editor webview on a blocking-safe worker.
+    pub fn dispatch_blocking_for(
+        &self,
+        client_id: &str,
+        engine: &EngineConnection,
+        projects: &DesktopProjectState,
+        command: DesktopTransportCommand,
+    ) -> Result<DesktopTransportOutcome, PublicApiError> {
+        validate_client_id(client_id)?;
         match command {
             DesktopTransportCommand::Request {
                 generation,
                 request_id,
                 method,
                 request,
-            } => self.request(projects, engine, generation, request_id, method, request),
-            control => self
-                .dispatch_control(control)
-                .map(|reply| DesktopTransportOutcome {
-                    reply,
-                    events: Vec::new(),
-                }),
+            } => self.request(
+                client_id,
+                projects,
+                engine,
+                DesktopRequestDispatch {
+                    generation,
+                    request_id,
+                    method,
+                    request,
+                },
+            ),
+            control => {
+                self.dispatch_control_for(client_id, control)
+                    .map(|reply| DesktopTransportOutcome {
+                        reply,
+                        events: Vec::new(),
+                    })
+            }
         }
     }
 
-    fn connect(&self, after_sequence: u64) -> Result<DesktopTransportReply, PublicApiError> {
+    fn connect(
+        &self,
+        client_id: &str,
+        after_sequence: u64,
+    ) -> Result<DesktopTransportReply, PublicApiError> {
         let mut inner = self.lock("connect")?;
-        for token in inner.pending.values() {
-            token.store(true, Ordering::Release);
+        for ((pending_client, _, _), token) in &inner.pending {
+            if pending_client == client_id {
+                token.store(true, Ordering::Release);
+            }
         }
-        inner.pending.clear();
-        inner.generation = inner.generation.checked_add(1).ok_or_else(|| {
+        inner
+            .pending
+            .retain(|(pending_client, _, _), _| pending_client != client_id);
+        inner.next_generation = inner.next_generation.checked_add(1).ok_or_else(|| {
             transport_error(
                 ErrorCategory::Internal,
                 Recoverability::Terminal,
@@ -244,7 +350,14 @@ impl DesktopTransportState {
                 &[],
             )
         })?;
-        inner.connected = true;
+        let generation = inner.next_generation;
+        inner.clients.insert(
+            client_id.to_owned(),
+            DesktopClientConnection {
+                generation,
+                connected: true,
+            },
+        );
 
         let oldest_sequence = inner
             .retained
@@ -259,16 +372,12 @@ impl DesktopTransportState {
                 .retained
                 .iter()
                 .filter(|event| event.sequence > after_sequence)
-                .cloned()
-                .map(|mut event| {
-                    event.generation = inner.generation;
-                    event
-                })
+                .map(|event| event.envelope(generation))
                 .collect()
         };
 
         Ok(DesktopTransportReply::Connected {
-            generation: inner.generation,
+            generation,
             stream_id: STREAM_ID.to_owned(),
             replay,
             resync_required,
@@ -277,13 +386,14 @@ impl DesktopTransportState {
 
     fn cancel(
         &self,
+        client_id: &str,
         generation: u64,
         request_id: String,
     ) -> Result<DesktopTransportReply, PublicApiError> {
         let inner = self.lock("cancel")?;
         let cancelled = inner
             .pending
-            .get(&(generation, request_id.clone()))
+            .get(&(client_id.to_owned(), generation, request_id.clone()))
             .is_some_and(|token| {
                 token.store(true, Ordering::Release);
                 true
@@ -295,39 +405,82 @@ impl DesktopTransportState {
         })
     }
 
-    fn disconnect(&self, generation: u64) -> Result<DesktopTransportReply, PublicApiError> {
+    fn disconnect(
+        &self,
+        client_id: &str,
+        generation: u64,
+    ) -> Result<DesktopTransportReply, PublicApiError> {
         let mut inner = self.lock("disconnect")?;
-        if inner.generation == generation {
-            inner.connected = false;
-            for ((pending_generation, _), token) in &inner.pending {
-                if *pending_generation == generation {
+        if inner
+            .clients
+            .get(client_id)
+            .is_some_and(|client| client.generation == generation)
+        {
+            if let Some(client) = inner.clients.get_mut(client_id) {
+                client.connected = false;
+            }
+            for ((pending_client, pending_generation, _), token) in &inner.pending {
+                if pending_client == client_id && *pending_generation == generation {
                     token.store(true, Ordering::Release);
                 }
             }
             inner
                 .pending
-                .retain(|(pending_generation, _), _| *pending_generation != generation);
+                .retain(|(pending_client, pending_generation, _), _| {
+                    pending_client != client_id || *pending_generation != generation
+                });
         }
         Ok(DesktopTransportReply::Disconnected { generation })
     }
 
+    /// Removes a closing editor webview and cancels only its pending work.
+    pub fn disconnect_client(&self, client_id: &str) -> Result<(), PublicApiError> {
+        validate_client_id(client_id)?;
+        let mut inner = self.lock("disconnect_client")?;
+        if let Some(client) = inner.clients.remove(client_id) {
+            for ((pending_client, pending_generation, _), token) in &inner.pending {
+                if pending_client == client_id && *pending_generation == client.generation {
+                    token.store(true, Ordering::Release);
+                }
+            }
+            inner
+                .pending
+                .retain(|(pending_client, _, _), _| pending_client != client_id);
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn client_is_connected(&self, client_id: &str, generation: u64) -> bool {
+        self.inner.lock().is_ok_and(|inner| {
+            inner
+                .clients
+                .get(client_id)
+                .is_some_and(|client| client.connected && client.generation == generation)
+        })
+    }
+
     fn request(
         &self,
+        client_id: &str,
         project: &DesktopProjectState,
         engine: &EngineConnection,
-        generation: u64,
-        request_id: String,
-        method: String,
-        request: Value,
+        dispatch: DesktopRequestDispatch,
     ) -> Result<DesktopTransportOutcome, PublicApiError> {
-        self.validate_request(generation, &request_id, &method, &request)?;
-        let token = self.admit_request(generation, &request_id, &method)?;
+        let DesktopRequestDispatch {
+            generation,
+            request_id,
+            method,
+            request,
+        } = dispatch;
+        self.validate_request(client_id, generation, &request_id, &method, &request)?;
+        let token = self.admit_request(client_id, generation, &request_id, &method)?;
         if token.load(Ordering::Acquire) {
-            self.remove_pending(generation, &request_id, &token)?;
+            self.remove_pending(client_id, generation, &request_id, &token)?;
             return Err(cancelled_request_error(generation, &request_id, &method));
         }
         let result = self.route_request(project, engine, &method, request);
-        self.remove_pending(generation, &request_id, &token)?;
+        self.remove_pending(client_id, generation, &request_id, &token)?;
 
         if token.load(Ordering::Acquire) && cancellation_wins_after_routing(&method) {
             return Err(cancelled_request_error(generation, &request_id, &method));
@@ -346,7 +499,7 @@ impl DesktopTransportState {
         })?;
         let mut events = Vec::with_capacity(routed.events.len());
         for (event, payload) in routed.events {
-            events.push(self.publish_event(generation, event, payload)?);
+            events.extend(self.publish_event(client_id, event, payload)?);
         }
         Ok(DesktopTransportOutcome {
             reply: DesktopTransportReply::Response {
@@ -444,13 +597,18 @@ impl DesktopTransportState {
 
     fn validate_request(
         &self,
+        client_id: &str,
         generation: u64,
         request_id: &str,
         method: &str,
         request: &Value,
     ) -> Result<(), PublicApiError> {
         let inner = self.lock("validate_request")?;
-        if !inner.connected || inner.generation != generation {
+        if !inner
+            .clients
+            .get(client_id)
+            .is_some_and(|client| client.connected && client.generation == generation)
+        {
             return Err(transport_error(
                 ErrorCategory::Unavailable,
                 Recoverability::Retryable,
@@ -501,6 +659,7 @@ impl DesktopTransportState {
 
     fn admit_request(
         &self,
+        client_id: &str,
         generation: u64,
         request_id: &str,
         method: &str,
@@ -515,7 +674,7 @@ impl DesktopTransportState {
                 &[("method", method.into())],
             ));
         }
-        let key = (generation, request_id.to_owned());
+        let key = (client_id.to_owned(), generation, request_id.to_owned());
         if inner.pending.contains_key(&key) {
             return Err(transport_error(
                 ErrorCategory::Conflict,
@@ -532,12 +691,13 @@ impl DesktopTransportState {
 
     fn remove_pending(
         &self,
+        client_id: &str,
         generation: u64,
         request_id: &str,
         token: &Arc<AtomicBool>,
     ) -> Result<(), PublicApiError> {
         let mut inner = self.lock("complete_request")?;
-        let key = (generation, request_id.to_owned());
+        let key = (client_id.to_owned(), generation, request_id.to_owned());
         if inner
             .pending
             .get(&key)
@@ -550,20 +710,11 @@ impl DesktopTransportState {
 
     fn publish_event(
         &self,
-        generation: u64,
+        client_id: &str,
         event_name: String,
         payload: Value,
-    ) -> Result<DesktopEventEnvelope, PublicApiError> {
+    ) -> Result<Vec<DesktopTransportEmission>, PublicApiError> {
         let mut inner = self.lock("publish_event")?;
-        if !inner.connected || inner.generation != generation {
-            return Err(transport_error(
-                ErrorCategory::Cancelled,
-                Recoverability::Retryable,
-                "the response belongs to a replaced desktop connection generation",
-                "publish_event",
-                &[("generation", generation.into())],
-            ));
-        }
         inner.sequence = inner.sequence.checked_add(1).ok_or_else(|| {
             transport_error(
                 ErrorCategory::Internal,
@@ -573,9 +724,7 @@ impl DesktopTransportState {
                 &[],
             )
         })?;
-        let event = DesktopEventEnvelope {
-            generation,
-            stream_id: STREAM_ID.to_owned(),
+        let event = RetainedDesktopEvent {
             sequence: inner.sequence,
             event: event_name,
             payload,
@@ -584,7 +733,24 @@ impl DesktopTransportState {
             inner.retained.pop_front();
         }
         inner.retained.push_back(event.clone());
-        Ok(event)
+        let mut clients = inner
+            .clients
+            .iter()
+            .filter(|(_, client)| client.connected)
+            .map(|(target, client)| (target.clone(), client.generation))
+            .collect::<Vec<_>>();
+        clients.sort_by(|left, right| {
+            let left_order = usize::from(left.0 != client_id);
+            let right_order = usize::from(right.0 != client_id);
+            (left_order, left.0.as_str()).cmp(&(right_order, right.0.as_str()))
+        });
+        Ok(clients
+            .into_iter()
+            .map(|(target, target_generation)| DesktopTransportEmission {
+                client_id: target,
+                envelope: event.envelope(target_generation),
+            })
+            .collect())
     }
 
     fn lock(
@@ -601,6 +767,24 @@ impl DesktopTransportState {
             )
         })
     }
+}
+
+fn validate_client_id(client_id: &str) -> Result<(), PublicApiError> {
+    if client_id.is_empty()
+        || client_id.len() > 128
+        || !client_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b':' | b'.'))
+    {
+        return Err(transport_error(
+            ErrorCategory::InvalidInput,
+            Recoverability::UserCorrectable,
+            "the desktop transport client identity is invalid",
+            "validate_client",
+            &[],
+        ));
+    }
+    Ok(())
 }
 
 fn cancellation_wins_after_routing(method: &str) -> bool {
@@ -898,6 +1082,7 @@ mod tests {
         };
         let token = transport
             .admit_request(
+                "main",
                 generation,
                 "request-1",
                 GetEngineIntegrationValidation::METHOD,
@@ -932,6 +1117,94 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn webview_clients_keep_independent_generations_and_receive_one_ordered_event() {
+        let transport = DesktopTransportState::new();
+        let DesktopTransportReply::Connected {
+            generation: main_generation,
+            ..
+        } = transport
+            .dispatch_control_for(
+                "main",
+                DesktopTransportCommand::Connect { after_sequence: 0 },
+            )
+            .unwrap()
+        else {
+            panic!("main connect returned an unexpected reply");
+        };
+        let DesktopTransportReply::Connected {
+            generation: workspace_generation,
+            ..
+        } = transport
+            .dispatch_control_for(
+                "workspace-1",
+                DesktopTransportCommand::Connect { after_sequence: 0 },
+            )
+            .unwrap()
+        else {
+            panic!("workspace connect returned an unexpected reply");
+        };
+
+        assert_ne!(main_generation, workspace_generation);
+        assert!(transport.client_is_connected("main", main_generation));
+        assert!(transport.client_is_connected("workspace-1", workspace_generation));
+        let emissions = transport
+            .publish_event(
+                "main",
+                "superi.project.state.changed".to_owned(),
+                serde_json::json!({"project_revision": 9}),
+            )
+            .unwrap();
+        assert_eq!(emissions.len(), 2);
+        assert_eq!(emissions[0].client_id, "main");
+        assert_eq!(emissions[0].envelope.generation(), main_generation);
+        assert_eq!(emissions[1].client_id, "workspace-1");
+        assert_eq!(emissions[1].envelope.generation(), workspace_generation);
+        assert_eq!(
+            emissions[0].envelope.sequence(),
+            emissions[1].envelope.sequence()
+        );
+
+        let main_token = transport
+            .admit_request(
+                "main",
+                main_generation,
+                "shared-request",
+                GetEngineIntegrationValidation::METHOD,
+            )
+            .unwrap();
+        let workspace_token = transport
+            .admit_request(
+                "workspace-1",
+                workspace_generation,
+                "shared-request",
+                GetEngineIntegrationValidation::METHOD,
+            )
+            .unwrap();
+        transport.disconnect_client("workspace-1").unwrap();
+        assert!(transport.client_is_connected("main", main_generation));
+        assert!(!transport.client_is_connected("workspace-1", workspace_generation));
+        assert!(!main_token.load(Ordering::Acquire));
+        assert!(workspace_token.load(Ordering::Acquire));
+
+        let after_close = transport
+            .publish_event(
+                "workspace-1",
+                "superi.project.state.changed".to_owned(),
+                serde_json::json!({"project_revision": 10}),
+            )
+            .unwrap();
+        assert_eq!(after_close.len(), 1);
+        assert_eq!(after_close[0].client_id, "main");
+        assert_eq!(
+            after_close[0].envelope.sequence(),
+            emissions[0].envelope.sequence() + 1
+        );
+        transport
+            .remove_pending("main", main_generation, "shared-request", &main_token)
+            .unwrap();
     }
 
     #[test]
@@ -1052,11 +1325,13 @@ mod tests {
             observed_playback["snapshot"]["playback"]["latest"]["mode"],
             "playing"
         );
-        assert!(observed_playback["snapshot"]["playback"]["latest"]["degradation"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|value| value == "viewport_output_unavailable"));
+        assert!(
+            observed_playback["snapshot"]["playback"]["latest"]["degradation"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value == "viewport_output_unavailable")
+        );
 
         let command = ExecuteProjectCommand::new(
             "append-through-transport",

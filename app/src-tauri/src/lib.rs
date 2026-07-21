@@ -8,6 +8,7 @@ pub mod lifecycle;
 pub mod project_lifecycle;
 pub mod transport;
 pub mod viewport;
+pub mod window_session;
 
 use std::thread;
 use std::time::Duration;
@@ -22,8 +23,8 @@ use serde::Serialize;
 use superi_core::error::Error;
 use tauri::{AppHandle, Builder, Emitter, Manager, RunEvent, Runtime, State};
 use transport::{
-    event_emission_error, transport_task_error, DesktopTransportCommand, DesktopTransportReply,
-    DesktopTransportState, DESKTOP_API_EVENT,
+    transport_task_error, DesktopTransportCommand, DesktopTransportReply, DesktopTransportState,
+    DESKTOP_API_EVENT,
 };
 
 #[derive(Clone)]
@@ -67,6 +68,7 @@ fn desktop_lifecycle_request(
 #[tauri::command]
 async fn desktop_api_dispatch<R: Runtime>(
     app: AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
     command: DesktopTransportCommand,
     transport: State<'_, DesktopTransportState>,
     engine: State<'_, EngineConnection>,
@@ -75,15 +77,22 @@ async fn desktop_api_dispatch<R: Runtime>(
     let transport = transport.inner().clone();
     let engine = engine.inner().clone();
     let projects = projects.inner().clone();
+    let client_id = window.label().to_owned();
+    let worker_client_id = client_id.clone();
+    let worker_transport = transport.clone();
     let outcome = tauri::async_runtime::spawn_blocking(move || {
-        transport.dispatch_blocking(&engine, &projects, command)
+        worker_transport.dispatch_blocking_for(&worker_client_id, &engine, &projects, command)
     })
     .await
     .map_err(|_| transport_task_error("join_dispatch"))??;
-    let (reply, events) = outcome.into_parts();
+    let (reply, events) = outcome.into_targeted_parts();
     for event in events {
-        app.emit(DESKTOP_API_EVENT, event)
-            .map_err(|_| event_emission_error())?;
+        if app
+            .emit_to(event.client_id(), DESKTOP_API_EVENT, event.envelope())
+            .is_err()
+        {
+            let _ = transport.disconnect_client(event.client_id());
+        }
     }
     Ok(reply)
 }
@@ -99,6 +108,7 @@ pub fn configure<R: Runtime>(builder: Builder<R>, lifecycle: ApplicationLifecycl
         .manage(DesktopTransportState::new())
         .manage(DesktopProjectState::default())
         .manage(viewport::DesktopViewportState::default())
+        .manage(window_session::DesktopWindowState::default())
         .invoke_handler(tauri::generate_handler![
             desktop_lifecycle_snapshot,
             desktop_lifecycle_request,
@@ -127,8 +137,23 @@ pub fn configure<R: Runtime>(builder: Builder<R>, lifecycle: ApplicationLifecycl
             project_lifecycle::scan_project_media_sources,
             project_lifecycle::mutate_project_media_batch,
             viewport::desktop_viewport_update,
-            viewport::desktop_viewport_color_update
+            viewport::desktop_viewport_color_update,
+            window_session::desktop_window_session_snapshot,
+            window_session::desktop_window_create,
+            window_session::desktop_window_focus,
+            window_session::desktop_window_fullscreen,
+            window_session::desktop_window_move_to_monitor,
+            window_session::desktop_window_undo_placement,
+            window_session::desktop_window_workspace_update,
+            window_session::desktop_window_close,
+            window_session::desktop_window_reopen
         ])
+        .on_window_event(|window, event| {
+            let state = window.state::<window_session::DesktopWindowState>();
+            let lifecycle = window.state::<ManagedLifecycle>();
+            let transport = window.state::<DesktopTransportState>();
+            state.handle_window_event(window, event, &lifecycle.0, transport.inner());
+        })
 }
 
 /// Constructs the real native builder used by hosted desktop compilation.
@@ -156,6 +181,8 @@ pub fn run() {
                 .initialize(app.path().app_data_dir()?.join("recovery"))?;
             app.state::<viewport::DesktopViewportState>()
                 .initialize(app)?;
+            app.state::<window_session::DesktopWindowState>()
+                .initialize(app.handle().clone(), app.path().app_data_dir()?)?;
             file_associations::route_startup_project_files(
                 app.handle(),
                 startup_project_paths.clone(),
@@ -166,6 +193,12 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("Superi Tauri application should build");
 
+    let window_state = app
+        .state::<window_session::DesktopWindowState>()
+        .inner()
+        .clone();
+    let event_window_state = window_state.clone();
+
     app.run(move |handle, event| match event {
         RunEvent::ExitRequested { api, .. } => {
             let snapshot = event_lifecycle.snapshot();
@@ -174,6 +207,8 @@ pub fn run() {
                 if let Err(error) = event_lifecycle.request_shutdown() {
                     eprintln!("could not begin orderly Superi shutdown: {error}");
                 }
+            } else {
+                event_window_state.begin_shutdown();
             }
         }
         #[cfg(target_os = "macos")]
@@ -182,6 +217,7 @@ pub fn run() {
         }
         _ => {}
     });
+    window_state.shutdown_and_join();
     if let Err(error) = engine.join() {
         eprintln!("headless engine process did not stop cleanly: {error}");
     }
@@ -195,6 +231,8 @@ fn spawn_exit_monitor<R: Runtime>(app: AppHandle<R>, lifecycle: ApplicationLifec
             if snapshot.application_phase() == ApplicationLifecyclePhase::Stopped
                 && snapshot.intent() == LifecycleIntent::Shutdown
             {
+                app.state::<window_session::DesktopWindowState>()
+                    .begin_shutdown();
                 app.exit(0);
                 return;
             }
