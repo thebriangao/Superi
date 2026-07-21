@@ -276,8 +276,10 @@ test("editorial feedback crosses the existing application owner into viewers and
     "Source",
     "Dropped frames",
     "Playback status",
+    "Frame cache",
     "Visual state",
     "Audio state",
+    "Audio cache",
     "Comparison state",
     "Editorial intent",
   ]) {
@@ -289,6 +291,10 @@ test("editorial feedback crosses the existing application owner into viewers and
   assert.doesNotMatch(
     viewerStatus,
     /useSuperiApi|DesktopSuperiTransport|@tauri-apps|\binvoke\b|executeProject|executePlayback/,
+  );
+  assert.doesNotMatch(
+    viewerStatus,
+    /setTimeout|setInterval|\bfetch\b|\bPromise\b|\basync\b|requestAnimationFrame/,
   );
   assert.match(nativeViewport, /EditorialAudioMeters/);
   assert.match(nativeViewport, /data-signal-status=\{feedback\.signalStatus\}/);

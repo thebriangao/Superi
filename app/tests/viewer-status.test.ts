@@ -2,12 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type {
+  EditorAudioState,
   EditorCanonicalDocument,
   EditorPlaybackSnapshot,
   EditorStateSnapshot,
 } from "../src/api.ts";
 import type { SourceMonitorSnapshot } from "../src/project-lifecycle.ts";
-import { projectViewerStatusDisplay } from "../src/viewer-status.ts";
+import {
+  projectViewerStatusDisplay,
+  VIEWER_STATUS_FIELDS,
+} from "../src/viewer-status.ts";
 
 const DROP_RATE = Object.freeze({ numerator: 30_000, denominator: 1_001 });
 
@@ -169,6 +173,47 @@ const PLAYBACK = {
   failure: null,
 } satisfies EditorPlaybackSnapshot;
 
+const AUDIO_STATE = {
+  audio_track_count: 1,
+  tracks: [
+    {
+      timeline_id: "timeline.main",
+      track_id: "track.audio.1",
+      sample_rate: 48_000,
+      source_channels: ["front_left", "front_right"],
+      destination: { kind: "main" },
+      destination_channels: ["front_left", "front_right"],
+      routes: [
+        {
+          source: "front_left",
+          target: { kind: "channel", channel: "front_left" },
+        },
+        { source: "front_right", target: { kind: "muted" } },
+      ],
+      clip_count: 2,
+      continuity: {
+        status: "audited",
+        uninterrupted_record_coverage: false,
+        seams: [
+          {
+            left_clip_id: "clip.audio.left",
+            right_clip_id: "clip.audio.right",
+            record: { kind: "gap", sample_count: 240 },
+            source: {
+              kind: "discontinuous",
+              expected: 96_000,
+              actual: 96_032,
+            },
+          },
+        ],
+      },
+    },
+  ],
+  timeline_resource: "superi.editor.state.timeline",
+  clip_mix: canonicalDocument(),
+  automation: { status: "detached" },
+} satisfies EditorAudioState;
+
 function editorSnapshot(
   rate = DROP_RATE,
   globalStart = "0",
@@ -196,6 +241,7 @@ function editorSnapshot(
       },
     },
     timeline: { document: canonicalDocument(rate, globalStart) },
+    audio: AUDIO_STATE,
     playback: { status: "attached", pending_command: true, latest: playback },
   } as unknown as EditorStateSnapshot;
 }
@@ -253,9 +299,33 @@ test("program display separates drop-frame labels from physical playback drops",
   assert.match(display.playbackStatus, /attached; command pending; playing/);
   assert.match(display.playbackStatus, /\+1\/1x forward/);
   assert.match(display.playbackStatus, /epoch 7/);
+  assert.match(display.frameCache, /mode playing/);
+  assert.match(display.frameCache, /foreground frame 1801 @ 30000\/1001/);
+  assert.match(display.frameCache, /due 60060 @ 1000\/1/);
+  assert.match(display.frameCache, /interaction does not wait for cache work/);
+  assert.match(display.frameCache, /fill, hit, and occupancy telemetry unavailable/);
   assert.match(display.visualState, /backpressured/);
   assert.match(display.audioState, /discard_pending/);
   assert.match(display.audioState, /generation 5 requested, 4 applied/);
+  assert.match(
+    display.audioCache,
+    /transport synchronization pending discard acknowledgement/,
+  );
+  assert.match(display.audioCache, /discard generation 5 requested, 4 applied/);
+  assert.match(display.audioCache, /sample clock 48000 Hz/);
+  assert.match(display.audioCache, /source channels \[front_left, front_right\]/);
+  assert.match(
+    display.audioCache,
+    /destination main \[front_left, front_right\]/,
+  );
+  assert.match(display.audioCache, /front_left -> front_left/);
+  assert.match(display.audioCache, /front_right -> muted/);
+  assert.match(display.audioCache, /record gap 240 samples/);
+  assert.match(
+    display.audioCache,
+    /source discontinuity expected 96000 actual 96032/,
+  );
+  assert.match(display.audioCache, /audible output state not inferred/);
   assert.equal(display.comparisonState, "Single program source: clip clip.opening.");
   const liveComparison = projectViewerStatusDisplay(
     "program",
@@ -333,10 +403,94 @@ test("unobserved owners remain explicit and never become guessed success", () =>
   assert.equal(display.source, "Unavailable: editor state has not been observed.");
   assert.equal(display.droppedFrames, "Unavailable: playback has not been observed.");
   assert.equal(display.playbackStatus, "Detached: editor state has not been observed.");
+  assert.equal(display.frameCache, "Unavailable: playback has not been observed.");
   assert.equal(display.visualState, "Unavailable: playback has not been observed.");
   assert.equal(display.audioState, "Unavailable: playback has not been observed.");
+  assert.equal(display.audioCache, "Unavailable: playback has not been observed.");
   assert.equal(display.comparisonState, "Unavailable: editor state has not been observed.");
   assert.equal(display.editorialIntent, "Unavailable: editorial state has not been observed.");
+});
+
+test("cache indicators preserve exact viewer state through every transport mode", () => {
+  assert.deepEqual(
+    VIEWER_STATUS_FIELDS.map((field) => field.key),
+    [
+      "timecode",
+      "frame",
+      "source",
+      "droppedFrames",
+      "playbackStatus",
+      "frameCache",
+      "visualState",
+      "audioState",
+      "audioCache",
+      "comparisonState",
+      "editorialIntent",
+    ],
+  );
+
+  for (const mode of ["paused", "playing", "scrubbing", "ended"]) {
+    const playback = {
+      ...PLAYBACK,
+      mode,
+      audio_state: "synchronized",
+      discard_applied_generation: 5,
+      degradation: ["viewport_backpressure"],
+    } satisfies EditorPlaybackSnapshot;
+    const display = projectViewerStatusDisplay(
+      "program",
+      editorSnapshot(DROP_RATE, "0", "drop_frame", playback),
+      SOURCE_MONITOR,
+      `Compare current and reference while ${mode}.`,
+    );
+
+    assert.match(display.timecode, /00:01:00;02/);
+    assert.match(display.frame, /record 1800/);
+    assert.match(display.playbackStatus, new RegExp(`; ${mode};`));
+    assert.match(display.frameCache, new RegExp(`mode ${mode}`));
+    assert.match(display.visualState, /backpressured/);
+    assert.match(display.audioState, /synchronized/);
+    assert.match(display.audioCache, /transport synchronization current/);
+    assert.match(display.audioCache, /sample clock 48000 Hz/);
+    assert.equal(
+      display.comparisonState,
+      `Compare current and reference while ${mode}.`,
+    );
+  }
+});
+
+test("timing-only output and malformed audio evidence stay explicit", () => {
+  const timingOnly = {
+    ...PLAYBACK,
+    audio_state: "synchronized",
+    discard_applied_generation: 5,
+    degradation: [
+      "prefetch_failure",
+      "viewport_output_unavailable",
+      "audio_output_unavailable",
+    ],
+  } satisfies EditorPlaybackSnapshot;
+  const timingOnlyDisplay = projectViewerStatusDisplay(
+    "program",
+    editorSnapshot(DROP_RATE, "0", "drop_frame", timingOnly),
+    SOURCE_MONITOR,
+  );
+  assert.match(timingOnlyDisplay.frameCache, /predictive cache failed/);
+  assert.match(timingOnlyDisplay.frameCache, /decoded viewport output unavailable/);
+  assert.match(timingOnlyDisplay.audioCache, /device audio output unavailable/);
+  assert.match(timingOnlyDisplay.audioCache, /audible continuity not claimed/);
+
+  const malformed = structuredClone(editorSnapshot());
+  malformed.audio.tracks[0].sample_rate = 0;
+  const malformedDisplay = projectViewerStatusDisplay(
+    "program",
+    malformed,
+    SOURCE_MONITOR,
+  );
+  assert.match(malformedDisplay.audioCache, /^Unavailable:/);
+  assert.match(malformedDisplay.audioState, /discard_pending/);
+  assert.match(malformedDisplay.frameCache, /mode playing/);
+  assert.equal(Object.isFrozen(malformedDisplay), true);
 });
 
 test("invalid settings and inexact track clocks fail closed without hiding independent state", () => {

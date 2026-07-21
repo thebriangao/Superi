@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: b0dec1fe02ec34c981987d1588a8c6489e9d2760a841aa1f5005e5421f7ce571
-source_files: 300
+source_hash: 5ac99f4fcd0678eff42eb3ea10b1534cb0bb1664b46a3a982bff4cfb90bcf6f9
+source_files: 301
 mapped_at_commit: working-tree
 ---
 
@@ -527,6 +527,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   display output from all four native viewer roles, connection-local monitor routing, exact target
   and presentation diagnostics, shared canonical GPU textures, external failure isolation, and
   preserved navigation, overlay, comparison, analysis, temporal, visual, and audio ownership.
+- `docs/checkpoints/P3.W05.C011.md`: Durable implementation evidence for nonblocking frame and
+  audio cache indicators over exact scheduled timing, predictive and output degradation, discard
+  acknowledgement, sample clocks, ordered channel meaning, routing intent, continuity seams, and
+  explicit unavailable telemetry across every transport mode.
 
 ### Production desktop application
 
@@ -607,7 +611,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   exact clocks with checked integer arithmetic, matches core non-drop and supported NTSC drop-frame
   label projection, selects the exact active program item, and reports source, record, identity,
   relationships, playback, physical drops, visual, audio, comparison, degradation, failure, and
-  editorial intent without accepting a command, setter, transport, or authored state.
+  editorial intent. Its additive frame and audio cache indicators preserve exact foreground
+  scheduling, predictive failure, decoded-output availability, callback discard acknowledgement,
+  sample clocks, ordered channels, complete routes, and continuity seams while explicitly refusing
+  to invent occupancy, hit, prediction-completion, buffer-fill, device-output, or audible-sample
+  evidence. The projector accepts no command, setter, transport, timer, poll, or authored state.
 - `app/src/viewer-analysis.ts`: Defines the frozen eight-view image and diagnostic catalog, stable
   cross-boundary codes, exact labels and semantics, image default, and fail-closed lookup without
   owning authored, navigation, overlay, playback, comparison, or display-transform state.
@@ -782,9 +790,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   publishes only its deterministic formatted comparison summary through an optional callback. A
   memoized presentation-only viewer-status
   projection consumes the existing application snapshot and retained source monitor, then renders
-  exact role-aware temporal, source, drop, playback, visual, audio, comparison, and editorial
-  evidence outside the transformed frame so every navigation, overlay, and comparison mode
-  preserves it. The Program role additionally projects every exact built-in transform reachable
+  exact role-aware temporal, source, drop, playback, frame-cache, visual, audio, audio-cache,
+  comparison, and editorial evidence outside the transformed frame so every navigation, overlay,
+  comparison, analysis, and external-display mode preserves it. The Program role additionally
+  projects every exact built-in transform reachable
   from the one current selected clip, renders complete matrix and sampling state outside the
   transformed frame, keeps driver-owned values inspectable and read-only, and submits Apply or
   identity reset as one typed graph action through the existing application command owner. Authored
@@ -907,7 +916,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   editorial feedback publication, viewer consumption, audio meter rendering, route-state styling,
   native IPC isolation, accessible analysis selection, and selected-versus-presented status. It also freezes the
   complete fit, zoom, pan, 1:1, fullscreen, cinema, and external-display-intent viewer control
-  consumer while excluding C002 playback navigation ownership. It freezes all nine viewer-status
+  consumer while excluding C002 playback navigation ownership. It freezes all eleven viewer-status
   fields, application-owned projection, transformed-frame separation, exact role coverage, and
   absence of direct status transport or mutation authority. It also freezes the
   editing playback consumer, application-owned generated route, complete required action set,
@@ -938,7 +947,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/viewer-status.test.ts`: Proves core-compatible drop-frame and non-drop timecode labels,
   continuous display frames, physical-drop separation, exact active source and ranges, grouping,
   linking, targeting, synchronization, selection, playback, visual, audio, comparison,
-  source-monitor identity, explicit unavailable owners, frozen output, and input nonmutation.
+  source-monitor identity, explicit unavailable owners, frozen output, and input nonmutation. It
+  additionally proves nonblocking frame scheduling, predictive and decoded-output degradation,
+  exact audio discard acknowledgement, sample clocks, ordered source and destination channels,
+  explicit channel or mute routing, structural continuity seams, timing-only output honesty,
+  malformed-evidence rejection, and preserved exact status through paused, playing, scrubbing, and
+  ended modes.
 - `app/tests/viewer-analysis.test.ts`: Proves exact ordered view codes and labels, complete catalog
   freezing, the image default, deterministic lookup, and fail-closed unknown selection.
 - `app/tests/viewer-transform-controls.test.ts`: Proves exact current selected-clip resolution,
@@ -2331,6 +2345,14 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   unobserved signal telemetry, deep immutability, application-owned cross-sibling publication, real
   viewer and meter consumption, route-state styling, and native placement-payload isolation.
 
+- The focused viewer-cache proof freezes all eleven status fields, exact foreground frame and due
+  clocks, predictive failure, decoded-output availability, nonblocking interaction, discard
+  generation acknowledgement, transport synchronization, sample rates, ordered channel meaning,
+  complete channel or mute routing, structural continuity seams, and explicit absent fill, hit,
+  occupancy, device-output, and audible-sample evidence. Paused, playing, scrubbing, and ended
+  modes retain exact temporal, visual, audio, cache, and comparison state through the real native
+  viewer consumer, while malformed audio evidence fails closed without hiding independent state.
+
 - The focused timeline-transition proof freezes exact from and to offsets, adjacent and
   opposite-edge capacity, deterministic start, center, end, and custom alignment, duration fitting,
   graph identity and downstream effect traversal, canonical scalar-bit decoding, host-owned and
@@ -2683,9 +2705,13 @@ Every source, program, composite, and color native viewer now also memoizes one 
 projection from those existing owners. The visible display uses checked exact rescaling, the
 canonical global start, project-owned non-drop or supported NTSC drop-frame label mode, a separate
 continuous frame number, topmost enabled source identity and exact ranges, physical drop counters,
-transport scheduling, visual degradation, audio discard acknowledgement, comparison, and current
-selection, group, link, target, and sync-lock intent. Invalid or unobserved owners remain explicitly
-unavailable, and the status list stays outside the transformed frame across every navigation mode.
+transport scheduling, nonblocking predictive and foreground frame-cache evidence, visual
+degradation, audio discard acknowledgement, canonical sample clocks, ordered channels, routes,
+continuity, explicit audio-cache output limits, comparison, and current selection, group, link,
+target, and sync-lock intent. Invalid or unobserved owners remain explicitly unavailable, and the
+status list stays outside the transformed frame across paused, playing, scrubbing, ended, and every
+shell navigation mode. Cache fill, hit, occupancy, prediction completion, buffer fill, device
+output, and audible samples remain unavailable rather than inferred.
 The Program viewer now also resolves exactly one current selected clip into its timeline-scoped
 canonical graph and exposes every reachable exact built-in transform in node order. All nine finite
 matrix scalars and nearest or bilinear sampling remain ordinary typed graph parameters; drivers make
@@ -2996,6 +3022,12 @@ The largest current risk is cross-document drift:
   into zero or success. The active program display currently reports the canonical clip source
   range because the shared canvas projection does not expose the current point through a retime map.
 
+- Viewer cache presentation has only transport scheduling, degradation, discard-generation, and
+  canonical authored audio evidence. It must not turn absence of `prefetch_failure` into a cache
+  hit, derive occupancy or fill from a scheduled frame, infer device-backed audio from routing, or
+  describe structural continuity as audible output while the timing-only runtime reports viewport
+  and audio output unavailable.
+
 - Editorial audio feedback currently has canonical structural authority but no runtime meter-reading
   owner. Route-state bars must remain labeled as routing and audibility evidence, and signal status
   must remain unobserved until playback publishes real per-channel readings with exact sample and
@@ -3155,7 +3187,12 @@ and editorial intent, engine playback owns physical drops and transport, visual,
 and failure observations, and the retained source monitor owns its current source coordinate and
 fingerprint. Exact rescaling must fail closed, omitted drop-frame labels must never alter continuous
 frame identity, active-item lookup must preserve half-open range and topmost enabled-track rules,
-and status rendering must remain outside native placement and transformed-frame ownership.
+and status rendering must remain outside native placement and transformed-frame ownership. Frame
+cache display may report only exact foreground scheduling, due clocks, predictive failure, and
+output availability. Audio cache display must preserve discard acknowledgement, exact sample clocks,
+ordered source and destination channels, complete routes, and audited continuity while keeping
+occupancy, hit, prediction completion, buffer fill, device output, signal level, and audible samples
+explicitly unobserved when no authoritative owner publishes them.
 Keep viewer transform projection strict and selected-clip scoped. Validate canonical envelopes,
 schema references, graph revision, node and port topology, driver targets, clip identity, exact
 `superi.effect.transform` 1.0.0 parameters, and finite scalar bits before exposing controls. Preserve

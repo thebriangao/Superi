@@ -1,4 +1,6 @@
 import type {
+  EditorAudioSeam,
+  EditorAudioTrackState,
   EditorPlaybackSnapshot,
   EditorRationalTime,
   EditorStateSnapshot,
@@ -33,8 +35,10 @@ export interface ViewerStatusDisplay {
   readonly source: string;
   readonly droppedFrames: string;
   readonly playbackStatus: string;
+  readonly frameCache: string;
   readonly visualState: string;
   readonly audioState: string;
+  readonly audioCache: string;
   readonly comparisonState: string;
   readonly editorialIntent: string;
 }
@@ -45,8 +49,10 @@ export const VIEWER_STATUS_FIELDS = Object.freeze([
   Object.freeze({ key: "source", label: "Source" }),
   Object.freeze({ key: "droppedFrames", label: "Dropped frames" }),
   Object.freeze({ key: "playbackStatus", label: "Playback status" }),
+  Object.freeze({ key: "frameCache", label: "Frame cache" }),
   Object.freeze({ key: "visualState", label: "Visual state" }),
   Object.freeze({ key: "audioState", label: "Audio state" }),
+  Object.freeze({ key: "audioCache", label: "Audio cache" }),
   Object.freeze({ key: "comparisonState", label: "Comparison state" }),
   Object.freeze({ key: "editorialIntent", label: "Editorial intent" }),
 ] as const satisfies readonly {
@@ -85,8 +91,10 @@ export function projectViewerStatusDisplay(
           : "Unavailable: editor state has not been observed.",
       droppedFrames: "Unavailable: playback has not been observed.",
       playbackStatus: "Detached: editor state has not been observed.",
+      frameCache: "Unavailable: playback has not been observed.",
       visualState: "Unavailable: playback has not been observed.",
       audioState: "Unavailable: playback has not been observed.",
+      audioCache: "Unavailable: playback has not been observed.",
       comparisonState:
         liveComparisonState ??
         (role === "source"
@@ -124,11 +132,13 @@ export function projectViewerStatusDisplay(
               : formatProgramSource(active.active),
     droppedFrames: formatDroppedFrames(playback),
     playbackStatus: formatPlaybackStatus(snapshot, playback),
+    frameCache: formatFrameCache(playback),
     visualState:
       playback === null
         ? "Unavailable: playback has not been observed."
         : playbackVisualState(playback),
     audioState: formatAudioState(playback),
+    audioCache: formatAudioCache(snapshot, playback),
     comparisonState:
       liveComparisonState ?? formatComparisonState(role, model, temporal, active),
     editorialIntent:
@@ -609,6 +619,272 @@ function formatAudioState(playback: EditorPlaybackSnapshot | null): string {
     `${playback.discard_requested_generation} requested, ` +
     `${playback.discard_applied_generation} applied; ${acknowledgement}.`
   );
+}
+
+function formatFrameCache(playback: EditorPlaybackSnapshot | null): string {
+  if (playback === null) return "Unavailable: playback has not been observed.";
+  try {
+    validatePlaybackSnapshot(playback);
+    if (
+      playback.mode !== "paused" &&
+      playback.mode !== "playing" &&
+      playback.mode !== "scrubbing" &&
+      playback.mode !== "ended"
+    ) {
+      throw new Error("playback mode is invalid");
+    }
+    if (
+      !Array.isArray(playback.degradation) ||
+      playback.degradation.some(
+        (degradation) =>
+          typeof degradation !== "string" || degradation.trim().length === 0,
+      )
+    ) {
+      throw new Error("playback degradation state is invalid");
+    }
+    const scheduled = playback.scheduled_frame
+      ? `foreground frame ${formatValidatedEditorTime(playback.scheduled_frame)}`
+      : "foreground frame unavailable";
+    const due = playback.scheduled_due_clock
+      ? `due ${formatValidatedEditorTime(playback.scheduled_due_clock)}`
+      : "due clock unavailable";
+    const prediction = playback.degradation.includes("prefetch_failure")
+      ? "predictive cache failed; foreground scheduling remains authoritative"
+      : "predictive cache completion not exposed";
+    const output = playback.degradation.includes("viewport_output_unavailable")
+      ? "decoded viewport output unavailable"
+      : "decoded viewport output availability not inferred";
+    return (
+      `mode ${playback.mode}; ${scheduled}; ${due}; ${prediction}; ${output}; ` +
+      "interaction does not wait for cache work; fill, hit, and occupancy telemetry unavailable."
+    );
+  } catch (error: unknown) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return `Unavailable: ${reason}.`;
+  }
+}
+
+function formatAudioCache(
+  snapshot: EditorStateSnapshot,
+  playback: EditorPlaybackSnapshot | null,
+): string {
+  if (playback === null) return "Unavailable: playback has not been observed.";
+  try {
+    if (
+      !nonnegativeCount(playback.discard_requested_generation) ||
+      !nonnegativeCount(playback.discard_applied_generation) ||
+      playback.discard_applied_generation > playback.discard_requested_generation
+    ) {
+      throw new Error("audio discard generations are invalid");
+    }
+    if (
+      !Array.isArray(playback.degradation) ||
+      playback.degradation.some(
+        (degradation) =>
+          typeof degradation !== "string" || degradation.trim().length === 0,
+      )
+    ) {
+      throw new Error("playback degradation state is invalid");
+    }
+    const synchronization = formatAudioSynchronization(playback);
+    const tracks = formatAudioTracks(snapshot);
+    const output = playback.degradation.includes("audio_output_unavailable")
+      ? "device audio output unavailable; audible continuity not claimed"
+      : "audible output state not inferred";
+    return (
+      `${synchronization}; discard generation ` +
+      `${playback.discard_requested_generation} requested, ` +
+      `${playback.discard_applied_generation} applied; buffer fill telemetry unavailable; ` +
+      `${tracks}; ${output}.`
+    );
+  } catch (error: unknown) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return `Unavailable: ${reason}.`;
+  }
+}
+
+function formatAudioSynchronization(playback: EditorPlaybackSnapshot): string {
+  const discardPending =
+    playback.discard_requested_generation !== playback.discard_applied_generation;
+  switch (playback.audio_state) {
+    case "synchronized":
+      if (discardPending) {
+        throw new Error("audio synchronization conflicts with pending discard state");
+      }
+      return "transport synchronization current";
+    case "discard_pending":
+      if (!discardPending) {
+        throw new Error("audio discard-pending state has no pending generation");
+      }
+      return (
+        "transport synchronization pending discard acknowledgement; " +
+        "pre-discontinuity queued audio blocked until callback acknowledgement"
+      );
+    case "muted_inactive":
+      return "transport inactive and muted";
+    case "muted_unsupported_rate":
+      return "transport rate unsupported and muted";
+    default:
+      throw new Error("audio transport state is invalid");
+  }
+}
+
+function formatAudioTracks(snapshot: EditorStateSnapshot): string {
+  const audio = snapshot.audio;
+  if (
+    audio === null ||
+    typeof audio !== "object" ||
+    !nonnegativeCount(audio.audio_track_count) ||
+    !Array.isArray(audio.tracks) ||
+    audio.audio_track_count !== audio.tracks.length
+  ) {
+    throw new Error("canonical audio track state is invalid");
+  }
+  if (audio.tracks.length === 0) return "canonical audio tracks none";
+
+  const identities = new Set<string>();
+  const tracks = audio.tracks.map((track) => {
+    const identity = `${track.timeline_id}\u0000${track.track_id}`;
+    if (identities.has(identity)) {
+      throw new Error("canonical audio track identity is duplicated");
+    }
+    identities.add(identity);
+    return formatAudioTrack(track);
+  });
+  return `canonical audio tracks ${tracks.join(" | ")}`;
+}
+
+function formatAudioTrack(track: EditorAudioTrackState): string {
+  requireText(track.timeline_id, "audio timeline identity");
+  requireText(track.track_id, "audio track identity");
+  if (!Number.isSafeInteger(track.sample_rate) || track.sample_rate <= 0) {
+    throw new Error("audio sample clock is invalid");
+  }
+  if (!nonnegativeCount(track.clip_count)) {
+    throw new Error("audio track clip count is invalid");
+  }
+  const sourceChannels = validateChannelOrder(
+    track.source_channels,
+    "source channel order",
+  );
+  const destinationChannels = validateChannelOrder(
+    track.destination_channels,
+    "destination channel order",
+  );
+  if (!Array.isArray(track.routes) || track.routes.length !== sourceChannels.length) {
+    throw new Error("audio route count does not match source channel order");
+  }
+  const routes = track.routes.map((route, index) => {
+    if (route.source !== sourceChannels[index]) {
+      throw new Error("audio route order does not match source channel order");
+    }
+    if (route.target.kind === "muted") return `${route.source} -> muted`;
+    if (
+      route.target.kind !== "channel" ||
+      !destinationChannels.includes(route.target.channel)
+    ) {
+      throw new Error("audio route target is absent from destination channel order");
+    }
+    return `${route.source} -> ${route.target.channel}`;
+  });
+  const destination =
+    track.destination.kind === "main"
+      ? "main"
+      : `track ${requireText(track.destination.track_id, "audio destination track identity")}`;
+  return (
+    `${track.track_id}: sample clock ${track.sample_rate} Hz; ` +
+    `source channels [${sourceChannels.join(", ")}]; ` +
+    `destination ${destination} [${destinationChannels.join(", ")}]; ` +
+    `routes [${routes.join(", ")}]; clips ${track.clip_count}; ` +
+    formatAudioContinuity(track)
+  );
+}
+
+function validateChannelOrder(channels: readonly string[], label: string): readonly string[] {
+  if (!Array.isArray(channels) || channels.length === 0) {
+    throw new Error(`${label} is empty`);
+  }
+  const seen = new Set<string>();
+  for (const channel of channels) {
+    const value = requireText(channel, label);
+    if (seen.has(value)) throw new Error(`${label} contains a duplicate`);
+    seen.add(value);
+  }
+  return channels;
+}
+
+function formatAudioContinuity(track: EditorAudioTrackState): string {
+  if (track.continuity.status === "unsupported") {
+    return `continuity unsupported: ${requireText(track.continuity.reason, "continuity reason")}`;
+  }
+  if (
+    track.continuity.status !== "audited" ||
+    typeof track.continuity.uninterrupted_record_coverage !== "boolean" ||
+    !Array.isArray(track.continuity.seams)
+  ) {
+    throw new Error("audio continuity state is invalid");
+  }
+  const seams =
+    track.continuity.seams.length === 0
+      ? "seams none"
+      : track.continuity.seams.map(formatAudioSeam).join("; ");
+  return (
+    "continuity audited; uninterrupted record coverage " +
+    `${track.continuity.uninterrupted_record_coverage ? "yes" : "no"}; ${seams}`
+  );
+}
+
+function formatAudioSeam(seam: EditorAudioSeam): string {
+  const left = requireText(seam.left_clip_id, "left audio clip identity");
+  const right = requireText(seam.right_clip_id, "right audio clip identity");
+  let record: string;
+  switch (seam.record.kind) {
+    case "seamless":
+      record = "record seamless";
+      break;
+    case "gap":
+    case "overlap":
+      if (!Number.isSafeInteger(seam.record.sample_count) || seam.record.sample_count <= 0) {
+        throw new Error("audio record seam sample count is invalid");
+      }
+      record = `record ${seam.record.kind} ${seam.record.sample_count} samples`;
+      break;
+    default:
+      throw new Error("audio record seam is invalid");
+  }
+
+  let source: string;
+  switch (seam.source.kind) {
+    case "continuous":
+      source = "source continuous";
+      break;
+    case "discontinuous":
+      if (
+        !nonnegativeCount(seam.source.expected) ||
+        !nonnegativeCount(seam.source.actual)
+      ) {
+        throw new Error("audio source seam sample timing is invalid");
+      }
+      source =
+        `source discontinuity expected ${seam.source.expected} ` +
+        `actual ${seam.source.actual}`;
+      break;
+    case "different_clip":
+      source =
+        `source clip change ${requireText(seam.source.left, "left source clip identity")} ` +
+        `to ${requireText(seam.source.right, "right source clip identity")}`;
+      break;
+    default:
+      throw new Error("audio source seam is invalid");
+  }
+  return `seam ${left} -> ${right}, ${record}, ${source}`;
+}
+
+function requireText(value: string, label: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`${label} is missing or invalid`);
+  }
+  return value;
 }
 
 function formatComparisonState(
