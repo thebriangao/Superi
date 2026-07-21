@@ -1,6 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useApplication } from "./application-context.tsx";
 import {
   loadProjectSourceMonitor,
   readProjectMediaLibrary,
@@ -45,6 +46,10 @@ import {
   type ViewerFrameIdentity,
   type ViewerTemporalContext,
 } from "./viewer-comparison.ts";
+import {
+  VIEWER_STATUS_FIELDS,
+  projectViewerStatusDisplay,
+} from "./viewer-status.ts";
 
 type ViewportSnapshot = {
   role: NativeViewerRole;
@@ -335,6 +340,7 @@ export function NativeViewport({
   temporalContext = null,
   onComparisonStateChange,
 }: NativeViewportProps) {
+  const { editorProject, sourceMonitor } = useApplication();
   const shell = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLElement>(null);
   const [snapshot, setSnapshot] = useState<ViewportSnapshot | null>(null);
@@ -437,6 +443,16 @@ export function NativeViewport({
       : "Starting native GPU output";
   const currentFrame = createViewerFrameIdentity(role, snapshot, temporalContext);
   const comparisonSummary = formatViewerComparisonState(comparison, currentFrame);
+  const statusDisplay = useMemo(
+    () =>
+      projectViewerStatusDisplay(
+        role,
+        editorProject.snapshot,
+        sourceMonitor,
+        comparisonSummary,
+      ),
+    [comparisonSummary, editorProject.snapshot, role, sourceMonitor],
+  );
   const transform = viewerTransform(navigation);
   const updateNavigation = (action: Parameters<typeof applyViewerNavigation>[1]) => {
     setNavigation((current) => applyViewerNavigation(current, action));
@@ -619,6 +635,17 @@ export function NativeViewport({
       <span className="native-viewport__status" role="status" aria-live="polite">
         {status} · {navigation.scaleMode} {Math.round(navigation.scale * 100)}% · pan {navigation.panX},{navigation.panY} · {navigation.presentation} · {navigation.externalDisplayIntent} · {comparisonSummary}
       </span>
+      <dl
+        className="editor-detail-list compact-details"
+        aria-label={`${label} viewer status display`}
+      >
+        {VIEWER_STATUS_FIELDS.map((field) => (
+          <div key={field.key}>
+            <dt>{field.label}</dt>
+            <dd>{statusDisplay[field.key]}</dd>
+          </div>
+        ))}
+      </dl>
       {feedback ? <ViewerEditorialFeedback feedback={feedback} label={label} /> : null}
     </div>
   );

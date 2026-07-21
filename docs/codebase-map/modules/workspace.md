@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 22fc862a16dfea7d97bf43ded53ee85ed08fcf41cff649092f64120766b28ec2
-source_files: 285
+source_hash: 8328c0c83c97b79f3cb6602d920ac5dd59c44e21361ccf1d1dc6fd26efc90df8
+source_files: 288
 mapped_at_commit: working-tree
 ---
 
@@ -506,6 +506,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   pan, pixel, fullscreen, and cinema presentation modes with preserved playback and overlay state.
 - `docs/checkpoints/P3.W05.C004.md`: Durable implementation evidence for presentation-only safe
   area, guide, grid, ruler, center, aspect, and custom viewer overlays.
+- `docs/checkpoints/P3.W05.C005.md`: Durable implementation evidence for exact role-aware viewer
+  timecode, frame, source, physical dropped-frame, playback, visual, audio, comparison, and
+  editorial-intent displays over existing canonical owners.
 - `docs/checkpoints/P3.W05.C006.md`: Durable implementation evidence for shell-local compare,
   split, wipe, difference, reference, and snapshot views with exact native frame identity, separate
   temporal navigation context, capture gating, live playback communication, and preserved native
@@ -522,8 +525,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
   framework, editor-workspace, timeline-canvas, timeline-nesting, timeline-multicam, timeline-clip,
   timeline-transition, caption projection, exchange, and authoring, editorial-feedback, exact
-  playback transport, viewer navigation, overlay, and comparison helper contracts, and Tauri
-  commands.
+  playback transport, viewer navigation, overlay, comparison, and viewer-status helper contracts,
+  and Tauri commands.
 - `app/src/api.ts`: Re-exports the complete canonical generated TypeScript contract and constructs
   one frozen `SuperiApiBindings` surface around an injected `SuperiTransport` and `SuperiClient`.
 - `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
@@ -584,6 +587,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   rational navigation contexts; capture and availability gates; bounded split or wipe position; orientation; and
   deterministic live state formatting without importing React, Tauri, playback, project, pixel, or
   transport ownership.
+- `app/src/viewer-status.ts`: Defines the frozen role-aware viewer display contract over existing
+  editor and source-monitor snapshots. It validates project rate and timecode settings, rescales
+  exact clocks with checked integer arithmetic, matches core non-drop and supported NTSC drop-frame
+  label projection, selects the exact active program item, and reports source, record, identity,
+  relationships, playback, physical drops, visual, audio, comparison, degradation, failure, and
+  editorial intent without accepting a command, setter, transport, or authored state.
 - `app/src/timeline-workspace.ts`: Strictly projects the embedded canonical revision 2 timeline
   document into a deeply frozen canvas model with exact rational source and record ranges, stable
   identities and relationships, complete caption text, language, speaker, style, timeline
@@ -722,14 +731,18 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   display intent without mutating playback or editorial feedback. A
   separate frozen local overlay contract renders pointer-transparent safe-area, guide, grid, ruler,
   center, aspect, and custom geometry above the same transformed frame while preserving navigation
-  and excluding timecode and status displays. A third frozen local comparison contract captures
+  and excluding timecode and status ownership. A third frozen local comparison contract captures
   only exact native surface, frame, extent, display-intent, and optional rational navigation context,
   gates modes on available captures, and renders accessible controls plus pointer-transparent mode,
   identity, orientation, and divider evidence through the same transform. It never retains or
   fabricates GPU textures, comparison pixels, decoded media, or project state. The program viewer
-  publishes only its deterministic formatted comparison summary through an optional callback. Its
-  composed
-  `SourceMonitor` owns shell-local media-library and monitor state, exposes load, exact seek, mark,
+  publishes only its deterministic formatted comparison summary through an optional callback. A
+  memoized presentation-only viewer-status
+  projection consumes the existing application snapshot and retained source monitor, then renders
+  exact role-aware temporal, source, drop, playback, visual, audio, comparison, and editorial
+  evidence outside the transformed frame so every navigation, overlay, and comparison mode
+  preserves it. Its
+  composed `SourceMonitor` owns shell-local media-library and monitor state, exposes load, exact seek, mark,
   clear, refresh, and unload controls, publishes every replacement monitor snapshot to its caller,
   refreshes after project revision changes, and labels the retained source session as separate from
   decode and native GPU presentation. Optional editorial consequence strips render outside the
@@ -833,7 +846,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   editorial feedback publication, viewer consumption, audio meter rendering, route-state styling,
   and native IPC isolation. It also freezes the
   complete fit, zoom, pan, 1:1, fullscreen, cinema, and external-display-intent viewer control
-  consumer while excluding C002 playback navigation ownership. It also freezes the
+  consumer while excluding C002 playback navigation ownership. It freezes all nine viewer-status
+  fields, application-owned projection, transformed-frame separation, exact role coverage, and
+  absence of direct status transport or mutation authority. It also freezes the
   editing playback consumer, application-owned generated route, complete required action set,
   exact state categories, and absence of direct Tauri or API-client ownership in the component. It
   also freezes comparison catalog consumption, exact source and playback temporal wiring, program
@@ -852,6 +867,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   frame and separate rational navigation-context captures, missing-frame and missing-reference
   gating, bounded divider position, orientation, snapshot identity, and deterministic exact current
   and captured summaries.
+- `app/tests/viewer-status.test.ts`: Proves core-compatible drop-frame and non-drop timecode labels,
+  continuous display frames, physical-drop separation, exact active source and ranges, grouping,
+  linking, targeting, synchronization, selection, playback, visual, audio, comparison,
+  source-monitor identity, explicit unavailable owners, frozen output, and input nonmutation.
 - `app/tests/timeline-workspace.test.ts`: Verifies strict canonical revision handling, exact track,
   item, source and record range, group, link, selection, target, lock, output, synchronization, and
   transition preservation, variable height, external global-start placement, deterministic
@@ -2524,6 +2543,13 @@ EngineControl editor session, publishes successful snapshots durably, refreshes 
 identity, and emits exact correlated project events. The editing viewer adds play, pause, stop,
 loop, JKL shuttle, exact variable speed, direction, and frame-step controls, plus complete exact
 temporal, visual, audio, synchronization, comparison, pending, failure, and degradation readouts.
+Every source, program, composite, and color native viewer now also memoizes one frozen status
+projection from those existing owners. The visible display uses checked exact rescaling, the
+canonical global start, project-owned non-drop or supported NTSC drop-frame label mode, a separate
+continuous frame number, topmost enabled source identity and exact ranges, physical drop counters,
+transport scheduling, visual degradation, audio discard acknowledgement, comparison, and current
+selection, group, link, target, and sync-lock intent. Invalid or unobserved owners remain explicitly
+unavailable, and the status list stays outside the transformed frame across every navigation mode.
 The current production runtime is intentionally timing-only and reports unavailable viewport pixels
 and audio output instead of claiming decoded presentation or samples.
 Every native viewer role now also owns one frozen comparison presentation with single, compare,
@@ -2791,6 +2817,12 @@ export remain absent and cannot be inferred from the reference path.
 
 The largest current risk is cross-document drift:
 
+- Viewer timecode labels and physical playback drops are separate domains. Future status work must
+  preserve the continuous physical frame index, apply drop-frame rules only to labels at supported
+  rates, retain exact clock representability, and never convert missing or malformed observations
+  into zero or success. The active program display currently reports the canonical clip source
+  range because the shared canvas projection does not expose the current point through a retime map.
+
 - Editorial audio feedback currently has canonical structural authority but no runtime meter-reading
   owner. Route-state bars must remain labeled as routing and audibility evidence, and signal status
   must remain unobserved until playback publishes real per-channel readings with exact sample and
@@ -2891,8 +2923,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`776bb3dedbe2faba4b3b959a4d659d343d699b8d` when this checkpoint began. Its hash describes the exact
-271 discovered source files, including generated binary payloads, layered on the integrated
+`ad6ced324ce752301ad0e0f6297ab88a42cbed2d` when this checkpoint began. Its hash describes the exact
+285 discovered source files, including generated binary payloads, layered on the integrated
 revision.
 
 ## Maintenance notes
@@ -2944,6 +2976,13 @@ expansion unconditional, keep link expansion behind the canonical flag, and reta
 selection. View navigation, lasso geometry, focus, and interaction selection may remain local, but
 authored selection, relationships, and edits must route through the existing project, engine, and
 public command owners.
+Keep viewer status presentation-only and role-aware. Project settings own the display rate and
+timecode mode, timeline owns the global start, source and record ranges, identities, relationships,
+and editorial intent, engine playback owns physical drops and transport, visual, audio, degradation,
+and failure observations, and the retained source monitor owns its current source coordinate and
+fingerprint. Exact rescaling must fail closed, omitted drop-frame labels must never alter continuous
+frame identity, active-item lookup must preserve half-open range and topmost enabled-track rules,
+and status rendering must remain outside native placement and transformed-frame ownership.
 Keep nested catalog projection complete across every timeline in the canonical document. Open paths
 must remain root-anchored, clip-edge validated, transient, and self-healing after authored changes.
 Keep candidate filtering cycle-safe and duration conversion exact; keep compound mapping canonical

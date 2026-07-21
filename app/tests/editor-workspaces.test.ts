@@ -86,6 +86,7 @@ test("five professional workspaces are exact views over the existing application
   );
   assert.match(packageJson.scripts.test, /editor-workspaces\.test\.ts/);
   assert.match(packageJson.scripts.test, /playback-transport\.test\.ts/);
+  assert.match(packageJson.scripts.test, /viewer-status\.test\.ts/);
 });
 
 test("editor requests use one explicit public transaction identity", () => {
@@ -220,6 +221,7 @@ test("editorial feedback crosses the existing application owner into viewers and
   const workspaces = read(resolve(appRoot, "src/editor-workspaces.tsx"));
   const timeline = read(resolve(appRoot, "src/timeline-workspace.tsx"));
   const nativeViewport = read(resolve(appRoot, "src/native-viewport.tsx"));
+  const viewerStatus = read(resolve(appRoot, "src/viewer-status.ts"));
   const styles = read(resolve(appRoot, "src/styles.css"));
 
   assert.match(applicationContext, /editorialFeedback/);
@@ -243,7 +245,38 @@ test("editorial feedback crosses the existing application owner into viewers and
   assert.match(nativeViewport, /data-overlay-kind/);
   assert.match(nativeViewport, /aria-label=\{`\$\{label\} viewer overlays`\}/);
   assert.doesNotMatch(nativeViewport, /playbackNavigationTarget|scrub_to|begin_scrub/);
-  assert.doesNotMatch(nativeViewport, /timecode|status display/i);
+  assert.match(nativeViewport, /useApplication/);
+  assert.match(nativeViewport, /projectViewerStatusDisplay/);
+  assert.match(
+    nativeViewport,
+    /projectViewerStatusDisplay\([\s\S]*?comparisonSummary,[\s\S]*?\)/,
+  );
+  assert.match(nativeViewport, /VIEWER_STATUS_FIELDS\.map/);
+  assert.match(nativeViewport, /aria-label=\{`\$\{label\} viewer status display`\}/);
+  assert.ok(
+    nativeViewport.indexOf("viewer status display") >
+      nativeViewport.indexOf('className="native-viewport__status"'),
+  );
+  for (const label of [
+    "Timecode",
+    "Frame",
+    "Source",
+    "Dropped frames",
+    "Playback status",
+    "Visual state",
+    "Audio state",
+    "Comparison state",
+    "Editorial intent",
+  ]) {
+    assert.match(viewerStatus, new RegExp(`label: "${label}"`));
+  }
+  assert.match(viewerStatus, /projectTimelineDocument/);
+  assert.match(viewerStatus, /drop-frame labels/);
+  assert.match(viewerStatus, /physical playback drops/);
+  assert.doesNotMatch(
+    viewerStatus,
+    /useSuperiApi|DesktopSuperiTransport|@tauri-apps|\binvoke\b|executeProject|executePlayback/,
+  );
   assert.match(nativeViewport, /EditorialAudioMeters/);
   assert.match(nativeViewport, /data-signal-status=\{feedback\.signalStatus\}/);
   assert.match(nativeViewport, /data-route-state=\{route\.state\}/);
