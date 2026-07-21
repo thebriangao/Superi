@@ -21,6 +21,14 @@ import {
 import type { EngineIntrospectionSnapshot } from "./api";
 import { useSuperiApi } from "./api-context";
 import {
+  dismissDesktopCrashDiagnostic,
+  getDesktopCrashDiagnostics,
+  updateDesktopCrashProject,
+  updateDesktopCrashWorkspace,
+  type DesktopCrashDiagnostic,
+  type DesktopCrashDiagnosticsSnapshot,
+} from "./crash-diagnostics";
+import {
   getDesktopLifecycle,
   requestDesktopLifecycle,
   type ApplicationLifecycleRequest,
@@ -852,6 +860,26 @@ function ApplicationShell() {
     };
   }, [importMediaPaths, openShellProject]);
 
+  useEffect(() => {
+    if (
+      !isTauri() ||
+      !windowSessionHydrated ||
+      getCurrentWebviewWindow().label !== "main"
+    ) {
+      return;
+    }
+    void updateDesktopCrashWorkspace({
+      route_id: state.activeRouteId,
+      hidden_panel_ids: state.hiddenPanelIds,
+      focused_panel_id: state.focusedPanelId,
+    }).catch(() => undefined);
+  }, [
+    state.activeRouteId,
+    state.focusedPanelId,
+    state.hiddenPanelIds,
+    windowSessionHydrated,
+  ]);
+
   return (
     <main className="application-shell" aria-labelledby="product-title">
       <aside className="application-sidebar" aria-label="Application routes">
@@ -979,8 +1007,12 @@ function sourcePathUnderRoot(root: string, path: string): string {
 
 function SystemPanel() {
   const api = useSuperiApi();
-  const { dispatch } = useApplication();
+  const { dispatch, registry, state: applicationState } = useApplication();
   const [snapshot, setSnapshot] = useState<DesktopLifecycleSnapshot | null>(null);
+  const [crashDiagnostics, setCrashDiagnostics] =
+    useState<DesktopCrashDiagnosticsSnapshot | null>(null);
+  const [crashFailure, setCrashFailure] = useState<ClientFailure | null>(null);
+  const [crashPending, setCrashPending] = useState(false);
   const [engineApi, setEngineApi] = useState<EngineApiStatus | null>(null);
   const [clientFailure, setClientFailure] = useState<ClientFailure | null>(null);
   const [requestPending, setRequestPending] = useState(false);
@@ -1052,6 +1084,16 @@ function SystemPanel() {
         summary: "The native lifecycle service is unavailable.",
       });
     }
+    try {
+      setCrashDiagnostics(await getDesktopCrashDiagnostics());
+      setCrashFailure(null);
+    } catch {
+      setCrashFailure({
+        summary: "Local crash diagnostics are unavailable.",
+        action: "Continue working and retry after the native service recovers.",
+        recoverability: "degraded",
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -1106,6 +1148,38 @@ function SystemPanel() {
       .catch((error: unknown) => {
         if (active) {
           setProjectFailure(projectFailureFrom(error));
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    projectSnapshot?.active?.path,
+    projectSnapshot?.active?.identity.project_revision,
+  ]);
+
+  useEffect(() => {
+    let active = true;
+    const project = projectSnapshot?.active
+      ? {
+          path: projectSnapshot.active.path,
+          project_revision: projectSnapshot.active.identity.project_revision,
+        }
+      : null;
+    void updateDesktopCrashProject(project)
+      .then((diagnostics) => {
+        if (active) {
+          setCrashDiagnostics(diagnostics);
+          setCrashFailure(null);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setCrashFailure({
+            summary: "Project continuity could not be retained for crash recovery.",
+            action: "Save the open project and retry the local diagnostics service.",
+            recoverability: "degraded",
+          });
         }
       });
     return () => {
@@ -1255,6 +1329,147 @@ function SystemPanel() {
       setProjectFailure(projectFailureFrom(error));
     } finally {
       setProjectPending(false);
+    }
+  };
+
+  const restoreCrashContinuity = async (
+    diagnostic: DesktopCrashDiagnostic,
+    includeProjectRecovery: boolean,
+  ): Promise<boolean> => {
+    const continuity = diagnostic.continuity;
+    const targetRoute = registry.routeDefinitions.find(
+      (route) => route.id === continuity.workspace.route_id,
+    );
+    if (targetRoute === undefined) {
+      setCrashFailure({
+        summary: `The retained workspace ${continuity.workspace.route_id} is not registered in this version.`,
+        action: "Choose a current workspace manually, then dismiss this diagnostic.",
+        recoverability: "user_correctable",
+      });
+      return false;
+    }
+    const registeredPanels = new Set(
+      registry.panelDefinitions.map((panel) => panel.id),
+    );
+    const unknownPanel = continuity.workspace.hidden_panel_ids.find(
+      (panelId) => !registeredPanels.has(panelId),
+    );
+    const focusedPanel = continuity.workspace.focused_panel_id;
+    if (
+      unknownPanel !== undefined ||
+      (focusedPanel !== null &&
+        (!registeredPanels.has(focusedPanel) ||
+          !targetRoute.panelIds.includes(focusedPanel)))
+    ) {
+      setCrashFailure({
+        summary: "The retained panel layout is not compatible with this version.",
+        action: "Restore the workspace manually, then dismiss this diagnostic.",
+        recoverability: "user_correctable",
+      });
+      return false;
+    }
+
+    if (includeProjectRecovery && continuity.project !== null) {
+      const currentProject = projectSnapshot?.active ?? null;
+      if (
+        currentProject !== null &&
+        currentProject.path !== continuity.project.path
+      ) {
+        setCrashFailure({
+          summary: "A different project is already open.",
+          action:
+            "Save or close the current project before restoring the retained session.",
+          recoverability: "user_correctable",
+        });
+        return false;
+      }
+      let recoveredProject = projectSnapshot;
+      if (currentProject === null) {
+        recoveredProject = await executeDesktopProject({
+          kind: "open",
+          path: continuity.project.path,
+        });
+        setProjectPath(continuity.project.path);
+        setProjectSnapshot(recoveredProject);
+        setProjectFailure(recoveredProject.failure);
+      }
+      if (recoveredProject?.active?.path === continuity.project.path) {
+        recoveredProject = await executeDesktopProject({
+          kind: "discover_recovery",
+        });
+        setProjectSnapshot(recoveredProject);
+        setProjectFailure(recoveredProject.failure);
+      }
+    }
+
+    const desiredHidden = new Set(continuity.workspace.hidden_panel_ids);
+    const simulatedHidden = new Set(applicationState.hiddenPanelIds);
+    for (const route of registry.routeDefinitions) {
+      dispatch({ type: "navigate", routeId: route.id });
+      for (const panelId of route.panelIds) {
+        if (desiredHidden.has(panelId) !== simulatedHidden.has(panelId)) {
+          dispatch({ type: "toggle_panel", panelId });
+          if (desiredHidden.has(panelId)) {
+            simulatedHidden.add(panelId);
+          } else {
+            simulatedHidden.delete(panelId);
+          }
+        }
+      }
+    }
+    dispatch({ type: "navigate", routeId: targetRoute.id });
+    if (focusedPanel !== null && !desiredHidden.has(focusedPanel)) {
+      dispatch({ type: "focus_panel", panelId: focusedPanel });
+    }
+    return true;
+  };
+
+  const executeCrashRecovery = async (diagnostic: DesktopCrashDiagnostic) => {
+    setCrashPending(true);
+    setCrashFailure(null);
+    try {
+      switch (diagnostic.recovery_entry_point) {
+        case "restore_workspace":
+          await restoreCrashContinuity(diagnostic, true);
+          break;
+        case "retry_engine":
+          if (!snapshot?.can_retry) {
+            setCrashFailure({
+              summary: "The retained engine failure is no longer retryable.",
+              action: "Restart the engine or dismiss the stale diagnostic.",
+              recoverability: "user_correctable",
+            });
+            break;
+          }
+          setSnapshot(await requestDesktopLifecycle("recover"));
+          break;
+        case "continue_degraded":
+          await restoreCrashContinuity(diagnostic, false);
+          break;
+        case "review_project_recovery":
+          await restoreCrashContinuity(diagnostic, true);
+          break;
+        case "restart_engine":
+          setSnapshot(await requestDesktopLifecycle("restart"));
+          break;
+      }
+      setCrashDiagnostics(await getDesktopCrashDiagnostics());
+    } catch (error: unknown) {
+      setCrashFailure(crashFailureFrom(error));
+    } finally {
+      setCrashPending(false);
+    }
+  };
+
+  const dismissCrashDiagnostic = async (diagnosticId: string) => {
+    setCrashPending(true);
+    try {
+      setCrashDiagnostics(await dismissDesktopCrashDiagnostic(diagnosticId));
+      setCrashFailure(null);
+    } catch (error: unknown) {
+      setCrashFailure(crashFailureFrom(error));
+    } finally {
+      setCrashPending(false);
     }
   };
 
@@ -1686,6 +1901,91 @@ function SystemPanel() {
       </div>
 
       <WindowSessionPanel />
+
+      <section aria-labelledby="crash-diagnostics-title">
+        <h4 id="crash-diagnostics-title">Crash diagnostics</h4>
+        <p className="explanation">
+          Session {crashDiagnostics?.current_session_id ?? "initializing"}. Local
+          persistence is {crashDiagnostics?.persistence_available ? "ready" : "degraded"}.
+        </p>
+        {crashFailure ? (
+          <div className="failure" role="alert">
+            <p>{crashFailure.summary}</p>
+            {crashFailure.action ? <p>{crashFailure.action}</p> : null}
+            {crashFailure.recoverability ? (
+              <p className="failure-code">{crashFailure.recoverability}</p>
+            ) : null}
+          </div>
+        ) : null}
+        {crashDiagnostics?.diagnostics.length === 0 ? (
+          <p className="explanation">
+            No retained crash or lifecycle failure requires attention.
+          </p>
+        ) : null}
+        {crashDiagnostics?.diagnostics.map((diagnostic) => (
+          <article
+            className="failure"
+            data-failure-class={diagnostic.failure_class}
+            key={diagnostic.diagnostic_id}
+          >
+            <p>
+              <strong>{diagnostic.title}</strong>
+            </p>
+            <p>{diagnostic.action}</p>
+            <p className="failure-code">
+              {diagnostic.code} / {diagnostic.failure_class}
+            </p>
+            <dl className="lifecycle-details">
+              <div>
+                <dt>Captured</dt>
+                <dd>
+                  {new Date(diagnostic.captured_unix_millis).toLocaleString()}
+                </dd>
+              </div>
+              <div>
+                <dt>Workspace</dt>
+                <dd>{diagnostic.continuity.workspace.route_id}</dd>
+              </div>
+              <div>
+                <dt>Focused panel</dt>
+                <dd>
+                  {diagnostic.continuity.workspace.focused_panel_id ?? "none"}
+                </dd>
+              </div>
+              <div>
+                <dt>Project</dt>
+                <dd>{diagnostic.continuity.project?.path ?? "none"}</dd>
+              </div>
+            </dl>
+            {diagnostic.contexts.length > 0 ? (
+              <p className="explanation">
+                {diagnostic.contexts
+                  .map((context) => `${context.component}.${context.operation}`)
+                  .join(" / ")}
+              </p>
+            ) : null}
+            <div className="actions" aria-label="Crash recovery actions">
+              <button
+                type="button"
+                disabled={crashPending || requestPending || projectPending}
+                onClick={() => void executeCrashRecovery(diagnostic)}
+              >
+                {crashRecoveryLabel(diagnostic)}
+              </button>
+              <button
+                className="secondary"
+                type="button"
+                disabled={crashPending}
+                onClick={() =>
+                  void dismissCrashDiagnostic(diagnostic.diagnostic_id)
+                }
+              >
+                Dismiss
+              </button>
+            </div>
+          </article>
+        ))}
+      </section>
 
       <section aria-labelledby="project-lifecycle-title">
         <h4 id="project-lifecycle-title">Project lifecycle</h4>
@@ -3709,6 +4009,64 @@ function optionalNumber(value: string): number | null {
 
 function optionalText(value: string): string | null {
   return value.length === 0 ? null : value;
+}
+
+function crashRecoveryLabel(diagnostic: DesktopCrashDiagnostic): string {
+  switch (diagnostic.recovery_entry_point) {
+    case "restore_workspace":
+      return "Restore workspace";
+    case "retry_engine":
+      return "Retry engine";
+    case "continue_degraded":
+      return "Continue degraded";
+    case "review_project_recovery":
+      return "Review project recovery";
+    case "restart_engine":
+      return "Restart engine";
+  }
+}
+
+function crashFailureFrom(error: unknown): ClientFailure {
+  if (typeof error === "object" && error !== null) {
+    if (
+      "title" in error &&
+      typeof error.title === "string" &&
+      "action" in error &&
+      typeof error.action === "string"
+    ) {
+      return {
+        summary: error.title,
+        action: error.action,
+        code:
+          "code" in error && typeof error.code === "string"
+            ? error.code
+            : undefined,
+        recoverability:
+          "class" in error && typeof error.class === "string"
+            ? error.class
+            : undefined,
+      };
+    }
+    if ("summary" in error && typeof error.summary === "string") {
+      return {
+        summary: error.summary,
+        code:
+          "category" in error && typeof error.category === "string"
+            ? error.category
+            : undefined,
+        recoverability:
+          "recoverability" in error &&
+          typeof error.recoverability === "string"
+            ? error.recoverability
+            : undefined,
+      };
+    }
+  }
+  return {
+    summary: "The requested crash recovery action could not be completed.",
+    action: "Keep the diagnostic, verify the current project, and try again.",
+    recoverability: "retryable",
+  };
 }
 
 function projectFailureFrom(error: unknown): DesktopProjectFailure {

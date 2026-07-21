@@ -61,6 +61,50 @@ test("engine process link remains routing-free beneath the desktop transport", (
   assert.doesNotMatch(lifecycle, /Command::new|process::Command|TcpStream/);
 });
 
+test("local crash diagnostics retain private evidence and recover through existing owners", () => {
+  const bridge = read(resolve(appRoot, "src/crash-diagnostics.ts"));
+  const app = read(resolve(appRoot, "src/App.tsx"));
+  const diagnostics = read(
+    resolve(tauriRoot, "src/crash_diagnostics.rs"),
+  );
+  const host = read(resolve(tauriRoot, "src/lib.rs"));
+
+  assert.match(diagnostics, /active-session\.json/);
+  assert.match(diagnostics, /MAX_RETAINED_DIAGNOSTICS/);
+  assert.match(diagnostics, /DesktopCrashFailureClass/);
+  assert.match(diagnostics, /Retryable/);
+  assert.match(diagnostics, /Degraded/);
+  assert.match(diagnostics, /UserCorrectable/);
+  assert.match(diagnostics, /Terminal/);
+  assert.match(diagnostics, /private_detail/);
+  assert.match(diagnostics, /record_panic_best_effort/);
+  assert.match(diagnostics, /finish_session/);
+  assert.match(host, /DesktopCrashDiagnostics::default/);
+  assert.match(host, /desktop_crash_diagnostics_snapshot/);
+  assert.match(host, /desktop_crash_workspace_update/);
+  assert.match(host, /desktop_crash_project_update/);
+  assert.match(host, /desktop_crash_diagnostic_dismiss/);
+  assert.match(host, /diagnostics\.install_panic_hook\(\)/);
+  assert.match(host, /diagnostics\.observe_lifecycle\(&snapshot\)/);
+  assert.match(host, /diagnostics\.finish_session\(\)/);
+  assert.match(bridge, /DesktopCrashFailureClass/);
+  assert.match(bridge, /desktop_crash_diagnostics_snapshot/);
+  assert.match(bridge, /desktop_crash_workspace_update/);
+  assert.match(bridge, /desktop_crash_project_update/);
+  assert.match(bridge, /desktop_crash_diagnostic_dismiss/);
+  assert.match(bridge, /workspaceUpdateTail\.then/);
+  assert.match(bridge, /projectUpdateTail\.then/);
+  assert.doesNotMatch(bridge, /private_detail|superi\.api|superi\.project\.recovery/);
+  assert.match(app, /updateDesktopCrashWorkspace/);
+  assert.match(app, /updateDesktopCrashProject/);
+  assert.match(app, /!windowSessionHydrated/);
+  assert.match(app, /getCurrentWebviewWindow\(\)\.label !== "main"/);
+  assert.match(app, /Restore workspace/);
+  assert.match(app, /Review project recovery/);
+  assert.match(app, /executeDesktopProject/);
+  assert.match(app, /requestDesktopLifecycle/);
+});
+
 test("application framework composes shared UI state above the delivered API client", () => {
   const application = read(resolve(appRoot, "src/application.ts"));
   const context = read(resolve(appRoot, "src/application-context.tsx"));

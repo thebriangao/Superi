@@ -2,6 +2,7 @@
 
 //! Native Tauri ownership for the Superi desktop lifecycle.
 
+pub mod crash_diagnostics;
 pub mod desktop_shell;
 pub mod engine;
 pub mod file_associations;
@@ -14,6 +15,10 @@ pub mod window_session;
 use std::thread;
 use std::time::Duration;
 
+use crash_diagnostics::{
+    DesktopCrashDiagnostics, DesktopCrashDiagnosticsSnapshot, DesktopProjectContinuity,
+    DesktopWorkspaceContinuity,
+};
 use engine::{EngineConnection, LinkedEngineProcess};
 use lifecycle::{
     ApplicationLifecycle, ApplicationLifecyclePhase, ApplicationLifecycleRequest,
@@ -67,6 +72,57 @@ fn desktop_lifecycle_request(
 }
 
 #[tauri::command]
+fn desktop_crash_diagnostics_snapshot(
+    state: State<'_, DesktopCrashDiagnostics>,
+) -> DesktopCrashDiagnosticsSnapshot {
+    state.snapshot()
+}
+
+#[tauri::command]
+async fn desktop_crash_workspace_update(
+    workspace: DesktopWorkspaceContinuity,
+    state: State<'_, DesktopCrashDiagnostics>,
+) -> Result<DesktopCrashDiagnosticsSnapshot, LifecycleCommandError> {
+    let diagnostics = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || diagnostics.update_workspace(workspace))
+        .await
+        .map_err(|_| crash_task_join_error("update_workspace"))?
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+async fn desktop_crash_project_update(
+    project: Option<DesktopProjectContinuity>,
+    state: State<'_, DesktopCrashDiagnostics>,
+) -> Result<DesktopCrashDiagnosticsSnapshot, LifecycleCommandError> {
+    let diagnostics = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || diagnostics.update_project(project))
+        .await
+        .map_err(|_| crash_task_join_error("update_project"))?
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+async fn desktop_crash_diagnostic_dismiss(
+    diagnostic_id: String,
+    state: State<'_, DesktopCrashDiagnostics>,
+) -> Result<DesktopCrashDiagnosticsSnapshot, LifecycleCommandError> {
+    let diagnostics = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || diagnostics.dismiss(&diagnostic_id))
+        .await
+        .map_err(|_| crash_task_join_error("dismiss"))?
+        .map_err(Into::into)
+}
+
+fn crash_task_join_error(operation: &'static str) -> LifecycleCommandError {
+    LifecycleCommandError {
+        category: "internal".to_owned(),
+        recoverability: "retryable".to_owned(),
+        summary: format!("the crash diagnostic {operation} task could not be joined"),
+    }
+}
+
+#[tauri::command]
 async fn desktop_api_dispatch<R: Runtime>(
     app: AppHandle<R>,
     window: tauri::WebviewWindow<R>,
@@ -107,6 +163,7 @@ pub fn configure<R: Runtime>(builder: Builder<R>, lifecycle: ApplicationLifecycl
         .plugin(tauri_plugin_dialog::init())
         .manage(ManagedLifecycle(lifecycle))
         .manage(desktop_shell::DesktopShellState::default())
+        .manage(DesktopCrashDiagnostics::default())
         .manage(DesktopTransportState::new())
         .manage(DesktopProjectState::default())
         .manage(viewport::DesktopViewportState::default())
@@ -115,6 +172,10 @@ pub fn configure<R: Runtime>(builder: Builder<R>, lifecycle: ApplicationLifecycl
         .invoke_handler(tauri::generate_handler![
             desktop_lifecycle_snapshot,
             desktop_lifecycle_request,
+            desktop_crash_diagnostics_snapshot,
+            desktop_crash_workspace_update,
+            desktop_crash_project_update,
+            desktop_crash_diagnostic_dismiss,
             desktop_api_dispatch,
             desktop_shell::desktop_shell_snapshot,
             desktop_shell::desktop_shell_sync,
@@ -179,12 +240,17 @@ pub fn run() {
     let lifecycle = ApplicationLifecycle::new().expect("desktop lifecycle should initialize");
     let setup_lifecycle = lifecycle.clone();
     let event_lifecycle = lifecycle.clone();
+    let shutdown_lifecycle = lifecycle.clone();
     let engine = LinkedEngineProcess::launch(lifecycle.clone())
         .expect("headless engine process should initialize");
     let app = configure(tauri::Builder::default(), lifecycle)
         .manage(engine.connection())
         .setup(move |app| {
-            let recovery_root = app.path().app_data_dir()?.join("recovery");
+            let app_data_dir = app.path().app_data_dir()?;
+            let recovery_root = app_data_dir.join("recovery");
+            let diagnostics = app.state::<DesktopCrashDiagnostics>().inner().clone();
+            let _ = diagnostics.initialize(app_data_dir.join("crash-diagnostics"));
+            diagnostics.install_panic_hook();
             app.state::<DesktopProjectState>()
                 .initialize(recovery_root.clone())?;
             app.state::<desktop_shell::DesktopShellState>()
@@ -200,11 +266,12 @@ pub fn run() {
                 app.handle(),
                 startup_project_paths.clone(),
             );
-            spawn_exit_monitor(app.handle().clone(), setup_lifecycle.clone());
+            spawn_exit_monitor(app.handle().clone(), setup_lifecycle.clone(), diagnostics);
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("Superi Tauri application should build");
+    let diagnostics = app.state::<DesktopCrashDiagnostics>().inner().clone();
 
     let window_state = app
         .state::<window_session::DesktopWindowState>()
@@ -239,16 +306,35 @@ pub fn run() {
         _ => {}
     });
     window_state.shutdown_and_join();
-    if let Err(error) = engine.join() {
-        eprintln!("headless engine process did not stop cleanly: {error}");
+    match engine.join() {
+        Ok(()) => {
+            let snapshot = shutdown_lifecycle.snapshot();
+            if snapshot.application_phase() == ApplicationLifecyclePhase::Stopped
+                && snapshot.intent() == LifecycleIntent::Shutdown
+            {
+                if let Err(error) = diagnostics.finish_session() {
+                    eprintln!("could not close the Superi crash session marker: {error}");
+                }
+            }
+        }
+        Err(error) => {
+            eprintln!("headless engine process did not stop cleanly: {error}");
+        }
     }
 }
 
-fn spawn_exit_monitor<R: Runtime>(app: AppHandle<R>, lifecycle: ApplicationLifecycle) {
+fn spawn_exit_monitor<R: Runtime>(
+    app: AppHandle<R>,
+    lifecycle: ApplicationLifecycle,
+    diagnostics: DesktopCrashDiagnostics,
+) {
     thread::Builder::new()
         .name("superi-application-exit".to_owned())
         .spawn(move || loop {
             let snapshot = lifecycle.snapshot();
+            if let Err(error) = diagnostics.observe_lifecycle(&snapshot) {
+                eprintln!("could not observe the Superi lifecycle for crash recovery: {error}");
+            }
             if snapshot.application_phase() == ApplicationLifecyclePhase::Stopped
                 && snapshot.intent() == LifecycleIntent::Shutdown
             {
