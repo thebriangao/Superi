@@ -25,6 +25,21 @@
   },
   "bundle": {
     "active": false,
+    "fileAssociations": [
+      {
+        "ext": ["superi"],
+        "contentTypes": ["com.superi.project"],
+        "name": "Superi Project",
+        "description": "Superi project",
+        "role": "Editor",
+        "mimeType": "application/x-superi-project",
+        "rank": "Owner",
+        "exportedType": {
+          "identifier": "com.superi.project",
+          "conformsTo": ["public.database", "public.data"]
+        }
+      }
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

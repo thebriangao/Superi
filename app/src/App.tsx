@@ -26,6 +26,7 @@ import {
   getDesktopProjectSettings,
   importDesktopMedia,
   inspectProjectMediaSource,
+  listenForDesktopProjectOpen,
   mutateProjectMediaAnnotations,
   mutateProjectMediaContentAnalysis,
   mutateProjectMediaBatch,
@@ -450,20 +451,54 @@ function SystemPanel() {
 
   useEffect(() => {
     let active = true;
-    void getDesktopProjectSnapshot()
-      .then((project) => {
-        if (active) {
-          setProjectSnapshot(project);
-          setProjectFailure(project.failure);
+    let unlisten: (() => void) | null = null;
+    let latestProjectRevision = -1;
+    const initialize = async () => {
+      try {
+        unlisten = await listenForDesktopProjectOpen((event) => {
+          if (!active) {
+            return;
+          }
+          if (event.snapshot !== null) {
+            if (event.snapshot.revision < latestProjectRevision) {
+              return;
+            }
+            latestProjectRevision = event.snapshot.revision;
+            setProjectPath(event.path);
+            setProjectSnapshot(event.snapshot);
+            setProjectFailure(event.snapshot.failure ?? event.failure);
+          } else if (event.failure !== null) {
+            setProjectPath(event.path);
+            setProjectFailure(event.failure);
+          }
+        });
+        if (!active) {
+          unlisten();
+          unlisten = null;
+          return;
         }
-      })
-      .catch((error: unknown) => {
+      } catch (error: unknown) {
         if (active) {
           setProjectFailure(projectFailureFrom(error));
         }
-      });
+      }
+      try {
+        const project = await getDesktopProjectSnapshot();
+        if (active && project.revision >= latestProjectRevision) {
+          latestProjectRevision = project.revision;
+          setProjectSnapshot(project);
+          setProjectFailure(project.failure);
+        }
+      } catch (error: unknown) {
+        if (active) {
+          setProjectFailure(projectFailureFrom(error));
+        }
+      }
+    };
+    void initialize();
     return () => {
       active = false;
+      unlisten?.();
     };
   }, []);
 

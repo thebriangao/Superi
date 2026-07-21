@@ -3,6 +3,7 @@
 //! Native Tauri ownership for the Superi desktop lifecycle.
 
 pub mod engine;
+pub mod file_associations;
 pub mod lifecycle;
 pub mod project_lifecycle;
 pub mod transport;
@@ -140,6 +141,9 @@ pub fn native_builder() -> Result<Builder<tauri::Wry>, Error> {
 
 /// Runs the native desktop process and performs only nonblocking work on Tauri callbacks.
 pub fn run() {
+    let current_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let startup_project_paths =
+        file_associations::project_paths_from_arguments(std::env::args_os().skip(1), &current_dir);
     let lifecycle = ApplicationLifecycle::new().expect("desktop lifecycle should initialize");
     let setup_lifecycle = lifecycle.clone();
     let event_lifecycle = lifecycle.clone();
@@ -152,14 +156,18 @@ pub fn run() {
                 .initialize(app.path().app_data_dir()?.join("recovery"))?;
             app.state::<viewport::DesktopViewportState>()
                 .initialize(app)?;
+            file_associations::route_startup_project_files(
+                app.handle(),
+                startup_project_paths.clone(),
+            );
             spawn_exit_monitor(app.handle().clone(), setup_lifecycle.clone());
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("Superi Tauri application should build");
 
-    app.run(move |_handle, event| {
-        if let RunEvent::ExitRequested { api, .. } = event {
+    app.run(move |handle, event| match event {
+        RunEvent::ExitRequested { api, .. } => {
             let snapshot = event_lifecycle.snapshot();
             if snapshot.application_phase() != ApplicationLifecyclePhase::Stopped {
                 api.prevent_exit();
@@ -168,6 +176,11 @@ pub fn run() {
                 }
             }
         }
+        #[cfg(target_os = "macos")]
+        RunEvent::Opened { urls } => {
+            file_associations::route_opened_project_urls(handle, urls);
+        }
+        _ => {}
     });
     if let Err(error) = engine.join() {
         eprintln!("headless engine process did not stop cleanly: {error}");

@@ -118,3 +118,38 @@ test("production build contains a generated hashed React entry", () => {
   assert.match(html, new RegExp(`/assets/${script.replace(".", "\\.")}`));
   assert.match(html, /<title>Superi<\/title>/);
 });
+
+test("development shell owns exact Superi project file association ingress", () => {
+  const config = readJson(resolve(tauriRoot, "tauri.conf.json"));
+  const host = read(resolve(tauriRoot, "src/lib.rs"));
+  const associations = read(resolve(tauriRoot, "src/file_associations.rs"));
+  const projectAdapter = read(resolve(appRoot, "src/project-lifecycle.ts"));
+  const app = read(resolve(appRoot, "src/App.tsx"));
+
+  assert.deepEqual(config.bundle.fileAssociations, [
+    {
+      ext: ["superi"],
+      contentTypes: ["com.superi.project"],
+      name: "Superi Project",
+      description: "Superi project",
+      role: "Editor",
+      mimeType: "application/x-superi-project",
+      rank: "Owner",
+      exportedType: {
+        identifier: "com.superi.project",
+        conformsTo: ["public.database", "public.data"],
+      },
+    },
+  ]);
+  assert.match(host, /file_associations::route_startup_project_files/);
+  assert.match(host, /RunEvent::Opened \{ urls \}/);
+  assert.match(host, /file_associations::route_opened_project_urls/);
+  assert.match(associations, /tauri::async_runtime::spawn_blocking/);
+  assert.match(associations, /DesktopProjectCommand::Open/);
+  assert.match(associations, /superi:\/\/project-opened/);
+  assert.match(projectAdapter, /listenForDesktopProjectOpen/);
+  assert.match(projectAdapter, /superi:\/\/project-opened/);
+  assert.match(app, /await listenForDesktopProjectOpen/);
+  assert.match(app, /project\.revision >= latestProjectRevision/);
+  assert.match(app, /setProjectSnapshot\(event\.snapshot\)/);
+});

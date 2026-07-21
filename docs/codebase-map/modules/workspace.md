@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 5ac99f4fcd0678eff42eb3ea10b1534cb0bb1664b46a3a982bff4cfb90bcf6f9
-source_files: 301
+source_hash: ed4bfe1799eefefbd06922a7dc6d196ae6a29fcdccaebc5abb0663f654bca61e
+source_files: 304
 mapped_at_commit: working-tree
 ---
 
@@ -531,6 +531,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   audio cache indicators over exact scheduled timing, predictive and output degradation, discard
   acknowledgement, sample clocks, ordered channel meaning, routing intent, continuity seams, and
   explicit unavailable telemetry across every transport mode.
+- `docs/checkpoints/P3.W06.C003.md`: Durable implementation evidence for exact `.superi` association
+  metadata, startup-argument and macOS resource-open ingress, nonblocking reuse of the sole desktop
+  project owner, complete replacement snapshots, visible failure retention, and workspace-preserving
+  React consumption.
 
 ### Production desktop application
 
@@ -840,7 +844,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   sample-range, sample-rate, frame-count, ordered-channel, and unavailable-state evidence. The same
   browser checks every source through metadata-efficient monitoring or forces exact bytes for one
   selected identity, then displays scan generation, relink intent, path state, volume identity and
-  kind, mount state, accepted fingerprint, current observation, size, and actionable detail.
+  kind, mount state, accepted fingerprint, current observation, size, and actionable detail. The
+  System panel registers the project-association listener before its initial snapshot read, rejects
+  a stale initial revision, replaces only project presentation after an operating-system open, and
+  preserves route, panel, selection, workspace, and other transient application state.
 - `app/src/lifecycle.ts`: Defines the exact shell-local serialized lifecycle contract and typed
   asynchronous wrappers for the two Tauri lifecycle commands without importing engine bindings.
 - `app/src/project-lifecycle.ts`: Defines strict shell-local project lifecycle, settings, media
@@ -856,7 +863,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   paths, source facts, built-in and user metadata, annotations, offline state, source-monitoring
   state, relink intent, and volume evidence without introducing another persisted search index.
   C014 adds exact rational source time, stream, engine-state, fingerprint-bound mark, replacement
-  snapshot, and atomic mark-result DTOs plus five optimistic Tauri wrappers.
+  snapshot, and atomic mark-result DTOs plus five optimistic Tauri wrappers. It also exposes the
+  exact typed `superi://project-opened` replacement event without adding project authority to
+  React.
 - `app/src/main.tsx`: Constructs one process-lifetime `DesktopSuperiTransport`, injects it through
   the generated API provider, disposes it at unload, and mounts the React application under strict
   mode.
@@ -893,7 +902,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   `SuperiTransportError` projection with actionable public context.
 - `app/tests/app-contract.test.mjs`: Verifies exact production pins, lifecycle and engine-process
   ownership seams, application framework composition, transport isolation, production workflow
-  routing, and the hashed React bundle.
+  routing, the hashed React bundle, exact `.superi` association metadata, startup and macOS native
+  routing, blocking-worker dispatch, lifecycle Open reuse, and typed React event consumption.
 - `app/tests/native-viewport-ipc-contract.test.mjs`: Freezes the shell-local viewport command as a
   placement, analysis, and display-selection control-only Tauri payload, verifies both React
   invocations use that command, and freezes the distinct color command as a control-only selection
@@ -1065,7 +1075,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/build.rs`: Runs the standard Tauri build integration.
 - `app/src-tauri/rust-toolchain.toml`: Selects stable Rust with rustfmt and Clippy.
 - `app/src-tauri/tauri.conf.json`: Declares the Superi identity, production frontend, bounded main
-  window, disabled packaging, and explicit cross-platform desktop icons.
+  window, disabled packaging, exact `.superi` editor and owner association metadata with exported
+  `com.superi.project` database type and MIME identity, and explicit cross-platform desktop icons.
 - `app/src-tauri/icons/app-icon.svg`: Retains the editable source for the initial application icon.
 - `app/src-tauri/icons/32x32.png`: Supplies the small desktop PNG icon.
 - `app/src-tauri/icons/128x128.png`: Supplies the standard desktop PNG icon.
@@ -1087,6 +1098,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   successful selected snapshot through `ProjectDatabase`, preserves session undo and redo, and
   invalidates any in-memory state that could not be published durably. Its editor API and playback
   runtime share only the existing bounded dispatcher bridge.
+- `app/src-tauri/src/file_associations.rs`: Owns shell-local operating-system project association
+  ingress. It filters case-insensitive `.superi` startup arguments and local file URLs, resolves
+  relative arguments, canonicalizes existing paths, deduplicates first-seen inputs, runs every open
+  on Tauri's blocking runtime through `DesktopProjectState::execute(Open)`, emits a complete
+  replacement snapshot or retained actionable failure, and restores focus without creating a
+  second document or project owner.
 - `app/src-tauri/src/transport.rs`: Owns the thin bounded desktop command dispatcher above the
   managed `EngineConnection`, generation-scoped request and cancellation state, exact public error
   conversion with reviewed canonical contexts, and a 64-record ordered replacement-event replay
@@ -1179,7 +1196,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   C010 generated-preview, C011 content-analysis mutation plus content-search, and C012 atomic batch
   commands, plus the C013 revision-fenced source-scan command and the C014 source monitor snapshot,
   load, seek, mark, and unload commands,
-  initializes the recovery root, passes project state into every blocking generated request, emits
+  initializes the recovery root, collects portable startup association arguments after process
+  launch, routes macOS `RunEvent::Opened` file URLs, passes project state into every blocking
+  generated request, emits
   every returned ordered Tauri event before the reply, records
   nonblocking exit intent, and joins the engine owner after the native application stops.
 - `app/src-tauri/src/main.rs`: Starts the native production desktop host.
@@ -1189,6 +1208,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/tests/lifecycle_contract.rs`: Proves exact startup and shutdown acknowledgement,
   stale-token rejection, ordered restart, classified recovery, terminal failure, and blocking-safe
   change observation.
+- `app/src-tauri/tests/file_associations_contract.rs`: Proves unique first-seen selection of
+  case-insensitive `.superi` startup arguments and local file URLs, exclusion of unrelated and
+  nonfile inputs, real durable project activation through the existing desktop owner, exact identity
+  and recent state, and last-valid state plus structured failure retention after a missing file.
 - `app/src-tauri/tests/project_lifecycle_contract.rs`: Proves create, open, close, save, save-as,
   bounded recent ordering, revision-fenced recovery restore, commit-only state changes, and all four
   actionable failure classes through a deterministic backend. It also proves exact active editor
@@ -2067,6 +2090,13 @@ remain local until BigInt validation derives a gapless exact map and one generat
 command. The existing application command owner then supplies the revision fence, pending state,
 history unit, durable refresh, undo, and redo; React never patches canonical clip timing locally.
 
+Tauri's `.superi` association ingress selects only local project paths from process arguments or
+macOS resource-open URLs, normalizes and deduplicates them, and leaves filesystem validation to the
+existing project lifecycle. Blocking opens execute away from the operating-system main thread.
+Each result emits one complete replacement snapshot and restores the main window, while the React
+listener rejects stale initial state and changes only project presentation, so it does not reset
+workspace, panel, route, or selection state.
+
 Beside the engine lifecycle, Tauri manages one serialized `DesktopProjectLifecycle` initialized
 with the application recovery root. Its concrete backend calls only `LocalProjectHost` creation,
 validation, save, save-as, recovery, settings inspection, and atomic settings transaction methods;
@@ -2352,6 +2382,12 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   occupancy, device-output, and audible-sample evidence. Paused, playing, scrubbing, and ended
   modes retain exact temporal, visual, audio, cache, and comparison state through the real native
   viewer consumer, while malformed audio evidence fails closed without hiding independent state.
+
+- The focused project-association proof freezes exact `.superi` Tauri metadata, portable startup
+  arguments, macOS resource-open routing, nonblocking dispatch, the stable replacement event, and
+  listener-first React consumption. Its native integration contract creates and reopens a real
+  project, proves ordered filtering and deduplication, and retains the last valid identity, recents,
+  and structured failure after an invalid associated path.
 
 - The focused timeline-transition proof freezes exact from and to offsets, adjacent and
   opposite-edge capacity, deterministic start, center, end, and custom alignment, duration fitting,
@@ -2834,9 +2870,13 @@ No view takes engine or transport ownership, and unavailable runtime behavior re
 The System panel also consumes one Tauri-owned project lifecycle that durably creates, validates,
 saves, rebinds through save-as, closes, reopens recent paths, and restores opaque recovery
 candidates while retaining actionable classified failure context beside the last valid state. It
-now inspects and atomically updates frame-rate, resolution, color, audio sample-rate and channel,
-cache, proxy, and working-folder authority through that same lifecycle. The same direct consumer
-now organizes C003 media identities into durable hierarchical bins and predicate smart collections,
+also observes development file-association opens through one listener-first replacement event.
+Portable startup arguments and macOS resource-open URLs enter the same native Open command on a
+blocking worker, unrelated resources are ignored, and the main window is restored without reloading
+the active workspace. It now inspects and atomically updates frame-rate, resolution, color, audio
+sample-rate and channel, cache, proxy, and working-folder authority through that same lifecycle. The
+same direct consumer now organizes C003 media identities into durable hierarchical bins and
+predicate smart collections,
 switches between list and grid presentation, derives freshness-aware source thumbnails or
 deterministic fallbacks without persisting derived media, refreshes bounded source facts with
 explicit ready, missing, or unavailable state, and edits bounded generic user metadata without
@@ -3174,6 +3214,11 @@ consumer, API map, engine map, and global index synchronized whenever extension 
 capability, feature, failure, control, query, event, resource, or reconnect behavior changes.
 Discovery must remain a declarative projection of authoritative runtime owners and must never imply
 a privileged frontend, CLI, closed-tier, or plugin execution route.
+Keep file associations limited to the canonical `.superi` document type. Startup arguments and
+platform resource URLs must normalize into local paths, remain off the main thread during durable
+validation, and enter the sole `DesktopProjectState` Open transition. Emit replacement state for
+both success and failure, preserve the prior active project on failure, and never turn the React
+listener into a second document, recent-history, persistence, or workspace owner.
 Keep the timeline canvas projection synchronized with the canonical timeline document revision,
 exact rational clocks, stable identities, and relationship fields. Keep application selection
 references revision-fenced and reversible, mirror the lower fixed-point rule exactly, keep group

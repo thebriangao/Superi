@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export type DesktopProjectFailureClass =
   | "retryable"
@@ -41,6 +42,13 @@ export interface DesktopProjectSnapshot {
   readonly active: DesktopProjectRecord | null;
   readonly recent: readonly DesktopProjectRecord[];
   readonly recovery: DesktopRecoveryCatalog | null;
+  readonly failure: DesktopProjectFailure | null;
+}
+
+export interface DesktopProjectOpenEvent {
+  readonly source: "startup_argument" | "operating_system";
+  readonly path: string;
+  readonly snapshot: DesktopProjectSnapshot | null;
   readonly failure: DesktopProjectFailure | null;
 }
 
@@ -638,6 +646,7 @@ export type UserMetadataMutation =
   | { readonly kind: "remove"; readonly key: string };
 
 const SNAPSHOT_COMMAND = "desktop_project_snapshot";
+const PROJECT_OPENED_EVENT = "superi://project-opened";
 const EXECUTE_COMMAND = "desktop_project_execute";
 const SETTINGS_COMMAND = "desktop_project_settings";
 const UPDATE_SETTINGS_COMMAND = "desktop_project_settings_update";
@@ -665,6 +674,14 @@ const MUTATE_MEDIA_BATCH_COMMAND = "mutate_project_media_batch";
 
 export async function getDesktopProjectSnapshot(): Promise<DesktopProjectSnapshot> {
   return invoke<DesktopProjectSnapshot>(SNAPSHOT_COMMAND);
+}
+
+export function listenForDesktopProjectOpen(
+  listener: (event: DesktopProjectOpenEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<DesktopProjectOpenEvent>(PROJECT_OPENED_EVENT, (event) =>
+    listener(event.payload),
+  );
 }
 
 export async function executeDesktopProject(
