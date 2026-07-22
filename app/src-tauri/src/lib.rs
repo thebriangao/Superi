@@ -8,6 +8,7 @@ pub mod desktop_shell;
 pub mod engine;
 pub mod file_associations;
 pub mod lifecycle;
+pub mod platform_adapters;
 pub mod process_runtime;
 pub mod project_lifecycle;
 pub mod transport;
@@ -201,6 +202,7 @@ fn configure_with_owners<R: Runtime>(
             desktop_crash_diagnostic_dismiss,
             desktop_api_dispatch,
             capabilities::desktop_capabilities_discover,
+            platform_adapters::desktop_platform_adapters,
             desktop_shell::desktop_shell_snapshot,
             desktop_shell::desktop_shell_sync,
             desktop_shell::desktop_shell_resolve_close,

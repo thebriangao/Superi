@@ -647,3 +647,25 @@ test("desktop platforms expose one shared application semantic contract", () => 
   assert.match(packageJson.scripts.test, /platform-parity\.test\.ts/);
   assert.doesNotMatch(parity, /@tauri-apps|navigator|process\.platform|target_os/);
 });
+
+test("native platform adapters stay behind six shared frontend contracts", () => {
+  const host = read(resolve(tauriRoot, "src/lib.rs"));
+  const native = read(resolve(tauriRoot, "src/platform_adapters.rs"));
+  const adapter = read(resolve(appRoot, "src/platform-adapters.ts"));
+  const panel = read(resolve(appRoot, "src/platform-adapters-panel.tsx"));
+  const app = read(resolve(appRoot, "src/App.tsx"));
+  const packageJson = readJson(resolve(appRoot, "package.json"));
+
+  assert.match(host, /pub mod platform_adapters/);
+  assert.match(host, /platform_adapters::desktop_platform_adapters/);
+  assert.match(native, /DesktopPlatform::Macos/);
+  assert.match(native, /DesktopPlatform::Windows/);
+  assert.match(native, /DesktopPlatform::Linux/);
+  assert.match(native, /superi\.adapter\.gpu\.v1/);
+  assert.match(native, /superi\.adapter\.codec\.v1/);
+  assert.match(adapter, /desktop_platform_adapters/);
+  assert.match(adapter, /predictable_fallback/);
+  assert.match(panel, /Native adapter contracts/);
+  assert.match(app, /<PlatformAdaptersPanel\s*\/>/);
+  assert.match(packageJson.scripts.test, /platform-adapters\.test\.ts/);
+});

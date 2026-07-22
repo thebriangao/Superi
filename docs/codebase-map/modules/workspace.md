@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: f171f0b7fdde8592f4401dd729b3d436a025bd2b2c5c7fbf2254fac157574384
-source_files: 368
+source_hash: 7c1a6eab68659fa19f0c79de31d0ecb7816f82bea88838425e789194438394ba
+source_files: 373
 mapped_at_commit: working-tree
 ---
 
@@ -586,6 +586,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W07.C004.md`: Durable implementation evidence for one shared macOS, Windows,
   and Linux semantic contract across ten exact application domains, visible System-route disclosure,
   immutable target projections, and explicit separation from platform adapter availability.
+- `docs/checkpoints/P3.W07.C005.md`: Durable implementation evidence for six shared native adapter
+  contracts, distinct macOS, Windows, and Linux implementation families, strict Tauri and TypeScript
+  boundaries, explicit media guarantees, and separation from live capability availability.
 
 ### Production desktop application
 
@@ -670,6 +673,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/platform-parity-panel.tsx`: Renders the shared contract identity, all supported desktop
   targets, and every semantic invariant in the existing System route without probing hardware or
   branching application behavior by operating system.
+- `app/src/platform-adapters.ts`: Strictly invokes and parses the current-host native adapter
+  snapshot, enforcing schema 1, exact target, guarantee, domain order, contract identity, bounded
+  implementation names, and deep immutability.
+- `app/src/platform-adapters-panel.tsx`: Renders the current host's six declared adapter families
+  and media guarantees in System while keeping them explicitly separate from live availability.
 - `app/src/keyboard-shortcuts-panel.tsx`: Renders the System route's accessible shortcut editor with
   labeled read-only capture fields, IME-safe keyboard capture, current and default values, clear and
   reset controls, conflict alerts, inactive-command visibility, bounded JSON import, deterministic
@@ -1260,6 +1268,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/platform-parity.test.ts`: Proves exact platform and domain coverage, uniqueness,
   identical contract and object identity, deep freezing, the complete audio invariant, and strict
   unsupported-target rejection.
+- `app/tests/platform-adapters.test.ts`: Proves one native read, exact six-domain parsing, shared
+  contract identity, deep freezing, and fail-closed target, contract, duplicate, and shape drift.
 - `app/tests/editor-workspaces.test.ts`: Verifies exactly five registry-backed professional routes,
   one existing application/project owner, exact source, program, composite, and color viewer
   consumers including the composed source monitor, explicit public editor request identity,
@@ -1571,6 +1581,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   active editor route and accepts only the same or next durable editor revision when path, project,
   root, and expected prior revision still match, then synchronizes dependent media presentation
   state.
+- `app/src-tauri/src/platform_adapters.rs`: Owns one dependency-free schema-1 current-host adapter
+  declaration, exact all-target GPU, audio, filesystem, font, monitor, and codec implementation
+  families, shared contract IDs and media guarantees, compile-target selection, and read-only Tauri
+  command without hardware probing or execution.
 - `app/src-tauri/src/project_lifecycle/media_preview.rs`: Implements one bounded nonauthoritative
   preview generator over an immutable media-browser item. It decodes supported still containers,
   adapts explicit RGBA8 sRGB straight-alpha images into `superi-image`, selects at most six
@@ -3002,6 +3016,11 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   domains, unique coverage, identical frozen object identity, complete audio continuity meaning,
   and fail-closed unsupported labels. Application source contracts bind the same schema-1 identity
   to the visible System consumer while excluding native imports and current-platform branching.
+
+- The focused platform-adapter contracts prove exact schema, target, guarantee, six-domain order,
+  shared contract identity, deep freezing, and fail-closed drift in the strict frontend boundary.
+  Native tests cover all three implementation sets and compile-target selection; source contracts
+  bind the read-only Tauri command and System consumer without claiming live availability.
 
 - The focused theme contracts prove one frozen schema-1 identity, deterministic repair of missing
   or drifted document declarations, frozen repair evidence, static pre-JavaScript declaration,

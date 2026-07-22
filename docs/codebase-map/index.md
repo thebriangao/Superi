@@ -77,6 +77,11 @@ project, engine, UI, shortcut, media, color, audio, AI, plugin, and export seman
 route exposes that exact identity and every invariant while capability availability, physical
 adapters, and hosted certification remain separate evidence rather than semantic branches.
 
+One separate schema-1 current-host adapter snapshot now names exact GPU, audio, filesystem, font,
+monitor, and codec implementation families behind six stable shared contracts. The strict Tauri
+and TypeScript boundary preserves timing, precision, metadata, alpha, and predictable fallback
+guarantees while leaving physical availability and execution with existing runtime owners.
+
 The primary native viewer also observes exact browser display scale through window, visual viewport,
 and dynamically re-armed resolution signals. Accepted changes republish existing CSS geometry to the
 one Tauri viewport owner and remain visible in the viewer toolbar; duplicate or invalid signals do
@@ -2601,6 +2606,10 @@ The focused platform-parity contracts prove exact target and domain coverage, un
 shared frozen object identity, complete audio timing and routing meaning, and unsupported-label
 rejection. Application source contracts freeze the visible System consumer and exclude native or
 current-platform branching from the pure owner.
+The focused platform-adapter contracts prove one native read, exact schema and target parsing,
+ordered six-domain coverage, shared contract IDs, media guarantees, deep freezing, all three native
+implementation sets, compile-target selection, and fail-closed target, duplicate, contract, and
+shape drift. The System source contract keeps declarations separate from capability discovery.
 The shared application-inspector contracts add one dockable all-route projection of current
 workspace and selection intent, public project metadata, engine-owned undo and redo evidence, exact
 playback attachment and degradation, editor failures, and bounded notices. Refresh and recovery

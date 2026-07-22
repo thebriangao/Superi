@@ -135,6 +135,7 @@ import { WindowSessionPanel } from "./window-session-panel.tsx";
 import { KeyboardShortcutsPanel } from "./keyboard-shortcuts-panel.tsx";
 import { ApplicationInspectorPanel } from "./application-inspector-panel.tsx";
 import { PlatformParityPanel } from "./platform-parity-panel.tsx";
+import { PlatformAdaptersPanel } from "./platform-adapters-panel.tsx";
 import {
   detectKeyboardShortcutPlatform,
   formatKeyboardShortcut,
@@ -2838,6 +2839,7 @@ function SystemPanel() {
       </div>
 
       <PlatformParityPanel />
+      <PlatformAdaptersPanel />
 
       <section aria-labelledby="hardware-capabilities-title">
         <header>
