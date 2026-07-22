@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: a3ec244b163fb19913773eaf18382c841ff98bf624d301b23f30e88e7dea2917
-source_files: 388
+source_hash: a6c17e87401734bff5ba675ac033ec84caa3134a1c89811081ac94b67bd49f2d
+source_files: 390
 mapped_at_commit: working-tree
 ---
 
@@ -613,6 +613,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W07.C011.md`: Durable implementation evidence for supported locale resolution,
   explicit root language and direction, locale numbers and dates, exact localized timecode labels,
   and preserved editorial clocks and intent.
+- `docs/checkpoints/P3.W07.C012.md`: Durable implementation evidence for mirrored RTL shell,
+  logical reading alignment, direction-aware notices, and isolated paths, shortcuts, timecode,
+  timeline, and viewer coordinates.
 
 ### Production desktop application
 
@@ -1322,6 +1325,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/internationalization.test.ts`: Proves supported locale fallback, RTL and LTR direction,
   locale number and date output, exact normal and drop-frame timecode digits, and invalid-part
   rejection.
+- `app/tests/rtl-layout.test.ts`: Proves mirrored shell geometry, logical reading alignment,
+  direction-aware notification placement, and LTR isolation for paths, shortcuts, timecode,
+  timeline coordinates, and native viewers.
 - `app/tests/display-scale.test.ts`: Proves immutable initial and changed scale observations,
   duplicate suppression, invalid-value retention, exact source revisions, resolution watcher
   re-arming, cleanup, and accessible scale formatting.

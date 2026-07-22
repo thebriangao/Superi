@@ -105,6 +105,10 @@ applies explicit root language and direction before React, and formats finite nu
 and exact timecode parts through Intl. Display localization never changes editorial clocks,
 identity, grouping, synchronization, source, record, or mutation intent.
 
+RTL root direction now mirrors application shell geometry, sidebar borders, workspace placement,
+reading alignment, and notices. Paths, filenames, shortcuts, timecode, timeline coordinates, and
+native viewer geometry remain direction-isolated so their exact meaning does not reverse.
+
 One immutable schema-1 desktop parity contract now binds macOS, Windows, and Linux to identical
 project, engine, UI, shortcut, media, color, audio, AI, plugin, and export semantics. The System
 route exposes that exact identity and every invariant while capability availability, physical

@@ -135,6 +135,42 @@ button:focus-visible,
   }
 }
 
+[dir="rtl"] .application-shell {
+  grid-template-columns: minmax(0, 1fr) 208px;
+}
+
+[dir="rtl"] .application-sidebar {
+  grid-column: 2;
+  grid-row: 1;
+  border-right: 0;
+  border-left: 1px solid var(--theme-border-subtle);
+}
+
+[dir="rtl"] .application-workspace {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+[dir="rtl"] .route-button,
+[dir="rtl"] .workspace-header,
+[dir="rtl"] .editor-section,
+[dir="rtl"] .application-inspector {
+  text-align: start;
+}
+
+[dir="rtl"] .application-toast-region {
+  right: auto;
+  left: 14px;
+}
+
+[dir="rtl"] :where(code, kbd, input[type="url"], input[type="email"]),
+[dir="rtl"] [data-path],
+[dir="rtl"] [data-timecode],
+[dir="rtl"] .timeline-stage {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
 .skip-navigation-link {
   position: fixed;
   z-index: 1000;
@@ -1600,6 +1636,11 @@ button.panel-tab-hide:hover {
   background: var(--viewer-surround);
   forced-color-adjust: none;
   isolation: isolate;
+}
+
+[dir="rtl"] .native-viewport__frame {
+  direction: ltr;
+  unicode-bidi: isolate;
 }
 
 .native-viewport__overlays {
