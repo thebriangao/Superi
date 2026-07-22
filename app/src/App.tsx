@@ -128,6 +128,7 @@ import { classifyDesktopTransportError } from "./transport";
 import { PanelWorkspace } from "./panel-workspace.tsx";
 import { WindowSessionPanel } from "./window-session-panel.tsx";
 import { KeyboardShortcutsPanel } from "./keyboard-shortcuts-panel.tsx";
+import { ApplicationInspectorPanel } from "./application-inspector-panel.tsx";
 import {
   detectKeyboardShortcutPlatform,
   formatKeyboardShortcut,
@@ -266,6 +267,12 @@ const APPLICATION_REGISTRY = new ApplicationRegistry<ComponentType>({
       renderer: SharedSelectionPanel,
     },
     {
+      id: "application.inspector",
+      title: "Inspector",
+      region: "secondary",
+      renderer: ApplicationInspectorPanel,
+    },
+    {
       id: "application.system",
       title: "System and engine",
       region: "primary",
@@ -282,37 +289,61 @@ const APPLICATION_REGISTRY = new ApplicationRegistry<ComponentType>({
     {
       id: "editing",
       title: "Editing",
-      panelIds: ["workspace.editing", "application.selection"],
+      panelIds: [
+        "workspace.editing",
+        "application.selection",
+        "application.inspector",
+      ],
       defaultPanelId: "workspace.editing",
     },
     {
       id: "compositing",
       title: "Compositing",
-      panelIds: ["workspace.compositing", "application.selection"],
+      panelIds: [
+        "workspace.compositing",
+        "application.selection",
+        "application.inspector",
+      ],
       defaultPanelId: "workspace.compositing",
     },
     {
       id: "color",
       title: "Color",
-      panelIds: ["workspace.color", "application.selection"],
+      panelIds: [
+        "workspace.color",
+        "application.selection",
+        "application.inspector",
+      ],
       defaultPanelId: "workspace.color",
     },
     {
       id: "audio",
       title: "Audio",
-      panelIds: ["workspace.audio", "application.selection"],
+      panelIds: [
+        "workspace.audio",
+        "application.selection",
+        "application.inspector",
+      ],
       defaultPanelId: "workspace.audio",
     },
     {
       id: "delivery",
       title: "Delivery",
-      panelIds: ["workspace.delivery", "application.selection"],
+      panelIds: [
+        "workspace.delivery",
+        "application.selection",
+        "application.inspector",
+      ],
       defaultPanelId: "workspace.delivery",
     },
     {
       id: "system",
       title: "System",
-      panelIds: ["application.system", "application.shortcuts"],
+      panelIds: [
+        "application.system",
+        "application.shortcuts",
+        "application.inspector",
+      ],
       defaultPanelId: "application.system",
     },
   ],
@@ -459,6 +490,21 @@ const APPLICATION_REGISTRY = new ApplicationRegistry<ComponentType>({
       disabledReason: "The shared selection panel is not part of the system workspace.",
       execute: ({ dispatch }) =>
         dispatch({ type: "toggle_panel", panelId: "application.selection" }),
+    },
+    {
+      id: "application.panel.application.inspector.toggle",
+      title: "Toggle shared inspector panel",
+      category: "Panels",
+      keywords: [
+        "show",
+        "hide",
+        "inspector",
+        "metadata",
+        "history",
+        "diagnostics",
+      ],
+      execute: ({ dispatch }) =>
+        dispatch({ type: "toggle_panel", panelId: "application.inspector" }),
     },
     {
       id: "application.panel.application.system.toggle",

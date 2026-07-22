@@ -2527,6 +2527,11 @@ notification center, status bar, failure cards, retained crash projection, panel
 keyboard consumers, and delivery progress. Exact Node 24.13.0 TypeScript checking and the production
 Vite build exercise the integrated React path; physical focus, screen-reader, high-contrast, and
 reduced-motion behavior remain application-lane evidence.
+The shared application-inspector contracts add one dockable all-route projection of current
+workspace and selection intent, public project metadata, engine-owned undo and redo evidence, exact
+playback attachment and degradation, editor failures, and bounded notices. Refresh and recovery
+delegate to current editor and System owners, clear selection has an exact transient restore, and
+the panel adds no transport, persistence, project, history, engine, or diagnostic authority.
 The focused viewer-cache contract proves the exact eleven-field catalog, foreground frame and due
 clocks, predictive and decoded-output degradation, nonblocking interaction, callback discard
 acknowledgement, transport synchronization, exact sample rate, ordered source and destination

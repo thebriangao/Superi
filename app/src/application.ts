@@ -91,6 +91,7 @@ export interface ApplicationState {
   readonly panelLayouts: readonly ApplicationRoutePanelLayout[];
   readonly workspaceLayoutResetUndo: ApplicationWorkspacePresentation | null;
   readonly selection: ApplicationSelection;
+  readonly selectionRestore: ApplicationSelection | null;
 }
 
 export interface ApplicationWorkspacePresentation {
@@ -148,7 +149,8 @@ export type ApplicationAction =
       readonly resource: SuperiApiResource;
       readonly identity: string;
     }
-  | { readonly type: "clear_selection" };
+  | { readonly type: "clear_selection" }
+  | { readonly type: "restore_cleared_selection" };
 
 export interface ApplicationCommandContext {
   readonly registry: ApplicationRegistry;
@@ -349,6 +351,7 @@ export function createApplicationState<Renderer>(
     panelLayouts: createPanelLayouts(registry, [], []),
     workspaceLayoutResetUndo: null,
     selection: emptySelection(),
+    selectionRestore: null,
   });
 }
 
@@ -554,7 +557,7 @@ export function reduceApplicationState<Renderer>(
       if (sameSelection(state.selection, selection)) {
         return state;
       }
-      return nextState(state, { selection });
+      return nextState(state, { selection, selectionRestore: null });
     }
     case "extend_selection": {
       const item = freezeSelectionReference(action.item);
@@ -570,6 +573,7 @@ export function reduceApplicationState<Renderer>(
       }
       return nextState(state, {
         selection: selectionFrom(items, item),
+        selectionRestore: null,
       });
     }
     case "remove_selection": {
@@ -589,12 +593,25 @@ export function reduceApplicationState<Renderer>(
         )
           ? state.selection.anchor
           : items.at(-1) ?? null;
-      return nextState(state, { selection: selectionFrom(items, anchor) });
+      return nextState(state, {
+        selection: selectionFrom(items, anchor),
+        selectionRestore: null,
+      });
     }
     case "clear_selection":
       return state.selection.items.length === 0
         ? state
-        : nextState(state, { selection: emptySelection() });
+        : nextState(state, {
+            selection: emptySelection(),
+            selectionRestore: state.selection,
+          });
+    case "restore_cleared_selection":
+      return state.selectionRestore === null || state.selection.items.length > 0
+        ? state
+        : nextState(state, {
+            selection: state.selectionRestore,
+            selectionRestore: null,
+          });
   }
 }
 
@@ -1199,6 +1216,7 @@ function freezeState(state: ApplicationState): ApplicationState {
         ? null
         : freezeWorkspacePresentation(state.workspaceLayoutResetUndo),
     selection: state.selection,
+    selectionRestore: state.selectionRestore,
   });
 }
 

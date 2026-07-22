@@ -450,6 +450,13 @@ test("shared selection preserves exact immutable public resource references", ()
   });
   assert.deepEqual(cleared.selection.items, []);
   assert.equal(cleared.selection.anchor, null);
+  assert.deepEqual(cleared.selectionRestore, extended.selection);
+
+  const restored = reduceApplicationState(registry, cleared, {
+    type: "restore_cleared_selection",
+  });
+  assert.deepEqual(restored.selection, extended.selection);
+  assert.equal(restored.selectionRestore, null);
 });
 
 test("typed commands update local state before awaiting the generated API client", async () => {

@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 5b8e779b8ec7e6d2df58b88383d7028de9dcaa5d9e95c5a35ab78e3e00f6943f
-source_files: 341
+source_hash: 237362069184a80b9a3c97c1cb6cdb42e4dd2c5556ae4e0cdfd1592967e6f608
+source_files: 346
 mapped_at_commit: working-tree
 ---
 
@@ -16,7 +16,8 @@ customizable registry-backed layout reset and recovery, always-visible engine li
 bounded crash continuity, configurable cross-session keyboard shortcuts, retained GPU, audio,
 codec, and AI capability visibility, explicit process-lifetime execution ownership, and a
 searchable typed command and action catalog, fixed color-critical dark theme, semantic application
-feedback chrome, and separate native viewer and authored marker color-data meaning,
+feedback chrome, one dockable shared inspector for workspace, metadata, history, and bounded
+diagnostic evidence, and separate native viewer and authored marker color-data meaning,
 Cargo workspace configuration, dependency lock,
 shared test-fixture contract, and repository-owned agent workflows. Runtime implementation under
 `open/crates/*` and repository utilities under
@@ -561,6 +562,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W06.C012.md`: Durable implementation evidence for the fixed versioned
   color-critical dark environment, semantic chrome tokens, separate viewer and marker color-data
   tokens, deterministic bootstrap recovery, and preserved native color-pipeline ownership.
+- `docs/checkpoints/P3.W06.C015.md`: Durable implementation evidence for the shared all-route
+  inspector, metadata, history, and diagnostics panel, honest engine-state projection, existing-owner
+  action delegation, exact transient selection restoration, and preserved workspace continuity.
 
 ### Production desktop application
 
@@ -573,7 +577,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   dependencies.
 - `app/package.json`: Declares the private production application package, exact toolchain and
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
-  framework, command-palette, configurable shortcuts, shared application-presentation, theme,
+  framework, command-palette, configurable shortcuts, shared application-presentation and
+  inspector, theme,
   native desktop-shell, editor-workspace, timeline-canvas, timeline-nesting,
   timeline-multicam, timeline-clip,
   timeline-transition, caption projection, exchange, and authoring, editorial-feedback, exact
@@ -590,7 +595,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   active-tab, visibility, and focus reducers, structural default versus custom layout status,
   deterministic all-route default reset, one exact transient reset undo, complete private workspace
   projection, live-registry reconciliation for restored presentation, panel-only restoration that
-  preserves the window-session-owned route, typed immutable shared public resource selection,
+  preserves the window-session-owned route, typed immutable shared public resource selection, and
+  one exact reducer-owned restore after clearing transient selection,
   required frozen
   command discoverability metadata, transient palette visibility, current command availability,
   complete modifier, named, function, and Unicode shortcut token normalization, and generated-client
@@ -644,6 +650,18 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   their measured size, time-limited notification toasts with retained bounded history, classified
   failure cards, semantic progress, and the always-visible application status bar. Its callbacks
   route only to existing application, project, lifecycle, workspace, and recovery owners.
+- `app/src/application-inspector.ts`: Purely projects the active route, focused and visible panels,
+  shared selection, public project identity, semantic freshness, session undo and redo evidence,
+  exact playback attachment and degradation, editor failures, and bounded notification history into
+  four deeply frozen inspector, metadata, history, and diagnostics groups without React, transport,
+  persistence, polling, or mutation ownership.
+- `app/src/application-inspector-panel.tsx`: Renders the shared dockable panel on every application
+  route with an honest engine-state summary, responsive semantic groups, precise refresh and System
+  delegation, and exact clear-selection restoration. It consumes only existing application and
+  presentation contexts and creates no API, Tauri, engine, history, project, or diagnostic owner.
+- `app/src/application-inspector.css`: Defines isolated responsive inspector groups, actions,
+  engine condition, metadata, history, and diagnostics styling through C012 semantic theme tokens
+  without changing viewer or authored marker color-data meaning.
 - `app/src/theme.ts`: Owns the frozen schema-1 `color-critical-dark` application contract, browser
   theme color, native color-pipeline scene owner, untouched workspace-state policy, and deterministic
   document declaration repair with frozen operational evidence. It has no storage, generated API,
@@ -922,7 +940,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   primary-window ownership notice, preserving shared engine and workspace state without creating a
   second role-addressed surface set.
 - `app/src/App.tsx`: Registers the five professional workspace routes and panels above the delivered
-  application framework while retaining the system shell, shared selection, lifecycle controls,
+  application framework while retaining the system shell, shared selection, dockable shared
+  inspector, lifecycle controls,
   generated validation request, engine-introspection state, and the production project lifecycle
   consumer for create, open, close, save, save-as, recent, recovery, compact project-settings
   editing, native media picking, recursive folder selection, native drag/drop import, hierarchical
@@ -1116,7 +1135,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/application-framework.test.ts`: Verifies duplicate and reference validation, immutable
   routing, canonical dock defaults, cross-dock ordered tabs, bounded resize, active-tab focus,
   retained hidden placement, deeply frozen layout state, complete workspace projection, exact
-  public-resource selection, structural default and custom detection, all-route registry reset,
+  public-resource selection plus clear and exact restore, structural default and custom detection,
+  all-route registry reset,
   exact deeply frozen one-step undo, superseding-intent invalidation, local-first asynchronous API
   command delegation, shortcut normalization, editable-target safety, frozen discoverability
   metadata, explicit availability reasons, transient
@@ -1130,6 +1150,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   context, fail-closed unknown classes, immutable bounded and deduplicated notification history,
   truthful determinate and indeterminate export progress, operational-status priority, and
   viewport-bounded context-menu geometry.
+- `app/tests/application-inspector.test.ts`: Proves exact ordered inspector, metadata, history, and
+  diagnostics groups, honest detached, pending, degraded, and failed engine presentation, deep
+  immutability, unchanged input, all-route dock registration, exact reversible selection wiring,
+  delegation to current refresh and System owners, and exclusion of Tauri and direct API requests.
 - `app/tests/desktop-shell.test.ts`: Proves deterministic project-versus-media drop classification,
   busy and history-aware close decisions, path-safe document titles for POSIX and Windows paths,
   complete layout and keyboard-shortcut profile transport, and sequence resumption after a webview
@@ -1918,6 +1942,11 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
   and menu-placement values; its React provider exposes only transient presentation callbacks and
   routes recovery or workspace intent back to existing owners. It is not a new public engine API,
   persistence schema, project document, job scheduler, or native diagnostic owner.
+- The shared application-inspector surface is a read-only projection over the application registry,
+  current workspace presentation, last-valid public editor snapshot, engine-owned project history,
+  playback observation, and bounded notification state. Its only actions delegate to the current
+  editor refresh, System route, and selection reducer; its exact cleared-selection restore remains
+  transient and cannot become project history, diagnostic persistence, transport, or engine state.
 - The application theme surface is the frozen schema-1 `color-critical-dark` identity plus its
   semantic CSS token contract. Root declaration repair is limited to document metadata, and
   `--viewer-*` plus `--marker-*` color-data tokens remain separate from replaceable `--theme-*`
@@ -2183,6 +2212,11 @@ and recovery actions without clearing the last-valid workspace or editor snapsho
 keyboard panel menu commands enter the existing immutable application reducer, while recovery
 commands return to the existing lifecycle, project, editor refresh, and System owners. No new Tauri
 schema, polling scheduler, project document, job executor, or native persistence path is introduced.
+The shared inspector composes the same already-owned evidence into four stable semantic groups. Its
+engine badge distinguishes editor refresh, unavailable state, playback detachment, pending commands,
+degradation, and failure without inferring readiness. Panel placement, visibility, active tab, and
+focus flow through existing workspace continuity, while refresh, System navigation, clear selection,
+and exact selection restoration return to existing owners.
 
 The frontend CI path begins on pull requests, pushes to `main`, or manual dispatch. Its isolated
 Ubuntu 24.04 job installs the exact Node.js 24.13.0 declaration, performs a lockfile-only `npm ci`,
@@ -2847,6 +2881,13 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   progress, failure, retained crash, panel pointer and keyboard, and delivery job consumers. Strict
   TypeScript checking plus the production Vite build exercise the integrated React path.
 
+- The focused application-inspector proof exercises four ordered deeply frozen groups, current
+  workspace and selection intent, public project identity and semantic hash, engine-owned undo and
+  redo depth, bounded notice history, and honest detached, pending, degraded, and failed playback
+  conditions. Its source contract freezes all-route dock registration, stable command discovery,
+  precise refresh and System delegation, exact clear-selection restoration, and direct transport
+  exclusion. Strict TypeScript and the production build exercise the mounted consumer.
+
 - The focused shell-capability proof composes real current-host GPU, audio, engine codec, public
   codec projection, and AI provider calls, validates exact audio sample ranges and explicit unknown
   channel meaning, proves monotonic observations and per-domain retained fallback, restores a valid
@@ -3309,6 +3350,10 @@ operational evidence, and recovery callbacks reuse the existing owners. The Reac
 editing, compositing, color, audio, delivery, and system routes; the professional views project the
 same snapshot, preserve exact audio sample, channel, route, synchronization, and continuity fields,
 and retain classified degraded state when the native bridge reports a failed generated request. The
+shared Inspector panel is mounted through that same registry on every route. It projects exact
+workspace, selection, project metadata, history, playback, editor failure, and bounded notification
+evidence, persists only through existing dock continuity, and exposes only current refresh, System,
+and reversible transient selection actions.
 native bridge now routes complete editor-state and generic project-command methods through a retained
 EngineControl editor session, publishes successful snapshots durably, refreshes desktop project
 identity, and emits exact correlated project events. The editing viewer adds play, pause, stop,
@@ -3678,6 +3723,10 @@ The largest current risk is cross-document drift:
   and restart authority into React. Pointer, keyboard, focus, screen-reader, high-contrast, and
   reduced-motion behavior still require physical application-lane validation beyond source,
   TypeScript, unit, and production-build proof.
+- Shared inspector rows are a bounded presentation of existing evidence, not a new durable
+  diagnostic archive or history owner. Future inspector actions must continue to name their effect,
+  preserve the last-valid view, delegate authoritative recovery to System, and provide exact local
+  reversal before adding any destructive presentation action.
 - A future light theme or broad token replacement could accidentally reinterpret analysis overlays,
   comparison evidence, authored marker flags, or native viewer presentation. Any additional theme
   must preserve the separate semantic and color-data namespaces, exact viewer isolation, static
@@ -3900,6 +3949,11 @@ continuity while the underlying snapshot remains rendered. Keep menus, tooltips,
 status, and progress on the React presentation side, route commands to existing owners, and never
 let dismissal, menu selection, or progress rendering become project, job, lifecycle, crash, or
 workspace persistence authority.
+Keep the shared inspector read-only over existing workspace, selection, editor, project-history,
+playback, and notification owners. Preserve the four stable semantic groups, bounded notices,
+honest unavailable and degraded engine states, direct transport exclusion, and exact local
+selection restoration. New actions must delegate to an existing owner and state their consequence;
+panel placement, focus, and visibility must continue through current workspace continuity.
 Keep desktop process ownership exhaustive and shell-local. Any new long-lived thread or detached
 task must enter the stable inventory, retain its handle, close admission before teardown when
 applicable, and join on both setup rollback and normal exit. Register task ownership before allowing
