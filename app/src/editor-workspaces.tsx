@@ -419,8 +419,26 @@ export function DeliveryWorkspacePanel() {
                       <Detail label="Final" value={yesNo(job.is_final)} />
                       <Detail label="Result" value={yesNo(job.has_result)} />
                     </dl>
+                    <div className="delivery-job-progress">
+                      <span>
+                        {job.total_units === null
+                          ? "Progress is indeterminate"
+                          : `${job.completed_units} of ${job.total_units} units complete`}
+                      </span>
+                      {job.total_units === null ? (
+                        <progress aria-label={`Progress for ${job.job_id}`} />
+                      ) : (
+                        <progress
+                          aria-label={`Progress for ${job.job_id}`}
+                          max={job.total_units}
+                          value={job.completed_units}
+                        />
+                      )}
+                    </div>
                     {job.failure ? (
-                      <p className="inline-warning">A structured export failure is attached.</p>
+                      <p className="inline-warning">
+                        {job.failure.category} failure, {job.failure.recoverability} recovery.
+                      </p>
                     ) : null}
                   </li>
                 ))}

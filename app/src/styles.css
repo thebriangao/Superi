@@ -4479,3 +4479,554 @@ button.timeline-playhead-handle span {
     scroll-behavior: auto !important;
   }
 }
+
+.application-tooltip-host {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+
+.route-list > .application-tooltip-host,
+.route-list > .application-tooltip-host > .route-button {
+  width: 100%;
+}
+
+.application-tooltip-bubble {
+  position: absolute;
+  z-index: 90;
+  width: max-content;
+  max-width: 280px;
+  padding: 7px 9px;
+  border: 1px solid #46535a;
+  border-radius: 5px;
+  color: #f1f4ef;
+  background: #252b2f;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 42%);
+  font-size: 11px;
+  font-weight: 520;
+  line-height: 1.4;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 110ms ease, transform 110ms ease;
+}
+
+.application-tooltip-host:hover > .application-tooltip-bubble,
+.application-tooltip-host:focus-within > .application-tooltip-bubble {
+  opacity: 1;
+}
+
+.application-tooltip-host[data-tooltip-placement="top"] > .application-tooltip-bubble {
+  bottom: calc(100% + 7px);
+  left: 50%;
+  transform: translate(-50%, 3px);
+}
+
+.application-tooltip-host[data-tooltip-placement="top"]:hover > .application-tooltip-bubble,
+.application-tooltip-host[data-tooltip-placement="top"]:focus-within > .application-tooltip-bubble {
+  transform: translate(-50%, 0);
+}
+
+.application-tooltip-host[data-tooltip-placement="right"] > .application-tooltip-bubble {
+  top: 50%;
+  left: calc(100% + 7px);
+  transform: translate(-3px, -50%);
+}
+
+.application-tooltip-host[data-tooltip-placement="right"]:hover > .application-tooltip-bubble,
+.application-tooltip-host[data-tooltip-placement="right"]:focus-within > .application-tooltip-bubble {
+  transform: translate(0, -50%);
+}
+
+.application-tooltip-host[data-tooltip-placement="bottom"] > .application-tooltip-bubble {
+  top: calc(100% + 7px);
+  left: 50%;
+  transform: translate(-50%, -3px);
+}
+
+.application-tooltip-host[data-tooltip-placement="bottom"]:hover > .application-tooltip-bubble,
+.application-tooltip-host[data-tooltip-placement="bottom"]:focus-within > .application-tooltip-bubble {
+  transform: translate(-50%, 0);
+}
+
+.application-tooltip-host[data-tooltip-placement="left"] > .application-tooltip-bubble {
+  top: 50%;
+  right: calc(100% + 7px);
+  transform: translate(3px, -50%);
+}
+
+.application-tooltip-host[data-tooltip-placement="left"]:hover > .application-tooltip-bubble,
+.application-tooltip-host[data-tooltip-placement="left"]:focus-within > .application-tooltip-bubble {
+  transform: translate(0, -50%);
+}
+
+.workspace-layout-controls .application-tooltip-host > .application-tooltip-bubble {
+  right: 0;
+  left: auto;
+}
+
+.workspace-layout-controls .application-tooltip-host[data-tooltip-placement="top"] > .application-tooltip-bubble {
+  transform: translateY(3px);
+}
+
+.workspace-layout-controls .application-tooltip-host[data-tooltip-placement="top"]:hover > .application-tooltip-bubble,
+.workspace-layout-controls .application-tooltip-host[data-tooltip-placement="top"]:focus-within > .application-tooltip-bubble {
+  transform: translateY(0);
+}
+
+.application-context-menu-shield {
+  position: fixed;
+  z-index: 300;
+  inset: 0;
+}
+
+.application-context-menu {
+  position: fixed;
+  display: grid;
+  width: 272px;
+  gap: 2px;
+  padding: 7px;
+  border: 1px solid #475158;
+  border-radius: 8px;
+  color: #e9ede7;
+  background: #202529;
+  box-shadow: 0 18px 54px rgb(0 0 0 / 55%);
+}
+
+.application-context-menu__label {
+  margin: 0;
+  padding: 5px 8px 7px;
+  color: #889295;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+button.application-context-menu__item {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px;
+  border: 0;
+  color: #e8ece7;
+  background: transparent;
+  text-align: left;
+}
+
+button.application-context-menu__item:hover,
+button.application-context-menu__item:focus-visible {
+  color: #ffffff;
+  background: #303940;
+}
+
+button.application-context-menu__item[data-tone="danger"] {
+  color: #f0b8ad;
+}
+
+.application-context-menu__item span,
+.application-context-menu__item strong,
+.application-context-menu__item small {
+  display: block;
+}
+
+.application-context-menu__item small {
+  margin-top: 2px;
+  color: #929b9d;
+  font-size: 10px;
+  font-weight: 450;
+}
+
+.application-feedback-hub {
+  position: fixed;
+  z-index: 180;
+  right: 0;
+  bottom: 0;
+  left: 208px;
+  pointer-events: none;
+}
+
+.application-workspace {
+  padding-bottom: 54px;
+}
+
+.application-feedback-status {
+  display: grid;
+  min-height: 54px;
+  grid-template-columns: minmax(180px, 1fr) minmax(240px, 0.9fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 7px 14px;
+  border-top: 1px solid #343b3f;
+  background: rgb(20 24 26 / 96%);
+  box-shadow: 0 -12px 30px rgb(0 0 0 / 24%);
+  pointer-events: auto;
+  backdrop-filter: blur(14px);
+}
+
+.application-feedback-status__summary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.application-feedback-status__summary div,
+.application-feedback-status__summary strong,
+.application-feedback-status__summary small {
+  display: block;
+  min-width: 0;
+}
+
+.application-feedback-status__summary strong {
+  font-size: 12px;
+}
+
+.application-feedback-status__summary small {
+  margin-top: 2px;
+  overflow: hidden;
+  color: #8f989a;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.application-feedback-status__indicator {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #83be98;
+  box-shadow: 0 0 0 4px rgb(131 190 152 / 12%);
+}
+
+.application-feedback-status[data-status-condition="working"] .application-feedback-status__indicator {
+  background: #8fc8e6;
+  box-shadow: 0 0 0 4px rgb(143 200 230 / 12%);
+}
+
+.application-feedback-status[data-status-condition="degraded"] .application-feedback-status__indicator {
+  background: #d6b76d;
+  box-shadow: 0 0 0 4px rgb(214 183 109 / 12%);
+}
+
+.application-feedback-status[data-status-condition="attention"] .application-feedback-status__indicator {
+  background: #db8174;
+  box-shadow: 0 0 0 4px rgb(219 129 116 / 12%);
+}
+
+.application-feedback-status__notices {
+  display: inline-flex;
+  grid-column: 3;
+  align-items: center;
+  gap: 8px;
+}
+
+.application-feedback-status__notices span {
+  min-width: 20px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  color: #d9f1ff;
+  background: #263b47;
+  font-size: 10px;
+}
+
+.application-progress-row {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.application-progress-row__heading {
+  display: flex;
+  min-width: 0;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 10px;
+}
+
+.application-progress-row__heading span,
+.application-progress-row small {
+  overflow: hidden;
+  color: #879193;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.application-progress-row progress,
+.delivery-job-progress progress {
+  width: 100%;
+  height: 5px;
+  border: 0;
+  border-radius: 999px;
+  accent-color: #8dc8e7;
+}
+
+.application-notification-center {
+  position: absolute;
+  right: 12px;
+  bottom: 64px;
+  display: grid;
+  width: min(720px, calc(100vw - 232px));
+  max-height: min(760px, calc(100vh - 90px));
+  gap: 16px;
+  padding: 18px;
+  overflow: auto;
+  border: 1px solid #414a4f;
+  border-radius: 10px;
+  color: #e9ede8;
+  background: #181d20;
+  box-shadow: 0 24px 80px rgb(0 0 0 / 62%);
+  pointer-events: auto;
+}
+
+.application-notification-center > header,
+.application-notification-center__actions,
+.application-failure-card > header,
+.application-failure-card > footer,
+.application-notification-list article {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.application-notification-center h2,
+.application-notification-center h3,
+.application-notification-center h4 {
+  margin: 0;
+}
+
+.application-notification-center h2 {
+  margin-top: 3px;
+  font-size: 18px;
+}
+
+.application-notification-center h3 {
+  margin-bottom: 9px;
+  color: #aeb7b4;
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.application-failure-list,
+.application-progress-list,
+.application-notification-list {
+  display: grid;
+  gap: 8px;
+}
+
+.application-failure-card {
+  padding: 13px;
+  border: 1px solid #394247;
+  border-left: 3px solid #94a1a5;
+  border-radius: 7px;
+  background: #202529;
+}
+
+.application-failure-card[data-failure-condition="retryable"] {
+  border-left-color: #8cc8e7;
+}
+
+.application-failure-card[data-failure-condition="degraded"] {
+  border-left-color: #d3b46d;
+}
+
+.application-failure-card[data-failure-condition="user_correctable"] {
+  border-left-color: #d69b70;
+}
+
+.application-failure-card[data-failure-condition="terminal"] {
+  border-left-color: #dd7f73;
+}
+
+.application-failure-card header span {
+  color: #8f999b;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.application-failure-card h4 {
+  margin-top: 3px;
+  font-size: 13px;
+}
+
+.application-failure-card code {
+  color: #96a0a2;
+  font-size: 10px;
+}
+
+.application-failure-card > p {
+  margin: 9px 0;
+  color: #c3cbc7;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.application-failure-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 12px;
+  margin: 0 0 12px;
+}
+
+.application-failure-card dl div {
+  min-width: 0;
+}
+
+.application-failure-card dt {
+  color: #7f898b;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.application-failure-card dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+  color: #d6dcd7;
+  font-size: 10px;
+}
+
+.application-failure-card footer {
+  align-items: center;
+}
+
+.application-failure-card footer small {
+  max-width: 70%;
+  color: #929c9d;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.application-progress-list .application-progress-row,
+.application-notification-list article {
+  padding: 10px 11px;
+  border: 1px solid #30383c;
+  border-radius: 6px;
+  background: #1d2225;
+}
+
+.application-notification-list article p {
+  margin: 3px 0 0;
+  color: #9ea7a5;
+  font-size: 10px;
+}
+
+.application-notification-center__empty {
+  margin: 0;
+  color: #838d8f;
+  font-size: 11px;
+}
+
+.application-toast-region {
+  position: fixed;
+  z-index: 240;
+  right: 14px;
+  bottom: 68px;
+  display: grid;
+  width: min(390px, calc(100vw - 28px));
+  gap: 7px;
+  pointer-events: none;
+}
+
+.application-toast {
+  display: flex;
+  min-height: 64px;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid #414a4f;
+  border-left: 3px solid #8fc8e6;
+  border-radius: 7px;
+  color: #edf1eb;
+  background: #20262a;
+  box-shadow: 0 14px 42px rgb(0 0 0 / 48%);
+  pointer-events: auto;
+}
+
+.application-toast[data-tone="success"] {
+  border-left-color: #84bf98;
+}
+
+.application-toast[data-tone="warning"] {
+  border-left-color: #d2b36b;
+}
+
+.application-toast[data-tone="error"] {
+  border-left-color: #db8174;
+}
+
+.application-toast > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.application-toast p {
+  margin: 3px 0 0;
+  color: #aab2b0;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+button.application-toast__dismiss {
+  width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-color: transparent;
+  color: #99a2a3;
+  background: transparent;
+  font-size: 17px;
+}
+
+.delivery-job-progress {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.delivery-job-progress span {
+  color: #929b9d;
+  font-size: 10px;
+}
+
+@media (max-width: 820px) {
+  .application-feedback-hub {
+    left: 0;
+  }
+
+  .application-notification-center {
+    width: calc(100vw - 24px);
+  }
+
+  .route-list > .application-tooltip-host,
+  .route-list > .application-tooltip-host > .route-button {
+    width: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .application-feedback-status {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .application-feedback-status > .application-progress-row {
+    display: none;
+  }
+
+  .application-feedback-status__notices {
+    grid-column: 2;
+  }
+
+  .application-failure-card dl {
+    grid-template-columns: 1fr;
+  }
+
+  .application-tooltip-bubble {
+    display: none;
+  }
+}

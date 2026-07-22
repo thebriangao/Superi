@@ -2,6 +2,7 @@ import type {
   CSSProperties,
   DragEvent,
   KeyboardEvent,
+  MouseEvent,
   PointerEvent,
 } from "react";
 
@@ -13,6 +14,7 @@ import {
   type ApplicationPanelDockLayout,
 } from "./application.ts";
 import { useApplication } from "./application-context.tsx";
+import { useApplicationPresentation } from "./application-presentation.tsx";
 
 const PANEL_DRAG_TYPE = "application/x-superi-panel-id";
 const DOCK_LABELS: Readonly<Record<ApplicationPanelDockId, string>> = {
@@ -95,6 +97,8 @@ function PanelDock({
   readonly visiblePanelIds: readonly string[];
 }) {
   const { dispatch, registry } = useApplication();
+  const { openContextMenu, publishNotification } =
+    useApplicationPresentation();
   const visible = new Set(visiblePanelIds);
   const panelIds = dock.panelIds.filter((panelId) => visible.has(panelId));
   if (panelIds.length === 0) return null;
@@ -114,6 +118,96 @@ function PanelDock({
       panelId,
       dockId: dock.dockId,
       index,
+    });
+  };
+
+  const hidePanel = (panelId: string, panelIndex: number) => {
+    const panel = registry.panel(panelId);
+    const remainingPanelIds = panelIds.filter(
+      (candidatePanelId) => candidatePanelId !== panelId,
+    );
+    const nextPanelId =
+      remainingPanelIds[
+        Math.min(panelIndex, Math.max(remainingPanelIds.length - 1, 0))
+      ] ?? null;
+    dispatch({ type: "toggle_panel", panelId });
+    publishNotification({
+      id: `panel-hidden:${panelId}`,
+      title: `${panel.title} hidden`,
+      message: "The panel remains recoverable from the workspace header.",
+      tone: "information",
+    });
+    if (nextPanelId !== null) {
+      window.requestAnimationFrame(() => {
+        document.getElementById(panelTabId(nextPanelId))?.focus();
+      });
+    }
+  };
+
+  const showPanelContextMenu = (
+    event: MouseEvent<HTMLButtonElement> | KeyboardEvent<HTMLButtonElement>,
+    panelId: string,
+    panelIndex: number,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const panel = registry.panel(panelId);
+    const rectangle = event.currentTarget.getBoundingClientRect();
+    const x = "clientX" in event && event.clientX > 0
+      ? event.clientX
+      : rectangle.left + 16;
+    const y = "clientY" in event && event.clientY > 0
+      ? event.clientY
+      : rectangle.bottom + 4;
+    openContextMenu({
+      label: `${panel.title} panel actions`,
+      x,
+      y,
+      returnFocus: event.currentTarget,
+      items: [
+        {
+          id: "activate",
+          label: "Activate panel",
+          detail: "Move keyboard and workspace focus to this panel.",
+          disabled: panelId === activePanelId,
+          onSelect: () => {
+            dispatch({ type: "activate_panel", panelId });
+            publishNotification({
+              id: `panel-activated:${panelId}`,
+              title: `${panel.title} activated`,
+              message: "Panel focus is included in workspace continuity.",
+              tone: "information",
+            });
+          },
+        },
+        ...APPLICATION_PANEL_DOCKS.map((dockId) => ({
+          id: `dock:${dockId}`,
+          label: `Move to ${DOCK_LABELS[dockId].toLowerCase()} dock`,
+          detail: `Keep the panel visible in the ${DOCK_LABELS[dockId].toLowerCase()} workspace region.`,
+          disabled: dockId === dock.dockId,
+          onSelect: () => {
+            dispatch({
+              type: "dock_panel",
+              panelId,
+              dockId,
+              index: panelIndex,
+            });
+            publishNotification({
+              id: `panel-docked:${panelId}`,
+              title: `${panel.title} moved`,
+              message: `The panel is now in the ${DOCK_LABELS[dockId].toLowerCase()} dock.`,
+              tone: "success",
+            });
+          },
+        })),
+        {
+          id: "hide",
+          label: "Hide panel",
+          detail: "Keep the panel available from the visible panel controls.",
+          tone: "danger",
+          onSelect: () => hidePanel(panelId, panelIndex),
+        },
+      ],
     });
   };
 
@@ -158,20 +252,31 @@ function PanelDock({
                   id={panelTabId(panelId)}
                   role="tab"
                   aria-controls={panelBodyId(panelId)}
+                  aria-keyshortcuts="Shift+F10"
                   aria-selected={selected}
                   tabIndex={selected ? 0 : -1}
                   draggable
                   onClick={() =>
                     dispatch({ type: "activate_panel", panelId })
                   }
+                  onContextMenu={(event) =>
+                    showPanelContextMenu(event, panelId, index)
+                  }
                   onDragStart={(event) => {
                     event.dataTransfer.effectAllowed = "move";
                     event.dataTransfer.setData(PANEL_DRAG_TYPE, panelId);
                     event.dataTransfer.setData("text/plain", panel.title);
                   }}
-                  onKeyDown={(event) =>
-                    handleTabKey(event, panelIds, index, dispatch)
-                  }
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "ContextMenu" ||
+                      (event.shiftKey && event.key === "F10")
+                    ) {
+                      showPanelContextMenu(event, panelId, index);
+                      return;
+                    }
+                    handleTabKey(event, panelIds, index, dispatch);
+                  }}
                 >
                   {panel.title}
                 </button>
@@ -179,10 +284,7 @@ function PanelDock({
                   className="panel-tab-hide"
                   type="button"
                   aria-label={`Hide ${panel.title}`}
-                  title={`Hide ${panel.title}`}
-                  onClick={() =>
-                    dispatch({ type: "toggle_panel", panelId })
-                  }
+                  onClick={() => hidePanel(panelId, index)}
                 >
                   x
                 </button>
@@ -195,13 +297,20 @@ function PanelDock({
           <select
             aria-label={`Dock ${activePanel.title}`}
             value={dock.dockId}
-            onChange={(event) =>
+            onChange={(event) => {
+              const dockId = event.currentTarget.value as ApplicationPanelDockId;
               dispatch({
                 type: "dock_panel",
                 panelId: activePanelId,
-                dockId: event.currentTarget.value as ApplicationPanelDockId,
-              })
-            }
+                dockId,
+              });
+              publishNotification({
+                id: `panel-docked:${activePanelId}`,
+                title: `${activePanel.title} moved`,
+                message: `The panel is now in the ${DOCK_LABELS[dockId].toLowerCase()} dock.`,
+                tone: "success",
+              });
+            }}
           >
             {APPLICATION_PANEL_DOCKS.map((dockId) => (
               <option value={dockId} key={dockId}>

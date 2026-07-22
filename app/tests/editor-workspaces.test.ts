@@ -98,6 +98,20 @@ test("editor requests use one explicit public transaction identity", () => {
   assert.throws(() => createEditorStateRequest("  "), /transaction identity/i);
 });
 
+test("delivery jobs expose semantic progress and classified failure evidence", () => {
+  const workspaces = read(resolve(appRoot, "src/editor-workspaces.tsx"));
+
+  assert.match(workspaces, /<progress/);
+  assert.match(workspaces, /aria-label=\{`Progress for \$\{job\.job_id\}`\}/);
+  assert.match(workspaces, /job\.total_units === null/);
+  assert.match(workspaces, /job\.failure\.category/);
+  assert.match(workspaces, /job\.failure\.recoverability/);
+  assert.doesNotMatch(
+    workspaces,
+    /setInterval|requestAnimationFrame|submit_job|poll_runtime/,
+  );
+});
+
 test("timeline track gestures route through the application command owner", () => {
   const applicationContext = read(
     resolve(appRoot, "src/application-context.tsx"),

@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 999a4ff0fd5e22aa40772a44878c0433ffda142c4a29123254412a9d72aff642
-source_files: 334
+source_hash: 93ff6bad8a87286278c3ffc318be1f8e31aa85e85b99160a4a6ebd6bd26df0ac
+source_files: 337
 mapped_at_commit: working-tree
 ---
 
@@ -567,7 +567,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   dependencies.
 - `app/package.json`: Declares the private production application package, exact toolchain and
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
-  framework, command-palette, native desktop-shell, editor-workspace, timeline-canvas, timeline-nesting,
+  framework, command-palette, shared application-presentation, native desktop-shell,
+  editor-workspace, timeline-canvas, timeline-nesting,
   timeline-multicam, timeline-clip,
   timeline-transition, caption projection, exchange, and authoring, editorial-feedback, exact
   playback transport, viewer navigation, overlay, comparison, viewer-status, analysis, and
@@ -625,11 +626,23 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   export, native reservation disclosure, and two-step reset-all confirmation.
 - `app/src/keyboard-shortcuts.css`: Isolates keyboard-shortcut panel layout, responsive row wrapping,
   status and alert presentation, keyboard focus visibility, and narrow-window behavior.
+- `app/src/application-presentation.ts`: Defines the framework-neutral application feedback model.
+  It validates all four recoverability classes, preserves safe source context and optional
+  last-valid resource identity, projects retained crash, lifecycle, project, transport, and public
+  export-job evidence, derives truthful operational status and progress, bounds immutable
+  notification history, and clamps context-menu placement without importing native commands or
+  taking business-state ownership.
+- `app/src/application-presentation.tsx`: Provides the single React presentation context and real
+  consumers for described tooltips, focus-returning keyboard and pointer context menus clamped from
+  their measured size, time-limited notification toasts with retained bounded history, classified
+  failure cards, semantic progress, and the always-visible application status bar. Its callbacks
+  route only to existing application, project, lifecycle, workspace, and recovery owners.
 - `app/src/panel-workspace.tsx`: Renders the real route panel consumer as four stable dock targets
   with ordered tablists, mounted inactive tabpanels, labeled hide and dock controls, keyboard tab
-  navigation, HTML drag reordering and cross-dock movement, pointer and keyboard separators, and a
-  live focus announcement. It dispatches only application presentation actions and owns no project,
-  history, transport, engine, or close behavior.
+  navigation, HTML drag reordering and cross-dock movement, pointer and keyboard separators, a
+  live focus announcement, and a shared pointer or keyboard context menu for activate, dock, and
+  hide intent. It dispatches only application presentation actions and owns no project, history,
+  transport, engine, or close behavior.
 - `app/src/window-session.ts`: Defines strict immutable window-session, monitor, placement,
   persistence, recovery, and recently closed DTOs; validates every native replacement; wraps the
   exact snapshot, create, focus, fullscreen, monitor move, placement undo, workspace update, close,
@@ -656,7 +669,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   separate navigation context. The program viewer publishes its formatted comparison state through
   the existing application owner, without moving a new context, reducer, API client, or Tauri
   access into this workspace file. Shared timeline selection can become an exact
-  replace or backspace target without locally mutating canonical timeline state.
+  replace or backspace target without locally mutating canonical timeline state. Delivery projects
+  each public export job through a semantic determinate or indeterminate progress element and shows
+  its attached failure category and recoverability without inventing scheduling state.
 - `app/src/playback-controls.tsx`: Renders play, pause, stop, loop, JKL shuttle, variable exact
   speed, direction, single-frame, exact seek, and bounded latest-target scrub controls through the
   application-owned generated command. It serializes interactions, follows only canonical returned
@@ -937,8 +952,13 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   resets every route to registry defaults, and exposes one exact undo until later workspace intent
   supersedes it. A separate bounded header poll projects the authoritative native engine lifecycle
   and opens the existing System route for detailed control or recovery without creating another
-  lifecycle owner. It then renders retained classified
-  diagnostics with exact retry, degraded, user-correction, restart, project-recovery,
+  lifecycle owner. The root shell also projects that lifecycle, public editor failures, project and
+  window continuity, desktop shell failures, public export jobs, workspace saves, and retained
+  cross-session crash diagnostics through the shared application-presentation provider. The global
+  status and notification center preserve actionable source, code, safe context, last-valid
+  resource, continuity, and distinct retryable, degraded, user-correctable, or terminal intent;
+  their actions reuse existing refresh, project, System, and lifecycle owners. The retained crash
+  surface continues to render classified diagnostics with exact retry, degraded, user-correction, restart, project-recovery,
   workspace-restoration, and dismissal actions. Those actions reuse the existing application,
   lifecycle, and project owners rather than mutating their state inside the diagnostic view. Its
   System panel also consumes the strict four-domain capability adapter, exposes live and retained
@@ -1019,7 +1039,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   controls, transformed exact-identity badges, bounded split or wipe controls, difference intent,
   pointer-transparent dividers beneath the existing overlay layer, and compact scrollable Program
   transform cards with a complete 3 by 3 matrix, sampling, driver state, action feedback, and
-  responsive controls. Timeline rows use canonical variable height, compact two-row track controls,
+  responsive controls. It also defines shared tooltip placement, viewport-bounded context menus,
+  bounded notification toasts and history, the fixed operational status bar, semantic progress,
+  and visually distinct retryable, degraded, user-correctable, and terminal failure cards.
+  Timeline rows use canonical variable height, compact two-row track controls,
   disabled output presentation, and visible command failures. It also defines compact ready, stale,
   and empty source-monitor
   controls with exact state details and responsive action groups. The timeline edit console adds
@@ -1046,7 +1069,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   registration, and reuse of the
   existing lifecycle and project recovery consumers. It freezes the command palette's pure catalog,
   accessible modal, native menu intent, production registration, and exclusion from generated API
-  and Tauri ownership. It also freezes the authoritative four-provider
+  and Tauri ownership. It also freezes the shared application
+  presentation provider, real tooltip, context-menu, status, notification, progress, and classified
+  failure consumers, retained crash evidence, panel keyboard invocation, and pure-model transport
+  isolation. It also freezes the authoritative four-provider
   capability composition, strict frontend adapter, real System-panel consumer, and absence of audio
   stream mutation.
 - `app/tests/system-capabilities.test.ts`: Proves exact command invocation, strict all-field parsing,
@@ -1072,6 +1098,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   recent-path automation identities, token-complete deterministic search, current disabled reasons,
   effective configured shortcut projection, typed application and desktop invocation, and actionable
   failure retention.
+- `app/tests/application-presentation.test.ts`: Proves exact and distinct policy for all four
+  recovery classes, preservation of reviewed transport, project, crash, lifecycle, and last-valid
+  context, fail-closed unknown classes, immutable bounded and deduplicated notification history,
+  truthful determinate and indeterminate export progress, operational-status priority, and
+  viewport-bounded context-menu geometry.
 - `app/tests/desktop-shell.test.ts`: Proves deterministic project-versus-media drop classification,
   busy and history-aware close decisions, path-safe document titles for POSIX and Windows paths,
   complete layout and keyboard-shortcut profile transport, and sequence resumption after a webview
@@ -1088,7 +1119,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   command wiring, and the absence of direct transport ownership in the workspace. It also verifies
   transition command wiring through the same application-owned callback plus application-owned
   editorial feedback publication, viewer consumption, audio meter rendering, route-state styling,
-  native IPC isolation, accessible analysis selection, and selected-versus-presented status. It also freezes the
+  native IPC isolation, accessible analysis selection, selected-versus-presented status, semantic
+  public export progress, and visible export failure category plus recoverability. It also freezes the
   complete fit, zoom, pan, 1:1, fullscreen, cinema, and external-display-intent viewer control
   consumer while excluding C002 playback navigation ownership. It freezes all eleven viewer-status
   fields, application-owned projection, transformed-frame separation, exact role coverage, and
@@ -1854,6 +1886,11 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
   strict TypeScript checking of the production lifecycle and generated public API clients, Vite
   production bundling, and application-contract proof. `ci/frontend-smoke/` remains an independent
   focused generated-binding compatibility consumer rather than application coverage.
+- The application-presentation surface is a read-only composition boundary over existing public and
+  shell-local evidence. Its pure model exposes normalized failure, progress, notification, status,
+  and menu-placement values; its React provider exposes only transient presentation callbacks and
+  routes recovery or workspace intent back to existing owners. It is not a new public engine API,
+  persistence schema, project document, job scheduler, or native diagnostic owner.
 - The shell-local media-management surface now includes one `mutate_project_media_batch` Tauri
   command. Its strict tagged operation union, expected project and library revisions, bounded
   ordered list, deterministic affected-ID evidence, and complete replacement snapshot are mirrored
@@ -2106,6 +2143,15 @@ build the CLI feature path and test the engine and API consumers after the compl
 Ubuntu 24.04 and Ubuntu 22.04 remain default-only because their distribution libva APIs do not meet
 the platform crate's required version.
 
+The application feedback flow remains presentation-only. `ApplicationShell` reads current
+workspace continuity, lifecycle, project, editor, window, shell, retained crash, and public export
+replacement evidence. Pure adapters preserve reviewed context and classify unknown recovery text as
+terminal, then one React provider renders status, progress, notifications, tooltips, context menus,
+and recovery actions without clearing the last-valid workspace or editor snapshot. Pointer and
+keyboard panel menu commands enter the existing immutable application reducer, while recovery
+commands return to the existing lifecycle, project, editor refresh, and System owners. No new Tauri
+schema, polling scheduler, project document, job executor, or native persistence path is introduced.
+
 The frontend CI path begins on pull requests, pushes to `main`, or manual dispatch. Its isolated
 Ubuntu 24.04 job installs the exact Node.js 24.13.0 declaration, performs a lockfile-only `npm ci`,
 runs strict no-emit TypeScript checking over the React application and generated public API adapter,
@@ -2290,6 +2336,15 @@ not project, workspace, route, device, codec, model, or editable-artifact author
 `app/src/transport.ts` implements the generated `SuperiTransport`, and `app/src/api.ts` remains the
 sole `SuperiClient` factory. React consumes the injected binding for validation, health, complete
 editor replacement state, and exact project commands without owning engine or project behavior.
+`application-presentation.ts` receives only already classified public or shell-reviewed evidence and
+normalizes it into immutable failure, progress, status, notification, and geometry values. The
+React presentation provider composes those values above the existing `ApplicationProvider`; the
+shell continues rendering the last-valid editor and workspace state while a fixed status surface
+and expandable notification center retain actionable context. Panel menus dispatch the existing
+application reducer, delivery progress reads only public replacement jobs, and recovery callbacks
+return to the existing lifecycle, project refresh, editor refresh, or System routes. Notification
+dismissal changes only bounded process-local presentation history and cannot dismiss a native crash
+diagnostic, cancel a job, clear a project failure, or mutate authored state.
 Beside those runtime owners, `DesktopCrashDiagnostics` retains one shell-local active-session marker
 and a bounded replacement-safe journal under application data. Startup turns a surviving marker into an
 unexpected-exit diagnostic before replacing it with the new session. The chained panic hook records
@@ -2500,6 +2555,11 @@ of open runtime behavior.
   only reviewed bounded context. Session-marker removal requires exact session identity and orderly
   lifecycle acknowledgement; recovery actions must reuse the existing application, lifecycle, and
   project owners and must not replace a different active project.
+- Application feedback is presentation-only. It preserves source, code, action, reviewed context,
+  optional last-valid resource, and continuity evidence, maps only the four existing recovery
+  classes, and fails unknown classes closed to terminal presentation. Notification dismissal and
+  menu closure mutate only bounded process-local presentation state; they cannot clear native
+  diagnostics, cancel jobs, change projects, or erase last-valid editor and workspace state.
 - Every long-lived desktop execution unit has one retained native owner and an explicit join path.
   Project association task admission is bounded and closes before teardown; partial startup joins
   every owner already created; one cleanup failure cannot skip later joins; setup rollback and normal
@@ -2512,7 +2572,8 @@ of open runtime behavior.
 - Public asynchronous job state is a strict projection of the engine-owned queue. Handles,
   progress, dependencies, cooperative controls, and ordered full replacement events may cross the
   public seam, while executors, host polling, waits, typed artifacts, and process-local queue
-  ownership do not.
+  ownership do not. Application progress must remain indeterminate when a public total is absent and
+  must never create a local percentage, scheduler, retry flag, or completion claim.
 - Authored project changes use one typed engine command-history surface. Retained before and after
   snapshots are bounded session state, the selected project snapshot is the only durable state, and
   domain crates do not own competing undo stacks.
@@ -2729,6 +2790,14 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   retention, private panic-detail filtering at the public seam, corrupt-store archival, and
   nonblocking degraded startup. The frontend source contract separately freezes command wiring and
   reuse of the existing lifecycle and project recovery owners.
+
+- The focused application-presentation proof exercises exact policy for retryable, degraded,
+  user-correctable, and terminal conditions, fail-closed unknown classes, reviewed transport,
+  project, lifecycle, crash, and last-valid context, immutable bounded notification replacement and
+  dismissal, truthful public export progress, operational-status priority, and viewport-bounded
+  menu placement. Source contracts freeze the real provider, tooltip, menu, notification, status,
+  progress, failure, retained crash, panel pointer and keyboard, and delivery job consumers. Strict
+  TypeScript checking plus the production Vite build exercise the integrated React path.
 
 - The focused shell-capability proof composes real current-host GPU, audio, engine codec, public
   codec projection, and AI provider calls, validates exact audio sample ranges and explicit unknown
@@ -3177,12 +3246,18 @@ registries plus immutable per-route four-dock layout, ordered tabs, bounded sizi
 active-tab and focus reconciliation, structural default and custom status, all-route default reset,
 one exact transient reset undo, complete private continuity projection, and one immutable typed
 public-resource selection. `panel-workspace.tsx` is the real consumer with labeled dock and hide
-controls, pointer and keyboard separators, ordered drag docking, accessible tablists, and mounted
-inactive tabpanels that retain component-local state.
+controls, pointer and keyboard separators, ordered drag docking, accessible tablists, mounted
+inactive tabpanels that retain component-local state, and one shared pointer or keyboard context
+menu that routes activate, dock, and hide intent back to the same reducer.
 `ApplicationProvider` composes the framework above `SuperiApiProvider` and remains the single owner
 of transient application state plus one last-valid public editor snapshot. It correlates playback
 transactions and observes bounded completion through that same snapshot while leaving timing and
-command execution on the native Playback owner. The React shell registers
+command execution on the native Playback owner. One outer application-presentation provider now
+normalizes already classified shell and public evidence into an always-visible status bar,
+expandable notification and recovery center, bounded notifications, semantic progress, accessible
+tooltips, and a keyboard-operated context menu. The four recovery classes remain distinct, safe
+context and last-valid references remain visible, retained crash diagnostics provide cross-session
+operational evidence, and recovery callbacks reuse the existing owners. The React shell registers
 editing, compositing, color, audio, delivery, and system routes; the professional views project the
 same snapshot, preserve exact audio sample, channel, route, synchronization, and continuity fields,
 and retain classified degraded state when the native bridge reports a failed generated request. The
@@ -3532,6 +3607,14 @@ export remain absent and cannot be inferred from the reference path.
 
 The largest current risk is cross-document drift:
 
+- Application notification history and menu state are intentionally process-local presentation;
+  cross-session operational evidence comes only from the native crash, workspace, project, and
+  lifecycle owners. Future feedback work must not imply that dismissing a notice dismisses native
+  evidence, infer progress when a public total is absent, expose private panic detail, or move retry
+  and restart authority into React. Pointer, keyboard, focus, screen-reader, high-contrast, and
+  reduced-motion behavior still require physical application-lane validation beyond source,
+  TypeScript, unit, and production-build proof.
+
 - Persistent window state is application-shell intent, not project authority. Monitor routing IDs
   are derived from local Tauri monitor facts and may change with operating-system topology; restore
   must continue to reconcile them into visible bounds and preserve one reversible prior placement.
@@ -3651,11 +3734,11 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`1b95ee982de34ab8563fc375b3747447160ebcf0` when this checkpoint began. The later C008 workspace
-layout delivery at `17de32b778420f90d4d82b3ea7d03f1baaf370a6` and C009 command-palette delivery at
-`d7fd4a19afa0a3de76d1aa07a813e7e1471b89cb` were integrated before final verification. Its hash
-describes the exact 334 discovered source files and 110627 source lines, including the resulting
-workspace sources, contracts, and durable checkpoint records.
+`17de32b778420f90d4d82b3ea7d03f1baaf370a6` when this checkpoint began. The later C009
+command-palette delivery at `d7fd4a19afa0a3de76d1aa07a813e7e1471b89cb` and C010 configurable
+shortcut delivery at `9a31f7fdd88ba4a05f1108ca74c1024498015d0a` were integrated before final verification. Its hash
+describes the resulting workspace sources, contracts, durable checkpoint records, command palette,
+configurable shortcuts, and shared application-presentation model and consumers.
 
 ## Maintenance notes
 
@@ -3734,6 +3817,12 @@ panel, active tab, size, hidden state, focus, and
 project before restoration, and route retries, restarts, and project recovery through their existing
 owners. Never clear an active-session marker without matching its exact session identity and
 confirmed orderly shutdown.
+Keep application presentation adapters exhaustive over the four existing recovery classes and
+fail unknown values closed. Preserve safe source, code, action, contexts, last-valid identity, and
+continuity while the underlying snapshot remains rendered. Keep menus, tooltips, notifications,
+status, and progress on the React presentation side, route commands to existing owners, and never
+let dismissal, menu selection, or progress rendering become project, job, lifecycle, crash, or
+workspace persistence authority.
 Keep desktop process ownership exhaustive and shell-local. Any new long-lived thread or detached
 task must enter the stable inventory, retain its handle, close admission before teardown when
 applicable, and join on both setup rollback and normal exit. Register task ownership before allowing

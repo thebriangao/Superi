@@ -20,6 +20,23 @@ import {
   ApplicationProvider,
   useApplication,
 } from "./application-context";
+import {
+  applicationFailureFromCrashDiagnostic,
+  applicationFailureFromLifecycle,
+  applicationFailureFromMessage,
+  applicationFailureFromProject,
+  applicationFailureFromTransport,
+  applicationOperationalStatus,
+  applicationProgressFromEditorJob,
+  type ApplicationFailurePresentation,
+  type ApplicationProgressPresentation,
+} from "./application-presentation.ts";
+import {
+  ApplicationFeedbackHub,
+  ApplicationPresentationProvider,
+  ApplicationTooltip,
+  useApplicationPresentation,
+} from "./application-presentation.tsx";
 import type { EngineIntrospectionSnapshot } from "./api";
 import { useSuperiApi } from "./api-context";
 import {
@@ -468,9 +485,11 @@ const APPLICATION_REGISTRY = new ApplicationRegistry<ComponentType>({
 
 export function App() {
   return (
-    <ApplicationProvider registry={APPLICATION_REGISTRY}>
-      <ApplicationShell />
-    </ApplicationProvider>
+    <ApplicationPresentationProvider>
+      <ApplicationProvider registry={APPLICATION_REGISTRY}>
+        <ApplicationShell />
+      </ApplicationProvider>
+    </ApplicationPresentationProvider>
   );
 }
 
@@ -490,6 +509,7 @@ function ApplicationShell() {
     refreshEditorProject,
     executeProjectCommand,
   } = useApplication();
+  const { publishNotification } = useApplicationPresentation();
   const route = registry.route(state.activeRouteId);
   const workspaceLayoutStatus = applicationWorkspaceLayoutStatus(
     registry,
@@ -510,7 +530,10 @@ function ApplicationShell() {
     useState<DesktopLifecycleSnapshot | null>(null);
   const [headerLifecycleUnavailable, setHeaderLifecycleUnavailable] =
     useState(false);
+  const [retainedCrashDiagnostics, setRetainedCrashDiagnostics] =
+    useState<DesktopCrashDiagnosticsSnapshot | null>(null);
   const latestHeaderLifecycleRevision = useRef(-1);
+  const latestCrashDiagnosticsRevision = useRef(-1);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -532,6 +555,35 @@ function ApplicationShell() {
         if (active) setHeaderLifecycleUnavailable(true);
       } finally {
         if (active) timer = window.setTimeout(refresh, 1_000);
+      }
+    };
+    void refresh();
+    return () => {
+      active = false;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+    let active = true;
+    let timer: number | null = null;
+    const refresh = async () => {
+      try {
+        const snapshot = await getDesktopCrashDiagnostics();
+        if (
+          active &&
+          snapshot.revision > latestCrashDiagnosticsRevision.current
+        ) {
+          latestCrashDiagnosticsRevision.current = snapshot.revision;
+          setRetainedCrashDiagnostics(snapshot);
+        }
+      } catch {
+        // The System workspace remains the authority for explicit recovery.
+      } finally {
+        if (active) timer = window.setTimeout(refresh, 5_000);
       }
     };
     void refresh();
@@ -648,13 +700,180 @@ function ApplicationShell() {
     shellPending ||
     editorProject.status === "loading" ||
     editorProject.status === "refreshing";
-  const projectContinuityFailure =
-    projectSnapshot?.failure === null || projectSnapshot?.failure === undefined
-      ? null
-      : `${projectSnapshot.failure.title} ${projectSnapshot.failure.action}`;
-  const operationalFailure =
-    [...new Set([shellFailure, projectContinuityFailure].filter(Boolean))].join(" ") ||
-    null;
+  const applicationFailures = useMemo(() => {
+    const failures: ApplicationFailurePresentation[] = [];
+    const lifecycleFailure =
+      headerLifecycle === null
+        ? null
+        : applicationFailureFromLifecycle(headerLifecycle);
+    if (lifecycleFailure !== null) failures.push(lifecycleFailure);
+    if (headerLifecycleUnavailable) {
+      failures.push(
+        applicationFailureFromMessage({
+          id: "engine-lifecycle-unavailable",
+          source: "Engine lifecycle",
+          revision: 0,
+          condition: "degraded",
+          category: "unavailable",
+          code: "engine.lifecycle.unavailable",
+          title: "Engine lifecycle state is unavailable.",
+          action: "Open System to inspect recovery controls and retry the connection.",
+        }),
+      );
+    }
+    if (editorProject.failure !== null) {
+      failures.push(
+        applicationFailureFromTransport(
+          "editor-project",
+          "Public editor state",
+          editorProject.commandSequence ?? 0,
+          editorProject.failure,
+        ),
+      );
+    }
+    if (projectSnapshot?.failure !== null && projectSnapshot?.failure !== undefined) {
+      failures.push(
+        applicationFailureFromProject(
+          "project-continuity",
+          "Project continuity",
+          projectSnapshot.revision,
+          projectSnapshot.failure,
+        ),
+      );
+    }
+    if (commandFailure !== null) {
+      failures.push(
+        applicationFailureFromMessage({
+          id: "application-command",
+          source: "Application command",
+          revision: editorProject.commandSequence ?? 0,
+          condition: "user_correctable",
+          category: "command",
+          code: "application.command.failed",
+          title: "The application command did not complete.",
+          action: commandFailure,
+        }),
+      );
+    }
+    if (windowContinuityFailure !== null) {
+      failures.push(
+        applicationFailureFromMessage({
+          id: "window-continuity",
+          source: "Window continuity",
+          revision: 0,
+          condition: "degraded",
+          category: "continuity",
+          code: "desktop.window.continuity",
+          title: "The window could not restore its complete workspace context.",
+          action: windowContinuityFailure,
+        }),
+      );
+    }
+    if (shellFailure !== null) {
+      failures.push(
+        applicationFailureFromMessage({
+          id: "desktop-shell",
+          source: "Desktop shell",
+          revision: projectSnapshot?.revision ?? 0,
+          condition: "degraded",
+          category: "operation",
+          code: "desktop.shell.operation",
+          title: "A desktop operation did not complete.",
+          action: shellFailure,
+        }),
+      );
+    }
+    for (const diagnostic of retainedCrashDiagnostics?.diagnostics ?? []) {
+      failures.push(applicationFailureFromCrashDiagnostic(diagnostic));
+    }
+    return failures;
+  }, [
+    commandFailure,
+    editorProject.commandSequence,
+    editorProject.failure,
+    headerLifecycle,
+    headerLifecycleUnavailable,
+    projectSnapshot,
+    retainedCrashDiagnostics,
+    shellFailure,
+    windowContinuityFailure,
+  ]);
+
+  const applicationProgress = useMemo(() => {
+    const progress: ApplicationProgressPresentation[] = [];
+    const latestExport =
+      editorSnapshot?.export.status === "attached"
+        ? editorSnapshot.export.latest
+        : null;
+    for (const job of latestExport?.jobs ?? []) {
+      progress.push(applicationProgressFromEditorJob(job));
+    }
+    if (shellPending) {
+      progress.push({
+        id: "desktop-shell-operation",
+        label: "Desktop operation",
+        status: "running",
+        detail: "Preserving project and workspace intent",
+        completed: 0,
+        total: null,
+        percent: null,
+        active: true,
+        failureCondition: null,
+      });
+    }
+    if (["loading", "refreshing"].includes(editorProject.status)) {
+      progress.push({
+        id: "editor-project-refresh",
+        label: "Editor state",
+        status: editorProject.status,
+        detail: "Retaining the last-valid editor snapshot while refreshing",
+        completed: 0,
+        total: null,
+        percent: null,
+        active: true,
+        failureCondition: null,
+      });
+    }
+    if (["restoring", "saving"].includes(workspaceContinuityPhase)) {
+      progress.push({
+        id: "workspace-continuity",
+        label: "Workspace continuity",
+        status: workspaceContinuityPhase,
+        detail: "Preserving route, panel layout, focus, and visibility",
+        completed: 0,
+        total: null,
+        percent: null,
+        active: true,
+        failureCondition: null,
+      });
+    }
+    return progress;
+  }, [
+    editorProject.status,
+    editorSnapshot,
+    shellPending,
+    workspaceContinuityPhase,
+  ]);
+
+  const applicationStatus = useMemo(
+    () =>
+      applicationOperationalStatus({
+        failures: applicationFailures,
+        progress: applicationProgress,
+        workspaceContinuity:
+          WORKSPACE_LAYOUT_LABELS[workspaceContinuityPhase][
+            workspaceLayoutStatus.condition
+          ],
+        engineLabel: headerEngineLabel,
+      }),
+    [
+      applicationFailures,
+      applicationProgress,
+      headerEngineLabel,
+      workspaceContinuityPhase,
+      workspaceLayoutStatus.condition,
+    ],
+  );
 
   const acceptProjectSnapshot = useCallback(
     (snapshot: DesktopProjectSnapshot): boolean => {
@@ -1193,6 +1412,7 @@ function ApplicationShell() {
   }, [handleIntent]);
 
   useEffect(() => {
+    if (!isTauri()) return;
     const unlisten = getCurrentWebviewWindow().onDragDropEvent((event) => {
       if (event.payload.type !== "drop") return;
       const drop = partitionDesktopDrop(event.payload.paths);
@@ -1237,6 +1457,102 @@ function ApplicationShell() {
     windowSessionHydrated,
   ]);
 
+  const handleApplicationFailureAction = useCallback(
+    async (failure: ApplicationFailurePresentation) => {
+      try {
+        if (failure.id === "engine-lifecycle") {
+          const intent: ApplicationLifecycleRequest | null =
+            failure.primaryAction.intent === "restart" &&
+            headerLifecycle?.can_restart
+              ? "restart"
+              : failure.primaryAction.intent === "retry" &&
+                  headerLifecycle?.can_retry
+                ? "recover"
+                : null;
+          if (intent === null) {
+            await executeCommand("application.route.system");
+            return;
+          }
+          const snapshot = await requestDesktopLifecycle(intent);
+          latestHeaderLifecycleRevision.current = Math.max(
+            latestHeaderLifecycleRevision.current,
+            snapshot.revision,
+          );
+          setHeaderLifecycle(snapshot);
+          setHeaderLifecycleUnavailable(false);
+          publishNotification({
+            id: "engine-lifecycle-recovery",
+            title: "Engine recovery requested",
+            message: `Lifecycle revision ${snapshot.revision} is now ${snapshot.application_phase}.`,
+            tone: "success",
+          });
+          return;
+        }
+        if (
+          failure.id === "editor-project" &&
+          failure.primaryAction.intent === "retry"
+        ) {
+          await refreshEditorProject();
+          publishNotification({
+            id: "editor-project-refreshed",
+            title: "Editor state refreshed",
+            message: "The public editor snapshot was refreshed without discarding the last-valid view.",
+            tone: "success",
+          });
+          return;
+        }
+        if (
+          failure.id === "project-continuity" &&
+          failure.primaryAction.intent === "retry"
+        ) {
+          await refreshProjectSnapshot();
+          publishNotification({
+            id: "project-continuity-refreshed",
+            title: "Project continuity refreshed",
+            message: "The latest desktop project snapshot is now visible.",
+            tone: "success",
+          });
+          return;
+        }
+        await executeCommand("application.route.system");
+      } catch (error: unknown) {
+        publishNotification({
+          id: `recovery-failed:${failure.id}`,
+          title: "Recovery action did not complete",
+          message: actionableFailureMessage(error),
+          tone: "error",
+        });
+      }
+    },
+    [
+      executeCommand,
+      headerLifecycle,
+      publishNotification,
+      refreshEditorProject,
+      refreshProjectSnapshot,
+    ],
+  );
+
+  const resetWorkspaceLayouts = useCallback(async () => {
+    await executeCommand("application.workspace_layout.reset_all");
+    publishNotification({
+      id: "workspace-layout-reset",
+      title: "Workspace layouts reset",
+      message: "The default panel layout is active and the prior custom layout remains available to undo.",
+      tone: "information",
+    });
+  }, [executeCommand, publishNotification]);
+
+  const undoWorkspaceLayoutReset = useCallback(async () => {
+    await executeCommand("application.workspace_layout.undo_reset");
+    publishNotification({
+      id: "workspace-layout-reset-undone",
+      title: "Custom workspace restored",
+      message: "The panel layout from before the reset is active again.",
+      tone: "success",
+    });
+  }, [executeCommand, publishNotification]);
+
   return (
     <main className="application-shell" aria-labelledby="product-title">
       <aside className="application-sidebar" aria-label="Application routes">
@@ -1250,24 +1566,33 @@ function ApplicationShell() {
               `application.route.${definition.id}`,
             );
             return (
-              <button
-                className="route-button"
-                type="button"
+              <ApplicationTooltip
+                content={`Open ${definition.title}${
+                  shortcut === null
+                    ? " (unassigned)"
+                    : ` (${formatKeyboardShortcut(shortcut, keyboardShortcutPlatform)})`
+                }`}
                 key={definition.id}
-                aria-current={
-                  definition.id === state.activeRouteId ? "page" : undefined
-                }
-                onClick={() =>
-                  void executeCommand(`application.route.${definition.id}`)
-                }
+                placement="right"
               >
-                <span>{definition.title}</span>
-                <kbd>
-                  {shortcut === null
-                    ? "Unassigned"
-                    : formatKeyboardShortcut(shortcut, keyboardShortcutPlatform)}
-                </kbd>
-              </button>
+                <button
+                  className="route-button"
+                  type="button"
+                  aria-current={
+                    definition.id === state.activeRouteId ? "page" : undefined
+                  }
+                  onClick={() =>
+                    void executeCommand(`application.route.${definition.id}`)
+                  }
+                >
+                  <span>{definition.title}</span>
+                  <kbd>
+                    {shortcut === null
+                      ? "Unassigned"
+                      : formatKeyboardShortcut(shortcut, keyboardShortcutPlatform)}
+                  </kbd>
+                </button>
+              </ApplicationTooltip>
             );
           })}
         </nav>
@@ -1282,16 +1607,17 @@ function ApplicationShell() {
           <div className="workspace-route-heading">
             <p className="eyebrow">Application route</p>
             <h2 id="route-title">{route.title}</h2>
-            <button
-              className="engine-state-control"
-              type="button"
-              data-engine-state={headerEngineState}
-              title={headerEngineDetail}
-              onClick={() => void executeCommand("application.route.system")}
-            >
-              <span>Engine</span>
-              <strong aria-live="polite">{headerEngineLabel}</strong>
-            </button>
+            <ApplicationTooltip content={headerEngineDetail} placement="bottom">
+              <button
+                className="engine-state-control"
+                type="button"
+                data-engine-state={headerEngineState}
+                onClick={() => void executeCommand("application.route.system")}
+              >
+                <span>Engine</span>
+                <strong aria-live="polite">{headerEngineLabel}</strong>
+              </button>
+            </ApplicationTooltip>
           </div>
           <div className="workspace-header-controls">
             <div
@@ -1310,66 +1636,59 @@ function ApplicationShell() {
                   ]
                 }
               </span>
-              <button
-                type="button"
-                disabled={!workspaceLayoutStatus.canReset}
-                onClick={() =>
-                  void executeCommand("application.workspace_layout.reset_all")
-                }
-              >
-                Reset all layouts
-              </button>
-              <button
-                type="button"
-                disabled={!workspaceLayoutStatus.canUndoReset}
-                onClick={() =>
-                  void executeCommand("application.workspace_layout.undo_reset")
-                }
-              >
-                Undo reset
-              </button>
+              <ApplicationTooltip content="Restore every route to its default panel arrangement.">
+                <button
+                  type="button"
+                  disabled={!workspaceLayoutStatus.canReset}
+                  onClick={() => void resetWorkspaceLayouts()}
+                >
+                  Reset all layouts
+                </button>
+              </ApplicationTooltip>
+              <ApplicationTooltip content="Restore the custom arrangements from before the latest reset.">
+                <button
+                  type="button"
+                  disabled={!workspaceLayoutStatus.canUndoReset}
+                  onClick={() => void undoWorkspaceLayoutReset()}
+                >
+                  Undo reset
+                </button>
+              </ApplicationTooltip>
             </div>
             <div className="panel-controls" aria-label="Visible panels">
               {route.panelIds.map((panelId) => {
                 const panel = registry.panel(panelId);
                 const visible = state.visiblePanelIds.includes(panelId);
                 return (
-                  <button
-                    className="panel-toggle"
-                    type="button"
+                  <ApplicationTooltip
+                    content={`${visible ? "Hide" : "Show"} ${panel.title}`}
                     key={panelId}
-                    aria-pressed={visible}
-                    onClick={() =>
-                      void executeCommand(
-                        `application.panel.${panelId}.toggle`,
-                      )
-                    }
                   >
-                    {panel.title}
-                  </button>
+                    <button
+                      className="panel-toggle"
+                      type="button"
+                      aria-pressed={visible}
+                      onClick={() => {
+                        void executeCommand(
+                          `application.panel.${panelId}.toggle`,
+                        ).then(() => {
+                          publishNotification({
+                            id: `panel-visibility:${panelId}`,
+                            title: `${panel.title} ${visible ? "hidden" : "shown"}`,
+                            message: "Panel visibility is included in workspace continuity.",
+                            tone: "information",
+                          });
+                        });
+                      }}
+                    >
+                      {panel.title}
+                    </button>
+                  </ApplicationTooltip>
                 );
               })}
             </div>
           </div>
         </header>
-
-        {commandFailure ? (
-          <p className="command-failure" role="alert">
-            {commandFailure}
-          </p>
-        ) : null}
-
-        {windowContinuityFailure ? (
-          <p className="command-failure" role="alert">
-            {windowContinuityFailure}
-          </p>
-        ) : null}
-
-        {operationalFailure ? (
-          <p className="command-failure" role="alert">
-            {operationalFailure}
-          </p>
-        ) : null}
 
         <PanelWorkspace />
       </section>
@@ -1380,6 +1699,14 @@ function ApplicationShell() {
           onExecute={executePaletteAction}
         />
       ) : null}
+      <ApplicationFeedbackHub
+        failures={applicationFailures}
+        onFailureAction={(failure) =>
+          void handleApplicationFailureAction(failure)
+        }
+        progress={applicationProgress}
+        status={applicationStatus}
+      />
     </main>
   );
 }

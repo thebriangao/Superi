@@ -280,6 +280,70 @@ test("configurable shortcuts stay registry-owned, conflict-safe, transferable, a
   );
 });
 
+test("application presentation unifies menus, tooltips, notifications, status, progress, and classified recovery", () => {
+  const model = read(resolve(appRoot, "src/application-presentation.ts"));
+  const presentation = read(
+    resolve(appRoot, "src/application-presentation.tsx"),
+  );
+  const app = read(resolve(appRoot, "src/App.tsx"));
+  const panels = read(resolve(appRoot, "src/panel-workspace.tsx"));
+  const styles = read(resolve(appRoot, "src/styles.css"));
+  const packageJson = readJson(resolve(appRoot, "package.json"));
+
+  for (const condition of [
+    "retryable",
+    "degraded",
+    "user_correctable",
+    "terminal",
+  ]) {
+    assert.match(model, new RegExp(`case "${condition}"`));
+    assert.match(styles, new RegExp(`data-failure-condition="${condition}"`));
+  }
+  assert.match(model, /lastValidResource/);
+  assert.match(model, /applicationFailureFromCrashDiagnostic/);
+  assert.match(model, /applicationProgressFromEditorJob/);
+  assert.match(model, /MAX_APPLICATION_NOTIFICATIONS/);
+  assert.match(presentation, /export function ApplicationPresentationProvider/);
+  assert.match(presentation, /export function ApplicationTooltip/);
+  assert.match(presentation, /export function ApplicationFeedbackHub/);
+  assert.match(presentation, /role="tooltip"/);
+  assert.match(presentation, /role="menu"/);
+  assert.match(presentation, /role="menuitem"/);
+  assert.match(presentation, /role="progressbar"/);
+  assert.match(presentation, /aria-live="polite"/);
+  assert.match(presentation, /cloneElement\(children, \{ "aria-describedby": description \}\)/);
+  assert.match(presentation, /returnFocus\.isConnected/);
+  assert.match(presentation, /useLayoutEffect/);
+  assert.match(presentation, /event\.key === "ArrowDown"/);
+  assert.match(presentation, /event\.key === "Escape"/);
+  assert.match(app, /<ApplicationPresentationProvider>/);
+  assert.match(app, /<ApplicationFeedbackHub/);
+  assert.match(app, /getDesktopCrashDiagnostics/);
+  assert.match(app, /applicationFailureFromLifecycle/);
+  assert.match(app, /applicationFailureFromCrashDiagnostic/);
+  assert.match(app, /applicationOperationalStatus/);
+  assert.match(
+    app,
+    /failure\.primaryAction\.intent === "restart" &&[\s\S]{0,160}headerLifecycle\?\.can_restart/,
+  );
+  assert.match(
+    app,
+    /failure\.primaryAction\.intent === "retry" &&[\s\S]{0,160}headerLifecycle\?\.can_retry/,
+  );
+  assert.match(panels, /openContextMenu/);
+  assert.match(panels, /event\.key === "ContextMenu"/);
+  assert.match(panels, /event\.shiftKey && event\.key === "F10"/);
+  assert.match(styles, /\.application-context-menu/);
+  assert.match(styles, /\.application-tooltip-bubble/);
+  assert.match(styles, /\.application-feedback-status/);
+  assert.match(styles, /\.application-notification-center/);
+  assert.match(packageJson.scripts.test, /application-presentation\.test\.ts/);
+  assert.doesNotMatch(
+    model,
+    /@tauri-apps|\binvoke\b|desktop_api_dispatch|setInterval|setTimeout/,
+  );
+});
+
 test("blocking workflows exercise the production app rather than CI-only smoke packages", () => {
   const frontendWorkflow = read(
     resolve(repositoryRoot, ".github/workflows/frontend.yml"),
