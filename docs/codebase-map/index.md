@@ -59,6 +59,12 @@ profile beside workspace presentation, migrates schema 1 and 2 records to defaul
 invalid shortcut profile independently from a valid workspace. The profile remains private
 presentation state and never enters authored project, engine history, or generated API ownership.
 
+One shared frontend input boundary filters handled, composing, repeated, and editable keyboard
+events, restores only connected operable focus targets, preserves coalesced pen precision, contains
+pointer-capture failure, and normalizes fractional pixel, line, and page wheel input. Existing panel
+and timeline consumers retain interaction intent while project, audio, timing, channel, routing,
+history, native-driver, and persistence ownership remains unchanged.
+
 The desktop shell also owns one strict schema-1 operational capability snapshot. It composes
 read-only GPU adapter enumeration, audio input and output declarations, the engine codec registry
 through `MediaCapabilitiesApi`, and honest `superi-ai` availability, then exposes live, degraded,
@@ -390,7 +396,9 @@ The production desktop lifecycle is implemented without creating a second engine
    complete private continuity projection, and one immutable typed public-resource selection without
    importing transport or engine owners. `app/src/panel-workspace.tsx` is the accessible real
    consumer, opens the shared pointer or keyboard context menu for activate, dock, and hide intent,
-   and dispatches only presentation actions.
+   and dispatches only presentation actions. `app/src/shell-input.ts` supplies shared keyboard
+   eligibility, focus, pointer, pen, capture, and wheel normalization to that panel consumer, the
+   application command router, and the existing transient timeline interaction surface.
 10. `ApplicationProvider` composes that model above the injected generated client. The shell routes
     generic workspace and system panels through the registries, and async commands delegate through
     `SuperiApiBindings` while local routing and selection remain responsive and nonauthoritative. It

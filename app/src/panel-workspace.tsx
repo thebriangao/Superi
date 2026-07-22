@@ -15,6 +15,11 @@ import {
 } from "./application.ts";
 import { useApplication } from "./application-context.tsx";
 import { useApplicationPresentation } from "./application-presentation.tsx";
+import {
+  latestPointerSample,
+  releasePointerCapture,
+  restoreShellFocus,
+} from "./shell-input.ts";
 
 const PANEL_DRAG_TYPE = "application/x-superi-panel-id";
 const DOCK_LABELS: Readonly<Record<ApplicationPanelDockId, string>> = {
@@ -139,7 +144,7 @@ function PanelDock({
     });
     if (nextPanelId !== null) {
       window.requestAnimationFrame(() => {
-        document.getElementById(panelTabId(nextPanelId))?.focus();
+        restoreShellFocus(document.getElementById(panelTabId(nextPanelId)));
       });
     }
   };
@@ -362,13 +367,14 @@ function PanelDockSeparator({
   const resizeFromPointer = (event: PointerEvent<HTMLDivElement>) => {
     const container = event.currentTarget.parentElement;
     if (container === null) return;
+    const pointer = latestPointerSample(event.nativeEvent);
     const rectangle = container.getBoundingClientRect();
     const ratio =
       dockId === "left"
-        ? (event.clientX - rectangle.left) / rectangle.width
+        ? (pointer.clientX - rectangle.left) / rectangle.width
         : dockId === "right"
-          ? (rectangle.right - event.clientX) / rectangle.width
-          : (rectangle.bottom - event.clientY) / rectangle.height;
+          ? (rectangle.right - pointer.clientX) / rectangle.width
+          : (rectangle.bottom - pointer.clientY) / rectangle.height;
     dispatch({
       type: "resize_panel_dock",
       dockId,
@@ -387,7 +393,11 @@ function PanelDockSeparator({
       aria-valuenow={Math.round(dock.sizeBasisPoints / 100)}
       tabIndex={0}
       onPointerDown={(event) => {
-        event.currentTarget.setPointerCapture(event.pointerId);
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        } catch {
+          return;
+        }
         resizeFromPointer(event);
       }}
       onPointerMove={(event) => {
@@ -395,6 +405,12 @@ function PanelDockSeparator({
           resizeFromPointer(event);
         }
       }}
+      onPointerUp={(event) =>
+        releasePointerCapture(event.currentTarget, event.pointerId)
+      }
+      onPointerCancel={(event) =>
+        releasePointerCapture(event.currentTarget, event.pointerId)
+      }
       onKeyDown={(event) => {
         const increment = 200;
         const delta =
@@ -440,7 +456,7 @@ function handleTabKey(
   event.preventDefault();
   const panelId = panelIds[nextIndex];
   dispatch({ type: "activate_panel", panelId });
-  document.getElementById(panelTabId(panelId))?.focus();
+  restoreShellFocus(document.getElementById(panelTabId(panelId)));
 }
 
 function panelTabId(panelId: string): string {

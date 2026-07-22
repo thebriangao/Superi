@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 50f66e0e6c228b8dee2a441dabfb12e95831e0fe8fd00f3c5cb500c0e41972f0
-source_files: 351
+source_hash: 920e1c55e994be2219a6a17cdb19dfb7151d5e395fa4c72b8b9d3ae15b5fb1c0
+source_files: 354
 mapped_at_commit: working-tree
 ---
 
@@ -570,6 +570,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W06.C015.md`: Durable implementation evidence for the shared all-route
   inspector, metadata, history, and diagnostics panel, honest engine-state projection, existing-owner
   action delegation, exact transient selection restoration, and preserved workspace continuity.
+- `docs/checkpoints/P3.W07.C001.md`: Durable implementation evidence for shared keyboard
+  eligibility, stable focus restoration, coalesced pen precision, safe pointer capture, fractional
+  high-resolution wheel input, real panel and timeline consumers, and preserved lower ownership.
 
 ### Production desktop application
 
@@ -582,7 +585,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   dependencies.
 - `app/package.json`: Declares the private production application package, exact toolchain and
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
-  framework, command-palette, configurable shortcuts, shared application-presentation and
+  framework, command-palette, configurable shortcuts, shared shell-input, application-presentation,
   inspector, theme, global project-history, native desktop-shell, editor-workspace, timeline-canvas,
   timeline-nesting,
   timeline-multicam, timeline-clip,
@@ -608,7 +611,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   command delegation without transport behavior.
 - `app/src/application-context.tsx`: Provides the sole React application/project presentation owner,
   current keyboard-shortcut profile, configurable keyboard-to-command registry adapter,
-  explicitly global editable-control shortcuts, asynchronous command execution and availability
+  explicitly global editable-control shortcuts, shared handled, IME, repeat, and editable input
+  eligibility, asynchronous command execution and availability
   lookup, and one last-valid public editor
   snapshot, stale-response rejection, generated project, audio, and job refresh subscriptions, and
   classified failure retention above the existing injected generated API. It also owns unique
@@ -637,6 +641,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   effective binding resolution, platform-aware event capture, deterministic import and export,
   transactional update and reset behavior, conflict detection, native accelerator reservations,
   bounded inactive-command retention, and accessible platform labels without React or Tauri state.
+- `app/src/shell-input.ts`: Defines pure keyboard eligibility, connected focus restoration,
+  coalesced mouse, touch, and pen samples, failure-contained pointer capture, and finite fractional
+  pixel, line, or page wheel normalization. It retains transient device precision without owning
+  authored state, audio behavior, persistence, native drivers, or transport.
 - `app/src/keyboard-shortcuts-panel.tsx`: Renders the System route's accessible shortcut editor with
   labeled read-only capture fields, IME-safe keyboard capture, current and default values, clear and
   reset controls, conflict alerts, inactive-command visibility, bounded JSON import, deterministic
@@ -691,8 +699,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/panel-workspace.tsx`: Renders the real route panel consumer as four stable dock targets
   with ordered tablists, mounted inactive tabpanels, labeled hide and dock controls, keyboard tab
   navigation, HTML drag reordering and cross-dock movement, pointer and keyboard separators, a
-  live focus announcement, and a shared pointer or keyboard context menu for activate, dock, and
-  hide intent. It dispatches only application presentation actions and owns no project, history,
+  live focus announcement, stable no-scroll focus restoration, coalesced pen-aware resize input,
+  cancellation-safe pointer release, and a shared pointer or keyboard context menu for activate,
+  dock, and hide intent. It dispatches only application presentation actions and owns no project, history,
   transport, engine, or close behavior.
 - `app/src/window-session.ts`: Defines strict immutable window-session, monitor, placement,
   persistence, recovery, and recently closed DTOs; validates every native replacement; wraps the
@@ -860,6 +869,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   pending, command, and history behavior from `TimelineWorkspace`.
 - `app/src/timeline-workspace.tsx`: Renders the editing timeline with sticky track headers and ruler,
   exact record-positioned items, transient playhead and in and out range, native scrolling,
+  precision-preserving coalesced pen gestures, fractional line and page normalized pan,
   pointer-anchored zoom, topmost-first track presentation, bounded visible-item overscan, fit
   controls, frame stepping, accessible clip buttons, authored and interaction selection indicators,
   authored state badges, graph effects and automation keys, six session snap rules, exact target
@@ -1189,6 +1199,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/keyboard-shortcuts.test.ts`: Proves deterministic schema-1 profile resolution and
   export, transactional collision and native-reservation rejection, inactive-command retention,
   canonical Unicode and platform-aware event capture, IME exclusion, unbinding, and reset behavior.
+- `app/tests/shell-input.test.ts`: Proves handled, composing, repeat, editable, and allowed keyboard
+  routing, connected focus fallback, immutable coalesced pen metadata, safe pointer capture and
+  release, and exact fractional pixel, line, and page wheel normalization.
 - `app/tests/editor-workspaces.test.ts`: Verifies exactly five registry-backed professional routes,
   one existing application/project owner, exact source, program, composite, and color viewer
   consumers including the composed source monitor, explicit public editor request identity,

@@ -56,6 +56,7 @@ import {
   formatViewerComparisonState,
   initialViewerComparison,
 } from "./viewer-comparison.ts";
+import { keyboardInputDisposition } from "./shell-input.ts";
 
 export type ApplicationPanelRenderer = ComponentType;
 
@@ -568,9 +569,6 @@ export function ApplicationProvider({
   useEffect(() => {
     const keyboardShortcutPlatform = detectKeyboardShortcutPlatform();
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) {
-        return;
-      }
       const shortcut = shortcutFromKeyboardEvent(
         event,
         keyboardShortcutPlatform,
@@ -586,10 +584,11 @@ export function ApplicationProvider({
       if (command === null) {
         return;
       }
-      if (
-        isEditableCommandTarget(event.target) &&
-        !command.allowInEditableContext
-      ) {
+      if (keyboardInputDisposition(
+        event,
+        isEditableCommandTarget(event.target),
+        command.allowInEditableContext ?? false,
+      ) !== "route") {
         return;
       }
       event.preventDefault();

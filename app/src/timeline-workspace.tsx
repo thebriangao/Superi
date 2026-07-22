@@ -36,6 +36,10 @@ import type {
 } from "./api.ts";
 import type { SourceMonitorSnapshot } from "./project-lifecycle.ts";
 import {
+  latestPointerSample,
+  normalizeWheelInput,
+} from "./shell-input.ts";
+import {
   projectTimelineEditorialFeedback,
   type TimelineEditorialFeedback,
   type TimelineEditorialFeedbackPhase,
@@ -1420,11 +1424,12 @@ export function TimelineWorkspace({
         );
         return;
       }
+      const pointer = latestPointerSample(event.nativeEvent);
       event.preventDefault();
       event.stopPropagation();
       const target = { trackId, itemId: item.id };
       const edgeSide = timelineToolUsesEdge(editingTool)
-        ? event.clientX <=
+        ? pointer.clientX <=
           event.currentTarget.getBoundingClientRect().left +
             event.currentTarget.getBoundingClientRect().width / 2
           ? "start"
@@ -1435,7 +1440,7 @@ export function TimelineWorkspace({
       setEditFailure(null);
       scrollRef.current?.setPointerCapture(event.pointerId);
 
-      const rawPointer = rawEditPointerTime(event.clientX);
+      const rawPointer = rawEditPointerTime(pointer.clientX);
       const targetStart =
         editingTool === "razor" || editingTool === "slip" || editingTool === "slide"
           ? item.startSeconds
@@ -1466,7 +1471,7 @@ export function TimelineWorkspace({
         side: edgeSide,
         grabOffsetSeconds:
           editingTool === "razor" ? 0 : rawPointer - targetStart,
-        pointerStartClientX: event.clientX,
+        pointerStartClientX: pointer.clientX,
         dragged: editingTool === "razor",
         plan,
       });
@@ -1487,13 +1492,14 @@ export function TimelineWorkspace({
   const moveEditGesture = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
       if (!editGesture || event.pointerId !== editGesture.pointerId) return;
+      const pointer = latestPointerSample(event.nativeEvent);
       event.preventDefault();
       const dragged =
         editGesture.dragged ||
-        Math.abs(event.clientX - editGesture.pointerStartClientX) >=
+        Math.abs(pointer.clientX - editGesture.pointerStartClientX) >=
           EDIT_DRAG_THRESHOLD;
       if (!dragged) return;
-      const raw = rawEditPointerTime(event.clientX) - editGesture.grabOffsetSeconds;
+      const raw = rawEditPointerTime(pointer.clientX) - editGesture.grabOffsetSeconds;
       const resolved = resolveEditTime(raw);
       try {
         const plan = compileEditGesturePlan(
@@ -1530,14 +1536,15 @@ export function TimelineWorkspace({
   const endEditGesture = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
       if (!editGesture || event.pointerId !== editGesture.pointerId) return;
+      const pointer = latestPointerSample(event.nativeEvent);
       const dragged =
         editGesture.dragged ||
-        Math.abs(event.clientX - editGesture.pointerStartClientX) >=
+        Math.abs(pointer.clientX - editGesture.pointerStartClientX) >=
           EDIT_DRAG_THRESHOLD;
       let plan: TimelineEditPlan | null = null;
       if (dragged) {
         const raw =
-          rawEditPointerTime(event.clientX) - editGesture.grabOffsetSeconds;
+          rawEditPointerTime(pointer.clientX) - editGesture.grabOffsetSeconds;
         const resolved = resolveEditTime(raw);
         try {
           plan = compileEditGesturePlan(
@@ -1979,6 +1986,7 @@ export function TimelineWorkspace({
   const beginGesture = useCallback(
     (event: PointerEvent<HTMLElement>, kind: TimelineGesture) => {
       if (!model || event.button !== 0) return;
+      const pointer = latestPointerSample(event.nativeEvent);
       event.preventDefault();
       event.stopPropagation();
       scrollRef.current?.setPointerCapture(event.pointerId);
@@ -1988,7 +1996,7 @@ export function TimelineWorkspace({
       };
       gesturePointerRef.current = event.pointerId;
       setGesture(kind);
-      const resolved = eventTime(kind, event.clientX);
+      const resolved = eventTime(kind, pointer.clientX);
       setSnapMatch(resolved.match);
       applyGesture(kind, resolved.value);
     },
@@ -1998,22 +2006,23 @@ export function TimelineWorkspace({
   const beginLasso = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
       if (!model || event.button !== 0) return;
+      const pointer = latestPointerSample(event.nativeEvent);
       event.preventDefault();
       event.stopPropagation();
       scrollRef.current?.setPointerCapture(event.pointerId);
       gestureOriginRef.current = { kind: "playhead", value: playhead };
       gesturePointerRef.current = event.pointerId;
-      const resolved = eventTime("playhead", event.clientX);
+      const resolved = eventTime("playhead", pointer.clientX);
       setSnapMatch(resolved.match);
       applyGesture("playhead", resolved.value);
       const toggle = event.metaKey || event.ctrlKey;
       const additive = event.shiftKey;
       const nextLasso = Object.freeze({
         pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
-        currentX: event.clientX,
-        currentY: event.clientY,
+        startX: pointer.clientX,
+        startY: pointer.clientY,
+        currentX: pointer.clientX,
+        currentY: pointer.clientY,
         additive,
         toggle,
         direct: event.altKey,
@@ -2031,6 +2040,7 @@ export function TimelineWorkspace({
 
   const moveGesture = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
+      const pointer = latestPointerSample(event.nativeEvent);
       const activeLasso = lassoRef.current;
       if (activeLasso) {
         if (event.pointerId !== activeLasso.pointerId) return;
@@ -2043,15 +2053,15 @@ export function TimelineWorkspace({
         }
         event.preventDefault();
         const distance = Math.hypot(
-          event.clientX - activeLasso.startX,
-          event.clientY - activeLasso.startY,
+          pointer.clientX - activeLasso.startX,
+          pointer.clientY - activeLasso.startY,
         );
         const dragged = activeLasso.dragged || distance >= LASSO_DRAG_THRESHOLD;
         const rectangle = pointerRectangle(
           activeLasso.startX,
           activeLasso.startY,
-          event.clientX,
-          event.clientY,
+          pointer.clientX,
+          pointer.clientY,
         );
         const hitKeys: string[] = [];
         for (const item of scrollRef.current?.querySelectorAll<HTMLElement>(
@@ -2086,8 +2096,8 @@ export function TimelineWorkspace({
         const nextPreview = Object.freeze([...preview]);
         const nextLasso = Object.freeze({
           ...activeLasso,
-          currentX: event.clientX,
-          currentY: event.clientY,
+          currentX: pointer.clientX,
+          currentY: pointer.clientY,
           dragged,
         });
         lassoPreviewKeysRef.current = nextPreview;
@@ -2098,7 +2108,7 @@ export function TimelineWorkspace({
       }
       if (gesture) {
         event.preventDefault();
-        const resolved = eventTime(gesture, event.clientX);
+        const resolved = eventTime(gesture, pointer.clientX);
         setSnapMatch(resolved.match);
         applyGesture(gesture, resolved.value);
       }
@@ -2176,17 +2186,22 @@ export function TimelineWorkspace({
     (event: WheelEvent<HTMLDivElement>) => {
       const viewport = scrollRef.current;
       if (!viewport || !model) return;
-      if (event.metaKey || event.ctrlKey) {
+      const input = normalizeWheelInput(event, {
+        lineHeightPixels: 16,
+        pageWidthPixels: viewport.clientWidth,
+        pageHeightPixels: viewport.clientHeight,
+      });
+      if (input.intent === "zoom") {
         event.preventDefault();
         const bounds = viewport.getBoundingClientRect();
-        const anchor = event.clientX - bounds.left - HEADER_WIDTH;
-        zoomAt(Math.exp(-event.deltaY * 0.002), anchor);
+        const anchor = input.anchorClientX - bounds.left - HEADER_WIDTH;
+        zoomAt(input.zoomFactor, anchor);
         return;
       }
-      if (event.shiftKey && Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+      if (input.intent === "pan") {
         event.preventDefault();
         viewport.scrollLeft = clampNumber(
-          viewport.scrollLeft + event.deltaY,
+          viewport.scrollLeft + input.horizontalPixel,
           0,
           maxScrollLeft,
         );
