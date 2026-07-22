@@ -217,3 +217,36 @@ test("native desktop commands compose with persistent multi-window ownership", (
   assert.match(app, /type: "restore_workspace_presentation"/);
   assert.match(application, /active_route_id: state\.activeRouteId/);
 });
+
+test("system capability discovery composes authoritative providers without changing media state", () => {
+  const cargo = read(resolve(tauriRoot, "Cargo.toml"));
+  const host = read(resolve(tauriRoot, "src/lib.rs"));
+  const capabilities = read(resolve(tauriRoot, "src/capabilities.rs"));
+  const app = read(resolve(appRoot, "src/App.tsx"));
+  const adapter = read(resolve(appRoot, "src/system-capabilities.ts"));
+  const packageJson = readJson(resolve(appRoot, "package.json"));
+
+  assert.match(cargo, /^superi-ai = \{ path = "\.\.\/\.\.\/open\/crates\/superi-ai" \}/m);
+  assert.match(cargo, /^superi-audio = \{ path = "\.\.\/\.\.\/open\/crates\/superi-audio" \}/m);
+  assert.match(host, /pub mod capabilities/);
+  assert.match(host, /DesktopCapabilityState::default/);
+  assert.match(host, /desktop_capabilities_discover/);
+  assert.match(capabilities, /tauri::async_runtime::spawn_blocking/);
+  assert.match(capabilities, /GpuInstance::new/);
+  assert.match(capabilities, /enumerate_adapters/);
+  assert.match(capabilities, /discover_output_devices/);
+  assert.match(capabilities, /discover_input_devices/);
+  assert.match(capabilities, /media_backend_registry/);
+  assert.match(capabilities, /MediaCapabilities::from_registry/);
+  assert.match(capabilities, /MediaCapabilitiesApi::new/);
+  assert.match(capabilities, /discover_local_capabilities/);
+  assert.doesNotMatch(
+    capabilities,
+    /start_device_output|start_device_capture|create_output_buffer|create_capture_buffer|request_discard|\.play\(|\.pause\(/,
+  );
+  assert.match(adapter, /desktop_capabilities_discover/);
+  assert.match(app, /discoverDesktopCapabilities/);
+  assert.match(app, /Hardware capabilities/);
+  assert.match(app, /Channel meaning is never inferred/);
+  assert.match(packageJson.scripts.test, /system-capabilities\.test\.ts/);
+});

@@ -381,6 +381,10 @@ which must be performed by `superi-color`.
   explicit sRGB or Display P3 `GpuDisplayPresenter` instances through `superi-color`, and waits for
   retained presentation work before source or host teardown. Geometry updates and color selection
   remain separate strict shell commands, and neither transports pixels, ICC bytes, or GPU handles.
+- `app/src-tauri/src/capabilities.rs` constructs only a `GpuInstance` and enumerates current adapter
+  snapshots for the strict System-panel capability catalog. It retains backend, device class,
+  driver, feature, limit, and WebGPU baseline observations without requesting a logical device,
+  creating a surface or resource, submitting work, or changing presentation selection.
 - `superi-concurrency` defines a blocking-capable `GpuSubmission` execution domain. Its integration
   contract constructs the real non-Send `GpuSubmissionQueue`, submits, and waits inside that owned
   thread. The GPU crate documents this placement but does not itself enforce the execution-domain
@@ -526,6 +530,9 @@ ownership, decoded upload, conversion, passes, queue retirement, memory pressure
 diagnostics, native presentation, and explicit recovery. It contains no scaffold-only production
 path. The desktop now integrates four native presentation surfaces through `superi-color`, while
 several other boundaries intentionally stop short of application policy or full integration.
+The desktop shell additionally consumes read-only adapter enumeration for retained operational
+visibility. That observation is not device-creation success, presentation readiness, adapter
+selection, or durable project authority.
 
 - Cross-adapter transfer and synchronization are absent. Multi-adapter support is independent
   selection and device ownership only.
@@ -596,6 +603,9 @@ several other boundaries intentionally stop short of application policy or full 
 - Changes to native presentation must also be reconciled with the four-role desktop owner, its
   separate geometry and color commands, the exact monitor-binding freshness checks, both built-in
   output transforms, and the rule that ICC bytes and pixels never cross React IPC.
+- Changes to adapter enumeration, feature snapshots, or limit projection must also be reconciled
+  with the desktop capability owner, strict TypeScript adapter, and System-panel contract. Keep
+  discovery read-only and do not reinterpret adapter visibility as device or surface readiness.
 - Memory-pool and reservation changes must be reconciled with `superi-cache::eviction` and
   `CacheMemoryPlacement::Device`, preserving exact managed-byte equality, rollback after refusal,
   matching-device LRU release before retry, and lock-free pressure cooperation across the cache tier

@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: e1bdfccee180190810feb0dc62f0f0b4242c25d020cfb7242734213d84d59878
-source_files: 317
+source_hash: 11caa0be1ebd6dbdcd74b25dc5255eaff63bc13f7810591f5f61d7799094d6d4
+source_files: 321
 mapped_at_commit: working-tree
 ---
 
@@ -12,6 +12,7 @@ mapped_at_commit: working-tree
 The `workspace` module owns the repository-level product definition, architectural contracts,
 license and codec policy, build sequencing, operating-system test policy, unsafe-boundary audit,
 the production React and Tauri desktop shell including persistent multi-window session ownership,
+bounded crash continuity, and retained GPU, audio, codec, and AI capability visibility,
 Cargo workspace configuration, dependency lock,
 shared test-fixture contract, and repository-owned agent workflows. Runtime implementation under
 `open/crates/*` and repository utilities under
@@ -543,6 +544,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   metadata, startup-argument and macOS resource-open ingress, nonblocking reuse of the sole desktop
   project owner, complete replacement snapshots, visible failure retention, and workspace-preserving
   React consumption.
+- `docs/checkpoints/P3.W06.C005.md`: Durable implementation evidence for read-only shell capability
+  discovery across GPU, audio, codecs, and AI, strict retained-state behavior, exact audio meaning,
+  production System-panel visibility, and the absence of runtime or authored-state mutation.
 
 ### Production desktop application
 
@@ -558,7 +562,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   timeline-transition, caption projection, exchange, and authoring, editorial-feedback, exact
   playback transport, viewer navigation, overlay, comparison, viewer-status, analysis, and
   viewer-transform, viewer color-management, external-display, and persistent window-session
-  helper contracts, and Tauri commands.
+  helper contracts, strict system-capability projection, and Tauri commands.
 - `app/src/api.ts`: Re-exports the complete canonical generated TypeScript contract and constructs
   one frozen `SuperiApiBindings` surface around an injected `SuperiTransport` and `SuperiClient`.
 - `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
@@ -884,7 +888,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   active-project continuity, into the shell-local crash owner. It then renders retained classified
   diagnostics with exact retry, degraded, user-correction, restart, project-recovery,
   workspace-restoration, and dismissal actions. Those actions reuse the existing application,
-  lifecycle, and project owners rather than mutating their state inside the diagnostic view.
+  lifecycle, and project owners rather than mutating their state inside the diagnostic view. Its
+  System panel also consumes the strict four-domain capability adapter, exposes live and retained
+  GPU, audio, codec, and AI observations plus actionable failures, and refreshes without changing
+  routes, streams, devices, projects, workspaces, codec sessions, or model state.
 - `app/src/desktop-shell.ts`: Defines the strict native shell snapshot and intent bridge, serialized
   sequence-fenced synchronization, close request resolution, typed event listening, deterministic
   project-versus-media drop partitioning, safe-close decisions, and document titles that expose only
@@ -914,6 +921,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   lifecycle mutations publish replacement project presentation to always-mounted shell subscribers,
   and the same adapter exposes the exact typed `superi://project-opened` replacement event without
   adding project authority to React.
+- `app/src/system-capabilities.ts`: Defines and deeply validates the exact schema-1 desktop
+  capability snapshot, including condition, freshness, failures, GPU adapter facts, audio stream
+  ranges and explicit channel-layout knowledge, codec declarations, AI availability, and retained
+  cache state. It exposes one injectable read-only discovery command and rejects unknown, malformed,
+  unsafe, or future native data before React receives an immutable replacement.
 - `app/src/main.tsx`: Constructs one process-lifetime `DesktopSuperiTransport`, injects it through
   the generated API provider, disposes it at unload, and mounts the React application under strict
   mode.
@@ -955,7 +967,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   webview menu targeting, primary-only shell synchronization, safe-close composition with the
   persistent window owner, shell-local crash-journal ownership, all four recoverability classes,
   private panic-detail exclusion, native command registration, and reuse of the existing lifecycle
-  and project recovery consumers.
+  and project recovery consumers. It also freezes the authoritative four-provider capability composition,
+  strict frontend adapter, real System-panel consumer, and absence of audio stream mutation.
+- `app/tests/system-capabilities.test.ts`: Proves exact command invocation, strict all-field parsing,
+  immutable output, preservation of audio sample and channel meaning, rejection of unknown and
+  malformed data, and actionable failure presentation.
 - `app/tests/native-viewport-ipc-contract.test.mjs`: Freezes the shell-local viewport command as a
   placement, analysis, and display-selection control-only Tauri payload, verifies both React
   invocations use that command, and freezes the distinct color command as a control-only selection
@@ -1131,7 +1147,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   freezes inline and external as the only two destinations on the shared native presentation owner.
 - `app/src-tauri/Cargo.toml`: Declares the `superi-desktop` library and binary, exact Tauri,
   serialization, image, and base64 pins, stable Rust edition, and downward-only lifecycle, engine,
-  public API, media-I/O, image, and in-tree codec dependencies.
+  public API, GPU, audio, AI, media-I/O, image, and in-tree codec dependencies.
 - `app/src-tauri/build.rs`: Runs the standard Tauri build integration.
 - `app/src-tauri/rust-toolchain.toml`: Selects stable Rust with rustfmt and Clippy.
 - `app/src-tauri/tauri.conf.json`: Declares the Superi identity, production frontend, bounded main
@@ -1158,6 +1174,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   projects only reviewed safe context plus retry, degraded, user-correction, or terminal recovery
   entry points. Corrupt storage is archived and storage failure degrades to an in-memory diagnostic
   without preventing application startup.
+- `app/src-tauri/src/capabilities.rs`: Owns bounded shell-level discovery and retained advisory
+  cache state for the current GPU adapters, audio input and output declarations, engine codec
+  registry, and local AI runtime declaration. It projects authoritative lower owners without
+  creating a GPU device, audio stream, codec session, AI pipeline, project mutation, or workspace
+  mutation, performs discovery on a blocking worker, retains per-domain fallback with current
+  failures, and atomically publishes only a strict validated schema-1 private snapshot.
 - `app/src-tauri/src/lifecycle.rs`: Owns explicit application intent, serialized application and
   engine phases, generation changes, classified safe failures, recovery, restart, shutdown, exact
   acknowledgement tokens, and the stable headless-engine participant seam.
@@ -1281,15 +1303,16 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/src/lib.rs`: Configures the mock and native Tauri builders, retains the linked
   engine process, manages its bounded connection and transport state alongside application
   lifecycle, project-session, native desktop-shell, persistent window-session, and
-  crash-diagnostics state, registers lifecycle, shell, project, window snapshot and mutation, crash
-  continuity and dismissal, viewport placement, viewport color selection, and API commands,
+  crash-diagnostics and capability state, registers lifecycle, shell, project, window snapshot and
+  mutation, crash continuity and dismissal, capability discovery, viewport placement, viewport
+  color selection, and API commands,
   including media-library snapshot, organization mutation, source inspection, user metadata, and
   editorial annotation, C007 identity-selection, C008 derived-media mutation, C009 offline recovery,
   C010 generated-preview, C011 content-analysis mutation plus content-search, and C012 atomic batch
   commands, plus the C013 revision-fenced source-scan command and the C014 source monitor snapshot,
   load, seek, mark, and unload commands,
-  initializes the crash-diagnostics, project recovery, native shell, and window persistence roots,
-  installs the chained panic hook and native menu on the main-thread setup path, collects portable
+  initializes the crash-diagnostics, project recovery, native shell, window, and advisory capability
+  persistence roots, installs the chained panic hook and native menu on the main-thread setup path, collects portable
   startup association arguments after process launch, routes macOS `RunEvent::Opened` file URLs,
   scopes API dispatch by invoking webview label, passes project state into every blocking generated
   request, targets every returned ordered Tauri event to its client webview, records window focus,
@@ -2115,6 +2138,11 @@ durably replaces the exact active project before its lifecycle revision advances
 targets every generated project event to all connected webviews with one shared order and each
 client's current generation. Generated engine-introspection replacements continue through the same
 bounded ordered envelope.
+The sibling `DesktopCapabilityState` consumes `superi-gpu` adapter enumeration, `superi-audio`
+device declarations, the engine media registry through `MediaCapabilitiesApi`, and `superi-ai`
+runtime availability as read-only lower-owner observations. Its strict TypeScript adapter and
+System-panel consumer receive metadata only. The private retained cache is operational evidence,
+not project, workspace, route, device, codec, model, or editable-artifact authority.
 `app/src/transport.ts` implements the generated `SuperiTransport`, and `app/src/api.ts` remains the
 sole `SuperiClient` factory. React consumes the injected binding for validation, health, complete
 editor replacement state, and exact project commands without owning engine or project behavior.
@@ -2513,6 +2541,15 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   retention, private panic-detail filtering at the public seam, corrupt-store archival, and
   nonblocking degraded startup. The frontend source contract separately freezes command wiring and
   reuse of the existing lifecycle and project recovery owners.
+
+- The focused shell-capability proof composes real current-host GPU, audio, engine codec, public
+  codec projection, and AI provider calls, validates exact audio sample ranges and explicit unknown
+  channel meaning, proves monotonic observations and per-domain retained fallback, restores a valid
+  private snapshot, replaces corrupt cache bytes, and keeps discovery outside every stream, route,
+  session, model, project, and workspace mutation path. Strict TypeScript tests reject malformed or
+  unknown bridge data and freeze exact meaning, while the app contract proves the production System
+  panel consumes the authoritative owner. The complete frontend and desktop Rust suites widen the
+  same boundary without claiming physical hotplug or native visual proof.
 
 - The focused timeline-canvas proof freezes strict revision 2 parsing, exact source and record
   ranges, stable grouping, linking, selection, complete track control state, two-pass transition
@@ -2927,6 +2964,13 @@ classifies retryable, degraded, user-correctable, and terminal conditions, and e
 engine, and project recovery entry points in the System panel. Raw panic detail remains native-only,
 corrupt or unavailable storage becomes visible degraded state instead of preventing startup, and
 orderly acknowledged shutdown clears only the current session marker.
+The native shell now also owns one schema-1 capability observation across GPU adapters, audio input
+and output declarations, codec backends and operations, and honest local AI availability. It runs
+provider discovery off the main thread, retains bounded validated last-known evidence across
+sessions, reports current per-domain failures, and exposes manual refresh through the real System
+panel. The snapshot is operational metadata only: it never creates a GPU device or codec session,
+starts or reconfigures audio, loads a model, or changes project, route, workspace, and editable
+artifact authority.
 Above that unchanged transport, `application.ts` owns deterministic route, panel, and command
 registries plus transient panel layout and one immutable typed public-resource selection.
 `ApplicationProvider` composes the framework above `SuperiApiProvider` and remains the single owner
@@ -3389,8 +3433,8 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`b6576f77f5f8e6ecc57a11f076e4d7f18198a12f` when this checkpoint began. Its hash describes the exact
-317 discovered source files, including generated binary payloads, layered on the integrated
+`9db4318a80e74af9c476f45e04de247bb7c6641d` when this checkpoint began. Its hash describes the exact
+321 discovered source files, including generated binary payloads, layered on the integrated
 revision.
 
 ## Maintenance notes
@@ -3435,6 +3479,11 @@ consumer, API map, engine map, and global index synchronized whenever extension 
 capability, feature, failure, control, query, event, resource, or reconnect behavior changes.
 Discovery must remain a declarative projection of authoritative runtime owners and must never imply
 a privileged frontend, CLI, closed-tier, or plugin execution route.
+Keep shell capability provider calls, Rust DTOs, strict TypeScript parsing, the System-panel
+projection, retained-cache validation, focused contracts, provider maps, and the global index in
+sync. Preserve exact audio sample ranges and explicit channel-layout knowledge, retain current
+failure beside fallback data, and never let discovery start a stream, select a route, create a GPU
+device or codec session, load a model, or mutate authored and workspace state.
 Keep file associations limited to the canonical `.superi` document type. Startup arguments and
 platform resource URLs must normalize into local paths, remain off the main thread during durable
 validation, and enter the sole `DesktopProjectState` Open transition. Emit replacement state for

@@ -2,6 +2,7 @@
 
 //! Native Tauri ownership for the Superi desktop lifecycle.
 
+pub mod capabilities;
 pub mod crash_diagnostics;
 pub mod desktop_shell;
 pub mod engine;
@@ -162,6 +163,7 @@ pub fn configure<R: Runtime>(builder: Builder<R>, lifecycle: ApplicationLifecycl
     builder
         .plugin(tauri_plugin_dialog::init())
         .manage(ManagedLifecycle(lifecycle))
+        .manage(capabilities::DesktopCapabilityState::default())
         .manage(desktop_shell::DesktopShellState::default())
         .manage(DesktopCrashDiagnostics::default())
         .manage(DesktopTransportState::new())
@@ -177,6 +179,7 @@ pub fn configure<R: Runtime>(builder: Builder<R>, lifecycle: ApplicationLifecycl
             desktop_crash_project_update,
             desktop_crash_diagnostic_dismiss,
             desktop_api_dispatch,
+            capabilities::desktop_capabilities_discover,
             desktop_shell::desktop_shell_snapshot,
             desktop_shell::desktop_shell_sync,
             desktop_shell::desktop_shell_resolve_close,
@@ -255,6 +258,8 @@ pub fn run() {
                 .initialize(recovery_root.clone())?;
             app.state::<desktop_shell::DesktopShellState>()
                 .initialize(&recovery_root)?;
+            app.state::<capabilities::DesktopCapabilityState>()
+                .initialize(&recovery_root);
             let shell_snapshot = app.state::<desktop_shell::DesktopShellState>().snapshot()?;
             let menu = desktop_shell::build_menu(app.handle(), &shell_snapshot)?;
             app.set_menu(menu)?;

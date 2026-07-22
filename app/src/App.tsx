@@ -89,6 +89,11 @@ import {
   type DesktopCloseReason,
   type DesktopShellIntent,
 } from "./desktop-shell.ts";
+import {
+  capabilityFailureText,
+  discoverDesktopCapabilities,
+  type DesktopCapabilitySnapshot,
+} from "./system-capabilities.ts";
 import { classifyDesktopTransportError } from "./transport";
 import { WindowSessionPanel } from "./window-session-panel.tsx";
 import {
@@ -1016,6 +1021,10 @@ function SystemPanel() {
   const [engineApi, setEngineApi] = useState<EngineApiStatus | null>(null);
   const [clientFailure, setClientFailure] = useState<ClientFailure | null>(null);
   const [requestPending, setRequestPending] = useState(false);
+  const [capabilities, setCapabilities] =
+    useState<DesktopCapabilitySnapshot | null>(null);
+  const [capabilityPending, setCapabilityPending] = useState(false);
+  const [capabilityFailure, setCapabilityFailure] = useState<string | null>(null);
   const [projectSnapshot, setProjectSnapshot] =
     useState<DesktopProjectSnapshot | null>(null);
   const latestSystemProjectRevision = useRef(-1);
@@ -1095,6 +1104,25 @@ function SystemPanel() {
       });
     }
   }, []);
+
+  const refreshCapabilities = useCallback(async () => {
+    setCapabilityPending(true);
+    try {
+      const discovered = await discoverDesktopCapabilities();
+      setCapabilities(discovered);
+      setCapabilityFailure(null);
+    } catch {
+      setCapabilityFailure(
+        "Hardware capability discovery could not complete. Restart Superi, then refresh capabilities.",
+      );
+    } finally {
+      setCapabilityPending(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshCapabilities();
+  }, [refreshCapabilities]);
 
   useEffect(() => {
     let active = true;
@@ -1899,6 +1927,131 @@ function SystemPanel() {
           Quit Superi
         </button>
       </div>
+
+      <section aria-labelledby="hardware-capabilities-title">
+        <header>
+          <p className="eyebrow">Native discovery</p>
+          <h4 id="hardware-capabilities-title">Hardware capabilities</h4>
+        </header>
+        <p className="explanation">
+          Discovery is read-only. It never starts an audio stream, selects a
+          route, opens a codec session, loads a model, or changes project and
+          workspace state.
+        </p>
+        {capabilities ? (
+          <>
+            <dl className="lifecycle-details">
+              <div>
+                <dt>GPU</dt>
+                <dd>
+                  {capabilities.gpu.condition} / {capabilities.gpu.freshness} /{" "}
+                  {capabilities.gpu.data?.adapters.length ?? 0} adapter
+                  {(capabilities.gpu.data?.adapters.length ?? 0) === 1 ? "" : "s"}
+                </dd>
+              </div>
+              <div>
+                <dt>Audio</dt>
+                <dd>
+                  {capabilities.audio.condition} / {capabilities.audio.freshness} /{" "}
+                  {capabilities.audio.data?.outputs.length ?? 0} output, {" "}
+                  {capabilities.audio.data?.inputs.length ?? 0} input
+                </dd>
+              </div>
+              <div>
+                <dt>Codecs</dt>
+                <dd>
+                  {capabilities.codecs.condition} / {capabilities.codecs.freshness} /{" "}
+                  {capabilities.codecs.data?.backends.length ?? 0} backend
+                  {(capabilities.codecs.data?.backends.length ?? 0) === 1 ? "" : "s"}
+                </dd>
+              </div>
+              <div>
+                <dt>AI</dt>
+                <dd>
+                  {capabilities.ai.data?.runtime ?? "unavailable"} / {" "}
+                  {capabilities.ai.freshness} / local only
+                </dd>
+              </div>
+              <div>
+                <dt>Observation</dt>
+                <dd>
+                  revision {capabilities.revision} / cache {capabilities.cache_status}
+                </dd>
+              </div>
+            </dl>
+
+            {capabilities.gpu.data?.adapters.length ? (
+              <ul>
+                {capabilities.gpu.data.adapters.map((adapter) => (
+                  <li key={adapter.id}>
+                    {adapter.name} / {adapter.backend} / {adapter.device_type} / {" "}
+                    {adapter.webgpu_compliant ? "WebGPU baseline" : "downlevel"}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            {capabilities.audio.data?.outputs
+              .filter((device) => device.is_default)
+              .map((device) => (
+                <p className="explanation" key={`output:${device.id}`}>
+                  Default output: {device.name}
+                  {device.default_config
+                    ? `, ${device.default_config.channels} channels at ${device.default_config.sample_rate} Hz (${device.default_config.sample_format})`
+                    : ", backend default not reported"}
+                </p>
+              ))}
+            <p className="explanation">
+              Channel meaning is never inferred from a device channel count. Unknown
+              layouts remain explicit, and discovery does not alter timing,
+              synchronization, routing, or audible continuity.
+            </p>
+
+            {capabilities.codecs.data?.backends.length ? (
+              <p className="explanation">
+                Codec declarations: {capabilities.codecs.data.backends
+                  .map((backend) => backend.display_name)
+                  .join(", ")}.
+              </p>
+            ) : null}
+
+            {capabilityFailure ? (
+              <p className="failure" role="status">
+                {capabilityFailure}
+              </p>
+            ) : null}
+
+            {[
+              capabilities.persistence_failure,
+              capabilities.gpu.failure,
+              capabilities.audio.failure,
+              capabilities.codecs.failure,
+              capabilities.ai.failure,
+            ]
+              .map(capabilityFailureText)
+              .filter((failure): failure is string => failure !== null)
+              .map((failure) => (
+                <p className="failure" role="status" key={failure}>
+                  {failure}
+                </p>
+              ))}
+          </>
+        ) : (
+          <p className="explanation">
+            {capabilityFailure ?? "Discovering GPU, audio, codec, and AI state."}
+          </p>
+        )}
+        <div className="actions" aria-label="Capability actions">
+          <button
+            type="button"
+            className="secondary"
+            disabled={capabilityPending}
+            onClick={() => void refreshCapabilities()}
+          >
+            {capabilityPending ? "Discovering" : "Refresh capabilities"}
+          </button>
+        </div>
+      </section>
 
       <WindowSessionPanel />
 

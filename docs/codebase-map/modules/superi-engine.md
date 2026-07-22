@@ -915,6 +915,10 @@ is derived through `EngineLifecycleSnapshot::admit`, so playback, rendering, and
 same dependency decisions enforced for real work. Active diagnostics cross this seam only as the
 core-owned `UserSafeError`; raw messages, sources, contexts, operation labels, and failure sequence
 identity remain private. The read changes no scenario, lifecycle, recovery, command, or event state.
+The production desktop capability owner now constructs this same default registry and
+`MediaCapabilities` projection on a blocking worker, then exposes only strict backend and operation
+declarations through the System panel. That consumer does not open a source, create a decoder or
+encoder, start a session, change registry priority, or mutate engine and project state.
 
 `VideoFrameUploader` accepts CPU storage, validates and borrows exact planes, asks the GPU uploader
 for pooled textures, and preserves format, time, duration, metadata, complete color pipeline, and
@@ -1366,6 +1370,10 @@ both the populated track and its authored mix intent.
   graph literals use this bounded history and correlated event owner. Transient playhead, range,
   scroll, zoom, preview, source, target, status, draft form, and shared selection state do not
   become new engine commands or another authored state owner.
+- `superi-desktop` directly consumes the default media registry plus immutable
+  `MediaCapabilities::from_registry` declaration snapshot for shell-level codec visibility. It
+  passes the snapshot through `MediaCapabilitiesApi` and retains no registry, factory, source,
+  session, or project authority after discovery.
 - Cache and GPU retain their own exact local budget enforcement, audio retains its preallocated
   callback-safe queue, media I/O retains decoded value and lifecycle ownership, and export retains
   logical job and publication ownership. The engine arbiter composes a higher shared managed-byte
@@ -1810,6 +1818,9 @@ failure. Color metadata contracts prove exact ICC and named-space retention, tra
 source continuity, cache mismatch rejection, independent display and delivery intent, and invalid
 stage ordering. GPU tests may skip without an adapter; capability tests prove declarations, not codec
 execution.
+The desktop capability contract additionally composes the real default registry and public API
+projection in one current-host observation, while strict shell tests prove retained fallback and
+never claim codec execution or source readiness.
 
 The media resource acquisition contract proves the default registry exposes all four in-tree source
 backends without changing codec ranking. It compiles the canonical timeline, probes and opens the
@@ -1964,6 +1975,9 @@ compound mutation, project undo and redo, authoritative project settings inspect
 authored audio automation inspection and mutation, deterministic semantic project diagnostics
 inspection, coherent complete editor-state inspection, and read-only integration validation
 operations.
+The production System panel now consumes a separate read-only projection of this crate's immutable
+codec declarations. Its retained cache can improve visibility after discovery failure, but it is
+not an engine registry revision, executable codec proof, or durable project record.
 It also owns crash recovery discovery, complete
 semantic comparison, durable restoration, and exact dismissal through one optional file-backed
 coordinator. The optional project attachment owns one real `ProjectDocument`, returns complete
@@ -2085,7 +2099,9 @@ preserve the capacity-one nonblocking domain bridge, emit complete replacement s
 accepted execution, and never allow another state mutation to overtake its reserved event. A new
 production owner should replace the corresponding stub
 through its real crate rather than growing this reference model into a competing system. Registry
-or upload changes require updating their actual consumers and tests independently. Keep source
+or upload changes require updating their actual consumers and tests independently. Keep the
+desktop codec projection synchronized with stable backend order, tier, acceleration, operation, and
+revision meaning, and never let shell discovery construct or retain codec sessions. Keep source
 registration synchronized with all four media-I/O adapters, and keep the complete and source-only
 constructors routed through the same atomic source registration helper. Source-only consumers must
 not acquire decoder or encoder capabilities or initialize their runtimes. Keep legacy resource preparation bound

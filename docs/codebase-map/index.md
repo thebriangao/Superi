@@ -13,7 +13,7 @@ against raw source before changing code.
 
 | Module ID | Map | Owned path | Current role | Status |
 | --- | --- | --- | --- | --- |
-| `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Reserved local inference and editable-artifact boundary | Skeleton: public module names only |
+| `superi-ai` | [module map](modules/superi-ai.md) | `open/crates/superi-ai` | Local-only inference and editable-artifact boundary with honest executable capability discovery | Partial: schema-1 unavailable-runtime discovery is implemented and consumed by the desktop shell; model audit, loading, pipelines, inference, and editable artifact production remain skeletons |
 | `superi-api` | [module map](modules/superi-api.md) | `open/crates/superi-api` | Transport-neutral public schema catalog, stateless API and project version negotiation, host-injected permission boundary, current state and control facades, bounded deterministic local scripting, bounded ordered event delivery, declarative extension discovery, durable command-log inspection, generated TypeScript contracts, and durable local project hosting | Partial: deterministic versioned discovery, strict API and project compatibility negotiation, JSON-RPC data contracts, fail-closed authorization, immutable extension identity, lifecycle, capability, safe failure, and control discovery, current public DTOs and controls including exact playback transport, all thirteen track mutations, all six caption mutations, all six marker mutations, all seven multicam mutations, and all 20 timeline edits with atomic audio-video link, source-time synchronization, detach, transition-handle and retime replacement, existing-child nested placement, selection-derived compound creation, and complete channel routing under editor schema `1.7.0`, digest-bound `superi-json` interpretation, bounded replay with explicit reconnect recovery, atomic recording of every successful stable project command, permission-checked command-log replay inspection, deterministic TypeScript output, an API-owned local host for no-clobber create, open, mutation, copy, backup, recovery, validation, render settings, command-log inspection, and narrow JSON-RPC automation, and a production desktop consumer of canonical editor-state timeline, graph, attached automation and playback state, shared selection, exact transport control, and durable track, caption, marker, multicam, audio-video, routing, transition, retime, nesting, and compound commands with typed reversal are implemented; authentication, network transport, general dynamic routing, push delivery, persisted event replay, public job submission and typed results, general-purpose language evaluation, and full-catalog automation remain absent |
 | `superi-audio` | [module map](modules/superi-audio.md) | `open/crates/superi-audio` | Independent prepared audio graph with explicit channel conversion, typed bus routing, fixed route delay compensation, transactional clip DSP, revisioned clip-gain automation, canonical authored-state serialization, bounded native plugin state, timing-matched isolated bridge fallback, core effects, macOS Audio Unit effects, worker-side VST3 effects, sample-accurate scheduling, bounded device I/O, dual-clock sample-rate conversion, and graph-native metering | Partial: core graph, routing, fixed delay compensation, clip, device, conversion, metering, clip-gain automation, exact Audio Unit and VST3 state persistence, verified Audio Unit isolation, canonical single-main-bus VST3 processing, isolated bridge fallback, and read-only desktop clip-key presentation are implemented; engine owns lifecycle supervision and per-node project state, while decoded-sample binding, automation persistence, concrete platform worker transport, broader effect automation, variable-rate playback audio, Audio Unit instruments, dynamic latency rebuild, and complete timeline composition remain absent |
 | `superi-cache` | [module map](modules/superi-cache.md) | `open/crates/superi-cache` | Composite reusable-result identity, budgeted final-frame and intermediate-node memory retention, priority-aware strict LRU eviction, precise graph edit invalidation, versioned corruption-recovering disk persistence, replaceable derived-media publication, layered render reuse, bounded background population, bounded playback prediction, bounded edit and scrub warming, and deterministic lifecycle management | Complete identity feeds independent memory and disk tiers with exact admission, revision fencing, bounded envelopes, atomic publication, schema isolation, and corruption quarantine; memory, persistent, and derived owners expose inspection and exact clearing, persistent namespaces relocate through rename or synchronized staged copy, render jobs add cancellation-safe layered reuse, prediction supplies finite signed frame plans and an owned host adapter, and warming is deterministic and hard bounded; engine and scheduler own quality substitution and lifecycle policy remains caller-owned |
@@ -50,6 +50,13 @@ the focused editor webview, the main window projects shared project and panel st
 close or process quit uses the one-shot safe-close handshake. Native GPU viewer surfaces remain
 attached only to the primary webview until the presenter owns an explicit multi-webview surface
 model.
+
+The desktop shell also owns one strict schema-1 operational capability snapshot. It composes
+read-only GPU adapter enumeration, audio input and output declarations, the engine codec registry
+through `MediaCapabilitiesApi`, and honest `superi-ai` availability, then exposes live, degraded,
+unavailable, and retained observations in the System panel. A bounded private cache preserves
+last-known visibility across sessions without becoming device, route, stream, codec, model,
+project, workspace, or editable-artifact authority.
 
 The workspace viewer shell now owns frozen fit, bounded zoom, directional pan, exact 1:1 pixel,
 fullscreen, cinema, and role-addressed external-display presentation intent while preserving the
@@ -206,7 +213,8 @@ superi-api-bindings -> superi-api
 
 superi-desktop -> superi-api -> superi-engine
 superi-engine -> superi-project -> superi-timeline
-superi-desktop -> superi-engine, superi-color, superi-gpu, superi-concurrency, superi-core
+superi-desktop -> superi-engine, superi-color, superi-gpu, superi-audio, superi-ai,
+                  superi-concurrency, superi-core
 ```
 
 `superi-core` is the tier-zero semantic contract and has no Superi dependency. Higher modules must
@@ -301,7 +309,9 @@ The production desktop lifecycle is implemented without creating a second engine
    React publishes validated primary-window route and panel continuity only after native window
    restoration hydrates its route, publishes active-project continuity through a separate ordered
    queue, receives no private panic detail, and routes restoration, retry, degraded continuation, project recovery, and restart through
-   the existing application, lifecycle, and project owners.
+   the existing application, lifecycle, and project owners. The same panel also
+   renders strict read-only GPU, audio, codec, and AI observations through a separate retained
+   shell-capability owner without starting runtime work or changing user state.
 8. Separately, `app/src/api.ts` re-exports the complete generated public contract and constructs a
    frozen `SuperiClient` binding around the concrete `DesktopSuperiTransport`. Every webview owns
    its local client instance and generation while the native transport preserves one authored event
@@ -2147,6 +2157,10 @@ The following constraints cross multiple modules and should be preserved togethe
   history retain their existing owners. Active operations block close, session-history loss is
   explicit, document titles omit parent paths, and one accepted close resolution enters the
   existing orderly application lifecycle exactly once.
+- Shell capability state is operational evidence only. Provider declarations, last-known cache
+  data, and current failures must preserve exact sample and channel meaning while remaining outside
+  GPU device selection, audio streams and routing, codec sessions, AI execution, project state,
+  workspace presentation, and editable artifacts.
 - A desktop source-monitor session is runtime state, while in and out marks are durable intent bound
   to the imported fingerprint. Load and exact seek remain project, library, media, monitor, and
   fingerprint fenced; scanner-confirmed changed bytes also make the session stale and reject later
@@ -2406,6 +2420,12 @@ remain operating-system physical-lane evidence.
 Their integration keeps per-window routes and transport generations with the window-session owner,
 projects main-window shell presentation into the process-wide menu, targets commands to the focused
 webview, and routes only primary close or application quit through safe project preservation.
+The shell-capability contracts compose one real current-host observation through all four provider
+owners, prove exact audio configuration projection and explicit unknown channel meaning, retain
+per-domain fallback with current failures, restore valid private cache state, replace corrupt cache
+bytes, strictly parse and freeze the frontend replacement, and wire the production System panel.
+They do not claim hotplug automation, physical stream success, codec execution, AI runtime, or
+native visual proof.
 The focused viewer-cache contract proves the exact eleven-field catalog, foreground frame and due
 clocks, predictive and decoded-output degradation, nonblocking interaction, callback discard
 acknowledgement, transport synchronization, exact sample rate, ordered source and destination
@@ -2833,7 +2853,9 @@ encodes and muxes output, persists a project, and drives the flow through the pu
 
 ## Placeholders and incomplete integration
 
-The only entire crate skeleton is `superi-ai`. `superi-project` now has a substantive in-memory
+No entire crate remains a pure skeleton. `superi-ai` now owns honest unavailable-runtime capability
+discovery, while its model audit, loading, pipeline, inference, and artifact modules remain
+placeholders. `superi-project` now has a substantive in-memory
 document aggregate, immutable snapshots, checked whole-project edits, retained timeline and named
 standalone graphs, authoritative versioned settings, authored clip-mix state, bounded opaque
 extension records, a bounded durable command log, stable schema-5 SQLite serialization, exact

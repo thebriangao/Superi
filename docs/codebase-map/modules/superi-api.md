@@ -315,6 +315,10 @@ The media capability surface remains schema `2.0.0`, method
 `superi.media.capabilities.get`, and event `superi.media.capabilities.changed`. It exposes strict
 backend, operation, hardware, constraint, codec, snapshot, response, and full-replacement event
 types through `MediaCapabilitiesApi`.
+The desktop shell now uses this facade in process to project the engine's immutable registry into a
+smaller strict operational snapshot for the System panel. It does not register another public
+method, drain capability events, alter public revisions, execute a codec, or acquire project and
+engine mutation authority.
 
 The complete engine introspection surface is schema `1.0.0`, method
 `superi.engine.introspection.get`, and event `superi.engine.introspection.changed`. It exposes one
@@ -833,6 +837,9 @@ messages, contexts, paths, and source chains never serialize.
   artifact is consumed by `ci/frontend-smoke` through strict TypeScript checking and a production
   Vite bundle, including the extension query, event, resource, lifecycle, capability, and control
   declarations.
+- `superi-desktop` directly consumes `MediaCapabilitiesApi` for shell-level codec declaration
+  visibility. Its private retained snapshot is not a public API resource, event stream, registry,
+  transport method, codec session, or authored project record.
 
 The production React and Tauri application consumes the committed generated contract through one
 injected client and retains the complete public editor snapshot. Its application owner issues
@@ -1020,6 +1027,9 @@ and JSON-RPC process consumer, and the event stream remains transport-neutral.
 The media capability contracts retain five focused behaviors: deterministic ordering and strict
 round trips, silent equal synchronization, one changed full-replacement event, detailed correlated
 codec rows, and default software AV1 exposure.
+The desktop capability contract composes the same facade with the real default engine registry and
+strictly projects its backend and operation declarations without changing or claiming the public
+event owner.
 
 The engine introspection contract drives normal startup, exact resource accounting, playback and
 rendering degradation, active recovery, restored workflow admission, and media changes through the
@@ -1221,7 +1231,9 @@ public surface and are consumed by the production desktop application. They do n
 provide complete native wire routing, mutation authority, or a second authored-state owner. The
 desktop routes the generated editor-state query and generic project command through its existing
 EngineControl owner. The application owner uses strict track, caption, and project command types for
-durable revision-fenced commands, while the editing workspace uses editor-state timeline, graph,
+durable revision-fenced commands. Separately, the native shell uses `MediaCapabilitiesApi` as a
+read-only codec declaration projector for retained System-panel visibility; this adds no generated
+method, public resource, event cursor, or execution authority. The editing workspace uses editor-state timeline, graph,
 and attached automation data as exact canvas and inspector input. Application-owned typed command
 callbacks route durable track, caption, marker, and multicam mutations, exact editorial gestures, transition
 timing, retime replacement, audio-video relationship and synchronization gestures, complete audio
@@ -1277,6 +1289,9 @@ CLI discovery assertion, and generated TypeScript map. Regenerate the committed 
 the nonmutating check after every public DTO or registry change. Preserve the safe error conversion
 boundary and require negative leak
 proof before adding context fields. Do not treat JSON-RPC data values as a transport implementation.
+Keep the desktop codec declaration projection synchronized with `MediaCapabilitiesApi` schema and
+ordering, while preserving its separate shell-local schema and retained visibility. Shell refresh
+must remain read-only and must not become a codec execution, public event, or project mutation path.
 Keep audio-video roles explicit in every strict DTO and preserve complete ordered channel routes,
 semantic named and discrete positions, mute decisions, and destination identity through conversion.
 Do not infer missing routes, round synchronization coordinates, or add a second replacement path.

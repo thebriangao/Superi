@@ -493,6 +493,11 @@ the matching delayed dry block to caller output.
 - `superi-engine::dispatcher` owns optional lifecycle-scoped automation state, serialized
   inspection and transaction execution, dynamic no-op event reservation, and complete replacement
   events. `superi-api` projects that engine boundary without a direct dependency on this crate.
+- `app/src-tauri/src/capabilities.rs` directly consumes only input and output device enumeration for
+  a strict System-panel observation. It preserves default configurations, channel counts, exact
+  sample-rate ranges, sample formats, buffer constraints, skipped-device evidence, and explicit
+  channel-layout knowledge without creating, starting, playing, pausing, discarding, routing, or
+  reconfiguring a stream.
 - The production editing workspace consumes the attached public automation replacement as read-only
   clip detail. It correlates only exact `clip_gain` targets, signed sample positions, sample rates,
   finite values, mode, and active-pass state, and adds no automation mutation or prepared curve.
@@ -773,6 +778,12 @@ state; fixed latency publication; and module exit.
 
 ## Current status and risks
 
+The production desktop shell now exposes a read-only observation of current input and output
+declarations through the strict four-domain capability snapshot. This improves operational
+visibility only. Enumeration does not prove future stream creation, semantic channel layout,
+physical latency, routing, synchronization, or audible output, and retained observations may be
+stale after hotplug until refresh.
+
 The independent audio graph, channel conversion, bus routing, sample-accurate schedule, production
 device-input and device-output substrates, durable clip-mix codec, clip mix processor, prepared sample-rate converter,
 revisioned clip-gain automation, core effects, graph-native meter, macOS Audio Unit effect host, and
@@ -836,6 +847,9 @@ bounded atomic publication, explicit programme-history saturation, and control-s
 gating. Any indexed extension must define ordering explicitly and prove
 callback safety. Keep discovery and stream setup on control threads, and revalidate capabilities
 before stream creation.
+Keep the desktop capability projection synchronized with public device declarations. Preserve exact
+sample-rate ranges, sample formats, buffer constraints, defaults, skipped-device evidence, and
+explicit unknown channel meaning, and never let its refresh enter stream or routing ownership.
 
 Preserve Audio Unit background preparation, default verified isolation, exact identity and property
 readback, stable callback lifetime, fixed planar storage, bounded repeated pulls, caller-output

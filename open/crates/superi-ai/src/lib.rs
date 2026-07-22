@@ -4,5 +4,6 @@
 
 pub mod artifacts;
 pub mod audit;
+pub mod capabilities;
 pub mod pipelines;
 pub mod runtime;

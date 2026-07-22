@@ -26,6 +26,8 @@ serde_json = "=1.0.150"
 pollster = "=0.4.0"
 sha2 = "=0.10.9"
 superi-api = { path = "../../open/crates/superi-api" }
+superi-ai = { path = "../../open/crates/superi-ai" }
+superi-audio = { path = "../../open/crates/superi-audio" }
 superi-color = { path = "../../open/crates/superi-color" }
 superi-concurrency = { path = "../../open/crates/superi-concurrency" }
 superi-codecs-rs = { path = "../../open/crates/superi-codecs-rs" }
