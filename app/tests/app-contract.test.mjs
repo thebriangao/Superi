@@ -297,6 +297,17 @@ test("visual accessibility scales, focuses, reduces motion, and preserves scene 
   assert.match(theme, /--viewer-surround:\s*#030405/);
 });
 
+test("forced colors and color-vision-safe states preserve noncolor meaning", () => {
+  const styles = read(resolve(appRoot, "src/styles.css"));
+  const packageJson = readJson(resolve(appRoot, "package.json"));
+  assert.match(styles, /forced-colors: active/);
+  assert.match(styles, /CanvasText/);
+  assert.match(styles, /data-failure-condition="user_correctable"[\s\S]*double/);
+  assert.match(styles, /application-toast\[data-tone="success"\]::before/);
+  assert.match(styles, /native-viewport__frame,[\s\S]*forced-color-adjust:\s*none/);
+  assert.match(packageJson.scripts.test, /high-contrast\.test\.ts/);
+});
+
 test("panel workspace exposes real dock, tab, resize, hide, and continuity behavior", () => {
   const application = read(resolve(appRoot, "src/application.ts"));
   const panelWorkspace = read(resolve(appRoot, "src/panel-workspace.tsx"));

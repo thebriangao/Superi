@@ -1076,13 +1076,23 @@ button.panel-tab-hide:hover {
 }
 
 .content-fresh {
+  border: 2px solid currentColor;
   color: #c9e7d3;
   background: #1c3326;
 }
 
+.content-fresh::before {
+  content: "✓ ";
+}
+
 .content-stale {
+  border: 2px dashed currentColor;
   color: #e5b995;
   background: #3b281d;
+}
+
+.content-stale::before {
+  content: "! ";
 }
 
 .content-analysis-warning {
@@ -4945,18 +4955,23 @@ button.application-context-menu__item[data-tone="danger"] {
 
 .application-failure-card[data-failure-condition="retryable"] {
   border-left-color: var(--theme-status-info-border);
+  border-left-style: solid;
 }
 
 .application-failure-card[data-failure-condition="degraded"] {
   border-left-color: var(--theme-status-warning-border);
+  border-left-style: dashed;
 }
 
 .application-failure-card[data-failure-condition="user_correctable"] {
   border-left-color: var(--theme-status-correctable-border);
+  border-left-style: double;
+  border-left-width: 5px;
 }
 
 .application-failure-card[data-failure-condition="terminal"] {
   border-left-color: var(--theme-status-error-border);
+  border-left-width: 6px;
 }
 
 .application-failure-card header span {
@@ -5069,12 +5084,62 @@ button.application-context-menu__item[data-tone="danger"] {
   border-left-color: var(--theme-status-success-border);
 }
 
+.application-toast[data-tone="success"]::before {
+  content: "✓";
+}
+
 .application-toast[data-tone="warning"] {
   border-left-color: var(--theme-status-warning-border);
 }
 
+.application-toast[data-tone="warning"]::before {
+  content: "!";
+}
+
 .application-toast[data-tone="error"] {
   border-left-color: var(--theme-status-error-border);
+}
+
+.application-toast[data-tone="error"]::before {
+  content: "×";
+}
+
+.application-toast::before {
+  min-width: 1.25rem;
+  font-size: 1rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+@media (forced-colors: active) {
+  :root,
+  :root[data-superi-theme="color-critical-dark"] {
+    --theme-canvas: Canvas;
+    --theme-surface-sidebar: Canvas;
+    --theme-surface-panel: Canvas;
+    --theme-surface-raised: Canvas;
+    --theme-text-primary: CanvasText;
+    --theme-text-secondary: CanvasText;
+    --theme-text-muted: GrayText;
+    --theme-border-subtle: ButtonText;
+    --theme-border-default: ButtonText;
+    --theme-border-strong: ButtonText;
+    --theme-focus-ring: Highlight;
+  }
+
+  :where(button, input, select, textarea, summary) {
+    border-color: ButtonText;
+  }
+
+  :where(a[href], button, input, select, textarea, summary):focus-visible {
+    outline-color: Highlight;
+  }
+
+  .native-viewport__frame,
+  .native-viewport__overlays,
+  .timeline-marker-color {
+    forced-color-adjust: none;
+  }
 }
 
 .application-toast > div {

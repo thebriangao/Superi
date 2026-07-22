@@ -95,6 +95,11 @@ focus geometry, responds to increased contrast, suppresses nonessential motion, 
 text with distinct shapes and border patterns. Fixed viewer, overlay, comparison, marker, scene,
 transform, and display color-data contracts remain outside adaptive chrome.
 
+Forced-colors mode now maps application surfaces, text, borders, disabled content, controls, and
+focus to operating-system system colors. Freshness, notification tone, operational status, and
+recovery class remain distinct through explicit text, symbols, border style, and border width, while
+native viewer pixels, overlays, and authored markers opt out of forced-color rewriting.
+
 One immutable schema-1 desktop parity contract now binds macOS, Windows, and Linux to identical
 project, engine, UI, shortcut, media, color, audio, AI, plugin, and export semantics. The System
 route exposes that exact identity and every invariant while capability availability, physical
