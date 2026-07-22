@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 920e1c55e994be2219a6a17cdb19dfb7151d5e395fa4c72b8b9d3ae15b5fb1c0
-source_files: 354
+source_hash: 902a0d4f5d3f8f9a8fd61403ce1d105ad14cbab775c1af69dd1236d17005d0e6
+source_files: 357
 mapped_at_commit: working-tree
 ---
 
@@ -573,6 +573,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W07.C001.md`: Durable implementation evidence for shared keyboard
   eligibility, stable focus restoration, coalesced pen precision, safe pointer capture, fractional
   high-resolution wheel input, real panel and timeline consumers, and preserved lower ownership.
+- `docs/checkpoints/P3.W07.C002.md`: Durable implementation evidence for exact HiDPI observation,
+  dynamic resolution watcher re-arming, native viewer placement refresh, visible scale state, and
+  unchanged monitor, GPU, engine, persistence, and authored-state ownership.
 
 ### Production desktop application
 
@@ -645,6 +648,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   coalesced mouse, touch, and pen samples, failure-contained pointer capture, and finite fractional
   pixel, line, or page wheel normalization. It retains transient device precision without owning
   authored state, audio behavior, persistence, native drivers, or transport.
+- `app/src/display-scale.ts`: Defines one immutable finite display-scale observation, duplicate
+  suppression, window and visual viewport listeners, dynamically re-armed resolution matching,
+  cleanup, and accessible formatting without owning monitor identity, geometry, GPU, or persistence.
 - `app/src/keyboard-shortcuts-panel.tsx`: Renders the System route's accessible shortcut editor with
   labeled read-only capture fields, IME-safe keyboard capture, current and default values, clear and
   reset controls, conflict alerts, inactive-command visibility, bounded JSON import, deterministic
@@ -917,7 +923,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   The component submits only through its injected application callback and takes no transport,
   project-history, timeline, or graph mutation ownership.
 - `app/src/native-viewport.tsx`: Reserves role-addressed native output rectangles and publishes only
-  role, analysis code, geometry, scale, visibility, connection-local external display selection,
+  role, analysis code, geometry, exact dynamically observed display scale, visibility,
+  connection-local external display selection,
   and returned status to the shell-local viewport command. It never constructs an encoded image,
   blob URL, pixel readback, or webview frame path. A separate
   strict control-only command selects one exact active monitor and sRGB or Display P3 transform per
@@ -1202,6 +1209,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/shell-input.test.ts`: Proves handled, composing, repeat, editable, and allowed keyboard
   routing, connected focus fallback, immutable coalesced pen metadata, safe pointer capture and
   release, and exact fractional pixel, line, and page wheel normalization.
+- `app/tests/display-scale.test.ts`: Proves immutable initial and changed scale observations,
+  duplicate suppression, invalid-value retention, exact source revisions, resolution watcher
+  re-arming, cleanup, and accessible scale formatting.
 - `app/tests/editor-workspaces.test.ts`: Verifies exactly five registry-backed professional routes,
   one existing application/project owner, exact source, program, composite, and color viewer
   consumers including the composed source monitor, explicit public editor request identity,

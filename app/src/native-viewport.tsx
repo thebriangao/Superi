@@ -5,6 +5,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApplication } from "./application-context.tsx";
 import type { ProjectAction } from "./api.ts";
 import {
+  formatDisplayScale,
+  observeBrowserDisplayScale,
+  type DisplayScaleObservation,
+} from "./display-scale.ts";
+import {
   loadProjectSourceMonitor,
   readProjectMediaLibrary,
   readSourceMonitorSnapshot,
@@ -404,6 +409,9 @@ function PrimaryNativeViewport({
   const snapshotRevision = useRef(-1);
   const [snapshot, setSnapshot] = useState<ViewportSnapshot | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
+  const [displayScale, setDisplayScale] = useState<DisplayScaleObservation>(() =>
+    Object.freeze({ revision: 0, scaleFactor: 1, source: "initial" }),
+  );
   const [navigation, setNavigation] = useState(() => initialViewerNavigation(role));
   const [overlays, setOverlays] = useState(initialViewerOverlays);
   const [comparison, setComparison] = useState(initialViewerComparison);
@@ -415,9 +423,11 @@ function PrimaryNativeViewport({
   );
   const analysisViewRef = useRef(analysisView);
   const externalDisplayIdRef = useRef(externalDisplayId);
+  const displayScaleRef = useRef(displayScale);
   const publishViewport = useRef<() => void>(() => {});
   analysisViewRef.current = analysisView;
   externalDisplayIdRef.current = externalDisplayId;
+  displayScaleRef.current = displayScale;
   const [colorBusy, setColorBusy] = useState(false);
   activeRole.current = role;
 
@@ -460,6 +470,19 @@ function PrimaryNativeViewport({
   }, []);
 
   useEffect(() => {
+    try {
+      return observeBrowserDisplayScale((next) => {
+        displayScaleRef.current = next;
+        setDisplayScale(next);
+        publishViewport.current();
+      });
+    } catch (error: unknown) {
+      setSummary(error instanceof Error ? error.message : String(error));
+      return;
+    }
+  }, []);
+
+  useEffect(() => {
     const element = host.current;
     if (!element || !isTauri()) {
       publishViewport.current = () => {};
@@ -481,7 +504,7 @@ function PrimaryNativeViewport({
             y: bounds.y,
             width: bounds.width,
             height: bounds.height,
-            scaleFactor: window.devicePixelRatio,
+            scaleFactor: displayScaleRef.current.scaleFactor,
             visible:
               document.visibilityState === "visible" &&
               bounds.width > 0 &&
@@ -525,7 +548,7 @@ function PrimaryNativeViewport({
           y: Math.max(0, bounds.y),
           width: 0,
           height: 0,
-          scaleFactor: window.devicePixelRatio,
+          scaleFactor: displayScaleRef.current.scaleFactor,
           visible: false,
           externalDisplayId: externalDisplayIdRef.current,
         },
@@ -663,6 +686,7 @@ function PrimaryNativeViewport({
       data-scale-mode={navigation.scaleMode}
       data-comparison-mode={comparison.mode}
       data-analysis-view={analysisView}
+      data-display-scale={displayScale.scaleFactor}
       data-external-display-phase={snapshot?.externalOutput.phase ?? "unavailable"}
     >
       <div className="native-viewport__toolbar" aria-label={`${label} viewer navigation`}>
@@ -671,6 +695,12 @@ function PrimaryNativeViewport({
         <output aria-label="Viewer zoom">{Math.round(navigation.scale * 100)}%</output>
         <button type="button" onClick={() => updateNavigation({ action: "zoom", factor: 2 })}>+</button>
         <button type="button" onClick={() => updateNavigation({ action: "pixel" })}>1:1</button>
+        <output
+          aria-label="Display scale"
+          title={`Observed from ${displayScale.source} input revision ${displayScale.revision}`}
+        >
+          {formatDisplayScale(displayScale)}
+        </output>
         <button type="button" onClick={() => updateNavigation({ action: "pan", deltaX: -32, deltaY: 0 })}>Left</button>
         <button type="button" onClick={() => updateNavigation({ action: "pan", deltaX: 32, deltaY: 0 })}>Right</button>
         <button type="button" onClick={() => updateNavigation({ action: "pan", deltaX: 0, deltaY: -32 })}>Up</button>

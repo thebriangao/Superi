@@ -65,6 +65,12 @@ pointer-capture failure, and normalizes fractional pixel, line, and page wheel i
 and timeline consumers retain interaction intent while project, audio, timing, channel, routing,
 history, native-driver, and persistence ownership remains unchanged.
 
+The primary native viewer also observes exact browser display scale through window, visual viewport,
+and dynamically re-armed resolution signals. Accepted changes republish existing CSS geometry to the
+one Tauri viewport owner and remain visible in the viewer toolbar; duplicate or invalid signals do
+not replace state, and monitor identity, GPU presentation, project state, and persistence remain
+with their existing owners.
+
 The desktop shell also owns one strict schema-1 operational capability snapshot. It composes
 read-only GPU adapter enumeration, audio input and output declarations, the engine codec registry
 through `MediaCapabilitiesApi`, and honest `superi-ai` availability, then exposes live, degraded,
