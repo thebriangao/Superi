@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: a1d919281a6295d064f37ccd59f96912ed5ea54491f19f5a958f6e206ed325b7
-source_files: 374
+source_hash: d30aabfdccede9f160656d400ba1fd378c955e1ded8fb36f578725d3e8035702
+source_files: 377
 mapped_at_commit: working-tree
 ---
 
@@ -17,7 +17,8 @@ bounded crash continuity, configurable cross-session keyboard shortcuts, retaine
 codec, and AI capability visibility, explicit process-lifetime execution ownership, and a
 searchable typed command and action catalog, deterministic keyboard-only workflow landmark
 navigation, fixed color-critical dark theme, semantic application
-feedback chrome, one dockable shared inspector for workspace, metadata, history, and bounded
+feedback chrome, one frozen major-surface accessibility registry, one dockable shared inspector for
+workspace, metadata, history, and bounded
 diagnostic evidence, global action-specific engine transaction presentation, bounded persistent
 background-operation visibility, and separate native viewer and authored marker color-data meaning,
 Cargo workspace configuration, dependency lock,
@@ -593,6 +594,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W07.C006.md`: Durable implementation evidence for first-focus workflow skip,
   deterministic F6 and Shift+F6 region traversal, modal exclusion, real shell landmark consumers,
   and unchanged authored, persistence, engine, shortcut, and native ownership.
+- `docs/checkpoints/P3.W07.C007.md`: Durable implementation evidence for shared major-surface roles,
+  labels, states, relationships, live-region policy, editable intelligent-result semantics, and
+  unchanged project, engine, native, persistence, and inference ownership.
 
 ### Production desktop application
 
@@ -669,6 +673,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   rendered operable descendant discovery, initial scope entry, contained Tab movement, strict F6
   eligibility, and bidirectional application-landmark traversal by reusing the shared no-scroll
   shell focus policy without owning modal or application state.
+- `app/src/accessibility-semantics.ts`: Defines the deeply frozen schema-1 identities, roles, labels,
+  controlled and described relationships, live politeness, and atomicity for routes, workspace
+  controls, the active workflow, focus status, notification log, application status, and editable
+  intelligent results without importing React, Tauri, generated APIs, persistence, or project state.
 - `app/src/display-scale.ts`: Defines one immutable finite display-scale observation, duplicate
   suppression, window and visual viewport listeners, dynamically re-armed resolution matching,
   cleanup, and accessible formatting without owning monitor identity, geometry, GPU, or persistence.
@@ -701,7 +709,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   menus clamped from their measured size, an explicitly focused modeless activity dialog, time-limited
   notification toasts with retained bounded history, classified failure cards, filtered local and
   export job progress, same-session retry, terminal receipt dismissal, and the always-visible
-  application status bar. Its callbacks route only to existing application, project, lifecycle,
+  application status bar. Notification additions use one labelled non-atomic polite log, while the
+  complete application state uses one labelled atomic polite status. Its callbacks route only to existing application, project, lifecycle,
   workspace, journal, and recovery owners.
 - `app/src/application-inspector.ts`: Purely projects the active route, focused and visible panels,
   shared selection, public project identity, semantic freshness, session undo and redo evidence,
@@ -1017,7 +1026,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   second role-addressed surface set.
 - `app/src/App.tsx`: Registers the five professional workspace routes and panels above the delivered
   application framework while retaining the system shell, shared selection, dockable shared
-  inspector, lifecycle controls,
+  inspector, lifecycle controls, route-to-workflow and panel-to-tabpanel relationships, explicit
+  workspace-control state, bounded live status, and labelled editable intelligent-result groups,
   generated validation request, engine-introspection state, and the production project lifecycle
   consumer for create, open, close, save, save-as, recent, recovery, compact project-settings
   editing, native media picking, recursive folder selection, native drag/drop import, hierarchical
@@ -1267,6 +1277,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   release, and exact fractional pixel, line, and page wheel normalization.
 - `app/tests/focus-management.test.ts`: Proves empty scope handling, forward and reverse entry from
   outside, exact next-target selection, out-of-range recovery, and both boundary wraps.
+- `app/tests/accessibility-semantics.test.ts`: Proves schema identity, unique surface IDs, exact
+  roles and relationships, non-atomic notification additions, atomic replacement statuses, deep
+  freezing, and fail-closed unknown semantic-surface lookup.
 - `app/tests/display-scale.test.ts`: Proves immutable initial and changed scale observations,
   duplicate suppression, invalid-value retention, exact source revisions, resolution watcher
   re-arming, cleanup, and accessible scale formatting.

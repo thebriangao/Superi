@@ -77,6 +77,13 @@ and Shift+F6 cycling across application routes, workspace controls, and the moun
 region. It ignores modified, repeated, composing, handled, and modal-descendant input, wraps in both
 directions, and leaves native tab order, tablist navigation, shortcuts, and modal traps intact.
 
+One frozen schema-1 semantic registry now binds major route, workspace-control, active-workflow,
+focus-status, notification, application-status, and intelligent-result surfaces to stable roles,
+labels, relationships, politeness, and atomicity. Real controls reference their owned workflow or
+tabpanel, focus and complete state replace through atomic polite statuses, notifications append
+through a non-atomic polite log, and local intelligent results remain labelled editable project
+state with explicit stale-source alerts.
+
 One immutable schema-1 desktop parity contract now binds macOS, Windows, and Linux to identical
 project, engine, UI, shortcut, media, color, audio, AI, plugin, and export semantics. The System
 route exposes that exact identity and every invariant while capability availability, physical
@@ -2609,6 +2616,11 @@ application-landmark cycling. Application source contracts freeze the shared nat
 context-menu, activity-dialog, skip-link, route, workspace-control, and active-workflow consumers
 plus explicit dialog semantics and safe focus return; physical assistive-technology interaction
 remains platform-lane evidence.
+The focused accessibility-semantics contracts prove schema identity, unique surface IDs, exact
+roles, route-to-workflow and workflow-to-status relationships, atomic replacement state,
+non-atomic notification additions, deep freezing, and fail-closed unknown lookup. Application
+source contracts freeze the real route, workspace, panel, feedback, and editable intelligent-result
+consumers; physical accessibility-API interaction remains platform-lane evidence.
 The focused platform-parity contracts prove exact target and domain coverage, unique ordering,
 shared frozen object identity, complete audio timing and routing meaning, and unsupported-label
 rejection. Application source contracts freeze the visible System consumer and exclude native or

@@ -15,6 +15,7 @@ import {
 } from "./application.ts";
 import { useApplication } from "./application-context.tsx";
 import { useApplicationPresentation } from "./application-presentation.tsx";
+import { APPLICATION_SEMANTIC_SURFACES } from "./accessibility-semantics.ts";
 import {
   latestPointerSample,
   releasePointerCapture,
@@ -66,9 +67,14 @@ export function PanelWorkspace() {
   return (
     <div
       className="workspace-panel-layout"
+      aria-describedby={
+        APPLICATION_SEMANTIC_SURFACES.activeWorkflow.describedBy
+      }
+      aria-labelledby={APPLICATION_SEMANTIC_SURFACES.activeWorkflow.labelledBy}
       data-route-panel-layout={layout.routeId}
       data-keyboard-landmark="active-workflow"
       id="active-workflow"
+      role={APPLICATION_SEMANTIC_SURFACES.activeWorkflow.role}
       style={style}
       tabIndex={-1}
     >
@@ -88,7 +94,14 @@ export function PanelWorkspace() {
           <p>Use the panel controls above to restore one.</p>
         </div>
       ) : null}
-      <p className="panel-layout-status" aria-live="polite">
+      <p
+        className="panel-layout-status"
+        aria-atomic={APPLICATION_SEMANTIC_SURFACES.activeWorkflowStatus.atomic}
+        aria-label={APPLICATION_SEMANTIC_SURFACES.activeWorkflowStatus.label}
+        aria-live={APPLICATION_SEMANTIC_SURFACES.activeWorkflowStatus.live}
+        id={APPLICATION_SEMANTIC_SURFACES.activeWorkflowStatus.id}
+        role={APPLICATION_SEMANTIC_SURFACES.activeWorkflowStatus.role}
+      >
         {state.focusedPanelId === null
           ? "No panel is focused"
           : `${registry.panel(state.focusedPanelId).title} is focused`}
@@ -466,6 +479,6 @@ function panelTabId(panelId: string): string {
   return `panel-tab-${panelId.replace(/[^a-zA-Z0-9_-]/gu, "-")}`;
 }
 
-function panelBodyId(panelId: string): string {
+export function panelBodyId(panelId: string): string {
   return `panel-body-${panelId.replace(/[^a-zA-Z0-9_-]/gu, "-")}`;
 }

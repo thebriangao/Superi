@@ -236,6 +236,29 @@ test("keyboard-only navigation reaches every application workflow region", () =>
   );
 });
 
+test("major surfaces expose shared assistive semantics and editable intelligent results", () => {
+  const semantics = read(resolve(appRoot, "src/accessibility-semantics.ts"));
+  const app = read(resolve(appRoot, "src/App.tsx"));
+  const panels = read(resolve(appRoot, "src/panel-workspace.tsx"));
+  const presentation = read(resolve(appRoot, "src/application-presentation.tsx"));
+  const packageJson = readJson(resolve(appRoot, "package.json"));
+
+  assert.match(semantics, /ACCESSIBILITY_SEMANTICS_SCHEMA_VERSION = 1/);
+  assert.match(semantics, /activeWorkflowStatus/);
+  assert.match(semantics, /intelligentResultsStatus/);
+  assert.match(app, /aria-controls=\{panelBodyId\(panelId\)\}/);
+  assert.match(app, /Analysis is ordinary project state/);
+  assert.match(app, /Editable transcript and local intelligent-result project state/);
+  assert.match(panels, /aria-describedby=/);
+  assert.match(panels, /activeWorkflowStatus\.atomic/);
+  assert.match(presentation, /aria-relevant="additions text"/);
+  assert.match(packageJson.scripts.test, /accessibility-semantics\.test\.ts/);
+  assert.doesNotMatch(
+    semantics,
+    /SuperiApiBindings|executeDesktopProject|@tauri-apps|localStorage/,
+  );
+});
+
 test("panel workspace exposes real dock, tab, resize, hide, and continuity behavior", () => {
   const application = read(resolve(appRoot, "src/application.ts"));
   const panelWorkspace = read(resolve(appRoot, "src/panel-workspace.tsx"));

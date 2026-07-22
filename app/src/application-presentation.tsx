@@ -27,6 +27,7 @@ import {
   placeApplicationContextMenu,
   reduceApplicationNotificationState,
 } from "./application-presentation.ts";
+import { APPLICATION_SEMANTIC_SURFACES } from "./accessibility-semantics.ts";
 import {
   containTabFocus,
   focusFirstInScope,
@@ -333,9 +334,13 @@ function ApplicationToastRegion() {
   const visible = notificationState.notifications.slice(-3);
   return (
     <section
-      aria-label="Recent application notifications"
+      aria-atomic="false"
+      aria-label={APPLICATION_SEMANTIC_SURFACES.notifications.label}
       aria-live="polite"
+      aria-relevant="additions text"
       className="application-toast-region"
+      id={APPLICATION_SEMANTIC_SURFACES.notifications.id}
+      role={APPLICATION_SEMANTIC_SURFACES.notifications.role}
     >
       {visible.map((notification) => (
         <ApplicationToast
@@ -666,7 +671,14 @@ export function ApplicationFeedbackHub({
         className="application-feedback-status"
         data-status-condition={status.condition}
       >
-        <div className="application-feedback-status__summary" role="status">
+        <div
+          className="application-feedback-status__summary"
+          aria-atomic="true"
+          aria-label={APPLICATION_SEMANTIC_SURFACES.applicationStatus.label}
+          aria-live="polite"
+          id={APPLICATION_SEMANTIC_SURFACES.applicationStatus.id}
+          role={APPLICATION_SEMANTIC_SURFACES.applicationStatus.role}
+        >
           <span className="application-feedback-status__indicator" />
           <div>
             <strong>{status.label}</strong>

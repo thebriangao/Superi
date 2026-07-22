@@ -498,6 +498,17 @@ button.panel-tab-hide:hover {
   white-space: nowrap;
 }
 
+.accessibility-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .workspace-panel {
   height: 100%;
   min-width: 0;

@@ -21,6 +21,7 @@ import {
   ApplicationProvider,
   useApplication,
 } from "./application-context";
+import { APPLICATION_SEMANTIC_SURFACES } from "./accessibility-semantics.ts";
 import {
   applicationFailureFromCrashDiagnostic,
   applicationFailureFromLifecycle,
@@ -135,7 +136,7 @@ import {
   type DesktopCapabilitySnapshot,
 } from "./system-capabilities.ts";
 import { classifyDesktopTransportError } from "./transport";
-import { PanelWorkspace } from "./panel-workspace.tsx";
+import { PanelWorkspace, panelBodyId } from "./panel-workspace.tsx";
 import { WindowSessionPanel } from "./window-session-panel.tsx";
 import { KeyboardShortcutsPanel } from "./keyboard-shortcuts-panel.tsx";
 import { ApplicationInspectorPanel } from "./application-inspector-panel.tsx";
@@ -1749,7 +1750,11 @@ function ApplicationShell() {
           <p className="eyebrow">Desktop editor</p>
           <h1 id="product-title">Superi</h1>
         </header>
-        <nav className="route-list">
+        <nav
+          aria-label={APPLICATION_SEMANTIC_SURFACES.routes.label}
+          className="route-list"
+          id={APPLICATION_SEMANTIC_SURFACES.routes.id}
+        >
           {registry.routeDefinitions.map((definition) => {
             const shortcut = keyboardShortcutForCommand(
               `application.route.${definition.id}`,
@@ -1770,6 +1775,9 @@ function ApplicationShell() {
                   aria-current={
                     definition.id === state.activeRouteId ? "page" : undefined
                   }
+                  aria-controls={
+                    APPLICATION_SEMANTIC_SURFACES.activeWorkflow.id
+                  }
                   onClick={() =>
                     void executeCommand(`application.route.${definition.id}`)
                   }
@@ -1785,7 +1793,12 @@ function ApplicationShell() {
             );
           })}
         </nav>
-        <div className="selection-summary" aria-live="polite">
+        <div
+          className="selection-summary"
+          aria-atomic="true"
+          aria-live="polite"
+          role="status"
+        >
           <span>Shared selection</span>
           <strong>{state.selection.items.length}</strong>
         </div>
@@ -1807,11 +1820,19 @@ function ApplicationShell() {
                 onClick={() => void executeCommand("application.route.system")}
               >
                 <span>Engine</span>
-                <strong aria-live="polite">{headerEngineLabel}</strong>
+                <strong aria-atomic="true" aria-live="polite" role="status">
+                  {headerEngineLabel}
+                </strong>
               </button>
             </ApplicationTooltip>
           </div>
-          <div className="workspace-header-controls">
+          <div
+            className="workspace-header-controls"
+            aria-controls={APPLICATION_SEMANTIC_SURFACES.activeWorkflow.id}
+            aria-label={APPLICATION_SEMANTIC_SURFACES.workspaceControls.label}
+            id={APPLICATION_SEMANTIC_SURFACES.workspaceControls.id}
+            role={APPLICATION_SEMANTIC_SURFACES.workspaceControls.role}
+          >
             <ProjectHistoryControls
               history={historyPresentation}
               onUndo={() => executeHistory("undo")}
@@ -1825,7 +1846,9 @@ function ApplicationShell() {
                 className="workspace-layout-state"
                 data-layout-condition={workspaceLayoutStatus.condition}
                 data-continuity-phase={workspaceContinuityPhase}
+                aria-atomic="true"
                 aria-live="polite"
+                role="status"
               >
                 {
                   WORKSPACE_LAYOUT_LABELS[workspaceContinuityPhase][
@@ -1864,6 +1887,7 @@ function ApplicationShell() {
                     <button
                       className="panel-toggle"
                       type="button"
+                      aria-controls={panelBodyId(panelId)}
                       aria-pressed={visible}
                       onClick={() => {
                         void executeCommand(
@@ -4658,17 +4682,37 @@ function MediaContentAnalysisEditor({
   return (
     <section
       className="media-content-analysis"
-      aria-label="Editable language analysis"
+      aria-describedby={
+        APPLICATION_SEMANTIC_SURFACES.intelligentResults.describedBy
+      }
+      aria-labelledby={
+        APPLICATION_SEMANTIC_SURFACES.intelligentResults.labelledBy
+      }
+      id={APPLICATION_SEMANTIC_SURFACES.intelligentResults.id}
+      role={APPLICATION_SEMANTIC_SURFACES.intelligentResults.role}
     >
       <header>
         <div>
-          <h5>Editable language analysis</h5>
-          <p>
+          <h5 id="media-content-analysis-title">Editable language analysis</h5>
+          <p id="media-content-analysis-description">
             Analysis is ordinary project state and stays searchable without the
             model.
           </p>
         </div>
-        <strong className={analysisFresh ? "content-fresh" : "content-stale"}>
+        <strong
+          aria-atomic={
+            APPLICATION_SEMANTIC_SURFACES.intelligentResultsStatus.atomic
+          }
+          aria-label={
+            APPLICATION_SEMANTIC_SURFACES.intelligentResultsStatus.label
+          }
+          aria-live={
+            APPLICATION_SEMANTIC_SURFACES.intelligentResultsStatus.live
+          }
+          className={analysisFresh ? "content-fresh" : "content-stale"}
+          id={APPLICATION_SEMANTIC_SURFACES.intelligentResultsStatus.id}
+          role={APPLICATION_SEMANTIC_SURFACES.intelligentResultsStatus.role}
+        >
           {!hasAnalysis ? "not analyzed" : analysisFresh ? "current" : "stale source"}
         </strong>
       </header>
@@ -4689,7 +4733,7 @@ function MediaContentAnalysisEditor({
         </button>
       ) : null}
       {hasAnalysis && !analysisFresh ? (
-        <div className="content-analysis-warning">
+        <div className="content-analysis-warning" role="alert">
           <p>
             Retained from {analysis.source_fingerprint}. Review it before binding
             it to {item.content_fingerprint}.
@@ -4709,6 +4753,9 @@ function MediaContentAnalysisEditor({
       ) : null}
 
       <fieldset disabled={!editable}>
+        <legend className="accessibility-only">
+          Editable transcript and local intelligent-result project state
+        </legend>
         <form
           className="content-analysis-provenance"
           onSubmit={(event) => {
@@ -4732,14 +4779,21 @@ function MediaContentAnalysisEditor({
           <button type="submit">Save provenance</button>
         </form>
 
-        <div className="content-analysis-group">
+        <div
+          className="content-analysis-group"
+          role="group"
+          aria-labelledby="transcript-segments-title"
+        >
           <div className="content-analysis-heading">
-            <h5>Transcript segments</h5>
-            <span>{analysis.transcript_segments.length}</span>
+            <h5 id="transcript-segments-title">Transcript segments</h5>
+            <span aria-atomic="true" aria-live="polite" role="status">
+              {analysis.transcript_segments.length}
+            </span>
           </div>
           {analysis.transcript_segments.map((segment) => (
             <form
               className="content-artifact-card"
+              aria-label={`Transcript segment ${segment.segment_id}`}
               key={segment.segment_id}
               onSubmit={(event) => {
                 event.preventDefault();
@@ -4931,14 +4985,21 @@ function MediaContentAnalysisEditor({
           </form>
         </div>
 
-        <div className="content-analysis-group">
+        <div
+          className="content-analysis-group"
+          role="group"
+          aria-labelledby="local-ai-content-title"
+        >
           <div className="content-analysis-heading">
-            <h5>Local AI content</h5>
-            <span>{analysis.local_ai_content.length}</span>
+            <h5 id="local-ai-content-title">Local AI content</h5>
+            <span aria-atomic="true" aria-live="polite" role="status">
+              {analysis.local_ai_content.length}
+            </span>
           </div>
           {analysis.local_ai_content.map((content) => (
             <form
               className="content-artifact-card"
+              aria-label={`Editable local content ${content.content_id}`}
               key={content.content_id}
               onSubmit={(event) => {
                 event.preventDefault();
