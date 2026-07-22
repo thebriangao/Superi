@@ -109,6 +109,11 @@ RTL root direction now mirrors application shell geometry, sidebar borders, work
 reading alignment, and notices. Paths, filenames, shortcuts, timecode, timeline coordinates, and
 native viewer geometry remain direction-isolated so their exact meaning does not reverse.
 
+Theme-owned offline font roles now give UI, headings, caption surfaces, metadata, and exact-value
+labels ordered fallbacks for Latin, Arabic, Hebrew, Devanagari, CJK, symbols, and emoji. The CSS-only
+integration does not replace authored caption styles or change commands, events, automation, clocks,
+exports, diagnostics, or editable project state.
+
 One immutable schema-1 desktop parity contract now binds macOS, Windows, and Linux to identical
 project, engine, UI, shortcut, media, color, audio, AI, plugin, and export semantics. The System
 route exposes that exact identity and every invariant while capability availability, physical

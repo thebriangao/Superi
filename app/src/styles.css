@@ -1,10 +1,25 @@
 :root {
   color: var(--theme-text-primary);
   background: var(--theme-canvas);
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--theme-font-ui);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+}
+
+:where(h1, h2, h3, h4, h5, h6, .timeline-toolbar-title) {
+  font-family: var(--theme-font-title);
+}
+
+:where(.timeline-lane-caption, .timeline-item-caption, .timeline-marker-panel) {
+  font-family: var(--theme-font-caption);
+}
+
+:where(.media-metadata, .source-metadata-status, .user-metadata-editor, .editor-detail-list) {
+  font-family: var(--theme-font-metadata);
+}
+
+:where(code, kbd, .code-value, [data-path], [data-timecode]) {
+  font-family: var(--theme-font-mono);
 }
 
 * {

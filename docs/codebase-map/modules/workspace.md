@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: a6c17e87401734bff5ba675ac033ec84caa3134a1c89811081ac94b67bd49f2d
-source_files: 390
+source_hash: 46ae05613bd200e100faab492e6aadc79d98af9b994ed7c0c2c2d4d1bff5ac9e
+source_files: 392
 mapped_at_commit: working-tree
 ---
 
@@ -616,6 +616,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W07.C012.md`: Durable implementation evidence for mirrored RTL shell,
   logical reading alignment, direction-aware notices, and isolated paths, shortcuts, timecode,
   timeline, and viewer coordinates.
+- `docs/checkpoints/P3.W07.C013.md`: Durable implementation evidence for theme-owned offline font
+  fallback and semantic title, caption, metadata, UI, symbol, emoji, and exact-label consumers.
 
 ### Production desktop application
 
@@ -1328,6 +1330,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/rtl-layout.test.ts`: Proves mirrored shell geometry, logical reading alignment,
   direction-aware notification placement, and LTR isolation for paths, shortcuts, timecode,
   timeline coordinates, and native viewers.
+- `app/tests/font-fallback.test.ts`: Proves offline role stacks cover Arabic, Hebrew, Devanagari,
+  CJK, symbols, and emoji and are consumed by UI, title, caption, metadata, and exact-value surfaces.
 - `app/tests/display-scale.test.ts`: Proves immutable initial and changed scale observations,
   duplicate suppression, invalid-value retention, exact source revisions, resolution watcher
   re-arming, cleanup, and accessible scale formatting.
