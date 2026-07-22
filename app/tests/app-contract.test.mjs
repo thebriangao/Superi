@@ -169,6 +169,8 @@ test("command palette discovers stable application and native shell actions", ()
   const context = read(resolve(appRoot, "src/application-context.tsx"));
   const catalog = read(resolve(appRoot, "src/command-palette.ts"));
   const palette = read(resolve(appRoot, "src/command-palette.tsx"));
+  const focusManagement = read(resolve(appRoot, "src/focus-management.ts"));
+  const presentation = read(resolve(appRoot, "src/application-presentation.tsx"));
   const styles = read(resolve(appRoot, "src/command-palette.css"));
   const app = read(resolve(appRoot, "src/App.tsx"));
   const shell = read(resolve(appRoot, "src/desktop-shell.ts"));
@@ -183,6 +185,12 @@ test("command palette discovers stable application and native shell actions", ()
   assert.match(catalog, /executeCommandPaletteAction/);
   assert.match(palette, /role="listbox"/);
   assert.match(palette, /showModal\(\)/);
+  assert.match(palette, /containTabFocus/);
+  assert.match(palette, /aria-modal="true"/);
+  assert.match(focusManagement, /nextContainedFocusIndex/);
+  assert.match(focusManagement, /restoreShellFocus/);
+  assert.match(presentation, /focusFirstInScope/);
+  assert.match(presentation, /containTabFocus/);
   assert.match(styles, /\.command-palette-dialog::backdrop/);
   assert.match(app, /application\.command_palette\.open/);
   assert.match(app, /application\.workspace_layout\.reset_all/);
@@ -197,6 +205,7 @@ test("command palette discovers stable application and native shell actions", ()
   assert.match(nativeShell, /superi\.edit\.command_palette/);
   assert.match(nativeShell, /OpenCommandPalette/);
   assert.match(packageJson.scripts.test, /command-palette\.test\.ts/);
+  assert.match(packageJson.scripts.test, /focus-management\.test\.ts/);
   assert.doesNotMatch(
     catalog + palette,
     /SuperiApiBindings|superi\.project\.command\.execute|@tauri-apps/,
@@ -341,7 +350,8 @@ test("application presentation unifies menus, tooltips, notifications, status, p
   assert.match(presentation, /role="progressbar"/);
   assert.match(presentation, /aria-live="polite"/);
   assert.match(presentation, /cloneElement\(children, \{ "aria-describedby": description \}\)/);
-  assert.match(presentation, /returnFocus\.isConnected/);
+  assert.match(presentation, /restoreShellFocus\(returnFocus\)/);
+  assert.match(presentation, /aria-haspopup="dialog"/);
   assert.match(presentation, /useLayoutEffect/);
   assert.match(presentation, /event\.key === "ArrowDown"/);
   assert.match(presentation, /event\.key === "Escape"/);

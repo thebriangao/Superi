@@ -65,6 +65,12 @@ pointer-capture failure, and normalizes fractional pixel, line, and page wheel i
 and timeline consumers retain interaction intent while project, audio, timing, channel, routing,
 history, native-driver, and persistence ownership remains unchanged.
 
+The application focus boundary deterministically enters visible scopes, cycles Tab and Shift+Tab
+across operable descendants, dismisses the native modal palette from any focused child, contains
+context-menu traversal, and moves focus into and back from the modeless activity dialog. It reuses
+the shared connected-target policy and retains no authored, workspace, engine, transport, or
+persistent state.
+
 The primary native viewer also observes exact browser display scale through window, visual viewport,
 and dynamically re-armed resolution signals. Accepted changes republish existing CSS geometry to the
 one Tauri viewport owner and remain visible in the viewer toolbar; duplicate or invalid signals do
@@ -2567,6 +2573,10 @@ notification center, status bar, failure cards, retained crash projection, panel
 keyboard consumers, and delivery progress. Exact Node 24.13.0 TypeScript checking and the production
 Vite build exercise the integrated React path; physical focus, screen-reader, high-contrast, and
 reduced-motion behavior remain application-lane evidence.
+The focused focus-management contracts prove empty scopes, entry from outside, exact forward and
+reverse movement, stale-index recovery, and both wraps. Application source contracts freeze the
+shared native-modal, context-menu, and activity-dialog consumers plus explicit dialog semantics and
+safe focus return; physical assistive-technology interaction remains platform-lane evidence.
 The shared application-inspector contracts add one dockable all-route projection of current
 workspace and selection intent, public project metadata, engine-owned undo and redo evidence, exact
 playback attachment and degradation, editor failures, and bounded notices. Refresh and recovery

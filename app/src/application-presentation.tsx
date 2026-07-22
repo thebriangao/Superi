@@ -27,6 +27,11 @@ import {
   placeApplicationContextMenu,
   reduceApplicationNotificationState,
 } from "./application-presentation.ts";
+import {
+  containTabFocus,
+  focusFirstInScope,
+} from "./focus-management.ts";
+import { restoreShellFocus } from "./shell-input.ts";
 
 export interface ApplicationContextMenuItem {
   readonly id: string;
@@ -105,11 +110,7 @@ export function ApplicationPresentationProvider({
     setContextMenu(null);
     const returnFocus = contextMenuReturnFocus.current;
     contextMenuReturnFocus.current = null;
-    if (returnFocus?.isConnected) {
-      window.requestAnimationFrame(() => {
-        if (returnFocus.isConnected) returnFocus.focus();
-      });
-    }
+    window.requestAnimationFrame(() => restoreShellFocus(returnFocus));
   }, []);
   const openContextMenu = useCallback(
     (request: ApplicationContextMenuRequest) => {
@@ -206,10 +207,7 @@ function ApplicationContextMenu({
   }, [menu]);
 
   useEffect(() => {
-    const firstItem = menuRef.current?.querySelector<HTMLButtonElement>(
-      '[role="menuitem"]:not(:disabled)',
-    );
-    firstItem?.focus();
+    if (menuRef.current !== null) focusFirstInScope(menuRef.current);
   }, [menu]);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -221,6 +219,15 @@ function ApplicationContextMenu({
     if (event.key === "Escape") {
       event.preventDefault();
       onClose();
+      return;
+    }
+    if (event.key === "Tab") {
+      event.preventDefault();
+      containTabFocus(
+        event.currentTarget,
+        document.activeElement,
+        event.shiftKey,
+      );
       return;
     }
     if (items.length === 0) {
@@ -257,6 +264,7 @@ function ApplicationContextMenu({
         ref={menuRef}
         role="menu"
         style={position}
+        tabIndex={-1}
       >
         <p className="application-context-menu__label">{menu.label}</p>
         {menu.items.map((item) => (
@@ -426,36 +434,61 @@ export function ApplicationFeedbackHub({
   } = useApplicationPresentation();
   const [isOpen, setIsOpen] = useState(false);
   const activityButtonRef = useRef<HTMLButtonElement>(null);
+  const centerRef = useRef<HTMLElement>(null);
+  const centerCloseRef = useRef<HTMLButtonElement>(null);
   const activeProgress = progress.filter((item) => item.active);
   const count = failures.length + notificationState.notifications.length;
   const closeCenter = useCallback(() => {
     setIsOpen(false);
-    window.requestAnimationFrame(() => activityButtonRef.current?.focus());
+    window.requestAnimationFrame(() =>
+      restoreShellFocus(activityButtonRef.current),
+    );
   }, []);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      if (centerRef.current !== null) {
+        focusFirstInScope(centerRef.current, centerCloseRef.current);
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [isOpen]);
 
   return (
     <aside className="application-feedback-hub">
       {isOpen ? (
         <section
           aria-label="Application notification center"
+          aria-labelledby="application-notification-center-title"
           className="application-notification-center"
+          id="application-notification-center"
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.preventDefault();
               closeCenter();
             }
           }}
+          ref={centerRef}
+          role="dialog"
+          tabIndex={-1}
         >
           <header>
             <div>
               <p className="eyebrow">Operational visibility</p>
-              <h2>Activity and recovery</h2>
+              <h2 id="application-notification-center-title">
+                Activity and recovery
+              </h2>
             </div>
             <div className="application-notification-center__actions">
               <button onClick={clearNotifications} type="button">
                 Clear notices
               </button>
-              <button onClick={closeCenter} type="button">
+              <button
+                onClick={closeCenter}
+                ref={centerCloseRef}
+                type="button"
+              >
                 Close
               </button>
             </div>
@@ -571,9 +604,11 @@ export function ApplicationFeedbackHub({
           <ProgressBar progress={activeProgress[0]} />
         )}
         <button
+          aria-controls="application-notification-center"
           aria-expanded={isOpen}
+          aria-haspopup="dialog"
           className="application-feedback-status__notices"
-          onClick={() => setIsOpen((current) => !current)}
+          onClick={() => (isOpen ? closeCenter() : setIsOpen(true))}
           ref={activityButtonRef}
           type="button"
         >

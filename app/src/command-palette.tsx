@@ -12,6 +12,11 @@ import {
   type CommandPaletteCatalog,
   type CommandPaletteExecutionResult,
 } from "./command-palette.ts";
+import {
+  containTabFocus,
+  focusFirstInScope,
+} from "./focus-management.ts";
+import { restoreShellFocus } from "./shell-input.ts";
 import "./command-palette.css";
 
 export interface CommandPaletteProps {
@@ -51,10 +56,10 @@ export function CommandPalette({
     if (dialog !== null && !dialog.open) {
       dialog.showModal();
     }
-    inputRef.current?.focus();
+    if (dialog !== null) focusFirstInScope(dialog, inputRef.current);
     return () => {
       if (dialog?.open) dialog.close();
-      priorFocus.current?.focus();
+      restoreShellFocus(priorFocus.current);
     };
   }, []);
 
@@ -91,11 +96,6 @@ export function CommandPalette({
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onDismiss();
-      return;
-    }
     if (results.length === 0) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -129,17 +129,39 @@ export function CommandPalette({
     if (event.target === dialogRef.current) onDismiss();
   };
 
+  const handleDialogKeyDown = (
+    event: ReactKeyboardEvent<HTMLDialogElement>,
+  ) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      onDismiss();
+      return;
+    }
+    if (event.key === "Tab") {
+      event.preventDefault();
+      containTabFocus(
+        event.currentTarget,
+        document.activeElement,
+        event.shiftKey,
+      );
+    }
+  };
+
   return (
     <dialog
       className="command-palette-dialog"
       ref={dialogRef}
+      aria-modal="true"
       aria-labelledby="command-palette-title"
       aria-describedby="command-palette-description"
+      onKeyDown={handleDialogKeyDown}
       onCancel={(event) => {
         event.preventDefault();
         onDismiss();
       }}
       onClick={handleBackdrop}
+      tabIndex={-1}
     >
       <section className="command-palette-surface">
         <header className="command-palette-header">

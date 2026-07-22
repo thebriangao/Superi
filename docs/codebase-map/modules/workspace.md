@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 902a0d4f5d3f8f9a8fd61403ce1d105ad14cbab775c1af69dd1236d17005d0e6
-source_files: 357
+source_hash: a63bf8b1198d2106540b79c63f16fac13924002365ac9e13a18e232b71c27cac
+source_files: 360
 mapped_at_commit: working-tree
 ---
 
@@ -576,6 +576,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W07.C002.md`: Durable implementation evidence for exact HiDPI observation,
   dynamic resolution watcher re-arming, native viewer placement refresh, visible scale state, and
   unchanged monitor, GPU, engine, persistence, and authored-state ownership.
+- `docs/checkpoints/P3.W07.C003.md`: Durable implementation evidence for deterministic focus entry,
+  contained bidirectional modal traversal, descendant-wide Escape dismissal, activity-dialog focus
+  movement, safe focus return, and unchanged authored, transport, and persistence ownership.
 
 ### Production desktop application
 
@@ -635,8 +638,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   intent. It owns no transport or mutation authority.
 - `app/src/command-palette.tsx`: Renders the transient accessible modal palette with search,
   listbox navigation, disabled reasons, stable identity visibility, pending and failure state,
-  dismissal, and prior-focus restoration. It invokes only the catalog host supplied by the
-  always-mounted application consumer.
+  all-descendant Escape dismissal, contained bidirectional Tab traversal, and operable prior-focus
+  restoration. It invokes only the catalog host supplied by the always-mounted application consumer.
 - `app/src/command-palette.css`: Defines the isolated modal surface, native backdrop, search,
   result, disabled, focus, and responsive presentation entirely through the application theme
   tokens without changing workspace or project state.
@@ -648,6 +651,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   coalesced mouse, touch, and pen samples, failure-contained pointer capture, and finite fractional
   pixel, line, or page wheel normalization. It retains transient device precision without owning
   authored state, audio behavior, persistence, native drivers, or transport.
+- `app/src/focus-management.ts`: Defines deterministic empty-safe and wrapped focus traversal,
+  rendered operable descendant discovery, initial scope entry, and contained Tab movement by
+  reusing the shared no-scroll shell focus policy without owning modal or application state.
 - `app/src/display-scale.ts`: Defines one immutable finite display-scale observation, duplicate
   suppression, window and visual viewport listeners, dynamically re-armed resolution matching,
   cleanup, and accessible formatting without owning monitor identity, geometry, GPU, or persistence.
@@ -665,10 +671,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   notification history, and clamps context-menu placement without importing native commands or
   taking business-state ownership.
 - `app/src/application-presentation.tsx`: Provides the single React presentation context and real
-  consumers for described tooltips, focus-returning keyboard and pointer context menus clamped from
-  their measured size, time-limited notification toasts with retained bounded history, classified
-  failure cards, semantic progress, and the always-visible application status bar. Its callbacks
-  route only to existing application, project, lifecycle, workspace, and recovery owners.
+  consumers for described tooltips, focus-returning and focus-contained keyboard and pointer context
+  menus clamped from their measured size, an explicitly focused modeless activity dialog, time-limited
+  notification toasts with retained bounded history, classified failure cards, semantic progress,
+  and the always-visible application status bar. Its callbacks route only to existing application,
+  project, lifecycle, workspace, and recovery owners.
 - `app/src/application-inspector.ts`: Purely projects the active route, focused and visible panels,
   shared selection, public project identity, semantic freshness, session undo and redo evidence,
   exact playback attachment and degradation, editor failures, and bounded notification history into
@@ -1209,6 +1216,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/shell-input.test.ts`: Proves handled, composing, repeat, editable, and allowed keyboard
   routing, connected focus fallback, immutable coalesced pen metadata, safe pointer capture and
   release, and exact fractional pixel, line, and page wheel normalization.
+- `app/tests/focus-management.test.ts`: Proves empty scope handling, forward and reverse entry from
+  outside, exact next-target selection, out-of-range recovery, and both boundary wraps.
 - `app/tests/display-scale.test.ts`: Proves immutable initial and changed scale observations,
   duplicate suppression, invalid-value retention, exact source revisions, resolution watcher
   re-arming, cleanup, and accessible scale formatting.
@@ -2932,6 +2941,12 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   failures, and transient reducer state. The application architecture contract freezes the real
   modal, native menu mapping, production registration, and absence of generated API or Tauri imports
   from the pure catalog and view.
+
+- The focused focus-management contracts prove empty-safe traversal, exact forward and reverse
+  entry, deterministic wrapping, and recovery from stale active indexes. Application source
+  contracts bind the same operability policy to the native modal palette, context menu, and
+  modeless activity dialog with explicit semantics, all-descendant Escape handling, and safe focus
+  return while leaving their existing state and action owners unchanged.
 
 - The focused theme contracts prove one frozen schema-1 identity, deterministic repair of missing
   or drifted document declarations, frozen repair evidence, static pre-JavaScript declaration,
