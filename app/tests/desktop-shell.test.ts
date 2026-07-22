@@ -114,6 +114,8 @@ test("native sequence resumes after a webview reload before the next sync", asyn
               recent_paths: [],
               undo_depth: 0,
               redo_depth: 0,
+              next_undo: null,
+              next_redo: null,
               busy: false,
               workspace: {
                 active_route_id: "editing",
@@ -150,6 +152,8 @@ test("native sequence resumes after a webview reload before the next sync", asyn
       recent_paths: [],
       undo_depth: 0,
       redo_depth: 0,
+      next_undo: null,
+      next_redo: null,
       busy: false,
       workspace: {
         active_route_id: "editing",
@@ -182,6 +186,34 @@ test("native sequence resumes after a webview reload before the next sync", asyn
             shortcut: "mod+e",
           },
         ],
+      },
+    );
+    assert.deepEqual(
+      calls.at(-1)?.args.sync,
+      {
+        active: null,
+        recent_paths: [],
+        undo_depth: 0,
+        redo_depth: 0,
+        next_undo: null,
+        next_redo: null,
+        busy: false,
+        workspace: {
+          active_route_id: "editing",
+          hidden_panel_ids: [],
+          focused_panel_id: null,
+          panel_layouts: [],
+        },
+        keyboard_shortcuts: {
+          schema_version: 1,
+          overrides: [
+            {
+              command_id: "application.route.editing",
+              shortcut: "mod+e",
+            },
+          ],
+        },
+        client_sequence: 42,
       },
     );
   } finally {

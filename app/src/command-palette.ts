@@ -6,6 +6,7 @@ import {
   desktopShellIntentAutomationId,
   type DesktopShellIntent,
 } from "./desktop-shell.ts";
+import type { ProjectHistoryPresentation } from "./project-history.ts";
 
 const MAX_ACTIONS = 512;
 const MAX_QUERY_LENGTH = 4_096;
@@ -39,8 +40,7 @@ export interface CommandPaletteAction {
 export interface DesktopShellCommandPaletteInput {
   readonly active: boolean;
   readonly busy: boolean;
-  readonly undoDepth: number;
-  readonly redoDepth: number;
+  readonly history: ProjectHistoryPresentation;
   readonly recentPaths: readonly string[];
 }
 
@@ -156,16 +156,8 @@ export function desktopShellCommandPaletteActions(
     : input.active
       ? enabled()
       : disabled("Open a project first.");
-  const undo = input.busy
-    ? disabled("Wait for the current operation to finish.")
-    : input.undoDepth > 0
-      ? enabled()
-      : disabled("No project change is available to undo.");
-  const redo = input.busy
-    ? disabled("Wait for the current operation to finish.")
-    : input.redoDepth > 0
-      ? enabled()
-      : disabled("No project change is available to redo.");
+  const undo = availabilityFromHistory(input.history.undo);
+  const redo = availabilityFromHistory(input.history.redo);
 
   const actions = [
     desktopAction(
@@ -243,20 +235,20 @@ export function desktopShellCommandPaletteActions(
       { kind: "scan_folder" },
     ),
     desktopAction(
-      "Undo Project Change",
+      input.history.undo.title,
       "Edit",
       ["history", "reverse"],
       "mod+z",
-      `${input.undoDepth} project changes available to undo.`,
+      input.history.undo.detail,
       undo,
       { kind: "undo" },
     ),
     desktopAction(
-      "Redo Project Change",
+      input.history.redo.title,
       "Edit",
       ["history", "restore"],
       "mod+shift+z",
-      `${input.redoDepth} project changes available to redo.`,
+      input.history.redo.detail,
       redo,
       { kind: "redo" },
     ),
@@ -271,6 +263,14 @@ export function desktopShellCommandPaletteActions(
     ),
   ];
   return Object.freeze(actions);
+}
+
+function availabilityFromHistory(
+  action: ProjectHistoryPresentation["undo"],
+): CommandPaletteAvailability {
+  return action.enabled
+    ? enabled()
+    : disabled(action.disabledReason ?? "Project history is unavailable.");
 }
 
 export async function executeCommandPaletteAction(

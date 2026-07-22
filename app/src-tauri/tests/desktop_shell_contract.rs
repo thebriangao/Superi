@@ -4,9 +4,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use superi_desktop::desktop_shell::{
     DesktopCloseReason, DesktopKeyboardShortcutOverride, DesktopKeyboardShortcutProfile,
-    DesktopPanelDockId, DesktopPanelDockPresentation, DesktopRoutePanelLayoutPresentation,
-    DesktopShellDocument, DesktopShellIntent, DesktopShellModel, DesktopShellState,
-    DesktopShellSync, DesktopWorkspacePresentation,
+    DesktopPanelDockId, DesktopPanelDockPresentation, DesktopProjectMutationKind,
+    DesktopRoutePanelLayoutPresentation, DesktopShellDocument, DesktopShellIntent,
+    DesktopShellModel, DesktopShellState, DesktopShellSync, DesktopWorkspacePresentation,
 };
 
 static NEXT_SHELL_ROOT: AtomicU64 = AtomicU64::new(0);
@@ -75,6 +75,8 @@ fn sync(sequence: u64) -> DesktopShellSync {
         ],
         undo_depth: 4,
         redo_depth: 1,
+        next_undo: Some(DesktopProjectMutationKind::ConsiderMediaRelink),
+        next_redo: Some(DesktopProjectMutationKind::UpsertExtension),
         busy: false,
         workspace: workspace("editing"),
         keyboard_shortcuts: DesktopKeyboardShortcutProfile {
@@ -97,6 +99,16 @@ fn native_shell_sync_preserves_document_history_workspace_and_recent_intents() {
     assert_eq!(first.active().unwrap().project_revision(), 17);
     assert_eq!(first.undo_depth(), 4);
     assert_eq!(first.redo_depth(), 1);
+    assert_eq!(
+        first.next_undo(),
+        Some(DesktopProjectMutationKind::ConsiderMediaRelink)
+    );
+    assert_eq!(
+        first.next_redo(),
+        Some(DesktopProjectMutationKind::UpsertExtension)
+    );
+    assert_eq!(first.undo_title(), "Undo Media Relink");
+    assert_eq!(first.redo_title(), "Redo Extension Update");
     assert_eq!(first.workspace().active_route_id, "editing");
     assert_eq!(first.workspace().panel_layouts.len(), 1);
     assert_eq!(
@@ -176,6 +188,36 @@ fn shell_state_rejects_ambiguous_or_unbounded_presentation() {
     invalid_workspace.workspace.active_route_id = " ".to_owned();
     assert!(model.synchronize(invalid_workspace).is_err());
     assert_eq!(model.snapshot().revision(), 0);
+
+    let mut missing_next = sync(3);
+    missing_next.next_undo = None;
+    assert!(model.synchronize(missing_next).is_err());
+
+    let mut unexpected_next = sync(4);
+    unexpected_next.undo_depth = 0;
+    assert!(model.synchronize(unexpected_next).is_err());
+
+    let mut detached_history = sync(5);
+    detached_history.active = None;
+    assert!(model.synchronize(detached_history).is_err());
+}
+
+#[test]
+fn future_safe_history_labels_remain_generic_and_session_only() {
+    let mut model = DesktopShellModel::default();
+    let mut presentation = sync(1);
+    presentation.next_undo = Some(DesktopProjectMutationKind::Unknown);
+    let snapshot = model.synchronize(presentation).unwrap();
+    assert_eq!(snapshot.undo_title(), "Undo Project Change");
+    assert_eq!(snapshot.redo_title(), "Redo Extension Update");
+    assert_eq!(
+        serde_json::to_value(DesktopProjectMutationKind::ConsiderMediaRelink).unwrap(),
+        serde_json::json!("consider_media_relink")
+    );
+    assert_eq!(
+        serde_json::to_value(DesktopProjectMutationKind::Unknown).unwrap(),
+        serde_json::json!("unknown")
+    );
 }
 
 #[test]
@@ -191,6 +233,10 @@ fn workspace_presentation_restores_from_the_private_atomic_session_record() {
         serde_json::from_slice(&std::fs::read(root.join("desktop-shell-state.json")).unwrap())
             .unwrap();
     assert_eq!(stored["schema_version"].as_u64(), Some(3));
+    assert!(stored.get("undo_depth").is_none());
+    assert!(stored.get("redo_depth").is_none());
+    assert!(stored.get("next_undo").is_none());
+    assert!(stored.get("next_redo").is_none());
     assert_eq!(
         stored["keyboard_shortcuts"]["overrides"][0]["shortcut"].as_str(),
         Some("mod+e")

@@ -98,6 +98,14 @@ authored flag meaning. Native viewer reservations retain full opacity, normal bl
 filter, and forced-color protection; scene meaning, RGBA16F precision, monitor binding, display
 intent, and transform order remain with the native GPU and `superi-color` owners.
 
+One pure global history presentation now binds those shell surfaces to the existing engine
+transaction owner. Exact desktop document and generated editor project identity, revision, depths,
+and normalized next mutation categories drive always-visible workspace controls, action-specific
+palette descriptors, and typed native Edit labels with standard accelerators. Incoherent or busy
+state fails closed, command execution rechecks identity and revision, safe close retains
+same-document counts, and no depth, mutation category, or history snapshot enters schema 3 or
+project persistence.
+
 The same shell now owns one read-only seven-service process snapshot above its existing lifecycle.
 It retains the application-exit and bounded project-association task handles directly, composes the
 existing EngineControl, Playback, worker-pool, GPU, and persistence owners, closes task admission
@@ -175,7 +183,9 @@ docks, ordered tabs, bounded sizes, visibility, focus, and configurable shortcut
 2 migration,
 and suppresses duplicate close requests until one resolution grants a single following close event.
 The always-mounted React shell uses native dialogs and unambiguous drops, then routes document,
-media, workspace, and history intent through existing owners. Its layout header acknowledges native
+media, workspace, and history intent through existing owners. Typed transient next undo and redo
+categories produce action-specific Edit labels, while exact depth-action coherence is validated
+before live menu replacement and history remains absent from schema 3 persistence. Its layout header acknowledges native
 continuity progress, resets all registry layouts with transient undo, and projects read-only engine
 lifecycle state while routing detailed recovery to System. Window close, menu quit, and direct
 operating-system exit requests share that safe-close handshake. The desktop project lifecycle
@@ -392,6 +402,11 @@ The production desktop lifecycle is implemented without creating a second engine
     shell-reviewed lifecycle, editor, project, window, shell, crash, workspace, and job evidence.
     It renders the shared status, notification, progress, tooltip, menu, and recovery surfaces while
     routing commands back to existing owners and retaining the last-valid workspace and editor view.
+    A sibling pure project-history adapter matches the active desktop document to that editor
+    snapshot, requires exact revision and depth-action coherence, and freezes titles, counts,
+    availability, disabled reasons, and session disclosure. The global header, command palette, and
+    native shell consume that one adapter, while execution returns through the existing
+    revision-fenced project callback.
 11. The same `ApplicationProvider` retains one last-valid `EditorStateSnapshot` for presentation,
     refreshes it through generated project, audio, and job events, and projects it across five
     registry-backed professional workspaces without taking engine or transport ownership. The
@@ -2226,10 +2241,15 @@ The following constraints cross multiple modules and should be preserved togethe
   history retain their existing owners. Active operations block close, session-history loss is
   explicit, document titles omit parent paths, and one accepted close resolution enters the
   existing orderly application lifecycle exactly once.
+- Global undo and redo presentation is a read-only projection over the engine history owner. Exact
+  desktop document and editor project identity plus revision agreement gates actions, every nonzero
+  depth has one normalized next mutation, future values map to `unknown`, and execution returns
+  through the existing project revision fence. Depths, mutation categories, and before or after
+  snapshots remain session-local and absent from desktop and project persistence.
 - Command discovery remains a bounded projection over existing typed owners. Catalog actions may
   delegate only to registered application commands or desktop shell intents, disabled actions must
-  retain current reasons and effective shortcuts, and palette query or modal state must not enter
-  durable workspace state.
+  retain current reasons and effective shortcuts, history actions must reuse the global frozen
+  presentation, and palette query or modal state must not enter durable workspace state.
 - Effective application shortcuts are canonical, unique, and registry-backed. Configurable global
   bindings require portable modifiers, native menu and clipboard accelerators stay reserved, imports
   are transactional, unknown command IDs remain bounded and inactive, and editable or composing
@@ -2513,6 +2533,12 @@ remain operating-system physical-lane evidence.
 Their integration keeps per-window routes and transport generations with the window-session owner,
 projects main-window shell presentation into the process-wide menu, targets commands to the focused
 webview, and routes only primary close or application quit through safe project preservation.
+Focused project-history contracts prove exact current mutation labels, future-safe generic
+normalization, document and revision fencing, depth-action coherence, ready, busy, synchronizing,
+and no-project availability, immutable session disclosure, and conservative close counts. Palette,
+desktop bridge, application source, and native shell companions prove the same action presentation
+drives visible controls, discovery, typed native synchronization, action-specific Edit labels,
+unchanged accelerators, strict rejection, and schema 3 history exclusion.
 The shell-capability contracts compose one real current-host observation through all four provider
 owners, prove exact audio configuration projection and explicit unknown channel meaning, retain
 per-domain fallback with current failures, restore valid private cache state, replace corrupt cache

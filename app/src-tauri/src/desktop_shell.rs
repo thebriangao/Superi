@@ -72,6 +72,44 @@ impl DesktopShellDocument {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DesktopProjectMutationKind {
+    ProjectSettings,
+    Compound,
+    SetMediaPath,
+    MarkMediaMissing,
+    ConsiderMediaRelink,
+    UpsertExtension,
+    RemoveExtension,
+    SetExtensionLifecycle,
+    SetExtensionCapabilities,
+    RecordExtensionFailure,
+    ClearExtensionFailure,
+    ExtensionState,
+    Unknown,
+}
+
+impl DesktopProjectMutationKind {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::ProjectSettings => "Project Settings",
+            Self::Compound => "Compound Edit",
+            Self::SetMediaPath => "Media Path Change",
+            Self::MarkMediaMissing => "Missing Media Change",
+            Self::ConsiderMediaRelink => "Media Relink",
+            Self::UpsertExtension => "Extension Update",
+            Self::RemoveExtension => "Extension Removal",
+            Self::SetExtensionLifecycle => "Extension Lifecycle Change",
+            Self::SetExtensionCapabilities => "Extension Permission Change",
+            Self::RecordExtensionFailure => "Extension Failure Record",
+            Self::ClearExtensionFailure => "Extension Failure Clear",
+            Self::ExtensionState => "Extension State Change",
+            Self::Unknown => "Project Change",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DesktopPanelDockId {
@@ -149,6 +187,8 @@ pub struct DesktopShellSync {
     pub recent_paths: Vec<String>,
     pub undo_depth: u64,
     pub redo_depth: u64,
+    pub next_undo: Option<DesktopProjectMutationKind>,
+    pub next_redo: Option<DesktopProjectMutationKind>,
     pub busy: bool,
     pub workspace: DesktopWorkspacePresentation,
     pub keyboard_shortcuts: DesktopKeyboardShortcutProfile,
@@ -197,6 +237,8 @@ pub struct DesktopShellSnapshot {
     recent_paths: Vec<String>,
     undo_depth: u64,
     redo_depth: u64,
+    next_undo: Option<DesktopProjectMutationKind>,
+    next_redo: Option<DesktopProjectMutationKind>,
     busy: bool,
     workspace: DesktopWorkspacePresentation,
     keyboard_shortcuts: DesktopKeyboardShortcutProfile,
@@ -212,6 +254,8 @@ impl Default for DesktopShellSnapshot {
             recent_paths: Vec::new(),
             undo_depth: 0,
             redo_depth: 0,
+            next_undo: None,
+            next_redo: None,
             busy: false,
             workspace: DesktopWorkspacePresentation::default(),
             keyboard_shortcuts: DesktopKeyboardShortcutProfile::default(),
@@ -249,6 +293,36 @@ impl DesktopShellSnapshot {
     #[must_use]
     pub const fn redo_depth(&self) -> u64 {
         self.redo_depth
+    }
+
+    #[must_use]
+    pub const fn next_undo(&self) -> Option<DesktopProjectMutationKind> {
+        self.next_undo
+    }
+
+    #[must_use]
+    pub const fn next_redo(&self) -> Option<DesktopProjectMutationKind> {
+        self.next_redo
+    }
+
+    #[must_use]
+    pub fn undo_title(&self) -> String {
+        format!(
+            "Undo {}",
+            self.next_undo
+                .unwrap_or(DesktopProjectMutationKind::Unknown)
+                .label()
+        )
+    }
+
+    #[must_use]
+    pub fn redo_title(&self) -> String {
+        format!(
+            "Redo {}",
+            self.next_redo
+                .unwrap_or(DesktopProjectMutationKind::Unknown)
+                .label()
+        )
     }
 
     #[must_use]
@@ -302,6 +376,8 @@ impl DesktopShellModel {
             recent_paths: sync.recent_paths,
             undo_depth: sync.undo_depth,
             redo_depth: sync.redo_depth,
+            next_undo: sync.next_undo,
+            next_redo: sync.next_redo,
             busy: sync.busy,
             workspace: sync.workspace,
             keyboard_shortcuts: sync.keyboard_shortcuts,
@@ -683,14 +759,14 @@ pub fn build_menu<R: Runtime>(
     let undo = MenuItem::with_id(
         app,
         "superi.edit.undo",
-        "Undo Project Change",
+        snapshot.undo_title(),
         snapshot.undo_depth > 0 && !snapshot.busy,
         Some("CmdOrCtrl+Z"),
     )?;
     let redo = MenuItem::with_id(
         app,
         "superi.edit.redo",
-        "Redo Project Change",
+        snapshot.redo_title(),
         snapshot.redo_depth > 0 && !snapshot.busy,
         Some("CmdOrCtrl+Shift+Z"),
     )?;
@@ -836,6 +912,16 @@ fn validate_sync(sync: &DesktopShellSync) -> Result<(), DesktopShellFailure> {
         validate_path(&active.path, "active project path")?;
         validate_text(&active.project_id, "active project identity")?;
     }
+    if sync.active.is_none()
+        && (sync.undo_depth > 0
+            || sync.redo_depth > 0
+            || sync.next_undo.is_some()
+            || sync.next_redo.is_some())
+    {
+        return Err(invalid_presentation("detached project history"));
+    }
+    validate_history_action(sync.undo_depth, sync.next_undo, "undo")?;
+    validate_history_action(sync.redo_depth, sync.next_redo, "redo")?;
     if sync.recent_paths.len() > MAX_RECENT_PROJECTS {
         return Err(invalid_presentation("recent project capacity"));
     }
@@ -848,6 +934,19 @@ fn validate_sync(sync: &DesktopShellSync) -> Result<(), DesktopShellFailure> {
     }
     validate_workspace(&sync.workspace)?;
     validate_keyboard_shortcuts(&sync.keyboard_shortcuts)
+}
+
+fn validate_history_action(
+    depth: u64,
+    next: Option<DesktopProjectMutationKind>,
+    direction: &str,
+) -> Result<(), DesktopShellFailure> {
+    if (depth == 0) != next.is_none() {
+        return Err(invalid_presentation(&format!(
+            "{direction} history coherence"
+        )));
+    }
+    Ok(())
 }
 
 fn validate_keyboard_shortcuts(

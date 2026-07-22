@@ -8,6 +8,7 @@ import {
   desktopShellCommandPaletteActions,
   executeCommandPaletteAction,
 } from "../src/command-palette.ts";
+import { projectHistoryPresentation } from "../src/project-history.ts";
 
 const commands: readonly ApplicationCommandDefinition[] = [
   {
@@ -44,8 +45,22 @@ function actions() {
     ...desktopShellCommandPaletteActions({
       active: true,
       busy: false,
-      undoDepth: 0,
-      redoDepth: 2,
+      history: projectHistoryPresentation({
+        active: {
+          path: "/projects/alpha.superi",
+          project_id: "project-alpha",
+          project_revision: 17,
+        },
+        editorProject: {
+          project_id: "project-alpha",
+          project_revision: 17,
+          undo_depth: 0,
+          redo_depth: 2,
+          next_undo: null,
+          next_redo: "upsert_extension",
+        },
+        busy: false,
+      }),
       recentPaths: [
         "/projects/alpha.superi",
         "/projects/archive/beta.superi",
@@ -95,8 +110,11 @@ test("desktop actions expose current availability and stable recent identity", (
   const unavailable = desktopShellCommandPaletteActions({
     active: false,
     busy: true,
-    undoDepth: 0,
-    redoDepth: 0,
+    history: projectHistoryPresentation({
+      active: null,
+      editorProject: null,
+      busy: true,
+    }),
     recentPaths: ["/projects/alpha.superi"],
   });
   const save = unavailable.find((action) => action.id === "desktop.file.save");
@@ -116,6 +134,38 @@ test("desktop actions expose current availability and stable recent identity", (
   );
   assert.equal(recent?.availability.enabled, false);
   assert.equal(quit?.availability.enabled, true);
+});
+
+test("history actions reuse action-specific global transaction presentation", () => {
+  const history = projectHistoryPresentation({
+    active: {
+      path: "/projects/alpha.superi",
+      project_id: "project-alpha",
+      project_revision: 17,
+    },
+    editorProject: {
+      project_id: "project-alpha",
+      project_revision: 17,
+      undo_depth: 3,
+      redo_depth: 1,
+      next_undo: "consider_media_relink",
+      next_redo: "upsert_extension",
+    },
+    busy: false,
+  });
+  const palette = desktopShellCommandPaletteActions({
+    active: true,
+    busy: false,
+    history,
+    recentPaths: [],
+  });
+  const undo = palette.find((action) => action.id === "desktop.edit.undo");
+  const redo = palette.find((action) => action.id === "desktop.edit.redo");
+  assert.equal(undo?.title, "Undo Media Relink");
+  assert.equal(undo?.detail, history.undo.detail);
+  assert.deepEqual(undo?.availability, { enabled: true, reason: null });
+  assert.equal(redo?.title, "Redo Extension Update");
+  assert.equal(redo?.detail, history.redo.detail);
 });
 
 test("execution delegates only typed application commands or desktop intents", async () => {

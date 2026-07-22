@@ -373,6 +373,53 @@ test("application presentation unifies menus, tooltips, notifications, status, p
   );
 });
 
+test("global history presentation is action-specific, document-fenced, and shared by every shell surface", () => {
+  const model = read(resolve(appRoot, "src/project-history.ts"));
+  const controls = read(resolve(appRoot, "src/project-history-controls.tsx"));
+  const styles = read(resolve(appRoot, "src/project-history.css"));
+  const palette = read(resolve(appRoot, "src/command-palette.ts"));
+  const bridge = read(resolve(appRoot, "src/desktop-shell.ts"));
+  const app = read(resolve(appRoot, "src/App.tsx"));
+  const native = read(resolve(tauriRoot, "src/desktop_shell.rs"));
+  const packageJson = readJson(resolve(appRoot, "package.json"));
+
+  assert.match(model, /projectHistoryPresentation/);
+  assert.match(model, /projectMutationLabel/);
+  assert.match(model, /project_revision/);
+  assert.match(model, /session-only/);
+  assert.match(controls, /ApplicationTooltip/);
+  assert.match(controls, /aria-live="polite"/);
+  assert.match(controls, /action=\{history\.undo\}/);
+  assert.match(controls, /action=\{history\.redo\}/);
+  assert.match(controls, /aria-label=\{action\.title\}/);
+  assert.match(styles, /\.project-history-controls/);
+  assert.match(app, /projectHistoryPresentation/);
+  assert.match(app, /<ProjectHistoryControls/);
+  assert.match(app, /const action = historyPresentation\[command\]/);
+  assert.match(app, /!action\.enabled/);
+  assert.match(app, /next_undo:/);
+  assert.match(app, /next_redo:/);
+  assert.match(app, /history: historyPresentation/);
+  assert.match(palette, /input\.history\.undo/);
+  assert.match(bridge, /ProjectMutationKind/);
+  assert.match(native, /DesktopProjectMutationKind/);
+  assert.match(native, /snapshot\.undo_title\(\)/);
+  assert.match(native, /snapshot\.redo_title\(\)/);
+  assert.match(
+    native,
+    /snapshot\.undo_title\(\)[\s\S]{0,180}Some\("CmdOrCtrl\+Z"\)/,
+  );
+  assert.match(
+    native,
+    /snapshot\.redo_title\(\)[\s\S]{0,180}Some\("CmdOrCtrl\+Shift\+Z"\)/,
+  );
+  assert.match(packageJson.scripts.test, /project-history\.test\.ts/);
+  assert.doesNotMatch(
+    model + controls,
+    /useSuperiApi|DesktopSuperiTransport|@tauri-apps|\binvoke\b|superi\.project\.command\.execute/,
+  );
+});
+
 test("blocking workflows exercise the production app rather than CI-only smoke packages", () => {
   const frontendWorkflow = read(
     resolve(repositoryRoot, ".github/workflows/frontend.yml"),

@@ -119,6 +119,8 @@ import {
   type CommandPaletteExecutionResult,
 } from "./command-palette.ts";
 import { CommandPalette } from "./command-palette.tsx";
+import { projectHistoryPresentation } from "./project-history.ts";
+import { ProjectHistoryControls } from "./project-history-controls.tsx";
 import {
   capabilityFailureText,
   discoverDesktopCapabilities,
@@ -732,20 +734,28 @@ function ApplicationShell() {
   const latestProjectRevision = useRef(-1);
   const editorSnapshot = editorProject.snapshot;
   const activeProject = projectSnapshot?.active ?? null;
-  const projectIdentityMatches =
-    activeProject !== null &&
-    editorSnapshot !== null &&
-    activeProject.identity.project_id === editorSnapshot.project.project_id;
-  const undoDepth = projectIdentityMatches
-    ? editorSnapshot.project.undo_depth
-    : 0;
-  const redoDepth = projectIdentityMatches
-    ? editorSnapshot.project.redo_depth
-    : 0;
   const busy =
     shellPending ||
     editorProject.status === "loading" ||
     editorProject.status === "refreshing";
+  const historyPresentation = useMemo(
+    () =>
+      projectHistoryPresentation({
+        active:
+          activeProject === null
+            ? null
+            : {
+                path: activeProject.path,
+                project_id: activeProject.identity.project_id,
+                project_revision: activeProject.identity.project_revision,
+              },
+        editorProject: editorSnapshot?.project ?? null,
+        busy,
+      }),
+    [activeProject, busy, editorSnapshot?.project],
+  );
+  const undoDepth = historyPresentation.closeUndoDepth;
+  const redoDepth = historyPresentation.closeRedoDepth;
   const applicationFailures = useMemo(() => {
     const failures: ApplicationFailurePresentation[] = [];
     const lifecycleFailure =
@@ -1044,8 +1054,28 @@ function ApplicationShell() {
               project_revision: activeProject.identity.project_revision,
             },
       recent_paths: projectSnapshot?.recent.map((recent) => recent.path) ?? [],
-      undo_depth: undoDepth,
-      redo_depth: redoDepth,
+      undo_depth:
+        historyPresentation.condition === "ready" ||
+        historyPresentation.condition === "busy"
+          ? historyPresentation.undo.depth
+          : 0,
+      redo_depth:
+        historyPresentation.condition === "ready" ||
+        historyPresentation.condition === "busy"
+          ? historyPresentation.redo.depth
+          : 0,
+      next_undo:
+        (historyPresentation.condition === "ready" ||
+          historyPresentation.condition === "busy") &&
+        historyPresentation.undo.depth > 0
+          ? historyPresentation.undo.mutationKind
+          : null,
+      next_redo:
+        (historyPresentation.condition === "ready" ||
+          historyPresentation.condition === "busy") &&
+        historyPresentation.redo.depth > 0
+          ? historyPresentation.redo.mutationKind
+          : null,
       busy,
       workspace: applicationWorkspacePresentation(state),
       keyboard_shortcuts: keyboardShortcutProfile,
@@ -1075,16 +1105,15 @@ function ApplicationShell() {
     activeProject,
     busy,
     currentWindowLabel,
+    historyPresentation,
     keyboardShortcutProfile,
     keyboardShortcutsHydrated,
     projectSnapshot?.recent,
-    redoDepth,
     shellReady,
     state.activeRouteId,
     state.focusedPanelId,
     state.hiddenPanelIds,
     state.panelLayouts,
-    undoDepth,
   ]);
 
   useEffect(() => {
@@ -1241,8 +1270,16 @@ function ApplicationShell() {
 
   const executeHistory = useCallback(
     async (command: "undo" | "redo") => {
+      const action = historyPresentation[command];
       const snapshot = editorProject.snapshot;
-      if (snapshot === null) return;
+      if (
+        !action.enabled ||
+        snapshot === null ||
+        snapshot.project.project_id !== historyPresentation.projectId ||
+        snapshot.project.project_revision !== historyPresentation.projectRevision
+      ) {
+        return;
+      }
       shellTransaction.current += 1;
       setShellPending(true);
       try {
@@ -1260,7 +1297,12 @@ function ApplicationShell() {
         setShellPending(false);
       }
     },
-    [editorProject.snapshot, executeProjectCommand, refreshProjectSnapshot],
+    [
+      editorProject.snapshot,
+      executeProjectCommand,
+      historyPresentation,
+      refreshProjectSnapshot,
+    ],
   );
 
   const handleIntent = useCallback(
@@ -1385,8 +1427,7 @@ function ApplicationShell() {
         ...desktopShellCommandPaletteActions({
           active: activeProject !== null,
           busy,
-          undoDepth,
-          redoDepth,
+          history: historyPresentation,
           recentPaths:
             projectSnapshot?.recent.map((recent) => recent.path) ?? [],
         }),
@@ -1397,11 +1438,10 @@ function ApplicationShell() {
       commandAvailability,
       keyboardShortcutForCommand,
       keyboardShortcutProfile,
+      historyPresentation,
       projectSnapshot?.recent,
-      redoDepth,
       registry.commandDefinitions,
       state.revision,
-      undoDepth,
     ],
   );
 
@@ -1666,6 +1706,11 @@ function ApplicationShell() {
             </ApplicationTooltip>
           </div>
           <div className="workspace-header-controls">
+            <ProjectHistoryControls
+              history={historyPresentation}
+              onUndo={() => executeHistory("undo")}
+              onRedo={() => executeHistory("redo")}
+            />
             <div
               className="workspace-layout-controls"
               aria-label="Workspace layout"

@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 237362069184a80b9a3c97c1cb6cdb42e4dd2c5556ae4e0cdfd1592967e6f608
-source_files: 346
+source_hash: 50f66e0e6c228b8dee2a441dabfb12e95831e0fe8fd00f3c5cb500c0e41972f0
+source_files: 351
 mapped_at_commit: working-tree
 ---
 
@@ -17,7 +17,8 @@ bounded crash continuity, configurable cross-session keyboard shortcuts, retaine
 codec, and AI capability visibility, explicit process-lifetime execution ownership, and a
 searchable typed command and action catalog, fixed color-critical dark theme, semantic application
 feedback chrome, one dockable shared inspector for workspace, metadata, history, and bounded
-diagnostic evidence, and separate native viewer and authored marker color-data meaning,
+diagnostic evidence, global action-specific engine transaction presentation, and separate native
+viewer and authored marker color-data meaning,
 Cargo workspace configuration, dependency lock,
 shared test-fixture contract, and repository-owned agent workflows. Runtime implementation under
 `open/crates/*` and repository utilities under
@@ -562,6 +563,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W06.C012.md`: Durable implementation evidence for the fixed versioned
   color-critical dark environment, semantic chrome tokens, separate viewer and marker color-data
   tokens, deterministic bootstrap recovery, and preserved native color-pipeline ownership.
+- `docs/checkpoints/P3.W06.C013.md`: Durable implementation evidence for global action-specific undo
+  and redo presentation over the existing engine transaction owner, exact document and revision
+  fences, always-visible accessible controls, shared command-palette and native Edit menu labels,
+  typed transient desktop synchronization, and session-only safe-close visibility.
 - `docs/checkpoints/P3.W06.C015.md`: Durable implementation evidence for the shared all-route
   inspector, metadata, history, and diagnostics panel, honest engine-state projection, existing-owner
   action delegation, exact transient selection restoration, and preserved workspace continuity.
@@ -578,8 +583,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/package.json`: Declares the private production application package, exact toolchain and
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
   framework, command-palette, configurable shortcuts, shared application-presentation and
-  inspector, theme,
-  native desktop-shell, editor-workspace, timeline-canvas, timeline-nesting,
+  inspector, theme, global project-history, native desktop-shell, editor-workspace, timeline-canvas,
+  timeline-nesting,
   timeline-multicam, timeline-clip,
   timeline-transition, caption projection, exchange, and authoring, editorial-feedback, exact
   playback transport, viewer navigation, overlay, comparison, viewer-status, analysis, and
@@ -618,9 +623,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   completed without creating a React transport model.
 - `app/src/command-palette.ts`: Owns the bounded pure action catalog, frozen stable metadata,
   token-complete locale-independent search ranking, current availability projection, encoded recent
-  path identities, effective configurable shortcut projection, and typed delegation to either an
-  application command or desktop shell intent. It imports no generated API binding and owns no
-  transport or mutation authority.
+  path identities, effective configurable shortcut projection, shared action-specific project
+  history presentation, and typed delegation to either an application command or desktop shell
+  intent. It owns no transport or mutation authority.
 - `app/src/command-palette.tsx`: Renders the transient accessible modal palette with search,
   listbox navigation, disabled reasons, stable identity visibility, pending and failure state,
   dismissal, and prior-focus restoration. It invokes only the catalog host supplied by the
@@ -671,6 +676,18 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   media browser styles. Separately named viewer and marker color-data tokens preserve exact
   surround, overlay, comparison, and authored flag meaning without making them interchangeable
   chrome.
+- `app/src/project-history.ts`: Defines the pure frozen global transaction presentation over the
+  active desktop document and generated editor history. It validates exact project and revision
+  agreement, depth and next-action coherence, normalizes every current `ProjectMutationKind`, maps
+  future values to `unknown`, retains last-known safe-close counts, exposes session-only status, and
+  fails closed for no project, synchronization, and busy conditions without transport or mutation
+  authority.
+- `app/src/project-history-controls.tsx`: Renders the always-mounted workspace-header history
+  identity, action-specific undo and redo controls, exact counts, accessible live status, and
+  described disabled reasons. It receives frozen presentation plus existing callbacks and imports no
+  API client, Tauri command, project reducer, or history owner.
+- `app/src/project-history.css`: Defines isolated global history layout, count badges, condition
+  colors, clipped live status, and responsive controls without changing shared workspace ownership.
 - `app/src/panel-workspace.tsx`: Renders the real route panel consumer as four stable dock targets
   with ordered tablists, mounted inactive tabpanels, labeled hide and dock controls, keyboard tab
   navigation, HTML drag reordering and cross-dock movement, pointer and keyboard separators, a
@@ -1011,9 +1028,15 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   hydrates its profile before shell
   synchronization, persists profile changes beside workspace presentation, and derives sidebar
   hints from the same effective binding used by global command dispatch.
+  The same always-mounted header derives one frozen transaction presentation from exact desktop
+  document and editor replacement identities, displays action-specific undo and redo controls on
+  every route, rechecks identity and revision before command execution, and supplies the same titles,
+  counts, mutation kinds, and availability to the palette and native shell. Incoherent state fails
+  closed while last-known same-document counts remain available to the safe-close warning.
 - `app/src/desktop-shell.ts`: Reuses the application workspace presentation contract in the strict
   native shell snapshot and intent bridge, carries the versioned keyboard-shortcut profile through
-  serialized sequence-fenced synchronization, close request resolution, typed event listening,
+  serialized sequence-fenced synchronization, carries typed transient next undo and redo mutation
+  categories beside their depths, close request resolution, typed event listening,
   stable automation identity derivation including the palette opener and encoded recent paths, and
   deterministic
   project-versus-media drop partitioning, safe-close decisions, and document titles that expose only
@@ -1143,8 +1166,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   palette state, and persisted workspace reconciliation against removed routes or panels.
 - `app/tests/command-palette.test.ts`: Proves duplicate rejection, deep descriptor freezing, stable
   recent-path automation identities, token-complete deterministic search, current disabled reasons,
-  effective configured shortcut projection, typed application and desktop invocation, and actionable
-  failure retention.
+  effective configured shortcut projection, exact reuse of action-specific global transaction
+  titles and details, typed application and desktop invocation, and actionable failure retention.
 - `app/tests/application-presentation.test.ts`: Proves exact and distinct policy for all four
   recovery classes, preservation of reviewed transport, project, crash, lifecycle, and last-valid
   context, fail-closed unknown classes, immutable bounded and deduplicated notification history,
@@ -1156,8 +1179,13 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   delegation to current refresh and System owners, and exclusion of Tauri and direct API requests.
 - `app/tests/desktop-shell.test.ts`: Proves deterministic project-versus-media drop classification,
   busy and history-aware close decisions, path-safe document titles for POSIX and Windows paths,
-  complete layout and keyboard-shortcut profile transport, and sequence resumption after a webview
-  reload, plus stable automation identities for palette, workspace, recent, and close paths.
+  complete layout, keyboard-shortcut profile, and typed next-action transport, and sequence
+  resumption after a webview reload, plus stable automation identities for palette, workspace,
+  recent, and close paths.
+- `app/tests/project-history.test.ts`: Proves exact action-specific engine transaction labels,
+  document identity, revision fencing, ready, busy, synchronizing, incoherent, future-value, and
+  no-project conditions, immutable output, session-only status, and retention of conservative
+  safe-close counts without stale cross-document history.
 - `app/tests/keyboard-shortcuts.test.ts`: Proves deterministic schema-1 profile resolution and
   export, transactional collision and native-reservation rejection, inactive-command retention,
   canonical Unicode and platform-aware event capture, IME exclusion, unbinding, and reset behavior.
@@ -1344,8 +1372,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   keyboard-shortcut validation,
   recent-project menu mapping, native clipboard roles, and duplicate-suppressed one-shot window or
   quit resolution into orderly application shutdown. It carries document identity, history depth,
-  busy state, layout, and shortcut preferences only as presentation, emits no authored mutation,
-  and never serializes project history or project bytes.
+  strict typed next undo and redo mutation categories, busy state, layout, and shortcut preferences
+  only as presentation. It rejects detached or depth-incoherent history, derives action-specific
+  Edit menu labels with standard accelerators, emits no authored mutation, and never serializes
+  project history or project bytes.
 - `app/src-tauri/src/crash_diagnostics.rs`: Owns one application-data crash-diagnostics directory,
   exact active-session marker, and 32-record replacement-safe diagnostic journal. It detects an unclean prior
   session, chains a panic hook that retains private panic detail only in the native journal, observes
@@ -1537,10 +1567,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   route matching, accepted revision publication, stale editor refresh rejection, active and recent
   restoration through the real local host, and missing-document degradation that retains recents.
 - `app/src-tauri/tests/desktop_shell_contract.rs`: Proves sequence-fenced document, recent, history,
-  busy, and complete panel-layout synchronization, stable recent, workspace, and palette menu intents,
-  duplicate close suppression, one-shot resolution, schema 1 migration, schema 2 round trip,
-  duplicate placement rejection before live mutation, malformed persisted presentation recovery,
-  nonblocking persistence failure, and private workspace restoration across native state instances.
+  typed next-action, busy, and complete panel-layout synchronization, stable recent, workspace, and
+  palette menu intents, action-specific and future-safe history titles, detached and incoherent
+  history rejection, duplicate close suppression, one-shot resolution, schema 1 migration, schema 2
+  round trip, explicit history exclusion from schema 3 persistence, duplicate placement rejection
+  before live mutation, malformed persisted presentation recovery, nonblocking persistence failure,
+  and private workspace restoration across native state instances.
 - `app/src-tauri/tests/media_import_contract.rs`: Proves picker, drag/drop, recursive folder scan,
   deterministic image-sequence grouping, direct API and automation parity, correlated event
   evidence, durable reopen, and duplicate no-op semantics through the real local project host.
@@ -1952,6 +1984,12 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
   `--viewer-*` plus `--marker-*` color-data tokens remain separate from replaceable `--theme-*`
   chrome. The theme surface is not a public color transform, project setting, persisted workspace
   field, or alternate automation protocol.
+- The global project-history surface is a read-only projection over the active desktop document and
+  generated editor replacement. Its pure model owns labels, identity and revision coherence,
+  availability, counts, and session disclosure only. The workspace controls, command palette, and
+  native Edit menu consume that projection while command execution returns to the existing
+  application project executor and engine history owner. Typed next actions remain transient and
+  absent from every workspace and project persistence record.
 - The shell-local media-management surface now includes one `mutate_project_media_batch` Tauri
   command. Its strict tagged operation union, expected project and library revisions, bounded
   ordered list, deterministic affected-ID evidence, and complete replacement snapshot are mirrored
@@ -2411,6 +2449,14 @@ application reducer, delivery progress reads only public replacement jobs, and r
 return to the existing lifecycle, project refresh, editor refresh, or System routes. Notification
 dismissal changes only bounded process-local presentation history and cannot dismiss a native crash
 diagnostic, cancel a job, clear a project failure, or mutate authored state.
+The sibling `project-history.ts` adapter reads only the active desktop document and the current
+generated editor project's revision, depths, and next mutation strings. Exact identity, revision,
+and depth-action coherence produce a frozen action presentation. `App.tsx` mounts that presentation
+globally, rechecks it before calling the existing generated project command owner, feeds it to the
+palette, and synchronizes normalized action kinds to the native shell. Rust rejects incoherent
+presentation before replacing live menu state, derives Edit titles, and persists neither depths nor
+kinds. Safe close separately retains the last-known same-document counts so a synchronization lag
+cannot silently remove the session-history warning.
 Beside those runtime owners, `DesktopCrashDiagnostics` retains one shell-local active-session marker
 and a bounded replacement-safe journal under application data. Startup turns a surviving marker into an
 unexpected-exit diagnostic before replacing it with the new session. The chained panic hook records
@@ -2644,14 +2690,17 @@ of open runtime behavior.
   must never create a local percentage, scheduler, retry flag, or completion claim.
 - Authored project changes use one typed engine command-history surface. Retained before and after
   snapshots are bounded session state, the selected project snapshot is the only durable state, and
-  domain crates do not own competing undo stacks.
+  domain crates do not own competing undo stacks. Global presentation must match exact document and
+  revision identity, pair every nonzero depth with one normalized next mutation, and return every
+  action to the existing revision-fenced executor.
 - Native shell state is presentation-only. It may retain workspace route, route-local docks,
   ordered tabs, active tabs, bounded dock sizes, hidden panels, focus, active document identity,
   recent paths, busy state, history depth, and a bounded versioned keyboard-shortcut profile, but
   project bytes and undo
   or redo snapshots remain with their existing durable project and engine-session owners. Close
   resolution is one-shot, active operations block closing, and any accepted close saves the active
-  project before document replacement or process exit.
+  project before document replacement or process exit. Typed next-action labels are transient menu
+  presentation and remain absent from schema 3 persistence.
 - Command discovery is a projection over existing owners, not a second automation or mutation
   protocol. Stable catalog identities must delegate only to registered application commands or
   typed desktop shell intents, disabled actions must expose current reasons, and transient query,
@@ -2659,6 +2708,9 @@ of open runtime behavior.
   opener may run from editable controls, while other shortcuts retain editable-target protection.
   Application actions must project their effective configured shortcut rather than stale registry
   defaults.
+  Undo and redo descriptors consume the same frozen history action used by visible workspace
+  controls and native synchronization, so titles, counts, disabled reasons, and mutation meaning do
+  not drift between surfaces.
 - Configurable shortcuts may target only registered application commands. All effective bindings are
   canonical and unique, global overrides require a portable primary modifier, native menu and
   clipboard accelerators remain reserved, and import is an all-or-nothing schema validation. Unknown
@@ -2887,6 +2939,13 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   conditions. Its source contract freezes all-route dock registration, stable command discovery,
   precise refresh and System delegation, exact clear-selection restoration, and direct transport
   exclusion. Strict TypeScript and the production build exercise the mounted consumer.
+- The focused project-history proof exercises action-specific labels for every current engine
+  mutation family, future-safe generic normalization, exact active-document and revision fencing,
+  depth-action coherence, ready, busy, synchronizing, and empty availability, immutable session
+  status, and conservative close counts. Companion palette, desktop bridge, application source, and
+  native contracts prove the same action drives global controls, command discovery, sequence-fenced
+  menu synchronization, strict Rust validation, action-specific Edit titles, unchanged accelerators,
+  and schema 3 history exclusion.
 
 - The focused shell-capability proof composes real current-host GPU, audio, engine codec, public
   codec projection, and AI provider calls, validates exact audio sample ranges and explicit unknown
@@ -3317,6 +3376,12 @@ visible without partial mutation. Native schema 3 persists the profile beside wo
 migrates schema 1 and 2 records to defaults, and recovers an invalid profile independently from a
 valid workspace. Physical platform keyboard-layout and assistive-technology coverage remains a
 separate lane beyond deterministic model, built-consumer, and headless contract proof.
+The workspace header now also exposes one frozen global transaction presentation on every route.
+It matches the active desktop document to the current editor project and revision, names the exact
+next undo and redo mutation, retains session-only counts and close visibility, and disables action
+when the project is absent, busy, incoherent, or synchronizing. The same presentation drives palette
+descriptors and a typed transient native shell projection whose Edit titles retain standard
+accelerators and whose schema 3 record still contains no engine history.
 The same production shell now owns a bounded local crash journal and exact session marker independent
 of public engine and authored project state. It retains safe actionable context across sessions,
 classifies retryable, degraded, user-correctable, and terminal conditions, and exposes workspace,
@@ -3716,6 +3781,13 @@ export remain absent and cannot be inferred from the reference path.
 
 The largest current risk is cross-document drift:
 
+- Global transaction presentation is intentionally derived from two independently refreshed
+  owners. Future work must preserve exact desktop document and editor revision agreement, keep
+  depth and next-action pairs coherent, normalize future mutation strings to an explicit safe
+  category, recheck identity before execution, and retain conservative same-document close counts.
+  Neither native menu labels nor React controls may become a second history owner or persist engine
+  snapshots, depths, branches, or next-action state.
+
 - Application notification history and menu state are intentionally process-local presentation;
   cross-session operational evidence comes only from the native crash, workspace, project, and
   lifecycle owners. Future feedback work must not imply that dismissing a notice dismisses native
@@ -3851,13 +3923,16 @@ The largest current risk is cross-document drift:
   checkpoint-specific proof is authoritative for the agent workflow unless a checkpoint explicitly
   owns hosted CI behavior; this does not convert a failing hosted lane into passing product evidence.
 
-This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
-`mapped_at_commit` is `working-tree`. The remote base was
-`17de32b778420f90d4d82b3ea7d03f1baaf370a6` when this checkpoint began. The later C009
-command-palette delivery at `d7fd4a19afa0a3de76d1aa07a813e7e1471b89cb` and C010 configurable
-shortcut delivery at `9a31f7fdd88ba4a05f1108ca74c1024498015d0a` were integrated before final verification. Its hash
-describes the resulting workspace sources, contracts, durable checkpoint records, command palette,
-configurable shortcuts, and shared application-presentation model and consumers.
+This map is based on synchronized `origin/main` revision
+`ecfe09914b47ef04159ec424b5e173371603fbae` plus this uncommitted checkpoint, so
+`mapped_at_commit` is `working-tree`. That base already includes the C009 command-palette delivery
+at `d7fd4a19afa0a3de76d1aa07a813e7e1471b89cb`, the C010 configurable-shortcut delivery at
+`9a31f7fdd88ba4a05f1108ca74c1024498015d0a`, and the C011 shared application-presentation delivery
+at `a5cedf8bb9c6000fd4a7b78a789502130baf00ed`, the C012 color-critical theme delivery at
+`992d649245f97ff8ea7cf700fa40308d50063e40`, and the C015 shared inspector delivery at
+`ecfe09914b47ef04159ec424b5e173371603fbae`. Its hash describes the resulting workspace sources,
+contracts, durable checkpoint records, command palette, configurable shortcuts, shared application
+presentation, theme, inspector, and global project-history model and consumers.
 
 ## Maintenance notes
 
@@ -3925,6 +4000,12 @@ recent records must stay bounded and deduplicated, title projection must never e
 and exactly one approved close resolution may enter orderly lifecycle shutdown. Never serialize
 engine history into either private shell record or let dialogs, drops, or menus bypass the existing
 project, media, application, or generated command owners.
+Keep `ProjectMutationKind`, the pure label catalog, global controls, palette descriptors, desktop
+sync DTO, Rust enum, native title projection, and focused contracts synchronized. Require exact
+project and revision identity before action enablement, require zero depth with no next action and
+nonzero depth with one next action, map future public strings through `unknown`, and retain standard
+primary-modifier undo and redo accelerators. Never persist depth, next action, before snapshots,
+after snapshots, or branch history in workspace or project presentation storage.
 Keep command registry defaults, canonical token normalization, the schema-1 shortcut model, provider
 dispatch, System panel, sidebar hints, native accelerator reservations, desktop schema migration,
 and focused contracts synchronized. Profile changes and imports must remain transactional, unknown
