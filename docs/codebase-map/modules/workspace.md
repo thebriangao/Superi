@@ -2,7 +2,7 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: c2e8d179fb221b3b3ab75187e75cdfa096b8a11bf0518dc7da3d8921ae8aa355
+source_hash: 17c240d68a566bc9cb710a60c76fb4bf0aef5954bf0be11e6a7ca3d846e20566
 source_files: 324
 mapped_at_commit: working-tree
 ---
@@ -12,6 +12,7 @@ mapped_at_commit: working-tree
 The `workspace` module owns the repository-level product definition, architectural contracts,
 license and codec policy, build sequencing, operating-system test policy, unsafe-boundary audit,
 the production React and Tauri desktop shell including persistent multi-window session ownership,
+customizable registry-backed layout reset and recovery, always-visible engine lifecycle state,
 bounded crash continuity, retained GPU, audio, codec, and AI capability visibility, and explicit
 process-lifetime execution ownership,
 Cargo workspace configuration, dependency lock,
@@ -145,7 +146,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   hierarchy, build commands, vertical slice, phases, invariants, open questions, and claimed current
   status. It identifies the production React and Tauri shell, its explicit headless-engine lifecycle,
   reliable generated transport, single application/project presentation owner, five professional
-  workspace views, and one native GPU editing viewport while retaining honest runtime
+  workspace views, persistent customizable layout status and one-step reset recovery, an
+  always-visible native engine lifecycle projection, and one native GPU editing viewport while retaining honest runtime
   method-routing and viewer-binding limits.
 - `closed/README.md`: Defines `closed/` as a notice for the separately maintained proprietary
   Superi Max tier and states the one-way dependency rule: Max may consume open Superi, while open
@@ -570,8 +572,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   without owning project state or concrete reliability behavior.
 - `app/src/application.ts`: Defines immutable panel, route, and command registries, canonical left,
   center, right, and bottom dock contracts, route-local ordered tab placement, bounded dock sizing,
-  active-tab, visibility, and focus reducers, complete private workspace projection, live-registry
-  reconciliation for restored presentation, panel-only restoration that preserves the
+  active-tab, visibility, and focus reducers, structural default versus custom layout status,
+  deterministic all-route default reset, one exact transient reset undo, complete private workspace
+  projection, live-registry reconciliation for restored presentation, panel-only restoration that preserves the
   window-session-owned route, typed immutable shared public resource selection, and generated-client
   command delegation without transport behavior.
 - `app/src/application-context.tsx`: Provides the sole React application/project presentation owner,
@@ -893,7 +896,13 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   transient application state. It publishes the primary webview's complete route-layout,
   hidden-panel, active-tab, size, and focused-panel continuity only after native window restoration
   hydrates its route, plus
-  active-project continuity, into the shell-local crash owner. It then renders retained classified
+  active-project continuity, into the shell-local crash owner. The workspace header distinguishes
+  default and custom structures, reports restoring, saving, saved, or failed native continuity for
+  the primary window and explicit session-only state for auxiliary windows,
+  resets every route to registry defaults, and exposes one exact undo until later workspace intent
+  supersedes it. A separate bounded header poll projects the authoritative native engine lifecycle
+  and opens the existing System route for detailed control or recovery without creating another
+  lifecycle owner. It then renders retained classified
   diagnostics with exact retry, degraded, user-correction, restart, project-recovery,
   workspace-restoration, and dismissal actions. Those actions reuse the existing application,
   lifecycle, and project owners rather than mutating their state inside the diagnostic view. Its
@@ -945,8 +954,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   mode.
 - `app/src/styles.css`: Defines the responsive, accessible application frame, route rail, four-dock
   grid, tab strips, mounted panel surfaces, resize separators, collapsed empty docks, mobile dock
-  stacking, professional workspace data views, exact audio route and continuity presentation,
-  shared selection, lifecycle controls, process-service detail, media-browser list and grid layouts, thumbnail fallbacks,
+  stacking, responsive layout status, reset and undo controls, explicit engine lifecycle states,
+  professional workspace data views, exact audio route and continuity presentation,
+  shared selection, lifecycle controls, process-service detail, media-browser list and grid layouts,
+  thumbnail fallbacks,
   source and user metadata details, editorial annotation controls, usage summaries, engine API
   status presentation, ranked content-search evidence, structured language and local-content
   artifact editing, stale-analysis warnings, bounded preview raster, horizontally scrollable
@@ -982,8 +993,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   webview menu targeting, primary-only shell synchronization, safe-close composition with the
   persistent window owner, shell-local crash-journal ownership, all four recoverability classes,
   private panic-detail exclusion, mounted dock workspace, accessible tab, hide, drag, dock, and
-  separator behavior, presentation-only ownership, explicit process-service command registration,
-  retained exit and association handles, join-all cleanup, child-process exclusion, native command registration, and reuse of the
+  separator behavior, default and custom layout recovery controls, always-visible authoritative
+  engine status routing, presentation-only ownership, explicit process-service command registration,
+  retained exit and association handles, join-all cleanup, child-process exclusion, native command
+  registration, and reuse of the
   existing lifecycle and project recovery consumers. It also freezes the authoritative four-provider
   capability composition, strict frontend adapter, real System-panel consumer, and absence of audio
   stream mutation.
@@ -1001,8 +1014,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/application-framework.test.ts`: Verifies duplicate and reference validation, immutable
   routing, canonical dock defaults, cross-dock ordered tabs, bounded resize, active-tab focus,
   retained hidden placement, deeply frozen layout state, complete workspace projection, exact
-  public-resource selection, local-first asynchronous API command delegation, shortcut normalization,
-  editable-target safety, and persisted workspace reconciliation against removed routes or panels.
+  public-resource selection, structural default and custom detection, all-route registry reset,
+  exact deeply frozen one-step undo, superseding-intent invalidation, local-first asynchronous API
+  command delegation, shortcut normalization, editable-target safety, and persisted workspace reconciliation against removed routes or panels.
 - `app/tests/desktop-shell.test.ts`: Proves deterministic project-versus-media drop classification,
   busy and history-aware close decisions, path-safe document titles for POSIX and Windows paths,
   complete layout payload transport, and sequence resumption after a webview reload.
@@ -2325,8 +2339,11 @@ frontend resolution enters the existing orderly application lifecycle. Window cl
 and direct operating-system exit share this path, including when auxiliary webviews remain open.
 Workspace route, route-local dock placement, ordered tabs, active tabs, bounded dock sizes, hidden
 panels, and focus persist privately in schema 2 and are reconciled against the live registry before
-use. Schema 1 records migrate with empty layout intent so React can supply current registry defaults
-without the native owner inventing application identities.
+use. The application reducer compares structural placement and sizing against those registry
+defaults, resets every route and global hidden state atomically, and retains the exact prior
+presentation for one transient undo that never enters project history or native persistence. Schema
+1 records migrate with empty layout intent so React can supply current registry defaults without the
+native owner inventing application identities.
 
 Beside the engine lifecycle, Tauri manages one serialized `DesktopProjectLifecycle` initialized
 with the application recovery root. Its concrete backend calls only `LocalProjectHost` creation,
@@ -3051,7 +3068,8 @@ starts or reconfigures audio, loads a model, or changes project, route, workspac
 artifact authority.
 Above that unchanged transport, `application.ts` owns deterministic route, panel, and command
 registries plus immutable per-route four-dock layout, ordered tabs, bounded sizing, hidden placement,
-active-tab and focus reconciliation, complete private continuity projection, and one immutable typed
+active-tab and focus reconciliation, structural default and custom status, all-route default reset,
+one exact transient reset undo, complete private continuity projection, and one immutable typed
 public-resource selection. `panel-workspace.tsx` is the real consumer with labeled dock and hide
 controls, pointer and keyboard separators, ordered drag docking, accessible tablists, and mounted
 inactive tabpanels that retain component-local state.
@@ -3198,7 +3216,10 @@ from source-media availability at the exact playhead and does not claim decoded 
 multicam mixing.
 No view takes engine or transport ownership, and unavailable runtime behavior remains honest.
 The always-mounted application shell now restores workspace presentation through the live registry,
-including route-local dock placement, tab order, active tabs, sizes, visibility, and focus. It keeps
+including route-local dock placement, tab order, active tabs, sizes, visibility, and focus. Its
+header reports structural layout condition plus acknowledged continuity progress, performs a
+deterministic all-route reset with one-step undo, and polls the authoritative native engine lifecycle
+for an always-visible state that routes detailed control to System. It keeps
 native menus synchronized with active project and session-history availability, opens project
 and media paths through native dialogs or unambiguous drops, and resolves close requests through
 busy checks, durable save, and an explicit history-loss warning. Tauri owns the stable menu surface,
@@ -3580,7 +3601,11 @@ filter removed registry identities, place newly registered panels by their decla
 each hidden panel's last dock, keep every visible dock's active tab explicit, clamp interactive
 sizes to the native bounds, and preserve window-owned routes during ordinary shell restoration.
 The native schema must reject duplicate routes, docks, or routed panels, hidden active tabs, invalid
-focus, and out-of-range sizes before live mutation. Project-session restoration must revalidate the active path,
+focus, and out-of-range sizes before live mutation. Keep layout condition derived from structural
+hidden, placement, order, and size intent, keep reset scoped explicitly to every route, and keep its
+exact undo transient and invalidated by later workspace intent. The header engine projection must
+remain a read-only poll of the native lifecycle owner and route detailed control or recovery to
+System. Project-session restoration must revalidate the active path,
 recent records must stay bounded and deduplicated, title projection must never expose parent paths,
 and exactly one approved close resolution may enter orderly lifecycle shutdown. Never serialize
 engine history into either private shell record or let dialogs, drops, or menus bypass the existing

@@ -184,6 +184,86 @@ kbd {
   letter-spacing: -0.02em;
 }
 
+.workspace-route-heading {
+  min-width: 172px;
+}
+
+.engine-state-control {
+  display: inline-flex;
+  min-height: 27px;
+  align-items: center;
+  gap: 7px;
+  margin-top: 9px;
+  padding: 0 9px;
+  border-color: #3f4b50;
+  color: #9fa7a8;
+  background: #1b2023;
+  font-size: 11px;
+}
+
+.engine-state-control strong {
+  color: #d8eee2;
+  font-size: 11px;
+}
+
+.engine-state-control[data-engine-state="connecting"] strong,
+.engine-state-control[data-engine-state="starting"] strong,
+.engine-state-control[data-engine-state="resuming"] strong,
+.engine-state-control[data-engine-state="suspending"] strong,
+.engine-state-control[data-engine-state="stopping"] strong {
+  color: #f1d39e;
+}
+
+.engine-state-control[data-engine-state="failed"] strong,
+.engine-state-control[data-engine-state="unavailable"] strong {
+  color: #edb5a8;
+}
+
+.workspace-header-controls {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  justify-items: end;
+}
+
+.workspace-layout-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.workspace-layout-controls button {
+  min-height: 28px;
+  padding: 0 10px;
+  border-color: #41494d;
+  color: #c8ceca;
+  background: #202529;
+  font-size: 11px;
+}
+
+.workspace-layout-state {
+  min-width: 91px;
+  color: #9ca5a6;
+  font-size: 11px;
+  font-weight: 650;
+  text-align: right;
+}
+
+.workspace-layout-state[data-layout-condition="custom"] {
+  color: #cfeeff;
+}
+
+.workspace-layout-state[data-continuity-phase="restoring"],
+.workspace-layout-state[data-continuity-phase="saving"] {
+  color: #f1d39e;
+}
+
+.workspace-layout-state[data-continuity-phase="failed"] {
+  color: #edb5a8;
+}
+
 .panel-controls {
   display: flex;
   flex-wrap: wrap;
@@ -4226,6 +4306,19 @@ button.timeline-playhead-handle span {
     flex-direction: column;
     gap: 12px;
     padding: 14px 16px;
+  }
+
+  .workspace-header-controls {
+    width: 100%;
+    justify-items: start;
+  }
+
+  .workspace-layout-controls {
+    justify-content: flex-start;
+  }
+
+  .workspace-layout-state {
+    text-align: left;
   }
 
   .panel-controls {

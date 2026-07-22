@@ -315,7 +315,11 @@ routing, immutable route-local dock and tab layouts, panel visibility, commands,
 selection, and the last public editor snapshot presented across editing, compositing, color, audio,
 and delivery workspaces. Panel placement, tab order, active tabs, bounded dock sizes, visibility,
 and focus are reconciled against the live registry and retained through private desktop and crash
-continuity records without entering project transactions or document identity. This direction gives
+continuity records without entering project transactions or document identity. The workspace header
+reports whether those saved layouts are default or custom, can reset every route to registry
+defaults, and retains one exact transient undo until later layout intent supersedes it. The same
+header projects the authoritative native engine lifecycle continuously and routes detailed control
+or recovery to the existing System workspace rather than becoming another engine owner. This direction gives
 Superi
 access to a mature interface ecosystem and a large design and engineering talent pool while keeping
 the performance-critical media pipeline native and GPU-driven.

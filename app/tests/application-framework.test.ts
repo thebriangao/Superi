@@ -5,6 +5,7 @@ import {
   APPLICATION_PANEL_DOCK_SIZE_BOUNDS,
   ApplicationRegistry,
   applicationRoutePanelLayout,
+  applicationWorkspaceLayoutStatus,
   applicationWorkspacePresentation,
   createApplicationState,
   executeApplicationCommand,
@@ -259,6 +260,131 @@ test("panel layouts dock, tab, resize, hide, and restore without losing immutabl
     presentation.panel_layouts[0].docks[1].panel_ids,
     ["application.overview", "application.selection"],
   );
+});
+
+test("workspace layouts report customization and reset every route with exact one-step undo", () => {
+  const registry = new ApplicationRegistry(definitions());
+  const selection = {
+    resource: "superi.engine.introspection",
+    schema_version: "1.0.0",
+    identity: "engine",
+    revision: 11,
+  } as const;
+  const initial = createApplicationState(registry);
+  assert.deepEqual(applicationWorkspaceLayoutStatus(registry, initial), {
+    condition: "default",
+    canReset: false,
+    canUndoReset: false,
+  });
+
+  const selected = reduceApplicationState(registry, initial, {
+    type: "replace_selection",
+    items: [selection],
+  });
+  const tabbed = reduceApplicationState(registry, selected, {
+    type: "dock_panel",
+    panelId: "application.selection",
+    dockId: "center",
+    index: 1,
+  });
+  const hidden = reduceApplicationState(registry, tabbed, {
+    type: "toggle_panel",
+    panelId: "application.selection",
+  });
+  const system = reduceApplicationState(registry, hidden, {
+    type: "navigate",
+    routeId: "system",
+  });
+  const customized = reduceApplicationState(registry, system, {
+    type: "dock_panel",
+    panelId: "application.lifecycle",
+    dockId: "left",
+  });
+  const beforeReset = applicationWorkspacePresentation(customized);
+
+  assert.deepEqual(applicationWorkspaceLayoutStatus(registry, customized), {
+    condition: "custom",
+    canReset: true,
+    canUndoReset: false,
+  });
+
+  const reset = reduceApplicationState(registry, customized, {
+    type: "reset_workspace_layouts",
+  });
+  assert.equal(reset.activeRouteId, "system");
+  assert.deepEqual(reset.hiddenPanelIds, []);
+  assert.deepEqual(reset.selection.items, [selection]);
+  assert.equal(reset.focusedPanelId, "application.lifecycle");
+  assert.deepEqual(
+    applicationRoutePanelLayout(reset, "workspace").docks.map((dock) => [
+      dock.dockId,
+      dock.panelIds,
+      dock.sizeBasisPoints,
+    ]),
+    applicationRoutePanelLayout(initial, "workspace").docks.map((dock) => [
+      dock.dockId,
+      dock.panelIds,
+      dock.sizeBasisPoints,
+    ]),
+  );
+  assert.deepEqual(
+    applicationRoutePanelLayout(reset, "system").docks.map((dock) => [
+      dock.dockId,
+      dock.panelIds,
+      dock.sizeBasisPoints,
+    ]),
+    applicationRoutePanelLayout(initial, "system").docks.map((dock) => [
+      dock.dockId,
+      dock.panelIds,
+      dock.sizeBasisPoints,
+    ]),
+  );
+  assert.deepEqual(applicationWorkspaceLayoutStatus(registry, reset), {
+    condition: "default",
+    canReset: false,
+    canUndoReset: true,
+  });
+  assert.ok(Object.isFrozen(reset.workspaceLayoutResetUndo));
+  assert.ok(Object.isFrozen(reset.workspaceLayoutResetUndo?.panel_layouts));
+  assert.ok(
+    Object.isFrozen(
+      reset.workspaceLayoutResetUndo?.panel_layouts[0]?.docks[0]?.panel_ids,
+    ),
+  );
+
+  const undone = reduceApplicationState(registry, reset, {
+    type: "undo_workspace_layout_reset",
+  });
+  assert.deepEqual(applicationWorkspacePresentation(undone), beforeReset);
+  assert.deepEqual(undone.selection.items, [selection]);
+  assert.equal(undone.workspaceLayoutResetUndo, null);
+  assert.deepEqual(applicationWorkspaceLayoutStatus(registry, undone), {
+    condition: "custom",
+    canReset: true,
+    canUndoReset: false,
+  });
+
+  const resetAgain = reduceApplicationState(registry, undone, {
+    type: "reset_workspace_layouts",
+  });
+  const navigated = reduceApplicationState(registry, resetAgain, {
+    type: "navigate",
+    routeId: "workspace",
+  });
+  assert.equal(navigated.workspaceLayoutResetUndo, null);
+  assert.equal(
+    reduceApplicationState(registry, navigated, {
+      type: "undo_workspace_layout_reset",
+    }),
+    navigated,
+  );
+
+  const restored = restoreApplicationWorkspace(registry, initial, beforeReset);
+  assert.deepEqual(applicationWorkspaceLayoutStatus(registry, restored), {
+    condition: "custom",
+    canReset: true,
+    canUndoReset: false,
+  });
 });
 
 test("shared selection preserves exact immutable public resource references", () => {

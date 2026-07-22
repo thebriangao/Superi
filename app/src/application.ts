@@ -88,6 +88,7 @@ export interface ApplicationState {
   readonly visiblePanelIds: readonly string[];
   readonly focusedPanelId: string | null;
   readonly panelLayouts: readonly ApplicationRoutePanelLayout[];
+  readonly workspaceLayoutResetUndo: ApplicationWorkspacePresentation | null;
   readonly selection: ApplicationSelection;
 }
 
@@ -96,6 +97,12 @@ export interface ApplicationWorkspacePresentation {
   readonly hidden_panel_ids: readonly string[];
   readonly focused_panel_id: string | null;
   readonly panel_layouts: readonly ApplicationRoutePanelLayoutPresentation[];
+}
+
+export interface ApplicationWorkspaceLayoutStatus {
+  readonly condition: "default" | "custom";
+  readonly canReset: boolean;
+  readonly canUndoReset: boolean;
 }
 
 export type ApplicationAction =
@@ -108,6 +115,8 @@ export type ApplicationAction =
       readonly type: "restore_workspace_presentation";
       readonly workspace: ApplicationWorkspacePresentation;
     }
+  | { readonly type: "reset_workspace_layouts" }
+  | { readonly type: "undo_workspace_layout_reset" }
   | { readonly type: "toggle_panel"; readonly panelId: string }
   | { readonly type: "focus_panel"; readonly panelId: string }
   | { readonly type: "activate_panel"; readonly panelId: string }
@@ -315,6 +324,7 @@ export function createApplicationState<Renderer>(
     visiblePanelIds: route.panelIds,
     focusedPanelId: preferredPanel(route, route.panelIds),
     panelLayouts: createPanelLayouts(registry, [], []),
+    workspaceLayoutResetUndo: null,
     selection: emptySelection(),
   });
 }
@@ -332,10 +342,33 @@ export function reduceApplicationState<Renderer>(
         ...action.workspace,
         active_route_id: state.activeRouteId,
       });
+    case "reset_workspace_layouts": {
+      if (
+        applicationWorkspaceLayoutStatus(registry, state).condition === "default"
+      ) {
+        return state;
+      }
+      const route = registry.route(state.activeRouteId);
+      return nextState(state, {
+        hiddenPanelIds: [],
+        visiblePanelIds: route.panelIds,
+        focusedPanelId: preferredPanel(route, route.panelIds),
+        panelLayouts: createPanelLayouts(registry, [], []),
+        workspaceLayoutResetUndo: applicationWorkspacePresentation(state),
+      });
+    }
+    case "undo_workspace_layout_reset":
+      return state.workspaceLayoutResetUndo === null
+        ? state
+        : restoreApplicationWorkspace(
+            registry,
+            state,
+            state.workspaceLayoutResetUndo,
+          );
     case "navigate": {
       const route = registry.route(action.routeId);
       if (route.id === state.activeRouteId) {
-        return state;
+        return clearWorkspaceLayoutResetUndo(state);
       }
       const visiblePanelIds = visiblePanels(route, state.hiddenPanelIds);
       const layout = applicationRoutePanelLayout(state, route.id);
@@ -347,6 +380,7 @@ export function reduceApplicationState<Renderer>(
           layout,
           visiblePanelIds,
         ),
+        workspaceLayoutResetUndo: null,
       });
     }
     case "toggle_panel": {
@@ -394,6 +428,7 @@ export function reduceApplicationState<Renderer>(
         visiblePanelIds,
         focusedPanelId,
         panelLayouts,
+        workspaceLayoutResetUndo: null,
       });
     }
     case "focus_panel":
@@ -414,11 +449,12 @@ export function reduceApplicationState<Renderer>(
         state.focusedPanelId === action.panelId &&
         layout === currentLayout
       ) {
-        return state;
+        return clearWorkspaceLayoutResetUndo(state);
       }
       return nextState(state, {
         focusedPanelId: action.panelId,
         panelLayouts: replaceRouteLayout(state.panelLayouts, layout),
+        workspaceLayoutResetUndo: null,
       });
     }
     case "dock_panel": {
@@ -449,6 +485,7 @@ export function reduceApplicationState<Renderer>(
       return nextState(state, {
         focusedPanelId: action.panelId,
         panelLayouts: replaceRouteLayout(state.panelLayouts, layout),
+        workspaceLayoutResetUndo: null,
       });
     }
     case "resize_panel_dock": {
@@ -466,7 +503,7 @@ export function reduceApplicationState<Renderer>(
         (dock) => dock.dockId === action.dockId,
       )!;
       if (currentDock.sizeBasisPoints === sizeBasisPoints) {
-        return state;
+        return clearWorkspaceLayoutResetUndo(state);
       }
       const layout: ApplicationRoutePanelLayout = {
         ...currentLayout,
@@ -478,6 +515,7 @@ export function reduceApplicationState<Renderer>(
       };
       return nextState(state, {
         panelLayouts: replaceRouteLayout(state.panelLayouts, layout),
+        workspaceLayoutResetUndo: null,
       });
     }
     case "replace_selection": {
@@ -575,6 +613,7 @@ export function restoreApplicationWorkspace<Renderer>(
     visiblePanelIds,
     focusedPanelId,
     panelLayouts,
+    workspaceLayoutResetUndo: null,
   });
 }
 
@@ -588,27 +627,51 @@ export function applicationRoutePanelLayout(
 export function applicationWorkspacePresentation(
   state: ApplicationState,
 ): ApplicationWorkspacePresentation {
-  return Object.freeze({
+  return freezeWorkspacePresentation({
     active_route_id: state.activeRouteId,
-    hidden_panel_ids: Object.freeze([...state.hiddenPanelIds]),
+    hidden_panel_ids: state.hiddenPanelIds,
     focused_panel_id: state.focusedPanelId,
-    panel_layouts: Object.freeze(
-      state.panelLayouts.map((layout) =>
-        Object.freeze({
-          route_id: layout.routeId,
-          docks: Object.freeze(
-            layout.docks.map((dock) =>
-              Object.freeze({
-                dock_id: dock.dockId,
-                panel_ids: Object.freeze([...dock.panelIds]),
-                active_panel_id: dock.activePanelId,
-                size_basis_points: dock.sizeBasisPoints,
-              }),
-            ),
-          ),
-        }),
-      ),
-    ),
+    panel_layouts: state.panelLayouts.map((layout) => ({
+      route_id: layout.routeId,
+      docks: layout.docks.map((dock) => ({
+        dock_id: dock.dockId,
+        panel_ids: dock.panelIds,
+        active_panel_id: dock.activePanelId,
+        size_basis_points: dock.sizeBasisPoints,
+      })),
+    })),
+  });
+}
+
+export function applicationWorkspaceLayoutStatus<Renderer>(
+  registry: ApplicationRegistry<Renderer>,
+  state: ApplicationState,
+): ApplicationWorkspaceLayoutStatus {
+  const defaults = createPanelLayouts(registry, [], []);
+  const custom =
+    state.hiddenPanelIds.length > 0 ||
+    defaults.some((defaultLayout) => {
+      const current = state.panelLayouts.find(
+        (layout) => layout.routeId === defaultLayout.routeId,
+      );
+      return (
+        current === undefined ||
+        current.docks.length !== defaultLayout.docks.length ||
+        defaultLayout.docks.some((defaultDock, index) => {
+          const currentDock = current.docks[index];
+          return (
+            currentDock === undefined ||
+            currentDock.dockId !== defaultDock.dockId ||
+            currentDock.sizeBasisPoints !== defaultDock.sizeBasisPoints ||
+            !sameStringArray(currentDock.panelIds, defaultDock.panelIds)
+          );
+        })
+      );
+    });
+  return Object.freeze({
+    condition: custom ? "custom" : "default",
+    canReset: custom,
+    canUndoReset: state.workspaceLayoutResetUndo !== null,
   });
 }
 
@@ -964,6 +1027,51 @@ function nextState(
   });
 }
 
+function clearWorkspaceLayoutResetUndo(
+  state: ApplicationState,
+): ApplicationState {
+  return state.workspaceLayoutResetUndo === null
+    ? state
+    : nextState(state, { workspaceLayoutResetUndo: null });
+}
+
+function freezeWorkspacePresentation(
+  workspace: ApplicationWorkspacePresentation,
+): ApplicationWorkspacePresentation {
+  return Object.freeze({
+    active_route_id: workspace.active_route_id,
+    hidden_panel_ids: Object.freeze([...workspace.hidden_panel_ids]),
+    focused_panel_id: workspace.focused_panel_id,
+    panel_layouts: Object.freeze(
+      workspace.panel_layouts.map((layout) =>
+        Object.freeze({
+          route_id: layout.route_id,
+          docks: Object.freeze(
+            layout.docks.map((dock) =>
+              Object.freeze({
+                dock_id: dock.dock_id,
+                panel_ids: Object.freeze([...dock.panel_ids]),
+                active_panel_id: dock.active_panel_id,
+                size_basis_points: dock.size_basis_points,
+              }),
+            ),
+          ),
+        }),
+      ),
+    ),
+  });
+}
+
+function sameStringArray(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
+}
+
 function freezeState(state: ApplicationState): ApplicationState {
   return Object.freeze({
     ...state,
@@ -984,6 +1092,10 @@ function freezeState(state: ApplicationState): ApplicationState {
         }),
       ),
     ),
+    workspaceLayoutResetUndo:
+      state.workspaceLayoutResetUndo === null
+        ? null
+        : freezeWorkspacePresentation(state.workspaceLayoutResetUndo),
     selection: state.selection,
   });
 }

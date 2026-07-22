@@ -64,6 +64,11 @@ and bounded sizes while the global hidden set remembers each panel's placement. 
 consumer exposes labeled tab, hide, dock, drag, and pointer or keyboard resize behavior, keeps
 inactive tabpanels mounted, and projects the complete reconciled layout into both normal desktop
 continuity and crash recovery without entering project history, document identity, or safe closing.
+Structural placement, order, size, and hidden intent produce an explicit default or custom state.
+One all-route reset restores registry defaults and keeps an exact transient undo until later
+workspace intent supersedes it. The header reports restoring, saving, saved, or failed primary
+continuity, explicit session-only auxiliary state, and polls the native engine lifecycle for an
+always-visible status whose detailed controls remain in the existing System owner.
 
 The same shell now owns one read-only seven-service process snapshot above its existing lifecycle.
 It retains the application-exit and bounded project-association task handles directly, composes the
@@ -141,7 +146,9 @@ platform clipboard roles, projects a basename-only document title, persists sche
 docks, ordered tabs, bounded sizes, visibility, and focus with schema 1 migration,
 and suppresses duplicate close requests until one resolution grants a single following close event.
 The always-mounted React shell uses native dialogs and unambiguous drops, then routes document,
-media, workspace, and history intent through existing owners. Window close, menu quit, and direct
+media, workspace, and history intent through existing owners. Its layout header acknowledges native
+continuity progress, resets all registry layouts with transient undo, and projects read-only engine
+lifecycle state while routing detailed recovery to System. Window close, menu quit, and direct
 operating-system exit requests share that safe-close handshake. The desktop project lifecycle
 atomically retains its active path and bounded recents between launches, revalidates the active
 project through `LocalProjectHost`, and never persists the engine's session-only undo or redo stack.
@@ -317,9 +324,11 @@ The production desktop lifecycle is implemented without creating a second engine
    cancellation. Transport retains 64 events for cursor replay and converts only reviewed failure
    context to `PublicApiError`.
 7. React renders the serialized application and engine phases, pending acknowledgement, safe failure,
-   and recovery affordances through the two shell-local lifecycle commands. The System panel
-   separately polls process ownership and renders each service phase, unit count, pending join, and
-   exact thread name. It independently renders exact persistent window, monitor, focus, fullscreen, previous placement,
+   and recovery affordances through the two shell-local lifecycle commands. A bounded read-only
+   header poll keeps engine phase visible from every route and opens System for detailed control.
+   The System panel separately polls process ownership and renders each service phase, unit count,
+   pending join, and exact thread name. It independently renders exact persistent window, monitor,
+   focus, fullscreen, previous placement,
    persistence, recovery, and recently closed state through strict window-session commands.
    In parallel, one shell-local crash owner writes an exact active-session marker and a bounded
    replacement-safe journal under application data. Startup converts a surviving marker into an unexpected-exit
@@ -338,6 +347,7 @@ The production desktop lifecycle is implemented without creating a second engine
    projection remain transport-owned; the provider and React consumer own no engine behavior.
 9. `app/src/application.ts` defines deterministic routes, panels, commands, immutable four-dock
    route layouts, ordered and active tabs, bounded sizes, hidden placement, registry reconciliation,
+   structural default or custom status, deterministic all-route reset, one exact transient undo,
    complete private continuity projection, and one immutable typed public-resource selection without
    importing transport or engine owners. `app/src/panel-workspace.tsx` is the accessible real
    consumer and dispatches only presentation actions.

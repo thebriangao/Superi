@@ -166,6 +166,37 @@ test("panel workspace exposes real dock, tab, resize, hide, and continuity behav
   );
 });
 
+test("workspace header exposes saved layout recovery and authoritative engine state", () => {
+  const application = read(resolve(appRoot, "src/application.ts"));
+  const app = read(resolve(appRoot, "src/App.tsx"));
+  const styles = read(resolve(appRoot, "src/styles.css"));
+
+  assert.match(application, /applicationWorkspaceLayoutStatus/);
+  assert.match(application, /type: "reset_workspace_layouts"/);
+  assert.match(application, /type: "undo_workspace_layout_reset"/);
+  assert.match(application, /workspaceLayoutResetUndo/);
+  assert.match(app, /Reset all layouts/);
+  assert.match(app, /Undo reset/);
+  assert.match(app, /Default, saved/);
+  assert.match(app, /Custom, saved/);
+  assert.match(app, /Default, session only/);
+  assert.match(app, /latestHeaderLifecycleRevision/);
+  assert.match(app, /await getDesktopLifecycle\(\)/);
+  assert.match(app, /window\.setTimeout\(refresh, 1_000\)/);
+  assert.match(app, /data-engine-state/);
+  assert.match(
+    app,
+    /executeCommand\("application\.route\.system"\)/,
+  );
+  assert.match(styles, /\.workspace-layout-controls/);
+  assert.match(styles, /\.workspace-layout-state/);
+  assert.match(styles, /\.engine-state-control/);
+  assert.doesNotMatch(
+    application,
+    /@tauri-apps|desktop_lifecycle_snapshot|requestDesktopLifecycle/,
+  );
+});
+
 test("blocking workflows exercise the production app rather than CI-only smoke packages", () => {
   const frontendWorkflow = read(
     resolve(repositoryRoot, ".github/workflows/frontend.yml"),

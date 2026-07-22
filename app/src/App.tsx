@@ -12,6 +12,7 @@ import { confirm, message, open, save } from "@tauri-apps/plugin-dialog";
 
 import {
   ApplicationRegistry,
+  applicationWorkspaceLayoutStatus,
   applicationWorkspacePresentation,
   type ApplicationSelectionReference,
 } from "./application.ts";
@@ -144,6 +145,55 @@ const APPLICATION_LABELS: Record<
   failed: "Needs attention",
   stopped: "Stopped",
 };
+
+const ENGINE_LABELS: Record<
+  DesktopLifecycleSnapshot["engine_phase"],
+  string
+> = {
+  starting: "Starting",
+  ready: "Ready",
+  suspending: "Suspending",
+  suspended: "Suspended",
+  resuming: "Resuming",
+  stopping: "Stopping",
+  failed: "Needs attention",
+  stopped: "Stopped",
+};
+
+type WorkspaceContinuityPhase =
+  | "restoring"
+  | "saving"
+  | "saved"
+  | "failed"
+  | "session_only";
+
+const WORKSPACE_LAYOUT_LABELS: Readonly<
+  Record<
+    WorkspaceContinuityPhase,
+    Readonly<Record<"default" | "custom", string>>
+  >
+> = Object.freeze({
+  restoring: Object.freeze({
+    default: "Default, restoring",
+    custom: "Custom, restoring",
+  }),
+  saving: Object.freeze({
+    default: "Default, saving",
+    custom: "Custom, saving",
+  }),
+  saved: Object.freeze({
+    default: "Default, saved",
+    custom: "Custom, saved",
+  }),
+  failed: Object.freeze({
+    default: "Default, not saved",
+    custom: "Custom, not saved",
+  }),
+  session_only: Object.freeze({
+    default: "Default, session only",
+    custom: "Custom, session only",
+  }),
+});
 
 const APPLICATION_REGISTRY = new ApplicationRegistry<ComponentType>({
   defaultRouteId: "editing",
@@ -302,6 +352,10 @@ function ApplicationShell() {
     executeProjectCommand,
   } = useApplication();
   const route = registry.route(state.activeRouteId);
+  const workspaceLayoutStatus = applicationWorkspaceLayoutStatus(
+    registry,
+    state,
+  );
   const currentWindowLabel = useMemo(
     () => (isTauri() ? getCurrentWebviewWindow().label : "main"),
     [],
@@ -309,6 +363,56 @@ function ApplicationShell() {
   const [windowSessionHydrated, setWindowSessionHydrated] = useState(false);
   const [windowContinuityFailure, setWindowContinuityFailure] =
     useState<string | null>(null);
+  const [headerLifecycle, setHeaderLifecycle] =
+    useState<DesktopLifecycleSnapshot | null>(null);
+  const [headerLifecycleUnavailable, setHeaderLifecycleUnavailable] =
+    useState(false);
+  const latestHeaderLifecycleRevision = useRef(-1);
+
+  useEffect(() => {
+    if (!isTauri()) {
+      setHeaderLifecycleUnavailable(true);
+      return;
+    }
+    let active = true;
+    let timer: number | null = null;
+    const refresh = async () => {
+      try {
+        const snapshot = await getDesktopLifecycle();
+        if (!active) return;
+        if (snapshot.revision > latestHeaderLifecycleRevision.current) {
+          latestHeaderLifecycleRevision.current = snapshot.revision;
+          setHeaderLifecycle(snapshot);
+        }
+        setHeaderLifecycleUnavailable(false);
+      } catch {
+        if (active) setHeaderLifecycleUnavailable(true);
+      } finally {
+        if (active) timer = window.setTimeout(refresh, 1_000);
+      }
+    };
+    void refresh();
+    return () => {
+      active = false;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, []);
+
+  const headerEngineState = headerLifecycleUnavailable
+    ? "unavailable"
+    : headerLifecycle?.engine_phase ?? "connecting";
+  const headerEngineLabel = headerLifecycleUnavailable
+    ? "Unavailable"
+    : headerLifecycle === null
+      ? "Connecting"
+      : ENGINE_LABELS[headerLifecycle.engine_phase];
+  const headerEngineDetail =
+    headerLifecycleUnavailable
+      ? "Engine lifecycle state is unavailable. Open System for recovery details."
+      : (headerLifecycle?.failure?.summary ??
+        (headerLifecycle === null
+          ? "Connecting to the engine lifecycle owner."
+          : `Engine generation ${headerLifecycle.engine_generation}, lifecycle revision ${headerLifecycle.revision}. Open System for controls.`));
 
   useEffect(() => {
     if (!isTauri()) {
@@ -378,6 +482,11 @@ function ApplicationShell() {
   const [shellPending, setShellPending] = useState(false);
   const [shellReady, setShellReady] = useState(false);
   const [shellFailure, setShellFailure] = useState<string | null>(null);
+  const [workspaceContinuityPhase, setWorkspaceContinuityPhase] =
+    useState<WorkspaceContinuityPhase>(
+      currentWindowLabel === "main" ? "restoring" : "session_only",
+    );
+  const workspaceSyncSequence = useRef(0);
   const shellTransaction = useRef(0);
   const latestProjectRevision = useRef(-1);
   const editorSnapshot = editorProject.snapshot;
@@ -496,6 +605,9 @@ function ApplicationShell() {
 
   useEffect(() => {
     if (!shellReady || currentWindowLabel !== "main") return;
+    workspaceSyncSequence.current += 1;
+    const sequence = workspaceSyncSequence.current;
+    setWorkspaceContinuityPhase("saving");
     void syncDesktopShell({
       active:
         activeProject === null
@@ -514,15 +626,24 @@ function ApplicationShell() {
       .then((snapshot) => {
         if (snapshot.failure !== null) {
           setShellFailure(`${snapshot.failure.title} ${snapshot.failure.action}`);
+          if (sequence === workspaceSyncSequence.current) {
+            setWorkspaceContinuityPhase("failed");
+          }
         } else {
           setShellFailure(null);
+          if (sequence === workspaceSyncSequence.current) {
+            setWorkspaceContinuityPhase("saved");
+          }
         }
       })
-      .catch(() =>
+      .catch(() => {
         setShellFailure(
           "Native desktop controls could not be synchronized. Use the visible workspace controls.",
-        ),
-      );
+        );
+        if (sequence === workspaceSyncSequence.current) {
+          setWorkspaceContinuityPhase("failed");
+        }
+      });
   }, [
     activeProject,
     busy,
@@ -927,28 +1048,73 @@ function ApplicationShell() {
 
       <section className="application-workspace" aria-labelledby="route-title">
         <header className="workspace-header">
-          <div>
+          <div className="workspace-route-heading">
             <p className="eyebrow">Application route</p>
             <h2 id="route-title">{route.title}</h2>
+            <button
+              className="engine-state-control"
+              type="button"
+              data-engine-state={headerEngineState}
+              title={headerEngineDetail}
+              onClick={() => void executeCommand("application.route.system")}
+            >
+              <span>Engine</span>
+              <strong aria-live="polite">{headerEngineLabel}</strong>
+            </button>
           </div>
-          <div className="panel-controls" aria-label="Visible panels">
-            {route.panelIds.map((panelId) => {
-              const panel = registry.panel(panelId);
-              const visible = state.visiblePanelIds.includes(panelId);
-              return (
-                <button
-                  className="panel-toggle"
-                  type="button"
-                  key={panelId}
-                  aria-pressed={visible}
-                  onClick={() =>
-                    dispatch({ type: "toggle_panel", panelId })
-                  }
-                >
-                  {panel.title}
-                </button>
-              );
-            })}
+          <div className="workspace-header-controls">
+            <div
+              className="workspace-layout-controls"
+              aria-label="Workspace layout"
+            >
+              <span
+                className="workspace-layout-state"
+                data-layout-condition={workspaceLayoutStatus.condition}
+                data-continuity-phase={workspaceContinuityPhase}
+                aria-live="polite"
+              >
+                {
+                  WORKSPACE_LAYOUT_LABELS[workspaceContinuityPhase][
+                    workspaceLayoutStatus.condition
+                  ]
+                }
+              </span>
+              <button
+                type="button"
+                disabled={!workspaceLayoutStatus.canReset}
+                onClick={() => dispatch({ type: "reset_workspace_layouts" })}
+              >
+                Reset all layouts
+              </button>
+              <button
+                type="button"
+                disabled={!workspaceLayoutStatus.canUndoReset}
+                onClick={() =>
+                  dispatch({ type: "undo_workspace_layout_reset" })
+                }
+              >
+                Undo reset
+              </button>
+            </div>
+            <div className="panel-controls" aria-label="Visible panels">
+              {route.panelIds.map((panelId) => {
+                const panel = registry.panel(panelId);
+                const visible = state.visiblePanelIds.includes(panelId);
+                return (
+                  <button
+                    className="panel-toggle"
+                    type="button"
+                    key={panelId}
+                    aria-pressed={visible}
+                    onClick={() =>
+                      dispatch({ type: "toggle_panel", panelId })
+                    }
+                  >
+                    {panel.title}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </header>
 
