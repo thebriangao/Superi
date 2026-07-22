@@ -24,7 +24,7 @@ use superi_api::editor::{
 use superi_api::events::{ApiEvent, ProjectStateChanged};
 use superi_api::local::{
     LocalAutomationId, LocalAutomationRequest, LocalAutomationResult, LocalProjectCollision,
-    LocalProjectCreateRequest, LocalProjectExecution, LocalProjectHost, LocalProjectSummary,
+    LocalProjectCreateRequest, LocalProjectExecution, LocalProjectHost,
 };
 use superi_api::permissions::{
     ApiDestructiveOperation, ApiFilesystemAccess, ApiFilesystemPath, ApiFilesystemScope,
@@ -3132,6 +3132,37 @@ pub struct DesktopProjectRecord {
     identity: DesktopProjectIdentity,
 }
 
+/// One coherent durable project observation used to compare authored meaning with the save point.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DesktopProjectDocument {
+    identity: DesktopProjectIdentity,
+    semantic_hash: String,
+}
+
+impl DesktopProjectDocument {
+    pub fn new(
+        identity: DesktopProjectIdentity,
+        semantic_hash: impl Into<String>,
+    ) -> Result<Self, DesktopProjectFailure> {
+        let semantic_hash = semantic_hash.into();
+        validate_semantic_hash(&semantic_hash)?;
+        Ok(Self {
+            identity,
+            semantic_hash,
+        })
+    }
+
+    #[must_use]
+    pub const fn identity(&self) -> &DesktopProjectIdentity {
+        &self.identity
+    }
+
+    #[must_use]
+    pub fn semantic_hash(&self) -> &str {
+        &self.semantic_hash
+    }
+}
+
 impl DesktopProjectRecord {
     fn new(path: String, identity: DesktopProjectIdentity) -> Self {
         Self { path, identity }
@@ -3166,6 +3197,7 @@ pub struct DesktopProjectSnapshot {
     active: Option<DesktopProjectRecord>,
     recent: Vec<DesktopProjectRecord>,
     recovery: Option<DesktopRecoveryCatalog>,
+    dirty: bool,
     failure: Option<DesktopProjectFailure>,
 }
 
@@ -3174,16 +3206,23 @@ pub struct DesktopProjectSnapshot {
 struct DesktopProjectSession {
     schema_version: u32,
     active_path: Option<String>,
+    #[serde(default)]
+    saved_semantic_hash: Option<String>,
     recent: Vec<DesktopProjectRecord>,
 }
 
 impl DesktopProjectSession {
-    const SCHEMA_VERSION: u32 = 1;
+    const SCHEMA_VERSION: u32 = 2;
+    const LEGACY_SCHEMA_VERSION: u32 = 1;
 
-    fn from_snapshot(snapshot: &DesktopProjectSnapshot) -> Self {
+    fn from_snapshot(
+        snapshot: &DesktopProjectSnapshot,
+        saved_semantic_hash: Option<String>,
+    ) -> Self {
         Self {
             schema_version: Self::SCHEMA_VERSION,
             active_path: snapshot.active.as_ref().map(|active| active.path.clone()),
+            saved_semantic_hash,
             recent: snapshot.recent.clone(),
         }
     }
@@ -3208,6 +3247,12 @@ impl DesktopProjectSnapshot {
     #[must_use]
     pub const fn recovery(&self) -> Option<&DesktopRecoveryCatalog> {
         self.recovery.as_ref()
+    }
+
+    /// Returns whether authored project meaning differs from the latest explicit save point.
+    #[must_use]
+    pub const fn dirty(&self) -> bool {
+        self.dirty
     }
 
     #[must_use]
@@ -3565,18 +3610,18 @@ pub trait DesktopProjectBackend {
         &mut self,
         path: &Path,
         request: &DesktopProjectCreateRequest,
-    ) -> Result<DesktopProjectIdentity, DesktopProjectFailure>;
+    ) -> Result<DesktopProjectDocument, DesktopProjectFailure>;
 
-    fn open(&mut self, path: &Path) -> Result<DesktopProjectIdentity, DesktopProjectFailure>;
+    fn open(&mut self, path: &Path) -> Result<DesktopProjectDocument, DesktopProjectFailure>;
 
-    fn save(&mut self, path: &Path) -> Result<DesktopProjectIdentity, DesktopProjectFailure>;
+    fn save(&mut self, path: &Path) -> Result<DesktopProjectDocument, DesktopProjectFailure>;
 
     fn save_as(
         &mut self,
         path: &Path,
         destination: &Path,
         replace_existing: bool,
-    ) -> Result<DesktopProjectIdentity, DesktopProjectFailure>;
+    ) -> Result<DesktopProjectDocument, DesktopProjectFailure>;
 
     fn discover_recovery(
         &mut self,
@@ -3588,7 +3633,7 @@ pub trait DesktopProjectBackend {
         path: &Path,
         catalog_revision: u64,
         candidate_id: &str,
-    ) -> Result<DesktopProjectIdentity, DesktopProjectFailure>;
+    ) -> Result<DesktopProjectDocument, DesktopProjectFailure>;
 }
 
 /// Concrete durable backend over the existing API-owned local project host.
@@ -3602,23 +3647,35 @@ impl LocalProjectBackend {
         Self { recovery_root }
     }
 
-    fn identity(
-        summary: &LocalProjectSummary,
-    ) -> Result<DesktopProjectIdentity, DesktopProjectFailure> {
-        DesktopProjectIdentity::new(
-            summary.project_id(),
-            summary.project_revision(),
-            summary.root_timeline_id(),
-        )
-    }
-
-    fn validate(
+    fn document(
         path: &Path,
         operation: &'static str,
-    ) -> Result<DesktopProjectIdentity, DesktopProjectFailure> {
-        let validation =
-            LocalProjectHost::validate(path).map_err(|error| safe_failure(operation, error))?;
-        Self::identity(validation.project())
+    ) -> Result<DesktopProjectDocument, DesktopProjectFailure> {
+        let response = LocalProjectHost::inspect_editor(
+            path,
+            GetEditorState::new(format!("superi-desktop-document-{operation}")),
+        )
+        .map_err(|error| safe_failure(operation, error))?;
+        let project = response.snapshot().project();
+        if project.semantic_hash_algorithm() != "sha256"
+            || project.semantic_hash_format_revision() != 1
+        {
+            return Err(DesktopProjectFailure::new(
+                DesktopProjectFailureClass::Terminal,
+                "project_semantic_hash_unsupported",
+                "Project save-state identity is unsupported",
+                "Update or restart Superi before continuing.",
+            )
+            .with_context("operation", operation));
+        }
+        DesktopProjectDocument::new(
+            DesktopProjectIdentity::new(
+                project.project_id(),
+                project.project_revision(),
+                project.root_timeline_id(),
+            )?,
+            project.semantic_hash(),
+        )
     }
 
     fn inspect_settings(
@@ -3646,7 +3703,7 @@ impl LocalProjectBackend {
     ) -> Result<
         (
             LocalProjectExecution<ExecuteProjectCommandResult, ProjectStateChanged>,
-            DesktopProjectIdentity,
+            DesktopProjectDocument,
         ),
         DesktopProjectFailure,
     > {
@@ -3656,15 +3713,15 @@ impl LocalProjectBackend {
             Arc::new(ApiPermissionContext::default()),
         )
         .map_err(|error| safe_failure("execute_timeline", error))?;
-        let identity = Self::validate(path, "execute_timeline")?;
-        Ok((execution, identity))
+        let document = Self::document(path, "execute_timeline")?;
+        Ok((execution, document))
     }
 
     fn update_settings(
         &mut self,
         path: &Path,
         update: DesktopProjectSettingsUpdate,
-    ) -> Result<(DesktopProjectSettings, DesktopProjectIdentity), DesktopProjectFailure> {
+    ) -> Result<(DesktopProjectSettings, DesktopProjectDocument), DesktopProjectFailure> {
         let response = LocalProjectHost::execute_settings(
             path,
             update.into_transaction()?,
@@ -3672,17 +3729,17 @@ impl LocalProjectBackend {
         )
         .map_err(|error| safe_failure("update_settings", error))?;
         let settings = DesktopProjectSettings::from_snapshot(response.result().snapshot())?;
-        let identity = Self::validate(path, "update_settings")?;
-        Ok((settings, identity))
+        let document = Self::document(path, "update_settings")?;
+        Ok((settings, document))
     }
 
     fn import_media(
         &mut self,
         path: &Path,
         request: DesktopMediaImportRequest,
-    ) -> Result<(DesktopMediaImportResult, DesktopProjectIdentity), DesktopProjectFailure> {
-        let identity = Self::validate(path, "import_media")?;
-        if identity.project_revision() != request.expected_project_revision {
+    ) -> Result<(DesktopMediaImportResult, DesktopProjectDocument), DesktopProjectFailure> {
+        let document = Self::document(path, "import_media")?;
+        if document.identity().project_revision() != request.expected_project_revision {
             return Err(user_correctable(
                 "project_revision_stale",
                 "Project changed before media import",
@@ -3695,7 +3752,7 @@ impl LocalProjectBackend {
         if discovered.is_empty() {
             return Ok((
                 DesktopMediaImportResult {
-                    project_revision: identity.project_revision(),
+                    project_revision: document.identity().project_revision(),
                     imported: Vec::new(),
                     skipped: Vec::new(),
                     command_method: ExecuteProjectCommand::METHOD.to_owned(),
@@ -3704,7 +3761,7 @@ impl LocalProjectBackend {
                     automation_method: (origin == DesktopMediaImportOrigin::Automation)
                         .then(|| ExecuteProjectCommand::METHOD.to_owned()),
                 },
-                identity,
+                document,
             ));
         }
 
@@ -3757,8 +3814,8 @@ impl LocalProjectBackend {
                 .map_err(|error| safe_failure("import_media", error))?;
             present_import(&execution, &discovered, false)?
         };
-        let identity = Self::validate(path, "import_media")?;
-        Ok((result, identity))
+        let document = Self::document(path, "import_media")?;
+        Ok((result, document))
     }
 
     fn restore_permissions() -> Result<Arc<ApiPermissionContext>, DesktopProjectFailure> {
@@ -3779,8 +3836,8 @@ impl DesktopProjectBackend for LocalProjectBackend {
         &mut self,
         path: &Path,
         request: &DesktopProjectCreateRequest,
-    ) -> Result<DesktopProjectIdentity, DesktopProjectFailure> {
-        let summary = LocalProjectHost::create(
+    ) -> Result<DesktopProjectDocument, DesktopProjectFailure> {
+        LocalProjectHost::create(
             path,
             LocalProjectCreateRequest {
                 project_id: request.project_id.clone(),
@@ -3792,16 +3849,16 @@ impl DesktopProjectBackend for LocalProjectBackend {
             },
         )
         .map_err(|error| safe_failure("create", error))?;
-        Self::identity(&summary)
+        Self::document(path, "create")
     }
 
-    fn open(&mut self, path: &Path) -> Result<DesktopProjectIdentity, DesktopProjectFailure> {
-        Self::validate(path, "open")
+    fn open(&mut self, path: &Path) -> Result<DesktopProjectDocument, DesktopProjectFailure> {
+        Self::document(path, "open")
     }
 
-    fn save(&mut self, path: &Path) -> Result<DesktopProjectIdentity, DesktopProjectFailure> {
+    fn save(&mut self, path: &Path) -> Result<DesktopProjectDocument, DesktopProjectFailure> {
         LocalProjectHost::save(path).map_err(|error| safe_failure("save", error))?;
-        Self::validate(path, "save")
+        Self::document(path, "save")
     }
 
     fn save_as(
@@ -3809,7 +3866,7 @@ impl DesktopProjectBackend for LocalProjectBackend {
         path: &Path,
         destination: &Path,
         replace_existing: bool,
-    ) -> Result<DesktopProjectIdentity, DesktopProjectFailure> {
+    ) -> Result<DesktopProjectDocument, DesktopProjectFailure> {
         let collision = if replace_existing {
             LocalProjectCollision::ReplaceExisting
         } else {
@@ -3817,7 +3874,7 @@ impl DesktopProjectBackend for LocalProjectBackend {
         };
         LocalProjectHost::save_as(path, destination, collision)
             .map_err(|error| safe_failure("save_as", error))?;
-        Self::validate(destination, "save_as")
+        Self::document(destination, "save_as")
     }
 
     fn discover_recovery(
@@ -3854,15 +3911,15 @@ impl DesktopProjectBackend for LocalProjectBackend {
         path: &Path,
         catalog_revision: u64,
         candidate_id: &str,
-    ) -> Result<DesktopProjectIdentity, DesktopProjectFailure> {
-        let current = Self::validate(path, "restore_recovery")?;
+    ) -> Result<DesktopProjectDocument, DesktopProjectFailure> {
+        let current = Self::document(path, "restore_recovery")?;
         let response = LocalProjectHost::recovery_restore(
             path,
             &self.recovery_root,
             RestoreProjectRecovery::new(
                 "superi-desktop-recovery-restore",
                 catalog_revision,
-                current.project_revision(),
+                current.identity().project_revision(),
                 candidate_id,
             ),
             Self::restore_permissions()?,
@@ -3877,7 +3934,7 @@ impl DesktopProjectBackend for LocalProjectBackend {
             )
             .with_context("operation", "restore_recovery"));
         }
-        Self::validate(path, "restore_recovery")
+        Self::document(path, "restore_recovery")
     }
 }
 
@@ -3920,6 +3977,15 @@ impl DesktopProjectEditorLease<'_> {
         mut self,
         identity: DesktopProjectIdentity,
     ) -> Result<DesktopProjectSnapshot, DesktopProjectFailure> {
+        let document =
+            LocalProjectBackend::document(Path::new(self.route.path()), "accept_editor_state")?;
+        if document.identity() != &identity {
+            return Err(user_correctable(
+                "project_editor_publication_stale",
+                "Project edit publication is stale",
+                "Refresh the project and apply the edit again.",
+            ));
+        }
         let snapshot = self
             .lifecycle
             .as_mut()
@@ -3929,7 +3995,7 @@ impl DesktopProjectEditorLease<'_> {
                 self.route.project_id(),
                 self.route.project_revision(),
                 self.route.root_timeline_id(),
-                identity,
+                document,
             )?;
         let revision = snapshot
             .active()
@@ -4561,8 +4627,10 @@ impl DesktopProjectState {
             .ok_or_else(not_initialized)?;
         let session = {
             let lifecycle = self.lock("persist_project_session")?;
+            let lifecycle = lifecycle.as_ref().ok_or_else(not_initialized)?;
             DesktopProjectSession::from_snapshot(
-                lifecycle.as_ref().ok_or_else(not_initialized)?.snapshot(),
+                lifecycle.snapshot(),
+                lifecycle.saved_semantic_hash.clone(),
             )
         };
         let bytes =
@@ -4996,6 +5064,8 @@ pub enum DesktopProjectCommand {
 pub struct DesktopProjectLifecycle<B> {
     backend: B,
     recent_capacity: usize,
+    current_semantic_hash: Option<String>,
+    saved_semantic_hash: Option<String>,
     snapshot: DesktopProjectSnapshot,
 }
 
@@ -5011,11 +5081,14 @@ impl<B: DesktopProjectBackend> DesktopProjectLifecycle<B> {
         Ok(Self {
             backend,
             recent_capacity,
+            current_semantic_hash: None,
+            saved_semantic_hash: None,
             snapshot: DesktopProjectSnapshot {
                 revision: 0,
                 active: None,
                 recent: Vec::new(),
                 recovery: None,
+                dirty: false,
                 failure: None,
             },
         })
@@ -5030,8 +5103,26 @@ impl<B: DesktopProjectBackend> DesktopProjectLifecycle<B> {
         &mut self,
         session: DesktopProjectSession,
     ) -> Result<(), DesktopProjectFailure> {
-        if session.schema_version != DesktopProjectSession::SCHEMA_VERSION
+        if ![
+            DesktopProjectSession::LEGACY_SCHEMA_VERSION,
+            DesktopProjectSession::SCHEMA_VERSION,
+        ]
+        .contains(&session.schema_version)
             || session.recent.len() > self.recent_capacity
+        {
+            return Err(project_session_invalid());
+        }
+        let schema_version = session.schema_version;
+        if schema_version == DesktopProjectSession::LEGACY_SCHEMA_VERSION
+            && session.saved_semantic_hash.is_some()
+        {
+            return Err(project_session_invalid());
+        }
+        if let Some(saved_semantic_hash) = &session.saved_semantic_hash {
+            validate_semantic_hash(saved_semantic_hash).map_err(|_| project_session_invalid())?;
+        }
+        if schema_version == DesktopProjectSession::SCHEMA_VERSION
+            && (session.active_path.is_some() != session.saved_semantic_hash.is_some())
         {
             return Err(project_session_invalid());
         }
@@ -5052,7 +5143,10 @@ impl<B: DesktopProjectBackend> DesktopProjectLifecycle<B> {
         self.snapshot.recent = recent;
         self.snapshot.active = None;
         self.snapshot.recovery = None;
+        self.snapshot.dirty = false;
         self.snapshot.failure = None;
+        self.current_semantic_hash = None;
+        self.saved_semantic_hash = None;
 
         let Some(path) = session.active_path else {
             if !self.snapshot.recent.is_empty() {
@@ -5062,7 +5156,11 @@ impl<B: DesktopProjectBackend> DesktopProjectLifecycle<B> {
         };
         let path = validate_path(path, "restore_project_session")?;
         match self.backend.open(Path::new(&path)) {
-            Ok(identity) => self.commit(ProjectTransition::Activate { path, identity }),
+            Ok(document) => self.commit(ProjectTransition::Activate {
+                path,
+                document,
+                saved_semantic_hash: session.saved_semantic_hash,
+            }),
             Err(failure) => {
                 self.record_failure(failure);
                 Ok(())
@@ -5079,13 +5177,21 @@ impl<B: DesktopProjectBackend> DesktopProjectLifecycle<B> {
                 let path = validate_path(path, "create")?;
                 self.backend
                     .create(Path::new(&path), &project)
-                    .map(|identity| ProjectTransition::Activate { path, identity })
+                    .map(|document| ProjectTransition::Activate {
+                        path,
+                        document,
+                        saved_semantic_hash: None,
+                    })
             }
             DesktopProjectCommand::Open { path } => {
                 let path = validate_path(path, "open")?;
                 self.backend
                     .open(Path::new(&path))
-                    .map(|identity| ProjectTransition::Activate { path, identity })
+                    .map(|document| ProjectTransition::Activate {
+                        path,
+                        document,
+                        saved_semantic_hash: None,
+                    })
             }
             DesktopProjectCommand::OpenRecent { path } => {
                 let path = validate_path(path, "open_recent")?;
@@ -5096,16 +5202,23 @@ impl<B: DesktopProjectBackend> DesktopProjectLifecycle<B> {
                         "Choose a project that is still present in the recent-project list.",
                     ))
                 } else {
-                    self.backend
-                        .open(Path::new(&path))
-                        .map(|identity| ProjectTransition::Activate { path, identity })
+                    self.backend.open(Path::new(&path)).map(|document| {
+                        ProjectTransition::Activate {
+                            path,
+                            document,
+                            saved_semantic_hash: None,
+                        }
+                    })
                 }
             }
             DesktopProjectCommand::Save => {
                 let active = self.active_record("save")?.clone();
-                self.backend
-                    .save(Path::new(&active.path))
-                    .map(|identity| ProjectTransition::RefreshActive { identity })
+                self.backend.save(Path::new(&active.path)).map(|document| {
+                    ProjectTransition::RefreshActive {
+                        document,
+                        mark_saved: true,
+                    }
+                })
             }
             DesktopProjectCommand::SaveAs {
                 destination,
@@ -5119,9 +5232,10 @@ impl<B: DesktopProjectBackend> DesktopProjectLifecycle<B> {
                         Path::new(&destination),
                         replace_existing,
                     )
-                    .map(|identity| ProjectTransition::Activate {
+                    .map(|document| ProjectTransition::Activate {
                         path: destination,
-                        identity,
+                        document,
+                        saved_semantic_hash: None,
                     })
             }
             DesktopProjectCommand::Close => Ok(ProjectTransition::Close),
@@ -5157,7 +5271,7 @@ impl<B: DesktopProjectBackend> DesktopProjectLifecycle<B> {
                 } else {
                     self.backend
                         .restore_recovery(Path::new(&active.path), catalog_revision, &candidate_id)
-                        .map(|identity| ProjectTransition::Restored { identity })
+                        .map(|document| ProjectTransition::Restored { document })
                 }
             }
         };
@@ -5181,9 +5295,10 @@ impl<B: DesktopProjectBackend> DesktopProjectLifecycle<B> {
         expected_project_id: &str,
         expected_project_revision: u64,
         expected_root_timeline_id: &str,
-        identity: DesktopProjectIdentity,
+        document: DesktopProjectDocument,
     ) -> Result<DesktopProjectSnapshot, DesktopProjectFailure> {
         let active = self.active_record("refresh_active_from_editor")?;
+        let identity = document.identity();
         let route_matches = active.path() == expected_path
             && active.project_id() == expected_project_id
             && active.project_revision() == expected_project_revision
@@ -5203,7 +5318,10 @@ impl<B: DesktopProjectBackend> DesktopProjectLifecycle<B> {
             )
             .with_context("operation", "refresh_active_from_editor"));
         }
-        self.commit(ProjectTransition::RefreshActive { identity })?;
+        self.commit(ProjectTransition::RefreshActive {
+            document,
+            mark_saved: false,
+        })?;
         Ok(self.snapshot.clone())
     }
 
@@ -5223,16 +5341,35 @@ impl<B: DesktopProjectBackend> DesktopProjectLifecycle<B> {
 
     fn commit(&mut self, transition: ProjectTransition) -> Result<(), DesktopProjectFailure> {
         match transition {
-            ProjectTransition::Activate { path, identity } => {
+            ProjectTransition::Activate {
+                path,
+                document,
+                saved_semantic_hash,
+            } => {
+                let semantic_hash = document.semantic_hash;
+                let saved_semantic_hash =
+                    saved_semantic_hash.unwrap_or_else(|| semantic_hash.clone());
+                let identity = document.identity;
                 let record = DesktopProjectRecord::new(path, identity);
                 self.snapshot.active = Some(record.clone());
                 self.snapshot.recovery = None;
+                self.current_semantic_hash = Some(semantic_hash);
+                self.saved_semantic_hash = Some(saved_semantic_hash);
                 self.push_recent(record);
             }
-            ProjectTransition::RefreshActive { identity } => {
+            ProjectTransition::RefreshActive {
+                document,
+                mark_saved,
+            } => {
+                let semantic_hash = document.semantic_hash;
+                let identity = document.identity;
                 let path = self.active_record("save")?.path.clone();
                 let record = DesktopProjectRecord::new(path, identity);
                 self.snapshot.active = Some(record.clone());
+                self.current_semantic_hash = Some(semantic_hash.clone());
+                if mark_saved {
+                    self.saved_semantic_hash = Some(semantic_hash);
+                }
                 if let Some(recent) = self
                     .snapshot
                     .recent
@@ -5245,15 +5382,20 @@ impl<B: DesktopProjectBackend> DesktopProjectLifecycle<B> {
             ProjectTransition::Close => {
                 self.snapshot.active = None;
                 self.snapshot.recovery = None;
+                self.current_semantic_hash = None;
+                self.saved_semantic_hash = None;
             }
             ProjectTransition::Recovery(catalog) => {
                 self.snapshot.recovery = Some(catalog);
             }
-            ProjectTransition::Restored { identity } => {
+            ProjectTransition::Restored { document } => {
+                let semantic_hash = document.semantic_hash;
+                let identity = document.identity;
                 let path = self.active_record("restore_recovery")?.path.clone();
                 let record = DesktopProjectRecord::new(path, identity);
                 self.snapshot.active = Some(record.clone());
                 self.snapshot.recovery = None;
+                self.current_semantic_hash = Some(semantic_hash);
                 if let Some(recent) = self
                     .snapshot
                     .recent
@@ -5264,6 +5406,8 @@ impl<B: DesktopProjectBackend> DesktopProjectLifecycle<B> {
                 }
             }
         }
+        self.snapshot.dirty = self.snapshot.active.is_some()
+            && self.current_semantic_hash != self.saved_semantic_hash;
         self.snapshot.failure = None;
         self.advance_revision()
     }
@@ -5322,8 +5466,11 @@ impl DesktopProjectLifecycle<LocalProjectBackend> {
     > {
         let path = self.active_record("execute_timeline")?.path().to_owned();
         match self.backend.execute_timeline(Path::new(&path), request) {
-            Ok((execution, identity)) => {
-                self.commit(ProjectTransition::RefreshActive { identity })?;
+            Ok((execution, document)) => {
+                self.commit(ProjectTransition::RefreshActive {
+                    document,
+                    mark_saved: false,
+                })?;
                 Ok(execution)
             }
             Err(failure) => {
@@ -5346,8 +5493,11 @@ impl DesktopProjectLifecycle<LocalProjectBackend> {
     ) -> Result<DesktopProjectSettings, DesktopProjectFailure> {
         let path = self.active_record("update_settings")?.path().to_owned();
         match self.backend.update_settings(Path::new(&path), update) {
-            Ok((settings, identity)) => {
-                self.commit(ProjectTransition::RefreshActive { identity })?;
+            Ok((settings, document)) => {
+                self.commit(ProjectTransition::RefreshActive {
+                    document,
+                    mark_saved: false,
+                })?;
                 Ok(settings)
             }
             Err(failure) => {
@@ -5364,8 +5514,11 @@ impl DesktopProjectLifecycle<LocalProjectBackend> {
     ) -> Result<DesktopMediaImportResult, DesktopProjectFailure> {
         let path = self.active_record("import_media")?.path().to_owned();
         match self.backend.import_media(Path::new(&path), request) {
-            Ok((result, identity)) => {
-                self.commit(ProjectTransition::RefreshActive { identity })?;
+            Ok((result, document)) => {
+                self.commit(ProjectTransition::RefreshActive {
+                    document,
+                    mark_saved: false,
+                })?;
                 Ok(result)
             }
             Err(failure) => {
@@ -5743,16 +5896,35 @@ fn import_io_failure(operation: &'static str, source: std::io::Error) -> Desktop
 enum ProjectTransition {
     Activate {
         path: String,
-        identity: DesktopProjectIdentity,
+        document: DesktopProjectDocument,
+        saved_semantic_hash: Option<String>,
     },
     RefreshActive {
-        identity: DesktopProjectIdentity,
+        document: DesktopProjectDocument,
+        mark_saved: bool,
     },
     Close,
     Recovery(DesktopRecoveryCatalog),
     Restored {
-        identity: DesktopProjectIdentity,
+        document: DesktopProjectDocument,
     },
+}
+
+fn validate_semantic_hash(value: &str) -> Result<(), DesktopProjectFailure> {
+    if value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        Ok(())
+    } else {
+        Err(DesktopProjectFailure::new(
+            DesktopProjectFailureClass::Terminal,
+            "project_semantic_hash_invalid",
+            "Project save-state identity is invalid",
+            "Restart Superi before continuing.",
+        ))
+    }
 }
 
 fn validate_path(path: String, operation: &'static str) -> Result<String, DesktopProjectFailure> {

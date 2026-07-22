@@ -4,10 +4,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use superi_desktop::file_associations::{
-    open_project_file, project_paths_from_arguments, project_paths_from_urls,
-};
-use superi_desktop::project_lifecycle::{
-    DesktopProjectCommand, DesktopProjectCreateRequest, DesktopProjectState,
+    project_paths_from_arguments, project_paths_from_urls, DesktopProjectAssociationState,
+    ProjectFileOpenSource,
 };
 use tauri::Url;
 
@@ -38,17 +36,6 @@ impl TestRoot {
 impl Drop for TestRoot {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn create_request(seed: &str) -> DesktopProjectCreateRequest {
-    DesktopProjectCreateRequest {
-        project_id: "project:00000000000000000000000000000603".into(),
-        project_name: format!("Project {seed}"),
-        root_timeline_id: "timeline:00000000000000000000000000010603".into(),
-        root_timeline_name: format!("Timeline {seed}"),
-        edit_rate_numerator: 24,
-        edit_rate_denominator: 1,
     }
 }
 
@@ -97,42 +84,36 @@ fn startup_arguments_and_file_urls_select_only_unique_superi_projects() {
 }
 
 #[test]
-fn association_open_uses_the_durable_owner_and_retains_state_on_failure() {
+fn association_requests_are_bounded_ordered_and_explicitly_resolved() {
     let root = TestRoot::new();
-    let project = root.path().join("owned.superi");
-    let state = DesktopProjectState::default();
-    state.initialize(root.path().join("recovery")).unwrap();
+    let first = root.path().join("first.superi");
+    let second = root.path().join("second.superi");
+    let state = DesktopProjectAssociationState::default();
 
-    state
-        .execute(DesktopProjectCommand::Create {
-            path: project.to_string_lossy().into_owned(),
-            project: create_request("owned"),
-        })
+    let requests = state
+        .enqueue(
+            vec![first.clone(), second.clone(), first.clone()],
+            ProjectFileOpenSource::OperatingSystem,
+        )
         .unwrap();
-    state.execute(DesktopProjectCommand::Close).unwrap();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0].sequence(), 1);
+    assert_eq!(requests[1].sequence(), 2);
+    assert_eq!(requests[0].source(), ProjectFileOpenSource::OperatingSystem);
+    assert_eq!(requests[0].path(), first.to_string_lossy());
+    assert_eq!(state.pending().unwrap(), requests);
 
-    let opened = open_project_file(&state, &project).unwrap();
-    let active = opened
-        .active()
-        .expect("association must activate the project");
-    assert_eq!(
-        active.project_id(),
-        "project:00000000000000000000000000000603"
-    );
-    assert_eq!(active.path(), project.to_string_lossy());
-    assert_eq!(opened.recent().len(), 1);
-    assert!(opened.failure().is_none());
+    assert!(state.resolve(1).unwrap());
+    assert!(!state.resolve(1).unwrap());
+    assert_eq!(state.pending().unwrap(), &requests[1..]);
 
-    let missing = root.path().join("missing.superi");
-    assert!(open_project_file(&state, &missing).is_err());
-    let retained = state.snapshot().unwrap();
-    assert_eq!(
-        retained
-            .active()
-            .expect("valid project must survive")
-            .project_id(),
-        "project:00000000000000000000000000000603"
-    );
-    assert_eq!(retained.recent(), opened.recent());
-    assert!(retained.failure().is_some());
+    let overflow = DesktopProjectAssociationState::default();
+    let paths = (0..33)
+        .map(|index| root.path().join(format!("overflow-{index}.superi")))
+        .collect();
+    let failure = overflow
+        .enqueue(paths, ProjectFileOpenSource::StartupArgument)
+        .unwrap_err();
+    assert_eq!(failure.code(), "project_open_queue_full");
+    assert!(overflow.pending().unwrap().is_empty());
 }

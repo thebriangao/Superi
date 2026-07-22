@@ -47,14 +47,14 @@ export interface DesktopProjectSnapshot {
   readonly active: DesktopProjectRecord | null;
   readonly recent: readonly DesktopProjectRecord[];
   readonly recovery: DesktopRecoveryCatalog | null;
+  readonly dirty: boolean;
   readonly failure: DesktopProjectFailure | null;
 }
 
-export interface DesktopProjectOpenEvent {
+export interface DesktopProjectOpenRequest {
+  readonly sequence: number;
   readonly source: "startup_argument" | "operating_system";
   readonly path: string;
-  readonly snapshot: DesktopProjectSnapshot | null;
-  readonly failure: DesktopProjectFailure | null;
 }
 
 export interface DesktopProjectSettings {
@@ -651,7 +651,10 @@ export type UserMetadataMutation =
   | { readonly kind: "remove"; readonly key: string };
 
 const SNAPSHOT_COMMAND = "desktop_project_snapshot";
-const PROJECT_OPENED_EVENT = "superi://project-opened";
+const PROJECT_OPEN_REQUESTED_EVENT = "superi://project-open-requested";
+const PROJECT_OPEN_REQUESTS_COMMAND = "desktop_project_open_requests";
+const PROJECT_OPEN_REQUEST_RESOLVE_COMMAND =
+  "desktop_project_open_request_resolve";
 const EXECUTE_COMMAND = "desktop_project_execute";
 const SETTINGS_COMMAND = "desktop_project_settings";
 const UPDATE_SETTINGS_COMMAND = "desktop_project_settings_update";
@@ -699,14 +702,21 @@ export async function getDesktopProjectSnapshot(): Promise<DesktopProjectSnapsho
 }
 
 export function listenForDesktopProjectOpen(
-  listener: (event: DesktopProjectOpenEvent) => void,
+  listener: (request: DesktopProjectOpenRequest) => void,
 ): Promise<UnlistenFn> {
-  return listen<DesktopProjectOpenEvent>(PROJECT_OPENED_EVENT, (event) => {
-    if (event.payload.snapshot !== null) {
-      publishDesktopProjectSnapshot(event.payload.snapshot);
-    }
-    listener(event.payload);
-  });
+  return listen<DesktopProjectOpenRequest>(PROJECT_OPEN_REQUESTED_EVENT, (event) =>
+    listener(event.payload),
+  );
+}
+
+export function getDesktopProjectOpenRequests(): Promise<
+  readonly DesktopProjectOpenRequest[]
+> {
+  return invoke<readonly DesktopProjectOpenRequest[]>(PROJECT_OPEN_REQUESTS_COMMAND);
+}
+
+export function resolveDesktopProjectOpenRequest(sequence: number): Promise<boolean> {
+  return invoke<boolean>(PROJECT_OPEN_REQUEST_RESOLVE_COMMAND, { sequence });
 }
 
 export async function executeDesktopProject(

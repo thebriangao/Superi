@@ -33,6 +33,7 @@ export interface DesktopShellSnapshot {
   readonly redo_depth: number;
   readonly next_undo: ProjectMutationKind | null;
   readonly next_redo: ProjectMutationKind | null;
+  readonly dirty: boolean;
   readonly busy: boolean;
   readonly workspace: DesktopWorkspacePresentation;
   readonly keyboard_shortcuts: KeyboardShortcutProfile;
@@ -47,6 +48,7 @@ export interface DesktopShellPresentation {
   readonly redo_depth: number;
   readonly next_undo: ProjectMutationKind | null;
   readonly next_redo: ProjectMutationKind | null;
+  readonly dirty: boolean;
   readonly busy: boolean;
   readonly workspace: DesktopWorkspacePresentation;
   readonly keyboard_shortcuts: KeyboardShortcutProfile;
@@ -74,8 +76,9 @@ export type DesktopDrop =
 
 export type DesktopCloseDecision =
   | "block_busy"
+  | "confirm_dirty_history"
+  | "confirm_dirty"
   | "confirm_history"
-  | "save_and_close"
   | "close";
 
 export function desktopShellIntentAutomationId(
@@ -139,23 +142,28 @@ export function partitionDesktopDrop(paths: readonly string[]): DesktopDrop {
 export function decideDesktopClose(input: {
   readonly busy: boolean;
   readonly active: boolean;
+  readonly dirty: boolean;
   readonly undoDepth: number;
   readonly redoDepth: number;
 }): DesktopCloseDecision {
   if (input.busy) return "block_busy";
-  if (input.active && (input.undoDepth > 0 || input.redoDepth > 0)) {
+  if (!input.active) return "close";
+  const hasHistory = input.undoDepth > 0 || input.redoDepth > 0;
+  if (input.dirty && hasHistory) return "confirm_dirty_history";
+  if (input.dirty) return "confirm_dirty";
+  if (hasHistory) {
     return "confirm_history";
   }
-  if (input.active) return "save_and_close";
   return "close";
 }
 
 export function desktopDocumentTitle(
   document: DesktopShellDocument | null,
+  dirty: boolean,
 ): string {
   if (document === null) return "Superi";
   const name = document.path.split(/[\\/]/u).filter(Boolean).at(-1) ?? document.path;
-  return `${name} [r${document.project_revision}] - Superi`;
+  return `${name}${dirty ? " *" : ""} [r${document.project_revision}] - Superi`;
 }
 
 export async function getDesktopShellSnapshot(): Promise<DesktopShellSnapshot> {

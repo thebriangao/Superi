@@ -900,6 +900,12 @@ real database, reloads exact equality, validates full integrity, discovers and c
 candidate, restores it through the existing recovery owner, and proves stable media ID, target, and
 fingerprint meaning. This adds no interpreter or file authority to the project crate.
 
+The production desktop lifecycle also consumes the same public semantic hash through the
+API-owned local project host. It compares current canonical authored meaning with a private saved
+baseline to derive window dirty state, treats equal meaning after undo as clean independently of
+outer revision and retained redo history, and keeps paths, save policy, close behavior, and session
+continuity outside this crate.
+
 `version_negotiation_contract.rs` contains two public tests. They prove the exact six released
 schema and semantic format pairs, stable application, text, and primitive identities, current and
 registered migration outcomes, the exact schema 1 to 5 successor path, future schema, semantic, and
@@ -947,7 +953,9 @@ complete current and supported legacy reconstruction, deterministic bounded evid
 identity, and repair reporting without creating another database or recovery authority.
 The public semantic diagnostics surface now adds a versioned SHA-256 content identity and ordered
 typed component evidence over canonical prepared state, and the engine dispatcher consumes it
-without events or history mutation.
+without events or history mutation. The desktop lifecycle consumes that same identity only as an
+explicit-save comparison baseline and does not turn this crate into a window, session, or close
+policy owner.
 
 Additional schema revisions beyond 5, persisted undo and redo branch history, authenticated integrity,
 and transport-catalog database adaptation remain absent. The API-owned local host and CLI now

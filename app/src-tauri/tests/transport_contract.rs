@@ -89,6 +89,11 @@ fn active_project_state_track_and_marker_commands_use_the_generated_desktop_rout
         panic!("editor state returned an unexpected reply");
     };
     assert_eq!(response["snapshot"]["project"]["project_revision"], 0);
+    let saved_semantic_hash = response["snapshot"]["project"]["semantic_hash"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(!projects.snapshot().unwrap().dirty());
 
     let command = transport
         .dispatch_blocking(
@@ -191,32 +196,102 @@ fn active_project_state_track_and_marker_commands_use_the_generated_desktop_rout
         .expect("authored marker command must publish an event");
     assert_eq!(marker_event.event(), "superi.project.state.changed");
     assert_eq!(marker_event.payload()["project_revision"], 2);
+    assert!(projects.snapshot().unwrap().dirty());
+
+    for (request_id, expected_revision) in [("undo-marker", 2), ("undo-track", 3)] {
+        let undo = transport
+            .dispatch_blocking(
+                &engine.connection(),
+                &projects,
+                DesktopTransportCommand::Request {
+                    generation,
+                    request_id: request_id.to_owned(),
+                    method: "superi.project.command.execute".to_owned(),
+                    request: serde_json::json!({
+                        "transaction_id": request_id,
+                        "expected_project_revision": expected_revision,
+                        "command": {"command":"undo"}
+                    }),
+                },
+            )
+            .unwrap();
+        assert!(undo.event().is_some());
+    }
+
+    let undone = transport
+        .dispatch_blocking(
+            &engine.connection(),
+            &projects,
+            DesktopTransportCommand::Request {
+                generation,
+                request_id: "editor-state-undone".to_owned(),
+                method: "superi.editor.state.get".to_owned(),
+                request: serde_json::json!({"transaction_id":"editor-state-undone"}),
+            },
+        )
+        .unwrap();
+    let DesktopTransportReply::Response {
+        response: undone, ..
+    } = undone.reply()
+    else {
+        panic!("undone editor state returned an unexpected reply");
+    };
+    assert_eq!(undone["snapshot"]["project"]["project_revision"], 4);
+    assert_eq!(undone["snapshot"]["project"]["redo_depth"], 2);
+    assert_eq!(
+        undone["snapshot"]["project"]["semantic_hash"],
+        saved_semantic_hash
+    );
+    assert!(!projects.snapshot().unwrap().dirty());
+
+    let redo = transport
+        .dispatch_blocking(
+            &engine.connection(),
+            &projects,
+            DesktopTransportCommand::Request {
+                generation,
+                request_id: "redo-track".to_owned(),
+                method: "superi.project.command.execute".to_owned(),
+                request: serde_json::json!({
+                    "transaction_id":"redo-track",
+                    "expected_project_revision":4,
+                    "command":{"command":"redo"}
+                }),
+            },
+        )
+        .unwrap();
+    assert!(redo.event().is_some());
+    assert!(projects.snapshot().unwrap().dirty());
+
+    let saved = projects.execute(DesktopProjectCommand::Save).unwrap();
+    assert!(!saved.dirty());
 
     let refreshed = projects
         .inspect_editor(superi_api::commands::GetEditorState::new("editor-state-2"))
         .unwrap();
     let refreshed = serde_json::to_value(refreshed).unwrap();
-    assert_eq!(refreshed["snapshot"]["project"]["project_revision"], 2);
+    assert_eq!(refreshed["snapshot"]["project"]["project_revision"], 5);
     assert_eq!(
         refreshed["snapshot"]["timeline"]["document"]["content"]["payload"]["timelines"][0]
             ["edit_state"]["track_states"][0]["height"],
         96
     );
-    assert_eq!(
+    assert!(
         refreshed["snapshot"]["timeline"]["document"]["content"]["payload"]["timelines"][0]
-            ["markers"][0]["id"],
-        marker_id
+            ["markers"]
+            .as_array()
+            .unwrap()
+            .is_empty()
     );
-    assert_eq!(
-        refreshed["snapshot"]["timeline"]["document"]["content"]["payload"]["timelines"][0]
-            ["markers"][0]["marked_range"]["start"]["value"],
-        "12"
-    );
-    assert_eq!(
-        refreshed["snapshot"]["timeline"]["document"]["content"]["payload"]["timelines"][0]
-            ["markers"][0]["label"],
-        "First review"
-    );
+
+    projects.execute(DesktopProjectCommand::Close).unwrap();
+    assert!(!projects.snapshot().unwrap().dirty());
+    let reopened = projects
+        .execute(DesktopProjectCommand::Open {
+            path: project_path.to_string_lossy().into_owned(),
+        })
+        .unwrap();
+    assert!(!reopened.dirty());
 
     lifecycle.request_shutdown().unwrap();
     engine.join().unwrap();

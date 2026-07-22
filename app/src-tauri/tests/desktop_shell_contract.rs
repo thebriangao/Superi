@@ -97,6 +97,7 @@ fn sync(sequence: u64) -> DesktopShellSync {
         redo_depth: 1,
         next_undo: Some(DesktopProjectMutationKind::ConsiderMediaRelink),
         next_redo: Some(DesktopProjectMutationKind::UpsertExtension),
+        dirty: true,
         busy: false,
         workspace: workspace("editing"),
         keyboard_shortcuts: DesktopKeyboardShortcutProfile {
@@ -130,6 +131,9 @@ fn native_shell_sync_preserves_document_history_workspace_and_recent_intents() {
     );
     assert_eq!(first.undo_title(), "Undo Media Relink");
     assert_eq!(first.redo_title(), "Redo Extension Update");
+    assert!(first.dirty());
+    assert!(first.save_enabled());
+    assert_eq!(first.document_title(), "alpha.superi * [r17] - Superi");
     assert_eq!(first.workspace().active_route_id, "editing");
     assert_eq!(first.workspace().panel_layouts.len(), 1);
     assert_eq!(
@@ -251,6 +255,27 @@ fn shell_state_rejects_ambiguous_or_unbounded_presentation() {
     unordered.background_jobs.jobs.insert(0, later);
     unordered.background_jobs.next_sequence = 3;
     assert!(model.synchronize(unordered).is_err());
+
+    let mut detached_dirty = sync(10);
+    detached_dirty.active = None;
+    detached_dirty.undo_depth = 0;
+    detached_dirty.redo_depth = 0;
+    detached_dirty.next_undo = None;
+    detached_dirty.next_redo = None;
+    assert!(model.synchronize(detached_dirty).is_err());
+
+    let mut clean = sync(11);
+    clean.dirty = false;
+    let clean = model.synchronize(clean).unwrap();
+    assert!(!clean.dirty());
+    assert!(!clean.save_enabled());
+    assert_eq!(clean.document_title(), "alpha.superi [r17] - Superi");
+
+    let mut busy = sync(12);
+    busy.busy = true;
+    let busy = model.synchronize(busy).unwrap();
+    assert!(busy.dirty());
+    assert!(!busy.save_enabled());
 }
 
 #[test]
@@ -288,6 +313,7 @@ fn workspace_presentation_restores_from_the_private_atomic_session_record() {
     assert!(stored.get("redo_depth").is_none());
     assert!(stored.get("next_undo").is_none());
     assert!(stored.get("next_redo").is_none());
+    assert!(stored.get("dirty").is_none());
     assert_eq!(
         stored["keyboard_shortcuts"]["overrides"][0]["shortcut"].as_str(),
         Some("mod+e")

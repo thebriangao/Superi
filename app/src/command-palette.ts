@@ -39,6 +39,7 @@ export interface CommandPaletteAction {
 
 export interface DesktopShellCommandPaletteInput {
   readonly active: boolean;
+  readonly dirty: boolean;
   readonly busy: boolean;
   readonly history: ProjectHistoryPresentation;
   readonly recentPaths: readonly string[];
@@ -156,6 +157,13 @@ export function desktopShellCommandPaletteActions(
     : input.active
       ? enabled()
       : disabled("Open a project first.");
+  const saveProject = input.busy
+    ? disabled("Wait for the current operation to finish.")
+    : !input.active
+      ? disabled("Open a project first.")
+      : input.dirty
+        ? enabled()
+        : disabled("The active project is already saved.");
   const undo = availabilityFromHistory(input.history.undo);
   const redo = availabilityFromHistory(input.history.redo);
 
@@ -195,7 +203,7 @@ export function desktopShellCommandPaletteActions(
       ["write", "document"],
       "mod+s",
       "Save the active project through its durable owner.",
-      project,
+      saveProject,
       { kind: "save_project" },
     ),
     desktopAction(

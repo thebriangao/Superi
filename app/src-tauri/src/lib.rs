@@ -189,6 +189,7 @@ fn configure_with_owners<R: Runtime>(
         .manage(DesktopCrashDiagnostics::default())
         .manage(DesktopTransportState::new())
         .manage(DesktopProjectState::default())
+        .manage(file_associations::DesktopProjectAssociationState::default())
         .manage(viewport)
         .manage(windows)
         .on_menu_event(desktop_shell::handle_menu_event)
@@ -201,6 +202,8 @@ fn configure_with_owners<R: Runtime>(
             desktop_crash_project_update,
             desktop_crash_diagnostic_dismiss,
             desktop_api_dispatch,
+            file_associations::desktop_project_open_requests,
+            file_associations::desktop_project_open_request_resolve,
             capabilities::desktop_capabilities_discover,
             platform_adapters::desktop_platform_adapters,
             desktop_shell::desktop_shell_snapshot,

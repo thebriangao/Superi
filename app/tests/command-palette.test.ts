@@ -44,15 +44,18 @@ function actions() {
     ),
     ...desktopShellCommandPaletteActions({
       active: true,
+      dirty: true,
       busy: false,
       history: projectHistoryPresentation({
         active: {
           path: "/projects/alpha.superi",
           project_id: "project-alpha",
+          root_timeline_id: "timeline-alpha",
           project_revision: 17,
         },
         editorProject: {
           project_id: "project-alpha",
+          root_timeline_id: "timeline-alpha",
           project_revision: 17,
           undo_depth: 0,
           redo_depth: 2,
@@ -109,6 +112,7 @@ test("search is token-complete, deterministic, and biased toward exact action me
 test("desktop actions expose current availability and stable recent identity", () => {
   const unavailable = desktopShellCommandPaletteActions({
     active: false,
+    dirty: false,
     busy: true,
     history: projectHistoryPresentation({
       active: null,
@@ -141,10 +145,12 @@ test("history actions reuse action-specific global transaction presentation", ()
     active: {
       path: "/projects/alpha.superi",
       project_id: "project-alpha",
+      root_timeline_id: "timeline-alpha",
       project_revision: 17,
     },
     editorProject: {
       project_id: "project-alpha",
+      root_timeline_id: "timeline-alpha",
       project_revision: 17,
       undo_depth: 3,
       redo_depth: 1,
@@ -155,6 +161,7 @@ test("history actions reuse action-specific global transaction presentation", ()
   });
   const palette = desktopShellCommandPaletteActions({
     active: true,
+    dirty: true,
     busy: false,
     history,
     recentPaths: [],
@@ -166,6 +173,38 @@ test("history actions reuse action-specific global transaction presentation", ()
   assert.deepEqual(undo?.availability, { enabled: true, reason: null });
   assert.equal(redo?.title, "Redo Extension Update");
   assert.equal(redo?.detail, history.redo.detail);
+});
+
+test("save is available only for a modified idle document", () => {
+  const history = projectHistoryPresentation({
+    active: {
+      path: "/projects/alpha.superi",
+      project_id: "project-alpha",
+      root_timeline_id: "timeline-alpha",
+      project_revision: 17,
+    },
+    editorProject: {
+      project_id: "project-alpha",
+      root_timeline_id: "timeline-alpha",
+      project_revision: 17,
+      undo_depth: 0,
+      redo_depth: 0,
+      next_undo: null,
+      next_redo: null,
+    },
+    busy: false,
+  });
+  const clean = desktopShellCommandPaletteActions({
+    active: true,
+    dirty: false,
+    busy: false,
+    history,
+    recentPaths: [],
+  });
+  assert.deepEqual(
+    clean.find((action) => action.id === "desktop.file.save")?.availability,
+    { enabled: false, reason: "The active project is already saved." },
+  );
 });
 
 test("execution delegates only typed application commands or desktop intents", async () => {

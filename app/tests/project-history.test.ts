@@ -9,11 +9,13 @@ import {
 const active = {
   path: "/projects/alpha.superi",
   project_id: "project-alpha",
+  root_timeline_id: "timeline-alpha",
   project_revision: 17,
 } as const;
 
 const editorProject = {
   project_id: "project-alpha",
+  root_timeline_id: "timeline-alpha",
   project_revision: 17,
   undo_depth: 3,
   redo_depth: 1,
@@ -90,6 +92,14 @@ test("busy and revision-lagged projects retain visibility but fail closed", () =
     "Wait for project transaction history to synchronize.",
   );
   assert.match(synchronizing.status, /revision 17.*synchroniz/i);
+
+  const wrongRoot = projectHistoryPresentation({
+    active,
+    editorProject: { ...editorProject, root_timeline_id: "timeline-other" },
+    busy: false,
+  });
+  assert.equal(wrongRoot.condition, "synchronizing");
+  assert.equal(wrongRoot.undo.enabled, false);
 });
 
 test("history coherence rejects missing next actions without hiding safe-close counts", () => {

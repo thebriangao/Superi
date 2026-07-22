@@ -64,6 +64,7 @@ fn project_settings_attach_to_lifecycle_and_round_trip_durably() {
             },
         })
         .unwrap();
+    assert!(!lifecycle.snapshot().dirty());
 
     let initial = lifecycle.inspect_settings().unwrap();
     assert_eq!(initial.project_revision(), 0);
@@ -92,14 +93,17 @@ fn project_settings_attach_to_lifecycle_and_round_trip_durably() {
         lifecycle.snapshot().active().unwrap().project_revision(),
         updated.project_revision()
     );
+    assert!(lifecycle.snapshot().dirty());
 
     lifecycle.execute(DesktopProjectCommand::Close).unwrap();
+    assert!(!lifecycle.snapshot().dirty());
     lifecycle
         .execute(DesktopProjectCommand::Open {
             path: project_path.to_string_lossy().into_owned(),
         })
         .unwrap();
     assert_eq!(lifecycle.inspect_settings().unwrap(), updated);
+    assert!(!lifecycle.snapshot().dirty());
 
     let stable_active = lifecycle.snapshot().active().unwrap().clone();
     let stable_settings = lifecycle.inspect_settings().unwrap();

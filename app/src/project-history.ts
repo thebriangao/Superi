@@ -25,12 +25,14 @@ export type ProjectHistoryCondition =
 export interface ProjectHistoryDocument {
   readonly path: string;
   readonly project_id: string;
+  readonly root_timeline_id: string;
   readonly project_revision: number;
 }
 
 export type ProjectHistoryEditorState = Pick<
   EditorProjectState,
   | "project_id"
+  | "root_timeline_id"
   | "project_revision"
   | "undo_depth"
   | "redo_depth"
@@ -101,7 +103,8 @@ export function projectHistoryPresentation(input: {
   const projectMatches =
     active !== null &&
     editorProject !== null &&
-    active.project_id === editorProject.project_id;
+    active.project_id === editorProject.project_id &&
+    active.root_timeline_id === editorProject.root_timeline_id;
   const closeUndoDepth = projectMatches
     ? historyDepth(editorProject.undo_depth)
     : 0;

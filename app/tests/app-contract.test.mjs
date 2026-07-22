@@ -560,6 +560,36 @@ test("background job center unifies bounded local receipts with authoritative ex
   assert.doesNotMatch(jobs, /setInterval|requestAnimationFrame|submit_job/);
 });
 
+test("document dirty state owns native titles, save availability, and safe close policy", () => {
+  const lifecycle = read(resolve(tauriRoot, "src/project_lifecycle.rs"));
+  const projectBridge = read(resolve(appRoot, "src/project-lifecycle.ts"));
+  const shell = read(resolve(appRoot, "src/desktop-shell.ts"));
+  const nativeShell = read(resolve(tauriRoot, "src/desktop_shell.rs"));
+  const app = read(resolve(appRoot, "src/App.tsx"));
+  const apiState = read(resolve(repositoryRoot, "open/crates/superi-api/src/state.rs"));
+
+  assert.match(apiState, /pub fn root_timeline_id\(&self\) -> &str/);
+  assert.match(lifecycle, /pub struct DesktopProjectDocument/);
+  assert.match(lifecycle, /saved_semantic_hash/);
+  assert.match(lifecycle, /const SCHEMA_VERSION: u32 = 2/);
+  assert.match(lifecycle, /pub const fn dirty\(&self\) -> bool/);
+  assert.match(projectBridge, /readonly dirty: boolean/);
+  assert.match(shell, /readonly dirty: boolean/);
+  assert.match(shell, /confirm_dirty_history/);
+  assert.match(shell, /confirm_dirty/);
+  assert.match(nativeShell, /pub const fn dirty\(&self\) -> bool/);
+  assert.match(nativeShell, /save_enabled\(\)/);
+  assert.match(nativeShell, /document_title\(\)/);
+  assert.match(app, /root_timeline_id/);
+  assert.match(app, /dirty: projectSnapshot\?\.dirty \?\? false/);
+  assert.match(app, /decision === "confirm_dirty_history"/);
+  assert.match(app, /decision === "confirm_dirty"/);
+  assert.match(app, /if \(activeProject !== null && projectSnapshot\?\.dirty\)/);
+  assert.match(app, /Document state/);
+  assert.match(app, /projectSnapshot\.dirty\s+\? "Modified"\s+: "Saved"/);
+  assert.doesNotMatch(lifecycle, /dirty\s*=\s*.*undo_depth|undo_depth\s*>\s*0.*dirty/s);
+});
+
 test("blocking workflows exercise the production app rather than CI-only smoke packages", () => {
   const frontendWorkflow = read(
     resolve(repositoryRoot, ".github/workflows/frontend.yml"),
@@ -613,16 +643,20 @@ test("development shell owns exact Superi project file association ingress", () 
   assert.match(host, /file_associations::route_startup_project_files/);
   assert.match(host, /RunEvent::Opened \{ urls \}/);
   assert.match(host, /file_associations::route_opened_project_urls/);
-  assert.match(associations, /runtime\.spawn_background_task/);
-  assert.doesNotMatch(associations, /tauri::async_runtime::spawn_blocking/);
-  assert.match(associations, /DesktopProjectCommand::Open/);
-  assert.match(associations, /superi:\/\/project-opened/);
+  assert.match(associations, /DesktopProjectAssociationState/);
+  assert.match(associations, /desktop_project_open_requests/);
+  assert.match(associations, /desktop_project_open_request_resolve/);
+  assert.doesNotMatch(associations, /DesktopProjectCommand::Open/);
+  assert.match(associations, /superi:\/\/project-open-requested/);
   assert.match(projectAdapter, /listenForDesktopProjectOpen/);
-  assert.match(projectAdapter, /superi:\/\/project-opened/);
+  assert.match(projectAdapter, /getDesktopProjectOpenRequests/);
+  assert.match(projectAdapter, /resolveDesktopProjectOpenRequest/);
+  assert.match(projectAdapter, /superi:\/\/project-open-requested/);
   assert.match(app, /await listenForDesktopProjectOpen/);
+  assert.match(app, /getDesktopProjectOpenRequests/);
+  assert.match(app, /await openShellProject\(request\.path\)/);
+  assert.match(app, /resolveDesktopProjectOpenRequest/);
   assert.match(app, /snapshot\.revision <= latestProjectRevision\.current/);
-  assert.match(app, /acceptProjectSnapshot\(event\.snapshot\)/);
-  assert.match(app, /void refreshEditorProject\(\)/);
 });
 
 test("desktop process retains every long-lived shell owner and exposes cleanup state", () => {

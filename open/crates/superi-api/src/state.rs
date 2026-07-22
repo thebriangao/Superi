@@ -375,6 +375,12 @@ impl EditorProjectState {
         &self.project_id
     }
 
+    /// Returns the root timeline identity that completes the active document route.
+    #[must_use]
+    pub fn root_timeline_id(&self) -> &str {
+        &self.root_timeline_id
+    }
+
     /// Returns the current authored project revision.
     #[must_use]
     pub const fn project_revision(&self) -> u64 {

@@ -250,6 +250,7 @@ pub struct DesktopShellSync {
     pub redo_depth: u64,
     pub next_undo: Option<DesktopProjectMutationKind>,
     pub next_redo: Option<DesktopProjectMutationKind>,
+    pub dirty: bool,
     pub busy: bool,
     pub workspace: DesktopWorkspacePresentation,
     pub keyboard_shortcuts: DesktopKeyboardShortcutProfile,
@@ -290,7 +291,7 @@ impl std::fmt::Display for DesktopShellFailure {
 
 impl std::error::Error for DesktopShellFailure {}
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopShellSnapshot {
     revision: u64,
@@ -301,31 +302,12 @@ pub struct DesktopShellSnapshot {
     redo_depth: u64,
     next_undo: Option<DesktopProjectMutationKind>,
     next_redo: Option<DesktopProjectMutationKind>,
+    dirty: bool,
     busy: bool,
     workspace: DesktopWorkspacePresentation,
     keyboard_shortcuts: DesktopKeyboardShortcutProfile,
     background_jobs: DesktopBackgroundJobsSnapshot,
     failure: Option<DesktopShellFailure>,
-}
-
-impl Default for DesktopShellSnapshot {
-    fn default() -> Self {
-        Self {
-            revision: 0,
-            client_sequence: 0,
-            active: None,
-            recent_paths: Vec::new(),
-            undo_depth: 0,
-            redo_depth: 0,
-            next_undo: None,
-            next_redo: None,
-            busy: false,
-            workspace: DesktopWorkspacePresentation::default(),
-            keyboard_shortcuts: DesktopKeyboardShortcutProfile::default(),
-            background_jobs: DesktopBackgroundJobsSnapshot::default(),
-            failure: None,
-        }
-    }
 }
 
 impl DesktopShellSnapshot {
@@ -367,6 +349,21 @@ impl DesktopShellSnapshot {
     #[must_use]
     pub const fn next_redo(&self) -> Option<DesktopProjectMutationKind> {
         self.next_redo
+    }
+
+    #[must_use]
+    pub const fn dirty(&self) -> bool {
+        self.dirty
+    }
+
+    #[must_use]
+    pub fn save_enabled(&self) -> bool {
+        self.active.is_some() && self.dirty && !self.busy
+    }
+
+    #[must_use]
+    pub fn document_title(&self) -> String {
+        document_title(self.active.as_ref(), self.dirty)
     }
 
     #[must_use]
@@ -447,6 +444,7 @@ impl DesktopShellModel {
             redo_depth: sync.redo_depth,
             next_undo: sync.next_undo,
             next_redo: sync.next_redo,
+            dirty: sync.dirty,
             busy: sync.busy,
             workspace: sync.workspace,
             keyboard_shortcuts: sync.keyboard_shortcuts,
@@ -776,7 +774,7 @@ pub fn build_menu<R: Runtime>(
         app,
         "superi.file.save",
         "Save",
-        available,
+        snapshot.save_enabled(),
         Some("CmdOrCtrl+S"),
     )?;
     let save_as = MenuItem::with_id(
@@ -988,15 +986,13 @@ fn apply_native_projection<R: Runtime>(
         )
     })?;
     if let Some(window) = app.get_webview_window("main") {
-        window
-            .set_title(&document_title(snapshot.active.as_ref()))
-            .map_err(|_| {
-                DesktopShellFailure::invalid(
-                    "desktop_shell_title_update_failed",
-                    "Desktop document title could not be updated",
-                    "Continue working and save the active project normally.",
-                )
-            })?;
+        window.set_title(&snapshot.document_title()).map_err(|_| {
+            DesktopShellFailure::invalid(
+                "desktop_shell_title_update_failed",
+                "Desktop document title could not be updated",
+                "Continue working and save the active project normally.",
+            )
+        })?;
     }
     Ok(())
 }
@@ -1013,7 +1009,8 @@ fn validate_sync(sync: &DesktopShellSync) -> Result<(), DesktopShellFailure> {
         && (sync.undo_depth > 0
             || sync.redo_depth > 0
             || sync.next_undo.is_some()
-            || sync.next_redo.is_some())
+            || sync.next_redo.is_some()
+            || sync.dirty)
     {
         return Err(invalid_presentation("detached project history"));
     }
@@ -1357,12 +1354,13 @@ fn document_name(path: &str) -> String {
         .to_owned()
 }
 
-fn document_title(active: Option<&DesktopShellDocument>) -> String {
+fn document_title(active: Option<&DesktopShellDocument>, dirty: bool) -> String {
     active.map_or_else(
         || "Superi".to_owned(),
         |active| {
+            let dirty_marker = if dirty { " *" } else { "" };
             format!(
-                "{} [r{}] - Superi",
+                "{}{dirty_marker} [r{}] - Superi",
                 document_name(&active.path),
                 active.project_revision
             )

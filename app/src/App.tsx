@@ -62,6 +62,7 @@ import {
 import {
   executeDesktopProject,
   generateProjectMediaPreview,
+  getDesktopProjectOpenRequests,
   getDesktopProjectSnapshot,
   getDesktopProjectSettings,
   importDesktopMedia,
@@ -77,11 +78,13 @@ import {
   mutateProjectMediaMetadata,
   mutateProjectMediaLibrary,
   readProjectMediaLibrary,
+  resolveDesktopProjectOpenRequest,
   scanProjectMediaSources,
   subscribeDesktopProjectSnapshot,
   updateDesktopProjectSettings,
   type DesktopProjectCommand,
   type DesktopProjectFailure,
+  type DesktopProjectOpenRequest,
   type DesktopProjectSettings,
   type DesktopProjectSettingsUpdate,
   type DesktopProjectSnapshot,
@@ -111,6 +114,7 @@ import {
   requestDesktopClose,
   resolveDesktopClose,
   syncDesktopShell,
+  type DesktopCloseDecision,
   type DesktopCloseReason,
   type DesktopShellIntent,
 } from "./desktop-shell.ts";
@@ -766,6 +770,9 @@ function ApplicationShell() {
 
   const [projectSnapshot, setProjectSnapshot] =
     useState<DesktopProjectSnapshot | null>(null);
+  const [projectOpenRequests, setProjectOpenRequests] = useState<
+    readonly DesktopProjectOpenRequest[]
+  >([]);
   const [shellPending, setShellPending] = useState(false);
   const [shellReady, setShellReady] = useState(false);
   const [shellFailure, setShellFailure] = useState<string | null>(null);
@@ -776,6 +783,23 @@ function ApplicationShell() {
   const workspaceSyncSequence = useRef(0);
   const shellTransaction = useRef(0);
   const latestProjectRevision = useRef(-1);
+  const projectOpenRequestInFlight = useRef(false);
+  const enqueueProjectOpenRequests = useCallback(
+    (requests: readonly DesktopProjectOpenRequest[]) => {
+      setProjectOpenRequests((current) => {
+        const sequences = new Set(current.map((request) => request.sequence));
+        const additions = requests.filter(
+          (request) => !sequences.has(request.sequence),
+        );
+        return additions.length === 0
+          ? current
+          : [...current, ...additions].sort(
+              (left, right) => left.sequence - right.sequence,
+            );
+      });
+    },
+    [],
+  );
   const editorSnapshot = editorProject.snapshot;
   const activeProject = projectSnapshot?.active ?? null;
   const busy =
@@ -792,6 +816,7 @@ function ApplicationShell() {
             : {
                 path: activeProject.path,
                 project_id: activeProject.identity.project_id,
+                root_timeline_id: activeProject.identity.root_timeline_id,
                 project_revision: activeProject.identity.project_revision,
               },
         editorProject: editorSnapshot?.project ?? null,
@@ -801,6 +826,9 @@ function ApplicationShell() {
   );
   const undoDepth = historyPresentation.closeUndoDepth;
   const redoDepth = historyPresentation.closeRedoDepth;
+  const projectCloseBusy =
+    busy ||
+    (activeProject !== null && historyPresentation.condition === "synchronizing");
   const applicationFailures = useMemo(() => {
     const failures: ApplicationFailurePresentation[] = [];
     const lifecycleFailure =
@@ -1044,28 +1072,28 @@ function ApplicationShell() {
     let stopProjectOpen: (() => void) | null = null;
     const initialize = async () => {
       const failures: string[] = [];
-      try {
-        stopProjectOpen = await listenForDesktopProjectOpen((event) => {
-          if (!active) return;
-          if (event.snapshot !== null) {
-            acceptProjectSnapshot(event.snapshot);
-            void refreshEditorProject();
-          } else if (event.failure !== null) {
-            setShellFailure(`${event.failure.title} ${event.failure.action}`);
+      if (currentWindowLabel === "main") {
+        try {
+          stopProjectOpen = await listenForDesktopProjectOpen((event) => {
+            if (!active) return;
+            enqueueProjectOpenRequests([event]);
+          });
+          if (!active) {
+            stopProjectOpen();
+            stopProjectOpen = null;
+            return;
           }
-        });
-        if (!active) {
-          stopProjectOpen();
-          stopProjectOpen = null;
-          return;
+        } catch (error: unknown) {
+          failures.push(actionableFailureMessage(error));
         }
-      } catch (error: unknown) {
-        failures.push(actionableFailureMessage(error));
       }
 
-      const [shellResult, projectResult] = await Promise.allSettled([
+      const [shellResult, projectResult, openRequestsResult] = await Promise.allSettled([
         getDesktopShellSnapshot(),
         getDesktopProjectSnapshot(),
+        currentWindowLabel === "main"
+          ? getDesktopProjectOpenRequests()
+          : Promise.resolve([]),
       ]);
       if (!active) return;
       if (shellResult.status === "fulfilled") {
@@ -1104,6 +1132,13 @@ function ApplicationShell() {
           "Project continuity is unavailable. Restart Superi before continuing.",
         );
       }
+      if (openRequestsResult.status === "fulfilled") {
+        enqueueProjectOpenRequests(openRequestsResult.value);
+      } else {
+        failures.push(
+          "Operating-system project requests are unavailable. Open the project from Superi instead.",
+        );
+      }
       setShellFailure(failures.length === 0 ? null : failures.join(" "));
       setShellReady(true);
     };
@@ -1114,8 +1149,9 @@ function ApplicationShell() {
     };
   }, [
     acceptProjectSnapshot,
+    currentWindowLabel,
     dispatch,
-    refreshEditorProject,
+    enqueueProjectOpenRequests,
     restoreKeyboardShortcuts,
   ]);
 
@@ -1160,7 +1196,8 @@ function ApplicationShell() {
         historyPresentation.redo.depth > 0
           ? historyPresentation.redo.mutationKind
           : null,
-      busy,
+      dirty: projectSnapshot?.dirty ?? false,
+      busy: projectCloseBusy,
       workspace: applicationWorkspacePresentation(state),
       keyboard_shortcuts: keyboardShortcutProfile,
     })
@@ -1193,6 +1230,8 @@ function ApplicationShell() {
     keyboardShortcutProfile,
     keyboardShortcutsHydrated,
     projectSnapshot?.recent,
+    projectSnapshot?.dirty,
+    projectCloseBusy,
     shellReady,
     state.activeRouteId,
     state.focusedPanelId,
@@ -1231,23 +1270,31 @@ function ApplicationShell() {
 
   const preserveActiveProject = useCallback(async (): Promise<boolean> => {
     if (activeProject === null) return true;
-    if (busy) {
+    const decision = decideDesktopClose({
+      busy: projectCloseBusy,
+      active: true,
+      dirty: projectSnapshot?.dirty ?? false,
+      undoDepth,
+      redoDepth,
+    });
+    if (decision === "block_busy") {
       await message("Wait for the current operation to finish before replacing the project.", {
         title: "Project is busy",
         kind: "warning",
       });
       return false;
     }
-    if (undoDepth > 0 || redoDepth > 0) {
-      const accepted = await confirm(
-        "The project will be saved, but its current session undo and redo history will end. Continue?",
-        { title: "End project history session?", kind: "warning" },
-      );
-      if (!accepted) return false;
-    }
-    await executeShellProject({ kind: "save" });
+    if (!(await confirmProjectTransition(decision, "Replace project?"))) return false;
+    if (projectSnapshot?.dirty) await executeShellProject({ kind: "save" });
     return true;
-  }, [activeProject, busy, executeShellProject, redoDepth, undoDepth]);
+  }, [
+    activeProject,
+    executeShellProject,
+    projectCloseBusy,
+    projectSnapshot?.dirty,
+    redoDepth,
+    undoDepth,
+  ]);
 
   const openShellProject = useCallback(
     async (path: string): Promise<void> => {
@@ -1257,6 +1304,43 @@ function ApplicationShell() {
     },
     [activeProject?.path, executeShellProject, preserveActiveProject],
   );
+
+  useEffect(() => {
+    const request = projectOpenRequests[0];
+    if (
+      currentWindowLabel !== "main" ||
+      request === undefined ||
+      projectSnapshot === null ||
+      projectCloseBusy ||
+      projectOpenRequestInFlight.current
+    ) {
+      return;
+    }
+    projectOpenRequestInFlight.current = true;
+    void (async () => {
+      try {
+        await openShellProject(request.path);
+      } catch (error: unknown) {
+        setShellFailure(actionableFailureMessage(error));
+      }
+      try {
+        await resolveDesktopProjectOpenRequest(request.sequence);
+      } catch (error: unknown) {
+        setShellFailure((current) => current ?? actionableFailureMessage(error));
+      } finally {
+        setProjectOpenRequests((current) =>
+          current.filter((candidate) => candidate.sequence !== request.sequence),
+        );
+        projectOpenRequestInFlight.current = false;
+      }
+    })();
+  }, [
+    currentWindowLabel,
+    openShellProject,
+    projectCloseBusy,
+    projectOpenRequests,
+    projectSnapshot,
+  ]);
 
   const importMediaPaths = useCallback(
     async (origin: DesktopMediaImportOrigin, paths: readonly string[]) => {
@@ -1286,8 +1370,9 @@ function ApplicationShell() {
 
   const closeProject = useCallback(async () => {
     const decision = decideDesktopClose({
-      busy,
+      busy: projectCloseBusy,
       active: activeProject !== null,
+      dirty: projectSnapshot?.dirty ?? false,
       undoDepth,
       redoDepth,
     });
@@ -1298,27 +1383,27 @@ function ApplicationShell() {
       });
       return;
     }
-    if (
-      decision === "confirm_history" &&
-      !(await confirm(
-        "The project will be saved, but its current session undo and redo history will end. Continue?",
-        { title: "Close project?", kind: "warning" },
-      ))
-    ) {
-      return;
-    }
+    if (!(await confirmProjectTransition(decision, "Close project?"))) return;
     if (activeProject !== null) {
-      await executeShellProject({ kind: "save" });
+      if (projectSnapshot?.dirty) await executeShellProject({ kind: "save" });
       await executeShellProject({ kind: "close" });
     }
-  }, [activeProject, busy, executeShellProject, redoDepth, undoDepth]);
+  }, [
+    activeProject,
+    executeShellProject,
+    projectCloseBusy,
+    projectSnapshot?.dirty,
+    redoDepth,
+    undoDepth,
+  ]);
 
   const closeApplication = useCallback(
     async (_reason: DesktopCloseReason) => {
       try {
         const decision = decideDesktopClose({
-          busy,
+          busy: projectCloseBusy,
           active: activeProject !== null,
+          dirty: projectSnapshot?.dirty ?? false,
           undoDepth,
           redoDepth,
         });
@@ -1330,17 +1415,11 @@ function ApplicationShell() {
           });
           return;
         }
-        if (
-          decision === "confirm_history" &&
-          !(await confirm(
-            "The project will be saved, but its current session undo and redo history will end. Quit Superi?",
-            { title: "Quit Superi?", kind: "warning" },
-          ))
-        ) {
+        if (!(await confirmProjectTransition(decision, "Quit Superi?"))) {
           await resolveDesktopClose(false);
           return;
         }
-        if (activeProject !== null) {
+        if (activeProject !== null && projectSnapshot?.dirty) {
           await executeShellProject({ kind: "save" });
         }
         await resolveDesktopClose(true);
@@ -1349,7 +1428,14 @@ function ApplicationShell() {
         await resolveDesktopClose(false).catch(() => false);
       }
     },
-    [activeProject, busy, executeShellProject, redoDepth, undoDepth],
+    [
+      activeProject,
+      executeShellProject,
+      projectCloseBusy,
+      projectSnapshot?.dirty,
+      redoDepth,
+      undoDepth,
+    ],
   );
 
   const executeHistory = useCallback(
@@ -1359,8 +1445,10 @@ function ApplicationShell() {
       if (
         !action.enabled ||
         snapshot === null ||
+        activeProject === null ||
         snapshot.project.project_id !== historyPresentation.projectId ||
-        snapshot.project.project_revision !== historyPresentation.projectRevision
+        snapshot.project.project_revision !== historyPresentation.projectRevision ||
+        snapshot.project.root_timeline_id !== activeProject.identity.root_timeline_id
       ) {
         return;
       }
@@ -1383,6 +1471,7 @@ function ApplicationShell() {
     },
     [
       editorProject.snapshot,
+      activeProject,
       executeProjectCommand,
       historyPresentation,
       refreshProjectSnapshot,
@@ -1434,7 +1523,9 @@ function ApplicationShell() {
           await executeShellProject({ kind: "open_recent", path: intent.path });
           return;
         case "save_project":
-          await executeShellProject({ kind: "save" });
+          if (activeProject !== null && projectSnapshot?.dirty) {
+            await executeShellProject({ kind: "save" });
+          }
           return;
         case "save_project_as": {
           const destination = await save({
@@ -1490,12 +1581,14 @@ function ApplicationShell() {
     [
       closeApplication,
       closeProject,
+      activeProject,
       executeCommand,
       executeHistory,
       executeShellProject,
       importMediaPaths,
       openShellProject,
       preserveActiveProject,
+      projectSnapshot?.dirty,
       registry.routeDefinitions,
     ],
   );
@@ -1510,7 +1603,8 @@ function ApplicationShell() {
         ),
         ...desktopShellCommandPaletteActions({
           active: activeProject !== null,
-          busy,
+          dirty: projectSnapshot?.dirty ?? false,
+          busy: projectCloseBusy,
           history: historyPresentation,
           recentPaths:
             projectSnapshot?.recent.map((recent) => recent.path) ?? [],
@@ -1518,12 +1612,13 @@ function ApplicationShell() {
       ]),
     [
       activeProject,
-      busy,
+      projectCloseBusy,
       commandAvailability,
       keyboardShortcutForCommand,
       keyboardShortcutProfile,
       historyPresentation,
       projectSnapshot?.recent,
+      projectSnapshot?.dirty,
       registry.commandDefinitions,
       state.revision,
     ],
@@ -1958,9 +2053,40 @@ function sourcePathUnderRoot(root: string, path: string): string {
   return `${trimmedRoot}${separator}${sourceBasename(path)}`;
 }
 
+async function confirmProjectTransition(
+  decision: DesktopCloseDecision,
+  title: string,
+): Promise<boolean> {
+  if (decision === "confirm_dirty_history") {
+    return confirm(
+      "The project has changes since its last explicit save. Continue to save those changes and end the current session undo and redo history?",
+      { title, kind: "warning" },
+    );
+  }
+  if (decision === "confirm_dirty") {
+    return confirm(
+      "The project has changes since its last explicit save. Continue and save those changes?",
+      { title, kind: "warning" },
+    );
+  }
+  if (decision === "confirm_history") {
+    return confirm(
+      "The project is saved, but its current session undo and redo history will end. Continue?",
+      { title, kind: "warning" },
+    );
+  }
+  return decision === "close";
+}
+
 function SystemPanel() {
   const api = useSuperiApi();
-  const { dispatch, registry, state: applicationState } = useApplication();
+  const {
+    dispatch,
+    registry,
+    state: applicationState,
+    editorProject,
+    refreshEditorProject,
+  } = useApplication();
   const [snapshot, setSnapshot] = useState<DesktopLifecycleSnapshot | null>(null);
   const [processSnapshot, setProcessSnapshot] =
     useState<DesktopProcessSnapshot | null>(null);
@@ -2307,17 +2433,95 @@ function SystemPanel() {
     }
   };
 
-  const executeProject = async (command: DesktopProjectCommand) => {
+  const executeProject = async (
+    command: DesktopProjectCommand,
+  ): Promise<DesktopProjectSnapshot | null> => {
     setProjectPending(true);
     try {
       const project = await executeDesktopProject(command);
       setProjectSnapshot(project);
       setProjectFailure(project.failure);
+      await refreshEditorProject();
+      return project;
     } catch (error: unknown) {
       setProjectFailure(projectFailureFrom(error));
+      return null;
     } finally {
       setProjectPending(false);
     }
+  };
+
+  const systemHistory = projectHistoryPresentation({
+    active:
+      projectSnapshot?.active === null || projectSnapshot?.active === undefined
+        ? null
+        : {
+            path: projectSnapshot.active.path,
+            project_id: projectSnapshot.active.identity.project_id,
+            root_timeline_id: projectSnapshot.active.identity.root_timeline_id,
+            project_revision: projectSnapshot.active.identity.project_revision,
+          },
+    editorProject: editorProject.snapshot?.project ?? null,
+    busy:
+      projectPending ||
+      editorProject.status === "loading" ||
+      editorProject.status === "refreshing",
+  });
+  const systemProjectBusy =
+    projectPending ||
+    editorProject.status === "loading" ||
+    editorProject.status === "refreshing" ||
+    (projectSnapshot?.active !== null &&
+      projectSnapshot?.active !== undefined &&
+      systemHistory.condition === "synchronizing");
+  const closeSystemProject = async () => {
+    const active = projectSnapshot?.active ?? null;
+    const decision = decideDesktopClose({
+      busy: systemProjectBusy,
+      active: active !== null,
+      dirty: projectSnapshot?.dirty ?? false,
+      undoDepth: systemHistory.closeUndoDepth,
+      redoDepth: systemHistory.closeRedoDepth,
+    });
+    if (decision === "block_busy") {
+      await message("Wait for project state to synchronize before closing the project.", {
+        title: "Project is busy",
+        kind: "warning",
+      });
+      return;
+    }
+    if (!(await confirmProjectTransition(decision, "Close project?"))) return;
+    if (active !== null && projectSnapshot?.dirty) {
+      if ((await executeProject({ kind: "save" })) === null) return;
+    }
+    if (active !== null) await executeProject({ kind: "close" });
+  };
+
+  const preserveSystemProject = async (): Promise<boolean> => {
+    const active = projectSnapshot?.active ?? null;
+    if (active === null) return true;
+    const decision = decideDesktopClose({
+      busy: systemProjectBusy,
+      active: true,
+      dirty: projectSnapshot?.dirty ?? false,
+      undoDepth: systemHistory.closeUndoDepth,
+      redoDepth: systemHistory.closeRedoDepth,
+    });
+    if (decision === "block_busy") {
+      await message("Wait for project state to synchronize before replacing the project.", {
+        title: "Project is busy",
+        kind: "warning",
+      });
+      return false;
+    }
+    if (!(await confirmProjectTransition(decision, "Replace project?"))) return false;
+    if (
+      projectSnapshot?.dirty &&
+      (await executeProject({ kind: "save" })) === null
+    ) {
+      return false;
+    }
+    return true;
   };
 
   const restoreCrashContinuity = async (
@@ -2707,9 +2911,10 @@ function SystemPanel() {
     }
   };
 
-  const createProject = () => {
+  const createProject = async () => {
+    if (!(await preserveSystemProject())) return;
     const identity = crypto.randomUUID();
-    void executeProject({
+    await executeProject({
       kind: "create",
       path: projectPath,
       project: {
@@ -3157,6 +3362,22 @@ function SystemPanel() {
             ? `${projectSnapshot.active.identity.project_id} at ${projectSnapshot.active.path}`
             : "No project is open."}
         </p>
+        <dl className="lifecycle-details">
+          <div>
+            <dt>Document state</dt>
+            <dd>
+              {projectSnapshot?.active === null || projectSnapshot?.active === undefined
+                ? "No project"
+                : projectSnapshot.dirty
+                  ? "Modified"
+                  : "Saved"}
+            </dd>
+          </div>
+          <div>
+            <dt>Project revision</dt>
+            <dd>{projectSnapshot?.active?.identity.project_revision ?? "none"}</dd>
+          </div>
+        </dl>
 
         {projectFailure ? (
           <div className="failure" role="alert">
@@ -3186,7 +3407,7 @@ function SystemPanel() {
           <button
             type="button"
             disabled={projectPending || projectPath.trim().length === 0}
-            onClick={createProject}
+            onClick={() => void createProject()}
           >
             Create
           </button>
@@ -3194,14 +3415,20 @@ function SystemPanel() {
             type="button"
             disabled={projectPending || projectPath.trim().length === 0}
             onClick={() =>
-              void executeProject({ kind: "open", path: projectPath })
+              void preserveSystemProject().then((accepted) => {
+                if (accepted) return executeProject({ kind: "open", path: projectPath });
+              })
             }
           >
             Open
           </button>
           <button
             type="button"
-            disabled={projectPending || projectSnapshot?.active === null}
+            disabled={
+              projectPending ||
+              projectSnapshot?.active === null ||
+              !projectSnapshot?.dirty
+            }
             onClick={() => void executeProject({ kind: "save" })}
           >
             Save
@@ -3209,8 +3436,8 @@ function SystemPanel() {
           <button
             className="secondary"
             type="button"
-            disabled={projectPending || projectSnapshot?.active === null}
-            onClick={() => void executeProject({ kind: "close" })}
+            disabled={systemProjectBusy || projectSnapshot?.active === null}
+            onClick={() => void closeSystemProject()}
           >
             Close
           </button>
@@ -4640,9 +4867,13 @@ function SystemPanel() {
                 key={recent.path}
                 disabled={projectPending}
                 onClick={() =>
-                  void executeProject({
-                    kind: "open_recent",
-                    path: recent.path,
+                  void preserveSystemProject().then((accepted) => {
+                    if (accepted) {
+                      return executeProject({
+                        kind: "open_recent",
+                        path: recent.path,
+                      });
+                    }
                   })
                 }
               >

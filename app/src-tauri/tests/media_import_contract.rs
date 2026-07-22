@@ -69,6 +69,7 @@ fn picker_drop_folder_sequence_api_events_and_automation_share_one_import_transa
             },
         })
         .unwrap();
+    assert!(!lifecycle.snapshot().dirty());
 
     let picker = lifecycle
         .import_media(request(
@@ -80,6 +81,7 @@ fn picker_drop_folder_sequence_api_events_and_automation_share_one_import_transa
     assert_eq!(picker.project_revision(), 1);
     assert_eq!(picker.imported().len(), 1);
     assert_eq!(picker.imported()[0].kind(), DesktopImportedMediaKind::File);
+    assert!(lifecycle.snapshot().dirty());
 
     let dropped = lifecycle
         .import_media(request(
@@ -147,12 +149,14 @@ fn picker_drop_folder_sequence_api_events_and_automation_share_one_import_transa
     assert_eq!(duplicate.event_sequence(), None);
 
     lifecycle.execute(DesktopProjectCommand::Close).unwrap();
+    assert!(!lifecycle.snapshot().dirty());
     lifecycle
         .execute(DesktopProjectCommand::Open {
             path: project_path.to_string_lossy().into_owned(),
         })
         .unwrap();
     assert_eq!(lifecycle.snapshot().active().unwrap().project_revision(), 5);
+    assert!(!lifecycle.snapshot().dirty());
     let reopened_duplicate = lifecycle
         .import_media(request(
             5,

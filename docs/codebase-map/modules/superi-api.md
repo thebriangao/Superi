@@ -2,7 +2,7 @@
 module_id: superi-api
 source_paths:
   - open/crates/superi-api
-source_hash: 401bcb7196fddf41fe468f342c8636f35a1ab4f806f00c3c6bcea4a186ab89b4
+source_hash: ed553e2766b4145ae0a608905db4c8e5db776ede9da0d065721d0d4f5cb697cd
 source_files: 43
 mapped_at_commit: working-tree
 ---
@@ -150,8 +150,9 @@ The generator adds no hidden runtime, state owner, Tauri dependency, network pat
   through `ProjectEditorApi`.
 - `open/crates/superi-api/src/state.rs`: Owns the strict ten-domain complete editor replacement
   snapshot, canonical authored JSON resource envelopes, bounded extension descriptors, exact audio
-  routing and continuity projection, public project identity and semantic hash accessors for script
-  traces, and the dispatcher-backed read-only query facade. Playback projection names every exact
+  routing and continuity projection, public project, root timeline, revision, and semantic hash
+  accessors for script, native desktop, and other in-process consumers, and the dispatcher-backed
+  read-only query facade. Playback projection names every exact
   mode, authoritative half-open navigation bounds, coordinate, scheduled clock, signed rate, direction, loop, epoch, delivery statistic,
   audio acknowledgement, degradation, and safe failure, then discards only completed playback
   events after taking the replacement snapshot.
@@ -435,7 +436,9 @@ The complete editor state surface is schema `1.0.0`, method `superi.editor.state
 replacement resource `superi.editor.state`. `EditorStateSnapshot` exposes explicit project,
 timeline, graph, media, audio, color, effect, AI, playback, and export roots from one engine command
 sequence. Canonical timeline, graph, and clip-mix documents retain exact canonical JSON bytes,
-lengths, and SHA-256 identities. Audio state retains integral sample clocks, ordered semantic
+lengths, and SHA-256 identities. Its project projection exposes exact project, root timeline,
+revision, semantic hash algorithm, and semantic hash format identity without exposing storage
+manifests or paths. Audio state retains integral sample clocks, ordered semantic
 channels, explicit routing or mute targets, and exact continuity seams. Detached, attached without
 an observation, pending, and observed runtime owners remain distinct, while packets, frames,
 samples, textures, extension payload bytes, and export result bytes remain private.
@@ -1230,8 +1233,11 @@ Generated bindings are implemented as a deterministic representation of the curr
 public surface and are consumed by the production desktop application. They do not themselves
 provide complete native wire routing, mutation authority, or a second authored-state owner. The
 desktop routes the generated editor-state query and generic project command through its existing
-EngineControl owner. The application owner uses strict track, caption, and project command types for
-durable revision-fenced commands. Separately, the native shell uses `MediaCapabilitiesApi` as a
+EngineControl owner. Its project lifecycle also inspects the same coherent editor project through
+the API-owned local host, using the public project, root timeline, revision, and versioned semantic
+hash accessors to derive a private explicit-save comparison baseline without changing the public
+wire shape. The application owner uses strict track, caption, and project command types for durable
+revision-fenced commands. Separately, the native shell uses `MediaCapabilitiesApi` as a
 read-only codec declaration projector for retained System-panel visibility; this adds no generated
 method, public resource, event cursor, or execution authority. The editing workspace uses editor-state timeline, graph,
 and attached automation data as exact canvas and inspector input. Application-owned typed command

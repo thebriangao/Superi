@@ -1,34 +1,153 @@
 //! Operating-system project file association ingress for the desktop shell.
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, Runtime, Url};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State, Url};
 
 use crate::process_runtime::DesktopProcessRuntime;
-use crate::project_lifecycle::{
-    DesktopProjectCommand, DesktopProjectFailure, DesktopProjectFailureClass,
-    DesktopProjectSnapshot, DesktopProjectState,
-};
+use crate::project_lifecycle::{DesktopProjectFailure, DesktopProjectFailureClass};
 
 pub const PROJECT_FILE_EXTENSION: &str = "superi";
-pub const PROJECT_OPENED_EVENT: &str = "superi://project-opened";
+pub const PROJECT_OPEN_REQUESTED_EVENT: &str = "superi://project-open-requested";
+const MAX_PENDING_PROJECT_OPENS: usize = 32;
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-enum ProjectFileOpenSource {
+pub enum ProjectFileOpenSource {
     StartupArgument,
     OperatingSystem,
 }
 
-#[derive(Clone, Debug, Serialize)]
-struct DesktopProjectOpenedEvent {
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct DesktopProjectOpenRequest {
+    sequence: u64,
     source: ProjectFileOpenSource,
     path: String,
-    snapshot: Option<DesktopProjectSnapshot>,
-    failure: Option<DesktopProjectFailure>,
+}
+
+impl DesktopProjectOpenRequest {
+    #[must_use]
+    pub const fn sequence(&self) -> u64 {
+        self.sequence
+    }
+
+    #[must_use]
+    pub const fn source(&self) -> ProjectFileOpenSource {
+        self.source
+    }
+
+    #[must_use]
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+}
+
+#[derive(Default)]
+struct ProjectAssociationQueue {
+    next_sequence: u64,
+    pending: VecDeque<DesktopProjectOpenRequest>,
+}
+
+/// Process-local queue that retains operating-system open intent until React safely resolves it.
+#[derive(Clone, Default)]
+pub struct DesktopProjectAssociationState {
+    queue: Arc<Mutex<ProjectAssociationQueue>>,
+}
+
+impl DesktopProjectAssociationState {
+    pub fn enqueue(
+        &self,
+        paths: Vec<PathBuf>,
+        source: ProjectFileOpenSource,
+    ) -> Result<Vec<DesktopProjectOpenRequest>, DesktopProjectFailure> {
+        let paths = unique_project_paths(paths)
+            .into_iter()
+            .map(|path| {
+                path.to_str().map(str::to_owned).ok_or_else(|| {
+                    DesktopProjectFailure::new(
+                        DesktopProjectFailureClass::UserCorrectable,
+                        "project_path_encoding_invalid",
+                        "Project path cannot be opened",
+                        "Move the project to a path supported by this platform and try again.",
+                    )
+                    .with_context("operation", "queue_associated_project")
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut queue = self.lock()?;
+        let pending_paths = queue
+            .pending
+            .iter()
+            .map(|request| request.path.clone())
+            .collect::<HashSet<_>>();
+        let paths = paths
+            .into_iter()
+            .filter(|path| !pending_paths.contains(path))
+            .collect::<Vec<_>>();
+        if queue.pending.len().saturating_add(paths.len()) > MAX_PENDING_PROJECT_OPENS {
+            return Err(DesktopProjectFailure::new(
+                DesktopProjectFailureClass::Retryable,
+                "project_open_queue_full",
+                "Too many project open requests are pending",
+                "Resolve the current project prompt before opening another project.",
+            )
+            .with_context("operation", "queue_associated_project"));
+        }
+
+        let mut requests = Vec::with_capacity(paths.len());
+        for path in paths {
+            queue.next_sequence = queue.next_sequence.checked_add(1).ok_or_else(|| {
+                DesktopProjectFailure::new(
+                    DesktopProjectFailureClass::Terminal,
+                    "project_open_sequence_exhausted",
+                    "Project open requests cannot continue",
+                    "Restart Superi before opening another project.",
+                )
+                .with_context("operation", "queue_associated_project")
+            })?;
+            let request = DesktopProjectOpenRequest {
+                sequence: queue.next_sequence,
+                source,
+                path,
+            };
+            queue.pending.push_back(request.clone());
+            requests.push(request);
+        }
+        Ok(requests)
+    }
+
+    pub fn pending(&self) -> Result<Vec<DesktopProjectOpenRequest>, DesktopProjectFailure> {
+        Ok(self.lock()?.pending.iter().cloned().collect())
+    }
+
+    pub fn resolve(&self, sequence: u64) -> Result<bool, DesktopProjectFailure> {
+        let mut queue = self.lock()?;
+        let Some(index) = queue
+            .pending
+            .iter()
+            .position(|request| request.sequence == sequence)
+        else {
+            return Ok(false);
+        };
+        queue.pending.remove(index);
+        Ok(true)
+    }
+
+    fn lock(&self) -> Result<MutexGuard<'_, ProjectAssociationQueue>, DesktopProjectFailure> {
+        self.queue.lock().map_err(|_| {
+            DesktopProjectFailure::new(
+                DesktopProjectFailureClass::Retryable,
+                "project_open_queue_unavailable",
+                "Project open requests are temporarily unavailable",
+                "Retry the project open request.",
+            )
+            .with_context("operation", "project_open_queue")
+        })
+    }
 }
 
 /// Selects unique project paths from process arguments in first-seen order.
@@ -54,34 +173,6 @@ where
     unique_project_paths(urls.into_iter().filter_map(|url| url.to_file_path().ok()))
 }
 
-/// Opens one associated file through the sole durable desktop project owner.
-pub fn open_project_file(
-    state: &DesktopProjectState,
-    path: &Path,
-) -> Result<DesktopProjectSnapshot, DesktopProjectFailure> {
-    if !is_project_path(path) {
-        return Err(DesktopProjectFailure::new(
-            DesktopProjectFailureClass::UserCorrectable,
-            "project_file_type_invalid",
-            "Project file type is invalid",
-            "Choose a Superi project file.",
-        )
-        .with_context("operation", "open_associated_project"));
-    }
-    let path = path.to_str().ok_or_else(|| {
-        DesktopProjectFailure::new(
-            DesktopProjectFailureClass::UserCorrectable,
-            "project_path_encoding_invalid",
-            "Project path cannot be opened",
-            "Move the project to a path supported by this platform and try again.",
-        )
-        .with_context("operation", "open_associated_project")
-    })?;
-    state.execute(DesktopProjectCommand::Open {
-        path: path.to_owned(),
-    })
-}
-
 /// Routes startup association paths after all managed desktop state is initialized.
 pub fn route_startup_project_files<R: Runtime>(
     app: &AppHandle<R>,
@@ -91,7 +182,7 @@ pub fn route_startup_project_files<R: Runtime>(
     route_project_files(app, paths, ProjectFileOpenSource::StartupArgument, runtime);
 }
 
-/// Routes macOS resource-open events through the same project lifecycle owner.
+/// Queues macOS resource-open events for the existing safe React project owner.
 pub fn route_opened_project_urls<R: Runtime>(
     app: &AppHandle<R>,
     urls: Vec<Url>,
@@ -103,6 +194,21 @@ pub fn route_opened_project_urls<R: Runtime>(
         ProjectFileOpenSource::OperatingSystem,
         runtime,
     );
+}
+
+#[tauri::command]
+pub fn desktop_project_open_requests(
+    state: State<'_, DesktopProjectAssociationState>,
+) -> Result<Vec<DesktopProjectOpenRequest>, DesktopProjectFailure> {
+    state.pending()
+}
+
+#[tauri::command]
+pub fn desktop_project_open_request_resolve(
+    sequence: u64,
+    state: State<'_, DesktopProjectAssociationState>,
+) -> Result<bool, DesktopProjectFailure> {
+    state.resolve(sequence)
 }
 
 fn unique_project_paths<I>(paths: I) -> Vec<PathBuf>
@@ -140,48 +246,21 @@ fn route_project_files<R: Runtime>(
     }
     let app = app.clone();
     let rejection_app = app.clone();
-    let rejection_paths = paths.clone();
     if let Err(error) = runtime.spawn_background_task(move || {
-        for path in paths {
-            let state = app.state::<DesktopProjectState>();
-            let (snapshot, failure) = match open_project_file(&state, &path) {
-                Ok(snapshot) => (Some(snapshot), None),
-                Err(failure) => (state.snapshot().ok(), Some(failure)),
-            };
-            let event = DesktopProjectOpenedEvent {
-                source,
-                path: path.to_string_lossy().into_owned(),
-                snapshot,
-                failure,
-            };
-            if let Err(error) = app.emit(PROJECT_OPENED_EVENT, event) {
-                eprintln!("could not emit associated project state: {error}");
+        let state = app.state::<DesktopProjectAssociationState>();
+        match state.enqueue(paths, source) {
+            Ok(requests) => {
+                for request in requests {
+                    if let Err(error) = app.emit(PROJECT_OPEN_REQUESTED_EVENT, request) {
+                        eprintln!("could not emit associated project request: {error}");
+                    }
+                }
             }
+            Err(error) => eprintln!("could not queue associated project request: {error}"),
         }
         focus_main_window(&app);
     }) {
-        eprintln!("could not retain associated project task: {error}");
-        let state = rejection_app.state::<DesktopProjectState>();
-        let snapshot = state.snapshot().ok();
-        for path in rejection_paths {
-            let event = DesktopProjectOpenedEvent {
-                source,
-                path: path.to_string_lossy().into_owned(),
-                snapshot: snapshot.clone(),
-                failure: Some(
-                    DesktopProjectFailure::new(
-                        DesktopProjectFailureClass::Retryable,
-                        "project_open_task_unavailable",
-                        "Project open is temporarily unavailable",
-                        "Wait for current desktop work to finish and try again.",
-                    )
-                    .with_context("operation", "route_associated_project"),
-                ),
-            };
-            if let Err(emit_error) = rejection_app.emit(PROJECT_OPENED_EVENT, event) {
-                eprintln!("could not emit associated project admission failure: {emit_error}");
-            }
-        }
+        eprintln!("could not retain associated project request task: {error}");
         focus_main_window(&rejection_app);
     }
 }

@@ -57,35 +57,39 @@ test("desktop shell separates one project document from native media drops", () 
 
 test("safe close blocks live operations and exposes session history loss", () => {
   assert.equal(
-    decideDesktopClose({ busy: true, active: true, undoDepth: 4, redoDepth: 0 }),
+    decideDesktopClose({ busy: true, active: true, dirty: true, undoDepth: 4, redoDepth: 0 }),
     "block_busy",
   );
   assert.equal(
-    decideDesktopClose({ busy: false, active: true, undoDepth: 4, redoDepth: 0 }),
+    decideDesktopClose({ busy: false, active: true, dirty: true, undoDepth: 4, redoDepth: 0 }),
+    "confirm_dirty_history",
+  );
+  assert.equal(
+    decideDesktopClose({ busy: false, active: true, dirty: true, undoDepth: 0, redoDepth: 0 }),
+    "confirm_dirty",
+  );
+  assert.equal(
+    decideDesktopClose({ busy: false, active: true, dirty: false, undoDepth: 0, redoDepth: 3 }),
     "confirm_history",
   );
   assert.equal(
-    decideDesktopClose({ busy: false, active: true, undoDepth: 0, redoDepth: 3 }),
-    "confirm_history",
+    decideDesktopClose({ busy: false, active: true, dirty: false, undoDepth: 0, redoDepth: 0 }),
+    "close",
   );
   assert.equal(
-    decideDesktopClose({ busy: false, active: true, undoDepth: 0, redoDepth: 0 }),
-    "save_and_close",
-  );
-  assert.equal(
-    decideDesktopClose({ busy: false, active: false, undoDepth: 0, redoDepth: 0 }),
+    decideDesktopClose({ busy: false, active: false, dirty: false, undoDepth: 0, redoDepth: 0 }),
     "close",
   );
 });
 
 test("document title exposes native document identity without leaking paths", () => {
-  assert.equal(desktopDocumentTitle(null), "Superi");
+  assert.equal(desktopDocumentTitle(null, false), "Superi");
   assert.equal(
     desktopDocumentTitle({
       path: "/projects/feature/alpha.superi",
       project_id: "project-alpha",
       project_revision: 17,
-    }),
+    }, false),
     "alpha.superi [r17] - Superi",
   );
   assert.equal(
@@ -93,8 +97,8 @@ test("document title exposes native document identity without leaking paths", ()
       path: "C:\\Projects\\beta.superi",
       project_id: "project-beta",
       project_revision: 2,
-    }),
-    "beta.superi [r2] - Superi",
+    }, true),
+    "beta.superi * [r2] - Superi",
   );
 });
 
@@ -117,6 +121,7 @@ test("native sequence resumes after a webview reload before the next sync", asyn
               redo_depth: 0,
               next_undo: null,
               next_redo: null,
+              dirty: false,
               busy: false,
               workspace: {
                 active_route_id: "editing",
@@ -176,6 +181,7 @@ test("native sequence resumes after a webview reload before the next sync", asyn
       redo_depth: 0,
       next_undo: null,
       next_redo: null,
+      dirty: false,
       busy: false,
       workspace: {
         active_route_id: "editing",
@@ -225,6 +231,7 @@ test("native sequence resumes after a webview reload before the next sync", asyn
         redo_depth: 0,
         next_undo: null,
         next_redo: null,
+        dirty: false,
         busy: false,
         workspace: {
           active_route_id: "editing",
