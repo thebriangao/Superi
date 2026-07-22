@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 97b5964253fcb9682f213b5091d6a06537c56c10595eca6d97e337e7e8cfe98a
-source_files: 394
+source_hash: 328d17243ebc373cf3eff83522d917905cdc85b34b0693834bf4bec1a469901c
+source_files: 397
 mapped_at_commit: working-tree
 ---
 
@@ -620,6 +620,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   fallback and semantic title, caption, metadata, UI, symbol, emoji, and exact-label consumers.
 - `docs/checkpoints/P3.W07.C014.md`: Durable implementation evidence for shared IME, dead-key,
   legacy composition, editable consumer, and settled non-Latin shortcut safety.
+- `docs/checkpoints/P3.W07.C015.md`: Durable implementation evidence for deterministic path syntax,
+  explicit case policy, exact Unicode filename preservation, and removable-volume UI behavior.
 
 ### Production desktop application
 
@@ -703,6 +705,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/internationalization.ts`: Defines schema-1 supported locale fallback, RTL direction,
   finite number, valid date, and exact timecode display formatting, and root language and direction
   activation without authored state or transport ownership.
+- `app/src/filesystem-paths.ts`: Defines separator-stable basename and root joining, explicit
+  case-sensitive or insensitive comparison keys, exact Unicode I/O spelling preservation, and
+  removable-volume behavior projection without guessing filesystem policy or owning native state.
 - `app/src/screen-reader-support.ts`: Defines a frozen schema-1 catalog for the nine required
   professional screen-reader surfaces, stable description identities, labels, browse, edit,
   monitor, or modal interaction classes, actionable guidance, and fail-closed lookup without React,
@@ -1336,6 +1341,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   CJK, symbols, and emoji and are consumed by UI, title, caption, metadata, and exact-value surfaces.
 - `app/tests/input-methods.test.ts`: Proves modern and legacy composition events fail closed,
   settled non-Latin shortcuts retain NFC identity, and real editable consumers guard composition.
+- `app/tests/filesystem-paths.test.ts`: Proves POSIX and Windows path construction, exact Unicode I/O
+  spelling, explicit case-sensitive comparison keys, removable-volume behavior, and real App use.
 - `app/tests/display-scale.test.ts`: Proves immutable initial and changed scale observations,
   duplicate suppression, invalid-value retention, exact source revisions, resolution watcher
   re-arming, cleanup, and accessible scale formatting.

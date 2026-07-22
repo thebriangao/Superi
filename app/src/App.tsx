@@ -134,6 +134,11 @@ import {
 } from "./focus-management.ts";
 import { projectHistoryPresentation } from "./project-history.ts";
 import {
+  filesystemPathBasename,
+  filesystemPathUnderRoot,
+  removableVolumeBehavior,
+} from "./filesystem-paths.ts";
+import {
   SCREEN_READER_SURFACE_ORDER,
   SCREEN_READER_SURFACES,
 } from "./screen-reader-support.ts";
@@ -1491,7 +1496,7 @@ function ApplicationShell() {
           });
           if (path === null) return;
           if (!(await preserveActiveProject())) return;
-          const name = sourceBasename(path).replace(/\.superi$/iu, "") || "Untitled Project";
+          const name = filesystemPathBasename(path).replace(/\.superi$/iu, "") || "Untitled Project";
           await executeShellProject({
             kind: "create",
             path,
@@ -2041,16 +2046,6 @@ function ApplicationShell() {
       />
     </main>
   );
-}
-
-function sourceBasename(path: string): string {
-  return path.split(/[\\/]/u).filter(Boolean).at(-1) ?? path;
-}
-
-function sourcePathUnderRoot(root: string, path: string): string {
-  const trimmedRoot = root.replace(/[\\/]+$/u, "");
-  const separator = root.includes("\\") && !root.includes("/") ? "\\" : "/";
-  return `${trimmedRoot}${separator}${sourceBasename(path)}`;
 }
 
 async function confirmProjectTransition(
@@ -3677,7 +3672,7 @@ function SystemPanel() {
                         kind: "relink",
                         media_id: item.media_id,
                         source_paths: item.source_paths.map((path) =>
-                          sourcePathUnderRoot(batchRelinkRoot.trim(), path),
+                          filesystemPathUnderRoot(batchRelinkRoot.trim(), path),
                         ),
                         candidate_fingerprint: item.content_fingerprint,
                       })),
@@ -3984,6 +3979,12 @@ function SystemPanel() {
                             <div>
                               <dt>Volume status</dt>
                               <dd>{sourcePath.volume.status}</dd>
+                            </div>
+                            <div>
+                              <dt>Path behavior</dt>
+                              <dd>
+                                {removableVolumeBehavior(sourcePath.volume, sourcePath.status).replaceAll("_", " ")}
+                              </dd>
                             </div>
                             <div>
                               <dt>Accepted bytes</dt>

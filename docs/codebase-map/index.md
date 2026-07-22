@@ -119,6 +119,12 @@ legacy keyCode 229 events from global shortcuts, command-palette navigation, and
 commit or cancellation. Settled non-Latin modified shortcuts retain NFC identity through the existing
 configurable shortcut owner, while browser-native controlled inputs continue to own composition text.
 
+One frontend filesystem path owner now preserves original Unicode spelling and separator style for
+project naming and batch relink I/O, while explicit comparison keys normalize syntax and NFC and fold
+case only when the caller declares an insensitive filesystem. The media inspector projects existing
+native removable-volume and source status evidence into stable wait, locate, review, retry, or ready
+behavior without replacing native monitoring ownership.
+
 One immutable schema-1 desktop parity contract now binds macOS, Windows, and Linux to identical
 project, engine, UI, shortcut, media, color, audio, AI, plugin, and export semantics. The System
 route exposes that exact identity and every invariant while capability availability, physical
