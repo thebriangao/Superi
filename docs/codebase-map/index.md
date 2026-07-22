@@ -100,6 +100,11 @@ focus to operating-system system colors. Freshness, notification tone, operation
 recovery class remain distinct through explicit text, symbols, border style, and border width, while
 native viewer pixels, overlays, and authored markers opt out of forced-color rewriting.
 
+Schema-1 internationalization infrastructure resolves a declared or preferred supported locale,
+applies explicit root language and direction before React, and formats finite numbers, valid dates,
+and exact timecode parts through Intl. Display localization never changes editorial clocks,
+identity, grouping, synchronization, source, record, or mutation intent.
+
 One immutable schema-1 desktop parity contract now binds macOS, Windows, and Linux to identical
 project, engine, UI, shortcut, media, color, audio, AI, plugin, and export semantics. The System
 route exposes that exact identity and every invariant while capability availability, physical

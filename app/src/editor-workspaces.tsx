@@ -18,6 +18,7 @@ import { TimelineWorkspace } from "./timeline-workspace.tsx";
 import { PlaybackControls } from "./playback-controls.tsx";
 import type { ViewerTemporalContext } from "./viewer-comparison.ts";
 import { SCREEN_READER_SURFACES } from "./screen-reader-support.ts";
+import { formatLocaleNumber } from "./internationalization.ts";
 
 export function EditingWorkspacePanel() {
   const {
@@ -349,7 +350,9 @@ export function AudioWorkspacePanel() {
                         <span>{track.timeline_id}</span>
                         <h4>{track.track_id}</h4>
                       </div>
-                      <strong>{track.sample_rate.toLocaleString()} samples/s</strong>
+                      <strong>
+                        {formatLocaleNumber(track.sample_rate, document.documentElement.lang)} samples/s
+                      </strong>
                     </header>
                     <div className="audio-route-grid">
                       <ChannelList label="Source order" channels={track.source_channels} />

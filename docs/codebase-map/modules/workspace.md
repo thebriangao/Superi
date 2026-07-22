@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 71dbaed2b07956a55485383cb09c874c57df541a50bde629d16092383fc33607
-source_files: 384
+source_hash: 4e56838197b3b1cec280a88c91df87477d1762eed1549cc2662798fc15d533bb
+source_files: 387
 mapped_at_commit: working-tree
 ---
 
@@ -606,6 +606,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W07.C010.md`: Durable implementation evidence for system-color forced-colors
   chrome, noncolor freshness, notification, status, and failure distinctions, and preserved viewer,
   overlay, marker, scene, transform, and display color data.
+- `docs/checkpoints/P3.W07.C011.md`: Durable implementation evidence for supported locale resolution,
+  explicit root language and direction, locale numbers and dates, exact localized timecode labels,
+  and preserved editorial clocks and intent.
 
 ### Production desktop application
 
@@ -686,6 +689,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   controlled and described relationships, live politeness, and atomicity for routes, workspace
   controls, the active workflow, focus status, notification log, application status, and editable
   intelligent results without importing React, Tauri, generated APIs, persistence, or project state.
+- `app/src/internationalization.ts`: Defines schema-1 supported locale fallback, RTL direction,
+  finite number, valid date, and exact timecode display formatting, and root language and direction
+  activation without authored state or transport ownership.
 - `app/src/screen-reader-support.ts`: Defines a frozen schema-1 catalog for the nine required
   professional screen-reader surfaces, stable description identities, labels, browse, edit,
   monitor, or modal interaction classes, actionable guidance, and fail-closed lookup without React,
@@ -1302,6 +1308,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/high-contrast.test.ts`: Proves forced-colors system-color use, focus adaptation,
   noncolor symbols and border patterns, distinct recovery geometry, and forced-color isolation for
   native viewers, overlays, and authored markers.
+- `app/tests/internationalization.test.ts`: Proves supported locale fallback, RTL and LTR direction,
+  locale number and date output, exact normal and drop-frame timecode digits, and invalid-part
+  rejection.
 - `app/tests/display-scale.test.ts`: Proves immutable initial and changed scale observations,
   duplicate suppression, invalid-value retention, exact source revisions, resolution watcher
   re-arming, cleanup, and accessible scale formatting.

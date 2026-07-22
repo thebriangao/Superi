@@ -5,6 +5,7 @@ import { App } from "./App";
 import { SuperiApiProvider } from "./api-context";
 import { applyApplicationTheme } from "./theme";
 import { DesktopSuperiTransport } from "./transport";
+import { applyApplicationLocale } from "./internationalization.ts";
 import "./theme.css";
 import "./styles.css";
 
@@ -14,6 +15,7 @@ if (!(root instanceof HTMLElement)) {
 }
 
 applyApplicationTheme(document);
+applyApplicationLocale(document.documentElement, navigator.languages);
 const transport = new DesktopSuperiTransport();
 window.addEventListener("beforeunload", () => void transport.dispose(), {
   once: true,
