@@ -16,7 +16,10 @@ import {
   containTabFocus,
   focusFirstInScope,
 } from "./focus-management.ts";
-import { restoreShellFocus } from "./shell-input.ts";
+import {
+  isInputMethodKeyboardEvent,
+  restoreShellFocus,
+} from "./shell-input.ts";
 import "./command-palette.css";
 
 export interface CommandPaletteProps {
@@ -96,6 +99,7 @@ export function CommandPalette({
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (isInputMethodKeyboardEvent(event)) return;
     if (results.length === 0) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -132,6 +136,7 @@ export function CommandPalette({
   const handleDialogKeyDown = (
     event: ReactKeyboardEvent<HTMLDialogElement>,
   ) => {
+    if (isInputMethodKeyboardEvent(event)) return;
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();

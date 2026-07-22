@@ -36,6 +36,7 @@ import type {
 } from "./api.ts";
 import type { SourceMonitorSnapshot } from "./project-lifecycle.ts";
 import {
+  isInputMethodKeyboardEvent,
   latestPointerSample,
   normalizeWheelInput,
 } from "./shell-input.ts";
@@ -4649,6 +4650,7 @@ function TimelineTrackHeader({
           }}
           onBlur={commitName}
           onKeyDown={(event) => {
+            if (isInputMethodKeyboardEvent(event)) return;
             if (event.key === "Enter") {
               event.preventDefault();
               event.currentTarget.blur();

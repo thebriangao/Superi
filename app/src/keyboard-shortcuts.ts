@@ -2,6 +2,7 @@ import {
   normalizeShortcut,
   type ApplicationCommandDefinition,
 } from "./application.ts";
+import { isInputMethodKeyboardEvent } from "./shell-input.ts";
 
 export const KEYBOARD_SHORTCUT_SCHEMA_VERSION = 1 as const;
 const MAX_SHORTCUT_OVERRIDES = 512;
@@ -33,6 +34,7 @@ export interface KeyboardShortcutEvent {
   readonly altKey: boolean;
   readonly shiftKey: boolean;
   readonly isComposing?: boolean;
+  readonly keyCode?: number;
 }
 
 export interface ReservedKeyboardShortcut {
@@ -243,11 +245,11 @@ export function shortcutFromKeyboardEvent(
   event: KeyboardShortcutEvent,
   platform: KeyboardShortcutPlatform,
 ): string | null {
-  if (event.isComposing) return null;
+  if (isInputMethodKeyboardEvent(event)) return null;
   const loweredKey = event.key.normalize("NFC").toLowerCase();
   if (
     loweredKey.length === 0 ||
-    ["dead", "process", "unidentified", "meta", "control", "alt", "shift"].includes(
+    ["meta", "control", "alt", "shift"].includes(
       loweredKey,
     )
   ) {

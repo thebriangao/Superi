@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 46ae05613bd200e100faab492e6aadc79d98af9b994ed7c0c2c2d4d1bff5ac9e
-source_files: 392
+source_hash: 97b5964253fcb9682f213b5091d6a06537c56c10595eca6d97e337e7e8cfe98a
+source_files: 394
 mapped_at_commit: working-tree
 ---
 
@@ -618,6 +618,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   timeline, and viewer coordinates.
 - `docs/checkpoints/P3.W07.C013.md`: Durable implementation evidence for theme-owned offline font
   fallback and semantic title, caption, metadata, UI, symbol, emoji, and exact-label consumers.
+- `docs/checkpoints/P3.W07.C014.md`: Durable implementation evidence for shared IME, dead-key,
+  legacy composition, editable consumer, and settled non-Latin shortcut safety.
 
 ### Production desktop application
 
@@ -1332,6 +1334,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   timeline coordinates, and native viewers.
 - `app/tests/font-fallback.test.ts`: Proves offline role stacks cover Arabic, Hebrew, Devanagari,
   CJK, symbols, and emoji and are consumed by UI, title, caption, metadata, and exact-value surfaces.
+- `app/tests/input-methods.test.ts`: Proves modern and legacy composition events fail closed,
+  settled non-Latin shortcuts retain NFC identity, and real editable consumers guard composition.
 - `app/tests/display-scale.test.ts`: Proves immutable initial and changed scale observations,
   duplicate suppression, invalid-value retention, exact source revisions, resolution watcher
   re-arming, cleanup, and accessible scale formatting.

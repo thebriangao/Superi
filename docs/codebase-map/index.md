@@ -114,6 +114,11 @@ labels ordered fallbacks for Latin, Arabic, Hebrew, Devanagari, CJK, symbols, an
 integration does not replace authored caption styles or change commands, events, automation, clocks,
 exports, diagnostics, or editable project state.
 
+One shell-owned input-method classifier now excludes composing, dead, Process, Unidentified, and
+legacy keyCode 229 events from global shortcuts, command-palette navigation, and inline track-name
+commit or cancellation. Settled non-Latin modified shortcuts retain NFC identity through the existing
+configurable shortcut owner, while browser-native controlled inputs continue to own composition text.
+
 One immutable schema-1 desktop parity contract now binds macOS, Windows, and Linux to identical
 project, engine, UI, shortcut, media, color, audio, AI, plugin, and export semantics. The System
 route exposes that exact identity and every invariant while capability availability, physical

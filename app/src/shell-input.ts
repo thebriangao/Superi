@@ -8,7 +8,17 @@ export type KeyboardInputDisposition =
 export interface ShellKeyboardEvent {
   readonly defaultPrevented?: boolean;
   readonly isComposing?: boolean;
+  readonly key?: string;
+  readonly keyCode?: number;
   readonly repeat?: boolean;
+}
+
+export function isInputMethodKeyboardEvent(
+  event: ShellKeyboardEvent,
+): boolean {
+  if (event.isComposing || event.keyCode === 229) return true;
+  const key = event.key?.normalize("NFC").toLowerCase() ?? "";
+  return ["dead", "process", "unidentified"].includes(key);
 }
 
 export function keyboardInputDisposition(
@@ -17,7 +27,7 @@ export function keyboardInputDisposition(
   allowInEditableContext: boolean,
 ): KeyboardInputDisposition {
   if (event.defaultPrevented) return "handled";
-  if (event.isComposing) return "composing";
+  if (isInputMethodKeyboardEvent(event)) return "composing";
   if (event.repeat) return "repeated";
   if (editableTarget && !allowInEditableContext) return "editable";
   return "route";
