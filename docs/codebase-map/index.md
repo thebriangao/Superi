@@ -54,10 +54,11 @@ model.
 The same application shell owns one schema-1 configurable keyboard-shortcut profile over immutable
 command registry defaults. It resolves a unique effective table for live dispatch, sidebar hints,
 and the accessible System editor; detects conflicts and reserved native accelerators before mutation;
-and round-trips canonical overrides through deterministic JSON. Native desktop schema 3 persists the
-profile beside workspace presentation, migrates schema 1 and 2 records to defaults, and recovers an
-invalid shortcut profile independently from a valid workspace. The profile remains private
-presentation state and never enters authored project, engine history, or generated API ownership.
+and round-trips canonical overrides through deterministic JSON. Native desktop schema 4 persists the
+profile beside workspace presentation and bounded local background receipts, migrates schema 1 and
+2 records to shortcut defaults, retains schema 3 shortcuts, and recovers an invalid shortcut or job
+section independently from valid sibling state. Both remain private presentation metadata and never
+enter authored project, engine history, or generated API ownership.
 
 One shared frontend input boundary filters handled, composing, repeated, and editable keyboard
 events, restores only connected operable focus targets, preserves coalesced pen precision, contains
@@ -101,10 +102,12 @@ workspace intent supersedes it. The header reports restoring, saving, saved, or 
 continuity, explicit session-only auxiliary state, and polls the native engine lifecycle for an
 always-visible status whose detailed controls remain in the existing System owner.
 One shared presentation provider now composes that workspace status with lifecycle, public editor,
-project, window, desktop shell, retained crash, and public export-job evidence. It preserves safe
-actionable context and last-valid state through one always-visible status bar, expandable recovery
-and notification center, semantic progress, bounded notifications, and accessible tooltips and
-menus. Its actions return to existing application, project, editor, lifecycle, and System owners.
+project, window, desktop shell, retained crash, shell-local proxy, analysis, cache, and save receipts,
+and public export-job evidence. It preserves safe actionable context and last-valid state through one
+always-visible status bar, expandable recovery and notification center, filtered categorized
+progress, bounded notifications, and accessible tooltips and menus. Local retry and dismissal return
+to the bounded journal only when available, while other actions return to existing application,
+project, editor, lifecycle, and System owners and export scheduling remains engine-owned.
 
 The application shell now also projects registered application commands and current native file,
 recent-project, import, history, and quit intents into one bounded searchable catalog. Stable
@@ -201,9 +204,9 @@ explicitly not implemented.
 
 Native desktop interaction is a separate presentation boundary over the same application and
 project owners. Tauri maps stable File, Edit, and Workspace menu IDs to typed intents, retains
-platform clipboard roles, projects a basename-only document title, and persists schema 3 route-local
-docks, ordered tabs, bounded sizes, visibility, focus, and configurable shortcuts with schema 1 and
-2 migration,
+platform clipboard roles, projects a basename-only document title, and persists schema 4 route-local
+docks, ordered tabs, bounded sizes, visibility, focus, configurable shortcuts, and bounded local
+background receipts with schema 1 through 3 migration,
 and suppresses duplicate close requests until one resolution grants a single following close event.
 The always-mounted React shell uses native dialogs and unambiguous drops, then routes document,
 media, workspace, and history intent through existing owners. Typed transient next undo and redo
@@ -425,8 +428,12 @@ The production desktop lifecycle is implemented without creating a second engine
     observed to completion through the same replacement-state query without a second React clock.
     One outer `ApplicationPresentationProvider` normalizes only already classified public or
     shell-reviewed lifecycle, editor, project, window, shell, crash, workspace, and job evidence.
-    It renders the shared status, notification, progress, tooltip, menu, and recovery surfaces while
-    routing commands back to existing owners and retaining the last-valid workspace and editor view.
+    One bounded shell-local journal wraps the existing proxy, analysis, cache, and save promises,
+    persists metadata through native schema 4, and converts restored running work to interrupted
+    evidence. The provider renders shared status, notification, filtered progress, tooltip, menu,
+    and recovery surfaces while routing local retry or dismissal to that journal, leaving public
+    export scheduling and control with the engine owner, and retaining the last-valid workspace and
+    editor view.
     A sibling pure project-history adapter matches the active desktop document to that editor
     snapshot, requires exact revision and depth-action coherence, and freezes titles, counts,
     availability, disabled reasons, and session disclosure. The global header, command palette, and
@@ -2505,8 +2512,10 @@ The following constraints cross multiple modules and should be preserved togethe
 - Application feedback preserves safe source, code, action, context, last-valid identity, and
   continuity while distinguishing exactly retryable, degraded, user-correctable, and terminal
   conditions. Unknown recovery values fail closed to terminal. Menus, tooltips, notifications,
-  progress, and status are presentation-only; dismissal cannot clear native evidence, progress
-  cannot invent a missing total, and recovery commands must return to existing owners.
+  progress, and status are presentation-only; dismissal cannot clear native evidence, background
+  persistence cannot contain operation payloads or closures, progress cannot invent a missing total,
+  and recovery commands must return to existing owners. Running receipts cannot be evicted merely
+  to admit more work, and restored running state must become visibly interrupted.
 - Unsafe Rust is denied by default. Narrow native boundaries require local safety reasoning,
   ownership proof, audit inventory updates, and target-specific verification.
 - Public bulk media stays out of the transport-neutral API. The API exposes control and metadata,
@@ -2548,9 +2557,10 @@ join-all stopped state, idempotent GPU and persistence cleanup, React process vi
 operating-system child-process launch.
 Focused desktop-shell contracts prove project and media drop partitioning, basename-only titles,
 workspace reconciliation, sequence-fenced menu presentation, recent and workspace intent mapping,
-duplicate close suppression, one-shot resolution, schema 3 full-layout and shortcut persistence,
-schema 1 and 2 migration, duplicate placement and shortcut-ID rejection before live mutation,
-independent corrupt-shortcut recovery, real-host
+duplicate close suppression, one-shot resolution, schema 4 full-layout, shortcut, and bounded
+background-receipt persistence, schema 1 through 3 migration, duplicate placement, shortcut-ID,
+receipt, status, and timestamp rejection before live mutation, independent corrupt-shortcut and
+corrupt-job recovery, real-host
 active project restoration, and missing-document degradation with retained recents. Strict
 TypeScript, the production frontend build and contract set, focused shortcut and native integration tests, and
 the Tauri library suite cover the implementation boundary; native menu appearance and interaction
@@ -2572,12 +2582,17 @@ They do not claim hotplug automation, physical stream success, codec execution, 
 native visual proof.
 The focused application-presentation contracts prove all four distinct recovery policies,
 fail-closed unknown recovery, safe transport, project, lifecycle, crash, and last-valid context,
-bounded immutable notification history, truthful public export progress, status priority, and
-viewport-bounded menu geometry. Source contracts freeze the real provider, tooltip, menu,
-notification center, status bar, failure cards, retained crash projection, panel pointer and
-keyboard consumers, and delivery progress. Exact Node 24.13.0 TypeScript checking and the production
-Vite build exercise the integrated React path; physical focus, screen-reader, high-contrast, and
-reduced-motion behavior remain application-lane evidence.
+bounded immutable notification history, truthful categorized local and public export progress,
+status priority, and viewport-bounded menu geometry. The focused background-journal contracts prove
+unchanged async results and failures, running and terminal transitions, same-session retry, restart
+interruption, strict restoration, terminal dismissal, bounded eviction, full-running capacity
+protection, and exact project-adapter category routing. Source contracts freeze the real provider,
+job filters and actions, native persistence, tooltip, menu, notification center, status bar,
+failure cards, retained crash projection, panel pointer and keyboard consumers, focus containment,
+and delivery
+progress. Exact Node 24.13.0 TypeScript checking and the production Vite build exercise the
+integrated React path; physical focus, screen-reader, high-contrast, and reduced-motion behavior
+remain application-lane evidence.
 The focused focus-management contracts prove empty scopes, entry from outside, exact forward and
 reverse movement, stale-index recovery, and both wraps. Application source contracts freeze the
 shared native-modal, context-menu, and activity-dialog consumers plus explicit dialog semantics and
@@ -3306,10 +3321,11 @@ For common concerns, begin at these owners:
 - Desktop crash evidence, active-session detection, bounded safe projection, and cross-session route,
   dock, tab, size, panel, focus, and project intent: `workspace`, which routes engine recovery to the existing lifecycle owner
   and project restoration to the existing `superi-project`, `superi-engine`, and `superi-api` path.
-- Application context menus, tooltips, notifications, operational status, semantic progress, and
-  classified error presentation: `workspace`, which composes safe public and shell-local evidence
-  while routing project, editor, lifecycle, crash, and workspace actions back to their existing
-  owners.
+- Application context menus, tooltips, notifications, operational status, categorized progress,
+  bounded local proxy, analysis, cache, and save receipts, and classified error presentation:
+  `workspace`, which composes safe public and shell-local evidence while routing journal, project,
+  editor, lifecycle, crash, and workspace actions back to their existing owners. Public export
+  scheduling remains in `superi-engine` and its stable projection remains in `superi-api`.
 - Process-lifetime extension registration, exact runtime identity, capability and lifecycle
   discovery, safe failure state, and stable user control: `superi-engine` for the bounded declarative
   registry and supervisor adapters, followed by `superi-api` for the permission-free strict query,

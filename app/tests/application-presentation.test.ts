@@ -9,6 +9,7 @@ import {
   applicationFailureFromProject,
   applicationFailureFromTransport,
   applicationOperationalStatus,
+  applicationProgressFromBackgroundJob,
   applicationProgressFromEditorJob,
   applicationRecoveryPolicy,
   createApplicationNotificationState,
@@ -263,6 +264,10 @@ test("public export jobs produce truthful determinate and indeterminate progress
     percent: 70,
     active: true,
     failureCondition: null,
+    category: "export",
+    origin: "engine",
+    canRetry: false,
+    canDismiss: false,
   });
 
   const indeterminate = applicationProgressFromEditorJob({
@@ -301,6 +306,57 @@ test("public export jobs produce truthful determinate and indeterminate progress
   });
   assert.equal(bounded.completed, 10);
   assert.equal(bounded.percent, 100);
+});
+
+test("desktop background receipts preserve category, recovery, and terminal actions", () => {
+  const failed = applicationProgressFromBackgroundJob(
+    {
+      id: "desktop-job-12",
+      sequence: 12,
+      kind: "proxy",
+      label: "Proxy interview.mov",
+      status: "failed",
+      started_at: "2026-07-22T04:40:00Z",
+      finished_at: "2026-07-22T04:40:01Z",
+      failure: {
+        title: "Proxy source changed",
+        action: "Refresh the source and regenerate the proxy.",
+      },
+    },
+    true,
+  );
+  assert.deepEqual(failed, {
+    id: "desktop:desktop-job-12",
+    label: "Proxy interview.mov",
+    status: "failed",
+    detail: "Refresh the source and regenerate the proxy.",
+    completed: 0,
+    total: 1,
+    percent: 0,
+    active: false,
+    failureCondition: "retryable",
+    category: "proxy",
+    origin: "desktop",
+    canRetry: true,
+    canDismiss: true,
+  });
+
+  const running = applicationProgressFromBackgroundJob(
+    {
+      id: "desktop-job-13",
+      sequence: 13,
+      kind: "analysis",
+      label: "Analyze interview.mov",
+      status: "running",
+      started_at: "2026-07-22T04:41:00Z",
+      finished_at: null,
+      failure: null,
+    },
+    false,
+  );
+  assert.equal(running.active, true);
+  assert.equal(running.total, null);
+  assert.equal(running.canDismiss, false);
 });
 
 test("application status prioritizes attention, degradation, progress, and continuity", () => {

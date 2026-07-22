@@ -308,7 +308,7 @@ test("configurable shortcuts stay registry-owned, conflict-safe, transferable, a
   assert.match(app, /application\.shortcuts/);
   assert.match(app, /keyboard_shortcuts: keyboardShortcutProfile/);
   assert.match(bridge, /KeyboardShortcutProfile/);
-  assert.match(native, /DESKTOP_SHELL_SCHEMA_VERSION: u32 = 3/);
+  assert.match(native, /DESKTOP_SHELL_SCHEMA_VERSION: u32 = 4/);
   assert.match(native, /validate_keyboard_shortcuts/);
   assert.match(native, /persist_presentation/);
   assert.match(packageJson.scripts.test, /keyboard-shortcuts\.test\.ts/);
@@ -428,6 +428,40 @@ test("global history presentation is action-specific, document-fenced, and share
     model + controls,
     /useSuperiApi|DesktopSuperiTransport|@tauri-apps|\binvoke\b|superi\.project\.command\.execute/,
   );
+});
+
+test("background job center unifies bounded local receipts with authoritative export progress", () => {
+  const jobs = read(resolve(appRoot, "src/background-jobs.ts"));
+  const lifecycle = read(resolve(appRoot, "src/project-lifecycle.ts"));
+  const bridge = read(resolve(appRoot, "src/desktop-shell.ts"));
+  const native = read(resolve(tauriRoot, "src/desktop_shell.rs"));
+  const model = read(resolve(appRoot, "src/application-presentation.ts"));
+  const presentation = read(resolve(appRoot, "src/application-presentation.tsx"));
+  const app = read(resolve(appRoot, "src/App.tsx"));
+  const packageJson = readJson(resolve(appRoot, "package.json"));
+
+  assert.match(jobs, /MAX_DESKTOP_BACKGROUND_JOBS = 64/);
+  assert.match(jobs, /status: "interrupted"/);
+  assert.match(jobs, /Background job capacity is full/);
+  assert.match(lifecycle, /runDesktopBackgroundJob/);
+  assert.match(
+    lifecycle,
+    /const execute = async \(\) => \{[\s\S]{0,240}publishDesktopProjectSnapshot\(snapshot\)/,
+  );
+  assert.match(bridge, /background_jobs: backgroundJobs/);
+  assert.match(native, /validate_background_jobs/);
+  assert.match(native, /background_jobs: DesktopBackgroundJobsSnapshot/);
+  assert.match(model, /applicationProgressFromBackgroundJob/);
+  assert.match(presentation, /Background jobs/);
+  assert.match(presentation, /Filter jobs by category/);
+  assert.match(presentation, /Filter jobs by status/);
+  assert.match(presentation, />Retry</);
+  assert.match(presentation, />Dismiss</);
+  assert.match(app, /useSyncExternalStore/);
+  assert.match(app, /desktopBackgroundJobJournal/);
+  assert.match(app, /applicationProgressFromBackgroundJob/);
+  assert.match(packageJson.scripts.test, /background-jobs\.test\.ts/);
+  assert.doesNotMatch(jobs, /setInterval|requestAnimationFrame|submit_job/);
 });
 
 test("blocking workflows exercise the production app rather than CI-only smoke packages", () => {

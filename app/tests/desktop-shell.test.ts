@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { desktopBackgroundJobJournal } from "../src/background-jobs.ts";
 import {
   decideDesktopClose,
   desktopDocumentTitle,
@@ -132,6 +133,23 @@ test("native sequence resumes after a webview reload before the next sync", asyn
                   },
                 ],
               },
+              background_jobs: {
+                schema_version: 1,
+                revision: 9,
+                next_sequence: 2,
+                jobs: [
+                  {
+                    id: "desktop-job-1",
+                    sequence: 1,
+                    kind: "analysis",
+                    label: "Analyze interview.mov",
+                    status: "running",
+                    started_at: "2026-07-22T04:10:00Z",
+                    finished_at: null,
+                    failure: null,
+                  },
+                ],
+              },
               failure: null,
             };
           }
@@ -147,6 +165,10 @@ test("native sequence resumes after a webview reload before the next sync", asyn
 
   try {
     await getDesktopShellSnapshot();
+    assert.equal(
+      desktopBackgroundJobJournal.getSnapshot().jobs[0].status,
+      "interrupted",
+    );
     await syncDesktopShell({
       active: null,
       recent_paths: [],
@@ -188,8 +210,14 @@ test("native sequence resumes after a webview reload before the next sync", asyn
         ],
       },
     );
+    const { background_jobs: synchronizedJobs, ...synchronizedShell } = calls.at(
+      -1,
+    )?.args.sync as {
+      background_jobs: { jobs: readonly { status: string }[] };
+      [key: string]: unknown;
+    };
     assert.deepEqual(
-      calls.at(-1)?.args.sync,
+      synchronizedShell,
       {
         active: null,
         recent_paths: [],
@@ -215,6 +243,10 @@ test("native sequence resumes after a webview reload before the next sync", asyn
         },
         client_sequence: 42,
       },
+    );
+    assert.deepEqual(
+      synchronizedJobs.jobs.map((job) => job.status),
+      ["interrupted"],
     );
   } finally {
     if (previousWindow === undefined) {

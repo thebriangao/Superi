@@ -14,9 +14,10 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, State, Window, WindowEvent};
 
 pub const DESKTOP_SHELL_EVENT: &str = "superi://desktop-shell-intent";
 
-const DESKTOP_SHELL_SCHEMA_VERSION: u32 = 3;
-const LEGACY_DESKTOP_SHELL_SCHEMA_VERSIONS: [u32; 2] = [1, 2];
+const DESKTOP_SHELL_SCHEMA_VERSION: u32 = 4;
+const LEGACY_DESKTOP_SHELL_SCHEMA_VERSIONS: [u32; 3] = [1, 2, 3];
 const KEYBOARD_SHORTCUT_SCHEMA_VERSION: u32 = 1;
+const BACKGROUND_JOBS_SCHEMA_VERSION: u32 = 1;
 const MAX_RECENT_PROJECTS: usize = 32;
 const MAX_HIDDEN_PANELS: usize = 256;
 const MAX_PANEL_LAYOUT_ROUTES: usize = 64;
@@ -25,6 +26,8 @@ const MAX_IDENTITY_BYTES: usize = 512;
 const MAX_PATH_BYTES: usize = 32 * 1024;
 const MAX_SHORTCUT_OVERRIDES: usize = 512;
 const MAX_SHORTCUT_BYTES: usize = 256;
+const MAX_BACKGROUND_JOBS: usize = 64;
+const MAX_JAVASCRIPT_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const DEFAULT_ROUTE_ID: &str = "editing";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -179,6 +182,64 @@ impl Default for DesktopKeyboardShortcutProfile {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DesktopBackgroundJobKind {
+    Proxy,
+    Analysis,
+    Cache,
+    Save,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DesktopBackgroundJobStatus {
+    Running,
+    Completed,
+    Failed,
+    Interrupted,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopBackgroundJobFailure {
+    pub title: String,
+    pub action: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopBackgroundJobReceipt {
+    pub id: String,
+    pub sequence: u64,
+    pub kind: DesktopBackgroundJobKind,
+    pub label: String,
+    pub status: DesktopBackgroundJobStatus,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+    pub failure: Option<DesktopBackgroundJobFailure>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopBackgroundJobsSnapshot {
+    pub schema_version: u32,
+    pub revision: u64,
+    pub next_sequence: u64,
+    pub jobs: Vec<DesktopBackgroundJobReceipt>,
+}
+
+impl Default for DesktopBackgroundJobsSnapshot {
+    fn default() -> Self {
+        Self {
+            schema_version: BACKGROUND_JOBS_SCHEMA_VERSION,
+            revision: 0,
+            next_sequence: 1,
+            jobs: Vec::new(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopShellSync {
@@ -192,6 +253,7 @@ pub struct DesktopShellSync {
     pub busy: bool,
     pub workspace: DesktopWorkspacePresentation,
     pub keyboard_shortcuts: DesktopKeyboardShortcutProfile,
+    pub background_jobs: DesktopBackgroundJobsSnapshot,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -215,7 +277,7 @@ impl DesktopShellFailure {
         Self::invalid(
             &format!("desktop_shell_storage_{operation}_failed"),
             "Desktop presentation continuity is unavailable",
-            "Continue working, then restore the workspace and keyboard shortcuts manually if needed.",
+            "Continue working, then restore the workspace, shortcuts, and background operation history manually if needed.",
         )
     }
 }
@@ -242,6 +304,7 @@ pub struct DesktopShellSnapshot {
     busy: bool,
     workspace: DesktopWorkspacePresentation,
     keyboard_shortcuts: DesktopKeyboardShortcutProfile,
+    background_jobs: DesktopBackgroundJobsSnapshot,
     failure: Option<DesktopShellFailure>,
 }
 
@@ -259,6 +322,7 @@ impl Default for DesktopShellSnapshot {
             busy: false,
             workspace: DesktopWorkspacePresentation::default(),
             keyboard_shortcuts: DesktopKeyboardShortcutProfile::default(),
+            background_jobs: DesktopBackgroundJobsSnapshot::default(),
             failure: None,
         }
     }
@@ -336,6 +400,11 @@ impl DesktopShellSnapshot {
     }
 
     #[must_use]
+    pub const fn background_jobs(&self) -> &DesktopBackgroundJobsSnapshot {
+        &self.background_jobs
+    }
+
+    #[must_use]
     pub const fn failure(&self) -> Option<&DesktopShellFailure> {
         self.failure.as_ref()
     }
@@ -381,6 +450,7 @@ impl DesktopShellModel {
             busy: sync.busy,
             workspace: sync.workspace,
             keyboard_shortcuts: sync.keyboard_shortcuts,
+            background_jobs: sync.background_jobs,
             failure: self.snapshot.failure.clone(),
         };
         Ok(self.snapshot.clone())
@@ -440,6 +510,10 @@ impl DesktopShellModel {
         self.snapshot.keyboard_shortcuts = keyboard_shortcuts;
     }
 
+    fn restore_background_jobs(&mut self, background_jobs: DesktopBackgroundJobsSnapshot) {
+        self.snapshot.background_jobs = background_jobs;
+    }
+
     fn record_failure(&mut self, failure: DesktopShellFailure) {
         self.snapshot.failure = Some(failure);
     }
@@ -452,6 +526,8 @@ struct PersistedDesktopShell {
     workspace: DesktopWorkspacePresentation,
     #[serde(default)]
     keyboard_shortcuts: Option<DesktopKeyboardShortcutProfile>,
+    #[serde(default)]
+    background_jobs: Option<DesktopBackgroundJobsSnapshot>,
 }
 
 #[derive(Clone, Default)]
@@ -473,7 +549,7 @@ impl DesktopShellState {
                         DesktopShellFailure::invalid(
                             "desktop_shell_storage_invalid",
                             "Desktop presentation continuity could not be restored",
-                            "Continue with the default workspace and shortcuts, then configure them again.",
+                            "Continue with the default workspace, shortcuts, and background operation history, then configure them again.",
                         )
                     })
                 })
@@ -482,6 +558,7 @@ impl DesktopShellState {
                 schema_version: DESKTOP_SHELL_SCHEMA_VERSION,
                 workspace: DesktopWorkspacePresentation::default(),
                 keyboard_shortcuts: Some(DesktopKeyboardShortcutProfile::default()),
+                background_jobs: Some(DesktopBackgroundJobsSnapshot::default()),
             })
         };
 
@@ -500,7 +577,7 @@ impl DesktopShellState {
                         "Continue with the default workspace and choose panels again.",
                     ));
                 }
-                if restored.schema_version == DESKTOP_SHELL_SCHEMA_VERSION {
+                if restored.schema_version >= 3 {
                     match restored.keyboard_shortcuts {
                         Some(keyboard_shortcuts)
                             if validate_keyboard_shortcuts(&keyboard_shortcuts).is_ok() =>
@@ -516,11 +593,27 @@ impl DesktopShellState {
                         }
                     }
                 }
+                if restored.schema_version == DESKTOP_SHELL_SCHEMA_VERSION {
+                    match restored.background_jobs {
+                        Some(background_jobs)
+                            if validate_background_jobs(&background_jobs).is_ok() =>
+                        {
+                            model.restore_background_jobs(background_jobs);
+                        }
+                        _ => {
+                            model.record_failure(DesktopShellFailure::invalid(
+                                "desktop_shell_storage_invalid",
+                                "Desktop background operation history could not be restored",
+                                "Continue with an empty job history, then run any still-needed operation again.",
+                            ));
+                        }
+                    }
+                }
             }
             Ok(_) => model.record_failure(DesktopShellFailure::invalid(
                 "desktop_shell_storage_version_unsupported",
                 "Desktop presentation continuity uses an unsupported version",
-                "Continue with the default workspace and shortcuts, then configure them again.",
+                "Continue with the default workspace, shortcuts, and background operation history, then configure them again.",
             )),
             Err(failure) => model.record_failure(failure),
         }
@@ -538,9 +631,11 @@ impl DesktopShellState {
         sync: DesktopShellSync,
     ) -> Result<DesktopShellSnapshot, DesktopShellFailure> {
         let snapshot = self.lock("synchronize")?.synchronize(sync)?;
-        if let Err(failure) =
-            self.persist_presentation(&snapshot.workspace, &snapshot.keyboard_shortcuts)
-        {
+        if let Err(failure) = self.persist_presentation(
+            &snapshot.workspace,
+            &snapshot.keyboard_shortcuts,
+            &snapshot.background_jobs,
+        ) {
             let mut model = self.lock("record_persistence_failure")?;
             model.record_failure(failure);
             return Ok(model.snapshot().clone());
@@ -563,6 +658,7 @@ impl DesktopShellState {
         &self,
         workspace: &DesktopWorkspacePresentation,
         keyboard_shortcuts: &DesktopKeyboardShortcutProfile,
+        background_jobs: &DesktopBackgroundJobsSnapshot,
     ) -> Result<(), DesktopShellFailure> {
         let path = self
             .path_lock("persist_presentation")?
@@ -572,6 +668,7 @@ impl DesktopShellState {
             schema_version: DESKTOP_SHELL_SCHEMA_VERSION,
             workspace: workspace.clone(),
             keyboard_shortcuts: Some(keyboard_shortcuts.clone()),
+            background_jobs: Some(background_jobs.clone()),
         })
         .map_err(|_| DesktopShellFailure::storage("serialize"))?;
         let temporary = path.with_extension("json.tmp");
@@ -933,7 +1030,8 @@ fn validate_sync(sync: &DesktopShellSync) -> Result<(), DesktopShellFailure> {
         }
     }
     validate_workspace(&sync.workspace)?;
-    validate_keyboard_shortcuts(&sync.keyboard_shortcuts)
+    validate_keyboard_shortcuts(&sync.keyboard_shortcuts)?;
+    validate_background_jobs(&sync.background_jobs)
 }
 
 fn validate_history_action(
@@ -976,6 +1074,150 @@ fn validate_keyboard_shortcuts(
         }
     }
     Ok(())
+}
+
+fn validate_background_jobs(
+    snapshot: &DesktopBackgroundJobsSnapshot,
+) -> Result<(), DesktopShellFailure> {
+    if snapshot.schema_version != BACKGROUND_JOBS_SCHEMA_VERSION {
+        return Err(invalid_presentation("background job schema version"));
+    }
+    if snapshot.next_sequence == 0 {
+        return Err(invalid_presentation("background job next sequence"));
+    }
+    if snapshot.revision > MAX_JAVASCRIPT_SAFE_INTEGER
+        || snapshot.next_sequence > MAX_JAVASCRIPT_SAFE_INTEGER
+    {
+        return Err(invalid_presentation("background job numeric range"));
+    }
+    if snapshot.jobs.len() > MAX_BACKGROUND_JOBS {
+        return Err(invalid_presentation("background job capacity"));
+    }
+    let mut identities = BTreeSet::new();
+    let mut sequences = BTreeSet::new();
+    let mut greatest_sequence = 0;
+    for job in &snapshot.jobs {
+        if job.sequence == 0
+            || job.sequence > MAX_JAVASCRIPT_SAFE_INTEGER
+            || job.sequence <= greatest_sequence
+            || job.id != format!("desktop-job-{}", job.sequence)
+        {
+            return Err(invalid_presentation("background job identity"));
+        }
+        if !identities.insert(job.id.as_str()) || !sequences.insert(job.sequence) {
+            return Err(invalid_presentation("duplicate background job identity"));
+        }
+        greatest_sequence = greatest_sequence.max(job.sequence);
+        validate_text(&job.label, "background job label")?;
+        if job.label.trim() != job.label {
+            return Err(invalid_presentation("background job label"));
+        }
+        let started_at = parse_utc_timestamp(&job.started_at)
+            .ok_or_else(|| invalid_presentation("background job start time"))?;
+        match (&job.status, &job.finished_at) {
+            (DesktopBackgroundJobStatus::Running, None) => {}
+            (DesktopBackgroundJobStatus::Running, Some(_)) | (_, None) => {
+                return Err(invalid_presentation("background job finish time"));
+            }
+            (_, Some(finished_at)) => {
+                let finished_at = parse_utc_timestamp(finished_at)
+                    .ok_or_else(|| invalid_presentation("background job finish time"))?;
+                if finished_at < started_at {
+                    return Err(invalid_presentation("background job finish time"));
+                }
+            }
+        }
+        match (&job.status, &job.failure) {
+            (
+                DesktopBackgroundJobStatus::Failed | DesktopBackgroundJobStatus::Interrupted,
+                Some(failure),
+            ) => {
+                validate_text(&failure.title, "background job failure title")?;
+                validate_text(&failure.action, "background job recovery action")?;
+                if failure.title.trim() != failure.title || failure.action.trim() != failure.action
+                {
+                    return Err(invalid_presentation("background job failure"));
+                }
+            }
+            (
+                DesktopBackgroundJobStatus::Failed | DesktopBackgroundJobStatus::Interrupted,
+                None,
+            )
+            | (
+                DesktopBackgroundJobStatus::Running | DesktopBackgroundJobStatus::Completed,
+                Some(_),
+            ) => return Err(invalid_presentation("background job failure")),
+            _ => {}
+        }
+    }
+    if snapshot.next_sequence <= greatest_sequence {
+        return Err(invalid_presentation("background job next sequence"));
+    }
+    if snapshot.revision == MAX_JAVASCRIPT_SAFE_INTEGER
+        && snapshot
+            .jobs
+            .iter()
+            .any(|job| job.status == DesktopBackgroundJobStatus::Running)
+    {
+        return Err(invalid_presentation("background job revision"));
+    }
+    Ok(())
+}
+
+fn parse_utc_timestamp(value: &str) -> Option<(u32, u32, u32, u32, u32, u32, u32)> {
+    let bytes = value.as_bytes();
+    let fractional_digits = if bytes.len() == 20 {
+        0
+    } else if (22..=30).contains(&bytes.len())
+        && bytes[19] == b'.'
+        && bytes[bytes.len() - 1] == b'Z'
+        && bytes[20..bytes.len() - 1].iter().all(u8::is_ascii_digit)
+    {
+        bytes.len() - 21
+    } else {
+        return None;
+    };
+    if bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || bytes[10] != b'T'
+        || bytes[13] != b':'
+        || bytes[16] != b':'
+        || (fractional_digits == 0 && bytes[19] != b'Z')
+        || bytes[..19]
+            .iter()
+            .enumerate()
+            .any(|(index, byte)| !matches!(index, 4 | 7 | 10 | 13 | 16) && !byte.is_ascii_digit())
+    {
+        return None;
+    }
+    let year = parse_timestamp_component(bytes, 0, 4)?;
+    let month = parse_timestamp_component(bytes, 5, 7)?;
+    let day = parse_timestamp_component(bytes, 8, 10)?;
+    let hour = parse_timestamp_component(bytes, 11, 13)?;
+    let minute = parse_timestamp_component(bytes, 14, 16)?;
+    let second = parse_timestamp_component(bytes, 17, 19)?;
+    let nanoseconds = if fractional_digits == 0 {
+        0
+    } else {
+        parse_timestamp_component(bytes, 20, bytes.len() - 1)?
+            * 10_u32.pow(9 - u32::try_from(fractional_digits).ok()?)
+    };
+    let leap_year = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let maximum_day = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap_year => 29,
+        2 => 28,
+        _ => return None,
+    };
+    if !(1..=maximum_day).contains(&day) || hour >= 24 || minute >= 60 || second >= 60 {
+        return None;
+    }
+    Some((year, month, day, hour, minute, second, nanoseconds))
+}
+
+fn parse_timestamp_component(bytes: &[u8], start: usize, end: usize) -> Option<u32> {
+    std::str::from_utf8(&bytes[start..end]).ok()?.parse().ok()
 }
 
 fn validate_workspace(workspace: &DesktopWorkspacePresentation) -> Result<(), DesktopShellFailure> {

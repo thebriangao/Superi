@@ -3,10 +3,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use superi_desktop::desktop_shell::{
-    DesktopCloseReason, DesktopKeyboardShortcutOverride, DesktopKeyboardShortcutProfile,
-    DesktopPanelDockId, DesktopPanelDockPresentation, DesktopProjectMutationKind,
-    DesktopRoutePanelLayoutPresentation, DesktopShellDocument, DesktopShellIntent,
-    DesktopShellModel, DesktopShellState, DesktopShellSync, DesktopWorkspacePresentation,
+    DesktopBackgroundJobKind, DesktopBackgroundJobReceipt, DesktopBackgroundJobStatus,
+    DesktopBackgroundJobsSnapshot, DesktopCloseReason, DesktopKeyboardShortcutOverride,
+    DesktopKeyboardShortcutProfile, DesktopPanelDockId, DesktopPanelDockPresentation,
+    DesktopProjectMutationKind, DesktopRoutePanelLayoutPresentation, DesktopShellDocument,
+    DesktopShellIntent, DesktopShellModel, DesktopShellState, DesktopShellSync,
+    DesktopWorkspacePresentation,
 };
 
 static NEXT_SHELL_ROOT: AtomicU64 = AtomicU64::new(0);
@@ -61,6 +63,24 @@ fn workspace(route: &str) -> DesktopWorkspacePresentation {
     }
 }
 
+fn background_jobs() -> DesktopBackgroundJobsSnapshot {
+    DesktopBackgroundJobsSnapshot {
+        schema_version: 1,
+        revision: 4,
+        next_sequence: 2,
+        jobs: vec![DesktopBackgroundJobReceipt {
+            id: "desktop-job-1".to_owned(),
+            sequence: 1,
+            kind: DesktopBackgroundJobKind::Save,
+            label: "Save alpha.superi".to_owned(),
+            status: DesktopBackgroundJobStatus::Completed,
+            started_at: "2026-07-22T04:20:00Z".to_owned(),
+            finished_at: Some("2026-07-22T04:20:01Z".to_owned()),
+            failure: None,
+        }],
+    }
+}
+
 fn sync(sequence: u64) -> DesktopShellSync {
     DesktopShellSync {
         client_sequence: sequence,
@@ -86,6 +106,7 @@ fn sync(sequence: u64) -> DesktopShellSync {
                 shortcut: Some("mod+e".to_owned()),
             }],
         },
+        background_jobs: background_jobs(),
     }
 }
 
@@ -119,6 +140,7 @@ fn native_shell_sync_preserves_document_history_workspace_and_recent_intents() {
     );
     assert_eq!(first.recent_paths().len(), 2);
     assert_eq!(first.keyboard_shortcuts().overrides.len(), 1);
+    assert_eq!(first.background_jobs(), &background_jobs());
     assert_eq!(
         first.keyboard_shortcuts().overrides[0].shortcut.as_deref(),
         Some("mod+e")
@@ -200,6 +222,35 @@ fn shell_state_rejects_ambiguous_or_unbounded_presentation() {
     let mut detached_history = sync(5);
     detached_history.active = None;
     assert!(model.synchronize(detached_history).is_err());
+
+    let mut invalid_jobs = sync(6);
+    invalid_jobs.background_jobs.jobs[0].finished_at = None;
+    assert!(model.synchronize(invalid_jobs).is_err());
+    assert_eq!(model.snapshot().revision(), 0);
+
+    let mut fractional_timestamp = sync(7);
+    fractional_timestamp.background_jobs.jobs[0].started_at = "2026-07-22T04:20:00.123Z".to_owned();
+    fractional_timestamp.background_jobs.jobs[0].finished_at =
+        Some("2026-07-22T04:20:00.124Z".to_owned());
+    assert_eq!(
+        model
+            .synchronize(fractional_timestamp)
+            .unwrap()
+            .client_sequence(),
+        7
+    );
+
+    let mut unsafe_number = sync(8);
+    unsafe_number.background_jobs.revision = 9_007_199_254_740_992;
+    assert!(model.synchronize(unsafe_number).is_err());
+
+    let mut unordered = sync(9);
+    let mut later = unordered.background_jobs.jobs[0].clone();
+    later.id = "desktop-job-2".to_owned();
+    later.sequence = 2;
+    unordered.background_jobs.jobs.insert(0, later);
+    unordered.background_jobs.next_sequence = 3;
+    assert!(model.synchronize(unordered).is_err());
 }
 
 #[test]
@@ -232,7 +283,7 @@ fn workspace_presentation_restores_from_the_private_atomic_session_record() {
     let stored: serde_json::Value =
         serde_json::from_slice(&std::fs::read(root.join("desktop-shell-state.json")).unwrap())
             .unwrap();
-    assert_eq!(stored["schema_version"].as_u64(), Some(3));
+    assert_eq!(stored["schema_version"].as_u64(), Some(4));
     assert!(stored.get("undo_depth").is_none());
     assert!(stored.get("redo_depth").is_none());
     assert!(stored.get("next_undo").is_none());
@@ -261,6 +312,7 @@ fn workspace_presentation_restores_from_the_private_atomic_session_record() {
         10_000
     );
     assert_eq!(snapshot.keyboard_shortcuts().overrides.len(), 1);
+    assert_eq!(snapshot.background_jobs(), &background_jobs());
 
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -397,6 +449,12 @@ fn invalid_persisted_shortcuts_restore_workspace_and_report_default_recovery() {
       { "command_id": "application.route.color", "shortcut": "mod+c" },
       { "command_id": "application.route.color", "shortcut": null }
     ]
+  },
+  "background_jobs": {
+    "schema_version": 1,
+    "revision": 0,
+    "next_sequence": 1,
+    "jobs": []
   }
 }"#,
     )
@@ -438,6 +496,57 @@ fn version_three_missing_shortcuts_restores_workspace_and_reports_default_recove
     let snapshot = state.snapshot().unwrap();
     assert_eq!(snapshot.workspace().active_route_id, "delivery");
     assert!(snapshot.keyboard_shortcuts().overrides.is_empty());
+    assert_eq!(
+        snapshot.failure().unwrap().code,
+        "desktop_shell_storage_invalid"
+    );
+
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn invalid_persisted_jobs_restore_other_presentation_and_report_default_recovery() {
+    let root = temporary_shell_root("invalid-background-jobs");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        root.join("desktop-shell-state.json"),
+        br#"{
+  "schema_version": 4,
+  "workspace": {
+    "active_route_id": "color",
+    "hidden_panel_ids": [],
+    "focused_panel_id": null,
+    "panel_layouts": []
+  },
+  "keyboard_shortcuts": {
+    "schema_version": 1,
+    "overrides": []
+  },
+  "background_jobs": {
+    "schema_version": 1,
+    "revision": 1,
+    "next_sequence": 2,
+    "jobs": [{
+      "id": "desktop-job-1",
+      "sequence": 1,
+      "kind": "save",
+      "label": "Save alpha.superi",
+      "status": "running",
+      "started_at": "2026-07-22T04:30:00Z",
+      "finished_at": "2026-07-22T04:30:01Z",
+      "failure": null
+    }]
+  }
+}"#,
+    )
+    .unwrap();
+
+    let state = DesktopShellState::default();
+    state.initialize(&root).unwrap();
+    let snapshot = state.snapshot().unwrap();
+    assert_eq!(snapshot.workspace().active_route_id, "color");
+    assert!(snapshot.keyboard_shortcuts().overrides.is_empty());
+    assert!(snapshot.background_jobs().jobs.is_empty());
     assert_eq!(
         snapshot.failure().unwrap().code,
         "desktop_shell_storage_invalid"

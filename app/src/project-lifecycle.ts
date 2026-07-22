@@ -1,6 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
+import {
+  runDesktopBackgroundJob,
+  type DesktopBackgroundJobInput,
+} from "./background-jobs.ts";
+
 export type DesktopProjectFailureClass =
   | "retryable"
   | "degraded"
@@ -707,9 +712,35 @@ export function listenForDesktopProjectOpen(
 export async function executeDesktopProject(
   command: DesktopProjectCommand,
 ): Promise<DesktopProjectSnapshot> {
-  const snapshot = await invoke<DesktopProjectSnapshot>(EXECUTE_COMMAND, { command });
-  publishDesktopProjectSnapshot(snapshot);
-  return snapshot;
+  const execute = async () => {
+    const snapshot = await invoke<DesktopProjectSnapshot>(EXECUTE_COMMAND, {
+      command,
+    });
+    publishDesktopProjectSnapshot(snapshot);
+    return snapshot;
+  };
+  const backgroundJob = desktopProjectBackgroundJob(command);
+  return backgroundJob === null
+    ? execute()
+    : runDesktopBackgroundJob(backgroundJob, execute);
+}
+
+function desktopProjectBackgroundJob(
+  command: DesktopProjectCommand,
+): DesktopBackgroundJobInput | null {
+  if (command.kind === "save") {
+    return { kind: "save", label: "Save active project" };
+  }
+  if (command.kind === "save_as") {
+    return {
+      kind: "save",
+      label: `Save project as ${desktopPathName(command.destination)}`,
+    };
+  }
+  if (command.kind === "restore_recovery") {
+    return { kind: "save", label: "Restore project recovery point" };
+  }
+  return null;
 }
 
 export async function getDesktopProjectSettings(): Promise<DesktopProjectSettings> {
@@ -742,7 +773,11 @@ export async function generateProjectMediaPreview(
     media_id: item.media_id,
     expected_freshness: item.content_fingerprint,
   };
-  return invoke<MediaPreviewBundle>(GENERATE_MEDIA_PREVIEW_COMMAND, { request });
+  return runDesktopBackgroundJob(
+    { kind: "cache", label: `Generate preview for ${item.name}` },
+    () =>
+      invoke<MediaPreviewBundle>(GENERATE_MEDIA_PREVIEW_COMMAND, { request }),
+  );
 }
 
 export async function readSourceMonitorSnapshot(): Promise<SourceMonitorSnapshot> {
@@ -875,15 +910,19 @@ export async function mutateProjectMediaContentAnalysis(
   item: MediaBrowserItem,
   analysis: MediaContentAnalysis,
 ): Promise<MediaLibrarySnapshot> {
-  return invoke<MediaLibrarySnapshot>(MUTATE_MEDIA_CONTENT_ANALYSIS_COMMAND, {
-    update: {
-      expected_project_revision: snapshot.project_revision,
-      expected_library_revision: snapshot.revision,
-      media_id: item.media_id,
-      expected_source_fingerprint: item.content_fingerprint,
-      analysis,
-    },
-  });
+  return runDesktopBackgroundJob(
+    { kind: "analysis", label: `Update analysis for ${item.name}` },
+    () =>
+      invoke<MediaLibrarySnapshot>(MUTATE_MEDIA_CONTENT_ANALYSIS_COMMAND, {
+        update: {
+          expected_project_revision: snapshot.project_revision,
+          expected_library_revision: snapshot.revision,
+          media_id: item.media_id,
+          expected_source_fingerprint: item.content_fingerprint,
+          analysis,
+        },
+      }),
+  );
 }
 
 export async function searchProjectMediaContent(
@@ -906,14 +945,25 @@ export async function mutateProjectDerivedMedia(
   mediaId: string,
   mutation: DerivedMediaMutation,
 ): Promise<MediaLibrarySnapshot> {
-  return invoke<MediaLibrarySnapshot>(MUTATE_DERIVED_MEDIA_COMMAND, {
-    update: {
-      expected_project_revision: snapshot.project_revision,
-      expected_library_revision: snapshot.revision,
-      media_id: mediaId,
-      mutation,
-    },
-  });
+  const execute = () =>
+    invoke<MediaLibrarySnapshot>(MUTATE_DERIVED_MEDIA_COMMAND, {
+      update: {
+        expected_project_revision: snapshot.project_revision,
+        expected_library_revision: snapshot.revision,
+        media_id: mediaId,
+        mutation,
+      },
+    });
+  if (mutation.kind === "create_or_replace") {
+    return runDesktopBackgroundJob(
+      {
+        kind: "proxy",
+        label: `Publish ${mutation.quality} ${mutation.purpose} for ${mediaId}`,
+      },
+      execute,
+    );
+  }
+  return execute();
 }
 
 export async function mutateProjectOfflineMedia(
@@ -954,7 +1004,26 @@ export async function mutateProjectMediaBatch(
     expected_library_revision: snapshot.revision,
     operations,
   };
-  return invoke<MediaBatchResult>(MUTATE_MEDIA_BATCH_COMMAND, { update });
+  const execute = () =>
+    invoke<MediaBatchResult>(MUTATE_MEDIA_BATCH_COMMAND, { update });
+  const generated = operations.filter(
+    (operation) =>
+      operation.kind === "proxy" || operation.kind === "transcode",
+  );
+  if (generated.length === 0) return execute();
+  return runDesktopBackgroundJob(
+    {
+      kind: "proxy",
+      label: `Publish ${generated.length} proxy or optimized media operation${
+        generated.length === 1 ? "" : "s"
+      }`,
+    },
+    execute,
+  );
+}
+
+function desktopPathName(path: string): string {
+  return path.split(/[\\/]/u).filter(Boolean).at(-1) ?? "project";
 }
 
 export function localSearchMedia(

@@ -2,6 +2,10 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { ApplicationWorkspacePresentation } from "./application.ts";
 import type { ProjectMutationKind } from "./api.ts";
+import {
+  desktopBackgroundJobJournal,
+  type DesktopBackgroundJobsSnapshot,
+} from "./background-jobs.ts";
 import type { KeyboardShortcutProfile } from "./keyboard-shortcuts.ts";
 
 export type DesktopCloseReason = "window" | "quit";
@@ -32,6 +36,7 @@ export interface DesktopShellSnapshot {
   readonly busy: boolean;
   readonly workspace: DesktopWorkspacePresentation;
   readonly keyboard_shortcuts: KeyboardShortcutProfile;
+  readonly background_jobs: DesktopBackgroundJobsSnapshot;
   readonly failure: DesktopShellFailure | null;
 }
 
@@ -116,6 +121,8 @@ const REQUEST_CLOSE_COMMAND = "desktop_shell_request_close";
 
 let clientSequence = 0;
 let synchronization = Promise.resolve<DesktopShellSnapshot | null>(null);
+let latestPresentation: DesktopShellPresentation | null = null;
+let backgroundJobsHydrated = false;
 
 export function partitionDesktopDrop(paths: readonly string[]): DesktopDrop {
   const unique = [...new Set(paths.filter((path) => path.trim().length > 0))];
@@ -154,17 +161,38 @@ export function desktopDocumentTitle(
 export async function getDesktopShellSnapshot(): Promise<DesktopShellSnapshot> {
   const snapshot = await invoke<DesktopShellSnapshot>(SNAPSHOT_COMMAND);
   clientSequence = Math.max(clientSequence, snapshot.client_sequence);
+  if (!backgroundJobsHydrated) {
+    backgroundJobsHydrated = true;
+    try {
+      desktopBackgroundJobJournal.restore(snapshot.background_jobs);
+    } catch (error: unknown) {
+      backgroundJobsHydrated = false;
+      throw error;
+    }
+  }
   return snapshot;
 }
 
 export function syncDesktopShell(
   presentation: DesktopShellPresentation,
 ): Promise<DesktopShellSnapshot> {
+  latestPresentation = presentation;
+  return enqueueDesktopShellSync(presentation);
+}
+
+function enqueueDesktopShellSync(
+  presentation: DesktopShellPresentation,
+): Promise<DesktopShellSnapshot> {
   const pending = synchronization.then(async () => {
     clientSequence += 1;
+    const backgroundJobs = desktopBackgroundJobJournal.getSnapshot();
     const snapshot = await invoke<DesktopShellSnapshot>(SYNC_COMMAND, {
       sync: {
         ...presentation,
+        busy:
+          presentation.busy ||
+          backgroundJobs.jobs.some((job) => job.status === "running"),
+        background_jobs: backgroundJobs,
         client_sequence: clientSequence,
       },
     });
@@ -174,6 +202,12 @@ export function syncDesktopShell(
   synchronization = pending.catch(() => null);
   return pending;
 }
+
+desktopBackgroundJobJournal.subscribe(() => {
+  if (latestPresentation !== null) {
+    void enqueueDesktopShellSync(latestPresentation).catch(() => undefined);
+  }
+});
 
 export async function resolveDesktopClose(allow: boolean): Promise<boolean> {
   return invoke<boolean>(RESOLVE_CLOSE_COMMAND, { allow });

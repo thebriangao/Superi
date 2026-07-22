@@ -5,6 +5,7 @@ import type {
   TraceValue,
 } from "./api.ts";
 import type { DesktopCrashDiagnostic } from "./crash-diagnostics.ts";
+import type { DesktopBackgroundJobReceipt } from "./background-jobs.ts";
 import type { DesktopLifecycleSnapshot } from "./lifecycle.ts";
 import type { DesktopProjectFailure } from "./project-lifecycle.ts";
 import type { DesktopTransportFailure } from "./transport.ts";
@@ -372,6 +373,45 @@ export interface ApplicationProgressPresentation {
   readonly percent: number | null;
   readonly active: boolean;
   readonly failureCondition: ApplicationFailureCondition | null;
+  readonly category?: "proxy" | "analysis" | "cache" | "save" | "export" | "application";
+  readonly origin?: "desktop" | "engine" | "application";
+  readonly canRetry?: boolean;
+  readonly canDismiss?: boolean;
+}
+
+export function applicationProgressFromBackgroundJob(
+  job: DesktopBackgroundJobReceipt,
+  canRetry: boolean,
+): ApplicationProgressPresentation {
+  const active = job.status === "running";
+  const failureCondition =
+    job.status === "failed"
+      ? canRetry
+        ? "retryable"
+        : "user_correctable"
+      : job.status === "interrupted"
+        ? "user_correctable"
+        : null;
+  const detail =
+    job.failure?.action ??
+    (active
+      ? `Started ${job.started_at}`
+      : `Finished ${job.finished_at ?? job.started_at}`);
+  return {
+    id: `desktop:${job.id}`,
+    label: job.label,
+    status: job.status,
+    detail,
+    completed: job.status === "completed" ? 1 : 0,
+    total: active ? null : 1,
+    percent: active ? null : job.status === "completed" ? 100 : 0,
+    active,
+    failureCondition,
+    category: job.kind,
+    origin: "desktop",
+    canRetry,
+    canDismiss: !active,
+  };
 }
 
 export function applicationProgressFromEditorJob(
@@ -399,6 +439,10 @@ export function applicationProgressFromEditorJob(
       job.failure === null
         ? null
         : normalizeFailureCondition(job.failure.recoverability),
+    category: "export",
+    origin: "engine",
+    canRetry: false,
+    canDismiss: false,
   };
 }
 

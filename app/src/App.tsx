@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ComponentType,
 } from "react";
 import { convertFileSrc, isTauri } from "@tauri-apps/api/core";
@@ -27,6 +28,7 @@ import {
   applicationFailureFromProject,
   applicationFailureFromTransport,
   applicationOperationalStatus,
+  applicationProgressFromBackgroundJob,
   applicationProgressFromEditorJob,
   type ApplicationFailurePresentation,
   type ApplicationProgressPresentation,
@@ -39,6 +41,7 @@ import {
 } from "./application-presentation.tsx";
 import type { EngineIntrospectionSnapshot } from "./api";
 import { useSuperiApi } from "./api-context";
+import { desktopBackgroundJobJournal } from "./background-jobs.ts";
 import {
   dismissDesktopCrashDiagnostic,
   getDesktopCrashDiagnostics,
@@ -559,6 +562,11 @@ function ApplicationShell() {
     executeProjectCommand,
   } = useApplication();
   const { publishNotification } = useApplicationPresentation();
+  const desktopBackgroundJobs = useSyncExternalStore(
+    desktopBackgroundJobJournal.subscribe,
+    desktopBackgroundJobJournal.getSnapshot,
+    desktopBackgroundJobJournal.getSnapshot,
+  );
   const route = registry.route(state.activeRouteId);
   const workspaceLayoutStatus = applicationWorkspaceLayoutStatus(
     registry,
@@ -738,7 +746,8 @@ function ApplicationShell() {
   const busy =
     shellPending ||
     editorProject.status === "loading" ||
-    editorProject.status === "refreshing";
+    editorProject.status === "refreshing" ||
+    desktopBackgroundJobs.jobs.some((job) => job.status === "running");
   const historyPresentation = useMemo(
     () =>
       projectHistoryPresentation({
@@ -858,6 +867,14 @@ function ApplicationShell() {
 
   const applicationProgress = useMemo(() => {
     const progress: ApplicationProgressPresentation[] = [];
+    for (const job of desktopBackgroundJobs.jobs) {
+      progress.push(
+        applicationProgressFromBackgroundJob(
+          job,
+          desktopBackgroundJobJournal.canRetry(job.id),
+        ),
+      );
+    }
     const latestExport =
       editorSnapshot?.export.status === "attached"
         ? editorSnapshot.export.latest
@@ -876,6 +893,8 @@ function ApplicationShell() {
         percent: null,
         active: true,
         failureCondition: null,
+        category: "application",
+        origin: "application",
       });
     }
     if (["loading", "refreshing"].includes(editorProject.status)) {
@@ -889,6 +908,8 @@ function ApplicationShell() {
         percent: null,
         active: true,
         failureCondition: null,
+        category: "application",
+        origin: "application",
       });
     }
     if (["restoring", "saving"].includes(workspaceContinuityPhase)) {
@@ -902,15 +923,42 @@ function ApplicationShell() {
         percent: null,
         active: true,
         failureCondition: null,
+        category: "application",
+        origin: "application",
       });
     }
     return progress;
   }, [
+    desktopBackgroundJobs,
     editorProject.status,
     editorSnapshot,
     shellPending,
     workspaceContinuityPhase,
   ]);
+
+  const dismissBackgroundJob = useCallback((presentationId: string) => {
+    if (!presentationId.startsWith("desktop:")) return;
+    desktopBackgroundJobJournal.dismiss(
+      presentationId.slice("desktop:".length),
+    );
+  }, []);
+
+  const retryBackgroundJob = useCallback((presentationId: string) => {
+    if (!presentationId.startsWith("desktop:")) return;
+    const jobId = presentationId.slice("desktop:".length);
+    void desktopBackgroundJobJournal
+      .retry(jobId)
+      .then((started) => {
+        if (!started) {
+          setShellFailure(
+            "The background operation can no longer be retried in this session. Run it again from its workspace.",
+          );
+        }
+      })
+      .catch((error: unknown) => {
+        setShellFailure(actionableFailureMessage(error));
+      });
+  }, []);
 
   const applicationStatus = useMemo(
     () =>
@@ -1796,6 +1844,8 @@ function ApplicationShell() {
         onFailureAction={(failure) =>
           void handleApplicationFailureAction(failure)
         }
+        onProgressDismiss={dismissBackgroundJob}
+        onProgressRetry={retryBackgroundJob}
         progress={applicationProgress}
         status={applicationStatus}
       />

@@ -32,6 +32,7 @@ import {
   focusFirstInScope,
 } from "./focus-management.ts";
 import { restoreShellFocus } from "./shell-input.ts";
+import "./background-jobs.css";
 
 export interface ApplicationContextMenuItem {
   readonly id: string;
@@ -388,8 +389,12 @@ function ApplicationToast({
 }
 
 function ProgressBar({
+  onDismiss,
+  onRetry,
   progress,
 }: {
+  readonly onDismiss?: (id: string) => void;
+  readonly onRetry?: (id: string) => void;
   readonly progress: ApplicationProgressPresentation;
 }) {
   return (
@@ -412,6 +417,16 @@ function ProgressBar({
         {progress.detail}
         {progress.percent === null ? "" : `, ${Math.round(progress.percent)}%`}
       </small>
+      {progress.canRetry !== true && progress.canDismiss !== true ? null : (
+        <div className="application-progress-row__actions">
+          {progress.canRetry === true && onRetry !== undefined ? (
+            <button onClick={() => onRetry(progress.id)} type="button">Retry</button>
+          ) : null}
+          {progress.canDismiss === true && onDismiss !== undefined ? (
+            <button onClick={() => onDismiss(progress.id)} type="button">Dismiss</button>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
@@ -419,11 +434,15 @@ function ProgressBar({
 export function ApplicationFeedbackHub({
   failures,
   onFailureAction,
+  onProgressDismiss,
+  onProgressRetry,
   progress,
   status,
 }: {
   readonly failures: readonly ApplicationFailurePresentation[];
   readonly onFailureAction: (failure: ApplicationFailurePresentation) => void;
+  readonly onProgressDismiss: (id: string) => void;
+  readonly onProgressRetry: (id: string) => void;
   readonly progress: readonly ApplicationProgressPresentation[];
   readonly status: ApplicationOperationalStatus;
 }) {
@@ -433,11 +452,24 @@ export function ApplicationFeedbackHub({
     notificationState,
   } = useApplicationPresentation();
   const [isOpen, setIsOpen] = useState(false);
+  const [progressCategory, setProgressCategory] = useState("all");
+  const [progressStatus, setProgressStatus] = useState("all");
   const activityButtonRef = useRef<HTMLButtonElement>(null);
   const centerRef = useRef<HTMLElement>(null);
   const centerCloseRef = useRef<HTMLButtonElement>(null);
   const activeProgress = progress.filter((item) => item.active);
-  const count = failures.length + notificationState.notifications.length;
+  const progressCategories = [...new Set(
+    progress.map((item) => item.category ?? "application"),
+  )].sort();
+  const progressStatuses = [...new Set(progress.map((item) => item.status))].sort();
+  const visibleProgress = progress.filter(
+    (item) =>
+      (progressCategory === "all" ||
+        (item.category ?? "application") === progressCategory) &&
+      (progressStatus === "all" || item.status === progressStatus),
+  );
+  const count =
+    failures.length + notificationState.notifications.length + progress.length;
   const closeCenter = useCallback(() => {
     setIsOpen(false);
     window.requestAnimationFrame(() =>
@@ -552,10 +584,51 @@ export function ApplicationFeedbackHub({
 
           {progress.length === 0 ? null : (
             <section className="application-progress-list">
-              <h3>Progress</h3>
-              {progress.map((item) => (
-                <ProgressBar key={item.id} progress={item} />
-              ))}
+              <header className="application-progress-list__header">
+                <h3>Background jobs</h3>
+                <div className="application-progress-list__filters">
+                  <label>
+                    Category
+                    <select
+                      aria-label="Filter jobs by category"
+                      onChange={(event) => setProgressCategory(event.target.value)}
+                      value={progressCategory}
+                    >
+                      <option value="all">All categories</option>
+                      {progressCategories.map((category) => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Status
+                    <select
+                      aria-label="Filter jobs by status"
+                      onChange={(event) => setProgressStatus(event.target.value)}
+                      value={progressStatus}
+                    >
+                      <option value="all">All statuses</option>
+                      {progressStatuses.map((jobStatus) => (
+                        <option key={jobStatus} value={jobStatus}>{jobStatus}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </header>
+              {visibleProgress.length === 0 ? (
+                <p className="application-notification-center__empty">
+                  No jobs match the selected filters.
+                </p>
+              ) : (
+                visibleProgress.map((item) => (
+                  <ProgressBar
+                    key={item.id}
+                    onDismiss={onProgressDismiss}
+                    onRetry={onProgressRetry}
+                    progress={item}
+                  />
+                ))
+              )}
             </section>
           )}
 
