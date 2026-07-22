@@ -131,6 +131,7 @@ import { PanelWorkspace } from "./panel-workspace.tsx";
 import { WindowSessionPanel } from "./window-session-panel.tsx";
 import { KeyboardShortcutsPanel } from "./keyboard-shortcuts-panel.tsx";
 import { ApplicationInspectorPanel } from "./application-inspector-panel.tsx";
+import { PlatformParityPanel } from "./platform-parity-panel.tsx";
 import {
   detectKeyboardShortcutPlatform,
   formatKeyboardShortcut,
@@ -2785,6 +2786,8 @@ function SystemPanel() {
           Quit Superi
         </button>
       </div>
+
+      <PlatformParityPanel />
 
       <section aria-labelledby="hardware-capabilities-title">
         <header>

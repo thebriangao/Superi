@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: a63bf8b1198d2106540b79c63f16fac13924002365ac9e13a18e232b71c27cac
-source_files: 360
+source_hash: 7d33c06403655a0970c65ae3d0cebf1e96d9d17bfdf1c6e38a8ca74653ac1baf
+source_files: 364
 mapped_at_commit: working-tree
 ---
 
@@ -579,6 +579,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W07.C003.md`: Durable implementation evidence for deterministic focus entry,
   contained bidirectional modal traversal, descendant-wide Escape dismissal, activity-dialog focus
   movement, safe focus return, and unchanged authored, transport, and persistence ownership.
+- `docs/checkpoints/P3.W07.C004.md`: Durable implementation evidence for one shared macOS, Windows,
+  and Linux semantic contract across ten exact application domains, visible System-route disclosure,
+  immutable target projections, and explicit separation from platform adapter availability.
 
 ### Production desktop application
 
@@ -657,6 +660,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/display-scale.ts`: Defines one immutable finite display-scale observation, duplicate
   suppression, window and visual viewport listeners, dynamically re-armed resolution matching,
   cleanup, and accessible formatting without owning monitor identity, geometry, GPU, or persistence.
+- `app/src/platform-parity.ts`: Defines the exact macOS, Windows, and Linux support set plus one
+  immutable schema-1 semantic contract for project, engine, UI, shortcut, media, color, audio, AI,
+  plugin, and export meaning, with runtime rejection of unsupported platform labels.
+- `app/src/platform-parity-panel.tsx`: Renders the shared contract identity, all supported desktop
+  targets, and every semantic invariant in the existing System route without probing hardware or
+  branching application behavior by operating system.
 - `app/src/keyboard-shortcuts-panel.tsx`: Renders the System route's accessible shortcut editor with
   labeled read-only capture fields, IME-safe keyboard capture, current and default values, clear and
   reset controls, conflict alerts, inactive-command visibility, bounded JSON import, deterministic
@@ -1221,6 +1230,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/display-scale.test.ts`: Proves immutable initial and changed scale observations,
   duplicate suppression, invalid-value retention, exact source revisions, resolution watcher
   re-arming, cleanup, and accessible scale formatting.
+- `app/tests/platform-parity.test.ts`: Proves exact platform and domain coverage, uniqueness,
+  identical contract and object identity, deep freezing, the complete audio invariant, and strict
+  unsupported-target rejection.
 - `app/tests/editor-workspaces.test.ts`: Verifies exactly five registry-backed professional routes,
   one existing application/project owner, exact source, program, composite, and color viewer
   consumers including the composed source monitor, explicit public editor request identity,
@@ -2947,6 +2959,11 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   contracts bind the same operability policy to the native modal palette, context menu, and
   modeless activity dialog with explicit semantics, all-descendant Escape handling, and safe focus
   return while leaving their existing state and action owners unchanged.
+
+- The focused platform-parity contracts prove the exact three desktop targets and ten semantic
+  domains, unique coverage, identical frozen object identity, complete audio continuity meaning,
+  and fail-closed unsupported labels. Application source contracts bind the same schema-1 identity
+  to the visible System consumer while excluding native imports and current-platform branching.
 
 - The focused theme contracts prove one frozen schema-1 identity, deterministic repair of missing
   or drifted document declarations, frozen repair evidence, static pre-JavaScript declaration,

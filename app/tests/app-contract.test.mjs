@@ -582,3 +582,34 @@ test("system capability discovery composes authoritative providers without chang
   assert.match(app, /Channel meaning is never inferred/);
   assert.match(packageJson.scripts.test, /system-capabilities\.test\.ts/);
 });
+
+test("desktop platforms expose one shared application semantic contract", () => {
+  const parity = read(resolve(appRoot, "src/platform-parity.ts"));
+  const panel = read(resolve(appRoot, "src/platform-parity-panel.tsx"));
+  const app = read(resolve(appRoot, "src/App.tsx"));
+  const packageJson = readJson(resolve(appRoot, "package.json"));
+
+  for (const platform of ["macos", "windows", "linux"]) {
+    assert.match(parity, new RegExp(`"${platform}"`));
+  }
+  for (const domain of [
+    "project",
+    "engine",
+    "ui",
+    "shortcut",
+    "media",
+    "color",
+    "audio",
+    "ai",
+    "plugin",
+    "export",
+  ]) {
+    assert.match(parity, new RegExp(`domain: "${domain}"`));
+  }
+  assert.match(parity, /superi\.desktop\.semantic-parity\.v1/);
+  assert.match(panel, /PLATFORM_SEMANTIC_CONTRACTS/);
+  assert.match(panel, /macOS, Windows, and Linux/);
+  assert.match(app, /<PlatformParityPanel\s*\/>/);
+  assert.match(packageJson.scripts.test, /platform-parity\.test\.ts/);
+  assert.doesNotMatch(parity, /@tauri-apps|navigator|process\.platform|target_os/);
+});

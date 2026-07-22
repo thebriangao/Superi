@@ -71,6 +71,11 @@ context-menu traversal, and moves focus into and back from the modeless activity
 the shared connected-target policy and retains no authored, workspace, engine, transport, or
 persistent state.
 
+One immutable schema-1 desktop parity contract now binds macOS, Windows, and Linux to identical
+project, engine, UI, shortcut, media, color, audio, AI, plugin, and export semantics. The System
+route exposes that exact identity and every invariant while capability availability, physical
+adapters, and hosted certification remain separate evidence rather than semantic branches.
+
 The primary native viewer also observes exact browser display scale through window, visual viewport,
 and dynamically re-armed resolution signals. Accepted changes republish existing CSS geometry to the
 one Tauri viewport owner and remain visible in the viewer toolbar; duplicate or invalid signals do
@@ -2577,6 +2582,10 @@ The focused focus-management contracts prove empty scopes, entry from outside, e
 reverse movement, stale-index recovery, and both wraps. Application source contracts freeze the
 shared native-modal, context-menu, and activity-dialog consumers plus explicit dialog semantics and
 safe focus return; physical assistive-technology interaction remains platform-lane evidence.
+The focused platform-parity contracts prove exact target and domain coverage, unique ordering,
+shared frozen object identity, complete audio timing and routing meaning, and unsupported-label
+rejection. Application source contracts freeze the visible System consumer and exclude native or
+current-platform branching from the pure owner.
 The shared application-inspector contracts add one dockable all-route projection of current
 workspace and selection intent, public project metadata, engine-owned undo and redo evidence, exact
 playback attachment and degradation, editor failures, and bounded notices. Refresh and recovery
