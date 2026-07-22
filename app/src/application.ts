@@ -6,6 +6,31 @@ import type {
 
 export type ApplicationPanelRegion = "primary" | "secondary" | "utility";
 
+export const APPLICATION_PANEL_DOCKS = Object.freeze([
+  "left",
+  "center",
+  "right",
+  "bottom",
+] as const);
+
+export type ApplicationPanelDockId = (typeof APPLICATION_PANEL_DOCKS)[number];
+
+export const APPLICATION_PANEL_DOCK_SIZE_BOUNDS: Readonly<
+  Record<
+    ApplicationPanelDockId,
+    Readonly<{ minimum: number; maximum: number; defaultValue: number }>
+  >
+> = Object.freeze({
+  left: Object.freeze({ minimum: 1_500, maximum: 4_500, defaultValue: 2_400 }),
+  center: Object.freeze({
+    minimum: 10_000,
+    maximum: 10_000,
+    defaultValue: 10_000,
+  }),
+  right: Object.freeze({ minimum: 1_500, maximum: 4_500, defaultValue: 2_800 }),
+  bottom: Object.freeze({ minimum: 1_800, maximum: 6_500, defaultValue: 3_000 }),
+});
+
 export type ApplicationSelectionReference = Omit<
   PublicResourceReference,
   "resource"
@@ -32,12 +57,37 @@ export interface ApplicationSelection {
   readonly anchor: ApplicationSelectionReference | null;
 }
 
+export interface ApplicationPanelDockLayout {
+  readonly dockId: ApplicationPanelDockId;
+  readonly panelIds: readonly string[];
+  readonly activePanelId: string | null;
+  readonly sizeBasisPoints: number;
+}
+
+export interface ApplicationRoutePanelLayout {
+  readonly routeId: string;
+  readonly docks: readonly ApplicationPanelDockLayout[];
+}
+
+export interface ApplicationPanelDockPresentation {
+  readonly dock_id: ApplicationPanelDockId;
+  readonly panel_ids: readonly string[];
+  readonly active_panel_id: string | null;
+  readonly size_basis_points: number;
+}
+
+export interface ApplicationRoutePanelLayoutPresentation {
+  readonly route_id: string;
+  readonly docks: readonly ApplicationPanelDockPresentation[];
+}
+
 export interface ApplicationState {
   readonly revision: number;
   readonly activeRouteId: string;
   readonly hiddenPanelIds: readonly string[];
   readonly visiblePanelIds: readonly string[];
   readonly focusedPanelId: string | null;
+  readonly panelLayouts: readonly ApplicationRoutePanelLayout[];
   readonly selection: ApplicationSelection;
 }
 
@@ -45,6 +95,7 @@ export interface ApplicationWorkspacePresentation {
   readonly active_route_id: string;
   readonly hidden_panel_ids: readonly string[];
   readonly focused_panel_id: string | null;
+  readonly panel_layouts: readonly ApplicationRoutePanelLayoutPresentation[];
 }
 
 export type ApplicationAction =
@@ -59,6 +110,18 @@ export type ApplicationAction =
     }
   | { readonly type: "toggle_panel"; readonly panelId: string }
   | { readonly type: "focus_panel"; readonly panelId: string }
+  | { readonly type: "activate_panel"; readonly panelId: string }
+  | {
+      readonly type: "dock_panel";
+      readonly panelId: string;
+      readonly dockId: ApplicationPanelDockId;
+      readonly index?: number;
+    }
+  | {
+      readonly type: "resize_panel_dock";
+      readonly dockId: ApplicationPanelDockId;
+      readonly sizeBasisPoints: number;
+    }
   | {
       readonly type: "replace_selection";
       readonly items: readonly ApplicationSelectionReference[];
@@ -251,6 +314,7 @@ export function createApplicationState<Renderer>(
     hiddenPanelIds: [],
     visiblePanelIds: route.panelIds,
     focusedPanelId: preferredPanel(route, route.panelIds),
+    panelLayouts: createPanelLayouts(registry, [], []),
     selection: emptySelection(),
   });
 }
@@ -274,10 +338,15 @@ export function reduceApplicationState<Renderer>(
         return state;
       }
       const visiblePanelIds = visiblePanels(route, state.hiddenPanelIds);
+      const layout = applicationRoutePanelLayout(state, route.id);
       return nextState(state, {
         activeRouteId: route.id,
         visiblePanelIds,
-        focusedPanelId: preferredPanel(route, visiblePanelIds),
+        focusedPanelId: preferredPanelFromLayout(
+          route,
+          layout,
+          visiblePanelIds,
+        ),
       });
     }
     case "toggle_panel": {
@@ -298,26 +367,118 @@ export function reduceApplicationState<Renderer>(
         .map((panel) => panel.id)
         .filter((panelId) => hidden.has(panelId));
       const visiblePanelIds = visiblePanels(route, hiddenPanelIds);
-      const focusedPanelId =
-        state.focusedPanelId !== null &&
-        visiblePanelIds.includes(state.focusedPanelId)
-          ? state.focusedPanelId
-          : preferredPanel(route, visiblePanelIds);
+      let panelLayouts = reconcileLayoutActivity(
+        state.panelLayouts,
+        hiddenPanelIds,
+      );
+      let focusedPanelId: string | null;
+      if (!hidden.has(action.panelId)) {
+        panelLayouts = replaceRouteLayout(
+          panelLayouts,
+          activatePanel(
+            applicationRoutePanelLayoutFrom(panelLayouts, route.id),
+            action.panelId,
+          ),
+        );
+        focusedPanelId = action.panelId;
+      } else {
+        const layout = applicationRoutePanelLayoutFrom(panelLayouts, route.id);
+        focusedPanelId =
+          state.focusedPanelId !== null &&
+          visiblePanelIds.includes(state.focusedPanelId)
+            ? state.focusedPanelId
+            : preferredPanelFromLayout(route, layout, visiblePanelIds);
+      }
       return nextState(state, {
         hiddenPanelIds,
         visiblePanelIds,
         focusedPanelId,
+        panelLayouts,
       });
     }
-    case "focus_panel": {
+    case "focus_panel":
+    case "activate_panel": {
+      const route = registry.route(state.activeRouteId);
       registry.panel(action.panelId);
       if (!state.visiblePanelIds.includes(action.panelId)) {
         throw new Error(`panel is not visible: ${action.panelId}`);
       }
-      if (state.focusedPanelId === action.panelId) {
+      if (!route.panelIds.includes(action.panelId)) {
+        throw new Error(
+          `panel ${action.panelId} is not registered on route ${route.id}`,
+        );
+      }
+      const currentLayout = applicationRoutePanelLayout(state, route.id);
+      const layout = activatePanel(currentLayout, action.panelId);
+      if (
+        state.focusedPanelId === action.panelId &&
+        layout === currentLayout
+      ) {
         return state;
       }
-      return nextState(state, { focusedPanelId: action.panelId });
+      return nextState(state, {
+        focusedPanelId: action.panelId,
+        panelLayouts: replaceRouteLayout(state.panelLayouts, layout),
+      });
+    }
+    case "dock_panel": {
+      const route = registry.route(state.activeRouteId);
+      registry.panel(action.panelId);
+      requireDockId(action.dockId);
+      if (!route.panelIds.includes(action.panelId)) {
+        throw new Error(
+          `panel ${action.panelId} is not registered on route ${route.id}`,
+        );
+      }
+      if (!state.visiblePanelIds.includes(action.panelId)) {
+        throw new Error(`panel is not visible: ${action.panelId}`);
+      }
+      if (
+        action.index !== undefined &&
+        (!Number.isSafeInteger(action.index) || action.index < 0)
+      ) {
+        throw new Error("panel dock index must be a nonnegative safe integer");
+      }
+      const layout = dockPanel(
+        applicationRoutePanelLayout(state, route.id),
+        action.panelId,
+        action.dockId,
+        action.index,
+        state.hiddenPanelIds,
+      );
+      return nextState(state, {
+        focusedPanelId: action.panelId,
+        panelLayouts: replaceRouteLayout(state.panelLayouts, layout),
+      });
+    }
+    case "resize_panel_dock": {
+      requireDockId(action.dockId);
+      if (!Number.isSafeInteger(action.sizeBasisPoints)) {
+        throw new Error("panel dock size must be a safe integer");
+      }
+      const route = registry.route(state.activeRouteId);
+      const currentLayout = applicationRoutePanelLayout(state, route.id);
+      const sizeBasisPoints = clampDockSize(
+        action.dockId,
+        action.sizeBasisPoints,
+      );
+      const currentDock = currentLayout.docks.find(
+        (dock) => dock.dockId === action.dockId,
+      )!;
+      if (currentDock.sizeBasisPoints === sizeBasisPoints) {
+        return state;
+      }
+      const layout: ApplicationRoutePanelLayout = {
+        ...currentLayout,
+        docks: currentLayout.docks.map((dock) =>
+          dock.dockId === action.dockId
+            ? { ...dock, sizeBasisPoints }
+            : dock,
+        ),
+      };
+      return nextState(state, {
+        panelLayouts: replaceRouteLayout(state.panelLayouts, layout),
+      });
     }
     case "replace_selection": {
       const selection = selectionFrom(action.items, action.anchor);
@@ -382,16 +543,72 @@ export function restoreApplicationWorkspace<Renderer>(
     .map((panel) => panel.id)
     .filter((panelId) => requestedHidden.has(panelId));
   const visiblePanelIds = visiblePanels(route, hiddenPanelIds);
-  const focusedPanelId =
+  let panelLayouts = createPanelLayouts(
+    registry,
+    workspace.panel_layouts ?? [],
+    hiddenPanelIds,
+  );
+  const requestedFocus =
     workspace.focused_panel_id !== null &&
     visiblePanelIds.includes(workspace.focused_panel_id)
       ? workspace.focused_panel_id
-      : preferredPanel(route, visiblePanelIds);
+      : null;
+  if (requestedFocus !== null) {
+    panelLayouts = replaceRouteLayout(
+      panelLayouts,
+      activatePanel(
+        applicationRoutePanelLayoutFrom(panelLayouts, route.id),
+        requestedFocus,
+      ),
+    );
+  }
+  const focusedPanelId =
+    requestedFocus ??
+    preferredPanelFromLayout(
+      route,
+      applicationRoutePanelLayoutFrom(panelLayouts, route.id),
+      visiblePanelIds,
+    );
   return nextState(state, {
     activeRouteId: route.id,
     hiddenPanelIds,
     visiblePanelIds,
     focusedPanelId,
+    panelLayouts,
+  });
+}
+
+export function applicationRoutePanelLayout(
+  state: ApplicationState,
+  routeId: string = state.activeRouteId,
+): ApplicationRoutePanelLayout {
+  return applicationRoutePanelLayoutFrom(state.panelLayouts, routeId);
+}
+
+export function applicationWorkspacePresentation(
+  state: ApplicationState,
+): ApplicationWorkspacePresentation {
+  return Object.freeze({
+    active_route_id: state.activeRouteId,
+    hidden_panel_ids: Object.freeze([...state.hiddenPanelIds]),
+    focused_panel_id: state.focusedPanelId,
+    panel_layouts: Object.freeze(
+      state.panelLayouts.map((layout) =>
+        Object.freeze({
+          route_id: layout.routeId,
+          docks: Object.freeze(
+            layout.docks.map((dock) =>
+              Object.freeze({
+                dock_id: dock.dockId,
+                panel_ids: Object.freeze([...dock.panelIds]),
+                active_panel_id: dock.activePanelId,
+                size_basis_points: dock.sizeBasisPoints,
+              }),
+            ),
+          ),
+        }),
+      ),
+    ),
   });
 }
 
@@ -466,12 +683,261 @@ export function isEditableCommandTarget(target: unknown): boolean {
   );
 }
 
+function createPanelLayouts<Renderer>(
+  registry: ApplicationRegistry<Renderer>,
+  presentations: readonly ApplicationRoutePanelLayoutPresentation[],
+  hiddenPanelIds: readonly string[],
+): readonly ApplicationRoutePanelLayout[] {
+  const requestedByRoute = new Map<
+    string,
+    ApplicationRoutePanelLayoutPresentation
+  >();
+  for (const presentation of presentations) {
+    if (
+      typeof presentation?.route_id === "string" &&
+      !requestedByRoute.has(presentation.route_id)
+    ) {
+      requestedByRoute.set(presentation.route_id, presentation);
+    }
+  }
+  const hidden = new Set(hiddenPanelIds);
+  return registry.routeDefinitions.map((route) => {
+    const requested = requestedByRoute.get(route.id);
+    const requestedDocks = Array.isArray(requested?.docks)
+      ? requested.docks
+      : [];
+    const usedPanels = new Set<string>();
+    const panelsByDock = new Map<
+      ApplicationPanelDockId,
+      string[]
+    >(APPLICATION_PANEL_DOCKS.map((dockId) => [dockId, []]));
+
+    for (const dockId of APPLICATION_PANEL_DOCKS) {
+      const requestedDock = requestedDocks.find(
+        (dock) => dock?.dock_id === dockId,
+      );
+      const panelIds = Array.isArray(requestedDock?.panel_ids)
+        ? requestedDock.panel_ids
+        : [];
+      for (const panelId of panelIds) {
+        if (
+          typeof panelId === "string" &&
+          route.panelIds.includes(panelId) &&
+          !usedPanels.has(panelId)
+        ) {
+          panelsByDock.get(dockId)!.push(panelId);
+          usedPanels.add(panelId);
+        }
+      }
+    }
+
+    for (const panelId of route.panelIds) {
+      if (!usedPanels.has(panelId)) {
+        panelsByDock
+          .get(defaultDockForRegion(registry.panel(panelId).region))!
+          .push(panelId);
+      }
+    }
+
+    return {
+      routeId: route.id,
+      docks: APPLICATION_PANEL_DOCKS.map((dockId) => {
+        const panelIds = panelsByDock.get(dockId)!;
+        const requestedDock = requestedDocks.find(
+          (dock) => dock?.dock_id === dockId,
+        );
+        const requestedActive = requestedDock?.active_panel_id;
+        return {
+          dockId,
+          panelIds,
+          activePanelId:
+            typeof requestedActive === "string" &&
+            panelIds.includes(requestedActive) &&
+            !hidden.has(requestedActive)
+              ? requestedActive
+              : panelIds.find((panelId) => !hidden.has(panelId)) ?? null,
+          sizeBasisPoints: restoredDockSize(
+            dockId,
+            requestedDock?.size_basis_points,
+          ),
+        };
+      }),
+    };
+  });
+}
+
+function defaultDockForRegion(
+  region: ApplicationPanelRegion,
+): ApplicationPanelDockId {
+  switch (region) {
+    case "primary":
+      return "center";
+    case "secondary":
+      return "right";
+    case "utility":
+      return "bottom";
+  }
+}
+
+function restoredDockSize(
+  dockId: ApplicationPanelDockId,
+  requested: unknown,
+): number {
+  const bounds = APPLICATION_PANEL_DOCK_SIZE_BOUNDS[dockId];
+  return typeof requested === "number" &&
+    Number.isSafeInteger(requested) &&
+    requested >= bounds.minimum &&
+    requested <= bounds.maximum
+    ? requested
+    : bounds.defaultValue;
+}
+
+function clampDockSize(
+  dockId: ApplicationPanelDockId,
+  requested: number,
+): number {
+  const bounds = APPLICATION_PANEL_DOCK_SIZE_BOUNDS[dockId];
+  return Math.min(bounds.maximum, Math.max(bounds.minimum, requested));
+}
+
+function requireDockId(dockId: ApplicationPanelDockId): void {
+  if (!(APPLICATION_PANEL_DOCKS as readonly string[]).includes(dockId)) {
+    throw new Error(`unknown panel dock: ${dockId}`);
+  }
+}
+
+function reconcileLayoutActivity(
+  layouts: readonly ApplicationRoutePanelLayout[],
+  hiddenPanelIds: readonly string[],
+): readonly ApplicationRoutePanelLayout[] {
+  const hidden = new Set(hiddenPanelIds);
+  return layouts.map((layout) => ({
+    ...layout,
+    docks: layout.docks.map((dock) => ({
+      ...dock,
+      activePanelId:
+        dock.activePanelId !== null &&
+        dock.panelIds.includes(dock.activePanelId) &&
+        !hidden.has(dock.activePanelId)
+          ? dock.activePanelId
+          : dock.panelIds.find((panelId) => !hidden.has(panelId)) ?? null,
+    })),
+  }));
+}
+
+function activatePanel(
+  layout: ApplicationRoutePanelLayout,
+  panelId: string,
+): ApplicationRoutePanelLayout {
+  const target = layout.docks.find((dock) => dock.panelIds.includes(panelId));
+  if (target === undefined) {
+    throw new Error(`panel ${panelId} is not present in route layout ${layout.routeId}`);
+  }
+  if (target.activePanelId === panelId) {
+    return layout;
+  }
+  return {
+    ...layout,
+    docks: layout.docks.map((dock) =>
+      dock.dockId === target.dockId
+        ? { ...dock, activePanelId: panelId }
+        : dock,
+    ),
+  };
+}
+
+function dockPanel(
+  layout: ApplicationRoutePanelLayout,
+  panelId: string,
+  targetDockId: ApplicationPanelDockId,
+  requestedIndex: number | undefined,
+  hiddenPanelIds: readonly string[],
+): ApplicationRoutePanelLayout {
+  const hidden = new Set(hiddenPanelIds);
+  const panelsByDock = new Map<ApplicationPanelDockId, string[]>(
+    layout.docks.map((dock) => [
+      dock.dockId,
+      dock.panelIds.filter((candidate) => candidate !== panelId),
+    ]),
+  );
+  const target = panelsByDock.get(targetDockId)!;
+  const index = Math.min(requestedIndex ?? target.length, target.length);
+  target.splice(index, 0, panelId);
+  return {
+    ...layout,
+    docks: layout.docks.map((dock) => {
+      const panelIds = panelsByDock.get(dock.dockId)!;
+      return {
+        ...dock,
+        panelIds,
+        activePanelId:
+          dock.dockId === targetDockId
+            ? panelId
+            : dock.activePanelId !== null &&
+                panelIds.includes(dock.activePanelId) &&
+                !hidden.has(dock.activePanelId)
+              ? dock.activePanelId
+              : panelIds.find((candidate) => !hidden.has(candidate)) ?? null,
+      };
+    }),
+  };
+}
+
+function replaceRouteLayout(
+  layouts: readonly ApplicationRoutePanelLayout[],
+  replacement: ApplicationRoutePanelLayout,
+): readonly ApplicationRoutePanelLayout[] {
+  let replaced = false;
+  const next = layouts.map((layout) => {
+    if (layout.routeId !== replacement.routeId) {
+      return layout;
+    }
+    replaced = true;
+    return replacement;
+  });
+  if (!replaced) {
+    throw new Error(`unknown route layout: ${replacement.routeId}`);
+  }
+  return next;
+}
+
+function applicationRoutePanelLayoutFrom(
+  layouts: readonly ApplicationRoutePanelLayout[],
+  routeId: string,
+): ApplicationRoutePanelLayout {
+  const layout = layouts.find((candidate) => candidate.routeId === routeId);
+  if (layout === undefined) {
+    throw new Error(`unknown route layout: ${routeId}`);
+  }
+  return layout;
+}
+
 function visiblePanels(
   route: ApplicationRouteDefinition,
   hiddenPanelIds: readonly string[],
 ): readonly string[] {
   const hidden = new Set(hiddenPanelIds);
   return route.panelIds.filter((panelId) => !hidden.has(panelId));
+}
+
+function preferredPanelFromLayout(
+  route: ApplicationRouteDefinition,
+  layout: ApplicationRoutePanelLayout,
+  visiblePanelIds: readonly string[],
+): string | null {
+  for (const dockId of ["center", "left", "right", "bottom"] as const) {
+    const activePanelId = layout.docks.find(
+      (dock) => dock.dockId === dockId,
+    )?.activePanelId;
+    if (
+      activePanelId !== undefined &&
+      activePanelId !== null &&
+      visiblePanelIds.includes(activePanelId)
+    ) {
+      return activePanelId;
+    }
+  }
+  return preferredPanel(route, visiblePanelIds);
 }
 
 function preferredPanel(
@@ -503,6 +969,21 @@ function freezeState(state: ApplicationState): ApplicationState {
     ...state,
     hiddenPanelIds: Object.freeze([...state.hiddenPanelIds]),
     visiblePanelIds: Object.freeze([...state.visiblePanelIds]),
+    panelLayouts: Object.freeze(
+      state.panelLayouts.map((layout) =>
+        Object.freeze({
+          ...layout,
+          docks: Object.freeze(
+            layout.docks.map((dock) =>
+              Object.freeze({
+                ...dock,
+                panelIds: Object.freeze([...dock.panelIds]),
+              }),
+            ),
+          ),
+        }),
+      ),
+    ),
     selection: state.selection,
   });
 }

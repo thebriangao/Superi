@@ -311,8 +311,12 @@ restart, recovery, and failure state around one lifecycle-attached EngineControl
 React bootstrap consumes the complete generated TypeScript contract through an injected
 `SuperiTransport` provider. One concrete desktop transport owns ordered delivery, replay,
 reconnection, cancellation, and public failures. Above it, one application provider owns transient
-routing, panels, commands, shared resource selection, and the last public editor snapshot presented
-across editing, compositing, color, audio, and delivery workspaces. This direction gives Superi
+routing, immutable route-local dock and tab layouts, panel visibility, commands, shared resource
+selection, and the last public editor snapshot presented across editing, compositing, color, audio,
+and delivery workspaces. Panel placement, tab order, active tabs, bounded dock sizes, visibility,
+and focus are reconciled against the live registry and retained through private desktop and crash
+continuity records without entering project transactions or document identity. This direction gives
+Superi
 access to a mature interface ecosystem and a large design and engineering talent pool while keeping
 the performance-critical media pipeline native and GPU-driven.
 

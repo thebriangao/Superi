@@ -14,9 +14,12 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, State, Window, WindowEvent};
 
 pub const DESKTOP_SHELL_EVENT: &str = "superi://desktop-shell-intent";
 
-const DESKTOP_SHELL_SCHEMA_VERSION: u32 = 1;
+const DESKTOP_SHELL_SCHEMA_VERSION: u32 = 2;
+const LEGACY_DESKTOP_SHELL_SCHEMA_VERSION: u32 = 1;
 const MAX_RECENT_PROJECTS: usize = 32;
 const MAX_HIDDEN_PANELS: usize = 256;
+const MAX_PANEL_LAYOUT_ROUTES: usize = 64;
+const MAX_PANELS_PER_DOCK: usize = 256;
 const MAX_IDENTITY_BYTES: usize = 512;
 const MAX_PATH_BYTES: usize = 32 * 1024;
 const DEFAULT_ROUTE_ID: &str = "editing";
@@ -65,12 +68,39 @@ impl DesktopShellDocument {
     }
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DesktopPanelDockId {
+    Left,
+    Center,
+    Right,
+    Bottom,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopPanelDockPresentation {
+    pub dock_id: DesktopPanelDockId,
+    pub panel_ids: Vec<String>,
+    pub active_panel_id: Option<String>,
+    pub size_basis_points: u16,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopRoutePanelLayoutPresentation {
+    pub route_id: String,
+    pub docks: Vec<DesktopPanelDockPresentation>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopWorkspacePresentation {
     pub active_route_id: String,
     pub hidden_panel_ids: Vec<String>,
     pub focused_panel_id: Option<String>,
+    #[serde(default)]
+    pub panel_layouts: Vec<DesktopRoutePanelLayoutPresentation>,
 }
 
 impl Default for DesktopWorkspacePresentation {
@@ -79,6 +109,7 @@ impl Default for DesktopWorkspacePresentation {
             active_route_id: DEFAULT_ROUTE_ID.to_owned(),
             hidden_panel_ids: Vec::new(),
             focused_panel_id: None,
+            panel_layouts: Vec::new(),
         }
     }
 }
@@ -336,7 +367,12 @@ impl DesktopShellState {
 
         let mut model = self.lock("initialize")?;
         match restored {
-            Ok(restored) if restored.schema_version == DESKTOP_SHELL_SCHEMA_VERSION => {
+            Ok(restored)
+                if matches!(
+                    restored.schema_version,
+                    LEGACY_DESKTOP_SHELL_SCHEMA_VERSION | DESKTOP_SHELL_SCHEMA_VERSION
+                ) =>
+            {
                 if validate_workspace(&restored.workspace).is_ok() {
                     model.restore_workspace(restored.workspace);
                 } else {
@@ -756,8 +792,94 @@ fn validate_workspace(workspace: &DesktopWorkspacePresentation) -> Result<(), De
     }
     if let Some(panel_id) = &workspace.focused_panel_id {
         validate_text(panel_id, "focused panel identity")?;
+        if panels.contains(panel_id) {
+            return Err(invalid_presentation("hidden focused panel"));
+        }
+    }
+    if workspace.panel_layouts.is_empty() {
+        return Ok(());
+    }
+    if workspace.panel_layouts.len() > MAX_PANEL_LAYOUT_ROUTES {
+        return Err(invalid_presentation("panel layout route capacity"));
+    }
+    let mut routes = BTreeSet::new();
+    let mut active_layout = None;
+    for layout in &workspace.panel_layouts {
+        validate_text(&layout.route_id, "panel layout route identity")?;
+        if !routes.insert(layout.route_id.as_str()) {
+            return Err(invalid_presentation("duplicate panel layout route"));
+        }
+        if layout.docks.len() != 4 {
+            return Err(invalid_presentation("panel layout dock count"));
+        }
+        let mut dock_ids = BTreeSet::new();
+        let mut route_panels = BTreeSet::new();
+        for dock in &layout.docks {
+            if !dock_ids.insert(dock.dock_id) {
+                return Err(invalid_presentation("duplicate panel layout dock"));
+            }
+            validate_dock_size(dock.dock_id, dock.size_basis_points)?;
+            if dock.panel_ids.len() > MAX_PANELS_PER_DOCK {
+                return Err(invalid_presentation("panel layout dock capacity"));
+            }
+            for panel_id in &dock.panel_ids {
+                validate_text(panel_id, "panel layout panel identity")?;
+                if !route_panels.insert(panel_id.as_str()) {
+                    return Err(invalid_presentation("duplicate routed panel identity"));
+                }
+            }
+            let visible_panel = dock
+                .panel_ids
+                .iter()
+                .find(|panel_id| !panels.contains(panel_id));
+            match &dock.active_panel_id {
+                Some(active_panel_id) => {
+                    validate_text(active_panel_id, "active panel identity")?;
+                    if !dock.panel_ids.contains(active_panel_id) || panels.contains(active_panel_id)
+                    {
+                        return Err(invalid_presentation("invalid active panel"));
+                    }
+                }
+                None if visible_panel.is_some() => {
+                    return Err(invalid_presentation("missing active panel"));
+                }
+                None => {}
+            }
+        }
+        if layout.route_id == workspace.active_route_id {
+            active_layout = Some(layout);
+        }
+    }
+    let active_layout =
+        active_layout.ok_or_else(|| invalid_presentation("missing active route layout"))?;
+    if let Some(focused_panel_id) = &workspace.focused_panel_id {
+        let focused_is_active = active_layout
+            .docks
+            .iter()
+            .any(|dock| dock.active_panel_id.as_deref() == Some(focused_panel_id.as_str()));
+        if !focused_is_active {
+            return Err(invalid_presentation("focused panel is not an active tab"));
+        }
     }
     Ok(())
+}
+
+fn validate_dock_size(
+    dock_id: DesktopPanelDockId,
+    size_basis_points: u16,
+) -> Result<(), DesktopShellFailure> {
+    let valid = match dock_id {
+        DesktopPanelDockId::Left | DesktopPanelDockId::Right => {
+            (1_500..=4_500).contains(&size_basis_points)
+        }
+        DesktopPanelDockId::Center => size_basis_points == 10_000,
+        DesktopPanelDockId::Bottom => (1_800..=6_500).contains(&size_basis_points),
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(invalid_presentation("panel dock size"))
+    }
 }
 
 fn validate_text(value: &str, kind: &str) -> Result<(), DesktopShellFailure> {

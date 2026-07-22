@@ -3,8 +3,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use superi_desktop::desktop_shell::{
-    DesktopCloseReason, DesktopShellDocument, DesktopShellIntent, DesktopShellModel,
-    DesktopShellState, DesktopShellSync, DesktopWorkspacePresentation,
+    DesktopCloseReason, DesktopPanelDockId, DesktopPanelDockPresentation,
+    DesktopRoutePanelLayoutPresentation, DesktopShellDocument, DesktopShellIntent,
+    DesktopShellModel, DesktopShellState, DesktopShellSync, DesktopWorkspacePresentation,
 };
 
 static NEXT_SHELL_ROOT: AtomicU64 = AtomicU64::new(0);
@@ -22,10 +23,40 @@ fn temporary_shell_root(label: &str) -> PathBuf {
 }
 
 fn workspace(route: &str) -> DesktopWorkspacePresentation {
+    let workspace_panel = format!("workspace.{route}");
     DesktopWorkspacePresentation {
         active_route_id: route.to_owned(),
         hidden_panel_ids: vec!["application.selection".to_owned()],
-        focused_panel_id: Some("workspace.editing".to_owned()),
+        focused_panel_id: Some(workspace_panel.clone()),
+        panel_layouts: vec![DesktopRoutePanelLayoutPresentation {
+            route_id: route.to_owned(),
+            docks: vec![
+                DesktopPanelDockPresentation {
+                    dock_id: DesktopPanelDockId::Left,
+                    panel_ids: Vec::new(),
+                    active_panel_id: None,
+                    size_basis_points: 2_400,
+                },
+                DesktopPanelDockPresentation {
+                    dock_id: DesktopPanelDockId::Center,
+                    panel_ids: vec![workspace_panel.clone()],
+                    active_panel_id: Some(workspace_panel),
+                    size_basis_points: 10_000,
+                },
+                DesktopPanelDockPresentation {
+                    dock_id: DesktopPanelDockId::Right,
+                    panel_ids: vec!["application.selection".to_owned()],
+                    active_panel_id: None,
+                    size_basis_points: 2_800,
+                },
+                DesktopPanelDockPresentation {
+                    dock_id: DesktopPanelDockId::Bottom,
+                    panel_ids: Vec::new(),
+                    active_panel_id: None,
+                    size_basis_points: 3_000,
+                },
+            ],
+        }],
     }
 }
 
@@ -59,6 +90,13 @@ fn native_shell_sync_preserves_document_history_workspace_and_recent_intents() {
     assert_eq!(first.undo_depth(), 4);
     assert_eq!(first.redo_depth(), 1);
     assert_eq!(first.workspace().active_route_id, "editing");
+    assert_eq!(first.workspace().panel_layouts.len(), 1);
+    assert_eq!(
+        first.workspace().panel_layouts[0].docks[1]
+            .active_panel_id
+            .as_deref(),
+        Some("workspace.editing")
+    );
     assert_eq!(first.recent_paths().len(), 2);
     assert_eq!(
         model.intent_for_menu_id("superi.file.recent.1"),
@@ -132,6 +170,10 @@ fn workspace_presentation_restores_from_the_private_atomic_session_record() {
     let mut presentation = sync(1);
     presentation.workspace = workspace("color");
     first.synchronize(presentation).unwrap();
+    let stored: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root.join("desktop-shell-state.json")).unwrap())
+            .unwrap();
+    assert_eq!(stored["schema_version"].as_u64(), Some(2));
     drop(first);
 
     let restored = DesktopShellState::default();
@@ -144,7 +186,12 @@ fn workspace_presentation_restores_from_the_private_atomic_session_record() {
     );
     assert_eq!(
         snapshot.workspace().focused_panel_id.as_deref(),
-        Some("workspace.editing")
+        Some("workspace.color")
+    );
+    assert_eq!(snapshot.workspace().panel_layouts[0].route_id, "color");
+    assert_eq!(
+        snapshot.workspace().panel_layouts[0].docks[1].size_basis_points,
+        10_000
     );
 
     std::fs::remove_dir_all(root).unwrap();
@@ -161,7 +208,8 @@ fn invalid_persisted_workspace_degrades_to_defaults_without_blocking_startup() {
   "workspace": {
     "active_route_id": " ",
     "hidden_panel_ids": [],
-    "focused_panel_id": null
+    "focused_panel_id": null,
+    "panel_layouts": []
   }
 }"#,
     )
@@ -177,6 +225,43 @@ fn invalid_persisted_workspace_degrades_to_defaults_without_blocking_startup() {
     );
 
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn version_one_workspace_records_migrate_without_inventing_registry_layout() {
+    let root = temporary_shell_root("version-one");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        root.join("desktop-shell-state.json"),
+        br#"{
+  "schema_version": 1,
+  "workspace": {
+    "active_route_id": "color",
+    "hidden_panel_ids": ["application.selection"],
+    "focused_panel_id": "workspace.color"
+  }
+}"#,
+    )
+    .unwrap();
+
+    let state = DesktopShellState::default();
+    state.initialize(&root).unwrap();
+    let snapshot = state.snapshot().unwrap();
+    assert_eq!(snapshot.workspace().active_route_id, "color");
+    assert!(snapshot.workspace().panel_layouts.is_empty());
+    assert!(snapshot.failure().is_none());
+
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn invalid_panel_layout_is_rejected_before_live_state_changes() {
+    let mut model = DesktopShellModel::default();
+    let accepted = model.synchronize(sync(1)).unwrap();
+    let mut invalid = sync(2);
+    invalid.workspace.panel_layouts[0].docks[0].panel_ids = vec!["workspace.editing".to_owned()];
+    assert!(model.synchronize(invalid).is_err());
+    assert_eq!(model.snapshot(), &accepted);
 }
 
 #[test]

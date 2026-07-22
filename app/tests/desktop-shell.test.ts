@@ -93,6 +93,7 @@ test("native sequence resumes after a webview reload before the next sync", asyn
                 active_route_id: "editing",
                 hidden_panel_ids: [],
                 focused_panel_id: null,
+                panel_layouts: [],
               },
               failure: null,
             };
@@ -119,6 +120,7 @@ test("native sequence resumes after a webview reload before the next sync", asyn
         active_route_id: "editing",
         hidden_panel_ids: [],
         focused_panel_id: null,
+        panel_layouts: [],
       },
     });
     assert.equal(

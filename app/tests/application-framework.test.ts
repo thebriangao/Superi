@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  APPLICATION_PANEL_DOCK_SIZE_BOUNDS,
   ApplicationRegistry,
+  applicationRoutePanelLayout,
+  applicationWorkspacePresentation,
   createApplicationState,
   executeApplicationCommand,
   isEditableCommandTarget,
@@ -173,6 +176,91 @@ test("routing reconciles visible and focused panels without mutating the prior s
   assert.equal(system.activeRouteId, "system");
 });
 
+test("panel layouts dock, tab, resize, hide, and restore without losing immutable intent", () => {
+  const registry = new ApplicationRegistry(definitions());
+  const initial = createApplicationState(registry);
+  const initialLayout = applicationRoutePanelLayout(initial, "workspace");
+  assert.deepEqual(
+    initialLayout.docks.map((dock) => ({
+      id: dock.dockId,
+      panels: dock.panelIds,
+      active: dock.activePanelId,
+    })),
+    [
+      { id: "left", panels: [], active: null },
+      {
+        id: "center",
+        panels: ["application.overview"],
+        active: "application.overview",
+      },
+      {
+        id: "right",
+        panels: ["application.selection"],
+        active: "application.selection",
+      },
+      { id: "bottom", panels: [], active: null },
+    ],
+  );
+
+  const tabbed = reduceApplicationState(registry, initial, {
+    type: "dock_panel",
+    panelId: "application.selection",
+    dockId: "center",
+    index: 1,
+  });
+  const tabbedCenter = applicationRoutePanelLayout(tabbed, "workspace").docks[1];
+  assert.deepEqual(tabbedCenter.panelIds, [
+    "application.overview",
+    "application.selection",
+  ]);
+  assert.equal(tabbedCenter.activePanelId, "application.selection");
+  assert.equal(tabbed.focusedPanelId, "application.selection");
+
+  const resized = reduceApplicationState(registry, tabbed, {
+    type: "resize_panel_dock",
+    dockId: "left",
+    sizeBasisPoints: 9_000,
+  });
+  assert.equal(
+    applicationRoutePanelLayout(resized, "workspace").docks[0]
+      .sizeBasisPoints,
+    APPLICATION_PANEL_DOCK_SIZE_BOUNDS.left.maximum,
+  );
+
+  const hidden = reduceApplicationState(registry, resized, {
+    type: "toggle_panel",
+    panelId: "application.selection",
+  });
+  assert.deepEqual(
+    applicationRoutePanelLayout(hidden, "workspace").docks[1].panelIds,
+    ["application.overview", "application.selection"],
+  );
+  assert.equal(
+    applicationRoutePanelLayout(hidden, "workspace").docks[1].activePanelId,
+    "application.overview",
+  );
+
+  const restored = reduceApplicationState(registry, hidden, {
+    type: "toggle_panel",
+    panelId: "application.selection",
+  });
+  assert.equal(
+    applicationRoutePanelLayout(restored, "workspace").docks[1].activePanelId,
+    "application.selection",
+  );
+  assert.equal(restored.focusedPanelId, "application.selection");
+  assert.ok(Object.isFrozen(restored.panelLayouts));
+  assert.ok(Object.isFrozen(restored.panelLayouts[0].docks));
+  assert.ok(Object.isFrozen(restored.panelLayouts[0].docks[0].panelIds));
+
+  const presentation = applicationWorkspacePresentation(restored);
+  assert.equal(presentation.panel_layouts.length, 2);
+  assert.deepEqual(
+    presentation.panel_layouts[0].docks[1].panel_ids,
+    ["application.overview", "application.selection"],
+  );
+});
+
 test("shared selection preserves exact immutable public resource references", () => {
   const registry = new ApplicationRegistry(definitions());
   const engine = {
@@ -281,6 +369,19 @@ test("workspace restoration reconciles persisted routes and panels against the l
     active_route_id: "system",
     hidden_panel_ids: ["application.selection", "removed.panel"],
     focused_panel_id: "removed.panel",
+    panel_layouts: [
+      {
+        route_id: "workspace",
+        docks: [
+          {
+            dock_id: "center",
+            panel_ids: ["application.overview", "removed.panel"],
+            active_panel_id: "removed.panel",
+            size_basis_points: 10_000,
+          },
+        ],
+      },
+    ],
   });
   assert.equal(restored.activeRouteId, "system");
   assert.deepEqual(restored.hiddenPanelIds, ["application.selection"]);
@@ -293,6 +394,7 @@ test("workspace restoration reconciles persisted routes and panels against the l
       active_route_id: "workspace",
       hidden_panel_ids: ["application.selection"],
       focused_panel_id: "application.overview",
+      panel_layouts: [],
     },
   });
   assert.equal(windowOwnedRoute.activeRouteId, "system");
@@ -303,6 +405,7 @@ test("workspace restoration reconciles persisted routes and panels against the l
     active_route_id: "removed.route",
     hidden_panel_ids: [],
     focused_panel_id: null,
+    panel_layouts: [],
   });
   assert.equal(fallback.activeRouteId, registry.defaultRouteId);
   assert.deepEqual(fallback.visiblePanelIds, [

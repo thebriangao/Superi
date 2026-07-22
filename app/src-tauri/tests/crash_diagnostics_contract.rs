@@ -4,7 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use superi_core::error::{ErrorCategory, Recoverability};
 use superi_desktop::crash_diagnostics::{
     DesktopCrashDiagnostics, DesktopCrashFailureClass, DesktopCrashRecoveryEntryPoint,
-    DesktopProjectContinuity, DesktopWorkspaceContinuity,
+    DesktopPanelDockId, DesktopPanelDockPresentation, DesktopProjectContinuity,
+    DesktopRoutePanelLayoutPresentation, DesktopWorkspaceContinuity,
 };
 use superi_desktop::lifecycle::{ApplicationLifecycle, HeadlessEngineFailure};
 
@@ -22,6 +23,8 @@ fn an_unclean_session_retains_workspace_and_project_recovery_intent() {
                 ["application.selection"],
                 Some("workspace.editing"),
             )
+            .unwrap()
+            .with_panel_layouts(vec![editing_layout()])
             .unwrap(),
         )
         .unwrap();
@@ -55,6 +58,12 @@ fn an_unclean_session_retains_workspace_and_project_recovery_intent() {
         Some("workspace.editing")
     );
     assert_eq!(
+        diagnostic.continuity().workspace().panel_layouts()[0].docks[1]
+            .active_panel_id
+            .as_deref(),
+        Some("workspace.editing")
+    );
+    assert_eq!(
         diagnostic
             .continuity()
             .project()
@@ -72,6 +81,46 @@ fn an_unclean_session_retains_workspace_and_project_recovery_intent() {
     );
 
     second.finish_session().unwrap();
+    remove_test_root(root);
+}
+
+#[test]
+fn layout_free_version_one_session_marker_remains_recoverable() {
+    let root = test_root("legacy-layout");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        root.join("active-session.json"),
+        br#"{
+  "schema_version": 1,
+  "session_id": "session-legacy",
+  "started_unix_millis": 1,
+  "updated_unix_millis": 2,
+  "continuity": {
+    "workspace": {
+      "route_id": "editing",
+      "hidden_panel_ids": [],
+      "focused_panel_id": "workspace.editing"
+    },
+    "project": null,
+    "lifecycle": null
+  }
+}"#,
+    )
+    .unwrap();
+
+    let diagnostics = DesktopCrashDiagnostics::default();
+    let snapshot = diagnostics.initialize(root.clone());
+    let recovered = snapshot
+        .diagnostics()
+        .iter()
+        .find(|diagnostic| diagnostic.code() == "unexpected_exit")
+        .unwrap();
+    assert!(recovered
+        .continuity()
+        .workspace()
+        .panel_layouts()
+        .is_empty());
+    diagnostics.finish_session().unwrap();
     remove_test_root(root);
 }
 
@@ -243,4 +292,36 @@ fn test_root(label: &str) -> PathBuf {
 
 fn remove_test_root(root: PathBuf) {
     std::fs::remove_dir_all(root).unwrap();
+}
+
+fn editing_layout() -> DesktopRoutePanelLayoutPresentation {
+    DesktopRoutePanelLayoutPresentation {
+        route_id: "editing".to_owned(),
+        docks: vec![
+            DesktopPanelDockPresentation {
+                dock_id: DesktopPanelDockId::Left,
+                panel_ids: Vec::new(),
+                active_panel_id: None,
+                size_basis_points: 2_400,
+            },
+            DesktopPanelDockPresentation {
+                dock_id: DesktopPanelDockId::Center,
+                panel_ids: vec!["workspace.editing".to_owned()],
+                active_panel_id: Some("workspace.editing".to_owned()),
+                size_basis_points: 10_000,
+            },
+            DesktopPanelDockPresentation {
+                dock_id: DesktopPanelDockId::Right,
+                panel_ids: vec!["application.selection".to_owned()],
+                active_panel_id: None,
+                size_basis_points: 2_800,
+            },
+            DesktopPanelDockPresentation {
+                dock_id: DesktopPanelDockId::Bottom,
+                panel_ids: Vec::new(),
+                active_panel_id: None,
+                size_basis_points: 3_000,
+            },
+        ],
+    }
 }

@@ -135,6 +135,37 @@ test("application framework composes shared UI state above the delivered API cli
   );
 });
 
+test("panel workspace exposes real dock, tab, resize, hide, and continuity behavior", () => {
+  const application = read(resolve(appRoot, "src/application.ts"));
+  const panelWorkspace = read(resolve(appRoot, "src/panel-workspace.tsx"));
+  const app = read(resolve(appRoot, "src/App.tsx"));
+  const shell = read(resolve(appRoot, "src/desktop-shell.ts"));
+  const crash = read(resolve(appRoot, "src/crash-diagnostics.ts"));
+
+  assert.match(app, /<PanelWorkspace\s*\/>/);
+  assert.match(app, /applicationWorkspacePresentation\(state\)/);
+  assert.match(app, /panel_layouts: workspace\.panel_layouts/);
+  assert.match(application, /type: "dock_panel"/);
+  assert.match(application, /type: "activate_panel"/);
+  assert.match(application, /type: "resize_panel_dock"/);
+  assert.match(application, /createPanelLayouts/);
+  assert.match(application, /applicationWorkspacePresentation/);
+  assert.match(panelWorkspace, /role="tablist"/);
+  assert.match(panelWorkspace, /role="tabpanel"/);
+  assert.match(panelWorkspace, /role="separator"/);
+  assert.match(panelWorkspace, /draggable/);
+  assert.match(panelWorkspace, /setPointerCapture/);
+  assert.match(panelWorkspace, /hidden=\{!selected\}/);
+  assert.match(panelWorkspace, /aria-label=\{`Dock \$\{activePanel\.title\}`\}/);
+  assert.match(panelWorkspace, /type: "toggle_panel"/);
+  assert.match(shell, /ApplicationWorkspacePresentation/);
+  assert.match(crash, /ApplicationRoutePanelLayoutPresentation/);
+  assert.doesNotMatch(
+    panelWorkspace,
+    /useSuperiApi|executeDesktopProject|undo_depth|redo_depth|resolveDesktopClose/,
+  );
+});
+
 test("blocking workflows exercise the production app rather than CI-only smoke packages", () => {
   const frontendWorkflow = read(
     resolve(repositoryRoot, ".github/workflows/frontend.yml"),

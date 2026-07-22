@@ -24,6 +24,8 @@ const SESSION_FILE: &str = "active-session.json";
 const MAX_RETAINED_DIAGNOSTICS: usize = 32;
 const MAX_CONTEXTS: usize = 16;
 const MAX_HIDDEN_PANELS: usize = 64;
+const MAX_PANEL_LAYOUT_ROUTES: usize = 64;
+const MAX_PANELS_PER_DOCK: usize = 256;
 const MAX_IDENTITY_BYTES: usize = 128;
 const MAX_CODE_BYTES: usize = 128;
 const MAX_TITLE_BYTES: usize = 1_024;
@@ -78,6 +80,31 @@ pub struct DesktopCrashContext {
     operation: String,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DesktopPanelDockId {
+    Left,
+    Center,
+    Right,
+    Bottom,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopPanelDockPresentation {
+    pub dock_id: DesktopPanelDockId,
+    pub panel_ids: Vec<String>,
+    pub active_panel_id: Option<String>,
+    pub size_basis_points: u16,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopRoutePanelLayoutPresentation {
+    pub route_id: String,
+    pub docks: Vec<DesktopPanelDockPresentation>,
+}
+
 impl DesktopCrashContext {
     fn new(component: impl Into<String>, operation: impl Into<String>) -> Result<Self> {
         let value = Self {
@@ -117,6 +144,8 @@ pub struct DesktopWorkspaceContinuity {
     route_id: String,
     hidden_panel_ids: Vec<String>,
     focused_panel_id: Option<String>,
+    #[serde(default)]
+    panel_layouts: Vec<DesktopRoutePanelLayoutPresentation>,
 }
 
 impl DesktopWorkspaceContinuity {
@@ -134,6 +163,7 @@ impl DesktopWorkspaceContinuity {
             route_id: route_id.into(),
             hidden_panel_ids: hidden_panel_ids.into_iter().map(Into::into).collect(),
             focused_panel_id: focused_panel_id.map(Into::into),
+            panel_layouts: Vec::new(),
         };
         value.validate()?;
         Ok(value)
@@ -154,6 +184,20 @@ impl DesktopWorkspaceContinuity {
         self.focused_panel_id.as_deref()
     }
 
+    #[must_use]
+    pub fn panel_layouts(&self) -> &[DesktopRoutePanelLayoutPresentation] {
+        &self.panel_layouts
+    }
+
+    pub fn with_panel_layouts(
+        mut self,
+        panel_layouts: Vec<DesktopRoutePanelLayoutPresentation>,
+    ) -> Result<Self> {
+        self.panel_layouts = panel_layouts;
+        self.validate()?;
+        Ok(self)
+    }
+
     fn validate(&self) -> Result<()> {
         validate_application_identity("route_id", &self.route_id)?;
         if self.hidden_panel_ids.len() > MAX_HIDDEN_PANELS {
@@ -167,7 +211,7 @@ impl DesktopWorkspaceContinuity {
         let mut unique = BTreeSet::new();
         for panel_id in &self.hidden_panel_ids {
             validate_application_identity("hidden_panel_id", panel_id)?;
-            if !unique.insert(panel_id) {
+            if !unique.insert(panel_id.as_str()) {
                 return Err(diagnostics_error(
                     ErrorCategory::InvalidInput,
                     Recoverability::UserCorrectable,
@@ -178,7 +222,7 @@ impl DesktopWorkspaceContinuity {
         }
         if let Some(panel_id) = &self.focused_panel_id {
             validate_application_identity("focused_panel_id", panel_id)?;
-            if unique.contains(panel_id) {
+            if unique.contains(panel_id.as_str()) {
                 return Err(diagnostics_error(
                     ErrorCategory::InvalidInput,
                     Recoverability::UserCorrectable,
@@ -187,8 +231,119 @@ impl DesktopWorkspaceContinuity {
                 ));
             }
         }
+        if self.panel_layouts.is_empty() {
+            return Ok(());
+        }
+        if self.panel_layouts.len() > MAX_PANEL_LAYOUT_ROUTES {
+            return Err(workspace_continuity_error(
+                "workspace continuity contains too many panel layout routes",
+            ));
+        }
+        let mut routes = BTreeSet::new();
+        let mut active_layout = None;
+        for layout in &self.panel_layouts {
+            validate_application_identity("panel_layout_route_id", &layout.route_id)?;
+            if !routes.insert(layout.route_id.as_str()) {
+                return Err(workspace_continuity_error(
+                    "workspace continuity contains a duplicate panel layout route",
+                ));
+            }
+            if layout.docks.len() != 4 {
+                return Err(workspace_continuity_error(
+                    "workspace continuity must contain four docks per route",
+                ));
+            }
+            let mut dock_ids = BTreeSet::new();
+            let mut route_panels = BTreeSet::new();
+            for dock in &layout.docks {
+                if !dock_ids.insert(dock.dock_id) {
+                    return Err(workspace_continuity_error(
+                        "workspace continuity contains a duplicate dock",
+                    ));
+                }
+                validate_crash_dock_size(dock.dock_id, dock.size_basis_points)?;
+                if dock.panel_ids.len() > MAX_PANELS_PER_DOCK {
+                    return Err(workspace_continuity_error(
+                        "workspace continuity contains too many panels in one dock",
+                    ));
+                }
+                for panel_id in &dock.panel_ids {
+                    validate_application_identity("panel_layout_panel_id", panel_id)?;
+                    if !route_panels.insert(panel_id.as_str()) {
+                        return Err(workspace_continuity_error(
+                            "workspace continuity routes one panel more than once",
+                        ));
+                    }
+                }
+                let visible_panel = dock
+                    .panel_ids
+                    .iter()
+                    .find(|panel_id| !unique.contains(panel_id.as_str()));
+                match &dock.active_panel_id {
+                    Some(active_panel_id) => {
+                        validate_application_identity("active_panel_id", active_panel_id)?;
+                        if !dock.panel_ids.contains(active_panel_id)
+                            || unique.contains(active_panel_id.as_str())
+                        {
+                            return Err(workspace_continuity_error(
+                                "workspace continuity contains an invalid active panel",
+                            ));
+                        }
+                    }
+                    None if visible_panel.is_some() => {
+                        return Err(workspace_continuity_error(
+                            "workspace continuity omits an active visible panel",
+                        ));
+                    }
+                    None => {}
+                }
+            }
+            if layout.route_id == self.route_id {
+                active_layout = Some(layout);
+            }
+        }
+        let active_layout = active_layout.ok_or_else(|| {
+            workspace_continuity_error("workspace continuity omits the active route layout")
+        })?;
+        if let Some(focused_panel_id) = &self.focused_panel_id {
+            let focused_is_active = active_layout
+                .docks
+                .iter()
+                .any(|dock| dock.active_panel_id.as_deref() == Some(focused_panel_id.as_str()));
+            if !focused_is_active {
+                return Err(workspace_continuity_error(
+                    "workspace continuity focus is not an active tab",
+                ));
+            }
+        }
         Ok(())
     }
+}
+
+fn validate_crash_dock_size(dock_id: DesktopPanelDockId, size_basis_points: u16) -> Result<()> {
+    let valid = match dock_id {
+        DesktopPanelDockId::Left | DesktopPanelDockId::Right => {
+            (1_500..=4_500).contains(&size_basis_points)
+        }
+        DesktopPanelDockId::Center => size_basis_points == 10_000,
+        DesktopPanelDockId::Bottom => (1_800..=6_500).contains(&size_basis_points),
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(workspace_continuity_error(
+            "workspace continuity contains an invalid dock size",
+        ))
+    }
+}
+
+fn workspace_continuity_error(message: &'static str) -> Error {
+    diagnostics_error(
+        ErrorCategory::InvalidInput,
+        Recoverability::UserCorrectable,
+        message,
+        "validate_workspace",
+    )
 }
 
 impl Default for DesktopWorkspaceContinuity {
@@ -197,6 +352,7 @@ impl Default for DesktopWorkspaceContinuity {
             route_id: "editing".to_owned(),
             hidden_panel_ids: Vec::new(),
             focused_panel_id: Some("workspace.editing".to_owned()),
+            panel_layouts: Vec::new(),
         }
     }
 }
@@ -1656,5 +1812,46 @@ mod tests {
             Some("workspace.editing")
         )
         .is_err());
+    }
+
+    #[test]
+    fn workspace_validation_rejects_duplicate_panel_layout_placement() {
+        let workspace = DesktopWorkspaceContinuity::new(
+            "editing",
+            Vec::<String>::new(),
+            Some("workspace.editing"),
+        )
+        .unwrap();
+        let duplicate_panel = "workspace.editing".to_owned();
+        let layout = DesktopRoutePanelLayoutPresentation {
+            route_id: "editing".to_owned(),
+            docks: vec![
+                DesktopPanelDockPresentation {
+                    dock_id: DesktopPanelDockId::Left,
+                    panel_ids: Vec::new(),
+                    active_panel_id: None,
+                    size_basis_points: 2_400,
+                },
+                DesktopPanelDockPresentation {
+                    dock_id: DesktopPanelDockId::Center,
+                    panel_ids: vec![duplicate_panel.clone()],
+                    active_panel_id: Some(duplicate_panel.clone()),
+                    size_basis_points: 10_000,
+                },
+                DesktopPanelDockPresentation {
+                    dock_id: DesktopPanelDockId::Right,
+                    panel_ids: vec![duplicate_panel.clone()],
+                    active_panel_id: Some(duplicate_panel),
+                    size_basis_points: 2_800,
+                },
+                DesktopPanelDockPresentation {
+                    dock_id: DesktopPanelDockId::Bottom,
+                    panel_ids: Vec::new(),
+                    active_panel_id: None,
+                    size_basis_points: 3_000,
+                },
+            ],
+        };
+        assert!(workspace.with_panel_layouts(vec![layout]).is_err());
     }
 }

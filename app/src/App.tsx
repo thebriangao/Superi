@@ -12,6 +12,7 @@ import { confirm, message, open, save } from "@tauri-apps/plugin-dialog";
 
 import {
   ApplicationRegistry,
+  applicationWorkspacePresentation,
   type ApplicationSelectionReference,
 } from "./application.ts";
 import {
@@ -95,6 +96,7 @@ import {
   type DesktopCapabilitySnapshot,
 } from "./system-capabilities.ts";
 import { classifyDesktopTransportError } from "./transport";
+import { PanelWorkspace } from "./panel-workspace.tsx";
 import { WindowSessionPanel } from "./window-session-panel.tsx";
 import {
   desktopWindowFailure,
@@ -505,11 +507,7 @@ function ApplicationShell() {
       undo_depth: undoDepth,
       redo_depth: redoDepth,
       busy,
-      workspace: {
-        active_route_id: state.activeRouteId,
-        hidden_panel_ids: state.hiddenPanelIds,
-        focused_panel_id: state.focusedPanelId,
-      },
+      workspace: applicationWorkspacePresentation(state),
     })
       .then((snapshot) => {
         if (snapshot.failure !== null) {
@@ -533,6 +531,7 @@ function ApplicationShell() {
     state.activeRouteId,
     state.focusedPanelId,
     state.hiddenPanelIds,
+    state.panelLayouts,
     undoDepth,
   ]);
 
@@ -873,15 +872,18 @@ function ApplicationShell() {
     ) {
       return;
     }
+    const workspace = applicationWorkspacePresentation(state);
     void updateDesktopCrashWorkspace({
-      route_id: state.activeRouteId,
-      hidden_panel_ids: state.hiddenPanelIds,
-      focused_panel_id: state.focusedPanelId,
+      route_id: workspace.active_route_id,
+      hidden_panel_ids: workspace.hidden_panel_ids,
+      focused_panel_id: workspace.focused_panel_id,
+      panel_layouts: workspace.panel_layouts,
     }).catch(() => undefined);
   }, [
     state.activeRouteId,
     state.focusedPanelId,
     state.hiddenPanelIds,
+    state.panelLayouts,
     windowSessionHydrated,
   ]);
 
@@ -966,35 +968,7 @@ function ApplicationShell() {
           </p>
         ) : null}
 
-        <div className="workspace-panels">
-          {state.visiblePanelIds.map((panelId) => {
-            const panel = registry.panel(panelId);
-            const Panel = panel.renderer;
-            return (
-              <section
-                className={`workspace-panel panel-${panel.region}`}
-                data-panel-id={panel.id}
-                key={panel.id}
-                tabIndex={-1}
-                onFocus={() =>
-                  dispatch({ type: "focus_panel", panelId: panel.id })
-                }
-              >
-                <header className="panel-header">
-                  <h3>{panel.title}</h3>
-                  <span>{panel.region}</span>
-                </header>
-                <Panel />
-              </section>
-            );
-          })}
-          {state.visiblePanelIds.length === 0 ? (
-            <div className="empty-route">
-              <p>No panels are visible on this route.</p>
-              <p>Use the panel controls above to restore one.</p>
-            </div>
-          ) : null}
-        </div>
+        <PanelWorkspace />
       </section>
     </main>
   );
@@ -1382,9 +1356,28 @@ function SystemPanel() {
     const unknownPanel = continuity.workspace.hidden_panel_ids.find(
       (panelId) => !registeredPanels.has(panelId),
     );
+    const routesById = new Map(
+      registry.routeDefinitions.map((route) => [route.id, route]),
+    );
+    const incompatibleLayout = continuity.workspace.panel_layouts.some(
+      (layout) => {
+        const route = routesById.get(layout.route_id);
+        return (
+          route === undefined ||
+          layout.docks.some((dock) =>
+            dock.panel_ids.some(
+              (panelId) =>
+                !registeredPanels.has(panelId) ||
+                !route.panelIds.includes(panelId),
+            ),
+          )
+        );
+      },
+    );
     const focusedPanel = continuity.workspace.focused_panel_id;
     if (
       unknownPanel !== undefined ||
+      incompatibleLayout ||
       (focusedPanel !== null &&
         (!registeredPanels.has(focusedPanel) ||
           !targetRoute.panelIds.includes(focusedPanel)))
@@ -1430,25 +1423,15 @@ function SystemPanel() {
       }
     }
 
-    const desiredHidden = new Set(continuity.workspace.hidden_panel_ids);
-    const simulatedHidden = new Set(applicationState.hiddenPanelIds);
-    for (const route of registry.routeDefinitions) {
-      dispatch({ type: "navigate", routeId: route.id });
-      for (const panelId of route.panelIds) {
-        if (desiredHidden.has(panelId) !== simulatedHidden.has(panelId)) {
-          dispatch({ type: "toggle_panel", panelId });
-          if (desiredHidden.has(panelId)) {
-            simulatedHidden.add(panelId);
-          } else {
-            simulatedHidden.delete(panelId);
-          }
-        }
-      }
-    }
-    dispatch({ type: "navigate", routeId: targetRoute.id });
-    if (focusedPanel !== null && !desiredHidden.has(focusedPanel)) {
-      dispatch({ type: "focus_panel", panelId: focusedPanel });
-    }
+    dispatch({
+      type: "restore_workspace",
+      workspace: {
+        active_route_id: targetRoute.id,
+        hidden_panel_ids: continuity.workspace.hidden_panel_ids,
+        focused_panel_id: continuity.workspace.focused_panel_id,
+        panel_layouts: continuity.workspace.panel_layouts,
+      },
+    });
     return true;
   };
 

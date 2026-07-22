@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 11caa0be1ebd6dbdcd74b25dc5255eaff63bc13f7810591f5f61d7799094d6d4
-source_files: 321
+source_hash: 2b8bfeb93e995664a3276e53197d131d8f17040199040fa851548607e519a5a7
+source_files: 322
 mapped_at_commit: working-tree
 ---
 
@@ -567,11 +567,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   one frozen `SuperiApiBindings` surface around an injected `SuperiTransport` and `SuperiClient`.
 - `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
   without owning project state or concrete reliability behavior.
-- `app/src/application.ts`: Defines immutable panel, route, and command registries, deterministic
-  workspace routing and panel focus or visibility state, live-registry reconciliation for restored
-  workspace presentation, panel-only restoration that preserves the window-session-owned route,
-  typed immutable shared public resource selection, and generated-client command delegation without
-  transport behavior.
+- `app/src/application.ts`: Defines immutable panel, route, and command registries, canonical left,
+  center, right, and bottom dock contracts, route-local ordered tab placement, bounded dock sizing,
+  active-tab, visibility, and focus reducers, complete private workspace projection, live-registry
+  reconciliation for restored presentation, panel-only restoration that preserves the
+  window-session-owned route, typed immutable shared public resource selection, and generated-client
+  command delegation without transport behavior.
 - `app/src/application-context.tsx`: Provides the sole React application/project presentation owner,
   keyboard-to-command registry adapter, asynchronous command execution, one last-valid public editor
   snapshot, stale-response rejection, generated project, audio, and job refresh subscriptions, and
@@ -585,6 +586,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   transaction identities, submits the generated playback command, verifies immediate bounded
   acceptance, and polls the same editor-state replacement until the playback-domain owner has
   completed without creating a React transport model.
+- `app/src/panel-workspace.tsx`: Renders the real route panel consumer as four stable dock targets
+  with ordered tablists, mounted inactive tabpanels, labeled hide and dock controls, keyboard tab
+  navigation, HTML drag reordering and cross-dock movement, pointer and keyboard separators, and a
+  live focus announcement. It dispatches only application presentation actions and owns no project,
+  history, transport, engine, or close behavior.
 - `app/src/window-session.ts`: Defines strict immutable window-session, monitor, placement,
   persistence, recovery, and recently closed DTOs; validates every native replacement; wraps the
   exact snapshot, create, focus, fullscreen, monitor move, placement undo, workspace update, close,
@@ -874,8 +880,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   root shell hydrates its restored workspace route from the native window session before publishing
   subsequent route changes, mounts the real `WindowSessionPanel` in System, and listens for exact
   native replacement events without taking persistence or placement ownership. The always-mounted
-  native-shell consumer restores registry-reconciled panel visibility and focus while preserving
-  the window session's per-webview route, executes typed native menu intents, uses native project
+  native-shell consumer restores registry-reconciled dock placement, tab order, sizes, visibility,
+  active tabs, and focus while preserving the window session's per-webview route, executes typed native menu intents, uses native project
   and media dialogs, separates project from media drops, routes undo and redo through the existing
   project command owner, and resolves project or application close only after busy-state checks,
   durable save, and any required session-history warning for either undo or redo state. Main-window
@@ -883,8 +889,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   focused editor webview. The same consumer registers the project association listener before its
   initial snapshot read, rejects stale replacement revisions, updates only project presentation
   after an operating-system open, and preserves route, panel, selection, workspace, and other
-  transient application state. It publishes the primary webview's route, hidden-panel, and
-  focused-panel continuity only after native window restoration hydrates its route, plus
+  transient application state. It publishes the primary webview's complete route-layout,
+  hidden-panel, active-tab, size, and focused-panel continuity only after native window restoration
+  hydrates its route, plus
   active-project continuity, into the shell-local crash owner. It then renders retained classified
   diagnostics with exact retry, degraded, user-correction, restart, project-recovery,
   workspace-restoration, and dismissal actions. Those actions reuse the existing application,
@@ -892,11 +899,13 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   System panel also consumes the strict four-domain capability adapter, exposes live and retained
   GPU, audio, codec, and AI observations plus actionable failures, and refreshes without changing
   routes, streams, devices, projects, workspaces, codec sessions, or model state.
-- `app/src/desktop-shell.ts`: Defines the strict native shell snapshot and intent bridge, serialized
-  sequence-fenced synchronization, close request resolution, typed event listening, deterministic
+- `app/src/desktop-shell.ts`: Reuses the application workspace presentation contract in the strict
+  native shell snapshot and intent bridge, serialized sequence-fenced synchronization, close
+  request resolution, typed event listening, deterministic
   project-versus-media drop partitioning, safe-close decisions, and document titles that expose only
   the basename and durable revision.
-- `app/src/crash-diagnostics.ts`: Defines the strict shell-local crash snapshot, workspace intent,
+- `app/src/crash-diagnostics.ts`: Defines the strict shell-local crash snapshot, complete route and
+  panel-layout intent,
   project continuity, four recoverability classes, and five recovery-entry DTOs plus typed wrappers
   for snapshot, continuity update, and dismissal commands. Separate process-lifetime promise tails
   preserve call order for workspace and project updates even when blocking native writes complete at
@@ -929,8 +938,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/main.tsx`: Constructs one process-lifetime `DesktopSuperiTransport`, injects it through
   the generated API provider, disposes it at unload, and mounts the React application under strict
   mode.
-- `app/src/styles.css`: Defines the responsive, accessible application frame, route rail, panel
-  surfaces, professional workspace data views, exact audio route and continuity presentation,
+- `app/src/styles.css`: Defines the responsive, accessible application frame, route rail, four-dock
+  grid, tab strips, mounted panel surfaces, resize separators, collapsed empty docks, mobile dock
+  stacking, professional workspace data views, exact audio route and continuity presentation,
   shared selection, lifecycle controls, media-browser list and grid layouts, thumbnail fallbacks,
   source and user metadata details, editorial annotation controls, usage summaries, engine API
   status presentation, ranked content-search evidence, structured language and local-content
@@ -966,9 +976,11 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   routing, blocking-worker dispatch, lifecycle Open reuse, typed React event consumption, focused
   webview menu targeting, primary-only shell synchronization, safe-close composition with the
   persistent window owner, shell-local crash-journal ownership, all four recoverability classes,
-  private panic-detail exclusion, native command registration, and reuse of the existing lifecycle
-  and project recovery consumers. It also freezes the authoritative four-provider capability composition,
-  strict frontend adapter, real System-panel consumer, and absence of audio stream mutation.
+  private panic-detail exclusion, mounted dock workspace, accessible tab, hide, drag, dock, and
+  separator behavior, presentation-only ownership, native command registration, and reuse of the
+  existing lifecycle and project recovery consumers. It also freezes the authoritative four-provider
+  capability composition, strict frontend adapter, real System-panel consumer, and absence of audio
+  stream mutation.
 - `app/tests/system-capabilities.test.ts`: Proves exact command invocation, strict all-field parsing,
   immutable output, preservation of audio sample and channel meaning, rejection of unknown and
   malformed data, and actionable failure presentation.
@@ -981,12 +993,13 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   selected versus presented diagnostics remain explicit, external windows use the destination-aware
   native path, and an external presentation failure does not terminate inline GPU presentation.
 - `app/tests/application-framework.test.ts`: Verifies duplicate and reference validation, immutable
-  routing and panel reconciliation, exact public-resource selection, local-first asynchronous API
-  command delegation, shortcut normalization, editable-target safety, and persisted workspace
-  reconciliation against removed routes or panels.
+  routing, canonical dock defaults, cross-dock ordered tabs, bounded resize, active-tab focus,
+  retained hidden placement, deeply frozen layout state, complete workspace projection, exact
+  public-resource selection, local-first asynchronous API command delegation, shortcut normalization,
+  editable-target safety, and persisted workspace reconciliation against removed routes or panels.
 - `app/tests/desktop-shell.test.ts`: Proves deterministic project-versus-media drop classification,
   busy and history-aware close decisions, path-safe document titles for POSIX and Windows paths,
-  and sequence resumption after a webview reload.
+  complete layout payload transport, and sequence resumption after a webview reload.
 - `app/tests/editor-workspaces.test.ts`: Verifies exactly five registry-backed professional routes,
   one existing application/project owner, exact source, program, composite, and color viewer
   consumers including the composed source monitor, explicit public editor request identity,
@@ -1162,7 +1175,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/icons/icon.ico`: Supplies the Windows desktop icon bundle.
 - `app/src-tauri/icons/icon.icns`: Supplies the macOS desktop icon bundle.
 - `app/src-tauri/src/desktop_shell.rs`: Owns bounded native menu and title projection, stable typed
-  menu intents, frontend sequence fencing, private versioned workspace-presentation persistence,
+  menu intents, frontend sequence fencing, private schema 2 workspace-presentation persistence with
+  schema 1 migration, strict route, dock, ordered-panel, active-tab, size, hidden-state, and focus validation,
   recent-project menu mapping, native clipboard roles, and duplicate-suppressed one-shot window or
   quit resolution into orderly application shutdown. It carries document identity, history depth,
   busy state, and layout only as presentation, emits no authored mutation, and never serializes
@@ -1170,7 +1184,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/src/crash_diagnostics.rs`: Owns one application-data crash-diagnostics directory,
   exact active-session marker, and 32-record replacement-safe diagnostic journal. It detects an unclean prior
   session, chains a panic hook that retains private panic detail only in the native journal, observes
-  classified lifecycle failures, validates bounded workspace and active-project continuity, and
+  classified lifecycle failures, validates bounded workspace, complete dock layout, and active-project continuity, and
   projects only reviewed safe context plus retry, degraded, user-correction, or terminal recovery
   entry points. Corrupt storage is archived and storage failure degrades to an in-memory diagnostic
   without preventing application startup.
@@ -1325,7 +1339,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   truthful public validation projection, bounded nonblocking admission, stable connection reuse
   across restart, fresh generation ownership, and orderly stop and join.
 - `app/src-tauri/tests/crash_diagnostics_contract.rs`: Proves prior-session unclean-exit detection,
-  exact route, panel, project, revision, and lifecycle continuity retention, orderly marker removal,
+  exact route, dock placement, tab, size, hidden panel, focus, project, revision, and lifecycle
+  continuity retention, layout-free marker compatibility, orderly marker removal,
   bounded classification across all four recoverability classes, matching recovery entry points,
   private panic-detail exclusion from the public snapshot, journal retention, corrupt-store archival,
   and degraded startup continuity.
@@ -1342,8 +1357,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   route matching, accepted revision publication, stale editor refresh rejection, active and recent
   restoration through the real local host, and missing-document degradation that retains recents.
 - `app/src-tauri/tests/desktop_shell_contract.rs`: Proves sequence-fenced document, recent, history,
-  busy, and workspace synchronization, stable recent and workspace menu intents, duplicate close
-  suppression, one-shot resolution, malformed and invalid persisted presentation recovery,
+  busy, and complete panel-layout synchronization, stable recent and workspace menu intents,
+  duplicate close suppression, one-shot resolution, schema 1 migration, schema 2 round trip,
+  duplicate placement rejection before live mutation, malformed persisted presentation recovery,
   nonblocking persistence failure, and private workspace restoration across native state instances.
 - `app/src-tauri/tests/media_import_contract.rs`: Proves picker, drag/drop, recursive folder scan,
   deterministic image-sequence grouping, direct API and automation parity, correlated event
@@ -1968,7 +1984,7 @@ Ubuntu 24.04 job installs the exact Node.js 24.13.0 declaration, performs a lock
 runs strict no-emit TypeScript checking over the React application and generated public API adapter,
 builds the production entry with Vite 7.3.6, and then tests workflow wiring, lifecycle, generated
 client and transport ownership boundaries, deterministic application framework behavior, five
-professional workspace projections, exact audio semantics, canonical timeline projection,
+professional workspace projections, immutable dock and tab behavior, exact audio semantics, canonical timeline projection,
 navigation including nested open paths, exact nested placement and compound action construction,
 exact snap-target resolution, visible rule and reversal wiring, exact pins, runtime transport
 forwarding, and the generated hashed bundle. The retained frontend fixture
@@ -2151,9 +2167,10 @@ and a bounded replacement-safe journal under application data. Startup turns a s
 unexpected-exit diagnostic before replacing it with the new session. The chained panic hook records
 private panic detail in the native journal, while the serialized React snapshot contains only a safe
 code, classification, reviewed context, captured continuity, and explicit recovery entries. React
-publishes route, hidden panels, focused panel, active project, and revision intent through ordered
-typed blocking-safe commands. The System panel validates current registry and active-project state before
-restoring that intent, then routes engine retries and restarts through `ApplicationLifecycle` and
+publishes the route, every route-local dock, ordered panel tab, active tab, bounded size, hidden
+panel, focused panel, active project, and revision intent through ordered typed blocking-safe
+commands. The System panel validates current registry and active-project state before restoring that
+intent in one immutable application action, then routes engine retries and restarts through `ApplicationLifecycle` and
 project recovery through the existing `DesktopProjectLifecycle`. A clean acknowledged shutdown
 removes only its matching marker, so a crash cannot erase evidence for a different session.
 The native viewer path remains a separate shell-local control boundary. Each `NativeViewport`
@@ -2268,8 +2285,10 @@ clipboard roles stay with the operating system. A close request is prevented onc
 requests are suppressed while confirmation is active, and only a successful save plus explicit
 frontend resolution enters the existing orderly application lifecycle. Window close, menu quit,
 and direct operating-system exit share this path, including when auxiliary webviews remain open.
-Workspace route, hidden panels, and focus persist privately and are reconciled against the live
-registry before use.
+Workspace route, route-local dock placement, ordered tabs, active tabs, bounded dock sizes, hidden
+panels, and focus persist privately in schema 2 and are reconciled against the live registry before
+use. Schema 1 records migrate with empty layout intent so React can supply current registry defaults
+without the native owner inventing application identities.
 
 Beside the engine lifecycle, Tauri manages one serialized `DesktopProjectLifecycle` initialized
 with the application recovery root. Its concrete backend calls only `LocalProjectHost` creation,
@@ -2361,8 +2380,9 @@ of open runtime behavior.
 - Authored project changes use one typed engine command-history surface. Retained before and after
   snapshots are bounded session state, the selected project snapshot is the only durable state, and
   domain crates do not own competing undo stacks.
-- Native shell state is presentation-only. It may retain workspace route, hidden panels, focus,
-  active document identity, recent paths, busy state, and history depth, but project bytes and undo
+- Native shell state is presentation-only. It may retain workspace route, route-local docks,
+  ordered tabs, active tabs, bounded dock sizes, hidden panels, focus, active document identity,
+  recent paths, busy state, and history depth, but project bytes and undo
   or redo snapshots remain with their existing durable project and engine-session owners. Close
   resolution is one-shot, active operations block closing, and any accepted close saves the active
   project before document replacement or process exit.
@@ -2528,6 +2548,7 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
 - The focused desktop-shell contracts prove deterministic drop partitioning, path-safe document
   titles, busy and history-aware close decisions, sequence-fenced native state, exact recent and
   workspace intents, duplicate close suppression, one-shot resolution, reload-safe sequencing,
+  complete schema 2 panel-layout persistence, schema 1 migration, duplicate placement rejection,
   recoverable workspace persistence, active project restoration, and missing-document degradation
   with retained recents. Integration contracts keep shell synchronization on the primary webview,
   preserve window-owned routes while restoring panel presentation, and target commands to the
@@ -2536,7 +2557,8 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   native menu appearance and operating-system interaction remain physical-lane evidence.
 
 - The focused crash-diagnostics contracts exercise a real temporary application-data directory and
-  prove unclean prior-session detection, exact workspace and project continuity, orderly marker
+  prove unclean prior-session detection, exact dock, tab, size, visibility, focus, workspace, and
+  project continuity, layout-free marker compatibility, orderly marker
   removal, all four recoverability classifications and their recovery entries, bounded journal
   retention, private panic-detail filtering at the public seam, corrupt-store archival, and
   nonblocking degraded startup. The frontend source contract separately freezes command wiring and
@@ -2972,7 +2994,11 @@ panel. The snapshot is operational metadata only: it never creates a GPU device 
 starts or reconfigures audio, loads a model, or changes project, route, workspace, and editable
 artifact authority.
 Above that unchanged transport, `application.ts` owns deterministic route, panel, and command
-registries plus transient panel layout and one immutable typed public-resource selection.
+registries plus immutable per-route four-dock layout, ordered tabs, bounded sizing, hidden placement,
+active-tab and focus reconciliation, complete private continuity projection, and one immutable typed
+public-resource selection. `panel-workspace.tsx` is the real consumer with labeled dock and hide
+controls, pointer and keyboard separators, ordered drag docking, accessible tablists, and mounted
+inactive tabpanels that retain component-local state.
 `ApplicationProvider` composes the framework above `SuperiApiProvider` and remains the single owner
 of transient application state plus one last-valid public editor snapshot. It correlates playback
 transactions and observes bounded completion through that same snapshot while leaving timing and
@@ -3116,11 +3142,14 @@ from source-media availability at the exact playhead and does not claim decoded 
 multicam mixing.
 No view takes engine or transport ownership, and unavailable runtime behavior remains honest.
 The always-mounted application shell now restores workspace presentation through the live registry,
-keeps native menus synchronized with active project and session-history availability, opens project
+including route-local dock placement, tab order, active tabs, sizes, visibility, and focus. It keeps
+native menus synchronized with active project and session-history availability, opens project
 and media paths through native dialogs or unambiguous drops, and resolves close requests through
 busy checks, durable save, and an explicit history-loss warning. Tauri owns the stable menu surface,
 path-safe document title, recent mapping, native clipboard roles, private workspace record, and
-one-shot close resolution into the existing application lifecycle. The desktop project lifecycle
+one-shot close resolution into the existing application lifecycle. The schema 2 workspace record
+migrates schema 1 state without inventing removed panel identities, and the crash marker retains the
+same complete layout with additive layout-free compatibility. The desktop project lifecycle
 separately restores its active path and bounded recent records through the durable local host. Undo
 and redo remain intentionally
 session-local, file associations remain assigned to P3.W06.C003, and menu fidelity remains subject
@@ -3433,8 +3462,9 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`9db4318a80e74af9c476f45e04de247bb7c6641d` when this checkpoint began. Its hash describes the exact
-321 discovered source files, including generated binary payloads, layered on the integrated
+`3b2f96bcd901d2ce4d1a5315527d9fff0f5f745f` when this checkpoint began. Its hash describes the exact
+322 discovered source files, including generated binary payloads and the concurrent C005 delivery,
+layered on the integrated
 revision.
 
 ## Maintenance notes
@@ -3490,13 +3520,18 @@ validation, and enter the sole `DesktopProjectState` Open transition. Emit repla
 both success and failure, preserve the prior active project on failure, and never turn the React
 listener into a second document, recent-history, persistence, or workspace owner.
 Keep native desktop menu IDs and typed frontend intents synchronized. Workspace restoration must
-filter removed registry identities, project-session restoration must revalidate the active path,
+filter removed registry identities, place newly registered panels by their declared region, retain
+each hidden panel's last dock, keep every visible dock's active tab explicit, clamp interactive
+sizes to the native bounds, and preserve window-owned routes during ordinary shell restoration.
+The native schema must reject duplicate routes, docks, or routed panels, hidden active tabs, invalid
+focus, and out-of-range sizes before live mutation. Project-session restoration must revalidate the active path,
 recent records must stay bounded and deduplicated, title projection must never expose parent paths,
 and exactly one approved close resolution may enter orderly lifecycle shutdown. Never serialize
 engine history into either private shell record or let dialogs, drops, or menus bypass the existing
 project, media, application, or generated command owners.
 Keep crash diagnostics shell-local and bounded. Preserve private panic details only in the native
-journal, project only reviewed context through Tauri, validate every retained route, panel, and
+journal, project only reviewed context through Tauri, validate every retained route, dock, ordered
+panel, active tab, size, hidden state, focus, and
 project before restoration, and route retries, restarts, and project recovery through their existing
 owners. Never clear an active-session marker without matching its exact session identity and
 confirmed orderly shutdown.

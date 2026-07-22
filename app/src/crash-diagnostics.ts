@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import type { ApplicationRoutePanelLayoutPresentation } from "./application.ts";
+
 export type DesktopCrashFailureClass =
   | "retryable"
   | "degraded"
@@ -22,6 +24,7 @@ export interface DesktopWorkspaceContinuity {
   readonly route_id: string;
   readonly hidden_panel_ids: readonly string[];
   readonly focused_panel_id: string | null;
+  readonly panel_layouts: readonly ApplicationRoutePanelLayoutPresentation[];
 }
 
 export interface DesktopProjectContinuity {

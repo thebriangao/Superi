@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import type { ApplicationWorkspacePresentation } from "./application.ts";
+
 export type DesktopCloseReason = "window" | "quit";
 
 export interface DesktopShellDocument {
@@ -8,11 +10,7 @@ export interface DesktopShellDocument {
   readonly project_revision: number;
 }
 
-export interface DesktopWorkspacePresentation {
-  readonly active_route_id: string;
-  readonly hidden_panel_ids: readonly string[];
-  readonly focused_panel_id: string | null;
-}
+export type DesktopWorkspacePresentation = ApplicationWorkspacePresentation;
 
 export interface DesktopShellFailure {
   readonly code: string;
