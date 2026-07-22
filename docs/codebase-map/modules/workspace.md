@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 93ff6bad8a87286278c3ffc318be1f8e31aa85e85b99160a4a6ebd6bd26df0ac
-source_files: 337
+source_hash: 5b8e779b8ec7e6d2df58b88383d7028de9dcaa5d9e95c5a35ab78e3e00f6943f
+source_files: 341
 mapped_at_commit: working-tree
 ---
 
@@ -15,7 +15,8 @@ the production React and Tauri desktop shell including persistent multi-window s
 customizable registry-backed layout reset and recovery, always-visible engine lifecycle state,
 bounded crash continuity, configurable cross-session keyboard shortcuts, retained GPU, audio,
 codec, and AI capability visibility, explicit process-lifetime execution ownership, and a
-searchable typed command and action catalog,
+searchable typed command and action catalog, fixed color-critical dark theme, semantic application
+feedback chrome, and separate native viewer and authored marker color-data meaning,
 Cargo workspace configuration, dependency lock,
 shared test-fixture contract, and repository-owned agent workflows. Runtime implementation under
 `open/crates/*` and repository utilities under
@@ -557,18 +558,23 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W06.C010.md`: Durable implementation evidence for configurable application
   command shortcuts, transactional conflict detection, native accelerator reservation, deterministic
   import and export, accessible capture, and private cross-session continuity.
+- `docs/checkpoints/P3.W06.C012.md`: Durable implementation evidence for the fixed versioned
+  color-critical dark environment, semantic chrome tokens, separate viewer and marker color-data
+  tokens, deterministic bootstrap recovery, and preserved native color-pipeline ownership.
 
 ### Production desktop application
 
 - `app/.node-version`: Pins Node.js 24.13.0 for local and hosted production application gates.
-- `app/index.html`: Supplies the production webview document and React module entry.
+- `app/index.html`: Supplies the production webview document, static color-critical dark theme
+  identity, schema, scene-owner declaration, browser chrome color, and React module entry before
+  JavaScript startup.
 - `app/package-lock.json`: Locks React 19.2.7, Tauri API 2.11.1, Tauri dialog 2.7.1, Tauri CLI
   2.11.4, TypeScript 5.9.3, Vite 7.3.6, the React Vite plug-in 5.2.0, and their transitive frontend
   dependencies.
 - `app/package.json`: Declares the private production application package, exact toolchain and
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
-  framework, command-palette, shared application-presentation, native desktop-shell,
-  editor-workspace, timeline-canvas, timeline-nesting,
+  framework, command-palette, configurable shortcuts, shared application-presentation, theme,
+  native desktop-shell, editor-workspace, timeline-canvas, timeline-nesting,
   timeline-multicam, timeline-clip,
   timeline-transition, caption projection, exchange, and authoring, editorial-feedback, exact
   playback transport, viewer navigation, overlay, comparison, viewer-status, analysis, and
@@ -613,9 +619,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   listbox navigation, disabled reasons, stable identity visibility, pending and failure state,
   dismissal, and prior-focus restoration. It invokes only the catalog host supplied by the
   always-mounted application consumer.
-- `app/src/command-palette.css`: Defines the isolated dark modal surface, native backdrop, search,
-  result, disabled, focus, and responsive presentation without changing the shared application
-  stylesheet.
+- `app/src/command-palette.css`: Defines the isolated modal surface, native backdrop, search,
+  result, disabled, focus, and responsive presentation entirely through the application theme
+  tokens without changing workspace or project state.
 - `app/src/keyboard-shortcuts.ts`: Defines the immutable schema-1 shortcut profile, canonical
   effective binding resolution, platform-aware event capture, deterministic import and export,
   transactional update and reset behavior, conflict detection, native accelerator reservations,
@@ -625,7 +631,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   reset controls, conflict alerts, inactive-command visibility, bounded JSON import, deterministic
   export, native reservation disclosure, and two-step reset-all confirmation.
 - `app/src/keyboard-shortcuts.css`: Isolates keyboard-shortcut panel layout, responsive row wrapping,
-  status and alert presentation, keyboard focus visibility, and narrow-window behavior.
+  status and alert presentation, keyboard focus visibility, and narrow-window behavior through the
+  fixed application's semantic theme tokens.
 - `app/src/application-presentation.ts`: Defines the framework-neutral application feedback model.
   It validates all four recoverability classes, preserves safe source context and optional
   last-valid resource identity, projects retained crash, lifecycle, project, transport, and public
@@ -637,6 +644,15 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   their measured size, time-limited notification toasts with retained bounded history, classified
   failure cards, semantic progress, and the always-visible application status bar. Its callbacks
   route only to existing application, project, lifecycle, workspace, and recovery owners.
+- `app/src/theme.ts`: Owns the frozen schema-1 `color-critical-dark` application contract, browser
+  theme color, native color-pipeline scene owner, untouched workspace-state policy, and deterministic
+  document declaration repair with frozen operational evidence. It has no storage, generated API,
+  Tauri, project-action, viewer-state, or network dependency.
+- `app/src/theme.css`: Owns semantic application surface, border, text, focus, selection, status,
+  recovery, feedback, and shadow values plus compatibility aliases for existing presentation-only
+  media browser styles. Separately named viewer and marker color-data tokens preserve exact
+  surround, overlay, comparison, and authored flag meaning without making them interchangeable
+  chrome.
 - `app/src/panel-workspace.tsx`: Renders the real route panel consumer as four stable dock targets
   with ordered tablists, mounted inactive tabpanels, labeled hide and dock controls, keyboard tab
   navigation, HTML drag reordering and cross-dock movement, pointer and keyboard separators, a
@@ -1015,9 +1031,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   ranges and explicit channel-layout knowledge, codec declarations, AI availability, and retained
   cache state. It exposes one injectable read-only discovery command and rejects unknown, malformed,
   unsafe, or future native data before React receives an immutable replacement.
-- `app/src/main.tsx`: Constructs one process-lifetime `DesktopSuperiTransport`, injects it through
-  the generated API provider, disposes it at unload, and mounts the React application under strict
-  mode.
+- `app/src/main.tsx`: Activates the static application theme contract before constructing one
+  process-lifetime `DesktopSuperiTransport`, injects that transport through the generated API
+  provider, disposes it at unload, and mounts the React application under strict mode.
 - `app/src/styles.css`: Defines the responsive, accessible application frame, route rail, four-dock
   grid, tab strips, mounted panel surfaces, resize separators, collapsed empty docks, mobile dock
   stacking, responsive layout status, reset and undo controls, explicit engine lifecycle states,
@@ -1034,15 +1050,19 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   evidence, lasso, visible focus, live status, snap rule strip, exact target status and guide,
   transition handle marks, timing and alignment forms, typed effect parameter controls, marker list
   and editor controls, and
-  responsive 16:9 native viewer reservations plus bounded navigation controls, clipped transforms,
+  semantic theme-token adoption for shared shell chrome and responsive 16:9 native viewer
+  reservations plus bounded navigation controls, clipped transforms,
   pixel-mode fidelity intent, fullscreen, cinema presentation, compact comparison capture and mode
   controls, transformed exact-identity badges, bounded split or wipe controls, difference intent,
   pointer-transparent dividers beneath the existing overlay layer, and compact scrollable Program
   transform cards with a complete 3 by 3 matrix, sampling, driver state, action feedback, and
   responsive controls. It also defines shared tooltip placement, viewport-bounded context menus,
   bounded notification toasts and history, the fixed operational status bar, semantic progress,
-  and visually distinct retryable, degraded, user-correctable, and terminal failure cards.
-  Timeline rows use canonical variable height, compact two-row track controls,
+  and visually distinct retryable, degraded, user-correctable, and terminal failure cards. Native
+  viewer frames preserve exact surround, overlay, comparison, and authored marker color-data
+  meaning, disable forced-color substitution within the color-critical frame, retain full opacity
+  and normal blending, and apply no CSS filter. Timeline rows use canonical variable height, compact
+  two-row track controls,
   disabled output presentation, and visible command failures. It also defines compact ready, stale,
   and empty source-monitor
   controls with exact state details and responsive action groups. The timeline edit console adds
@@ -1067,7 +1087,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   engine status routing, presentation-only ownership, explicit process-service command registration,
   retained exit and association handles, join-all cleanup, child-process exclusion, native command
   registration, and reuse of the
-  existing lifecycle and project recovery consumers. It freezes the command palette's pure catalog,
+  existing lifecycle and project recovery consumers. It freezes the fixed theme declaration,
+  pre-transport activation, semantic and color-data token ownership, native viewer isolation, and
+  exclusion of theme code from storage, generated API, Tauri, and project mutation. It freezes the
+  command palette's pure catalog,
   accessible modal, native menu intent, production registration, and exclusion from generated API
   and Tauri ownership. It also freezes the shared application
   presentation provider, real tooltip, context-menu, status, notification, progress, and classified
@@ -1075,6 +1098,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   isolation. It also freezes the authoritative four-provider
   capability composition, strict frontend adapter, real System-panel consumer, and absence of audio
   stream mutation.
+- `app/tests/theme.test.ts`: Proves the frozen theme identity, deterministic declaration repair,
+  ready and recovered evidence, static pre-JavaScript document declaration, pre-transport
+  activation, semantic and color-data token namespaces, complete command-palette token adoption,
+  and native viewer isolation from CSS color transforms.
 - `app/tests/system-capabilities.test.ts`: Proves exact command invocation, strict all-field parsing,
   immutable output, preservation of audio sample and channel meaning, rejection of unknown and
   malformed data, and actionable failure presentation.
@@ -1891,6 +1918,11 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
   and menu-placement values; its React provider exposes only transient presentation callbacks and
   routes recovery or workspace intent back to existing owners. It is not a new public engine API,
   persistence schema, project document, job scheduler, or native diagnostic owner.
+- The application theme surface is the frozen schema-1 `color-critical-dark` identity plus its
+  semantic CSS token contract. Root declaration repair is limited to document metadata, and
+  `--viewer-*` plus `--marker-*` color-data tokens remain separate from replaceable `--theme-*`
+  chrome. The theme surface is not a public color transform, project setting, persisted workspace
+  field, or alternate automation protocol.
 - The shell-local media-management surface now includes one `mutate_project_media_batch` Tauri
   command. Its strict tagged operation union, expected project and library revisions, bounded
   ordered list, deterministic affected-ID evidence, and complete replacement snapshot are mirrored
@@ -2522,7 +2554,9 @@ The documents deliberately point into other modules:
   consumes `superi-engine::media::source_backend_registry`, whose source-only construction cannot
   initialize these decoder or encoder runtimes.
 - `superi-graph`, `superi-cache`, `superi-color`, `superi-effects`, `superi-timeline`, `superi-audio`,
-  and `superi-ai` own evaluation and capability layers.
+  and `superi-ai` own evaluation and capability layers. In particular, the workspace theme owns
+  application chrome only; `superi-color` and the native GPU path retain scene meaning, precision,
+  monitor binding, display intent, transform execution, and transform order.
 - `superi-project` owns aggregate validation, authored clip-mix and opaque extension durability,
   checked snapshot restoration, schema-4 database persistence, atomic file publication,
   active-generation conflict detection, cooperative replacement locking, deterministic autosave
@@ -2596,6 +2630,13 @@ of open runtime behavior.
   clipboard accelerators remain reserved, and import is an all-or-nothing schema validation. Unknown
   command IDs may survive a bounded round trip but cannot dispatch until the registry defines them;
   editable targets, composing input, and unrecognized keys never execute a command.
+- Application theme state is fixed presentation metadata, not project, workspace, engine, viewer,
+  or generated API authority. Only `color-critical-dark` is supported; activation may reconcile
+  document attributes and browser theme-color metadata but must not read or write persistence,
+  select a system color preference, mutate application state, or add a second automation path.
+  Replaceable `--theme-*` chrome tokens must remain separate from exact `--viewer-*` and
+  `--marker-*` color-data meaning, and native scene pixels must retain full opacity, normal blending,
+  no CSS filter, canonical precision, monitor binding, display intent, and transform order.
 - Desktop point editing converts the source monitor's inclusive out mark to an exclusive edit
   boundary exactly once, derives missing source or record boundaries only when rational clocks are
   exactly representable, and stays within retained source and target track bounds. Four-point edits
@@ -2782,6 +2823,13 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   failures, and transient reducer state. The application architecture contract freezes the real
   modal, native menu mapping, production registration, and absence of generated API or Tauri imports
   from the pure catalog and view.
+
+- The focused theme contracts prove one frozen schema-1 identity, deterministic repair of missing
+  or drifted document declarations, frozen repair evidence, static pre-JavaScript declaration,
+  activation before transport construction, semantic chrome and exact color-data namespaces,
+  complete command-palette token adoption, and native viewer isolation. The application contract,
+  strict TypeScript, production Vite build, complete frontend suite, viewer color-management tests,
+  viewer analysis tests, and native viewport IPC contract widen the same boundary.
 
 - The focused crash-diagnostics contracts exercise a real temporary application-data directory and
   prove unclean prior-session detection, exact dock, tab, size, visibility, focus, workspace, and
@@ -3285,6 +3333,14 @@ changed-only graph action through the application-owned revision fence. Missing 
 stale, ambiguous, malformed, unsupported, or changed graph state remain explicit, authored matrices
 never enter the shell-local CSS navigation transform, and refreshed project state remains the only
 successful result authority.
+The same production bootstrap now owns one fixed versioned application theme without adding
+application state. Static HTML declares the dark identity and browser color before startup;
+`theme.ts` validates or repairs only that metadata and publishes frozen recovery evidence before the
+desktop transport is constructed. `theme.css` centralizes shared chrome values, while viewer and
+marker color-data namespaces preserve their exact prior values and native viewer isolation prevents
+CSS filters, blending, opacity changes, or forced-color substitution from changing presentation.
+The theme never reads system preference or persistence and does not receive ICC bytes, frames,
+scene values, display selection, transform stages, project state, or workspace continuity records.
 The current production runtime is intentionally timing-only and reports unavailable viewport pixels
 and audio output instead of claiming decoded presentation or samples.
 Every native viewer role now also owns one frozen comparison presentation with single, compare,
@@ -3418,6 +3474,14 @@ automation identity, frozen discovery metadata, current availability and disable
 typed invocation route. The fixed global shortcut and focused native Edit menu open the same
 transient modal; query and highlighted-result state are never persisted, and project mutations
 continue through the existing generated command or desktop project owners.
+The production document now declares one schema-1 `color-critical-dark` theme before JavaScript,
+and `main.tsx` reconciles that declaration before transport construction and React rendering. The
+pure theme owner repairs only the root identity, schema, scene-owner metadata, and browser color,
+then returns frozen ready or recovered evidence. Shared shell and palette chrome consume semantic
+tokens, while viewer surrounds, analysis overlays, comparison colors, and authored marker flags use
+separate exact color-data tokens. The native viewer frame rejects forced-color substitution and
+keeps full opacity, normal blending, and no CSS filter, so React styling cannot reinterpret native
+GPU pixels or reorder the existing display transform.
 The System panel also consumes one Tauri-owned project lifecycle that durably creates, validates,
 saves, rebinds through save-as, closes, reopens recent paths, and restores opaque recovery
 candidates while retaining actionable classified failure context beside the last valid state. It
@@ -3614,6 +3678,12 @@ The largest current risk is cross-document drift:
   and restart authority into React. Pointer, keyboard, focus, screen-reader, high-contrast, and
   reduced-motion behavior still require physical application-lane validation beyond source,
   TypeScript, unit, and production-build proof.
+- A future light theme or broad token replacement could accidentally reinterpret analysis overlays,
+  comparison evidence, authored marker flags, or native viewer presentation. Any additional theme
+  must preserve the separate semantic and color-data namespaces, exact viewer isolation, static
+  recovery contract, monitor binding, display intent, canonical precision, and transform order.
+  The current implementation intentionally has no system-preference branch or persisted theme
+  choice.
 
 - Persistent window state is application-shell intent, not project authority. Monitor routing IDs
   are derived from local Tauri monitor facts and may change with operating-system topology; restore
@@ -3811,6 +3881,13 @@ dispatch, System panel, sidebar hints, native accelerator reservations, desktop 
 and focused contracts synchronized. Profile changes and imports must remain transactional, unknown
 command IDs must remain bounded and inactive, export must remain deterministic, and corrupt shortcut
 state must never discard a valid workspace or enter authored project persistence.
+Keep the application theme fixed, versioned, and presentation-only. Declare it before JavaScript,
+activate it before transport or React construction, restrict recovery to document attributes and
+browser theme metadata, and retain frozen ready or recovered evidence. Keep shared chrome on
+semantic `--theme-*` tokens, exact viewer and authored marker meaning on separate `--viewer-*` and
+`--marker-*` tokens, and native viewer presentation at full opacity with normal blending, no CSS
+filter, and protected color-data rendering. Adding a theme requires a product decision plus focused
+recovery, token, viewer, color-management, build, and full-frontend proof.
 Keep crash diagnostics shell-local and bounded. Preserve private panic details only in the native
 journal, project only reviewed context through Tauri, validate every retained route, dock, ordered
 panel, active tab, size, hidden state, focus, and

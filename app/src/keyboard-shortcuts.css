@@ -1,7 +1,7 @@
 .keyboard-shortcuts-panel {
   display: grid;
   gap: 18px;
-  color: #dfe4df;
+  color: var(--theme-text-primary);
 }
 
 .keyboard-shortcuts-heading {
@@ -25,23 +25,23 @@
 .keyboard-shortcuts-heading > span {
   flex: 0 0 auto;
   padding: 4px 7px;
-  border: 1px solid #465055;
+  border: 1px solid var(--theme-border-strong);
   border-radius: 999px;
-  color: #aab4b1;
+  color: var(--theme-text-secondary);
   font-size: 10px;
 }
 
 .keyboard-shortcuts-heading > span[data-ready="true"] {
-  border-color: #557e63;
-  color: #d2ead8;
-  background: #18271d;
+  border-color: var(--theme-status-success-border);
+  color: var(--theme-status-success-text);
+  background: var(--theme-status-success-surface);
 }
 
 .keyboard-shortcuts-introduction,
 .keyboard-shortcuts-message,
 .keyboard-shortcuts-transfer p,
 .keyboard-shortcuts-reserved p {
-  color: #aeb7b3;
+  color: var(--theme-text-secondary);
   font-size: 12px;
   line-height: 1.55;
 }
@@ -50,31 +50,31 @@
 .keyboard-shortcuts-message {
   margin: 0;
   padding: 11px 12px;
-  border-left: 2px solid #66889a;
-  background: #121719;
+  border-left: 2px solid var(--theme-status-info-border);
+  background: var(--theme-surface-control);
 }
 
 .keyboard-shortcuts-message {
-  color: #c9e7f4;
+  color: var(--theme-status-info-text);
 }
 
 .keyboard-shortcuts-error {
-  border-left-color: #d48d7d;
-  color: #e2c4bc;
-  background: #211a1a;
+  border-left-color: var(--theme-status-error-border);
+  color: var(--theme-status-error-text);
+  background: var(--theme-status-error-surface);
 }
 
 .keyboard-shortcuts-inactive,
 .keyboard-shortcuts-reserved {
   padding: 10px 12px;
-  border: 1px solid #353d41;
+  border: 1px solid var(--theme-border-default);
   border-radius: 6px;
-  background: #121719;
+  background: var(--theme-surface-control);
 }
 
 .keyboard-shortcuts-inactive summary,
 .keyboard-shortcuts-reserved summary {
-  color: #c5cfca;
+  color: var(--theme-text-primary);
   cursor: pointer;
   font-size: 12px;
   font-weight: 650;
@@ -86,7 +86,7 @@
   gap: 6px;
   margin: 10px 0 0;
   padding-left: 20px;
-  color: #929c99;
+  color: var(--theme-text-muted);
   font: 10px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -101,14 +101,14 @@
   align-items: end;
   gap: 12px;
   padding: 12px;
-  border: 1px solid #2d3538;
-  border-left: 3px solid #465156;
+  border: 1px solid var(--theme-border-default);
+  border-left: 3px solid var(--theme-border-strong);
   border-radius: 6px;
-  background: #121719;
+  background: var(--theme-surface-control);
 }
 
 .keyboard-shortcut-row[data-overridden="true"] {
-  border-left-color: #aaddff;
+  border-left-color: var(--theme-focus-ring);
 }
 
 .keyboard-shortcut-command,
@@ -120,7 +120,7 @@
 
 .keyboard-shortcut-command strong {
   overflow: hidden;
-  color: #e2e7e2;
+  color: var(--theme-text-primary);
   font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -130,7 +130,7 @@
 .keyboard-shortcut-command small,
 .keyboard-shortcut-capture > span,
 .keyboard-shortcuts-transfer label > span {
-  color: #849093;
+  color: var(--theme-text-muted);
   font-size: 9px;
   line-height: 1.4;
 }
@@ -155,10 +155,10 @@
   min-width: 0;
   min-height: 36px;
   padding: 7px 9px;
-  border: 1px solid #3a464b;
+  border: 1px solid var(--theme-border-strong);
   border-radius: 5px;
-  color: #dbe8ed;
-  background: #0d1214;
+  color: var(--theme-text-primary);
+  background: var(--theme-surface-sunken);
   font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -166,7 +166,7 @@
 .keyboard-shortcuts-transfer input[type="file"]:focus-visible,
 .keyboard-shortcuts-inactive summary:focus-visible,
 .keyboard-shortcuts-reserved summary:focus-visible {
-  outline: 2px solid #aaddff;
+  outline: 2px solid var(--theme-focus-ring);
   outline-offset: 2px;
 }
 
@@ -189,9 +189,9 @@
   align-items: end;
   gap: 12px;
   padding: 14px;
-  border: 1px solid #344047;
+  border: 1px solid var(--theme-border-strong);
   border-radius: 7px;
-  background: #141a1d;
+  background: var(--theme-surface-panel);
 }
 
 .keyboard-shortcuts-transfer p {
@@ -215,7 +215,7 @@
 
 .keyboard-shortcuts-reserved kbd {
   min-width: 145px;
-  color: #bedbe7;
+  color: var(--theme-status-info-text);
   text-align: left;
 }
 

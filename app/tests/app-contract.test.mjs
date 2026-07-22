@@ -135,6 +135,35 @@ test("application framework composes shared UI state above the delivered API cli
   );
 });
 
+test("application theme owns reproducible chrome without entering the color pipeline", () => {
+  const index = read(resolve(appRoot, "index.html"));
+  const main = read(resolve(appRoot, "src/main.tsx"));
+  const theme = read(resolve(appRoot, "src/theme.ts"));
+  const tokens = read(resolve(appRoot, "src/theme.css"));
+  const styles = read(resolve(appRoot, "src/styles.css"));
+  const viewport = read(resolve(appRoot, "src/native-viewport.tsx"));
+  const packageJson = readJson(resolve(appRoot, "package.json"));
+
+  assert.match(index, /data-superi-theme="color-critical-dark"/);
+  assert.match(index, /data-superi-scene-owner="native-color-pipeline"/);
+  assert.match(main, /applyApplicationTheme\(document\)/);
+  assert.match(theme, /sceneAppearanceOwner:\s*"native-color-pipeline"/);
+  assert.match(theme, /workspaceStatePolicy:\s*"untouched"/);
+  assert.match(tokens, /--theme-canvas:/);
+  assert.match(tokens, /--viewer-surround:/);
+  assert.match(tokens, /--marker-red:/);
+  assert.match(styles, /forced-color-adjust:\s*none/);
+  assert.match(styles, /mix-blend-mode:\s*normal/);
+  assert.match(viewport, /projectViewerColorState/);
+  assert.match(viewport, /desktop_viewport_color_update/);
+  assert.match(packageJson.scripts.test, /theme\.test\.ts/);
+  assert.doesNotMatch(
+    theme,
+    /localStorage|sessionStorage|PublicResourceReference|ProjectAction|ViewerColorSnapshot|@tauri-apps/,
+  );
+  assert.doesNotMatch(tokens, /prefers-color-scheme/i);
+});
+
 test("command palette discovers stable application and native shell actions", () => {
   const application = read(resolve(appRoot, "src/application.ts"));
   const context = read(resolve(appRoot, "src/application-context.tsx"));

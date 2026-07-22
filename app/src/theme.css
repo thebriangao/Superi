@@ -1,0 +1,96 @@
+:root,
+:root[data-superi-theme="color-critical-dark"] {
+  color-scheme: dark;
+
+  /* Application chrome is presentation-only and may never encode scene values. */
+  --theme-canvas: #111315;
+  --theme-surface-sidebar: #15181a;
+  --theme-surface-panel: #171a1d;
+  --theme-surface-raised: #202529;
+  --theme-surface-hover: #1d2124;
+  --theme-surface-selected: #22292d;
+  --theme-surface-sunken: #0e1214;
+  --theme-surface-control: #111517;
+  --theme-surface-overlay: linear-gradient(180deg, rgb(29 41 55 / 98%), rgb(13 20 29 / 99%));
+  --theme-surface-overlay-control: rgb(255 255 255 / 5%);
+  --theme-surface-overlay-search: rgb(4 10 17 / 72%);
+  --theme-border-subtle: #292e31;
+  --theme-border-default: #30383c;
+  --theme-border-strong: #41494d;
+  --theme-border-overlay: rgb(159 188 216 / 28%);
+  --theme-border-overlay-control: rgb(255 255 255 / 12%);
+  --theme-border-overlay-divider: rgb(255 255 255 / 6%);
+  --theme-text-primary: #eef0eb;
+  --theme-text-strong: #f4f6f1;
+  --theme-text-secondary: #aeb8b5;
+  --theme-text-muted: #899598;
+  --theme-text-disabled: #697376;
+  --theme-text-inverse: #111315;
+  --theme-focus-ring: #aaddff;
+  --theme-focus-soft: rgb(56 155 244 / 18%);
+  --theme-selection-surface: #23343d;
+  --theme-selection-fill: rgb(63 137 201 / 16%);
+  --theme-selection-border: rgb(103 178 243 / 38%);
+  --theme-selection-text: #cfeeff;
+  --theme-status-info-text: #cfeeff;
+  --theme-status-info-border: #7aa9bf;
+  --theme-status-info-surface: #23343d;
+  --theme-status-warning-text: #f1d39e;
+  --theme-status-warning-border: #d7a865;
+  --theme-status-warning-surface: #3b2b1d;
+  --theme-status-correctable-text: #f2dfc2;
+  --theme-status-correctable-border: #d69b70;
+  --theme-status-correctable-surface: #35291f;
+  --theme-status-error-text: #edb5a8;
+  --theme-status-error-border: #d48d7d;
+  --theme-status-error-surface: #211a1a;
+  --theme-status-success-text: #d8eee2;
+  --theme-status-success-border: #6ba986;
+  --theme-status-success-surface: #1c3326;
+  --theme-overlay-backdrop: rgb(3 7 12 / 72%);
+  --theme-overlay-shadow: 0 28px 90px rgb(0 0 0 / 62%);
+  --theme-panel-shadow: 0 16px 44px rgb(0 0 0 / 18%);
+
+  /* Compatibility aliases for existing presentation-only media-browser styling. */
+  --ink: var(--theme-text-primary);
+  --surface: var(--theme-surface-panel);
+
+  /* Viewer color-data tokens are fixed by meaning, not interchangeable chrome. */
+  --viewer-surround: #030405;
+  --viewer-shell-surround: #090c0d;
+  --viewer-cinema-surround: #000000;
+  --viewer-overlay-safe-area: rgb(255 220 96 / 82%);
+  --viewer-overlay-guide: rgb(116 218 255 / 70%);
+  --viewer-overlay-grid: rgb(255 255 255 / 18%);
+  --viewer-overlay-ruler-surface: rgb(15 20 22 / 78%);
+  --viewer-overlay-ruler-mark: rgb(230 238 236 / 72%);
+  --viewer-overlay-aspect: rgb(214 170 255 / 78%);
+  --viewer-overlay-aspect-text: #d6aaff;
+  --viewer-overlay-custom: rgb(255 126 174 / 85%);
+  --viewer-comparison-accent: #d7a865;
+  --viewer-comparison-text: #ffe9c7;
+  --viewer-comparison-surface: #3b2b1d;
+  --viewer-comparison-difference-a: rgb(215 99 148 / 8%);
+  --viewer-comparison-difference-b: rgb(91 164 219 / 8%);
+  --viewer-comparison-unavailable: rgb(211 139 105 / 8%);
+  --viewer-comparison-label-border: rgb(215 168 101 / 58%);
+  --viewer-comparison-label-text: #f5dfbc;
+  --viewer-comparison-label-surface: rgb(18 14 10 / 78%);
+  --viewer-comparison-label-code: #dbc8aa;
+  --viewer-comparison-divider: #f2bc70;
+  --viewer-comparison-divider-edge: rgb(18 10 3 / 55%);
+  --viewer-comparison-divider-glow: rgb(242 188 112 / 30%);
+
+  /* Marker tokens preserve authored flag meaning across every application session. */
+  --marker-red: #cf625d;
+  --marker-pink: #db7fa5;
+  --marker-orange: #d78d55;
+  --marker-yellow: #d8bd62;
+  --marker-green: #6fa87c;
+  --marker-cyan: #65aeb5;
+  --marker-blue: #638fc3;
+  --marker-purple: #8c73bc;
+  --marker-magenta: #b967ac;
+  --marker-black: #080a0b;
+  --marker-white: #e2e5df;
+}

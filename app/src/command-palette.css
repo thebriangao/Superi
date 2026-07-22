@@ -4,15 +4,15 @@
   margin: 9vh auto auto;
   padding: 0;
   overflow: hidden;
-  color: #edf3fa;
+  color: var(--theme-text-primary);
   background: transparent;
-  border: 1px solid rgba(159, 188, 216, 0.28);
+  border: 1px solid var(--theme-border-overlay);
   border-radius: 14px;
-  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.62);
+  box-shadow: var(--theme-overlay-shadow);
 }
 
 .command-palette-dialog::backdrop {
-  background: rgba(3, 7, 12, 0.72);
+  background: var(--theme-overlay-backdrop);
   backdrop-filter: blur(5px);
 }
 
@@ -20,8 +20,7 @@
   display: grid;
   grid-template-rows: auto auto auto auto minmax(0, 1fr);
   max-height: min(760px, calc(100vh - 48px));
-  background:
-    linear-gradient(180deg, rgba(29, 41, 55, 0.98), rgba(13, 20, 29, 0.99));
+  background: var(--theme-surface-overlay);
 }
 
 .command-palette-header {
@@ -47,7 +46,7 @@
 }
 
 .command-palette-eyebrow {
-  color: #8fb5d8;
+  color: var(--theme-status-info-text);
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.13em;
@@ -56,9 +55,9 @@
 
 .command-palette-close {
   padding: 6px 9px;
-  color: #b8c7d6;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--theme-text-secondary);
+  background: var(--theme-surface-overlay-control);
+  border: 1px solid var(--theme-border-overlay-control);
   border-radius: 6px;
   font: inherit;
   font-size: 0.72rem;
@@ -67,14 +66,14 @@
 
 .command-palette-close:hover,
 .command-palette-close:focus-visible {
-  color: #ffffff;
-  border-color: rgba(130, 192, 247, 0.72);
+  color: var(--theme-text-strong);
+  border-color: var(--theme-focus-ring);
   outline: none;
 }
 
 .command-palette-help {
   padding: 0 22px 15px;
-  color: #94a6b8;
+  color: var(--theme-text-muted);
   font-size: 0.78rem;
   line-height: 1.5;
 }
@@ -83,9 +82,9 @@
   width: calc(100% - 44px);
   margin: 0 22px;
   padding: 13px 14px;
-  color: #f7fbff;
-  background: rgba(4, 10, 17, 0.72);
-  border: 1px solid rgba(126, 163, 196, 0.34);
+  color: var(--theme-text-strong);
+  background: var(--theme-surface-overlay-search);
+  border: 1px solid var(--theme-border-overlay);
   border-radius: 9px;
   font: inherit;
   font-size: 0.95rem;
@@ -93,8 +92,8 @@
 }
 
 .command-palette-search:focus {
-  border-color: #66b7ff;
-  box-shadow: 0 0 0 3px rgba(56, 155, 244, 0.18);
+  border-color: var(--theme-focus-ring);
+  box-shadow: 0 0 0 3px var(--theme-focus-soft);
   outline: none;
 }
 
@@ -104,12 +103,12 @@
   gap: 16px;
   min-height: 18px;
   padding: 10px 23px;
-  color: #7f94a8;
+  color: var(--theme-text-muted);
   font-size: 0.7rem;
 }
 
 .command-palette-status strong {
-  color: #f3bd83;
+  color: var(--theme-status-warning-text);
   font-weight: 600;
   text-align: right;
 }
@@ -119,7 +118,7 @@
   max-height: 500px;
   padding: 0 10px 12px;
   overflow-y: auto;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--theme-border-overlay-divider);
 }
 
 .command-palette-option {
@@ -130,7 +129,7 @@
   gap: 16px;
   margin-top: 7px;
   padding: 11px 13px;
-  color: #dce7f2;
+  color: var(--theme-text-primary);
   background: transparent;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -140,17 +139,17 @@
 }
 
 .command-palette-option[data-selected] {
-  background: rgba(63, 137, 201, 0.16);
-  border-color: rgba(103, 178, 243, 0.38);
+  background: var(--theme-selection-fill);
+  border-color: var(--theme-selection-border);
 }
 
 .command-palette-option:focus-visible {
-  border-color: #72bfff;
+  border-color: var(--theme-focus-ring);
   outline: none;
 }
 
 .command-palette-option[data-disabled] {
-  color: #8494a3;
+  color: var(--theme-text-disabled);
 }
 
 .command-palette-option-copy {
@@ -176,31 +175,31 @@
 .command-palette-option-detail,
 .command-palette-option code {
   overflow: hidden;
-  color: #8095aa;
+  color: var(--theme-text-muted);
   font-size: 0.67rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .command-palette-option-detail {
-  color: #a0b0bf;
+  color: var(--theme-text-secondary);
 }
 
 .command-palette-option[data-disabled] .command-palette-option-detail {
-  color: #d8a76f;
+  color: var(--theme-status-warning-text);
 }
 
 .command-palette-option code {
-  color: #6f8294;
+  color: var(--theme-text-disabled);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .command-palette-option kbd {
   flex: none;
   padding: 4px 6px;
-  color: #9fb3c7;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--theme-text-secondary);
+  background: var(--theme-surface-overlay-control);
+  border: 1px solid var(--theme-border-overlay-control);
   border-radius: 5px;
   font-family: inherit;
   font-size: 0.65rem;
@@ -208,7 +207,7 @@
 
 .command-palette-empty {
   padding: 48px 18px;
-  color: #8fa0b0;
+  color: var(--theme-text-muted);
   font-size: 0.82rem;
   text-align: center;
 }
