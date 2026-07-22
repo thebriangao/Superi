@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 7c1a6eab68659fa19f0c79de31d0ecb7816f82bea88838425e789194438394ba
-source_files: 373
+source_hash: a1d919281a6295d064f37ccd59f96912ed5ea54491f19f5a958f6e206ed325b7
+source_files: 374
 mapped_at_commit: working-tree
 ---
 
@@ -15,7 +15,8 @@ the production React and Tauri desktop shell including persistent multi-window s
 customizable registry-backed layout reset and recovery, always-visible engine lifecycle state,
 bounded crash continuity, configurable cross-session keyboard shortcuts, retained GPU, audio,
 codec, and AI capability visibility, explicit process-lifetime execution ownership, and a
-searchable typed command and action catalog, fixed color-critical dark theme, semantic application
+searchable typed command and action catalog, deterministic keyboard-only workflow landmark
+navigation, fixed color-critical dark theme, semantic application
 feedback chrome, one dockable shared inspector for workspace, metadata, history, and bounded
 diagnostic evidence, global action-specific engine transaction presentation, bounded persistent
 background-operation visibility, and separate native viewer and authored marker color-data meaning,
@@ -589,6 +590,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W07.C005.md`: Durable implementation evidence for six shared native adapter
   contracts, distinct macOS, Windows, and Linux implementation families, strict Tauri and TypeScript
   boundaries, explicit media guarantees, and separation from live capability availability.
+- `docs/checkpoints/P3.W07.C006.md`: Durable implementation evidence for first-focus workflow skip,
+  deterministic F6 and Shift+F6 region traversal, modal exclusion, real shell landmark consumers,
+  and unchanged authored, persistence, engine, shortcut, and native ownership.
 
 ### Production desktop application
 
@@ -662,8 +666,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   pixel, line, or page wheel normalization. It retains transient device precision without owning
   authored state, audio behavior, persistence, native drivers, or transport.
 - `app/src/focus-management.ts`: Defines deterministic empty-safe and wrapped focus traversal,
-  rendered operable descendant discovery, initial scope entry, and contained Tab movement by
-  reusing the shared no-scroll shell focus policy without owning modal or application state.
+  rendered operable descendant discovery, initial scope entry, contained Tab movement, strict F6
+  eligibility, and bidirectional application-landmark traversal by reusing the shared no-scroll
+  shell focus policy without owning modal or application state.
 - `app/src/display-scale.ts`: Defines one immutable finite display-scale observation, duplicate
   suppression, window and visual viewport listeners, dynamically re-armed resolution matching,
   cleanup, and accessible formatting without owning monitor identity, geometry, GPU, or persistence.

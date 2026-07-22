@@ -212,6 +212,30 @@ test("command palette discovers stable application and native shell actions", ()
   );
 });
 
+test("keyboard-only navigation reaches every application workflow region", () => {
+  const app = read(resolve(appRoot, "src/App.tsx"));
+  const focusManagement = read(resolve(appRoot, "src/focus-management.ts"));
+  const panels = read(resolve(appRoot, "src/panel-workspace.tsx"));
+  const styles = read(resolve(appRoot, "src/styles.css"));
+  const packageJson = readJson(resolve(appRoot, "package.json"));
+
+  assert.match(app, /aria-keyshortcuts="F6 Shift\+F6"/);
+  assert.match(app, /Skip to active workflow/);
+  assert.match(app, /data-keyboard-landmark="routes"/);
+  assert.match(app, /data-keyboard-landmark="workspace-controls"/);
+  assert.match(app, /dialog\[open\], \[aria-modal='true'\]/);
+  assert.match(panels, /data-keyboard-landmark="active-workflow"/);
+  assert.match(panels, /id="active-workflow"/);
+  assert.match(focusManagement, /keyboardLandmarkDirection/);
+  assert.match(focusManagement, /focusAdjacentKeyboardLandmark/);
+  assert.match(styles, /\.skip-navigation-link:focus/);
+  assert.match(packageJson.scripts.test, /focus-management\.test\.ts/);
+  assert.doesNotMatch(
+    focusManagement,
+    /SuperiApiBindings|executeDesktopProject|@tauri-apps/,
+  );
+});
+
 test("panel workspace exposes real dock, tab, resize, hide, and continuity behavior", () => {
   const application = read(resolve(appRoot, "src/application.ts"));
   const panelWorkspace = read(resolve(appRoot, "src/panel-workspace.tsx"));

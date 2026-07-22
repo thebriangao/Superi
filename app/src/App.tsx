@@ -122,6 +122,11 @@ import {
   type CommandPaletteExecutionResult,
 } from "./command-palette.ts";
 import { CommandPalette } from "./command-palette.tsx";
+import {
+  focusAdjacentKeyboardLandmark,
+  focusKeyboardLandmark,
+  keyboardLandmarkDirection,
+} from "./focus-management.ts";
 import { projectHistoryPresentation } from "./project-history.ts";
 import { ProjectHistoryControls } from "./project-history-controls.tsx";
 import {
@@ -592,6 +597,30 @@ function ApplicationShell() {
     useState<DesktopCrashDiagnosticsSnapshot | null>(null);
   const latestHeaderLifecycleRevision = useRef(-1);
   const latestCrashDiagnosticsRevision = useRef(-1);
+  const applicationShellRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const handleKeyboardLandmark = (event: KeyboardEvent) => {
+      const direction = keyboardLandmarkDirection(event);
+      const shell = applicationShellRef.current;
+      if (direction === null || shell === null) return;
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest("dialog[open], [aria-modal='true']") !== null
+      ) {
+        return;
+      }
+      if (
+        focusAdjacentKeyboardLandmark(shell, document.activeElement, direction) !==
+        "unavailable"
+      ) {
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", handleKeyboardLandmark);
+    return () => window.removeEventListener("keydown", handleKeyboardLandmark);
+  }, []);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -1690,8 +1719,32 @@ function ApplicationShell() {
   }, [executeCommand, publishNotification]);
 
   return (
-    <main className="application-shell" aria-labelledby="product-title">
-      <aside className="application-sidebar" aria-label="Application routes">
+    <main
+      className="application-shell"
+      aria-keyshortcuts="F6 Shift+F6"
+      aria-labelledby="product-title"
+      ref={applicationShellRef}
+    >
+      <a
+        className="skip-navigation-link"
+        href="#active-workflow"
+        onClick={(event) => {
+          const shell = applicationShellRef.current;
+          if (
+            shell !== null &&
+            focusKeyboardLandmark(shell, "active-workflow") !== "unavailable"
+          ) {
+            event.preventDefault();
+          }
+        }}
+      >
+        Skip to active workflow
+      </a>
+      <aside
+        className="application-sidebar"
+        aria-label="Application routes"
+        data-keyboard-landmark="routes"
+      >
         <header className="product-lockup">
           <p className="eyebrow">Desktop editor</p>
           <h1 id="product-title">Superi</h1>
@@ -1739,7 +1792,10 @@ function ApplicationShell() {
       </aside>
 
       <section className="application-workspace" aria-labelledby="route-title">
-        <header className="workspace-header">
+        <header
+          className="workspace-header"
+          data-keyboard-landmark="workspace-controls"
+        >
           <div className="workspace-route-heading">
             <p className="eyebrow">Application route</p>
             <h2 id="route-title">{route.title}</h2>

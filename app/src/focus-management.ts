@@ -18,6 +18,89 @@ const FOCUSABLE_SELECTOR = [
   "[tabindex]:not([tabindex='-1'])",
 ].join(",");
 
+const KEYBOARD_LANDMARK_SELECTOR = "[data-keyboard-landmark]";
+
+export type KeyboardLandmarkDirection = "forward" | "backward";
+
+export interface KeyboardLandmarkEvent {
+  readonly key: string;
+  readonly shiftKey?: boolean;
+  readonly altKey?: boolean;
+  readonly ctrlKey?: boolean;
+  readonly metaKey?: boolean;
+  readonly defaultPrevented?: boolean;
+  readonly isComposing?: boolean;
+  readonly repeat?: boolean;
+}
+
+export function keyboardLandmarkDirection(
+  event: KeyboardLandmarkEvent,
+): KeyboardLandmarkDirection | null {
+  if (
+    event.key !== "F6" ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.defaultPrevented ||
+    event.isComposing ||
+    event.repeat
+  ) {
+    return null;
+  }
+  return event.shiftKey ? "backward" : "forward";
+}
+
+export function nextKeyboardLandmarkIndex(
+  candidateCount: number,
+  currentIndex: number,
+  direction: KeyboardLandmarkDirection,
+): number | null {
+  return nextContainedFocusIndex(
+    candidateCount,
+    currentIndex,
+    direction === "backward",
+  );
+}
+
+export function focusAdjacentKeyboardLandmark(
+  root: HTMLElement,
+  activeElement: Element | null,
+  direction: KeyboardLandmarkDirection,
+): ShellFocusResult {
+  const landmarks = Array.from(
+    root.querySelectorAll<HTMLElement>(KEYBOARD_LANDMARK_SELECTOR),
+  ).filter(isAvailableLandmark);
+  if (landmarks.length === 0) return "unavailable";
+
+  const current = activeElement?.closest<HTMLElement>(
+    KEYBOARD_LANDMARK_SELECTOR,
+  ) ?? null;
+  let index = landmarks.findIndex((landmark) => landmark === current);
+  for (let attempt = 0; attempt < landmarks.length; attempt += 1) {
+    index = nextKeyboardLandmarkIndex(landmarks.length, index, direction) ?? -1;
+    const candidate = landmarks[index];
+    if (candidate !== undefined) {
+      const result = focusFirstInScope(candidate);
+      if (result !== "unavailable") return result;
+    }
+  }
+  return "unavailable";
+}
+
+export function focusKeyboardLandmark(
+  root: HTMLElement,
+  landmarkId: string,
+): ShellFocusResult {
+  const landmark = Array.from(
+    root.querySelectorAll<HTMLElement>(KEYBOARD_LANDMARK_SELECTOR),
+  ).find(
+    (candidate) =>
+      candidate.dataset.keyboardLandmark === landmarkId &&
+      isAvailableLandmark(candidate),
+  );
+  return restoreShellFocus(landmark ?? null);
+}
+
 export function nextContainedFocusIndex(
   candidateCount: number,
   currentIndex: number,
@@ -62,6 +145,14 @@ export function containTabFocus(
 function focusableElements(scope: HTMLElement): HTMLElement[] {
   return Array.from(scope.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
     isFocusable,
+  );
+}
+
+function isAvailableLandmark(target: HTMLElement): boolean {
+  return (
+    target.isConnected &&
+    !target.hidden &&
+    target.closest("[hidden], [inert], [aria-hidden='true']") === null
   );
 }
 

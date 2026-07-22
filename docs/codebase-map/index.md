@@ -72,6 +72,11 @@ context-menu traversal, and moves focus into and back from the modeless activity
 the shared connected-target policy and retains no authored, workspace, engine, transport, or
 persistent state.
 
+The same boundary now provides a first-focus skip link into the active workflow and conventional F6
+and Shift+F6 cycling across application routes, workspace controls, and the mounted active panel
+region. It ignores modified, repeated, composing, handled, and modal-descendant input, wraps in both
+directions, and leaves native tab order, tablist navigation, shortcuts, and modal traps intact.
+
 One immutable schema-1 desktop parity contract now binds macOS, Windows, and Linux to identical
 project, engine, UI, shortcut, media, color, audio, AI, plugin, and export semantics. The System
 route exposes that exact identity and every invariant while capability availability, physical
@@ -2599,9 +2604,11 @@ progress. Exact Node 24.13.0 TypeScript checking and the production Vite build e
 integrated React path; physical focus, screen-reader, high-contrast, and reduced-motion behavior
 remain application-lane evidence.
 The focused focus-management contracts prove empty scopes, entry from outside, exact forward and
-reverse movement, stale-index recovery, and both wraps. Application source contracts freeze the
-shared native-modal, context-menu, and activity-dialog consumers plus explicit dialog semantics and
-safe focus return; physical assistive-technology interaction remains platform-lane evidence.
+reverse movement, stale-index recovery, both wraps, strict F6 eligibility, and bidirectional
+application-landmark cycling. Application source contracts freeze the shared native-modal,
+context-menu, activity-dialog, skip-link, route, workspace-control, and active-workflow consumers
+plus explicit dialog semantics and safe focus return; physical assistive-technology interaction
+remains platform-lane evidence.
 The focused platform-parity contracts prove exact target and domain coverage, unique ordering,
 shared frozen object identity, complete audio timing and routing meaning, and unsupported-label
 rejection. Application source contracts freeze the visible System consumer and exclude native or

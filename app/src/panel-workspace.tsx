@@ -67,7 +67,10 @@ export function PanelWorkspace() {
     <div
       className="workspace-panel-layout"
       data-route-panel-layout={layout.routeId}
+      data-keyboard-landmark="active-workflow"
+      id="active-workflow"
       style={style}
+      tabIndex={-1}
     >
       {APPLICATION_PANEL_DOCKS.map((dockId) => (
         <PanelDock
