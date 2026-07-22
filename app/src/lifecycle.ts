@@ -56,8 +56,59 @@ export interface DesktopLifecycleSnapshot {
   readonly can_shutdown: boolean;
 }
 
+export type DesktopProcessPhase =
+  | "starting"
+  | "running"
+  | "stopping"
+  | "stopped"
+  | "failed";
+
+export type DesktopProcessServiceId =
+  | "application_exit"
+  | "file_association_tasks"
+  | "engine_control"
+  | "playback"
+  | "background_workers"
+  | "gpu_submission"
+  | "window_persistence";
+
+export type DesktopProcessServiceKind =
+  | "monitor"
+  | "task_group"
+  | "execution_domain"
+  | "worker_pool"
+  | "persistence";
+
+export type DesktopProcessServicePhase =
+  | "pending"
+  | "starting"
+  | "running"
+  | "stopping"
+  | "stopped"
+  | "failed";
+
+export interface DesktopProcessServiceSnapshot {
+  readonly id: DesktopProcessServiceId;
+  readonly label: string;
+  readonly kind: DesktopProcessServiceKind;
+  readonly phase: DesktopProcessServicePhase;
+  readonly owned_units: number;
+  readonly active_units: number;
+  readonly join_pending: boolean;
+  readonly thread_names: readonly string[];
+  readonly summary: string;
+}
+
+export interface DesktopProcessSnapshot {
+  readonly revision: number;
+  readonly phase: DesktopProcessPhase;
+  readonly accepting_background_tasks: boolean;
+  readonly services: readonly DesktopProcessServiceSnapshot[];
+}
+
 const SNAPSHOT_COMMAND = "desktop_lifecycle_snapshot";
 const REQUEST_COMMAND = "desktop_lifecycle_request";
+const PROCESS_SNAPSHOT_COMMAND = "desktop_process_snapshot";
 
 export async function getDesktopLifecycle(): Promise<DesktopLifecycleSnapshot> {
   return invoke<DesktopLifecycleSnapshot>(SNAPSHOT_COMMAND);
@@ -67,4 +118,8 @@ export async function requestDesktopLifecycle(
   request: ApplicationLifecycleRequest,
 ): Promise<DesktopLifecycleSnapshot> {
   return invoke<DesktopLifecycleSnapshot>(REQUEST_COMMAND, { request });
+}
+
+export async function getDesktopProcess(): Promise<DesktopProcessSnapshot> {
+  return invoke<DesktopProcessSnapshot>(PROCESS_SNAPSHOT_COMMAND);
 }

@@ -31,9 +31,11 @@ import {
 } from "./crash-diagnostics";
 import {
   getDesktopLifecycle,
+  getDesktopProcess,
   requestDesktopLifecycle,
   type ApplicationLifecycleRequest,
   type DesktopLifecycleSnapshot,
+  type DesktopProcessSnapshot,
 } from "./lifecycle";
 import {
   executeDesktopProject,
@@ -988,6 +990,9 @@ function SystemPanel() {
   const api = useSuperiApi();
   const { dispatch, registry, state: applicationState } = useApplication();
   const [snapshot, setSnapshot] = useState<DesktopLifecycleSnapshot | null>(null);
+  const [processSnapshot, setProcessSnapshot] =
+    useState<DesktopProcessSnapshot | null>(null);
+  const [processFailure, setProcessFailure] = useState<ClientFailure | null>(null);
   const [crashDiagnostics, setCrashDiagnostics] =
     useState<DesktopCrashDiagnosticsSnapshot | null>(null);
   const [crashFailure, setCrashFailure] = useState<ClientFailure | null>(null);
@@ -1065,6 +1070,15 @@ function SystemPanel() {
     } catch {
       setClientFailure({
         summary: "The native lifecycle service is unavailable.",
+      });
+    }
+    try {
+      setProcessSnapshot(await getDesktopProcess());
+      setProcessFailure(null);
+    } catch {
+      setProcessFailure({
+        summary: "Desktop process ownership is unavailable.",
+        action: "Lifecycle actions remain available while the process view reconnects.",
       });
     }
     try {
@@ -1851,6 +1865,41 @@ function SystemPanel() {
           </dd>
         </div>
       </dl>
+
+      <section aria-labelledby="desktop-process-title">
+        <h4 id="desktop-process-title">Process ownership</h4>
+        <p className="explanation">
+          Process {processSnapshot?.phase ?? "unavailable"}. Background task admission is{" "}
+          {processSnapshot === null
+            ? "unknown"
+            : processSnapshot.accepting_background_tasks
+              ? "open"
+              : "closed"}.
+        </p>
+        {processFailure ? (
+          <div className="failure" role="alert">
+            <p>{processFailure.summary}</p>
+            {processFailure.action ? <p>{processFailure.action}</p> : null}
+          </div>
+        ) : null}
+        <dl className="lifecycle-details">
+          {processSnapshot?.services.map((service) => (
+            <div key={service.id}>
+              <dt>{service.label}</dt>
+              <dd>
+                {service.phase}, {service.active_units}/{service.owned_units} active
+                {service.join_pending ? ", join pending" : ""}
+                <span className="process-service-summary">
+                  {service.summary}
+                  {service.thread_names.length > 0
+                    ? ` / ${service.thread_names.join(", ")}`
+                    : ""}
+                </span>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </section>
 
       {failure ? (
         <div className="failure" role="alert">

@@ -18,6 +18,9 @@ use tauri::{
     WebviewWindowBuilder, Window, WindowEvent,
 };
 
+use crate::process_runtime::{
+    DesktopProcessRuntime, DesktopProcessServiceId, DesktopProcessServicePhase,
+};
 use crate::transport::DesktopTransportState;
 
 pub const DESKTOP_WINDOW_EVENT: &str = "superi://window-session-changed";
@@ -553,18 +556,26 @@ struct PersistenceControl {
 pub struct DesktopWindowState {
     inner: Arc<Mutex<DesktopWindowInner>>,
     persistence: Arc<Mutex<Option<PersistenceControl>>>,
+    runtime: DesktopProcessRuntime,
 }
 
 impl Default for DesktopWindowState {
     fn default() -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(DesktopWindowInner::default())),
-            persistence: Arc::new(Mutex::new(None)),
-        }
+        Self::with_runtime(DesktopProcessRuntime::new())
     }
 }
 
 impl DesktopWindowState {
+    /// Creates native window state attached to the shared desktop process owner.
+    #[must_use]
+    pub fn with_runtime(runtime: DesktopProcessRuntime) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(DesktopWindowInner::default())),
+            persistence: Arc::new(Mutex::new(None)),
+            runtime,
+        }
+    }
+
     /// Starts the bounded persistence worker and restores saved windows asynchronously.
     pub fn initialize<R: Runtime>(&self, app: AppHandle<R>, data_dir: PathBuf) -> Result<()> {
         let mut persistence = self.lock_persistence("initialize")?;
@@ -577,10 +588,49 @@ impl DesktopWindowState {
         let path = data_dir.join(SESSION_FILE_NAME);
         let (sender, receiver) = mpsc::sync_channel(1);
         let state = self.clone();
+        self.runtime.update_service(
+            DesktopProcessServiceId::WindowPersistence,
+            DesktopProcessServicePhase::Starting,
+            1,
+            1,
+            true,
+            vec!["superi-window-persistence".to_owned()],
+            "Starting window session persistence",
+        );
+        let worker_runtime = self.runtime.clone();
         let worker = thread::Builder::new()
             .name("superi-window-persistence".to_owned())
-            .spawn(move || persistence_loop(state, app, path, receiver))
+            .spawn(move || {
+                worker_runtime.update_service(
+                    DesktopProcessServiceId::WindowPersistence,
+                    DesktopProcessServicePhase::Running,
+                    1,
+                    1,
+                    true,
+                    vec!["superi-window-persistence".to_owned()],
+                    "Window session persistence is running",
+                );
+                persistence_loop(state, app, path, receiver);
+                worker_runtime.update_service(
+                    DesktopProcessServiceId::WindowPersistence,
+                    DesktopProcessServicePhase::Stopped,
+                    1,
+                    0,
+                    true,
+                    vec!["superi-window-persistence".to_owned()],
+                    "Window session persistence finished and awaits join",
+                );
+            })
             .map_err(|source| {
+                self.runtime.update_service(
+                    DesktopProcessServiceId::WindowPersistence,
+                    DesktopProcessServicePhase::Failed,
+                    0,
+                    0,
+                    false,
+                    vec!["superi-window-persistence".to_owned()],
+                    "Window session persistence could not start",
+                );
                 Error::with_source(
                     ErrorCategory::Unavailable,
                     Recoverability::Retryable,
@@ -590,6 +640,15 @@ impl DesktopWindowState {
                 .with_context(ErrorContext::new(COMPONENT, "initialize"))
             })?;
         *persistence = Some(PersistenceControl { sender, worker });
+        self.runtime.update_service(
+            DesktopProcessServiceId::WindowPersistence,
+            DesktopProcessServicePhase::Running,
+            1,
+            1,
+            true,
+            vec!["superi-window-persistence".to_owned()],
+            "Window session persistence is running",
+        );
         Ok(())
     }
 
@@ -647,18 +706,72 @@ impl DesktopWindowState {
     }
 
     /// Flushes and joins the persistence worker after the native event loop returns.
-    pub fn shutdown_and_join(&self) {
-        let control = self
-            .persistence
-            .lock()
-            .ok()
-            .and_then(|mut persistence| persistence.take());
+    pub fn shutdown_and_join(&self) -> Result<()> {
+        let control = self.lock_persistence("shutdown_and_join")?.take();
+        let mut first_error = None;
         if let Some(control) = control {
-            let _ = control.sender.send(PersistenceSignal::Shutdown);
-            let _ = control.worker.join();
+            self.runtime.update_service(
+                DesktopProcessServiceId::WindowPersistence,
+                DesktopProcessServicePhase::Stopping,
+                1,
+                1,
+                true,
+                vec!["superi-window-persistence".to_owned()],
+                "Flushing and joining window session persistence",
+            );
+            if control.sender.send(PersistenceSignal::Shutdown).is_err() {
+                first_error = Some(
+                    Error::new(
+                        ErrorCategory::Unavailable,
+                        Recoverability::Retryable,
+                        "the window persistence shutdown signal could not be delivered",
+                    )
+                    .with_context(ErrorContext::new(COMPONENT, "shutdown_and_join")),
+                );
+            }
+            if control.worker.join().is_err() && first_error.is_none() {
+                first_error = Some(
+                    Error::new(
+                        ErrorCategory::Internal,
+                        Recoverability::Terminal,
+                        "the window persistence worker panicked during shutdown",
+                    )
+                    .with_context(ErrorContext::new(COMPONENT, "shutdown_and_join")),
+                );
+            }
         }
         if let Ok(mut inner) = self.inner.lock() {
-            inner.persistence_phase = "stopped".to_owned();
+            inner.persistence_phase = if first_error.is_some() {
+                "failed".to_owned()
+            } else {
+                "stopped".to_owned()
+            };
+        }
+        match first_error {
+            Some(error) => {
+                self.runtime.update_service(
+                    DesktopProcessServiceId::WindowPersistence,
+                    DesktopProcessServicePhase::Failed,
+                    0,
+                    0,
+                    false,
+                    vec!["superi-window-persistence".to_owned()],
+                    error.message(),
+                );
+                Err(error)
+            }
+            None => {
+                self.runtime.update_service(
+                    DesktopProcessServiceId::WindowPersistence,
+                    DesktopProcessServicePhase::Stopped,
+                    0,
+                    0,
+                    false,
+                    vec!["superi-window-persistence".to_owned()],
+                    "Window session persistence joined",
+                );
+                Ok(())
+            }
         }
     }
 

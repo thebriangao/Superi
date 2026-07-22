@@ -446,6 +446,15 @@ button.panel-tab-hide:hover {
   white-space: nowrap;
 }
 
+.process-service-summary {
+  display: block;
+  margin-top: 0.2rem;
+  color: #8f9892;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .selection-list {
   display: grid;
   gap: 8px;

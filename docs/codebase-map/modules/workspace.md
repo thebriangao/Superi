@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 2b8bfeb93e995664a3276e53197d131d8f17040199040fa851548607e519a5a7
-source_files: 322
+source_hash: c2e8d179fb221b3b3ab75187e75cdfa096b8a11bf0518dc7da3d8921ae8aa355
+source_files: 324
 mapped_at_commit: working-tree
 ---
 
@@ -12,7 +12,8 @@ mapped_at_commit: working-tree
 The `workspace` module owns the repository-level product definition, architectural contracts,
 license and codec policy, build sequencing, operating-system test policy, unsafe-boundary audit,
 the production React and Tauri desktop shell including persistent multi-window session ownership,
-bounded crash continuity, and retained GPU, audio, codec, and AI capability visibility,
+bounded crash continuity, retained GPU, audio, codec, and AI capability visibility, and explicit
+process-lifetime execution ownership,
 Cargo workspace configuration, dependency lock,
 shared test-fixture contract, and repository-owned agent workflows. Runtime implementation under
 `open/crates/*` and repository utilities under
@@ -899,6 +900,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   System panel also consumes the strict four-domain capability adapter, exposes live and retained
   GPU, audio, codec, and AI observations plus actionable failures, and refreshes without changing
   routes, streams, devices, projects, workspaces, codec sessions, or model state.
+  The System panel also polls the shell-local process snapshot and renders every retained service
+  phase, active and owned unit count, join obligation, and exact thread name without becoming a job
+  owner.
 - `app/src/desktop-shell.ts`: Reuses the application workspace presentation contract in the strict
   native shell snapshot and intent bridge, serialized sequence-fenced synchronization, close
   request resolution, typed event listening, deterministic
@@ -911,8 +915,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   preserve call order for workspace and project updates even when blocking native writes complete at
   different speeds. It intentionally exposes no private panic detail and imports no generated public
   API contract.
-- `app/src/lifecycle.ts`: Defines the exact shell-local serialized lifecycle contract and typed
-  asynchronous wrappers for the two Tauri lifecycle commands without importing engine bindings.
+- `app/src/lifecycle.ts`: Defines the exact shell-local serialized lifecycle contract, the separate
+  process phase and seven-service ownership snapshot, and typed asynchronous wrappers for lifecycle
+  and process Tauri commands without importing engine bindings.
 - `app/src/project-lifecycle.ts`: Defines strict shell-local project lifecycle, settings, media
   import, media-library snapshot, derived-thumbnail, bin, smart-collection, source-inspection,
   user-metadata, editorial-annotation, derived-usage, duplicate-identity, selection, and tracked
@@ -941,7 +946,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/styles.css`: Defines the responsive, accessible application frame, route rail, four-dock
   grid, tab strips, mounted panel surfaces, resize separators, collapsed empty docks, mobile dock
   stacking, professional workspace data views, exact audio route and continuity presentation,
-  shared selection, lifecycle controls, media-browser list and grid layouts, thumbnail fallbacks,
+  shared selection, lifecycle controls, process-service detail, media-browser list and grid layouts, thumbnail fallbacks,
   source and user metadata details, editorial annotation controls, usage summaries, engine API
   status presentation, ranked content-search evidence, structured language and local-content
   artifact editing, stale-analysis warnings, bounded preview raster, horizontally scrollable
@@ -973,11 +978,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/tests/app-contract.test.mjs`: Verifies exact production pins, lifecycle and engine-process
   ownership seams, application framework composition, transport isolation, production workflow
   routing, the hashed React bundle, exact `.superi` association metadata, startup and macOS native
-  routing, blocking-worker dispatch, lifecycle Open reuse, typed React event consumption, focused
+  routing, retained blocking-task dispatch, lifecycle Open reuse, typed React event consumption, focused
   webview menu targeting, primary-only shell synchronization, safe-close composition with the
   persistent window owner, shell-local crash-journal ownership, all four recoverability classes,
   private panic-detail exclusion, mounted dock workspace, accessible tab, hide, drag, dock, and
-  separator behavior, presentation-only ownership, native command registration, and reuse of the
+  separator behavior, presentation-only ownership, explicit process-service command registration,
+  retained exit and association handles, join-all cleanup, child-process exclusion, native command registration, and reuse of the
   existing lifecycle and project recovery consumers. It also freezes the authoritative four-provider
   capability composition, strict frontend adapter, real System-panel consumer, and absence of audio
   stream mutation.
@@ -1143,7 +1149,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   borderless top-level external windows, checked CSS-to-physical placement, strict analysis and
   connection-local display selection, deterministic Tauri monitor projection, current-editor
   display exclusion, target conflict rejection, exact inline and external selected and
-  last-presented status, per-role color binding, and join-before-host-drop lifetime. One dedicated
+  last-presented status, per-role color binding, and explicit idempotent join-before-host-drop
+  lifetime. One dedicated
   GPU submission thread presents both destination kinds from the same managed canonical RGBA16F
   role results through explicit ACEScg-to-sRGB or ACEScg-to-Display-P3 transforms and the direct
   analysis-aware presenter. It owns exact macOS system profile discovery, atomic catalog refresh,
@@ -1196,14 +1203,22 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   failures, and atomically publishes only a strict validated schema-1 private snapshot.
 - `app/src-tauri/src/lifecycle.rs`: Owns explicit application intent, serialized application and
   engine phases, generation changes, classified safe failures, recovery, restart, shutdown, exact
-  acknowledgement tokens, and the stable headless-engine participant seam.
+  acknowledgement tokens, retry-visible failed shutdown, and the stable headless-engine participant seam.
+- `app/src-tauri/src/process_runtime.rs`: Owns the shell-local desktop process phase, a stable ordered
+  inventory for application exit, project association tasks, EngineControl, Playback, background
+  workers, GPU submission, and window persistence, plus retained exit and bounded Tauri blocking-task
+  handles. An admission handshake records each task handle and active count before execution can
+  finish. It closes admission before shutdown, catches task panics into safe failure state, joins
+  every retained handle even after an earlier failure, and publishes only operational ownership.
 - `app/src-tauri/src/engine.rs`: Owns one lifecycle-attached `EngineCommandDispatcher` on a dedicated
   EngineControl thread, one dedicated Playback thread, one shared bounded worker pool, a
   fixed-capacity nonblocking request connection, and projection through the existing
   integration-validation API contract. The playback thread retains the timing-only production
   runtime and one capacity-bounded control connection; it attaches the active project's exact root
   range, reconfigures that range before durable authored replacement, advances transport, and joins
-  before the shared pool shuts down. The EngineControl thread retains one route-fenced
+  before the shared pool shuts down. Startup reports and cleans partial ownership, and shutdown
+  attempts both domain joins plus the complete worker-pool join before returning the first failure.
+  The EngineControl thread retains one route-fenced
   `ProjectEditorApi` session for generated editor-state and project-command requests, persists every
   successful selected snapshot through `ProjectDatabase`, preserves session undo and redo, and
   invalidates any in-memory state that could not be published durably. Its editor API and playback
@@ -1211,7 +1226,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/src/file_associations.rs`: Owns shell-local operating-system project association
   ingress. It filters case-insensitive `.superi` startup arguments and local file URLs, resolves
   relative arguments, canonicalizes existing paths, deduplicates first-seen inputs, runs every open
-  on Tauri's blocking runtime through `DesktopProjectState::execute(Open)`, emits a complete
+  through a process-retained bounded Tauri blocking task and `DesktopProjectState::execute(Open)`, emits a complete
   replacement snapshot or retained actionable failure, and restores focus without creating a
   second document or project owner.
 - `app/src-tauri/src/window_session.rs`: Owns the native application window session above Tauri.
@@ -1221,7 +1236,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   preserves malformed input under a rejected filename, restores a safe primary with visible
   recovery evidence, reconciles placements against the current monitor catalog, creates and
   restores auxiliary webviews, and publishes one immutable snapshot event. A capacity-one worker
-  coalesces changes and atomically replaces the session file off the event loop. Exact commands
+  coalesces changes and atomically replaces the session file off the event loop. The shared process
+  registry reports its named thread, and explicit idempotent shutdown returns signal or join failure.
+  Exact commands
   expose snapshot, create, focus, fullscreen, monitor movement, placement undo, route update, close,
   and reopen. It exposes the focused or last-active editor webview as the process-wide native menu
   target, captures primary placement without authorizing closure, and leaves primary close to the
@@ -1315,7 +1332,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   has explicit interactive deadlines and runs only through blocking Tauri workers. Snapshots expose
   metadata and state only, never packets, decoded frames, audio blocks, textures, or presentation.
 - `app/src-tauri/src/lib.rs`: Configures the mock and native Tauri builders, retains the linked
-  engine process, manages its bounded connection and transport state alongside application
+  engine process and one shared process runtime, manages its bounded connection and transport state alongside application
   lifecycle, project-session, native desktop-shell, persistent window-session, and
   crash-diagnostics and capability state, registers lifecycle, shell, project, window snapshot and
   mutation, crash continuity and dismissal, capability discovery, viewport placement, viewport
@@ -1332,8 +1349,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   request, targets every returned ordered Tauri event to its client webview, records window focus,
   move, resize, auxiliary close, and route state, intercepts primary close and direct
   operating-system exit through the same one-shot safe-close handshake, observes lifecycle failures,
-  joins the background window persistence and engine owners after the native application stops, and
-  removes only the matching crash-session marker after acknowledged orderly shutdown.
+  retains the application-exit monitor, closes association-task admission, and joins the exit,
+  association, window persistence, GPU submission, engine-domain, and worker-pool owners after the
+  native application stops. Setup failure follows the same rollback path. It removes only the
+  matching crash-session marker after every owner joined and lifecycle shutdown was acknowledged.
 - `app/src-tauri/src/main.rs`: Starts the native production desktop host.
 - `app/src-tauri/tests/engine_connection_contract.rs`: Proves dedicated EngineControl ownership,
   truthful public validation projection, bounded nonblocking admission, stable connection reuse
@@ -1346,7 +1365,10 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   and degraded startup continuity.
 - `app/src-tauri/tests/lifecycle_contract.rs`: Proves exact startup and shutdown acknowledgement,
   stale-token rejection, ordered restart, classified recovery, terminal failure, and blocking-safe
-  change observation.
+  change observation, including a failed shutdown whose explicit retry remains available.
+- `app/src-tauri/tests/process_runtime_contract.rs`: Proves a real linked engine reports exact
+  EngineControl, Playback, and bounded worker ownership, joins all three into stopped state, and
+  keeps native GPU and persistence cleanup explicit and idempotent before initialization.
 - `app/src-tauri/tests/file_associations_contract.rs`: Proves unique first-seen selection of
   case-insensitive `.superi` startup arguments and local file URLs, exclusion of unrelated and
   nonfile inputs, real durable project activation through the existing desktop owner, exact identity
@@ -1678,6 +1700,10 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
   expectation and replacement work for their owning checkpoints. The concrete source fixture,
   contract-conformance runner, independent expectation fixture, and bounded stage instrumentation
   now exist under C017, C024, and C025 ownership.
+- The shell-local `desktop_process_snapshot` command exposes only explicit operational ownership:
+  one process phase, background-task admission, and seven ordered service records with phases,
+  counts, pending joins, thread names, and safe summaries. It is independent from the generated
+  engine API, authored project state, and the canonical application lifecycle contract.
 - `open/Cargo.toml` exports inherited workspace package metadata, lints, and dependency declarations
   to every member manifest. The current glob expansion is 19 crate packages plus
   `superi-fixture-tool`, `superi-dependency-check`, `superi-boundary-tool`, `superi-bench`, and
@@ -1821,6 +1847,17 @@ close requests the existing orderly application shutdown, while auxiliary close 
 window and its transport client. Each webview opens an independent generated transport generation
 above the one shared engine and project lifecycle, and every authored replacement retains one global
 event sequence across those client-local generations.
+
+The desktop process-ownership flow composes those existing owners without replacing them. Native
+startup creates one shared `DesktopProcessRuntime`, then supplies it to the engine, GPU viewport,
+window persistence, file-association ingress, exit monitor, Tauri managed state, and React process
+snapshot. EngineControl, Playback, and the bounded background pool report their exact named units;
+GPU and persistence report explicit handles; the exit monitor and association group retain their
+handles directly. Shutdown first closes association admission, then joins the exit monitor, all
+admitted association tasks, window persistence, GPU submission, both engine domains, and every
+bounded worker. Every join is attempted even after an earlier failure. Setup rollback uses the same
+path, the process becomes Failed on any cleanup error, and the crash marker is cleared only after
+the complete join set and canonical lifecycle both confirm orderly shutdown.
 
 The desktop C012 media flow extends the existing C004 through C009 presentation owner without a new
 authority:
@@ -2141,8 +2178,9 @@ The production Tauri host consumes `superi-concurrency::LifecycleCoordinator`, t
 `EngineCommandDispatcher`, the transport-neutral integration-validation API, and core-owned error
 classification through explicit downward path dependencies. `LinkedEngineProcess` retains one
 dispatcher per application generation on a dedicated EngineControl thread and consumes the exact
-headless-engine participant seam. Tauri manages the fixed-capacity `EngineConnection`, while its
-React lifecycle client consumes only two shell-local asynchronous lifecycle commands. The sibling
+headless-engine participant seam. Tauri manages the fixed-capacity `EngineConnection` and the
+shell-local `DesktopProcessRuntime`; its React client consumes two lifecycle commands plus a separate
+read-only process snapshot. The sibling
 `DesktopWindowState` consumes Tauri window and monitor APIs, the application data directory, and the
 existing lifecycle shutdown seam. Its typed React client and System panel consume only strict
 shell-local snapshot and mutation commands plus one replacement event. Above the unchanged engine
@@ -2369,6 +2407,11 @@ of open runtime behavior.
   only reviewed bounded context. Session-marker removal requires exact session identity and orderly
   lifecycle acknowledgement; recovery actions must reuse the existing application, lifecycle, and
   project owners and must not replace a different active project.
+- Every long-lived desktop execution unit has one retained native owner and an explicit join path.
+  Project association task admission is bounded and closes before teardown; partial startup joins
+  every owner already created; one cleanup failure cannot skip later joins; setup rollback and normal
+  exit share the same cleanup order. The process snapshot is operational visibility only and never
+  substitutes for application lifecycle, engine, project, GPU, or persistence authority.
 - Local scripts use exact digest-bound `superi-json`, a closed versioned step vocabulary, complete
   nested permission preflight, and the same stable public project command surface. They do not gain
   ambient file, process, network, or hidden mutation authority, and a stopped result preserves both
@@ -2533,6 +2576,13 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   failure, immediate placeholder recovery, terminal behavior, and blocking-safe observation.
   Retained frontend and Tauri contracts continue to prove generated binding and toolchain
   compatibility without standing in for the product application.
+
+- The focused process-runtime contracts prove failed-shutdown retry visibility, retained exit and
+  blocking-task handles, registration-before-execution counts for fast tasks, closed admission, real
+  EngineControl, Playback, and bounded-worker service counts, join-all stopped state, and idempotent
+  GPU and persistence cleanup. The static frontend
+  contract freezes the seven-service command and System panel projection, explicit cleanup calls,
+  and absence of an operating-system child-process launch.
 
 - The focused window-session proof validates strict session normalization and unknown-field
   rejection, missing-monitor relative placement, exact placement swap reversal, corrupt-file
@@ -2957,11 +3007,16 @@ lane, an unimplemented suite is a gap, and a retry retains its original failure 
 The workspace is beyond the original empty scaffold and the public orientation now identifies the
 first production desktop shell. `app/` contains a locked React 19 and Tauri 2 application whose
 single lifecycle owner projects explicit application and headless-engine phases, intent, revision,
-generation, pending acknowledgement, and classified safe failure. A linked native process owner now
+generation, pending acknowledgement, classified safe failure, and failed-shutdown retry. A linked native process owner now
 retains one real dispatcher per generation on a dedicated EngineControl thread plus one exact
 transport runtime on a dedicated Playback thread, exposes the existing
 integration-validation result over a bounded nonblocking Rust connection, and performs real orderly
-dispatcher shutdown before lifecycle acknowledgement. Internal subsystem readiness remains truthful;
+dispatcher shutdown before lifecycle acknowledgement. One separate shell-local process runtime now
+lists the exit monitor, retained project association tasks, both engine domains, bounded workers,
+GPU submission, and window persistence with exact phases, counts, pending joins, and thread names.
+It closes task admission before teardown, joins all owners on normal exit and setup rollback, retains
+the first cleanup failure only after later joins run, and lets the System panel show that state without
+creating a second lifecycle or job owner. Internal subsystem readiness remains truthful;
 the production React bootstrap now consumes the complete generated TypeScript contract through a
 transport-injected `SuperiClient` provider with identical request and automation behavior. One thin
 native dispatcher forwards integration validation through the retained EngineControl owner and
@@ -2977,7 +3032,8 @@ auxiliary workspace windows, reconciles unavailable monitor identities into visi
 retains exact fullscreen and prior placement state, preserves rejected session bytes, exposes
 recovery and persistence phase visibly, and atomically coalesces updates off the event loop. The
 System panel provides precise create, focus, fullscreen, monitor move, undo, close, and reopen
-actions. Workspace routes restore before ordinary route persistence, main close remains orderly,
+actions. Its persistence worker and the GPU submission domain now expose explicit idempotent join
+results to the shared process owner. Workspace routes restore before ordinary route persistence, main close remains orderly,
 and auxiliary native GPU viewports remain intentionally unavailable because the existing presenter
 owns one primary-window role surface set.
 The same production shell now owns a bounded local crash journal and exact session marker independent
@@ -2985,7 +3041,7 @@ of public engine and authored project state. It retains safe actionable context 
 classifies retryable, degraded, user-correctable, and terminal conditions, and exposes workspace,
 engine, and project recovery entry points in the System panel. Raw panic detail remains native-only,
 corrupt or unavailable storage becomes visible degraded state instead of preventing startup, and
-orderly acknowledged shutdown clears only the current session marker.
+orderly acknowledged shutdown clears only the current session marker after complete process cleanup.
 The native shell now also owns one schema-1 capability observation across GPU adapters, audio input
 and output declarations, codec backends and operations, and honest local AI availability. It runs
 provider discovery off the main thread, retains bounded validated last-known evidence across
@@ -3463,8 +3519,8 @@ The largest current risk is cross-document drift:
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
 `3b2f96bcd901d2ce4d1a5315527d9fff0f5f745f` when this checkpoint began. Its hash describes the exact
-322 discovered source files, including generated binary payloads and the concurrent C005 delivery,
-layered on the integrated
+324 discovered source files, including generated binary payloads and the concurrent C005 and C007
+deliveries, layered on the integrated
 revision.
 
 ## Maintenance notes
@@ -3535,6 +3591,12 @@ panel, active tab, size, hidden state, focus, and
 project before restoration, and route retries, restarts, and project recovery through their existing
 owners. Never clear an active-session marker without matching its exact session identity and
 confirmed orderly shutdown.
+Keep desktop process ownership exhaustive and shell-local. Any new long-lived thread or detached
+task must enter the stable inventory, retain its handle, close admission before teardown when
+applicable, and join on both setup rollback and normal exit. Register task ownership before allowing
+execution to finish so active counts never exceed retained handles. Keep the process snapshot
+read-only, attempt all joins after a failure, and never clear crash evidence before every owner is
+stopped.
 Keep the timeline canvas projection synchronized with the canonical timeline document revision,
 exact rational clocks, stable identities, and relationship fields. Keep application selection
 references revision-fenced and reversible, mirror the lower fixed-point rule exactly, keep group

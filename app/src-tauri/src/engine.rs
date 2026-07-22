@@ -31,6 +31,9 @@ use crate::lifecycle::{
     ApplicationLifecycle, ApplicationLifecyclePhase, HeadlessEngineFailure,
     HeadlessEngineLifecycleParticipant, LifecycleIntent,
 };
+use crate::process_runtime::{
+    DesktopProcessRuntime, DesktopProcessServiceId, DesktopProcessServicePhase,
+};
 use crate::project_lifecycle::{DesktopProjectEditorRoute, DesktopProjectIdentity};
 
 const COMPONENT: &str = "superi-desktop.engine";
@@ -275,32 +278,246 @@ pub struct LinkedEngineProcess {
     worker: ExecutionDomainThread<()>,
     playback_worker: ExecutionDomainThread<()>,
     worker_pool: Arc<BoundedWorkerPool>,
+    runtime: DesktopProcessRuntime,
 }
 
 impl LinkedEngineProcess {
     /// Links one lifecycle-attached dispatcher to the exact C001 participant seam.
     pub fn launch(lifecycle: ApplicationLifecycle) -> Result<Self> {
+        Self::launch_with_runtime(lifecycle, DesktopProcessRuntime::new())
+    }
+
+    /// Links the dispatcher while reporting every retained execution owner to the desktop shell.
+    pub fn launch_with_runtime(
+        lifecycle: ApplicationLifecycle,
+        runtime: DesktopProcessRuntime,
+    ) -> Result<Self> {
         let participant = lifecycle.headless_engine_participant()?;
         let (requests, receiver) = sync_channel(REQUEST_CAPACITY);
-        let worker_pool = Arc::new(BoundedWorkerPool::new(WorkerPoolConfig::recommended(
-            PLAYBACK_WORK_QUEUE_CAPACITY,
-        )?)?);
-        let (playback_requests, playback_receiver) =
-            sync_channel(PLAYBACK_CONTROL_CAPACITY);
+        runtime.update_service(
+            DesktopProcessServiceId::BackgroundWorkers,
+            DesktopProcessServicePhase::Starting,
+            0,
+            0,
+            false,
+            Vec::new(),
+            "Starting the bounded background worker pool",
+        );
+        let pool_config =
+            WorkerPoolConfig::recommended(PLAYBACK_WORK_QUEUE_CAPACITY).map_err(|error| {
+                runtime.update_service(
+                    DesktopProcessServiceId::BackgroundWorkers,
+                    DesktopProcessServicePhase::Failed,
+                    0,
+                    0,
+                    false,
+                    Vec::new(),
+                    error.message(),
+                );
+                error
+            })?;
+        let worker_count = pool_config.worker_count();
+        let worker_names = background_worker_names(worker_count);
+        let worker_pool = Arc::new(BoundedWorkerPool::new(pool_config).map_err(|error| {
+            runtime.update_service(
+                DesktopProcessServiceId::BackgroundWorkers,
+                DesktopProcessServicePhase::Failed,
+                0,
+                0,
+                false,
+                worker_names.clone(),
+                error.message(),
+            );
+            error
+        })?);
+        runtime.update_service(
+            DesktopProcessServiceId::BackgroundWorkers,
+            DesktopProcessServicePhase::Running,
+            worker_count,
+            worker_count,
+            true,
+            worker_names.clone(),
+            "Bounded background workers are accepting jobs",
+        );
+        let (playback_requests, playback_receiver) = sync_channel(PLAYBACK_CONTROL_CAPACITY);
         let playback_pool = Arc::clone(&worker_pool);
-        let playback_worker = ExecutionDomain::Playback
-            .spawn(move |_| run_playback_control(playback_pool, playback_receiver))?;
+        runtime.update_service(
+            DesktopProcessServiceId::Playback,
+            DesktopProcessServicePhase::Starting,
+            1,
+            1,
+            true,
+            vec![ExecutionDomain::Playback.thread_name().to_owned()],
+            "Starting the playback execution owner",
+        );
+        let playback_runtime = runtime.clone();
+        let playback_worker = match ExecutionDomain::Playback.spawn(move |_| {
+            let result = run_playback_control(playback_pool, playback_receiver);
+            let (phase, summary) = match &result {
+                Ok(()) => (
+                    DesktopProcessServicePhase::Stopped,
+                    "Playback execution owner finished".to_owned(),
+                ),
+                Err(error) => (
+                    DesktopProcessServicePhase::Failed,
+                    error.message().to_owned(),
+                ),
+            };
+            playback_runtime.update_service(
+                DesktopProcessServiceId::Playback,
+                phase,
+                1,
+                0,
+                true,
+                vec![ExecutionDomain::Playback.thread_name().to_owned()],
+                summary,
+            );
+            result
+        }) {
+            Ok(worker) => worker,
+            Err(error) => {
+                runtime.update_service(
+                    DesktopProcessServiceId::Playback,
+                    DesktopProcessServicePhase::Failed,
+                    0,
+                    0,
+                    false,
+                    vec![ExecutionDomain::Playback.thread_name().to_owned()],
+                    error.message(),
+                );
+                if let Ok(pool) = Arc::try_unwrap(worker_pool) {
+                    let pool_result = pool.shutdown();
+                    runtime.update_service(
+                        DesktopProcessServiceId::BackgroundWorkers,
+                        if pool_result.is_ok() {
+                            DesktopProcessServicePhase::Stopped
+                        } else {
+                            DesktopProcessServicePhase::Failed
+                        },
+                        0,
+                        0,
+                        false,
+                        worker_names,
+                        "Background workers cleaned up after playback startup failed",
+                    );
+                }
+                return Err(error);
+            }
+        };
+        runtime.update_service(
+            DesktopProcessServiceId::Playback,
+            DesktopProcessServicePhase::Running,
+            1,
+            1,
+            true,
+            vec![playback_worker.thread_name().to_owned()],
+            "Playback execution owner is running",
+        );
         let playback = PlaybackOwnerConnection {
             requests: playback_requests,
         };
-        let worker = ExecutionDomain::EngineControl.spawn(move |_| {
-            run_engine_control(participant, receiver, playback)
-        })?;
+        runtime.update_service(
+            DesktopProcessServiceId::EngineControl,
+            DesktopProcessServicePhase::Starting,
+            1,
+            1,
+            true,
+            vec![ExecutionDomain::EngineControl.thread_name().to_owned()],
+            "Starting the engine control execution owner",
+        );
+        let engine_runtime = runtime.clone();
+        let worker = match ExecutionDomain::EngineControl.spawn(move |_| {
+            let result = run_engine_control(participant, receiver, playback);
+            let (phase, summary) = match &result {
+                Ok(()) => (
+                    DesktopProcessServicePhase::Stopped,
+                    "Engine control execution owner finished".to_owned(),
+                ),
+                Err(error) => (
+                    DesktopProcessServicePhase::Failed,
+                    error.message().to_owned(),
+                ),
+            };
+            engine_runtime.update_service(
+                DesktopProcessServiceId::EngineControl,
+                phase,
+                1,
+                0,
+                true,
+                vec![ExecutionDomain::EngineControl.thread_name().to_owned()],
+                summary,
+            );
+            result
+        }) {
+            Ok(worker) => worker,
+            Err(error) => {
+                runtime.update_service(
+                    DesktopProcessServiceId::EngineControl,
+                    DesktopProcessServicePhase::Failed,
+                    0,
+                    0,
+                    false,
+                    vec![ExecutionDomain::EngineControl.thread_name().to_owned()],
+                    error.message(),
+                );
+                drop(requests);
+                runtime.update_service(
+                    DesktopProcessServiceId::Playback,
+                    DesktopProcessServicePhase::Stopping,
+                    1,
+                    1,
+                    true,
+                    vec![playback_worker.thread_name().to_owned()],
+                    "Joining playback after engine control startup failed",
+                );
+                let playback_result = playback_worker.join();
+                runtime.update_service(
+                    DesktopProcessServiceId::Playback,
+                    if playback_result.is_ok() {
+                        DesktopProcessServicePhase::Stopped
+                    } else {
+                        DesktopProcessServicePhase::Failed
+                    },
+                    0,
+                    0,
+                    false,
+                    vec![ExecutionDomain::Playback.thread_name().to_owned()],
+                    "Playback cleanup after engine control startup completed",
+                );
+                if let Ok(pool) = Arc::try_unwrap(worker_pool) {
+                    let pool_result = pool.shutdown();
+                    runtime.update_service(
+                        DesktopProcessServiceId::BackgroundWorkers,
+                        if pool_result.is_ok() {
+                            DesktopProcessServicePhase::Stopped
+                        } else {
+                            DesktopProcessServicePhase::Failed
+                        },
+                        0,
+                        0,
+                        false,
+                        worker_names,
+                        "Background worker cleanup after engine control startup completed",
+                    );
+                }
+                return Err(error);
+            }
+        };
+        runtime.update_service(
+            DesktopProcessServiceId::EngineControl,
+            DesktopProcessServicePhase::Running,
+            1,
+            1,
+            true,
+            vec![worker.thread_name().to_owned()],
+            "Engine control execution owner is running",
+        );
         Ok(Self {
             connection: EngineConnection { requests },
             worker,
             playback_worker,
             worker_pool,
+            runtime,
         })
     }
 
@@ -323,21 +540,135 @@ impl LinkedEngineProcess {
             worker,
             playback_worker,
             worker_pool,
+            runtime,
         } = self;
-        worker.join()?;
+        let engine_thread_name = worker.thread_name().to_owned();
+        let playback_thread_name = playback_worker.thread_name().to_owned();
+        let worker_count = worker_pool.snapshot().worker_count();
+        let worker_names = background_worker_names(worker_count);
+        runtime.update_service(
+            DesktopProcessServiceId::EngineControl,
+            DesktopProcessServicePhase::Stopping,
+            1,
+            1,
+            true,
+            vec![engine_thread_name.clone()],
+            "Joining the engine control execution owner",
+        );
+        runtime.update_service(
+            DesktopProcessServiceId::Playback,
+            DesktopProcessServicePhase::Stopping,
+            1,
+            1,
+            true,
+            vec![playback_thread_name.clone()],
+            "Joining the playback execution owner",
+        );
+        runtime.update_service(
+            DesktopProcessServiceId::BackgroundWorkers,
+            DesktopProcessServicePhase::Stopping,
+            worker_count,
+            worker_count,
+            true,
+            worker_names.clone(),
+            "Draining and joining bounded background workers",
+        );
+        let mut first_error = None;
+        match worker.join() {
+            Ok(()) => runtime.update_service(
+                DesktopProcessServiceId::EngineControl,
+                DesktopProcessServicePhase::Stopped,
+                0,
+                0,
+                false,
+                vec![engine_thread_name],
+                "Engine control execution owner joined",
+            ),
+            Err(error) => {
+                runtime.update_service(
+                    DesktopProcessServiceId::EngineControl,
+                    DesktopProcessServicePhase::Failed,
+                    0,
+                    0,
+                    false,
+                    vec![engine_thread_name],
+                    error.message(),
+                );
+                first_error = Some(error);
+            }
+        }
         drop(connection);
-        playback_worker.join()?;
-        let worker_pool = Arc::try_unwrap(worker_pool).map_err(|_| {
-            engine_error(
-                ErrorCategory::Internal,
-                Recoverability::Terminal,
-                "the playback worker pool retained an unexpected owner at shutdown",
-                "shutdown_playback_pool",
-            )
-        })?;
-        worker_pool.shutdown()?;
-        Ok(())
+        match playback_worker.join() {
+            Ok(()) => runtime.update_service(
+                DesktopProcessServiceId::Playback,
+                DesktopProcessServicePhase::Stopped,
+                0,
+                0,
+                false,
+                vec![playback_thread_name],
+                "Playback execution owner joined",
+            ),
+            Err(error) => {
+                runtime.update_service(
+                    DesktopProcessServiceId::Playback,
+                    DesktopProcessServicePhase::Failed,
+                    0,
+                    0,
+                    false,
+                    vec![playback_thread_name],
+                    error.message(),
+                );
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
+        }
+        let pool_result = Arc::try_unwrap(worker_pool)
+            .map_err(|_| {
+                engine_error(
+                    ErrorCategory::Internal,
+                    Recoverability::Terminal,
+                    "the playback worker pool retained an unexpected owner at shutdown",
+                    "shutdown_playback_pool",
+                )
+            })
+            .and_then(|worker_pool| worker_pool.shutdown().map(|_| ()));
+        match pool_result {
+            Ok(()) => runtime.update_service(
+                DesktopProcessServiceId::BackgroundWorkers,
+                DesktopProcessServicePhase::Stopped,
+                0,
+                0,
+                false,
+                worker_names,
+                "Bounded background workers joined",
+            ),
+            Err(error) => {
+                runtime.update_service(
+                    DesktopProcessServiceId::BackgroundWorkers,
+                    DesktopProcessServicePhase::Failed,
+                    0,
+                    0,
+                    false,
+                    worker_names,
+                    error.message(),
+                );
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
+        }
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
     }
+}
+
+fn background_worker_names(worker_count: usize) -> Vec<String> {
+    (0..worker_count)
+        .map(|index| format!("superi-background-job-{index}"))
+        .collect()
 }
 
 fn run_engine_control(

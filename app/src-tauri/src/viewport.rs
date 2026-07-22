@@ -28,6 +28,10 @@ use superi_image::metadata::{
 use tauri::window::{Monitor, WindowBuilder};
 use tauri::{App, Manager, PhysicalPosition, PhysicalSize, State, Window, Wry};
 
+use crate::process_runtime::{
+    DesktopProcessRuntime, DesktopProcessServiceId, DesktopProcessServicePhase,
+};
+
 const COMPONENT: &str = "superi-desktop.viewport";
 const SRGB_DISPLAY_TRANSFORM_ID: &str = "superi.viewport.acescg-to-srgb.v1";
 const DISPLAY_P3_TRANSFORM_ID: &str = "superi.viewport.acescg-to-display-p3.v1";
@@ -824,16 +828,26 @@ struct NativeControl {
 }
 
 /// Application-owned native viewport lifetime.
+#[derive(Clone)]
 pub struct DesktopViewportState {
-    control: Mutex<NativeControl>,
+    control: Arc<Mutex<NativeControl>>,
     snapshots: Arc<Mutex<Vec<DesktopViewportSnapshot>>>,
     profiles: Arc<Mutex<DisplayProfileCatalog>>,
+    runtime: DesktopProcessRuntime,
 }
 
 impl Default for DesktopViewportState {
     fn default() -> Self {
+        Self::with_runtime(DesktopProcessRuntime::new())
+    }
+}
+
+impl DesktopViewportState {
+    /// Creates native viewport state attached to the shared desktop process owner.
+    #[must_use]
+    pub fn with_runtime(runtime: DesktopProcessRuntime) -> Self {
         Self {
-            control: Mutex::new(NativeControl {
+            control: Arc::new(Mutex::new(NativeControl {
                 main: None,
                 children: Vec::new(),
                 external_children: Vec::new(),
@@ -849,7 +863,7 @@ impl Default for DesktopViewportState {
                     .copied()
                     .map(|role| (role, None))
                     .collect(),
-            }),
+            })),
             snapshots: Arc::new(Mutex::new(
                 DesktopViewerRole::ALL
                     .iter()
@@ -858,13 +872,21 @@ impl Default for DesktopViewportState {
                     .collect(),
             )),
             profiles: Arc::new(Mutex::new(DisplayProfileCatalog::new())),
+            runtime,
         }
     }
-}
 
-impl DesktopViewportState {
     /// Creates inline and external native surfaces and transfers them to the GPU domain.
     pub fn initialize(&self, app: &App<Wry>) -> Result<()> {
+        {
+            let control = self.lock_control("initialize_native_viewport")?;
+            if control.sender.is_some() || control.worker.is_some() {
+                return Err(conflict(
+                    "initialize_native_viewport",
+                    "the native viewport is already initialized",
+                ));
+            }
+        }
         let main = app
             .get_webview_window("main")
             .map(|window| window.as_ref().window())
@@ -935,23 +957,93 @@ impl DesktopViewportState {
         let snapshots = Arc::clone(&self.snapshots);
         let profiles = Arc::clone(&self.profiles);
         let (sender, receiver) = mpsc::channel();
-        let worker = ExecutionDomain::GpuSubmission.spawn(move |_| {
-            let result = gpu_loop(instance, surfaces, receiver, &snapshots, &profiles);
-            if let Err(error) = &result {
-                for role in DesktopViewerRole::ALL {
-                    update_snapshot(&snapshots, *role, |state| {
-                        state.phase = "failed".to_owned();
-                        state.summary = Some(error.message().to_owned());
-                        state.external_output.phase = "failed".to_owned();
-                        state.external_output.summary = Some(error.message().to_owned());
-                    });
+        self.runtime.update_service(
+            DesktopProcessServiceId::GpuSubmission,
+            DesktopProcessServicePhase::Starting,
+            1,
+            1,
+            true,
+            vec![ExecutionDomain::GpuSubmission.thread_name().to_owned()],
+            "Starting the GPU submission owner",
+        );
+        let worker_runtime = self.runtime.clone();
+        let worker = ExecutionDomain::GpuSubmission
+            .spawn(move |_| {
+                let result = gpu_loop(instance, surfaces, receiver, &snapshots, &profiles);
+                if let Err(error) = &result {
+                    for role in DesktopViewerRole::ALL {
+                        update_snapshot(&snapshots, *role, |state| {
+                            state.phase = "failed".to_owned();
+                            state.summary = Some(error.message().to_owned());
+                            state.external_output.phase = "failed".to_owned();
+                            state.external_output.summary = Some(error.message().to_owned());
+                        });
+                    }
                 }
-            }
-            result
-        })?;
+                let (phase, summary) = match &result {
+                    Ok(()) => (
+                        DesktopProcessServicePhase::Stopped,
+                        "GPU submission owner finished and awaits join".to_owned(),
+                    ),
+                    Err(error) => (
+                        DesktopProcessServicePhase::Failed,
+                        error.message().to_owned(),
+                    ),
+                };
+                worker_runtime.update_service(
+                    DesktopProcessServiceId::GpuSubmission,
+                    phase,
+                    1,
+                    0,
+                    true,
+                    vec![ExecutionDomain::GpuSubmission.thread_name().to_owned()],
+                    summary,
+                );
+                result
+            })
+            .map_err(|error| {
+                self.runtime.update_service(
+                    DesktopProcessServiceId::GpuSubmission,
+                    DesktopProcessServicePhase::Failed,
+                    0,
+                    0,
+                    false,
+                    vec![ExecutionDomain::GpuSubmission.thread_name().to_owned()],
+                    error.message(),
+                );
+                error
+            })?;
 
-        let mut control = self.lock_control("initialize_native_viewport")?;
+        let mut control = match self.lock_control("initialize_native_viewport") {
+            Ok(control) => control,
+            Err(error) => {
+                let _ = sender.send(GpuCommand::Shutdown);
+                let _ = worker.join();
+                self.runtime.update_service(
+                    DesktopProcessServiceId::GpuSubmission,
+                    DesktopProcessServicePhase::Failed,
+                    0,
+                    0,
+                    false,
+                    vec![ExecutionDomain::GpuSubmission.thread_name().to_owned()],
+                    error.message(),
+                );
+                return Err(error);
+            }
+        };
         if control.sender.is_some() {
+            drop(control);
+            let _ = sender.send(GpuCommand::Shutdown);
+            let _ = worker.join();
+            self.runtime.update_service(
+                DesktopProcessServiceId::GpuSubmission,
+                DesktopProcessServicePhase::Running,
+                1,
+                1,
+                true,
+                vec![ExecutionDomain::GpuSubmission.thread_name().to_owned()],
+                "The existing GPU submission owner remains running",
+            );
             return Err(conflict(
                 "initialize_native_viewport",
                 "the native viewport is already initialized",
@@ -964,6 +1056,15 @@ impl DesktopViewportState {
         control.worker = Some(worker);
         control.colors = colors;
         drop(control);
+        self.runtime.update_service(
+            DesktopProcessServiceId::GpuSubmission,
+            DesktopProcessServicePhase::Running,
+            1,
+            1,
+            true,
+            vec![ExecutionDomain::GpuSubmission.thread_name().to_owned()],
+            "GPU submission owner is running",
+        );
         for role in DesktopViewerRole::ALL {
             update_snapshot(&self.snapshots, *role, |state| {
                 state.phase = "initializing".to_owned();
@@ -1434,28 +1535,91 @@ impl DesktopViewportState {
             .with_context(ErrorContext::new(COMPONENT, operation))
         })
     }
+
+    /// Stops the GPU domain, joins its retained handle, and releases native child windows.
+    pub fn shutdown_and_join(&self) -> Result<()> {
+        let (sender, worker, children, external_children) = {
+            let mut control = self.lock_control("shutdown_and_join")?;
+            (
+                control.sender.take(),
+                control.worker.take(),
+                std::mem::take(&mut control.children),
+                std::mem::take(&mut control.external_children),
+            )
+        };
+        if sender.is_none() && worker.is_none() {
+            drop(children);
+            drop(external_children);
+            self.runtime.update_service(
+                DesktopProcessServiceId::GpuSubmission,
+                DesktopProcessServicePhase::Stopped,
+                0,
+                0,
+                false,
+                vec![ExecutionDomain::GpuSubmission.thread_name().to_owned()],
+                "GPU submission owner is not running",
+            );
+            return Ok(());
+        }
+        self.runtime.update_service(
+            DesktopProcessServiceId::GpuSubmission,
+            DesktopProcessServicePhase::Stopping,
+            usize::from(worker.is_some()),
+            usize::from(worker.is_some()),
+            worker.is_some(),
+            vec![ExecutionDomain::GpuSubmission.thread_name().to_owned()],
+            "Stopping and joining the GPU submission owner",
+        );
+        let mut first_error = None;
+        if sender.is_some_and(|sender| sender.send(GpuCommand::Shutdown).is_err()) {
+            first_error = Some(unavailable(
+                "shutdown_and_join",
+                "the GPU submission shutdown signal could not be delivered",
+            ));
+        }
+        if let Some(worker) = worker {
+            if let Err(error) = worker.join() {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
+        }
+        drop(children);
+        drop(external_children);
+        match first_error {
+            Some(error) => {
+                self.runtime.update_service(
+                    DesktopProcessServiceId::GpuSubmission,
+                    DesktopProcessServicePhase::Failed,
+                    0,
+                    0,
+                    false,
+                    vec![ExecutionDomain::GpuSubmission.thread_name().to_owned()],
+                    error.message(),
+                );
+                Err(error)
+            }
+            None => {
+                self.runtime.update_service(
+                    DesktopProcessServiceId::GpuSubmission,
+                    DesktopProcessServicePhase::Stopped,
+                    0,
+                    0,
+                    false,
+                    vec![ExecutionDomain::GpuSubmission.thread_name().to_owned()],
+                    "GPU submission owner joined",
+                );
+                Ok(())
+            }
+        }
+    }
 }
 
 impl Drop for DesktopViewportState {
     fn drop(&mut self) {
-        let (worker, children, external_children) = match self.control.get_mut() {
-            Ok(control) => {
-                if let Some(sender) = control.sender.take() {
-                    let _ = sender.send(GpuCommand::Shutdown);
-                }
-                (
-                    control.worker.take(),
-                    std::mem::take(&mut control.children),
-                    std::mem::take(&mut control.external_children),
-                )
-            }
-            Err(_) => (None, Vec::new(), Vec::new()),
-        };
-        if let Some(worker) = worker {
-            let _ = worker.join();
+        if Arc::strong_count(&self.control) == 1 {
+            let _ = self.shutdown_and_join();
         }
-        drop(children);
-        drop(external_children);
     }
 }
 

@@ -500,7 +500,8 @@ fn project_snapshot(
         can_retry,
         can_restart: snapshot.phase() != LifecyclePhase::Stopping,
         can_shutdown: snapshot.phase() != LifecyclePhase::Stopped
-            && owner.intent != LifecycleIntent::Shutdown,
+            && (owner.intent != LifecycleIntent::Shutdown
+                || snapshot.phase() == LifecyclePhase::Failed),
     }
 }
 

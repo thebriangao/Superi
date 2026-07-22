@@ -153,6 +153,30 @@ fn terminal_failure_disables_retry_but_preserves_restart_and_shutdown() {
 }
 
 #[test]
+fn failed_shutdown_remains_explicitly_retryable() {
+    let lifecycle = ApplicationLifecycle::new().unwrap();
+    let engine = lifecycle.headless_engine_participant().unwrap();
+    engine.acknowledge(engine.signal().load()).unwrap();
+    lifecycle.request_shutdown().unwrap();
+
+    let failed = engine
+        .fail(HeadlessEngineFailure::new(
+            ErrorCategory::Unavailable,
+            Recoverability::Retryable,
+            "The engine cleanup could not complete.",
+        ))
+        .unwrap();
+
+    assert_eq!(failed.intent(), LifecycleIntent::Shutdown);
+    assert_eq!(
+        failed.application_phase(),
+        ApplicationLifecyclePhase::Failed
+    );
+    assert!(failed.can_shutdown());
+    assert!(lifecycle.request_shutdown().is_ok());
+}
+
+#[test]
 fn wait_for_change_is_blocking_safe_and_returns_new_state_only() {
     let lifecycle = ApplicationLifecycle::new().unwrap();
     let revision = lifecycle.snapshot().revision();

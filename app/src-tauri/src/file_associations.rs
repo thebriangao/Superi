@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, Runtime, Url};
 
+use crate::process_runtime::DesktopProcessRuntime;
 use crate::project_lifecycle::{
     DesktopProjectCommand, DesktopProjectFailure, DesktopProjectFailureClass,
     DesktopProjectSnapshot, DesktopProjectState,
@@ -82,16 +83,25 @@ pub fn open_project_file(
 }
 
 /// Routes startup association paths after all managed desktop state is initialized.
-pub fn route_startup_project_files<R: Runtime>(app: &AppHandle<R>, paths: Vec<PathBuf>) {
-    route_project_files(app, paths, ProjectFileOpenSource::StartupArgument);
+pub fn route_startup_project_files<R: Runtime>(
+    app: &AppHandle<R>,
+    paths: Vec<PathBuf>,
+    runtime: &DesktopProcessRuntime,
+) {
+    route_project_files(app, paths, ProjectFileOpenSource::StartupArgument, runtime);
 }
 
 /// Routes macOS resource-open events through the same project lifecycle owner.
-pub fn route_opened_project_urls<R: Runtime>(app: &AppHandle<R>, urls: Vec<Url>) {
+pub fn route_opened_project_urls<R: Runtime>(
+    app: &AppHandle<R>,
+    urls: Vec<Url>,
+    runtime: &DesktopProcessRuntime,
+) {
     route_project_files(
         app,
         project_paths_from_urls(urls),
         ProjectFileOpenSource::OperatingSystem,
+        runtime,
     );
 }
 
@@ -123,12 +133,15 @@ fn route_project_files<R: Runtime>(
     app: &AppHandle<R>,
     paths: Vec<PathBuf>,
     source: ProjectFileOpenSource,
+    runtime: &DesktopProcessRuntime,
 ) {
     if paths.is_empty() {
         return;
     }
     let app = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let rejection_app = app.clone();
+    let rejection_paths = paths.clone();
+    if let Err(error) = runtime.spawn_background_task(move || {
         for path in paths {
             let state = app.state::<DesktopProjectState>();
             let (snapshot, failure) = match open_project_file(&state, &path) {
@@ -146,7 +159,31 @@ fn route_project_files<R: Runtime>(
             }
         }
         focus_main_window(&app);
-    });
+    }) {
+        eprintln!("could not retain associated project task: {error}");
+        let state = rejection_app.state::<DesktopProjectState>();
+        let snapshot = state.snapshot().ok();
+        for path in rejection_paths {
+            let event = DesktopProjectOpenedEvent {
+                source,
+                path: path.to_string_lossy().into_owned(),
+                snapshot: snapshot.clone(),
+                failure: Some(
+                    DesktopProjectFailure::new(
+                        DesktopProjectFailureClass::Retryable,
+                        "project_open_task_unavailable",
+                        "Project open is temporarily unavailable",
+                        "Wait for current desktop work to finish and try again.",
+                    )
+                    .with_context("operation", "route_associated_project"),
+                ),
+            };
+            if let Err(emit_error) = rejection_app.emit(PROJECT_OPENED_EVENT, event) {
+                eprintln!("could not emit associated project admission failure: {emit_error}");
+            }
+        }
+        focus_main_window(&rejection_app);
+    }
 }
 
 fn focus_main_window<R: Runtime>(app: &AppHandle<R>) {

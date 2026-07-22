@@ -219,7 +219,8 @@ test("development shell owns exact Superi project file association ingress", () 
   assert.match(host, /file_associations::route_startup_project_files/);
   assert.match(host, /RunEvent::Opened \{ urls \}/);
   assert.match(host, /file_associations::route_opened_project_urls/);
-  assert.match(associations, /tauri::async_runtime::spawn_blocking/);
+  assert.match(associations, /runtime\.spawn_background_task/);
+  assert.doesNotMatch(associations, /tauri::async_runtime::spawn_blocking/);
   assert.match(associations, /DesktopProjectCommand::Open/);
   assert.match(associations, /superi:\/\/project-opened/);
   assert.match(projectAdapter, /listenForDesktopProjectOpen/);
@@ -228,6 +229,42 @@ test("development shell owns exact Superi project file association ingress", () 
   assert.match(app, /snapshot\.revision <= latestProjectRevision\.current/);
   assert.match(app, /acceptProjectSnapshot\(event\.snapshot\)/);
   assert.match(app, /void refreshEditorProject\(\)/);
+});
+
+test("desktop process retains every long-lived shell owner and exposes cleanup state", () => {
+  const bridge = read(resolve(appRoot, "src/lifecycle.ts"));
+  const app = read(resolve(appRoot, "src/App.tsx"));
+  const host = read(resolve(tauriRoot, "src/lib.rs"));
+  const runtime = read(resolve(tauriRoot, "src/process_runtime.rs"));
+  const engine = read(resolve(tauriRoot, "src/engine.rs"));
+  const viewport = read(resolve(tauriRoot, "src/viewport.rs"));
+  const windows = read(resolve(tauriRoot, "src/window_session.rs"));
+
+  assert.match(runtime, /DesktopProcessServiceId::ALL/);
+  assert.match(runtime, /exit_monitor: Option<JoinHandle/);
+  assert.match(runtime, /background_tasks: Vec<ShellTaskHandle>/);
+  assert.match(runtime, /join_application_exit/);
+  assert.match(runtime, /join_background_tasks/);
+  assert.match(runtime, /accepting_background_tasks = false/);
+  assert.match(engine, /launch_with_runtime/);
+  assert.match(engine, /match worker\.join\(\)/);
+  assert.match(engine, /match playback_worker\.join\(\)/);
+  assert.match(engine, /worker_pool\.shutdown/);
+  assert.match(viewport, /pub fn shutdown_and_join\(&self\) -> Result<\(\)>/);
+  assert.match(windows, /pub fn shutdown_and_join\(&self\) -> Result<\(\)>/);
+  assert.match(host, /desktop_process_snapshot/);
+  assert.match(host, /join_process_owners/);
+  assert.match(host, /runtime\.join_application_exit\(\)/);
+  assert.match(host, /runtime\.join_background_tasks\(\)/);
+  assert.match(host, /viewport\.shutdown_and_join\(\)/);
+  assert.match(bridge, /desktop_process_snapshot/);
+  assert.match(bridge, /DesktopProcessServiceSnapshot/);
+  assert.match(app, /Process ownership/);
+  assert.match(app, /service\.join_pending/);
+  assert.doesNotMatch(
+    host + runtime + engine + viewport + windows,
+    /std::process::Command|use std::process/,
+  );
 });
 
 test("native desktop commands compose with persistent multi-window ownership", () => {
