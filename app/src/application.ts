@@ -83,6 +83,7 @@ export interface ApplicationRoutePanelLayoutPresentation {
 
 export interface ApplicationState {
   readonly revision: number;
+  readonly commandPaletteOpen: boolean;
   readonly activeRouteId: string;
   readonly hiddenPanelIds: readonly string[];
   readonly visiblePanelIds: readonly string[];
@@ -106,6 +107,8 @@ export interface ApplicationWorkspaceLayoutStatus {
 }
 
 export type ApplicationAction =
+  | { readonly type: "open_command_palette" }
+  | { readonly type: "close_command_palette" }
   | { readonly type: "navigate"; readonly routeId: string }
   | {
       readonly type: "restore_workspace";
@@ -148,6 +151,7 @@ export type ApplicationAction =
   | { readonly type: "clear_selection" };
 
 export interface ApplicationCommandContext {
+  readonly registry: ApplicationRegistry;
   readonly state: ApplicationState;
   readonly api: SuperiApiBindings | null;
   readonly dispatch: (action: ApplicationAction) => void;
@@ -156,8 +160,12 @@ export interface ApplicationCommandContext {
 export interface ApplicationCommandDefinition {
   readonly id: string;
   readonly title: string;
+  readonly category: string;
+  readonly keywords: readonly string[];
   readonly shortcut?: string;
+  readonly allowInEditableContext?: boolean;
   readonly isEnabled?: (context: ApplicationCommandContext) => boolean;
+  readonly disabledReason?: string;
   readonly execute: (
     context: ApplicationCommandContext,
   ) => void | Promise<unknown>;
@@ -270,7 +278,21 @@ export class ApplicationRegistry<Renderer = unknown> {
           ...command,
           id,
           title: requireLabel(command.title, `command ${id}`),
+          category: requireLabel(command.category, `command ${id} category`),
+          keywords: Object.freeze(
+            command.keywords.map((keyword) =>
+              requireLabel(keyword, `command ${id} keyword`),
+            ),
+          ),
           shortcut,
+          allowInEditableContext: command.allowInEditableContext ?? false,
+          disabledReason:
+            command.disabledReason === undefined
+              ? undefined
+              : requireLabel(
+                  command.disabledReason,
+                  `command ${id} disabled reason`,
+                ),
         });
         this.commandsById.set(id, definition);
         if (shortcut !== undefined) {
@@ -319,6 +341,7 @@ export function createApplicationState<Renderer>(
   const route = registry.route(registry.defaultRouteId);
   return freezeState({
     revision: 0,
+    commandPaletteOpen: false,
     activeRouteId: route.id,
     hiddenPanelIds: [],
     visiblePanelIds: route.panelIds,
@@ -335,6 +358,14 @@ export function reduceApplicationState<Renderer>(
   action: ApplicationAction,
 ): ApplicationState {
   switch (action.type) {
+    case "open_command_palette":
+      return state.commandPaletteOpen
+        ? state
+        : nextState(state, { commandPaletteOpen: true });
+    case "close_command_palette":
+      return state.commandPaletteOpen
+        ? nextState(state, { commandPaletteOpen: false })
+        : state;
     case "restore_workspace":
       return restoreApplicationWorkspace(registry, state, action.workspace);
     case "restore_workspace_presentation":
@@ -684,15 +715,52 @@ export async function executeApplicationCommand<Renderer>(options: {
 }): Promise<{ readonly status: "completed" | "disabled" }> {
   const command = options.registry.command(options.commandId);
   const context: ApplicationCommandContext = {
+    registry: options.registry,
     state: options.state(),
     api: options.api,
     dispatch: options.dispatch,
   };
-  if (command.isEnabled?.(context) === false) {
+  if (!commandAvailability(command, context).enabled) {
     return { status: "disabled" };
   }
   await command.execute(context);
   return { status: "completed" };
+}
+
+export interface ApplicationCommandAvailability {
+  readonly enabled: boolean;
+  readonly reason: string | null;
+}
+
+export function applicationCommandAvailability<Renderer>(options: {
+  readonly registry: ApplicationRegistry<Renderer>;
+  readonly state: () => ApplicationState;
+  readonly api: SuperiApiBindings | null;
+  readonly dispatch: (action: ApplicationAction) => void;
+  readonly commandId: string;
+}): ApplicationCommandAvailability {
+  const command = options.registry.command(options.commandId);
+  return commandAvailability(command, {
+    registry: options.registry,
+    state: options.state(),
+    api: options.api,
+    dispatch: options.dispatch,
+  });
+}
+
+function commandAvailability(
+  command: ApplicationCommandDefinition,
+  context: ApplicationCommandContext,
+): ApplicationCommandAvailability {
+  if (command.isEnabled?.(context) !== false) {
+    return Object.freeze({ enabled: true, reason: null });
+  }
+  return Object.freeze({
+    enabled: false,
+    reason:
+      command.disabledReason ??
+      `${command.title} is unavailable in the current application state.`,
+  });
 }
 
 export function normalizeShortcut(shortcut: string): string {

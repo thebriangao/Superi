@@ -94,6 +94,15 @@ import {
   type DesktopShellIntent,
 } from "./desktop-shell.ts";
 import {
+  CommandPaletteCatalog,
+  applicationCommandPaletteActions,
+  desktopShellCommandPaletteActions,
+  executeCommandPaletteAction,
+  type CommandPaletteAction,
+  type CommandPaletteExecutionResult,
+} from "./command-palette.ts";
+import { CommandPalette } from "./command-palette.tsx";
+import {
   capabilityFailureText,
   discoverDesktopCapabilities,
   type DesktopCapabilitySnapshot,
@@ -281,8 +290,19 @@ const APPLICATION_REGISTRY = new ApplicationRegistry<ComponentType>({
   ],
   commands: [
     {
+      id: "application.command_palette.open",
+      title: "Find Command",
+      category: "Application",
+      keywords: ["command palette", "menu search", "actions", "discover"],
+      shortcut: "Mod+Shift+P",
+      allowInEditableContext: true,
+      execute: ({ dispatch }) => dispatch({ type: "open_command_palette" }),
+    },
+    {
       id: "application.route.editing",
       title: "Open editing workspace",
+      category: "Workspace",
+      keywords: ["route", "timeline", "edit"],
       shortcut: "Mod+1",
       execute: ({ dispatch }) =>
         dispatch({ type: "navigate", routeId: "editing" }),
@@ -290,6 +310,8 @@ const APPLICATION_REGISTRY = new ApplicationRegistry<ComponentType>({
     {
       id: "application.route.compositing",
       title: "Open compositing workspace",
+      category: "Workspace",
+      keywords: ["route", "node graph", "effects"],
       shortcut: "Mod+2",
       execute: ({ dispatch }) =>
         dispatch({ type: "navigate", routeId: "compositing" }),
@@ -297,6 +319,8 @@ const APPLICATION_REGISTRY = new ApplicationRegistry<ComponentType>({
     {
       id: "application.route.color",
       title: "Open color workspace",
+      category: "Workspace",
+      keywords: ["route", "grade", "scopes"],
       shortcut: "Mod+3",
       execute: ({ dispatch }) =>
         dispatch({ type: "navigate", routeId: "color" }),
@@ -304,6 +328,8 @@ const APPLICATION_REGISTRY = new ApplicationRegistry<ComponentType>({
     {
       id: "application.route.audio",
       title: "Open audio workspace",
+      category: "Workspace",
+      keywords: ["route", "sound", "mix"],
       shortcut: "Mod+4",
       execute: ({ dispatch }) =>
         dispatch({ type: "navigate", routeId: "audio" }),
@@ -311,6 +337,8 @@ const APPLICATION_REGISTRY = new ApplicationRegistry<ComponentType>({
     {
       id: "application.route.delivery",
       title: "Open delivery workspace",
+      category: "Workspace",
+      keywords: ["route", "export", "render"],
       shortcut: "Mod+5",
       execute: ({ dispatch }) =>
         dispatch({ type: "navigate", routeId: "delivery" }),
@@ -318,15 +346,110 @@ const APPLICATION_REGISTRY = new ApplicationRegistry<ComponentType>({
     {
       id: "application.route.system",
       title: "Open system",
+      category: "Workspace",
+      keywords: ["route", "engine", "diagnostics"],
       shortcut: "Mod+0",
       execute: ({ dispatch }) =>
         dispatch({ type: "navigate", routeId: "system" }),
     },
     {
+      id: "application.workspace_layout.reset_all",
+      title: "Reset all workspace layouts",
+      category: "Workspace",
+      keywords: ["default", "panels", "docks", "restore"],
+      isEnabled: ({ registry, state }) =>
+        applicationWorkspaceLayoutStatus(registry, state).canReset,
+      disabledReason: "Every workspace already uses its default layout.",
+      execute: ({ dispatch }) => dispatch({ type: "reset_workspace_layouts" }),
+    },
+    {
+      id: "application.workspace_layout.undo_reset",
+      title: "Undo workspace layout reset",
+      category: "Workspace",
+      keywords: ["custom", "panels", "docks", "restore"],
+      isEnabled: ({ state }) => state.workspaceLayoutResetUndo !== null,
+      disabledReason: "There is no workspace layout reset to undo.",
+      execute: ({ dispatch }) =>
+        dispatch({ type: "undo_workspace_layout_reset" }),
+    },
+    {
+      id: "application.panel.workspace.editing.toggle",
+      title: "Toggle editing workspace panel",
+      category: "Panels",
+      keywords: ["show", "hide", "timeline", "panel"],
+      isEnabled: ({ state }) => state.activeRouteId === "editing",
+      disabledReason: "Open the editing workspace first.",
+      execute: ({ dispatch }) =>
+        dispatch({ type: "toggle_panel", panelId: "workspace.editing" }),
+    },
+    {
+      id: "application.panel.workspace.compositing.toggle",
+      title: "Toggle compositing workspace panel",
+      category: "Panels",
+      keywords: ["show", "hide", "nodes", "panel"],
+      isEnabled: ({ state }) => state.activeRouteId === "compositing",
+      disabledReason: "Open the compositing workspace first.",
+      execute: ({ dispatch }) =>
+        dispatch({ type: "toggle_panel", panelId: "workspace.compositing" }),
+    },
+    {
+      id: "application.panel.workspace.color.toggle",
+      title: "Toggle color workspace panel",
+      category: "Panels",
+      keywords: ["show", "hide", "grade", "panel"],
+      isEnabled: ({ state }) => state.activeRouteId === "color",
+      disabledReason: "Open the color workspace first.",
+      execute: ({ dispatch }) =>
+        dispatch({ type: "toggle_panel", panelId: "workspace.color" }),
+    },
+    {
+      id: "application.panel.workspace.audio.toggle",
+      title: "Toggle audio workspace panel",
+      category: "Panels",
+      keywords: ["show", "hide", "sound", "panel"],
+      isEnabled: ({ state }) => state.activeRouteId === "audio",
+      disabledReason: "Open the audio workspace first.",
+      execute: ({ dispatch }) =>
+        dispatch({ type: "toggle_panel", panelId: "workspace.audio" }),
+    },
+    {
+      id: "application.panel.workspace.delivery.toggle",
+      title: "Toggle delivery workspace panel",
+      category: "Panels",
+      keywords: ["show", "hide", "export", "panel"],
+      isEnabled: ({ state }) => state.activeRouteId === "delivery",
+      disabledReason: "Open the delivery workspace first.",
+      execute: ({ dispatch }) =>
+        dispatch({ type: "toggle_panel", panelId: "workspace.delivery" }),
+    },
+    {
+      id: "application.panel.application.selection.toggle",
+      title: "Toggle shared selection panel",
+      category: "Panels",
+      keywords: ["show", "hide", "selected items", "panel"],
+      isEnabled: ({ state }) => state.activeRouteId !== "system",
+      disabledReason: "The shared selection panel is not part of the system workspace.",
+      execute: ({ dispatch }) =>
+        dispatch({ type: "toggle_panel", panelId: "application.selection" }),
+    },
+    {
+      id: "application.panel.application.system.toggle",
+      title: "Toggle system and engine panel",
+      category: "Panels",
+      keywords: ["show", "hide", "diagnostics", "panel"],
+      isEnabled: ({ state }) => state.activeRouteId === "system",
+      disabledReason: "Open the system workspace first.",
+      execute: ({ dispatch }) =>
+        dispatch({ type: "toggle_panel", panelId: "application.system" }),
+    },
+    {
       id: "application.selection.clear",
       title: "Clear shared selection",
+      category: "Selection",
+      keywords: ["deselect", "remove", "items"],
       shortcut: "Mod+Shift+A",
       isEnabled: ({ state }) => state.selection.items.length > 0,
+      disabledReason: "There is no shared selection to clear.",
       execute: ({ dispatch }) => dispatch({ type: "clear_selection" }),
     },
   ],
@@ -346,6 +469,7 @@ function ApplicationShell() {
     state,
     dispatch,
     executeCommand,
+    commandAvailability,
     commandFailure,
     editorProject,
     refreshEditorProject,
@@ -837,6 +961,9 @@ function ApplicationShell() {
   const handleIntent = useCallback(
     async (intent: DesktopShellIntent) => {
       switch (intent.kind) {
+        case "open_command_palette":
+          await executeCommand("application.command_palette.open");
+          return;
         case "new_project": {
           const path = await save({
             title: "Create Superi Project",
@@ -917,8 +1044,12 @@ function ApplicationShell() {
           await executeHistory(intent.kind);
           return;
         case "open_workspace":
-          if (registry.routeDefinitions.some((candidate) => candidate.id === intent.route_id)) {
-            dispatch({ type: "navigate", routeId: intent.route_id });
+          if (
+            registry.routeDefinitions.some(
+              (candidate) => candidate.id === intent.route_id,
+            )
+          ) {
+            await executeCommand(`application.route.${intent.route_id}`);
           }
           return;
         case "request_close":
@@ -928,7 +1059,7 @@ function ApplicationShell() {
     [
       closeApplication,
       closeProject,
-      dispatch,
+      executeCommand,
       executeHistory,
       executeShellProject,
       importMediaPaths,
@@ -936,6 +1067,59 @@ function ApplicationShell() {
       preserveActiveProject,
       registry.routeDefinitions,
     ],
+  );
+
+  const commandPaletteCatalog = useMemo(
+    () =>
+      new CommandPaletteCatalog([
+        ...applicationCommandPaletteActions(
+          registry.commandDefinitions,
+          commandAvailability,
+        ),
+        ...desktopShellCommandPaletteActions({
+          active: activeProject !== null,
+          busy,
+          undoDepth,
+          redoDepth,
+          recentPaths:
+            projectSnapshot?.recent.map((recent) => recent.path) ?? [],
+        }),
+      ]),
+    [
+      activeProject,
+      busy,
+      commandAvailability,
+      projectSnapshot?.recent,
+      redoDepth,
+      registry.commandDefinitions,
+      state.revision,
+      undoDepth,
+    ],
+  );
+
+  const executeDesktopPaletteIntent = useCallback(
+    async (intent: DesktopShellIntent): Promise<void> => {
+      if (intent.kind === "request_close" && intent.reason === "quit") {
+        await requestDesktopClose();
+        return;
+      }
+      await handleIntent(intent);
+    },
+    [handleIntent],
+  );
+
+  const executePaletteAction = useCallback(
+    async (
+      action: CommandPaletteAction,
+    ): Promise<CommandPaletteExecutionResult> => {
+      const result = await executeCommandPaletteAction(action, {
+        executeApplicationCommand: executeCommand,
+        executeDesktopShellIntent: executeDesktopPaletteIntent,
+      });
+      if (result.status === "failed") setShellFailure(result.message);
+      return result;
+    },
+    [executeCommand, executeDesktopPaletteIntent],
   );
 
   useEffect(() => {
@@ -1082,7 +1266,9 @@ function ApplicationShell() {
               <button
                 type="button"
                 disabled={!workspaceLayoutStatus.canReset}
-                onClick={() => dispatch({ type: "reset_workspace_layouts" })}
+                onClick={() =>
+                  void executeCommand("application.workspace_layout.reset_all")
+                }
               >
                 Reset all layouts
               </button>
@@ -1090,7 +1276,7 @@ function ApplicationShell() {
                 type="button"
                 disabled={!workspaceLayoutStatus.canUndoReset}
                 onClick={() =>
-                  dispatch({ type: "undo_workspace_layout_reset" })
+                  void executeCommand("application.workspace_layout.undo_reset")
                 }
               >
                 Undo reset
@@ -1107,7 +1293,9 @@ function ApplicationShell() {
                     key={panelId}
                     aria-pressed={visible}
                     onClick={() =>
-                      dispatch({ type: "toggle_panel", panelId })
+                      void executeCommand(
+                        `application.panel.${panelId}.toggle`,
+                      )
                     }
                   >
                     {panel.title}
@@ -1138,6 +1326,13 @@ function ApplicationShell() {
 
         <PanelWorkspace />
       </section>
+      {state.commandPaletteOpen ? (
+        <CommandPalette
+          catalog={commandPaletteCatalog}
+          onDismiss={() => dispatch({ type: "close_command_palette" })}
+          onExecute={executePaletteAction}
+        />
+      ) : null}
     </main>
   );
 }

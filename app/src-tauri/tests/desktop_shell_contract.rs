@@ -114,6 +114,10 @@ fn native_shell_sync_preserves_document_history_workspace_and_recent_intents() {
             route_id: "color".to_owned(),
         })
     );
+    assert_eq!(
+        model.intent_for_menu_id("superi.edit.command_palette"),
+        Some(DesktopShellIntent::OpenCommandPalette)
+    );
 
     let mut long_path = sync(8);
     let path = format!("/projects/{}/alpha.superi", "nested/".repeat(90));

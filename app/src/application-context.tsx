@@ -12,12 +12,14 @@ import {
 
 import {
   ApplicationRegistry,
+  applicationCommandAvailability,
   createApplicationState,
   executeApplicationCommand,
   isEditableCommandTarget,
   normalizeShortcut,
   reduceApplicationState,
   type ApplicationAction,
+  type ApplicationCommandAvailability,
   type ApplicationState,
 } from "./application.ts";
 import { useSuperiApi } from "./api-context";
@@ -55,6 +57,9 @@ export interface ApplicationContextValue {
   readonly executeCommand: (
     commandId: string,
   ) => Promise<ApplicationCommandResult>;
+  readonly commandAvailability: (
+    commandId: string,
+  ) => ApplicationCommandAvailability;
   readonly commandFailure: string | null;
   readonly editorProject: EditorProjectPresentation;
   readonly refreshEditorProject: () => Promise<void>;
@@ -211,6 +216,18 @@ export function ApplicationProvider({
     [api, registry],
   );
 
+  const commandAvailability = useCallback(
+    (commandId: string): ApplicationCommandAvailability =>
+      applicationCommandAvailability({
+        registry,
+        state: () => stateRef.current,
+        api,
+        dispatch,
+        commandId,
+      }),
+    [api, registry],
+  );
+
   const executeProjectCommand = useCallback(
     async (
       request: ExecuteProjectCommand,
@@ -340,7 +357,7 @@ export function ApplicationProvider({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || isEditableCommandTarget(event.target)) {
+      if (event.defaultPrevented) {
         return;
       }
       const shortcut = shortcutFromKeyboardEvent(event);
@@ -349,6 +366,12 @@ export function ApplicationProvider({
       }
       const command = registry.commandForShortcut(shortcut);
       if (command === null) {
+        return;
+      }
+      if (
+        isEditableCommandTarget(event.target) &&
+        !command.allowInEditableContext
+      ) {
         return;
       }
       event.preventDefault();
@@ -384,6 +407,7 @@ export function ApplicationProvider({
         state,
         dispatch,
         executeCommand,
+        commandAvailability,
         executeProjectActions,
         commandFailure,
         editorProject,

@@ -44,6 +44,7 @@ pub enum DesktopShellIntent {
     ScanFolder,
     Undo,
     Redo,
+    OpenCommandPalette,
     OpenWorkspace { route_id: String },
     RequestClose { reason: DesktopCloseReason },
 }
@@ -286,6 +287,7 @@ impl DesktopShellModel {
             "superi.file.scan_folder" => Some(DesktopShellIntent::ScanFolder),
             "superi.edit.undo" => Some(DesktopShellIntent::Undo),
             "superi.edit.redo" => Some(DesktopShellIntent::Redo),
+            "superi.edit.command_palette" => Some(DesktopShellIntent::OpenCommandPalette),
             id if id.starts_with("superi.file.recent.") => id
                 .strip_prefix("superi.file.recent.")?
                 .parse::<usize>()
@@ -632,9 +634,18 @@ pub fn build_menu<R: Runtime>(
         snapshot.redo_depth > 0 && !snapshot.busy,
         Some("CmdOrCtrl+Shift+Z"),
     )?;
+    let command_palette = MenuItem::with_id(
+        app,
+        "superi.edit.command_palette",
+        "Find Command...",
+        true,
+        Some("CmdOrCtrl+Shift+P"),
+    )?;
     let edit = SubmenuBuilder::new(app, "Edit")
         .item(&undo)
         .item(&redo)
+        .separator()
+        .item(&command_palette)
         .separator()
         .cut()
         .copy()

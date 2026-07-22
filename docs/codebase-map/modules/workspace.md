@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: 17c240d68a566bc9cb710a60c76fb4bf0aef5954bf0be11e6a7ca3d846e20566
-source_files: 324
+source_hash: ccf382d62c083288ccf007c04b322401d53c14f63427f9d7dbb6225cda9bd2c5
+source_files: 329
 mapped_at_commit: working-tree
 ---
 
@@ -14,7 +14,7 @@ license and codec policy, build sequencing, operating-system test policy, unsafe
 the production React and Tauri desktop shell including persistent multi-window session ownership,
 customizable registry-backed layout reset and recovery, always-visible engine lifecycle state,
 bounded crash continuity, retained GPU, audio, codec, and AI capability visibility, and explicit
-process-lifetime execution ownership,
+process-lifetime execution ownership, plus a searchable typed command and action catalog,
 Cargo workspace configuration, dependency lock,
 shared test-fixture contract, and repository-owned agent workflows. Runtime implementation under
 `open/crates/*` and repository utilities under
@@ -550,6 +550,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W06.C005.md`: Durable implementation evidence for read-only shell capability
   discovery across GPU, audio, codecs, and AI, strict retained-state behavior, exact audio meaning,
   production System-panel visibility, and the absence of runtime or authored-state mutation.
+- `docs/checkpoints/P3.W06.C009.md`: Durable implementation evidence for the searchable application
+  and native action catalog, stable automation identities, typed availability, accessible transient
+  palette, focused native menu intent, and preserved project and workspace ownership.
 
 ### Production desktop application
 
@@ -560,7 +563,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   dependencies.
 - `app/package.json`: Declares the private production application package, exact toolchain and
   runtime pins, strict typecheck, Vite build, lifecycle, binding, transport, and application
-  framework, native desktop-shell, editor-workspace, timeline-canvas, timeline-nesting,
+  framework, command-palette, native desktop-shell, editor-workspace, timeline-canvas, timeline-nesting,
   timeline-multicam, timeline-clip,
   timeline-transition, caption projection, exchange, and authoring, editorial-feedback, exact
   playback transport, viewer navigation, overlay, comparison, viewer-status, analysis, and
@@ -574,11 +577,14 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   center, right, and bottom dock contracts, route-local ordered tab placement, bounded dock sizing,
   active-tab, visibility, and focus reducers, structural default versus custom layout status,
   deterministic all-route default reset, one exact transient reset undo, complete private workspace
-  projection, live-registry reconciliation for restored presentation, panel-only restoration that preserves the
-  window-session-owned route, typed immutable shared public resource selection, and generated-client
-  command delegation without transport behavior.
+  projection, live-registry reconciliation for restored presentation, panel-only restoration that
+  preserves the window-session-owned route, typed immutable shared public resource selection,
+  required frozen
+  command discoverability metadata, transient palette visibility, current command availability,
+  and generated-client command delegation without transport behavior.
 - `app/src/application-context.tsx`: Provides the sole React application/project presentation owner,
-  keyboard-to-command registry adapter, asynchronous command execution, one last-valid public editor
+  keyboard-to-command registry adapter including explicitly global editable-control shortcuts,
+  asynchronous command execution and availability lookup, one last-valid public editor
   snapshot, stale-response rejection, generated project, audio, and job refresh subscriptions, and
   classified failure retention above the existing injected generated API. It also owns unique
   project transaction identity, the visible project revision fence, durable authored action
@@ -590,6 +596,17 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   transaction identities, submits the generated playback command, verifies immediate bounded
   acceptance, and polls the same editor-state replacement until the playback-domain owner has
   completed without creating a React transport model.
+- `app/src/command-palette.ts`: Owns the bounded pure action catalog, frozen stable metadata,
+  token-complete locale-independent search ranking, current availability projection, encoded recent
+  path identities, and typed delegation to either an application command or desktop shell intent.
+  It imports no generated API binding and owns no transport or mutation authority.
+- `app/src/command-palette.tsx`: Renders the transient accessible modal palette with search,
+  listbox navigation, disabled reasons, stable identity visibility, pending and failure state,
+  dismissal, and prior-focus restoration. It invokes only the catalog host supplied by the
+  always-mounted application consumer.
+- `app/src/command-palette.css`: Defines the isolated dark modal surface, native backdrop, search,
+  result, disabled, focus, and responsive presentation without changing the shared application
+  stylesheet.
 - `app/src/panel-workspace.tsx`: Renders the real route panel consumer as four stable dock targets
   with ordered tablists, mounted inactive tabpanels, labeled hide and dock controls, keyboard tab
   navigation, HTML drag reordering and cross-dock movement, pointer and keyboard separators, and a
@@ -911,10 +928,16 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   routes, streams, devices, projects, workspaces, codec sessions, or model state.
   The System panel also polls the shell-local process snapshot and renders every retained service
   phase, active and owned unit count, join obligation, and exact thread name without becoming a job
-  owner.
+  owner. The root shell additionally composes every registered route, panel, and selection command
+  with current file, recent-project, history, import, and quit intents in one transient searchable
+  palette. Visible panel toggles, native workspace events, the fixed global opener, and palette
+  execution use the same stable typed identities while project mutation remains with its existing
+  owner. Palette quit enters the existing native close request before the one-shot resolution, so
+  it cannot bypass save, busy, or history handling.
 - `app/src/desktop-shell.ts`: Reuses the application workspace presentation contract in the strict
   native shell snapshot and intent bridge, serialized sequence-fenced synchronization, close
-  request resolution, typed event listening, deterministic
+  request resolution, typed event listening, stable automation identity derivation including the
+  palette opener and encoded recent paths, deterministic
   project-versus-media drop partitioning, safe-close decisions, and document titles that expose only
   the basename and durable revision.
 - `app/src/crash-diagnostics.ts`: Defines the strict shell-local crash snapshot, complete route and
@@ -997,7 +1020,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   engine status routing, presentation-only ownership, explicit process-service command registration,
   retained exit and association handles, join-all cleanup, child-process exclusion, native command
   registration, and reuse of the
-  existing lifecycle and project recovery consumers. It also freezes the authoritative four-provider
+  existing lifecycle and project recovery consumers. It freezes the command palette's pure catalog,
+  accessible modal, native menu intent, production registration, and exclusion from generated API
+  and Tauri ownership. It also freezes the authoritative four-provider
   capability composition, strict frontend adapter, real System-panel consumer, and absence of audio
   stream mutation.
 - `app/tests/system-capabilities.test.ts`: Proves exact command invocation, strict all-field parsing,
@@ -1016,10 +1041,16 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   retained hidden placement, deeply frozen layout state, complete workspace projection, exact
   public-resource selection, structural default and custom detection, all-route registry reset,
   exact deeply frozen one-step undo, superseding-intent invalidation, local-first asynchronous API
-  command delegation, shortcut normalization, editable-target safety, and persisted workspace reconciliation against removed routes or panels.
+  command delegation, shortcut normalization, editable-target safety, frozen discoverability
+  metadata, explicit availability reasons, transient
+  palette state, and persisted workspace reconciliation against removed routes or panels.
+- `app/tests/command-palette.test.ts`: Proves duplicate rejection, deep descriptor freezing, stable
+  recent-path automation identities, token-complete deterministic search, current disabled reasons,
+  typed application and desktop invocation, and actionable failure retention.
 - `app/tests/desktop-shell.test.ts`: Proves deterministic project-versus-media drop classification,
   busy and history-aware close decisions, path-safe document titles for POSIX and Windows paths,
-  complete layout payload transport, and sequence resumption after a webview reload.
+  complete layout payload transport, sequence resumption after a webview reload, and stable
+  automation identities for palette, workspace, recent, and close paths.
 - `app/tests/editor-workspaces.test.ts`: Verifies exactly five registry-backed professional routes,
   one existing application/project owner, exact source, program, composite, and color viewer
   consumers including the composed source monitor, explicit public editor request identity,
@@ -1196,7 +1227,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/icons/icon.ico`: Supplies the Windows desktop icon bundle.
 - `app/src-tauri/icons/icon.icns`: Supplies the macOS desktop icon bundle.
 - `app/src-tauri/src/desktop_shell.rs`: Owns bounded native menu and title projection, stable typed
-  menu intents, frontend sequence fencing, private schema 2 workspace-presentation persistence with
+  menu intents including the focused `Find Command...` action, frontend sequence fencing, private
+  schema 2 workspace-presentation persistence with
   schema 1 migration, strict route, dock, ordered-panel, active-tab, size, hidden-state, and focus validation,
   recent-project menu mapping, native clipboard roles, and duplicate-suppressed one-shot window or
   quit resolution into orderly application shutdown. It carries document identity, history depth,
@@ -1393,7 +1425,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   route matching, accepted revision publication, stale editor refresh rejection, active and recent
   restoration through the real local host, and missing-document degradation that retains recents.
 - `app/src-tauri/tests/desktop_shell_contract.rs`: Proves sequence-fenced document, recent, history,
-  busy, and complete panel-layout synchronization, stable recent and workspace menu intents,
+  busy, and complete panel-layout synchronization, stable recent, workspace, and palette menu intents,
   duplicate close suppression, one-shot resolution, schema 1 migration, schema 2 round trip,
   duplicate placement rejection before live mutation, malformed persisted presentation recovery,
   nonblocking persistence failure, and private workspace restoration across native state instances.
@@ -2446,6 +2478,11 @@ of open runtime behavior.
   or redo snapshots remain with their existing durable project and engine-session owners. Close
   resolution is one-shot, active operations block closing, and any accepted close saves the active
   project before document replacement or process exit.
+- Command discovery is a projection over existing owners, not a second automation or mutation
+  protocol. Stable catalog identities must delegate only to registered application commands or
+  typed desktop shell intents, disabled actions must expose current reasons, and transient query,
+  selection, pending, and modal state must remain outside workspace persistence. The fixed palette
+  opener may run from editable controls, while other shortcuts retain editable-target protection.
 - Desktop point editing converts the source monitor's inclusive out mark to an exclusive edit
   boundary exactly once, derives missing source or record boundaries only when rational clocks are
   exactly representable, and stays within retained source and target track bounds. Four-point edits
@@ -2614,7 +2651,7 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
 
 - The focused desktop-shell contracts prove deterministic drop partitioning, path-safe document
   titles, busy and history-aware close decisions, sequence-fenced native state, exact recent and
-  workspace intents, duplicate close suppression, one-shot resolution, reload-safe sequencing,
+  workspace intents, the focused palette menu intent, duplicate close suppression, one-shot resolution, reload-safe sequencing,
   complete schema 2 panel-layout persistence, schema 1 migration, duplicate placement rejection,
   recoverable workspace persistence, active project restoration, and missing-document degradation
   with retained recents. Integration contracts keep shell synchronization on the primary webview,
@@ -2622,6 +2659,13 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
   focused webview. Strict TypeScript, the production build, the complete frontend contract set,
   focused native contracts, and the Tauri library suite provide the current integration floor;
   native menu appearance and operating-system interaction remain physical-lane evidence.
+
+- The focused command-palette contracts prove deeply frozen application and desktop descriptors,
+  duplicate rejection, path-derived recent identity, token-complete locale-independent ordering,
+  current busy, project, undo, redo, and selection availability, typed delegation, actionable
+  failures, and transient reducer state. The application architecture contract freezes the real
+  modal, native menu mapping, production registration, and absence of generated API or Tauri imports
+  from the pure catalog and view.
 
 - The focused crash-diagnostics contracts exercise a real temporary application-data directory and
   prove unclean prior-session detection, exact dock, tab, size, visibility, focus, workspace, and
@@ -3231,6 +3275,12 @@ separately restores its active path and bounded recent records through the durab
 and redo remain intentionally
 session-local, file associations remain assigned to P3.W06.C003, and menu fidelity remains subject
 to physical macOS, Windows, and Linux verification.
+The same application shell now exposes one bounded searchable palette over registered route, panel,
+selection, file, recent-project, import, history, and quit actions. Every descriptor has a stable
+automation identity, frozen discovery metadata, current availability and disabled reason, and one
+typed invocation route. The fixed global shortcut and focused native Edit menu open the same
+transient modal; query and highlighted-result state are never persisted, and project mutations
+continue through the existing generated command or desktop project owners.
 The System panel also consumes one Tauri-owned project lifecycle that durably creates, validates,
 saves, rebinds through save-as, closes, reopens recent paths, and restores opaque recovery
 candidates while retaining actionable classified failure context beside the last valid state. It
@@ -3539,10 +3589,10 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`3b2f96bcd901d2ce4d1a5315527d9fff0f5f745f` when this checkpoint began. Its hash describes the exact
-324 discovered source files, including generated binary payloads and the concurrent C005 and C007
-deliveries, layered on the integrated
-revision.
+`1b95ee982de34ab8563fc375b3747447160ebcf0` when implementation began, and the later C008 layout
+delivery at `17de32b778420f90d4d82b3ea7d03f1baaf370a6` was integrated before delivery. Its hash describes
+the exact 329 discovered source files, including generated binary payloads, customizable layout
+recovery, and the command-palette sources, contracts, and durable checkpoint record.
 
 ## Maintenance notes
 

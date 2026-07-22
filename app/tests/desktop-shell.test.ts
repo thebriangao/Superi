@@ -4,10 +4,36 @@ import test from "node:test";
 import {
   decideDesktopClose,
   desktopDocumentTitle,
+  desktopShellIntentAutomationId,
   getDesktopShellSnapshot,
   partitionDesktopDrop,
   syncDesktopShell,
 } from "../src/desktop-shell.ts";
+
+test("desktop shell intents retain stable automation identities", () => {
+  assert.equal(
+    desktopShellIntentAutomationId({ kind: "open_command_palette" }),
+    "application.command_palette.open",
+  );
+  assert.equal(
+    desktopShellIntentAutomationId({
+      kind: "open_recent",
+      path: "/projects/alpha.superi",
+    }),
+    "desktop.file.open_recent:%2Fprojects%2Falpha.superi",
+  );
+  assert.equal(
+    desktopShellIntentAutomationId({
+      kind: "open_workspace",
+      route_id: "color",
+    }),
+    "application.route.color",
+  );
+  assert.equal(
+    desktopShellIntentAutomationId({ kind: "request_close", reason: "quit" }),
+    "desktop.application.quit",
+  );
+});
 
 test("desktop shell separates one project document from native media drops", () => {
   assert.deepEqual(partitionDesktopDrop(["/projects/alpha.superi"]), {

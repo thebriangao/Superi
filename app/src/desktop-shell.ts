@@ -50,6 +50,7 @@ export type DesktopShellIntent =
   | { readonly kind: "scan_folder" }
   | { readonly kind: "undo" }
   | { readonly kind: "redo" }
+  | { readonly kind: "open_command_palette" }
   | { readonly kind: "open_workspace"; readonly route_id: string }
   | { readonly kind: "request_close"; readonly reason: DesktopCloseReason };
 
@@ -63,6 +64,41 @@ export type DesktopCloseDecision =
   | "confirm_history"
   | "save_and_close"
   | "close";
+
+export function desktopShellIntentAutomationId(
+  intent: DesktopShellIntent,
+): string {
+  switch (intent.kind) {
+    case "new_project":
+      return "desktop.file.new";
+    case "open_project":
+      return "desktop.file.open";
+    case "open_recent":
+      return `desktop.file.open_recent:${encodeURIComponent(intent.path)}`;
+    case "save_project":
+      return "desktop.file.save";
+    case "save_project_as":
+      return "desktop.file.save_as";
+    case "close_project":
+      return "desktop.file.close";
+    case "import_media":
+      return "desktop.file.import_media";
+    case "scan_folder":
+      return "desktop.file.scan_folder";
+    case "undo":
+      return "desktop.edit.undo";
+    case "redo":
+      return "desktop.edit.redo";
+    case "open_command_palette":
+      return "application.command_palette.open";
+    case "open_workspace":
+      return `application.route.${intent.route_id}`;
+    case "request_close":
+      return intent.reason === "quit"
+        ? "desktop.application.quit"
+        : "desktop.window.close";
+  }
+}
 
 const DESKTOP_SHELL_EVENT = "superi://desktop-shell-intent";
 const SNAPSHOT_COMMAND = "desktop_shell_snapshot";

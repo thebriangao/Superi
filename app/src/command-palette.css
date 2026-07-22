@@ -1,0 +1,230 @@
+.command-palette-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(760px, calc(100vh - 48px));
+  margin: 9vh auto auto;
+  padding: 0;
+  overflow: hidden;
+  color: #edf3fa;
+  background: transparent;
+  border: 1px solid rgba(159, 188, 216, 0.28);
+  border-radius: 14px;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.62);
+}
+
+.command-palette-dialog::backdrop {
+  background: rgba(3, 7, 12, 0.72);
+  backdrop-filter: blur(5px);
+}
+
+.command-palette-surface {
+  display: grid;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  max-height: min(760px, calc(100vh - 48px));
+  background:
+    linear-gradient(180deg, rgba(29, 41, 55, 0.98), rgba(13, 20, 29, 0.99));
+}
+
+.command-palette-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 22px 10px;
+}
+
+.command-palette-header h2,
+.command-palette-header p,
+.command-palette-help,
+.command-palette-status,
+.command-palette-empty {
+  margin: 0;
+}
+
+.command-palette-header h2 {
+  margin-top: 3px;
+  font-size: 1.25rem;
+  letter-spacing: -0.01em;
+}
+
+.command-palette-eyebrow {
+  color: #8fb5d8;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.command-palette-close {
+  padding: 6px 9px;
+  color: #b8c7d6;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.command-palette-close:hover,
+.command-palette-close:focus-visible {
+  color: #ffffff;
+  border-color: rgba(130, 192, 247, 0.72);
+  outline: none;
+}
+
+.command-palette-help {
+  padding: 0 22px 15px;
+  color: #94a6b8;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.command-palette-search {
+  width: calc(100% - 44px);
+  margin: 0 22px;
+  padding: 13px 14px;
+  color: #f7fbff;
+  background: rgba(4, 10, 17, 0.72);
+  border: 1px solid rgba(126, 163, 196, 0.34);
+  border-radius: 9px;
+  font: inherit;
+  font-size: 0.95rem;
+  box-sizing: border-box;
+}
+
+.command-palette-search:focus {
+  border-color: #66b7ff;
+  box-shadow: 0 0 0 3px rgba(56, 155, 244, 0.18);
+  outline: none;
+}
+
+.command-palette-status {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 18px;
+  padding: 10px 23px;
+  color: #7f94a8;
+  font-size: 0.7rem;
+}
+
+.command-palette-status strong {
+  color: #f3bd83;
+  font-weight: 600;
+  text-align: right;
+}
+
+.command-palette-results {
+  min-height: 160px;
+  max-height: 500px;
+  padding: 0 10px 12px;
+  overflow-y: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.command-palette-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 7px;
+  padding: 11px 13px;
+  color: #dce7f2;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.command-palette-option[data-selected] {
+  background: rgba(63, 137, 201, 0.16);
+  border-color: rgba(103, 178, 243, 0.38);
+}
+
+.command-palette-option:focus-visible {
+  border-color: #72bfff;
+  outline: none;
+}
+
+.command-palette-option[data-disabled] {
+  color: #8494a3;
+}
+
+.command-palette-option-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.command-palette-option-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.command-palette-option-heading strong {
+  overflow: hidden;
+  font-size: 0.87rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-palette-option-heading span,
+.command-palette-option-detail,
+.command-palette-option code {
+  overflow: hidden;
+  color: #8095aa;
+  font-size: 0.67rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-palette-option-detail {
+  color: #a0b0bf;
+}
+
+.command-palette-option[data-disabled] .command-palette-option-detail {
+  color: #d8a76f;
+}
+
+.command-palette-option code {
+  color: #6f8294;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.command-palette-option kbd {
+  flex: none;
+  padding: 4px 6px;
+  color: #9fb3c7;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: 0.65rem;
+}
+
+.command-palette-empty {
+  padding: 48px 18px;
+  color: #8fa0b0;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+@media (max-width: 620px) {
+  .command-palette-dialog {
+    margin-top: 18px;
+  }
+
+  .command-palette-option-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .command-palette-option kbd {
+    display: none;
+  }
+}

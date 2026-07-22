@@ -135,6 +135,45 @@ test("application framework composes shared UI state above the delivered API cli
   );
 });
 
+test("command palette discovers stable application and native shell actions", () => {
+  const application = read(resolve(appRoot, "src/application.ts"));
+  const context = read(resolve(appRoot, "src/application-context.tsx"));
+  const catalog = read(resolve(appRoot, "src/command-palette.ts"));
+  const palette = read(resolve(appRoot, "src/command-palette.tsx"));
+  const styles = read(resolve(appRoot, "src/command-palette.css"));
+  const app = read(resolve(appRoot, "src/App.tsx"));
+  const shell = read(resolve(appRoot, "src/desktop-shell.ts"));
+  const nativeShell = read(resolve(tauriRoot, "src/desktop_shell.rs"));
+  const packageJson = readJson(resolve(appRoot, "package.json"));
+
+  assert.match(application, /commandPaletteOpen/);
+  assert.match(application, /applicationCommandAvailability/);
+  assert.match(context, /allowInEditableContext/);
+  assert.match(catalog, /export class CommandPaletteCatalog/);
+  assert.match(catalog, /desktopShellCommandPaletteActions/);
+  assert.match(catalog, /executeCommandPaletteAction/);
+  assert.match(palette, /role="listbox"/);
+  assert.match(palette, /showModal\(\)/);
+  assert.match(styles, /\.command-palette-dialog::backdrop/);
+  assert.match(app, /application\.command_palette\.open/);
+  assert.match(app, /application\.workspace_layout\.reset_all/);
+  assert.match(app, /application\.workspace_layout\.undo_reset/);
+  assert.match(app, /<CommandPalette/);
+  assert.match(
+    app,
+    /intent\.kind === "request_close"[\s\S]*requestDesktopClose\(\)/,
+  );
+  assert.match(shell, /desktopShellIntentAutomationId/);
+  assert.match(shell, /open_command_palette/);
+  assert.match(nativeShell, /superi\.edit\.command_palette/);
+  assert.match(nativeShell, /OpenCommandPalette/);
+  assert.match(packageJson.scripts.test, /command-palette\.test\.ts/);
+  assert.doesNotMatch(
+    catalog + palette,
+    /SuperiApiBindings|superi\.project\.command\.execute|@tauri-apps/,
+  );
+});
+
 test("panel workspace exposes real dock, tab, resize, hide, and continuity behavior", () => {
   const application = read(resolve(appRoot, "src/application.ts"));
   const panelWorkspace = read(resolve(appRoot, "src/panel-workspace.tsx"));

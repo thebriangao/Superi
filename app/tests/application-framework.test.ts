@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   APPLICATION_PANEL_DOCK_SIZE_BOUNDS,
   ApplicationRegistry,
+  applicationCommandAvailability,
   applicationRoutePanelLayout,
   applicationWorkspaceLayoutStatus,
   applicationWorkspacePresentation,
@@ -56,7 +57,10 @@ function definitions() {
       {
         id: "application.route.system",
         title: "Open system route",
+        category: "Workspace",
+        keywords: ["system", "diagnostics"],
         shortcut: "Mod+2",
+        allowInEditableContext: true,
         execute: ({ dispatch }) => {
           dispatch({ type: "navigate", routeId: "system" });
         },
@@ -64,8 +68,11 @@ function definitions() {
       {
         id: "application.engine.refresh",
         title: "Refresh engine state",
+        category: "System",
+        keywords: ["engine", "status"],
         shortcut: "Mod+R",
         isEnabled: ({ api }) => api !== null,
+        disabledReason: "The engine API is unavailable.",
         execute: ({ api, dispatch }) => {
           dispatch({ type: "navigate", routeId: "system" });
           return api.request("superi.engine.integration.validation.get", null);
@@ -77,6 +84,20 @@ function definitions() {
 
 test("registry rejects duplicate identities, shortcuts, and missing panel references", () => {
   const valid = definitions();
+  const registry = new ApplicationRegistry(valid);
+  assert.equal(registry.command("application.route.system").category, "Workspace");
+  assert.deepEqual(registry.command("application.route.system").keywords, [
+    "system",
+    "diagnostics",
+  ]);
+  assert.equal(
+    registry.command("application.route.system").allowInEditableContext,
+    true,
+  );
+  assert.ok(Object.isFrozen(registry.commandDefinitions));
+  assert.ok(
+    Object.isFrozen(registry.command("application.route.system").keywords),
+  );
   assert.throws(
     () =>
       new ApplicationRegistry({
@@ -475,6 +496,40 @@ test("typed commands update local state before awaiting the generated API client
     commandId: "application.engine.refresh",
   });
   assert.deepEqual(disabled, { status: "disabled" });
+  assert.deepEqual(
+    applicationCommandAvailability({
+      registry,
+      state: () => state,
+      api: null,
+      dispatch() {},
+      commandId: "application.engine.refresh",
+    }),
+    { enabled: false, reason: "The engine API is unavailable." },
+  );
+});
+
+test("command palette visibility is transient typed application state", () => {
+  const registry = new ApplicationRegistry(definitions());
+  const initial = createApplicationState(registry);
+  assert.equal(initial.commandPaletteOpen, false);
+
+  const opened = reduceApplicationState(registry, initial, {
+    type: "open_command_palette",
+  });
+  assert.equal(opened.commandPaletteOpen, true);
+  assert.equal(opened.activeRouteId, initial.activeRouteId);
+  assert.deepEqual(opened.panelLayouts, initial.panelLayouts);
+
+  const duplicate = reduceApplicationState(registry, opened, {
+    type: "open_command_palette",
+  });
+  assert.equal(duplicate, opened);
+
+  const closed = reduceApplicationState(registry, opened, {
+    type: "close_command_palette",
+  });
+  assert.equal(closed.commandPaletteOpen, false);
+  assert.equal(closed.activeRouteId, initial.activeRouteId);
 });
 
 test("keyboard helpers canonicalize shortcuts and preserve editable controls", () => {
