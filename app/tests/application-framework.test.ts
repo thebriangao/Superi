@@ -535,6 +535,12 @@ test("command palette visibility is transient typed application state", () => {
 test("keyboard helpers canonicalize shortcuts and preserve editable controls", () => {
   assert.equal(normalizeShortcut(" Shift + Mod + K "), "mod+shift+k");
   assert.equal(normalizeShortcut("Control+Alt+R"), "ctrl+alt+r");
+  assert.equal(normalizeShortcut("Command+Space"), "mod+space");
+  assert.equal(normalizeShortcut("Mod+Shift+Plus"), "mod+shift+plus");
+  assert.equal(normalizeShortcut("Mod+Å"), "mod+å");
+  assert.equal(normalizeShortcut("Mod+Esc"), "mod+escape");
+  assert.throws(() => normalizeShortcut("Mod+Dead"), /invalid shortcut/i);
+  assert.throws(() => normalizeShortcut("Mod+two words"), /invalid shortcut/i);
   assert.equal(isEditableCommandTarget({ tagName: "INPUT" }), true);
   assert.equal(isEditableCommandTarget({ tagName: "textarea" }), true);
   assert.equal(isEditableCommandTarget({ tagName: "select" }), true);

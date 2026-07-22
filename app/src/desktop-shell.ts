@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type { ApplicationWorkspacePresentation } from "./application.ts";
+import type { KeyboardShortcutProfile } from "./keyboard-shortcuts.ts";
 
 export type DesktopCloseReason = "window" | "quit";
 
@@ -27,6 +28,7 @@ export interface DesktopShellSnapshot {
   readonly redo_depth: number;
   readonly busy: boolean;
   readonly workspace: DesktopWorkspacePresentation;
+  readonly keyboard_shortcuts: KeyboardShortcutProfile;
   readonly failure: DesktopShellFailure | null;
 }
 
@@ -37,6 +39,7 @@ export interface DesktopShellPresentation {
   readonly redo_depth: number;
   readonly busy: boolean;
   readonly workspace: DesktopWorkspacePresentation;
+  readonly keyboard_shortcuts: KeyboardShortcutProfile;
 }
 
 export type DesktopShellIntent =

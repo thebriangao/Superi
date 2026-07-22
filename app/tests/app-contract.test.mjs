@@ -236,6 +236,50 @@ test("workspace header exposes saved layout recovery and authoritative engine st
   );
 });
 
+test("configurable shortcuts stay registry-owned, conflict-safe, transferable, and persistent", () => {
+  const application = read(resolve(appRoot, "src/application.ts"));
+  const context = read(resolve(appRoot, "src/application-context.tsx"));
+  const shortcuts = read(resolve(appRoot, "src/keyboard-shortcuts.ts"));
+  const panel = read(resolve(appRoot, "src/keyboard-shortcuts-panel.tsx"));
+  const styles = read(resolve(appRoot, "src/keyboard-shortcuts.css"));
+  const app = read(resolve(appRoot, "src/App.tsx"));
+  const bridge = read(resolve(appRoot, "src/desktop-shell.ts"));
+  const native = read(resolve(tauriRoot, "src/desktop_shell.rs"));
+  const packageJson = readJson(resolve(appRoot, "package.json"));
+
+  assert.match(application, /normalizeShortcut/);
+  assert.match(shortcuts, /KEYBOARD_SHORTCUT_SCHEMA_VERSION = 1/);
+  assert.match(shortcuts, /KEYBOARD_SHORTCUT_RESERVED_BINDINGS/);
+  assert.match(shortcuts, /commandForKeyboardShortcut/);
+  assert.match(shortcuts, /inactive_command_ids/);
+  assert.match(shortcuts, /JSON\.parse/);
+  assert.match(shortcuts, /JSON\.stringify/);
+  assert.match(context, /keyboardShortcutProfileRef/);
+  assert.match(context, /commandForKeyboardShortcut/);
+  assert.match(context, /isEditableCommandTarget/);
+  assert.match(context, /shortcutFromKeyboardEvent/);
+  assert.match(panel, /Capture shortcut for/);
+  assert.match(panel, /event\.nativeEvent\.isComposing/);
+  assert.match(panel, /type="file"/);
+  assert.match(panel, /new Blob/);
+  assert.match(panel, /Confirm reset all/);
+  assert.match(panel, /role="alert"/);
+  assert.match(panel, /role="status"/);
+  assert.match(styles, /@media \(max-width: 520px\)/);
+  assert.match(styles, /:focus-visible/);
+  assert.match(app, /application\.shortcuts/);
+  assert.match(app, /keyboard_shortcuts: keyboardShortcutProfile/);
+  assert.match(bridge, /KeyboardShortcutProfile/);
+  assert.match(native, /DESKTOP_SHELL_SCHEMA_VERSION: u32 = 3/);
+  assert.match(native, /validate_keyboard_shortcuts/);
+  assert.match(native, /persist_presentation/);
+  assert.match(packageJson.scripts.test, /keyboard-shortcuts\.test\.ts/);
+  assert.doesNotMatch(
+    shortcuts + panel,
+    /executeDesktopProject|SuperiApiBindings|superi\.project|undo_depth|redo_depth/,
+  );
+});
+
 test("blocking workflows exercise the production app rather than CI-only smoke packages", () => {
   const frontendWorkflow = read(
     resolve(repositoryRoot, ".github/workflows/frontend.yml"),

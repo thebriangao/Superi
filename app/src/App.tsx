@@ -110,6 +110,11 @@ import {
 import { classifyDesktopTransportError } from "./transport";
 import { PanelWorkspace } from "./panel-workspace.tsx";
 import { WindowSessionPanel } from "./window-session-panel.tsx";
+import { KeyboardShortcutsPanel } from "./keyboard-shortcuts-panel.tsx";
+import {
+  detectKeyboardShortcutPlatform,
+  formatKeyboardShortcut,
+} from "./keyboard-shortcuts.ts";
 import {
   desktopWindowFailure,
   getDesktopWindowSession,
@@ -249,6 +254,12 @@ const APPLICATION_REGISTRY = new ApplicationRegistry<ComponentType>({
       region: "primary",
       renderer: SystemPanel,
     },
+    {
+      id: "application.shortcuts",
+      title: "Keyboard shortcuts",
+      region: "utility",
+      renderer: KeyboardShortcutsPanel,
+    },
   ],
   routes: [
     {
@@ -284,7 +295,7 @@ const APPLICATION_REGISTRY = new ApplicationRegistry<ComponentType>({
     {
       id: "system",
       title: "System",
-      panelIds: ["application.system"],
+      panelIds: ["application.system", "application.shortcuts"],
       defaultPanelId: "application.system",
     },
   ],
@@ -471,6 +482,10 @@ function ApplicationShell() {
     executeCommand,
     commandAvailability,
     commandFailure,
+    keyboardShortcutProfile,
+    keyboardShortcutsHydrated,
+    keyboardShortcutForCommand,
+    restoreKeyboardShortcuts,
     editorProject,
     refreshEditorProject,
     executeProjectCommand,
@@ -482,6 +497,10 @@ function ApplicationShell() {
   );
   const currentWindowLabel = useMemo(
     () => (isTauri() ? getCurrentWebviewWindow().label : "main"),
+    [],
+  );
+  const keyboardShortcutPlatform = useMemo(
+    detectKeyboardShortcutPlatform,
     [],
   );
   const [windowSessionHydrated, setWindowSessionHydrated] = useState(false);
@@ -695,12 +714,21 @@ function ApplicationShell() {
           type: "restore_workspace_presentation",
           workspace: shellResult.value.workspace,
         });
+        const shortcutRestore = restoreKeyboardShortcuts(
+          shellResult.value.keyboard_shortcuts,
+        );
+        if (shortcutRestore.status === "failed") {
+          failures.push(
+            `${shortcutRestore.message} Default keyboard shortcuts remain available.`,
+          );
+        }
         if (shellResult.value.failure !== null) {
           failures.push(
             `${shellResult.value.failure.title} ${shellResult.value.failure.action}`,
           );
         }
       } else {
+        restoreKeyboardShortcuts({ schema_version: 1, overrides: [] });
         failures.push(
           "Native desktop controls are unavailable. Restart Superi before continuing.",
         );
@@ -725,10 +753,19 @@ function ApplicationShell() {
       active = false;
       stopProjectOpen?.();
     };
-  }, [acceptProjectSnapshot, dispatch, refreshEditorProject]);
+  }, [
+    acceptProjectSnapshot,
+    dispatch,
+    refreshEditorProject,
+    restoreKeyboardShortcuts,
+  ]);
 
   useEffect(() => {
-    if (!shellReady || currentWindowLabel !== "main") return;
+    if (
+      !shellReady ||
+      !keyboardShortcutsHydrated ||
+      currentWindowLabel !== "main"
+    ) return;
     workspaceSyncSequence.current += 1;
     const sequence = workspaceSyncSequence.current;
     setWorkspaceContinuityPhase("saving");
@@ -746,6 +783,7 @@ function ApplicationShell() {
       redo_depth: redoDepth,
       busy,
       workspace: applicationWorkspacePresentation(state),
+      keyboard_shortcuts: keyboardShortcutProfile,
     })
       .then((snapshot) => {
         if (snapshot.failure !== null) {
@@ -772,6 +810,8 @@ function ApplicationShell() {
     activeProject,
     busy,
     currentWindowLabel,
+    keyboardShortcutProfile,
+    keyboardShortcutsHydrated,
     projectSnapshot?.recent,
     redoDepth,
     shellReady,
@@ -1075,6 +1115,7 @@ function ApplicationShell() {
         ...applicationCommandPaletteActions(
           registry.commandDefinitions,
           commandAvailability,
+          keyboardShortcutForCommand,
         ),
         ...desktopShellCommandPaletteActions({
           active: activeProject !== null,
@@ -1089,6 +1130,8 @@ function ApplicationShell() {
       activeProject,
       busy,
       commandAvailability,
+      keyboardShortcutForCommand,
+      keyboardShortcutProfile,
       projectSnapshot?.recent,
       redoDepth,
       registry.commandDefinitions,
@@ -1202,10 +1245,10 @@ function ApplicationShell() {
           <h1 id="product-title">Superi</h1>
         </header>
         <nav className="route-list">
-          {registry.routeDefinitions.map((definition, index) => {
-            const shortcut = registry.command(
+          {registry.routeDefinitions.map((definition) => {
+            const shortcut = keyboardShortcutForCommand(
               `application.route.${definition.id}`,
-            ).shortcut;
+            );
             return (
               <button
                 className="route-button"
@@ -1219,7 +1262,11 @@ function ApplicationShell() {
                 }
               >
                 <span>{definition.title}</span>
-                <kbd>{shortcut?.split("+").at(-1) ?? index + 1}</kbd>
+                <kbd>
+                  {shortcut === null
+                    ? "Unassigned"
+                    : formatKeyboardShortcut(shortcut, keyboardShortcutPlatform)}
+                </kbd>
               </button>
             );
           })}

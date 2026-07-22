@@ -770,10 +770,15 @@ export function normalizeShortcut(shortcut: string): string {
     meta: "mod",
     control: "ctrl",
     option: "alt",
+    esc: "escape",
+    return: "enter",
+    spacebar: "space",
+    "+": "plus",
   };
   const parts = shortcut
     .split("+")
-    .map((part) => aliases[part.trim().toLowerCase()] ?? part.trim().toLowerCase())
+    .map((part) => part.trim().normalize("NFC").toLowerCase())
+    .map((part) => aliases[part] ?? part)
     .filter(Boolean);
   if (parts.length === 0 || new Set(parts).size !== parts.length) {
     throw new Error(`invalid shortcut: ${shortcut}`);
@@ -782,6 +787,35 @@ export function normalizeShortcut(shortcut: string): string {
   const keys = parts.filter((part) => !modifiers.includes(part));
   if (keys.length !== 1) {
     throw new Error(`shortcut must contain exactly one key: ${shortcut}`);
+  }
+  const key = keys[0];
+  const namedKeys = new Set([
+    "backspace",
+    "delete",
+    "end",
+    "enter",
+    "equal",
+    "escape",
+    "home",
+    "insert",
+    "minus",
+    "pageup",
+    "pagedown",
+    "plus",
+    "space",
+    "tab",
+    "arrowdown",
+    "arrowleft",
+    "arrowright",
+    "arrowup",
+  ]);
+  const singleCharacter = Array.from(key).length === 1;
+  const functionKey = /^f(?:[1-9]|1[0-9]|2[0-4])$/u.test(key);
+  if (
+    ["dead", "process", "unidentified"].includes(key) ||
+    (!singleCharacter && !functionKey && !namedKeys.has(key))
+  ) {
+    throw new Error(`invalid shortcut key: ${shortcut}`);
   }
   return [...modifiers.filter((modifier) => parts.includes(modifier)), keys[0]].join(
     "+",

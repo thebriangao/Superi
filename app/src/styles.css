@@ -129,6 +129,19 @@ h1 {
   background: #22292d;
 }
 
+.route-button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-button > kbd {
+  flex: 0 0 auto;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
 kbd {
   min-width: 20px;
   padding: 2px 5px;
@@ -4218,9 +4231,11 @@ button.timeline-playhead-handle span {
 
   .route-list {
     display: flex;
+    overflow-x: auto;
   }
 
   .route-button {
+    flex: 0 0 auto;
     width: auto;
   }
 

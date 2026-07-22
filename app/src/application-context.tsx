@@ -16,12 +16,25 @@ import {
   createApplicationState,
   executeApplicationCommand,
   isEditableCommandTarget,
-  normalizeShortcut,
   reduceApplicationState,
   type ApplicationAction,
   type ApplicationCommandAvailability,
   type ApplicationState,
 } from "./application.ts";
+import {
+  commandForKeyboardShortcut,
+  createKeyboardShortcutProfile,
+  detectKeyboardShortcutPlatform,
+  effectiveKeyboardShortcut,
+  exportKeyboardShortcutProfile,
+  importKeyboardShortcutProfile,
+  resetKeyboardShortcut as resetKeyboardShortcutProfile,
+  resetKeyboardShortcuts as resetKeyboardShortcutProfiles,
+  resolveKeyboardShortcutProfile,
+  setKeyboardShortcut as setKeyboardShortcutProfile,
+  shortcutFromKeyboardEvent,
+  type KeyboardShortcutProfile,
+} from "./keyboard-shortcuts.ts";
 import { useSuperiApi } from "./api-context";
 import {
   INITIAL_EDITOR_PROJECT,
@@ -50,6 +63,10 @@ export type ApplicationCommandResult =
   | { readonly status: "completed" | "disabled" }
   | { readonly status: "failed"; readonly message: string };
 
+export type KeyboardShortcutOperationResult =
+  | { readonly status: "completed"; readonly message: string }
+  | { readonly status: "failed"; readonly message: string };
+
 export interface ApplicationContextValue {
   readonly registry: ApplicationRegistry<ApplicationPanelRenderer>;
   readonly state: ApplicationState;
@@ -61,6 +78,27 @@ export interface ApplicationContextValue {
     commandId: string,
   ) => ApplicationCommandAvailability;
   readonly commandFailure: string | null;
+  readonly keyboardShortcutProfile: KeyboardShortcutProfile;
+  readonly keyboardShortcutsHydrated: boolean;
+  readonly inactiveKeyboardShortcutCommandIds: readonly string[];
+  readonly keyboardShortcutNotice: string | null;
+  readonly keyboardShortcutFailure: string | null;
+  readonly keyboardShortcutForCommand: (commandId: string) => string | null;
+  readonly setKeyboardShortcut: (
+    commandId: string,
+    shortcut: string | null,
+  ) => KeyboardShortcutOperationResult;
+  readonly resetKeyboardShortcut: (
+    commandId: string,
+  ) => KeyboardShortcutOperationResult;
+  readonly resetKeyboardShortcuts: () => KeyboardShortcutOperationResult;
+  readonly importKeyboardShortcuts: (
+    source: string,
+  ) => KeyboardShortcutOperationResult;
+  readonly exportKeyboardShortcuts: () => string;
+  readonly restoreKeyboardShortcuts: (
+    candidate: unknown,
+  ) => KeyboardShortcutOperationResult;
   readonly editorProject: EditorProjectPresentation;
   readonly refreshEditorProject: () => Promise<void>;
   readonly executeProjectActions: (
@@ -106,6 +144,17 @@ export function ApplicationProvider({
   );
   const stateRef = useRef(state);
   const [commandFailure, setCommandFailure] = useState<string | null>(null);
+  const [keyboardShortcutProfile, setKeyboardShortcutProfileState] = useState(
+    createKeyboardShortcutProfile,
+  );
+  const [keyboardShortcutsHydrated, setKeyboardShortcutsHydrated] =
+    useState(false);
+  const [inactiveKeyboardShortcutCommandIds, setInactiveKeyboardShortcutCommandIds] =
+    useState<readonly string[]>([]);
+  const [keyboardShortcutNotice, setKeyboardShortcutNotice] =
+    useState<string | null>(null);
+  const [keyboardShortcutFailure, setKeyboardShortcutFailure] =
+    useState<string | null>(null);
   const [editorProject, setEditorProject] = useState<EditorProjectPresentation>(
     INITIAL_EDITOR_PROJECT,
   );
@@ -121,8 +170,169 @@ export function ApplicationProvider({
   const editorTransactionRevision = useRef(0);
   const projectCommandRevision = useRef(0);
   const playbackCommandRevision = useRef(0);
+  const keyboardShortcutProfileRef = useRef(keyboardShortcutProfile);
   stateRef.current = state;
   editorProjectRef.current = editorProject;
+  keyboardShortcutProfileRef.current = keyboardShortcutProfile;
+
+  const acceptKeyboardShortcutProfile = useCallback(
+    (
+      profile: KeyboardShortcutProfile,
+      inactiveCommandIds: readonly string[],
+      message: string,
+    ): KeyboardShortcutOperationResult => {
+      keyboardShortcutProfileRef.current = profile;
+      setKeyboardShortcutProfileState(profile);
+      setInactiveKeyboardShortcutCommandIds(inactiveCommandIds);
+      setKeyboardShortcutNotice(
+        inactiveCommandIds.length === 0
+          ? message
+          : `${message} ${inactiveCommandIds.length} unavailable command binding${
+              inactiveCommandIds.length === 1 ? " is" : "s are"
+            } retained but inactive.`,
+      );
+      setKeyboardShortcutFailure(null);
+      return { status: "completed", message };
+    },
+    [],
+  );
+
+  const failKeyboardShortcutOperation = useCallback(
+    (error: unknown): KeyboardShortcutOperationResult => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "The keyboard shortcut profile could not be changed.";
+      setKeyboardShortcutNotice(null);
+      setKeyboardShortcutFailure(message);
+      return { status: "failed", message };
+    },
+    [],
+  );
+
+  const keyboardShortcutForCommand = useCallback(
+    (commandId: string): string | null =>
+      effectiveKeyboardShortcut(
+        registry.commandDefinitions,
+        keyboardShortcutProfileRef.current,
+        commandId,
+      ),
+    [registry],
+  );
+
+  const setKeyboardShortcut = useCallback(
+    (
+      commandId: string,
+      shortcut: string | null,
+    ): KeyboardShortcutOperationResult => {
+      try {
+        const profile = setKeyboardShortcutProfile(
+          registry.commandDefinitions,
+          keyboardShortcutProfileRef.current,
+          commandId,
+          shortcut,
+        );
+        const resolved = resolveKeyboardShortcutProfile(
+          registry.commandDefinitions,
+          profile,
+        );
+        return acceptKeyboardShortcutProfile(
+          resolved.profile,
+          resolved.inactive_command_ids,
+          shortcut === null
+            ? "The command is now unbound."
+            : "The keyboard shortcut was updated.",
+        );
+      } catch (error: unknown) {
+        return failKeyboardShortcutOperation(error);
+      }
+    },
+    [acceptKeyboardShortcutProfile, failKeyboardShortcutOperation, registry],
+  );
+
+  const resetKeyboardShortcut = useCallback(
+    (commandId: string): KeyboardShortcutOperationResult => {
+      try {
+        const profile = resetKeyboardShortcutProfile(
+          registry.commandDefinitions,
+          keyboardShortcutProfileRef.current,
+          commandId,
+        );
+        const resolved = resolveKeyboardShortcutProfile(
+          registry.commandDefinitions,
+          profile,
+        );
+        return acceptKeyboardShortcutProfile(
+          resolved.profile,
+          resolved.inactive_command_ids,
+          "The command shortcut was reset to its default.",
+        );
+      } catch (error: unknown) {
+        return failKeyboardShortcutOperation(error);
+      }
+    },
+    [acceptKeyboardShortcutProfile, failKeyboardShortcutOperation, registry],
+  );
+
+  const resetKeyboardShortcuts = useCallback((): KeyboardShortcutOperationResult => {
+    return acceptKeyboardShortcutProfile(
+      resetKeyboardShortcutProfiles(),
+      [],
+      "All keyboard shortcuts were reset to their defaults.",
+    );
+  }, [acceptKeyboardShortcutProfile]);
+
+  const importKeyboardShortcuts = useCallback(
+    (source: string): KeyboardShortcutOperationResult => {
+      try {
+        const resolved = importKeyboardShortcutProfile(
+          registry.commandDefinitions,
+          source,
+        );
+        return acceptKeyboardShortcutProfile(
+          resolved.profile,
+          resolved.inactive_command_ids,
+          "The keyboard shortcut profile was imported.",
+        );
+      } catch (error: unknown) {
+        return failKeyboardShortcutOperation(error);
+      }
+    },
+    [acceptKeyboardShortcutProfile, failKeyboardShortcutOperation, registry],
+  );
+
+  const exportKeyboardShortcuts = useCallback(
+    (): string => exportKeyboardShortcutProfile(keyboardShortcutProfileRef.current),
+    [],
+  );
+
+  const restoreKeyboardShortcuts = useCallback(
+    (candidate: unknown): KeyboardShortcutOperationResult => {
+      try {
+        const resolved = resolveKeyboardShortcutProfile(
+          registry.commandDefinitions,
+          candidate,
+        );
+        const result = acceptKeyboardShortcutProfile(
+          resolved.profile,
+          resolved.inactive_command_ids,
+          "Keyboard shortcuts were restored from the private desktop session.",
+        );
+        setKeyboardShortcutsHydrated(true);
+        return result;
+      } catch (error: unknown) {
+        keyboardShortcutProfileRef.current = createKeyboardShortcutProfile();
+        setKeyboardShortcutProfileState(keyboardShortcutProfileRef.current);
+        setInactiveKeyboardShortcutCommandIds([]);
+        setKeyboardShortcutNotice(
+          "Default keyboard shortcuts remain available for this session.",
+        );
+        setKeyboardShortcutsHydrated(true);
+        return failKeyboardShortcutOperation(error);
+      }
+    },
+    [acceptKeyboardShortcutProfile, failKeyboardShortcutOperation, registry],
+  );
 
   const refreshEditorProject = useCallback(async (): Promise<void> => {
     const requestRevision = editorRequestRevision.current + 1;
@@ -356,15 +566,23 @@ export function ApplicationProvider({
   );
 
   useEffect(() => {
+    const keyboardShortcutPlatform = detectKeyboardShortcutPlatform();
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) {
         return;
       }
-      const shortcut = shortcutFromKeyboardEvent(event);
+      const shortcut = shortcutFromKeyboardEvent(
+        event,
+        keyboardShortcutPlatform,
+      );
       if (shortcut === null) {
         return;
       }
-      const command = registry.commandForShortcut(shortcut);
+      const command = commandForKeyboardShortcut(
+        registry.commandDefinitions,
+        keyboardShortcutProfileRef.current,
+        shortcut,
+      );
       if (command === null) {
         return;
       }
@@ -408,6 +626,18 @@ export function ApplicationProvider({
         dispatch,
         executeCommand,
         commandAvailability,
+        keyboardShortcutProfile,
+        keyboardShortcutsHydrated,
+        inactiveKeyboardShortcutCommandIds,
+        keyboardShortcutNotice,
+        keyboardShortcutFailure,
+        keyboardShortcutForCommand,
+        setKeyboardShortcut,
+        resetKeyboardShortcut,
+        resetKeyboardShortcuts,
+        importKeyboardShortcuts,
+        exportKeyboardShortcuts,
+        restoreKeyboardShortcuts,
         executeProjectActions,
         commandFailure,
         editorProject,
@@ -437,26 +667,4 @@ export function useApplication(): ApplicationContextValue {
     throw new Error("ApplicationProvider is missing from the React tree");
   }
   return application;
-}
-
-function shortcutFromKeyboardEvent(event: KeyboardEvent): string | null {
-  const key = event.key.trim().toLowerCase();
-  if (
-    key.length === 0 ||
-    ["meta", "control", "alt", "shift"].includes(key)
-  ) {
-    return null;
-  }
-  const parts: string[] = [];
-  if (event.metaKey || event.ctrlKey) {
-    parts.push("mod");
-  }
-  if (event.altKey) {
-    parts.push("alt");
-  }
-  if (event.shiftKey) {
-    parts.push("shift");
-  }
-  parts.push(key === " " ? "space" : key);
-  return normalizeShortcut(parts.join("+"));
 }

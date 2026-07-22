@@ -29,13 +29,18 @@ const commands: readonly ApplicationCommandDefinition[] = [
 
 function actions() {
   return [
-    ...applicationCommandPaletteActions(commands, (commandId) => ({
-      enabled: commandId !== "application.selection.clear",
-      reason:
-        commandId === "application.selection.clear"
-          ? "No shared selection is active."
-          : null,
-    })),
+    ...applicationCommandPaletteActions(
+      commands,
+      (commandId) => ({
+        enabled: commandId !== "application.selection.clear",
+        reason:
+          commandId === "application.selection.clear"
+            ? "No shared selection is active."
+            : null,
+      }),
+      (commandId) =>
+        commandId === "application.route.color" ? "mod+shift+c" : null,
+    ),
     ...desktopShellCommandPaletteActions({
       active: true,
       busy: false,
@@ -51,6 +56,10 @@ function actions() {
 
 test("catalog rejects duplicate identities and deeply freezes discoverable actions", () => {
   const catalog = new CommandPaletteCatalog(actions());
+  assert.equal(
+    catalog.action("application.route.color").shortcut,
+    "mod+shift+c",
+  );
   assert.ok(Object.isFrozen(catalog.actions));
   assert.ok(Object.isFrozen(catalog.actions[0]));
   assert.ok(Object.isFrozen(catalog.actions[0].keywords));

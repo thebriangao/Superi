@@ -123,6 +123,8 @@ export class CommandPaletteCatalog {
 export function applicationCommandPaletteActions(
   commands: readonly ApplicationCommandDefinition[],
   availability: (commandId: string) => ApplicationCommandAvailability,
+  shortcutForCommand: (commandId: string) => string | null = (commandId) =>
+    commands.find((command) => command.id === commandId)?.shortcut ?? null,
 ): readonly CommandPaletteAction[] {
   return Object.freeze(
     commands.map((command) =>
@@ -131,7 +133,7 @@ export function applicationCommandPaletteActions(
         title: command.title,
         category: command.category,
         keywords: command.keywords,
-        shortcut: command.shortcut ?? null,
+        shortcut: shortcutForCommand(command.id),
         detail: command.id,
         availability: availability(command.id),
         invocation: {

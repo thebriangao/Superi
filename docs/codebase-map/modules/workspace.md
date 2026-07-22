@@ -2,8 +2,8 @@
 module_id: workspace
 source_paths:
   - repository files outside open/crates/* and open/tools/*
-source_hash: ccf382d62c083288ccf007c04b322401d53c14f63427f9d7dbb6225cda9bd2c5
-source_files: 329
+source_hash: 999a4ff0fd5e22aa40772a44878c0433ffda142c4a29123254412a9d72aff642
+source_files: 334
 mapped_at_commit: working-tree
 ---
 
@@ -13,8 +13,9 @@ The `workspace` module owns the repository-level product definition, architectur
 license and codec policy, build sequencing, operating-system test policy, unsafe-boundary audit,
 the production React and Tauri desktop shell including persistent multi-window session ownership,
 customizable registry-backed layout reset and recovery, always-visible engine lifecycle state,
-bounded crash continuity, retained GPU, audio, codec, and AI capability visibility, and explicit
-process-lifetime execution ownership, plus a searchable typed command and action catalog,
+bounded crash continuity, configurable cross-session keyboard shortcuts, retained GPU, audio,
+codec, and AI capability visibility, explicit process-lifetime execution ownership, and a
+searchable typed command and action catalog,
 Cargo workspace configuration, dependency lock,
 shared test-fixture contract, and repository-owned agent workflows. Runtime implementation under
 `open/crates/*` and repository utilities under
@@ -553,6 +554,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `docs/checkpoints/P3.W06.C009.md`: Durable implementation evidence for the searchable application
   and native action catalog, stable automation identities, typed availability, accessible transient
   palette, focused native menu intent, and preserved project and workspace ownership.
+- `docs/checkpoints/P3.W06.C010.md`: Durable implementation evidence for configurable application
+  command shortcuts, transactional conflict detection, native accelerator reservation, deterministic
+  import and export, accessible capture, and private cross-session continuity.
 
 ### Production desktop application
 
@@ -568,7 +572,8 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   timeline-transition, caption projection, exchange, and authoring, editorial-feedback, exact
   playback transport, viewer navigation, overlay, comparison, viewer-status, analysis, and
   viewer-transform, viewer color-management, external-display, and persistent window-session
-  helper contracts, strict system-capability projection, and Tauri commands.
+  helper contracts, configurable keyboard-shortcut contracts, strict system-capability projection,
+  and Tauri commands.
 - `app/src/api.ts`: Re-exports the complete canonical generated TypeScript contract and constructs
   one frozen `SuperiApiBindings` surface around an injected `SuperiTransport` and `SuperiClient`.
 - `app/src/api-context.tsx`: Provides the nullable, transport-injected React API context and hook
@@ -581,10 +586,12 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   preserves the window-session-owned route, typed immutable shared public resource selection,
   required frozen
   command discoverability metadata, transient palette visibility, current command availability,
-  and generated-client command delegation without transport behavior.
+  complete modifier, named, function, and Unicode shortcut token normalization, and generated-client
+  command delegation without transport behavior.
 - `app/src/application-context.tsx`: Provides the sole React application/project presentation owner,
-  keyboard-to-command registry adapter including explicitly global editable-control shortcuts,
-  asynchronous command execution and availability lookup, one last-valid public editor
+  current keyboard-shortcut profile, configurable keyboard-to-command registry adapter,
+  explicitly global editable-control shortcuts, asynchronous command execution and availability
+  lookup, and one last-valid public editor
   snapshot, stale-response rejection, generated project, audio, and job refresh subscriptions, and
   classified failure retention above the existing injected generated API. It also owns unique
   project transaction identity, the visible project revision fence, durable authored action
@@ -598,8 +605,9 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   completed without creating a React transport model.
 - `app/src/command-palette.ts`: Owns the bounded pure action catalog, frozen stable metadata,
   token-complete locale-independent search ranking, current availability projection, encoded recent
-  path identities, and typed delegation to either an application command or desktop shell intent.
-  It imports no generated API binding and owns no transport or mutation authority.
+  path identities, effective configurable shortcut projection, and typed delegation to either an
+  application command or desktop shell intent. It imports no generated API binding and owns no
+  transport or mutation authority.
 - `app/src/command-palette.tsx`: Renders the transient accessible modal palette with search,
   listbox navigation, disabled reasons, stable identity visibility, pending and failure state,
   dismissal, and prior-focus restoration. It invokes only the catalog host supplied by the
@@ -607,6 +615,16 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/command-palette.css`: Defines the isolated dark modal surface, native backdrop, search,
   result, disabled, focus, and responsive presentation without changing the shared application
   stylesheet.
+- `app/src/keyboard-shortcuts.ts`: Defines the immutable schema-1 shortcut profile, canonical
+  effective binding resolution, platform-aware event capture, deterministic import and export,
+  transactional update and reset behavior, conflict detection, native accelerator reservations,
+  bounded inactive-command retention, and accessible platform labels without React or Tauri state.
+- `app/src/keyboard-shortcuts-panel.tsx`: Renders the System route's accessible shortcut editor with
+  labeled read-only capture fields, IME-safe keyboard capture, current and default values, clear and
+  reset controls, conflict alerts, inactive-command visibility, bounded JSON import, deterministic
+  export, native reservation disclosure, and two-step reset-all confirmation.
+- `app/src/keyboard-shortcuts.css`: Isolates keyboard-shortcut panel layout, responsive row wrapping,
+  status and alert presentation, keyboard focus visibility, and narrow-window behavior.
 - `app/src/panel-workspace.tsx`: Renders the real route panel consumer as four stable dock targets
   with ordered tablists, mounted inactive tabpanels, labeled hide and dock controls, keyboard tab
   navigation, HTML drag reordering and cross-dock movement, pointer and keyboard separators, and a
@@ -932,12 +950,17 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   with current file, recent-project, history, import, and quit intents in one transient searchable
   palette. Visible panel toggles, native workspace events, the fixed global opener, and palette
   execution use the same stable typed identities while project mutation remains with its existing
-  owner. Palette quit enters the existing native close request before the one-shot resolution, so
-  it cannot bypass save, busy, or history handling.
+  owner. The palette projects the same effective bindings as global command dispatch, and palette
+  quit enters the existing native close request before the one-shot resolution, so it cannot bypass
+  save, busy, or history handling. The root also registers the configurable Shortcuts panel,
+  hydrates its profile before shell
+  synchronization, persists profile changes beside workspace presentation, and derives sidebar
+  hints from the same effective binding used by global command dispatch.
 - `app/src/desktop-shell.ts`: Reuses the application workspace presentation contract in the strict
-  native shell snapshot and intent bridge, serialized sequence-fenced synchronization, close
-  request resolution, typed event listening, stable automation identity derivation including the
-  palette opener and encoded recent paths, deterministic
+  native shell snapshot and intent bridge, carries the versioned keyboard-shortcut profile through
+  serialized sequence-fenced synchronization, close request resolution, typed event listening,
+  stable automation identity derivation including the palette opener and encoded recent paths, and
+  deterministic
   project-versus-media drop partitioning, safe-close decisions, and document titles that expose only
   the basename and durable revision.
 - `app/src/crash-diagnostics.ts`: Defines the strict shell-local crash snapshot, complete route and
@@ -978,6 +1001,7 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src/styles.css`: Defines the responsive, accessible application frame, route rail, four-dock
   grid, tab strips, mounted panel surfaces, resize separators, collapsed empty docks, mobile dock
   stacking, responsive layout status, reset and undo controls, explicit engine lifecycle states,
+  complete configurable route-shortcut hints with narrow-window scrolling,
   professional workspace data views, exact audio route and continuity presentation,
   shared selection, lifecycle controls, process-service detail, media-browser list and grid layouts,
   thumbnail fallbacks,
@@ -1046,11 +1070,15 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
   palette state, and persisted workspace reconciliation against removed routes or panels.
 - `app/tests/command-palette.test.ts`: Proves duplicate rejection, deep descriptor freezing, stable
   recent-path automation identities, token-complete deterministic search, current disabled reasons,
-  typed application and desktop invocation, and actionable failure retention.
+  effective configured shortcut projection, typed application and desktop invocation, and actionable
+  failure retention.
 - `app/tests/desktop-shell.test.ts`: Proves deterministic project-versus-media drop classification,
   busy and history-aware close decisions, path-safe document titles for POSIX and Windows paths,
-  complete layout payload transport, sequence resumption after a webview reload, and stable
-  automation identities for palette, workspace, recent, and close paths.
+  complete layout and keyboard-shortcut profile transport, and sequence resumption after a webview
+  reload, plus stable automation identities for palette, workspace, recent, and close paths.
+- `app/tests/keyboard-shortcuts.test.ts`: Proves deterministic schema-1 profile resolution and
+  export, transactional collision and native-reservation rejection, inactive-command retention,
+  canonical Unicode and platform-aware event capture, IME exclusion, unbinding, and reset behavior.
 - `app/tests/editor-workspaces.test.ts`: Verifies exactly five registry-backed professional routes,
   one existing application/project owner, exact source, program, composite, and color viewer
   consumers including the composed source monitor, explicit public editor request identity,
@@ -1228,12 +1256,13 @@ fresh tool output are implementation evidence; aspirational or stale prose is no
 - `app/src-tauri/icons/icon.icns`: Supplies the macOS desktop icon bundle.
 - `app/src-tauri/src/desktop_shell.rs`: Owns bounded native menu and title projection, stable typed
   menu intents including the focused `Find Command...` action, frontend sequence fencing, private
-  schema 2 workspace-presentation persistence with
-  schema 1 migration, strict route, dock, ordered-panel, active-tab, size, hidden-state, and focus validation,
+  schema 3 presentation persistence with schema 1 and 2 migration, strict route, dock,
+  ordered-panel, active-tab, size, hidden-state, and focus validation, bounded schema-1
+  keyboard-shortcut validation,
   recent-project menu mapping, native clipboard roles, and duplicate-suppressed one-shot window or
   quit resolution into orderly application shutdown. It carries document identity, history depth,
-  busy state, and layout only as presentation, emits no authored mutation, and never serializes
-  project history or project bytes.
+  busy state, layout, and shortcut preferences only as presentation, emits no authored mutation,
+  and never serializes project history or project bytes.
 - `app/src-tauri/src/crash_diagnostics.rs`: Owns one application-data crash-diagnostics directory,
   exact active-session marker, and 32-record replacement-safe diagnostic journal. It detects an unclean prior
   session, chains a panic hook that retains private panic detail only in the native journal, observes
@@ -1750,6 +1779,10 @@ surfaces consumed by people, Cargo, repository agents, tests, and downstream mod
   one process phase, background-task admission, and seven ordered service records with phases,
   counts, pending joins, thread names, and safe summaries. It is independent from the generated
   engine API, authored project state, and the canonical application lifecycle contract.
+- The application command registry and schema-1 keyboard-shortcut profile form one private desktop
+  presentation surface. The registry owns defaults and executable command IDs, the active profile
+  owns only bounded overrides, and the native desktop shell persists that profile without exposing
+  a generated public API or entering project state.
 - `open/Cargo.toml` exports inherited workspace package metadata, lints, and dependency declarations
   to every member manifest. The current glob expansion is 19 crate packages plus
   `superi-fixture-tool`, `superi-dependency-check`, `superi-boundary-tool`, `superi-bench`, and
@@ -1893,6 +1926,17 @@ close requests the existing orderly application shutdown, while auxiliary close 
 window and its transport client. Each webview opens an independent generated transport generation
 above the one shared engine and project lifecycle, and every authored replacement retains one global
 event sequence across those client-local generations.
+
+The keyboard-shortcut flow begins with immutable command registry defaults. The schema-1 profile
+retains only explicit overrides, including deliberate unbindings and bounded inactive command IDs,
+then resolves one conflict-free effective binding table. `ApplicationProvider` owns that table,
+translates noneditable, noncomposing keyboard events into canonical platform-aware tokens, and
+executes the matching existing registry command. The System panel edits the same profile through
+transactional set, clear, reset, import, and reset-all operations; deterministic export serializes
+only canonical overrides. `ApplicationShell` hydrates the profile before its first desktop sync and
+persists it beside workspace presentation through native schema 3. Schema 1 and 2 records migrate
+with default shortcuts, while an invalid schema-3 shortcut profile falls back independently without
+discarding a valid workspace.
 
 The desktop process-ownership flow composes those existing owners without replacing them. Native
 startup creates one shared `DesktopProcessRuntime`, then supplies it to the engine, GPU viewport,
@@ -2474,7 +2518,8 @@ of open runtime behavior.
   domain crates do not own competing undo stacks.
 - Native shell state is presentation-only. It may retain workspace route, route-local docks,
   ordered tabs, active tabs, bounded dock sizes, hidden panels, focus, active document identity,
-  recent paths, busy state, and history depth, but project bytes and undo
+  recent paths, busy state, history depth, and a bounded versioned keyboard-shortcut profile, but
+  project bytes and undo
   or redo snapshots remain with their existing durable project and engine-session owners. Close
   resolution is one-shot, active operations block closing, and any accepted close saves the active
   project before document replacement or process exit.
@@ -2483,6 +2528,13 @@ of open runtime behavior.
   typed desktop shell intents, disabled actions must expose current reasons, and transient query,
   selection, pending, and modal state must remain outside workspace persistence. The fixed palette
   opener may run from editable controls, while other shortcuts retain editable-target protection.
+  Application actions must project their effective configured shortcut rather than stale registry
+  defaults.
+- Configurable shortcuts may target only registered application commands. All effective bindings are
+  canonical and unique, global overrides require a portable primary modifier, native menu and
+  clipboard accelerators remain reserved, and import is an all-or-nothing schema validation. Unknown
+  command IDs may survive a bounded round trip but cannot dispatch until the registry defines them;
+  editable targets, composing input, and unrecognized keys never execute a command.
 - Desktop point editing converts the source monitor's inclusive out mark to an exclusive edit
   boundary exactly once, derives missing source or record boundaries only when rational clocks are
   exactly representable, and stays within retained source and target track bounds. Four-point edits
@@ -2652,9 +2704,12 @@ matrix remains a contract until a current workflow or fresh result demonstrates 
 - The focused desktop-shell contracts prove deterministic drop partitioning, path-safe document
   titles, busy and history-aware close decisions, sequence-fenced native state, exact recent and
   workspace intents, the focused palette menu intent, duplicate close suppression, one-shot resolution, reload-safe sequencing,
-  complete schema 2 panel-layout persistence, schema 1 migration, duplicate placement rejection,
-  recoverable workspace persistence, active project restoration, and missing-document degradation
-  with retained recents. Integration contracts keep shell synchronization on the primary webview,
+  complete schema 3 panel-layout and keyboard-shortcut persistence, schema 1 and 2 migration,
+  duplicate placement and shortcut-ID rejection, independent corrupt-shortcut recovery, recoverable
+  workspace persistence, active project restoration, and missing-document degradation with retained
+  recents. Frontend shortcut contracts prove canonical key handling, transactional conflicts, native
+  accelerator reservations, deterministic import and export, inactive-command retention, IME-safe
+  dispatch, and reset behavior. Integration contracts keep shell synchronization on the primary webview,
   preserve window-owned routes while restoring panel presentation, and target commands to the
   focused webview. Strict TypeScript, the production build, the complete frontend contract set,
   focused native contracts, and the Tauri library suite provide the current integration floor;
@@ -3097,6 +3152,13 @@ actions. Its persistence worker and the GPU submission domain now expose explici
 results to the shared process owner. Workspace routes restore before ordinary route persistence, main close remains orderly,
 and auxiliary native GPU viewports remain intentionally unavailable because the existing presenter
 owns one primary-window role surface set.
+Application command shortcuts are now configurable through one accessible System panel and one
+immutable schema-1 profile. The live dispatcher, sidebar hints, editor rows, import and export, and
+reset behavior all consume the same effective table; collision and native-reservation failures are
+visible without partial mutation. Native schema 3 persists the profile beside workspace presentation,
+migrates schema 1 and 2 records to defaults, and recovers an invalid profile independently from a
+valid workspace. Physical platform keyboard-layout and assistive-technology coverage remains a
+separate lane beyond deterministic model, built-consumer, and headless contract proof.
 The same production shell now owns a bounded local crash journal and exact session marker independent
 of public engine and authored project state. It retains safe actionable context across sessions,
 classifies retryable, degraded, user-correctable, and terminal conditions, and exposes workspace,
@@ -3589,10 +3651,11 @@ The largest current risk is cross-document drift:
 
 This map is based on the synchronized `origin/main` revision plus this uncommitted checkpoint, so
 `mapped_at_commit` is `working-tree`. The remote base was
-`1b95ee982de34ab8563fc375b3747447160ebcf0` when implementation began, and the later C008 layout
-delivery at `17de32b778420f90d4d82b3ea7d03f1baaf370a6` was integrated before delivery. Its hash describes
-the exact 329 discovered source files, including generated binary payloads, customizable layout
-recovery, and the command-palette sources, contracts, and durable checkpoint record.
+`1b95ee982de34ab8563fc375b3747447160ebcf0` when this checkpoint began. The later C008 workspace
+layout delivery at `17de32b778420f90d4d82b3ea7d03f1baaf370a6` and C009 command-palette delivery at
+`d7fd4a19afa0a3de76d1aa07a813e7e1471b89cb` were integrated before final verification. Its hash
+describes the exact 334 discovered source files and 110627 source lines, including the resulting
+workspace sources, contracts, and durable checkpoint records.
 
 ## Maintenance notes
 
@@ -3660,6 +3723,11 @@ recent records must stay bounded and deduplicated, title projection must never e
 and exactly one approved close resolution may enter orderly lifecycle shutdown. Never serialize
 engine history into either private shell record or let dialogs, drops, or menus bypass the existing
 project, media, application, or generated command owners.
+Keep command registry defaults, canonical token normalization, the schema-1 shortcut model, provider
+dispatch, System panel, sidebar hints, native accelerator reservations, desktop schema migration,
+and focused contracts synchronized. Profile changes and imports must remain transactional, unknown
+command IDs must remain bounded and inactive, export must remain deterministic, and corrupt shortcut
+state must never discard a valid workspace or enter authored project persistence.
 Keep crash diagnostics shell-local and bounded. Preserve private panic details only in the native
 journal, project only reviewed context through Tauri, validate every retained route, dock, ordered
 panel, active tab, size, hidden state, focus, and

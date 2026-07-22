@@ -14,14 +14,17 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, State, Window, WindowEvent};
 
 pub const DESKTOP_SHELL_EVENT: &str = "superi://desktop-shell-intent";
 
-const DESKTOP_SHELL_SCHEMA_VERSION: u32 = 2;
-const LEGACY_DESKTOP_SHELL_SCHEMA_VERSION: u32 = 1;
+const DESKTOP_SHELL_SCHEMA_VERSION: u32 = 3;
+const LEGACY_DESKTOP_SHELL_SCHEMA_VERSIONS: [u32; 2] = [1, 2];
+const KEYBOARD_SHORTCUT_SCHEMA_VERSION: u32 = 1;
 const MAX_RECENT_PROJECTS: usize = 32;
 const MAX_HIDDEN_PANELS: usize = 256;
 const MAX_PANEL_LAYOUT_ROUTES: usize = 64;
 const MAX_PANELS_PER_DOCK: usize = 256;
 const MAX_IDENTITY_BYTES: usize = 512;
 const MAX_PATH_BYTES: usize = 32 * 1024;
+const MAX_SHORTCUT_OVERRIDES: usize = 512;
+const MAX_SHORTCUT_BYTES: usize = 256;
 const DEFAULT_ROUTE_ID: &str = "editing";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -117,6 +120,29 @@ impl Default for DesktopWorkspacePresentation {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct DesktopKeyboardShortcutOverride {
+    pub command_id: String,
+    pub shortcut: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopKeyboardShortcutProfile {
+    pub schema_version: u32,
+    pub overrides: Vec<DesktopKeyboardShortcutOverride>,
+}
+
+impl Default for DesktopKeyboardShortcutProfile {
+    fn default() -> Self {
+        Self {
+            schema_version: KEYBOARD_SHORTCUT_SCHEMA_VERSION,
+            overrides: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DesktopShellSync {
     pub client_sequence: u64,
     pub active: Option<DesktopShellDocument>,
@@ -125,6 +151,7 @@ pub struct DesktopShellSync {
     pub redo_depth: u64,
     pub busy: bool,
     pub workspace: DesktopWorkspacePresentation,
+    pub keyboard_shortcuts: DesktopKeyboardShortcutProfile,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -147,8 +174,8 @@ impl DesktopShellFailure {
     fn storage(operation: &str) -> Self {
         Self::invalid(
             &format!("desktop_shell_storage_{operation}_failed"),
-            "Desktop workspace continuity is unavailable",
-            "Continue working, then restore the workspace manually if needed.",
+            "Desktop presentation continuity is unavailable",
+            "Continue working, then restore the workspace and keyboard shortcuts manually if needed.",
         )
     }
 }
@@ -172,6 +199,7 @@ pub struct DesktopShellSnapshot {
     redo_depth: u64,
     busy: bool,
     workspace: DesktopWorkspacePresentation,
+    keyboard_shortcuts: DesktopKeyboardShortcutProfile,
     failure: Option<DesktopShellFailure>,
 }
 
@@ -186,6 +214,7 @@ impl Default for DesktopShellSnapshot {
             redo_depth: 0,
             busy: false,
             workspace: DesktopWorkspacePresentation::default(),
+            keyboard_shortcuts: DesktopKeyboardShortcutProfile::default(),
             failure: None,
         }
     }
@@ -225,6 +254,11 @@ impl DesktopShellSnapshot {
     #[must_use]
     pub const fn workspace(&self) -> &DesktopWorkspacePresentation {
         &self.workspace
+    }
+
+    #[must_use]
+    pub const fn keyboard_shortcuts(&self) -> &DesktopKeyboardShortcutProfile {
+        &self.keyboard_shortcuts
     }
 
     #[must_use]
@@ -270,6 +304,7 @@ impl DesktopShellModel {
             redo_depth: sync.redo_depth,
             busy: sync.busy,
             workspace: sync.workspace,
+            keyboard_shortcuts: sync.keyboard_shortcuts,
             failure: self.snapshot.failure.clone(),
         };
         Ok(self.snapshot.clone())
@@ -325,6 +360,10 @@ impl DesktopShellModel {
         self.snapshot.workspace = workspace;
     }
 
+    fn restore_keyboard_shortcuts(&mut self, keyboard_shortcuts: DesktopKeyboardShortcutProfile) {
+        self.snapshot.keyboard_shortcuts = keyboard_shortcuts;
+    }
+
     fn record_failure(&mut self, failure: DesktopShellFailure) {
         self.snapshot.failure = Some(failure);
     }
@@ -335,6 +374,8 @@ impl DesktopShellModel {
 struct PersistedDesktopShell {
     schema_version: u32,
     workspace: DesktopWorkspacePresentation,
+    #[serde(default)]
+    keyboard_shortcuts: Option<DesktopKeyboardShortcutProfile>,
 }
 
 #[derive(Clone, Default)]
@@ -355,8 +396,8 @@ impl DesktopShellState {
                     serde_json::from_slice::<PersistedDesktopShell>(&bytes).map_err(|_| {
                         DesktopShellFailure::invalid(
                             "desktop_shell_storage_invalid",
-                            "Desktop workspace continuity could not be restored",
-                            "Continue with the default workspace and choose panels again.",
+                            "Desktop presentation continuity could not be restored",
+                            "Continue with the default workspace and shortcuts, then configure them again.",
                         )
                     })
                 })
@@ -364,16 +405,15 @@ impl DesktopShellState {
             Ok(PersistedDesktopShell {
                 schema_version: DESKTOP_SHELL_SCHEMA_VERSION,
                 workspace: DesktopWorkspacePresentation::default(),
+                keyboard_shortcuts: Some(DesktopKeyboardShortcutProfile::default()),
             })
         };
 
         let mut model = self.lock("initialize")?;
         match restored {
             Ok(restored)
-                if matches!(
-                    restored.schema_version,
-                    LEGACY_DESKTOP_SHELL_SCHEMA_VERSION | DESKTOP_SHELL_SCHEMA_VERSION
-                ) =>
+                if restored.schema_version == DESKTOP_SHELL_SCHEMA_VERSION
+                    || LEGACY_DESKTOP_SHELL_SCHEMA_VERSIONS.contains(&restored.schema_version) =>
             {
                 if validate_workspace(&restored.workspace).is_ok() {
                     model.restore_workspace(restored.workspace);
@@ -384,11 +424,27 @@ impl DesktopShellState {
                         "Continue with the default workspace and choose panels again.",
                     ));
                 }
+                if restored.schema_version == DESKTOP_SHELL_SCHEMA_VERSION {
+                    match restored.keyboard_shortcuts {
+                        Some(keyboard_shortcuts)
+                            if validate_keyboard_shortcuts(&keyboard_shortcuts).is_ok() =>
+                        {
+                            model.restore_keyboard_shortcuts(keyboard_shortcuts);
+                        }
+                        _ => {
+                            model.record_failure(DesktopShellFailure::invalid(
+                                "desktop_shell_storage_invalid",
+                                "Desktop keyboard shortcuts could not be restored",
+                                "Continue with defaults, then import or configure shortcuts again.",
+                            ));
+                        }
+                    }
+                }
             }
             Ok(_) => model.record_failure(DesktopShellFailure::invalid(
                 "desktop_shell_storage_version_unsupported",
-                "Desktop workspace continuity uses an unsupported version",
-                "Continue with the default workspace and choose panels again.",
+                "Desktop presentation continuity uses an unsupported version",
+                "Continue with the default workspace and shortcuts, then configure them again.",
             )),
             Err(failure) => model.record_failure(failure),
         }
@@ -406,7 +462,9 @@ impl DesktopShellState {
         sync: DesktopShellSync,
     ) -> Result<DesktopShellSnapshot, DesktopShellFailure> {
         let snapshot = self.lock("synchronize")?.synchronize(sync)?;
-        if let Err(failure) = self.persist_workspace(&snapshot.workspace) {
+        if let Err(failure) =
+            self.persist_presentation(&snapshot.workspace, &snapshot.keyboard_shortcuts)
+        {
             let mut model = self.lock("record_persistence_failure")?;
             model.record_failure(failure);
             return Ok(model.snapshot().clone());
@@ -425,17 +483,19 @@ impl DesktopShellState {
         Ok(self.lock("resolve_close")?.resolve_close(allow))
     }
 
-    fn persist_workspace(
+    fn persist_presentation(
         &self,
         workspace: &DesktopWorkspacePresentation,
+        keyboard_shortcuts: &DesktopKeyboardShortcutProfile,
     ) -> Result<(), DesktopShellFailure> {
         let path = self
-            .path_lock("persist_workspace")?
+            .path_lock("persist_presentation")?
             .clone()
             .ok_or_else(|| DesktopShellFailure::storage("not_initialized"))?;
         let bytes = serde_json::to_vec_pretty(&PersistedDesktopShell {
             schema_version: DESKTOP_SHELL_SCHEMA_VERSION,
             workspace: workspace.clone(),
+            keyboard_shortcuts: Some(keyboard_shortcuts.clone()),
         })
         .map_err(|_| DesktopShellFailure::storage("serialize"))?;
         let temporary = path.with_extension("json.tmp");
@@ -786,7 +846,37 @@ fn validate_sync(sync: &DesktopShellSync) -> Result<(), DesktopShellFailure> {
             return Err(invalid_presentation("duplicate recent project path"));
         }
     }
-    validate_workspace(&sync.workspace)
+    validate_workspace(&sync.workspace)?;
+    validate_keyboard_shortcuts(&sync.keyboard_shortcuts)
+}
+
+fn validate_keyboard_shortcuts(
+    profile: &DesktopKeyboardShortcutProfile,
+) -> Result<(), DesktopShellFailure> {
+    if profile.schema_version != KEYBOARD_SHORTCUT_SCHEMA_VERSION {
+        return Err(invalid_presentation("keyboard shortcut schema version"));
+    }
+    if profile.overrides.len() > MAX_SHORTCUT_OVERRIDES {
+        return Err(invalid_presentation("keyboard shortcut override capacity"));
+    }
+    let mut commands = BTreeSet::new();
+    for shortcut in &profile.overrides {
+        validate_text(&shortcut.command_id, "keyboard shortcut command identity")?;
+        if shortcut.command_id.trim() != shortcut.command_id {
+            return Err(invalid_presentation("keyboard shortcut command identity"));
+        }
+        if !commands.insert(shortcut.command_id.as_str()) {
+            return Err(invalid_presentation(
+                "duplicate keyboard shortcut command identity",
+            ));
+        }
+        if let Some(value) = &shortcut.shortcut {
+            if value.len() > MAX_SHORTCUT_BYTES || !valid_identity(value) {
+                return Err(invalid_presentation("keyboard shortcut value"));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_workspace(workspace: &DesktopWorkspacePresentation) -> Result<(), DesktopShellFailure> {

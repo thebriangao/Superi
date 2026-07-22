@@ -121,6 +121,15 @@ test("native sequence resumes after a webview reload before the next sync", asyn
                 focused_panel_id: null,
                 panel_layouts: [],
               },
+              keyboard_shortcuts: {
+                schema_version: 1,
+                overrides: [
+                  {
+                    command_id: "application.route.editing",
+                    shortcut: "mod+e",
+                  },
+                ],
+              },
               failure: null,
             };
           }
@@ -148,10 +157,32 @@ test("native sequence resumes after a webview reload before the next sync", asyn
         focused_panel_id: null,
         panel_layouts: [],
       },
+      keyboard_shortcuts: {
+        schema_version: 1,
+        overrides: [
+          {
+            command_id: "application.route.editing",
+            shortcut: "mod+e",
+          },
+        ],
+      },
     });
     assert.equal(
       (calls.at(-1)?.args.sync as { client_sequence: number }).client_sequence,
       42,
+    );
+    assert.deepEqual(
+      (calls.at(-1)?.args.sync as { keyboard_shortcuts: unknown })
+        .keyboard_shortcuts,
+      {
+        schema_version: 1,
+        overrides: [
+          {
+            command_id: "application.route.editing",
+            shortcut: "mod+e",
+          },
+        ],
+      },
     );
   } finally {
     if (previousWindow === undefined) {

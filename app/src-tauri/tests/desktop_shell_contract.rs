@@ -3,9 +3,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use superi_desktop::desktop_shell::{
-    DesktopCloseReason, DesktopPanelDockId, DesktopPanelDockPresentation,
-    DesktopRoutePanelLayoutPresentation, DesktopShellDocument, DesktopShellIntent,
-    DesktopShellModel, DesktopShellState, DesktopShellSync, DesktopWorkspacePresentation,
+    DesktopCloseReason, DesktopKeyboardShortcutOverride, DesktopKeyboardShortcutProfile,
+    DesktopPanelDockId, DesktopPanelDockPresentation, DesktopRoutePanelLayoutPresentation,
+    DesktopShellDocument, DesktopShellIntent, DesktopShellModel, DesktopShellState,
+    DesktopShellSync, DesktopWorkspacePresentation,
 };
 
 static NEXT_SHELL_ROOT: AtomicU64 = AtomicU64::new(0);
@@ -76,6 +77,13 @@ fn sync(sequence: u64) -> DesktopShellSync {
         redo_depth: 1,
         busy: false,
         workspace: workspace("editing"),
+        keyboard_shortcuts: DesktopKeyboardShortcutProfile {
+            schema_version: 1,
+            overrides: vec![DesktopKeyboardShortcutOverride {
+                command_id: "application.route.editing".to_owned(),
+                shortcut: Some("mod+e".to_owned()),
+            }],
+        },
     }
 }
 
@@ -98,6 +106,11 @@ fn native_shell_sync_preserves_document_history_workspace_and_recent_intents() {
         Some("workspace.editing")
     );
     assert_eq!(first.recent_paths().len(), 2);
+    assert_eq!(first.keyboard_shortcuts().overrides.len(), 1);
+    assert_eq!(
+        first.keyboard_shortcuts().overrides[0].shortcut.as_deref(),
+        Some("mod+e")
+    );
     assert_eq!(
         model.intent_for_menu_id("superi.file.recent.1"),
         Some(DesktopShellIntent::OpenRecent {
@@ -177,7 +190,11 @@ fn workspace_presentation_restores_from_the_private_atomic_session_record() {
     let stored: serde_json::Value =
         serde_json::from_slice(&std::fs::read(root.join("desktop-shell-state.json")).unwrap())
             .unwrap();
-    assert_eq!(stored["schema_version"].as_u64(), Some(2));
+    assert_eq!(stored["schema_version"].as_u64(), Some(3));
+    assert_eq!(
+        stored["keyboard_shortcuts"]["overrides"][0]["shortcut"].as_str(),
+        Some("mod+e")
+    );
     drop(first);
 
     let restored = DesktopShellState::default();
@@ -197,6 +214,7 @@ fn workspace_presentation_restores_from_the_private_atomic_session_record() {
         snapshot.workspace().panel_layouts[0].docks[1].size_basis_points,
         10_000
     );
+    assert_eq!(snapshot.keyboard_shortcuts().overrides.len(), 1);
 
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -253,6 +271,35 @@ fn version_one_workspace_records_migrate_without_inventing_registry_layout() {
     let snapshot = state.snapshot().unwrap();
     assert_eq!(snapshot.workspace().active_route_id, "color");
     assert!(snapshot.workspace().panel_layouts.is_empty());
+    assert!(snapshot.keyboard_shortcuts().overrides.is_empty());
+    assert!(snapshot.failure().is_none());
+
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn version_two_workspace_records_migrate_with_default_shortcuts() {
+    let root = temporary_shell_root("version-two");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        root.join("desktop-shell-state.json"),
+        br#"{
+  "schema_version": 2,
+  "workspace": {
+    "active_route_id": "audio",
+    "hidden_panel_ids": [],
+    "focused_panel_id": null,
+    "panel_layouts": []
+  }
+}"#,
+    )
+    .unwrap();
+
+    let state = DesktopShellState::default();
+    state.initialize(&root).unwrap();
+    let snapshot = state.snapshot().unwrap();
+    assert_eq!(snapshot.workspace().active_route_id, "audio");
+    assert!(snapshot.keyboard_shortcuts().overrides.is_empty());
     assert!(snapshot.failure().is_none());
 
     std::fs::remove_dir_all(root).unwrap();
@@ -266,6 +313,91 @@ fn invalid_panel_layout_is_rejected_before_live_state_changes() {
     invalid.workspace.panel_layouts[0].docks[0].panel_ids = vec!["workspace.editing".to_owned()];
     assert!(model.synchronize(invalid).is_err());
     assert_eq!(model.snapshot(), &accepted);
+}
+
+#[test]
+fn duplicate_shortcut_commands_are_rejected_before_live_state_changes() {
+    let mut model = DesktopShellModel::default();
+    let accepted = model.synchronize(sync(1)).unwrap();
+    let mut invalid = sync(2);
+    invalid
+        .keyboard_shortcuts
+        .overrides
+        .push(DesktopKeyboardShortcutOverride {
+            command_id: "application.route.editing".to_owned(),
+            shortcut: None,
+        });
+    assert!(model.synchronize(invalid).is_err());
+    assert_eq!(model.snapshot(), &accepted);
+}
+
+#[test]
+fn invalid_persisted_shortcuts_restore_workspace_and_report_default_recovery() {
+    let root = temporary_shell_root("invalid-shortcuts");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        root.join("desktop-shell-state.json"),
+        br#"{
+  "schema_version": 3,
+  "workspace": {
+    "active_route_id": "color",
+    "hidden_panel_ids": [],
+    "focused_panel_id": null,
+    "panel_layouts": []
+  },
+  "keyboard_shortcuts": {
+    "schema_version": 1,
+    "overrides": [
+      { "command_id": "application.route.color", "shortcut": "mod+c" },
+      { "command_id": "application.route.color", "shortcut": null }
+    ]
+  }
+}"#,
+    )
+    .unwrap();
+
+    let state = DesktopShellState::default();
+    state.initialize(&root).unwrap();
+    let snapshot = state.snapshot().unwrap();
+    assert_eq!(snapshot.workspace().active_route_id, "color");
+    assert!(snapshot.keyboard_shortcuts().overrides.is_empty());
+    assert_eq!(
+        snapshot.failure().unwrap().code,
+        "desktop_shell_storage_invalid"
+    );
+
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn version_three_missing_shortcuts_restores_workspace_and_reports_default_recovery() {
+    let root = temporary_shell_root("missing-shortcuts");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        root.join("desktop-shell-state.json"),
+        br#"{
+  "schema_version": 3,
+  "workspace": {
+    "active_route_id": "delivery",
+    "hidden_panel_ids": [],
+    "focused_panel_id": null,
+    "panel_layouts": []
+  }
+}"#,
+    )
+    .unwrap();
+
+    let state = DesktopShellState::default();
+    state.initialize(&root).unwrap();
+    let snapshot = state.snapshot().unwrap();
+    assert_eq!(snapshot.workspace().active_route_id, "delivery");
+    assert!(snapshot.keyboard_shortcuts().overrides.is_empty());
+    assert_eq!(
+        snapshot.failure().unwrap().code,
+        "desktop_shell_storage_invalid"
+    );
+
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
